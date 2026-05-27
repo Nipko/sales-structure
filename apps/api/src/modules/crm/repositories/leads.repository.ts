@@ -86,7 +86,7 @@ export class LeadsRepository {
         n++;
     }
     if (stage) { q += ` AND l.stage = $${n++}`; p.push(stage); }
-    if (assignedTo) { q += ` AND l.assigned_to = $${n++}`; p.push(assignedTo); }
+    if (assignedTo) { q += ` AND l.assigned_to = $${n++}::uuid`; p.push(assignedTo); }
     if (courseId) { q += ` AND l.course_id = $${n++}::uuid`; p.push(courseId); }
     if (isVip !== undefined) { q += ` AND l.is_vip = $${n++}`; p.push(isVip); }
     if (scoreMin !== undefined) { q += ` AND l.score >= $${n++}`; p.push(scoreMin); }
@@ -233,7 +233,10 @@ export class LeadsRepository {
     ];
     const fields = Object.keys(record).filter(k => record[k] !== undefined && ALLOWED_FIELDS.includes(k));
     const values = fields.map(k => record[k]);
-    const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
+    const placeholders = fields.map((k, i) => {
+      const isUuid = ['assigned_to', 'customer_profile_id', 'contact_id', 'campaign_id', 'course_id'].includes(k);
+      return `$${i + 1}${isUuid ? '::uuid' : ''}`;
+    }).join(', ');
 
     const results = await this.prisma.executeInTenantSchema<Lead[]>(
       schema,
@@ -261,7 +264,10 @@ export class LeadsRepository {
     const fields = Object.keys(record).filter(k => record[k] !== undefined && ALLOWED_FIELDS.includes(k));
     if (fields.length === 0) return this.getLeadById(tenantId, id);
 
-    const setClause = fields.map((k, i) => `${k} = $${i + 2}`).join(', ');
+    const setClause = fields.map((k, i) => {
+      const isUuid = ['assigned_to', 'customer_profile_id', 'contact_id', 'campaign_id', 'course_id'].includes(k);
+      return `${k} = $${i + 2}${isUuid ? '::uuid' : ''}`;
+    }).join(', ');
     const values = [id, ...fields.map(k => record[k])];
 
     const results = await this.prisma.executeInTenantSchema<Lead[]>(
@@ -290,7 +296,7 @@ export class LeadsRepository {
       }
       case 'assign': {
         const result = await this.prisma.executeInTenantSchema<any[]>(schema,
-          `UPDATE leads SET assigned_to = $1, updated_at = NOW() WHERE id = ANY($2::uuid[]) RETURNING id`,
+          `UPDATE leads SET assigned_to = $1::uuid, updated_at = NOW() WHERE id = ANY($2::uuid[]) RETURNING id`,
           [payload.assignedTo, idsParam],
         );
         return { updated: result?.length || 0 };

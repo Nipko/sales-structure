@@ -55,7 +55,7 @@ export class CannedResponsesService {
         const result = await this.prisma.executeInTenantSchema<any[]>(
             tenant[0].schema_name,
             `INSERT INTO canned_responses (tenant_id, shortcode, title, content, category, created_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
+       VALUES ($1::uuid, $2, $3, $4, $5, NOW())
        RETURNING id, shortcode, title, content, category`,
             [tenantId, data.shortcode, data.title, data.content, data.category || 'general'],
         );

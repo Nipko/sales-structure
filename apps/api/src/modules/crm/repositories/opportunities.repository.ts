@@ -68,7 +68,10 @@ export class OpportunitiesRepository {
     ];
     const fields = Object.keys(record).filter(k => record[k] !== undefined && ALLOWED_FIELDS.includes(k));
     const values = fields.map(k => record[k]);
-    const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
+    const placeholders = fields.map((k, i) => {
+      const isUuid = ['lead_id', 'assigned_to'].includes(k);
+      return `$${i + 1}${isUuid ? '::uuid' : ''}`;
+    }).join(', ');
 
     const results = await this.prisma.executeInTenantSchema<Opportunity[]>(
       schema,
@@ -91,7 +94,10 @@ export class OpportunitiesRepository {
     const fields = Object.keys(record).filter(k => record[k] !== undefined && ALLOWED_FIELDS.includes(k));
     if (fields.length === 0) return this.getOpportunityById(tenantId, id);
 
-    const setClause = fields.map((k, i) => `${k} = $${i + 2}`).join(', ');
+    const setClause = fields.map((k, i) => {
+      const isUuid = ['lead_id', 'assigned_to'].includes(k);
+      return `${k} = $${i + 2}${isUuid ? '::uuid' : ''}`;
+    }).join(', ');
     const values = [id, ...fields.map(k => record[k])];
 
     const results = await this.prisma.executeInTenantSchema<Opportunity[]>(
@@ -109,7 +115,7 @@ export class OpportunitiesRepository {
     await this.prisma.executeInTenantSchema(
       schema,
       `INSERT INTO stage_history (lead_id, opportunity_id, from_stage, to_stage, reason, triggered_by, agent_id)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7)`,
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::uuid)`,
       [data.lead_id, data.opportunity_id, data.from_stage || null, data.to_stage, data.reason || null, data.triggered_by || 'system', data.agent_id || null]
     );
   }

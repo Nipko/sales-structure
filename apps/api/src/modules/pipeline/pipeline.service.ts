@@ -151,7 +151,7 @@ export class PipelineService {
         await this.prisma.executeInTenantSchema(
             schema,
             `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)`,
             [
                 tenantId,
                 data.name,
@@ -242,7 +242,7 @@ export class PipelineService {
         let paramIdx = 1;
 
         if (filters?.stageId) {
-            query += ` AND d.stage_id = $${paramIdx++}`;
+            query += ` AND d.stage_id = $${paramIdx++}::uuid`;
             params.push(filters.stageId);
         }
         if (filters?.status) {
@@ -252,7 +252,7 @@ export class PipelineService {
             query += ` AND d.status = 'open'`;
         }
         if (filters?.assignedAgentId) {
-            query += ` AND d.assigned_agent_id = $${paramIdx++}`;
+            query += ` AND d.assigned_agent_id = $${paramIdx++}::uuid`;
             params.push(filters.assignedAgentId);
         }
 
@@ -375,7 +375,7 @@ export class PipelineService {
             `INSERT INTO deals (contact_id, title, value, stage_id, probability, expected_close_date,
                                 assigned_agent_id, notes, status, sla_deadline,
                                 created_at, updated_at, stage_entered_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'open', ${slaDeadline}, NOW(), NOW(), NOW())
+             VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6, $7::uuid, $8, 'open', ${slaDeadline}, NOW(), NOW(), NOW())
              RETURNING *`,
             [data.contactId, data.title, data.value, data.stageId,
                 probability, data.expectedCloseDate || null,
@@ -442,7 +442,7 @@ export class PipelineService {
         await this.prisma.executeInTenantSchema(
             schema,
             `UPDATE deals
-             SET stage_id = $1, probability = $2, stage_entered_at = NOW(),
+             SET stage_id = $1::uuid, probability = $2, stage_entered_at = NOW(),
                  updated_at = NOW(), sla_deadline = ${slaDeadline}, sla_status = 'on_track'${statusUpdate}
              WHERE id = $3::uuid`,
             [newStageId, probability, dealId],
@@ -489,7 +489,7 @@ export class PipelineService {
         if (data.value !== undefined) { sets.push(`value = $${i++}`); params.push(data.value); }
         if (data.probability !== undefined) { sets.push(`probability = $${i++}`); params.push(data.probability); }
         if (data.expectedCloseDate) { sets.push(`expected_close_date = $${i++}`); params.push(data.expectedCloseDate); }
-        if (data.assignedAgentId) { sets.push(`assigned_agent_id = $${i++}`); params.push(data.assignedAgentId); }
+        if (data.assignedAgentId) { sets.push(`assigned_agent_id = $${i++}::uuid`); params.push(data.assignedAgentId); }
         if (data.notes !== undefined) { sets.push(`notes = $${i++}`); params.push(data.notes); }
         if (data.status) { sets.push(`status = $${i++}`); params.push(data.status); }
 
@@ -784,7 +784,7 @@ export class PipelineService {
         await this.prisma.executeInTenantSchema(
             schema,
             `INSERT INTO stage_transitions (deal_id, from_stage, to_stage, changed_by, reason, created_at)
-             VALUES ($1, $2, $3, $4, $5, NOW())`,
+             VALUES ($1::uuid, $2, $3, $4, $5, NOW())`,
             [dealId, fromStageId, toStageId, changedBy, reason],
         );
     }

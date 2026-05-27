@@ -236,7 +236,7 @@ export class WhatsappMessagingService {
         `INSERT INTO whatsapp_message_logs (
           channel_id, conversation_id, provider_message_id, template_name,
           direction, status, error_message, request_payload_json, sent_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+        ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, NOW())`,
         [
           channelId,
           data.conversationId,

@@ -432,7 +432,7 @@ export class HandoffService {
             if (agents?.length) {
                 const agent = agents[0];
                 await this.prisma.executeInTenantSchema(schemaName,
-                    `UPDATE conversations SET assigned_to = $2, status = 'with_human' WHERE id = $1::uuid`,
+                    `UPDATE conversations SET assigned_to = $2::uuid, status = 'with_human' WHERE id = $1::uuid`,
                     [conversationId, agent.id],
                 );
                 this.logger.log(`[AutoAssign] Automatically assigned conversation ${conversationId} to agent "${agent.name}" (Active Count=${agent.active_count}, Matching Skills=${agent.matching_skills_count})`);

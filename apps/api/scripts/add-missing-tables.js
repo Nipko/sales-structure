@@ -497,11 +497,17 @@ function buildSQL(s) {
     `CREATE TABLE IF NOT EXISTS "${s}"."legal_text_versions" (
       "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
       "tenant_id" VARCHAR(255) NOT NULL DEFAULT '',
+      "name" VARCHAR(255) NOT NULL DEFAULT '',
+      "description" TEXT DEFAULT '',
+      "type" VARCHAR(50) NOT NULL DEFAULT 'general',
       "channel" VARCHAR(50) NOT NULL DEFAULT 'web',
+      "channels" TEXT[] DEFAULT '{web}',
+      "agent_ids" UUID[] DEFAULT '{}',
       "version" INTEGER NOT NULL DEFAULT 1,
       "text" TEXT NOT NULL DEFAULT '',
       "active" BOOLEAN DEFAULT true,
-      "created_at" TIMESTAMP DEFAULT NOW()
+      "created_at" TIMESTAMP DEFAULT NOW(),
+      "updated_at" TIMESTAMP DEFAULT NOW()
     )`,
 
     `CREATE TABLE IF NOT EXISTS "${s}"."deletion_requests" (
@@ -706,6 +712,15 @@ function buildSQL(s) {
     `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "location_address" TEXT`,
     `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "duration_type" VARCHAR(20) DEFAULT 'fixed'`,
     `ALTER TABLE "${s}"."services" ADD COLUMN IF NOT EXISTS "duration_minutes_max" INTEGER`,
+
+    // -- Legal text versions enhancements
+    `ALTER TABLE "${s}"."legal_text_versions" ADD COLUMN IF NOT EXISTS "name" VARCHAR(255) NOT NULL DEFAULT ''`,
+    `ALTER TABLE "${s}"."legal_text_versions" ADD COLUMN IF NOT EXISTS "description" TEXT DEFAULT ''`,
+    `ALTER TABLE "${s}"."legal_text_versions" ADD COLUMN IF NOT EXISTS "type" VARCHAR(50) NOT NULL DEFAULT 'general'`,
+    `ALTER TABLE "${s}"."legal_text_versions" ADD COLUMN IF NOT EXISTS "channels" TEXT[] DEFAULT '{web}'`,
+    `ALTER TABLE "${s}"."legal_text_versions" ADD COLUMN IF NOT EXISTS "agent_ids" UUID[] DEFAULT '{}'`,
+    `ALTER TABLE "${s}"."legal_text_versions" ADD COLUMN IF NOT EXISTS "updated_at" TIMESTAMP DEFAULT NOW()`,
+    `UPDATE "${s}"."legal_text_versions" SET channels = ARRAY[channel] WHERE channels = '{web}' AND channel != 'web'`,
 
     // -- Custom attribute values
     `CREATE TABLE IF NOT EXISTS "${s}"."custom_attribute_values" (

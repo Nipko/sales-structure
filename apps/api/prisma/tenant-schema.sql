@@ -845,13 +845,19 @@ CREATE INDEX IF NOT EXISTS "idx_wait_jobs_status_run_at" ON "{{SCHEMA_NAME}}"."w
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."legal_text_versions" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "tenant_id" VARCHAR(255) NOT NULL,
+    "name" VARCHAR(255) NOT NULL DEFAULT '',
+    "description" TEXT DEFAULT '',
+    "type" VARCHAR(50) NOT NULL DEFAULT 'general',
     "channel" VARCHAR(50) NOT NULL DEFAULT 'web',
+    "channels" TEXT[] DEFAULT '{web}',
+    "agent_ids" UUID[] DEFAULT '{}',
     "version" INTEGER NOT NULL DEFAULT 1,
     "text" TEXT NOT NULL,
     "active" BOOLEAN DEFAULT true,
-    "created_at" TIMESTAMP DEFAULT NOW()
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS "idx_legal_text_versions_tenant_id_channel_active" ON "{{SCHEMA_NAME}}"."legal_text_versions" ("tenant_id", "channel", "active");
+CREATE INDEX IF NOT EXISTS "idx_legal_text_versions_tenant_id_type_active" ON "{{SCHEMA_NAME}}"."legal_text_versions" ("tenant_id", "type", "active");
 
 -- (consent_records and opt_out_records already defined above in CRM section)
 

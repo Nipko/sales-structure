@@ -12,16 +12,30 @@ export class ComplianceService {
     async getLegalTexts(schemaName: string) {
         return this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT * FROM legal_text_versions ORDER BY created_at DESC`
+            `SELECT * FROM legal_text_versions ORDER BY updated_at DESC, created_at DESC`
         );
     }
 
     async createLegalText(schemaName: string, data: any) {
+        const channels = Array.isArray(data.channels) && data.channels.length > 0
+            ? data.channels : [data.channel || 'web'];
+        const agentIds = Array.isArray(data.agent_ids) ? data.agent_ids : [];
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `INSERT INTO legal_text_versions (tenant_id, channel, version, text, active)
-             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-            [data.tenant_id, data.channel || 'web', data.version || 1, data.text, data.active ?? true]
+            `INSERT INTO legal_text_versions (tenant_id, name, description, type, channel, channels, agent_ids, version, text, active)
+             VALUES ($1, $2, $3, $4, $5, $6::text[], $7::uuid[], $8, $9, $10) RETURNING *`,
+            [
+                data.tenant_id,
+                data.name || '',
+                data.description || '',
+                data.type || 'general',
+                channels[0],
+                channels,
+                agentIds,
+                data.version || 1,
+                data.text,
+                data.active ?? true,
+            ]
         );
         return rows[0];
     }
@@ -30,11 +44,19 @@ export class ComplianceService {
         const sets: string[] = [];
         const params: any[] = [id];
         let idx = 2;
-        if (data.channel !== undefined) { sets.push(`channel = $${idx++}`); params.push(data.channel); }
+        if (data.name !== undefined) { sets.push(`name = $${idx++}`); params.push(data.name); }
+        if (data.description !== undefined) { sets.push(`description = $${idx++}`); params.push(data.description); }
+        if (data.type !== undefined) { sets.push(`type = $${idx++}`); params.push(data.type); }
+        if (data.channels !== undefined) {
+            sets.push(`channels = $${idx++}::text[]`); params.push(data.channels);
+            sets.push(`channel = $${idx++}`); params.push(data.channels[0] || 'web');
+        }
+        if (data.agent_ids !== undefined) { sets.push(`agent_ids = $${idx++}::uuid[]`); params.push(data.agent_ids); }
         if (data.version !== undefined) { sets.push(`version = $${idx++}`); params.push(data.version); }
         if (data.text !== undefined) { sets.push(`text = $${idx++}`); params.push(data.text); }
         if (data.active !== undefined) { sets.push(`active = $${idx++}`); params.push(data.active); }
-        if (sets.length === 0) return null;
+        sets.push(`updated_at = NOW()`);
+        if (sets.length <= 1) return null;
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `UPDATE legal_text_versions SET ${sets.join(', ')} WHERE id = $1::uuid RETURNING *`,

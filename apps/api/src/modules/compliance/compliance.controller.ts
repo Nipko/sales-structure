@@ -38,7 +38,7 @@ export class ComplianceController {
     @ApiOperation({ summary: 'Create a new legal text version' })
     async createLegalText(@Param('tenantId') tenantId: string, @Body() payload: any, @CurrentUser() user: any) {
         const result = await this.complianceService.createLegalText(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
-        await this.complianceService.logComplianceAction(tenantId, 'legal_text.created', 'legal_text_versions', { id: result?.id, channel: payload.channel, version: payload.version, userId: user?.id });
+        await this.complianceService.logComplianceAction(tenantId, 'legal_text.created', 'legal_text_versions', { id: result?.id, name: payload.name, type: payload.type, channels: payload.channels, version: payload.version, userId: user?.id });
         return result;
     }
 

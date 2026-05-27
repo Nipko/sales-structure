@@ -997,6 +997,9 @@ export class ConversationsService {
 
         // Register catalog + knowledge + CRM tools based on feature flags on the agent.
         const cfgTools = (config.tools ?? (config as any)?.tools) as any;
+        if (cfgTools?.appointments?.enabled === true) {
+            tools = [...tools, ...APPOINTMENT_TOOLS];
+        }
         if (cfgTools?.catalog?.enabled === true) {
             tools = [...tools, ...CATALOG_TOOLS];
         }

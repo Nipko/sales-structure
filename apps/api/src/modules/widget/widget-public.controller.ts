@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, Headers, Logger, ForbiddenException
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Response } from 'express';
 import { WidgetService } from './widget.service';
+import { WidgetTriggersService } from './widget-triggers.service';
 import { RedisService } from '../redis/redis.service';
 import { getLoaderScript } from './widget-loader';
 
@@ -13,6 +14,7 @@ export class WidgetPublicController {
 
     constructor(
         private readonly widgetService: WidgetService,
+        private readonly triggersService: WidgetTriggersService,
         private readonly redis: RedisService,
     ) {}
 
@@ -38,6 +40,13 @@ export class WidgetPublicController {
         const config = await this.widgetService.getConfig(widgetId);
         if (!config) return { success: false, error: 'Widget not found' };
 
+        let triggers: any[] = [];
+        try {
+            triggers = await this.triggersService.getTriggersForWidget(config.id);
+        } catch {
+            // Table may not exist yet — ignore
+        }
+
         return {
             success: true,
             data: {
@@ -51,6 +60,7 @@ export class WidgetPublicController {
                 preChatFields: config.pre_chat_fields,
                 locale: config.locale,
                 tenantName: config.tenant_name,
+                triggers,
             },
         };
     }

@@ -64,6 +64,25 @@ export class WidgetService implements OnModuleInit {
             await this.prisma.$queryRawUnsafe(`
                 CREATE INDEX IF NOT EXISTS idx_widget_sessions_visitor ON public.widget_sessions(visitor_id, widget_config_id)
             `);
+            await this.prisma.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS public.widget_triggers (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    widget_config_id UUID NOT NULL REFERENCES public.widget_configs(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    conditions JSONB NOT NULL DEFAULT '[]',
+                    condition_operator TEXT NOT NULL DEFAULT 'AND',
+                    action_type TEXT NOT NULL DEFAULT 'show_bubble_message',
+                    action_config JSONB NOT NULL DEFAULT '{}',
+                    frequency_minutes INTEGER DEFAULT 0,
+                    is_active BOOLEAN DEFAULT true,
+                    priority INTEGER DEFAULT 0,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            `);
+            await this.prisma.$queryRawUnsafe(`
+                CREATE INDEX IF NOT EXISTS idx_widget_triggers_config ON public.widget_triggers(widget_config_id)
+            `);
         } catch (err: any) {
             this.logger.warn(`Widget tables creation: ${err.message}`);
         }

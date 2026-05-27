@@ -3,7 +3,7 @@
 // ===================================
 
 // ---- Channel Types ----
-export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms';
+export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email';
 
 export type MessageContentType = 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'sticker' | 'reaction';
 

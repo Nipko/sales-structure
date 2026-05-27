@@ -410,6 +410,12 @@ export const api = {
     sendCampaign(tenantId: string, campaignId: string) {
         return apiPost(`/broadcast/campaigns/${campaignId}/launch`, {});
     },
+    getAbVariants(tenantId: string, campaignId: string) {
+        return apiGet(`/broadcast/campaigns/${campaignId}/variants`);
+    },
+    selectAbWinner(tenantId: string, campaignId: string, variantId: string) {
+        return apiPost(`/broadcast/campaigns/${campaignId}/winner`, { variantId });
+    },
 
     // --- Analytics ---
     /** Commercial overview — real data: leads, hot, ready-to-close, handoffs, LLM cost */
@@ -1457,6 +1463,16 @@ export const api = {
         apiPost(`/webhooks/${tenantId}/${endpointId}/test`, {}),
     getWebhookEvents: () =>
         apiGet(`/webhooks/events`),
+
+    // ─── Widget Triggers ───
+    listWidgetTriggers: (widgetConfigId: string) =>
+        apiGet(`/widget/triggers/${widgetConfigId}`),
+    createWidgetTrigger: (widgetConfigId: string, data: any) =>
+        apiPost(`/widget/triggers/${widgetConfigId}`, data),
+    updateWidgetTrigger: (triggerId: string, data: any) =>
+        apiPut(`/widget/triggers/${triggerId}`, data),
+    deleteWidgetTrigger: (triggerId: string) =>
+        apiDelete(`/widget/triggers/${triggerId}`),
 
     // ─── System Updates (Changelog / Novedades) ───
     getSystemUpdates: () => apiGet("/system-updates"),

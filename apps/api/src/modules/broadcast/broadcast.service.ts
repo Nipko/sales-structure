@@ -1,10 +1,11 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { AbTestService } from './ab-test.service';
 
 export const BROADCAST_QUEUE = 'broadcast-messages';
 
@@ -26,6 +27,8 @@ export interface CreateCampaignDto {
     recipientPhones?: string[];
     scheduledAt?: string;
     metadata?: Record<string, any>;
+    variants?: Array<{ name: string; content: Record<string, any>; percentage: number }>;
+    abTestConfig?: Record<string, any>;
 }
 
 export interface BroadcastJobData {
@@ -43,6 +46,8 @@ export interface BroadcastJobData {
     emailHtml?: string;
     emailText?: string;
     smsBody?: string;
+    variantId?: string;
+    variantContent?: Record<string, any>;
 }
 
 export interface CampaignStats {
@@ -70,6 +75,8 @@ export class BroadcastService {
         private readonly redis: RedisService,
         private readonly eventEmitter: EventEmitter2,
         @InjectQueue(BROADCAST_QUEUE) private readonly broadcastQueue: Queue,
+        @Inject(forwardRef(() => AbTestService))
+        private readonly abTestService: AbTestService,
     ) {}
 
     // ================================================================
@@ -106,6 +113,8 @@ export class BroadcastService {
         const scheduledAt = data.scheduledAt ? new Date(data.scheduledAt).toISOString() : null;
 
         const fullMetadata = { ...metadata, targetAudience: data.targetAudience || 'all' };
+        const isAbTest = !!(data.variants && data.variants.length >= 2);
+        const abTestConfig = isAbTest ? (data.abTestConfig || { testPercentage: 100 }) : {};
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
@@ -127,6 +136,20 @@ export class BroadcastService {
         );
 
         const campaignId = rows?.[0]?.id;
+
+        // Set A/B test columns if variants provided
+        if (isAbTest && campaignId) {
+            await this.abTestService.ensureAbTestTables(schema);
+
+            await this.prisma.executeInTenantSchema(
+                schema,
+                `UPDATE campaigns SET is_ab_test = true, ab_test_config = $1::jsonb
+                 WHERE id = $2::uuid`,
+                [JSON.stringify(abTestConfig), campaignId],
+            );
+
+            await this.abTestService.createVariants(schema, campaignId, data.variants!);
+        }
 
         if (recipients.length > 0) {
             const batchSize = 200;
@@ -150,7 +173,7 @@ export class BroadcastService {
             }
         }
 
-        return { id: campaignId, recipientCount: recipients.length, channels };
+        return { id: campaignId, recipientCount: recipients.length, channels, isAbTest };
     }
 
     // ================================================================
@@ -181,7 +204,7 @@ export class BroadcastService {
 
         const recipients = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT id, contact_id, phone, email, channel FROM campaign_recipients
+            `SELECT id, contact_id, phone, email, channel, variant_id FROM campaign_recipients
              WHERE campaign_id = $1::uuid AND status = 'pending'`,
             [campaignId],
         );
@@ -201,6 +224,36 @@ export class BroadcastService {
             templateComponents: metadata.templateComponents || [],
         };
 
+        // If A/B test, assign recipients to variants before queuing
+        const isAbTest = campaign.is_ab_test === true;
+        let variantContentMap: Record<string, Record<string, any>> = {};
+
+        if (isAbTest) {
+            await this.abTestService.ensureAbTestTables(schema);
+            await this.abTestService.assignRecipientsToVariants(schema, campaignId);
+
+            // Re-fetch recipients to get assigned variant_id
+            const updatedRecipients = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `SELECT id, contact_id, phone, email, channel, variant_id FROM campaign_recipients
+                 WHERE campaign_id = $1::uuid AND status = 'pending'`,
+                [campaignId],
+            );
+            recipients.length = 0;
+            recipients.push(...(updatedRecipients || []));
+
+            // Pre-load variant content map
+            const variants = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `SELECT id, content FROM campaign_variants WHERE campaign_id = $1::uuid`,
+                [campaignId],
+            );
+            for (const v of variants || []) {
+                const content = typeof v.content === 'string' ? JSON.parse(v.content) : (v.content || {});
+                variantContentMap[v.id] = content;
+            }
+        }
+
         await this.prisma.executeInTenantSchema(
             schema,
             `UPDATE campaigns SET status = 'active', starts_at = NOW(), updated_at = NOW()
@@ -210,6 +263,34 @@ export class BroadcastService {
 
         const jobs = recipients.map((r) => {
             const ch = r.channel || 'whatsapp';
+            const variantId = r.variant_id || undefined;
+            const variantContent = variantId ? variantContentMap[variantId] : undefined;
+
+            // For A/B tests, override content from variant if available
+            let jobTemplateName = waContent.templateName || '';
+            let jobTemplateLang = waContent.templateLanguage || 'es';
+            let jobTemplateComp = waContent.templateComponents || [];
+            let jobEmailSubject = channelContent.email?.subject || '';
+            let jobEmailHtml = channelContent.email?.html || '';
+            let jobEmailText = channelContent.email?.text || '';
+            let jobSmsBody = channelContent.sms?.body || '';
+
+            if (variantContent) {
+                if (variantContent.whatsapp) {
+                    jobTemplateName = variantContent.whatsapp.templateName || jobTemplateName;
+                    jobTemplateLang = variantContent.whatsapp.templateLanguage || jobTemplateLang;
+                    jobTemplateComp = variantContent.whatsapp.templateComponents || jobTemplateComp;
+                }
+                if (variantContent.email) {
+                    jobEmailSubject = variantContent.email.subject || jobEmailSubject;
+                    jobEmailHtml = variantContent.email.html || jobEmailHtml;
+                    jobEmailText = variantContent.email.text || jobEmailText;
+                }
+                if (variantContent.sms) {
+                    jobSmsBody = variantContent.sms.body || jobSmsBody;
+                }
+            }
+
             return {
                 name: `send-${ch}`,
                 data: {
@@ -220,13 +301,15 @@ export class BroadcastService {
                     channel: ch,
                     phone: r.phone || '',
                     email: r.email || '',
-                    templateName: waContent.templateName || '',
-                    templateLanguage: waContent.templateLanguage || 'es',
-                    templateComponents: waContent.templateComponents || [],
-                    emailSubject: channelContent.email?.subject || '',
-                    emailHtml: channelContent.email?.html || '',
-                    emailText: channelContent.email?.text || '',
-                    smsBody: channelContent.sms?.body || '',
+                    templateName: jobTemplateName,
+                    templateLanguage: jobTemplateLang,
+                    templateComponents: jobTemplateComp,
+                    emailSubject: jobEmailSubject,
+                    emailHtml: jobEmailHtml,
+                    emailText: jobEmailText,
+                    smsBody: jobSmsBody,
+                    variantId,
+                    variantContent,
                 } as BroadcastJobData,
                 opts: {
                     attempts: 3,
@@ -343,7 +426,7 @@ export class BroadcastService {
         const meta = typeof campaign.metadata === 'string' ? JSON.parse(campaign.metadata || '{}') : (campaign.metadata || {});
         const channels = meta.channels || [campaign.channel || 'whatsapp'];
 
-        return {
+        const result: CampaignStats = {
             campaignId,
             name: campaign.name,
             status: campaign.status,
@@ -358,6 +441,19 @@ export class BroadcastService {
             launchedAt: campaign.starts_at?.toISOString?.() || campaign.starts_at || null,
             completedAt: campaign.ends_at?.toISOString?.() || campaign.ends_at || null,
         };
+
+        // Include A/B test variant breakdown if applicable
+        if (campaign.is_ab_test === true) {
+            try {
+                const variantStats = await this.abTestService.getVariantStats(schema, campaignId);
+                (result as any).isAbTest = true;
+                (result as any).variants = variantStats;
+            } catch {
+                // Tables may not exist yet — safe to ignore
+            }
+        }
+
+        return result;
     }
 
     // ================================================================
@@ -395,6 +491,21 @@ export class BroadcastService {
         );
 
         const remaining = parseInt(pending?.[0]?.count || '0');
+
+        // For A/B campaigns, try auto-selecting a winner after each batch of sends
+        try {
+            const abCheck = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT is_ab_test FROM campaigns WHERE id = $1::uuid LIMIT 1`,
+                [campaignId],
+            );
+            if (abCheck?.[0]?.is_ab_test === true) {
+                await this.abTestService.autoSelectWinner(schemaName, campaignId);
+            }
+        } catch {
+            // A/B columns may not exist — safe to ignore
+        }
+
         if (remaining === 0) {
             await this.prisma.executeInTenantSchema(
                 schemaName,

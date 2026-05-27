@@ -2075,7 +2075,21 @@
       "segment": "Segment",
       "selectSegment": "Select a segment..."
     },
-    "subtitle": "Mass campaigns and template messages"
+    "subtitle": "Mass campaigns and template messages",
+    "abTest": {
+      "title": "A/B Test",
+      "variantA": "Variant A",
+      "variantB": "Variant B",
+      "addVariant": "Add variant",
+      "percentage": "Percentage",
+      "winner": "Winner",
+      "selectWinner": "Select winner",
+      "autoWinner": "Auto-select",
+      "significance": "Statistical significance",
+      "significant": "Significant (p < 0.05)",
+      "notSignificant": "Not significant",
+      "stats": "Stats by variant"
+    }
   },
   "channels": {
     "title": "Channels",
@@ -6207,5 +6221,56 @@
       "title": "No templates found",
       "subtitle": "Try different search filters"
     }
+  },
+  "widgetTriggers": {
+    "title": "Widget Triggers",
+    "subtitle": "Configure proactive actions for the chat widget",
+    "create": "New trigger",
+    "edit": "Edit trigger",
+    "name": "Name",
+    "namePlaceholder": "e.g.: Help offer",
+    "conditions": "Conditions",
+    "conditionOperator": "Operator",
+    "and": "All must match (AND)",
+    "or": "At least one (OR)",
+    "actionType": "Action type",
+    "openWidget": "Open widget",
+    "showBubble": "Show bubble",
+    "showBanner": "Show banner",
+    "message": "Message",
+    "messagePlaceholder": "Need help?",
+    "position": "Position",
+    "top": "Top",
+    "bottom": "Bottom",
+    "bgColor": "Background color",
+    "frequency": "Frequency (min)",
+    "frequencyHint": "0 = once per session",
+    "priority": "Priority",
+    "active": "Active",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirmDelete": "Delete this trigger?",
+    "conditionTypes": {
+      "time_on_page": "Time on page",
+      "scroll_depth": "Scroll depth (%)",
+      "exit_intent": "Exit intent",
+      "page_url": "Page URL",
+      "visit_count": "Visit count"
+    },
+    "seconds": "seconds",
+    "value": "Value",
+    "operator": "Operator",
+    "addCondition": "Add condition",
+    "empty": {
+      "title": "No triggers",
+      "subtitle": "Create a trigger to proactively engage with visitors"
+    },
+    "toast": {
+      "created": "Trigger created",
+      "updated": "Trigger updated",
+      "deleted": "Trigger deleted",
+      "error": "Error saving"
+    },
+    "planLimit": "You have reached the trigger limit for your plan"
   }
 }

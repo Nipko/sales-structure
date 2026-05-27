@@ -6,6 +6,7 @@ import {
     Param,
     UseGuards,
     Logger,
+    ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -13,6 +14,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { BroadcastService, CreateCampaignDto } from './broadcast.service';
+import { AbTestService } from './ab-test.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -25,6 +27,7 @@ export class BroadcastController {
 
     constructor(
         private readonly broadcastService: BroadcastService,
+        private readonly abTestService: AbTestService,
         private readonly throttle: TenantThrottleService,
         private readonly prisma: PrismaService,
     ) {}
@@ -45,6 +48,21 @@ export class BroadcastController {
             [monthStart],
         );
         await this.throttle.enforcePlanLimit(tenantId, 'broadcastCampaigns', Number(countRows?.[0]?.cnt || 0), 'campañas de broadcast este mes');
+
+        // Plan gate for A/B testing
+        if (body.variants && body.variants.length >= 2) {
+            const abEnabled = await this.throttle.isFeatureEnabled(tenantId, 'abTestBroadcasts');
+            if (!abEnabled) {
+                const plan = await this.throttle.getTenantPlan(tenantId);
+                throw new ForbiddenException({
+                    error: 'plan_limit_reached',
+                    limitKey: 'abTestBroadcasts',
+                    resource: 'A/B testing de broadcasts',
+                    plan,
+                    message: `Tu plan ${plan} no incluye A/B testing para broadcasts. Actualizá tu plan.`,
+                });
+            }
+        }
 
         const result = await this.broadcastService.createCampaign(tenantId, body);
         return { success: true, data: result };
@@ -75,5 +93,39 @@ export class BroadcastController {
     ) {
         const data = await this.broadcastService.getCampaignStats(tenantId, campaignId);
         return { success: true, data };
+    }
+
+    @Get('campaigns/:id/variants')
+    @ApiOperation({ summary: 'Get A/B test variant stats with significance' })
+    async getAbVariants(
+        @CurrentTenant() tenantId: string,
+        @Param('id') campaignId: string,
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await this.abTestService.getVariantStats(schemaName, campaignId);
+        return { success: true, data };
+    }
+
+    @Post('campaigns/:id/winner')
+    @ApiOperation({ summary: 'Manually select A/B test winner' })
+    async selectAbWinner(
+        @CurrentTenant() tenantId: string,
+        @Param('id') campaignId: string,
+        @Body() body: { variantId: string },
+    ) {
+        const abEnabled = await this.throttle.isFeatureEnabled(tenantId, 'abTestBroadcasts');
+        if (!abEnabled) {
+            const plan = await this.throttle.getTenantPlan(tenantId);
+            throw new ForbiddenException({
+                error: 'plan_limit_reached',
+                limitKey: 'abTestBroadcasts',
+                resource: 'A/B testing de broadcasts',
+                plan,
+                message: `Tu plan ${plan} no incluye A/B testing para broadcasts. Actualizá tu plan.`,
+            });
+        }
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        await this.abTestService.selectWinner(schemaName, campaignId, body.variantId);
+        return { success: true, message: 'Winner selected' };
     }
 }

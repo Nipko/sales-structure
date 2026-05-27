@@ -66,6 +66,7 @@ const PLANS = [
             mediaStorageMb: 50,
             externalCrm: 0,
             outboundWebhooks: 0,
+            maxWebhookSubscriptions: 0,
 
             // ── Channel access ──
             channels: ['whatsapp'],
@@ -100,6 +101,8 @@ const PLANS = [
             channelManager: false,
             widget: false,
             httpRequestAction: false,
+            abTestBroadcasts: false,
+            widgetTriggers: 0,
 
             // ── Rate limits (per-hour sliding windows) ──
             rateLimits: {
@@ -157,9 +160,10 @@ const PLANS = [
             mediaStorageMb: 100,
             externalCrm: 0,
             outboundWebhooks: 0,
+            maxWebhookSubscriptions: 3,
 
             // ── Channel access ──
-            channels: ['whatsapp', 'instagram', 'messenger'],
+            channels: ['whatsapp', 'instagram', 'messenger', 'email'],
 
             // ── AI & engagement ──
             llmTier: 'tier_3',
@@ -191,6 +195,8 @@ const PLANS = [
             channelManager: false,
             widget: true,
             httpRequestAction: false,
+            abTestBroadcasts: false,
+            widgetTriggers: 3,
 
             // ── Rate limits (per-hour sliding windows) ──
             rateLimits: {
@@ -248,9 +254,10 @@ const PLANS = [
             mediaStorageMb: 1024,
             externalCrm: 1,
             outboundWebhooks: 3,
+            maxWebhookSubscriptions: 10,
 
             // ── Channel access ──
-            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms', 'email'],
 
             // ── AI & engagement ──
             llmTier: 'tier_2',
@@ -282,6 +289,8 @@ const PLANS = [
             channelManager: false,
             widget: true,
             httpRequestAction: true,
+            abTestBroadcasts: true,
+            widgetTriggers: 10,
 
             // ── Rate limits (per-hour sliding windows) ──
             rateLimits: {
@@ -339,9 +348,10 @@ const PLANS = [
             mediaStorageMb: 10_240,
             externalCrm: -1,
             outboundWebhooks: -1,
+            maxWebhookSubscriptions: -1,
 
             // ── Channel access ──
-            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms', 'email'],
 
             // ── AI & engagement ──
             llmTier: 'tier_1',
@@ -373,6 +383,8 @@ const PLANS = [
             channelManager: true,
             widget: true,
             httpRequestAction: true,
+            abTestBroadcasts: true,
+            widgetTriggers: -1,
 
             // ── Rate limits (per-hour sliding windows) ──
             rateLimits: {
@@ -427,9 +439,10 @@ const PLANS = [
             mediaStorageMb: -1,
             externalCrm: -1,
             outboundWebhooks: -1,
+            maxWebhookSubscriptions: -1,
 
             // ── Channel access ──
-            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms', 'email'],
 
             // ── AI & engagement ──
             llmTier: 'tier_1',
@@ -463,6 +476,8 @@ const PLANS = [
             channelManager: true,
             widget: true,
             httpRequestAction: true,
+            abTestBroadcasts: true,
+            widgetTriggers: -1,
 
             // ── Rate limits (per-hour sliding windows) ──
             rateLimits: {

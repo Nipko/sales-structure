@@ -7,6 +7,9 @@ import { InstagramAdapter } from './instagram/instagram.adapter';
 import { MessengerAdapter } from './messenger/messenger.adapter';
 import { TelegramAdapter } from './telegram/telegram.adapter';
 import { SmsAdapter } from './sms/sms.adapter';
+import { EmailAdapter } from './email/email.adapter';
+import { EmailChannelService } from './email/email-channel.service';
+import { EmailWebhookController } from './email/email-webhook.controller';
 import { OutboundQueueProcessor, OUTBOUND_QUEUE } from './outbound-queue.processor';
 import { OutboundQueueService } from './outbound-queue.service';
 import { ChannelTokenService } from './channel-token.service';
@@ -24,7 +27,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
         forwardRef(() => ConversationsModule),
         forwardRef(() => WhatsappModule),
     ],
-    controllers: [ChannelsController, ChannelManagementController, WebhookTapController],
+    controllers: [ChannelsController, ChannelManagementController, WebhookTapController, EmailWebhookController],
     providers: [
         ChannelGatewayService,
         WhatsAppAdapter,
@@ -32,13 +35,15 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
         MessengerAdapter,
         TelegramAdapter,
         SmsAdapter,
+        EmailAdapter,
+        EmailChannelService,
         OutboundQueueProcessor,
         OutboundQueueService,
         ChannelTokenService,
         InstagramTokenRefreshService,
         WebhookTapService,
     ],
-    exports: [ChannelGatewayService, WhatsAppAdapter, SmsAdapter, OutboundQueueService, ChannelTokenService, WebhookTapService],
+    exports: [ChannelGatewayService, WhatsAppAdapter, SmsAdapter, EmailAdapter, EmailChannelService, OutboundQueueService, ChannelTokenService, WebhookTapService],
 })
 export class ChannelsModule implements OnModuleInit {
     constructor(
@@ -48,6 +53,7 @@ export class ChannelsModule implements OnModuleInit {
         private messengerAdapter: MessengerAdapter,
         private telegramAdapter: TelegramAdapter,
         private smsAdapter: SmsAdapter,
+        private emailAdapter: EmailAdapter,
     ) {}
 
     onModuleInit() {
@@ -56,5 +62,6 @@ export class ChannelsModule implements OnModuleInit {
         this.gateway.registerAdapter(this.messengerAdapter);
         this.gateway.registerAdapter(this.telegramAdapter);
         this.gateway.registerAdapter(this.smsAdapter);
+        this.gateway.registerAdapter(this.emailAdapter);
     }
 }

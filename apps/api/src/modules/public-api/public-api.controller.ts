@@ -6,7 +6,7 @@ import { ApiTags, ApiSecurity } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { AppointmentsService } from '../appointments/appointments.service';
-import { WebhooksService } from '../webhooks/webhooks.service';
+import { WebhookSubscriptionService } from './webhook-subscription.service';
 import { PublicApiGuard } from './guards/public-api.guard';
 import { PublicApiRateLimitGuard } from './guards/public-api-rate-limit.guard';
 import { ApiScopeGuard } from './guards/api-scope.guard';
@@ -21,7 +21,7 @@ export class PublicApiController {
         private readonly prisma: PrismaService,
         private readonly pipelineService: PipelineService,
         private readonly appointmentsService: AppointmentsService,
-        private readonly webhooksService: WebhooksService,
+        private readonly webhookSubscriptionService: WebhookSubscriptionService,
     ) {}
 
     private parsePagination(query: any): { page: number; pageSize: number; offset: number } {
@@ -307,33 +307,36 @@ export class PublicApiController {
         return { data: appointment };
     }
 
-    // ── Webhooks (REST hooks for Zapier/integrations) ─────────────────
+    // ── Webhook Subscriptions (REST hooks for Zapier/integrations) ────
 
     @Get('hooks')
     @ApiScope('read:webhooks')
     async listHooks(@Request() req: any) {
-        const hooks = await this.webhooksService.list(req.tenantId);
+        const hooks = await this.webhookSubscriptionService.listHooks(req.tenantId);
         return { data: hooks };
     }
 
     @Post('hooks')
     @ApiScope('write:webhooks')
-    async subscribe(@Request() req: any, @Body() body: { url: string; events: string[]; description?: string }) {
-        if (!body.url || !body.events?.length) {
-            throw new BadRequestException('url and events are required');
+    async subscribeHook(
+        @Request() req: any,
+        @Body() body: { targetUrl: string; event: string },
+    ) {
+        if (!body.targetUrl || !body.event) {
+            throw new BadRequestException('targetUrl and event are required');
         }
-        const hook = await this.webhooksService.create(req.tenantId, {
-            url: body.url,
-            events: body.events as any[],
-            description: body.description,
-        });
+        const hook = await this.webhookSubscriptionService.subscribe(
+            req.tenantId,
+            body.targetUrl,
+            body.event,
+        );
         return { data: hook };
     }
 
-    @Delete('hooks/:id')
+    @Delete('hooks/:hookId')
     @ApiScope('write:webhooks')
-    async unsubscribe(@Request() req: any, @Param('id') id: string) {
-        await this.webhooksService.delete(req.tenantId, id);
+    async unsubscribeHook(@Request() req: any, @Param('hookId') hookId: string) {
+        await this.webhookSubscriptionService.unsubscribe(req.tenantId, hookId);
         return { data: { success: true, message: 'Webhook unsubscribed' } };
     }
 }

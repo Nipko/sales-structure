@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { BroadcastController } from './broadcast.controller';
 import { BroadcastService, BROADCAST_QUEUE } from './broadcast.service';
 import { BroadcastQueueProcessor } from './broadcast-queue.processor';
+import { AbTestService } from './ab-test.service';
 import { RedisModule } from '../redis/redis.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { EmailModule } from '../email/email.module';
@@ -17,7 +18,7 @@ import { EmailModule } from '../email/email.module';
         }),
     ],
     controllers: [BroadcastController],
-    providers: [BroadcastService, BroadcastQueueProcessor],
-    exports: [BroadcastService],
+    providers: [BroadcastService, BroadcastQueueProcessor, AbTestService],
+    exports: [BroadcastService, AbTestService],
 })
 export class BroadcastModule {}

@@ -6,6 +6,7 @@ import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messagin
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BroadcastService, BROADCAST_QUEUE, BroadcastJobData } from './broadcast.service';
+import { AbTestService } from './ab-test.service';
 
 @Processor(BROADCAST_QUEUE, {
     concurrency: 10,
@@ -22,6 +23,7 @@ export class BroadcastQueueProcessor extends WorkerHost {
         private readonly emailService: EmailService,
         private readonly prisma: PrismaService,
         private readonly broadcastService: BroadcastService,
+        private readonly abTestService: AbTestService,
     ) {
         super();
     }
@@ -50,6 +52,14 @@ export class BroadcastQueueProcessor extends WorkerHost {
             }
 
             await this.broadcastService.updateRecipientStatus(schemaName, recipientId, 'sent', undefined, messageId);
+
+            // Update variant stats for A/B tests
+            if (job.data.variantId) {
+                try {
+                    await this.abTestService.updateVariantStats(schemaName, job.data.variantId, 'sent');
+                } catch { /* safe to ignore if tables don't exist */ }
+            }
+
             this.logger.log(`Broadcast sent: campaign=${campaignId} channel=${channel} messageId=${messageId}`);
             await this.broadcastService.checkCampaignCompletion(schemaName, campaignId);
             return messageId;
@@ -59,6 +69,14 @@ export class BroadcastQueueProcessor extends WorkerHost {
 
             if (job.attemptsMade + 1 >= (job.opts?.attempts || 3)) {
                 await this.broadcastService.updateRecipientStatus(schemaName, recipientId, 'failed', errorMessage);
+
+                // Update variant stats for A/B tests
+                if (job.data.variantId) {
+                    try {
+                        await this.abTestService.updateVariantStats(schemaName, job.data.variantId, 'failed');
+                    } catch { /* safe to ignore if tables don't exist */ }
+                }
+
                 await this.broadcastService.checkCampaignCompletion(schemaName, campaignId);
             }
 

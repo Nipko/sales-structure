@@ -2075,7 +2075,21 @@
       "segment": "Segmento",
       "selectSegment": "Selecione um segmento..."
     },
-    "subtitle": "Campanhas em massa e mensagens com modelos"
+    "subtitle": "Campanhas em massa e mensagens com modelos",
+    "abTest": {
+      "title": "Teste A/B",
+      "variantA": "Variante A",
+      "variantB": "Variante B",
+      "addVariant": "Adicionar variante",
+      "percentage": "Porcentagem",
+      "winner": "Vencedora",
+      "selectWinner": "Selecionar vencedora",
+      "autoWinner": "Auto-seleção",
+      "significance": "Significância estatística",
+      "significant": "Significativo (p < 0.05)",
+      "notSignificant": "Não significativo",
+      "stats": "Estatísticas por variante"
+    }
   },
   "channels": {
     "title": "Canais",
@@ -6207,5 +6221,56 @@
       "title": "Nenhum template encontrado",
       "subtitle": "Tente outros filtros de busca"
     }
+  },
+  "widgetTriggers": {
+    "title": "Triggers do Widget",
+    "subtitle": "Configure ações proativas para o widget de chat",
+    "create": "Novo trigger",
+    "edit": "Editar trigger",
+    "name": "Nome",
+    "namePlaceholder": "ex: Oferta de ajuda",
+    "conditions": "Condições",
+    "conditionOperator": "Operador",
+    "and": "Todas devem corresponder (AND)",
+    "or": "Pelo menos uma (OR)",
+    "actionType": "Tipo de ação",
+    "openWidget": "Abrir widget",
+    "showBubble": "Mostrar bolha",
+    "showBanner": "Mostrar banner",
+    "message": "Mensagem",
+    "messagePlaceholder": "Precisa de ajuda?",
+    "position": "Posição",
+    "top": "Topo",
+    "bottom": "Rodapé",
+    "bgColor": "Cor de fundo",
+    "frequency": "Frequência (min)",
+    "frequencyHint": "0 = uma vez por sessão",
+    "priority": "Prioridade",
+    "active": "Ativo",
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "confirmDelete": "Excluir este trigger?",
+    "conditionTypes": {
+      "time_on_page": "Tempo na página",
+      "scroll_depth": "Profundidade de scroll (%)",
+      "exit_intent": "Intenção de saída",
+      "page_url": "URL da página",
+      "visit_count": "Número de visitas"
+    },
+    "seconds": "segundos",
+    "value": "Valor",
+    "operator": "Operador",
+    "addCondition": "Adicionar condição",
+    "empty": {
+      "title": "Sem triggers",
+      "subtitle": "Crie um trigger para interagir proativamente com os visitantes"
+    },
+    "toast": {
+      "created": "Trigger criado",
+      "updated": "Trigger atualizado",
+      "deleted": "Trigger excluído",
+      "error": "Erro ao salvar"
+    },
+    "planLimit": "Você atingiu o limite de triggers do seu plano"
   }
 }

@@ -1,0 +1,221 @@
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
+import * as crypto from 'crypto';
+
+export const ZAPIER_HOOK_EVENTS = [
+    'lead.created',
+    'message.received',
+    'conversation.closed',
+    'deal.stage_changed',
+    'appointment.booked',
+] as const;
+
+export type ZapierHookEvent = (typeof ZAPIER_HOOK_EVENTS)[number];
+
+export interface WebhookSubscription {
+    id: string;
+    tenant_id: string;
+    target_url: string;
+    event: string;
+    secret: string;
+    is_active: boolean;
+    created_at: string;
+    last_triggered_at: string | null;
+}
+
+@Injectable()
+export class WebhookSubscriptionService {
+    private readonly logger = new Logger(WebhookSubscriptionService.name);
+
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly redis: RedisService,
+        private readonly httpService: HttpService,
+    ) {}
+
+    // ── Lazy table creation ───────────────────────────────────────────
+
+    private async ensureTable(): Promise<void> {
+        const cacheKey = 'hook_tables_ok';
+        const cached = await this.redis.get(cacheKey);
+        if (cached) return;
+
+        await this.prisma.$queryRawUnsafe(
+            `CREATE TABLE IF NOT EXISTS public.webhook_subscriptions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id UUID NOT NULL REFERENCES public.tenants(id),
+                target_url TEXT NOT NULL,
+                event TEXT NOT NULL,
+                secret TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                last_triggered_at TIMESTAMPTZ
+            )`,
+        );
+
+        await this.prisma.$queryRawUnsafe(
+            `CREATE INDEX IF NOT EXISTS idx_webhook_subs_tenant_event
+             ON public.webhook_subscriptions (tenant_id, event)
+             WHERE is_active = true`,
+        );
+
+        await this.redis.set(cacheKey, '1', 86400); // 24h
+    }
+
+    // ── SSRF validation ───────────────────────────────────────────────
+
+    private validateTargetUrl(url: string): void {
+        let parsed: URL;
+        try {
+            parsed = new URL(url);
+        } catch {
+            throw new BadRequestException(`Invalid target URL: ${url.substring(0, 80)}`);
+        }
+
+        if (parsed.protocol !== 'https:') {
+            throw new BadRequestException('Webhook target URL must use HTTPS');
+        }
+
+        const hostname = parsed.hostname.toLowerCase();
+        const blocked = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|::1|fd|fe80)/;
+        if (blocked.test(hostname)) {
+            throw new BadRequestException('Webhook target URL must not point to private/reserved IP ranges');
+        }
+    }
+
+    // ── CRUD ──────────────────────────────────────────────────────────
+
+    async subscribe(
+        tenantId: string,
+        targetUrl: string,
+        event: string,
+    ): Promise<WebhookSubscription> {
+        this.validateTargetUrl(targetUrl);
+
+        if (!ZAPIER_HOOK_EVENTS.includes(event as ZapierHookEvent)) {
+            throw new BadRequestException(
+                `Invalid event. Allowed: ${ZAPIER_HOOK_EVENTS.join(', ')}`,
+            );
+        }
+
+        await this.ensureTable();
+
+        const secret = crypto.randomBytes(32).toString('hex');
+
+        const rows = await this.prisma.$queryRawUnsafe<WebhookSubscription[]>(
+            `INSERT INTO public.webhook_subscriptions (tenant_id, target_url, event, secret)
+             VALUES ($1::uuid, $2, $3, $4)
+             RETURNING id, tenant_id, target_url, event, secret, is_active, created_at, last_triggered_at`,
+            tenantId,
+            targetUrl,
+            event,
+            secret,
+        );
+
+        return rows[0];
+    }
+
+    async unsubscribe(tenantId: string, hookId: string): Promise<void> {
+        await this.ensureTable();
+
+        const rows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+            `DELETE FROM public.webhook_subscriptions
+             WHERE id = $1::uuid AND tenant_id = $2::uuid
+             RETURNING id`,
+            hookId,
+            tenantId,
+        );
+
+        if (!rows || rows.length === 0) {
+            throw new BadRequestException('Webhook subscription not found');
+        }
+    }
+
+    async listHooks(tenantId: string): Promise<WebhookSubscription[]> {
+        await this.ensureTable();
+
+        return this.prisma.$queryRawUnsafe<WebhookSubscription[]>(
+            `SELECT id, tenant_id, target_url, event, is_active, created_at, last_triggered_at
+             FROM public.webhook_subscriptions
+             WHERE tenant_id = $1::uuid AND is_active = true
+             ORDER BY created_at DESC`,
+            tenantId,
+        );
+    }
+
+    // ── Dispatch (fire-and-forget) ────────────────────────────────────
+
+    async dispatchEvent(
+        tenantId: string,
+        event: string,
+        payload: Record<string, any>,
+    ): Promise<void> {
+        await this.ensureTable();
+
+        const subs = await this.prisma.$queryRawUnsafe<WebhookSubscription[]>(
+            `SELECT id, target_url, secret
+             FROM public.webhook_subscriptions
+             WHERE tenant_id = $1::uuid AND event = $2 AND is_active = true`,
+            tenantId,
+            event,
+        );
+
+        if (!subs || subs.length === 0) return;
+
+        for (const sub of subs) {
+            this.deliver(sub, event, payload).catch((err) =>
+                this.logger.error(
+                    `Zapier hook delivery failed: hook=${sub.id} event=${event} error=${err.message}`,
+                ),
+            );
+        }
+    }
+
+    private async deliver(
+        sub: Pick<WebhookSubscription, 'id' | 'target_url' | 'secret'>,
+        event: string,
+        payload: Record<string, any>,
+    ): Promise<void> {
+        // Defense-in-depth: validate URL at delivery time
+        try {
+            this.validateTargetUrl(sub.target_url);
+        } catch {
+            this.logger.warn(
+                `Skipping hook delivery to blocked URL: hook=${sub.id} url=${sub.target_url.substring(0, 80)}`,
+            );
+            return;
+        }
+
+        const body = JSON.stringify(payload);
+        const signature = crypto
+            .createHmac('sha256', sub.secret)
+            .update(body)
+            .digest('hex');
+
+        try {
+            await this.httpService.axiosRef.post(sub.target_url, body, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Hook-Signature': signature,
+                    'X-Hook-Event': event,
+                },
+                timeout: 10_000,
+                validateStatus: () => true,
+            });
+
+            // Update last_triggered_at (fire-and-forget)
+            this.prisma
+                .$queryRawUnsafe(
+                    `UPDATE public.webhook_subscriptions SET last_triggered_at = NOW() WHERE id = $1::uuid`,
+                    sub.id,
+                )
+                .catch(() => {});
+        } catch (err: any) {
+            this.logger.warn(
+                `Hook delivery error: hook=${sub.id} event=${event} error=${err.message}`,
+            );
+        }
+    }
+}

@@ -243,7 +243,7 @@ export class PropertiesService {
             `INSERT INTO property_bookings
              (property_id, contact_id, conversation_id, guest_name, guest_email, guest_phone,
               guests_count, check_in, check_out, nights, night_price, cleaning_fee, total_price, currency, status)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8::date, $9::date, $10, $11, $12, $13, $14, 'confirmed')
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::date, $9::date, $10, $11, $12, $13, $14, 'confirmed')
              RETURNING *`,
             [
                 propertyId,

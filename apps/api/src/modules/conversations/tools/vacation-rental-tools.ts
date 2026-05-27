@@ -24,7 +24,7 @@ export const VACATION_RENTAL_TOOLS: ToolDefinition[] = [
         parameters: {
             type: 'object',
             properties: {
-                propertyId: { type: 'string', description: 'Property UUID' },
+                propertyId: { type: 'string', description: 'Property UUID (retrieve it by calling list_properties first; do NOT pass the property name)' },
                 checkIn: { type: 'string', description: 'Check-in date YYYY-MM-DD' },
                 checkOut: { type: 'string', description: 'Check-out date YYYY-MM-DD' },
                 guests: { type: 'number', description: 'Number of guests' },
@@ -38,7 +38,7 @@ export const VACATION_RENTAL_TOOLS: ToolDefinition[] = [
         parameters: {
             type: 'object',
             properties: {
-                propertyId: { type: 'string', description: 'Property UUID' },
+                propertyId: { type: 'string', description: 'Property UUID (retrieve it by calling list_properties first; do NOT pass the property name)' },
             },
             required: ['propertyId'],
         },
@@ -49,7 +49,7 @@ export const VACATION_RENTAL_TOOLS: ToolDefinition[] = [
         parameters: {
             type: 'object',
             properties: {
-                propertyId: { type: 'string', description: 'Property UUID' },
+                propertyId: { type: 'string', description: 'Property UUID (retrieve it by calling list_properties first; do NOT pass the property name)' },
             },
             required: ['propertyId'],
         },
@@ -60,7 +60,7 @@ export const VACATION_RENTAL_TOOLS: ToolDefinition[] = [
         parameters: {
             type: 'object',
             properties: {
-                propertyId: { type: 'string', description: 'Property UUID' },
+                propertyId: { type: 'string', description: 'Property UUID (retrieve it by calling list_properties first; do NOT pass the property name)' },
                 checkIn: { type: 'string', description: 'Check-in date YYYY-MM-DD' },
                 checkOut: { type: 'string', description: 'Check-out date YYYY-MM-DD' },
                 guestName: { type: 'string', description: 'Guest full name' },

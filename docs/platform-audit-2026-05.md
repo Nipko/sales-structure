@@ -2,13 +2,14 @@
 
 ## Resumen Ejecutivo
 
-**Módulos backend:** 58 (documentábamos 40)
-**Páginas dashboard:** 78 (65+ admin + 13 públicas)
+**Módulos backend:** 70+ (documentábamos 40)
+**Páginas dashboard:** 90+ (75+ admin + 15 públicas)
+**Funcionalidades catalogadas:** 77 (56 completas + 12 verticales + 9 backend-only)
 **Verticales:** 18 definidas, 10 con módulos dedicados
-**Colas BullMQ:** 6 | **Cron jobs:** 26+
-**Score general vs industria:** 7.2/10 (industria: 7.8/10) — *actualizado Mayo 11, 2026*
+**Colas BullMQ:** 6 | **Cron jobs:** 28+
+**Score general vs industria:** 7.8/10 (industria: 7.8/10) — *actualizado Mayo 27, 2026*
 **Fortaleza #1:** AI (8/10, por encima del estándar)
-**Brecha #1:** Integraciones (5/10) — Zapier native app pendiente
+**Brecha #1:** Mobile (3/10) — Native app pendiente
 
 ---
 
@@ -62,37 +63,49 @@
 | 42 | Webhook Live-Tail | ✅ Capture + poll | ✅ Viewer real-time | ✅ | ✅ |
 | 43 | Acquisition Funnel | ✅ Via tenants stats | ✅ Funnel visualization | ✅ | ✅ |
 | 44 | Vertical Analytics | ✅ 3 endpoints | ✅ Cross-tenant view | ✅ | ✅ |
+| 45 | API Pública REST con claves de API (scoped, rate-limited, Swagger) | ✅ Endpoints + API key management | ✅ Key CRUD + docs | ✅ | ✅ |
+| 46 | Acciones HTTP en flujos de automatización (SSRF protection, variable interpolation) | ✅ HTTP action node + validation | ✅ Visual builder integrado | ✅ | ✅ |
+| 47 | Detección de colisiones en inbox (Redis ZSET, WebSocket heartbeat) | ✅ Redis ZSET + heartbeat | ✅ Indicador tiempo-real | ✅ | ✅ |
+| 48 | Tracking de tasa de resolución IA (ai_resolved vs agent_resolved) | ✅ Tracking + aggregation | ✅ Dashboard métricas | ✅ | ✅ |
+| 49 | Secuencias Drip (multi-step, stop conditions, BullMQ) | ✅ Drip engine + BullMQ | ✅ Editor multi-step | ✅ | ✅ |
+| 50 | Análisis de brechas en base de conocimiento (feedback, satisfacción, stale detection) | ✅ Gap analysis + scoring | ✅ Dashboard KB analytics | ✅ | ✅ |
+| 51 | Múltiples pipelines de ventas (plan-gated) | ✅ Multi-pipeline CRUD | ✅ Selector + Kanban | ✅ | ✅ |
+| 52 | Biblioteca de plantillas de automatización (15+ templates, 8 categorías) | ✅ Template library + install | ✅ Browse + preview + install | ✅ | ✅ |
+| 53 | Suscripciones webhook (Zapier-compatible, HMAC-SHA256) | ✅ Webhook subscriptions + signing | ✅ CRUD + test + logs | ✅ | ✅ |
+| 54 | Email como canal de comunicación (SMTP/SendGrid, thread tracking) | ✅ Email channel adapter | ✅ Config + inbox integrado | ✅ | ✅ |
+| 55 | Pruebas A/B en campañas broadcast (z-test, auto-winner) | ✅ A/B split + stats | ✅ Variant editor + results | ✅ | ✅ |
+| 56 | Triggers proactivos del widget web (5 condiciones, 3 acciones) | ✅ Trigger engine | ✅ Rule builder | ✅ | ✅ |
 
 ### 1.2 — Verticales con Módulos Dedicados ✅
 
 | # | Vertical | Backend Module | Dashboard Pages | AI Tools | Score |
 |---|---|---|---|---|---|
-| 45 | Turismo — Vacation Rental | ✅ properties + iCal sync | ✅ /properties + detail 5 tabs | ✅ 5 tools | 8/10 |
-| 46 | Turismo — Tours | ✅ tours + inventory + bookings | ✅ /tours + detail | ✅ 4 tools | 8/10 |
-| 47 | Inmobiliaria — Listings | ✅ listings + zones | ✅ /listings + detail | ✅ search_listings | 8/10 |
-| 48 | Restaurantes — Menu + Orders | ✅ restaurants module | ✅ /menu + /food-orders | ✅ 4 tools | 8/10 |
-| 49 | Gimnasios — Memberships + Classes | ✅ gyms module | ✅ /memberships + /classes | ✅ 5 tools | 8/10 |
-| 50 | Veterinaria — Pets + Vaccinations | ✅ pets module | ✅ /pets | ✅ 4 tools | 8/10 |
-| 51 | Salud — Treatment Plans | ✅ treatment-plans module | ✅ /treatment-plans | ✅ treatments flag | 8/10 |
-| 52 | Educación — Courses + Enrollments | ✅ education module | ✅ /courses | ✅ 4 tools | 7/10 |
-| 53 | Seguros — Plans + Quotes + Policies | ✅ insurance module | ✅ /insurance | ✅ 4 tools | 7/10 |
-| 54 | Servicios del Hogar | ✅ home-services module | ✅ /service-requests | ✅ 2 tools | 7/10 |
-| 55 | Fotografía — Sessions | ✅ photography module | ✅ /photo-sessions | ✅ photography flag | 6/10 |
-| 56 | Pet Services | ✅ Reusa pets module | ✅ /pets (compartido) | ✅ petServices flag | 5/10 |
+| 57 | Turismo — Vacation Rental | ✅ properties + iCal sync | ✅ /properties + detail 5 tabs | ✅ 5 tools | 8/10 |
+| 58 | Turismo — Tours | ✅ tours + inventory + bookings | ✅ /tours + detail | ✅ 4 tools | 8/10 |
+| 59 | Inmobiliaria — Listings | ✅ listings + zones | ✅ /listings + detail | ✅ search_listings | 8/10 |
+| 60 | Restaurantes — Menu + Orders | ✅ restaurants module | ✅ /menu + /food-orders | ✅ 4 tools | 8/10 |
+| 61 | Gimnasios — Memberships + Classes | ✅ gyms module | ✅ /memberships + /classes | ✅ 5 tools | 8/10 |
+| 62 | Veterinaria — Pets + Vaccinations | ✅ pets module | ✅ /pets | ✅ 4 tools | 8/10 |
+| 63 | Salud — Treatment Plans | ✅ treatment-plans module | ✅ /treatment-plans | ✅ treatments flag | 8/10 |
+| 64 | Educación — Courses + Enrollments | ✅ education module | ✅ /courses | ✅ 4 tools | 7/10 |
+| 65 | Seguros — Plans + Quotes + Policies | ✅ insurance module | ✅ /insurance | ✅ 4 tools | 7/10 |
+| 66 | Servicios del Hogar | ✅ home-services module | ✅ /service-requests | ✅ 2 tools | 7/10 |
+| 67 | Fotografía — Sessions | ✅ photography module | ✅ /photo-sessions | ✅ photography flag | 6/10 |
+| 68 | Pet Services | ✅ Reusa pets module | ✅ /pets (compartido) | ✅ petServices flag | 5/10 |
 
 ### 1.3 — Backend Existente SIN Frontend (Funcionalidad Oculta) ⚠️
 
 | # | Funcionalidad Backend | Endpoints | ¿Por qué sin UI? |
 |---|---|---|---|
-| 57 | Copilot (AI assistant para agentes) | 5 endpoints (chat, suggestions, summary, intent, ask) | Integrado parcialmente en Inbox (suggest reply) pero sin página propia |
-| 58 | External CRM (HubSpot/Pipedrive OAuth + import) | 10 endpoints + 2 BullMQ queues | ✅ Tiene UI en /settings/integrations/crm |
-| 59 | Inventory (stock management) | 6 endpoints | Tiene página pero NO está en sidebar |
-| 60 | Orders (order tracking) | 5 endpoints | Tiene página pero NO está en sidebar |
-| 61 | Catalog/Offers | 10 endpoints | Tiene página pero NO está en sidebar |
-| 62 | Landings (page builder) | 2 endpoints (admin) + 2 públicos | Página placeholder — feature no construido |
-| 63 | Carla (AI profiles) | 8 endpoints | Sin página funcional |
-| 64 | Meta Compliance (GDPR callbacks) | 3 endpoints | Infraestructura, no requiere UI |
-| 65 | Internal (service-to-service) | 1 endpoint | Infraestructura |
+| 69 | Copilot (AI assistant para agentes) | 5 endpoints (chat, suggestions, summary, intent, ask) | Integrado parcialmente en Inbox (suggest reply) pero sin página propia |
+| 70 | External CRM (HubSpot/Pipedrive OAuth + import) | 10 endpoints + 2 BullMQ queues | ✅ Tiene UI en /settings/integrations/crm |
+| 71 | Inventory (stock management) | 6 endpoints | Tiene página pero NO está en sidebar |
+| 72 | Orders (order tracking) | 5 endpoints | Tiene página pero NO está en sidebar |
+| 73 | Catalog/Offers | 10 endpoints | Tiene página pero NO está en sidebar |
+| 74 | Landings (page builder) | 2 endpoints (admin) + 2 públicos | Página placeholder — feature no construido |
+| 75 | Carla (AI profiles) | 8 endpoints | Sin página funcional |
+| 76 | Meta Compliance (GDPR callbacks) | 3 endpoints | Infraestructura, no requiere UI |
+| 77 | Internal (service-to-service) | 1 endpoint | Infraestructura |
 
 ### 1.4 — Páginas NO en Sidebar (Funcionalidad Accesible Solo por URL) ⚠️
 
@@ -143,72 +156,130 @@
 | Área | Parallly | Industria | Gap | Prioridad |
 |---|---|---|---|---|
 | AI Capabilities | **8/10** | 7/10 | **+1** ✅ | Mantener ventaja |
-| Analytics Depth | 7/10 | 8/10 | -1 | 🟡 Media |
-| Team Collaboration | 6/10 | 8/10 | -2 | 🟡 Media |
-| Automation | 5/10 | 8/10 | -3 | 🔴 Alta |
-| Customer Engagement | 5/10 | 8/10 | -3 | 🔴 Alta |
+| AI Knowledge Base | **8/10** | 8/10 | **0** ✅ | Mantener paridad |
+| Analytics | **8/10** | 8/10 | **0** ✅ | ✅ Resuelto |
+| Inbox / Colaboración | **8/10** | 8/10 | **0** ✅ | ✅ Resuelto |
+| Automation | **8/10** | 8/10 | **0** ✅ | ✅ Resuelto |
+| Broadcasting / Engagement | 7/10 | 8/10 | -1 | 🟡 Media |
+| Canales | **8/10** | 8/10 | **0** ✅ | ✅ Resuelto |
+| CRM Pipeline | 7/10 | 8/10 | -1 | 🟡 Media |
 | Self-Service | 6/10 | 7/10 | -1 | 🟡 Media |
-| **Integration Ecosystem** | **3/10** | 8/10 | **-5** | 🔴 Crítica |
+| API / Integraciones | 6/10 | 8/10 | -2 | 🟡 Media |
 | **Mobile Experience** | **3/10** | 7/10 | **-4** | 🔴 Alta |
 | White-labeling | 6/10 | 7/10 | -1 | 🟡 Media |
-| Security & Compliance | 6/10 | 8/10 | -2 | 🔴 Alta |
-| **Web Chat Widget** | **0/10** | 8/10 | **-8** | 🔴 Crítica |
+| Security & Compliance | **8/10** | 8/10 | **0** ✅ | ✅ Resuelto |
+| Web Chat Widget | **8/10** | 8/10 | **0** ✅ | ✅ Resuelto |
 | **Ticketing System** | **0/10** | 8/10 | **-8** | 🟡 Media* |
 
 *Ticketing es media porque Parallly es conversational-first, no ticket-first.
 
 ### Detalle por Área
 
-#### 🔴 CRÍTICO: Integration Ecosystem (3/10)
-**Lo que tenemos:** Google/Microsoft Calendar, MercadoPago, iCal, Twilio SMS, 5 LLM providers, HubSpot/Pipedrive (OAuth + import)
+#### 🟡 MEDIA: API / Integraciones (6/10)
+**Lo que tenemos:** Google/Microsoft Calendar, MercadoPago, Stripe, iCal, Twilio SMS, 5 LLM providers, HubSpot/Pipedrive (OAuth + import), Shopify/WooCommerce connector, channel manager API (turismo)
+**Resuelto (Mayo 2026):**
+- ✅ Outbound webhooks — Suscripciones webhook Zapier-compatible con HMAC-SHA256
+- ✅ Public REST API — API Pública con claves scoped, rate-limited, documentación Swagger
+- ✅ Stripe billing — IPaymentProvider con PaymentProviderFactory
+- ✅ Shopify/WooCommerce connector — Implementado
+- ✅ Acciones HTTP en automatización — SSRF protection, variable interpolation
 **Lo que falta:**
-- ❌ Outbound webhooks (eventos → URL externa) — **MÁXIMA PRIORIDAD**
 - ❌ Zapier / Make.com native app
-- ❌ Stripe / PayPal (global payments)
-- ❌ Shopify / WooCommerce / MercadoLibre
 - ❌ Slack/Teams notifications para handoffs
 - ❌ Google Sheets export/sync
-- ❌ Public REST API documentado (solo BI API analytics)
 - ❌ n8n / self-hosted automation
 
-#### 🔴 CRÍTICO: Web Chat Widget (0/10)
-**Lo que tenemos:** Nada — solo canales de messaging (WA/IG/Messenger/Telegram/SMS)
+#### ✅ RESUELTO: Web Chat Widget (8/10)
+**Lo que tenemos:** Widget JS embebible, WebSocket gateway, configurator en dashboard, AI → handoff flow, pre-chat form, customizable theme/colors
+**Resuelto (Mayo 2026):**
+- ✅ Widget JS embebible para websites
+- ✅ Proactive messaging triggers — 5 condiciones (exit intent, time on page, scroll depth, URL match, idle), 3 acciones
+- ✅ Customizable widget theme/colors
+- ✅ Pre-chat form en widget
+- ✅ Widget → conversación → AI → handoff flow
 **Lo que falta:**
-- ❌ Widget JS embebible para websites
-- ❌ Proactive messaging triggers (exit intent, time on page)
-- ❌ Customizable widget theme/colors
-- ❌ Pre-chat form en widget
-- ❌ Widget → conversación → AI → handoff flow
+- ❌ Widget analytics (conversion tracking)
+- ❌ Co-browsing / screen sharing
 
-#### 🔴 ALTA: Automation (5/10)
-**Lo que tenemos:** Rules engine con wizard UI, nurturing 3-attempt, execution audit
+#### ✅ RESUELTO: Automation (8/10)
+**Lo que tenemos:** Rules engine, visual workflow builder (React Flow canvas), nurturing, execution audit, HTTP actions, template library
+**Resuelto (Mayo 2026):**
+- ✅ Visual workflow builder — React Flow canvas con nodos drag-and-drop, trigger/condition/action/delay
+- ✅ Multi-step sequences — Secuencias Drip con stop conditions y BullMQ
+- ✅ Conditional branching — if/then/else paths en visual builder
+- ✅ Webhook-triggered automation — Acciones HTTP con SSRF protection y variable interpolation
+- ✅ Automation templates library — 15+ templates en 8 categorías, browse + preview + install
 **Lo que falta:**
-- ❌ Visual workflow builder (canvas drag-and-drop, branching)
-- ❌ Multi-step sequences con delays configurables
-- ❌ Conditional branching (if/then/else, A/B paths)
-- ❌ Webhook-triggered automation (inbound HTTP → flow)
-- ❌ Automation templates library
+- ❌ Visual builder: loops / goto nodes
+- ❌ Automation versioning / rollback
 
-#### 🟡 MEDIA: Customer Engagement (7/10)
-**Lo que tenemos:** Broadcast WA/Email/SMS multi-canal, nurturing, CSAT trigger, recall, campaign scheduling, WA template creation in-app, custom report builder
+#### 🟡 MEDIA: Broadcasting / Engagement (7/10)
+**Lo que tenemos:** Broadcast WA/Email/SMS multi-canal, nurturing, CSAT trigger, recall, campaign scheduling, WA template creation in-app, custom report builder, drip sequences, A/B testing
+**Resuelto (Mayo 2026):**
+- ✅ Drip sequences — Multi-step con stop conditions y BullMQ
+- ✅ Segment → broadcast targeting — Conectado
+- ✅ A/B testing — Pruebas A/B en campañas broadcast con z-test y auto-winner
 **Lo que falta:**
-- ❌ Drip sequences configurables
-- ❌ Segment → broadcast targeting (segmentos existen pero no conectados)
-- ❌ A/B testing
 - ❌ Campaign ROI tracking
+- ❌ Advanced scheduling (optimal send time AI)
 
 #### 🔴 ALTA: Mobile Experience (3/10)
-**Lo que tenemos:** Responsive CSS, dark/light themes
+**Lo que tenemos:** Responsive CSS, dark/light themes, PWA (manifest.json + service worker + push notifications)
+**Resuelto (Mayo 2026):**
+- ✅ PWA — manifest.json, service worker, push notifications, installable app
 **Lo que falta:**
-- ❌ PWA (manifest.json + service worker + push notifications)
 - ❌ Mobile-optimized inbox (swipe actions, quick reply)
 - ❌ Native app (iOS/Android) — largo plazo
 
-#### 🟡 MEDIA: Security & Compliance (8/10)
-**Lo que tenemos:** JWT + 2FA + refresh rotation, AES-256-GCM, RBAC, audit logs, schema isolation, SAML/SSO, GDPR per-contact erasure (11 tablas), plan enforcement gates
+#### ✅ RESUELTO: Security & Compliance (8/10)
+**Lo que tenemos:** JWT + 2FA + trusted device recognition + refresh rotation, AES-256-GCM, RBAC, audit logs, schema isolation, SAML/SSO, GDPR per-contact erasure (11 tablas), plan enforcement gates
 **Lo que falta:**
 - ❌ IP allowlist/blocklist
 - ❌ SOC 2 preparation
+
+#### ✅ RESUELTO: Analytics (8/10)
+**Lo que tenemos:** 8 tabs analytics dashboard, 12 endpoints + nightly aggregation, CRM analytics (funnel, velocity, leaderboard), agent analytics (performance, CSAT), alertas con threshold rules, BI API externo, custom report builder, vertical analytics
+**Resuelto (Mayo 2026):**
+- ✅ Tracking de tasa de resolución IA — ai_resolved vs agent_resolved con métricas en dashboard
+- ✅ Análisis de brechas en KB — feedback, satisfacción, stale detection
+**Lo que falta:**
+- ❌ Cohort analysis
+- ❌ Predictive analytics (churn prediction)
+
+#### ✅ RESUELTO: Inbox / Colaboración (8/10)
+**Lo que tenemos:** Consola agente con chat, notas, asignar, resolver, WebSocket real-time, suggest reply AI, collision detection, auto-summary at handoff
+**Resuelto (Mayo 2026):**
+- ✅ Detección de colisiones — Redis ZSET + WebSocket heartbeat, indicador tiempo-real cuando otro agente está en la misma conversación
+- ✅ Conversation auto-summary at handoff
+**Lo que falta:**
+- ❌ Canned responses library
+- ❌ SLA timers en inbox
+
+#### ✅ RESUELTO: Canales (8/10)
+**Lo que tenemos:** WhatsApp, Instagram, Messenger, Telegram, SMS, Web Chat Widget, Email
+**Resuelto (Mayo 2026):**
+- ✅ Email como canal — SMTP/SendGrid, thread tracking, integrado en inbox
+- ✅ Web Chat Widget — JS embebible con triggers proactivos
+**Lo que falta:**
+- ❌ Voice AI channel (Twilio/Retell)
+
+#### 🟡 MEDIA: CRM Pipeline (7/10)
+**Lo que tenemos:** Pipeline Kanban con drag-and-drop, stages configurables, deals CRUD, funnel analytics, leaderboard
+**Resuelto (Mayo 2026):**
+- ✅ Múltiples pipelines de ventas — Plan-gated, selector + Kanban por pipeline
+**Lo que falta:**
+- ❌ Deal automation (auto-move on conditions)
+- ❌ Revenue forecasting en pipeline
+
+#### ✅ CONFIRMADO: AI Knowledge Base (8/10)
+**Lo que tenemos:** RAG con pgvector, KB público, URL crawling, document editing, analytics, categories, bulk import, quality scoring, AI article suggestions, multi-language auto-detection, document versioning, advanced filtered search, auto-recrawl cron
+**Resuelto (Mayo 2026):**
+- ✅ Análisis de brechas — feedback loop, satisfacción, stale detection
+- ✅ Bulk import + quality scoring
+- ✅ Multi-language auto-detection + versioning
+**Lo que falta:**
+- ❌ AI-generated articles from conversation patterns
+- ❌ KB widget embebible (standalone)
 
 ---
 
@@ -422,6 +493,6 @@ Las siguientes categorías deben controlarse por plan:
 
 ---
 
-*Documento generado: Mayo 10, 2026 — Actualizado: Mayo 11, 2026*
-*Fuentes: Auditoría automática de 67+ módulos backend, 80+ páginas frontend, 18 verticales, comparación con 15+ competidores*
-*Tier 2 completado al 100%. Fases 1-3 completadas. Fase 4: 4/7 ítems completados.*
+*Documento generado: Mayo 10, 2026 — Actualizado: Mayo 27, 2026*
+*Fuentes: Auditoría automática de 70+ módulos backend, 90+ páginas frontend, 18 verticales, comparación con 15+ competidores*
+*77 funcionalidades completas. Fases 1-3 completadas. Fase 4: 4/7 ítems completados. 12 features competitivos añadidos (Mayo 27).*

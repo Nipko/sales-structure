@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  Versión 4.1 — Mayo 2026
+  Versión 4.2 — Mayo 2026
 </p>
 
 ---
@@ -45,7 +45,8 @@
 | 24 | [Conversaciones resueltas](#24-conversaciones-resueltas) |
 | 25 | [Subir fotos a catálogos](#25-subir-fotos-a-catálogos) |
 | 27 | [Procesamiento multimedia](#27-procesamiento-multimedia) |
-| 28 | [Preguntas frecuentes (FAQ)](#28-preguntas-frecuentes) |
+| 28 | [Integraciones y API pública](#28-integraciones-y-api-pública) |
+| 29 | [Preguntas frecuentes (FAQ)](#29-preguntas-frecuentes) |
 
 ---
 
@@ -403,6 +404,25 @@ Lateral derecho con tabs:
 - **Historial**: notas, actividades, llamadas
 - **Custom fields**: campos personalizados según industria
 
+## 6.6 Detección de colisiones (presencia en tiempo real)
+
+Cuando varios agentes humanos abren la misma conversación al mismo tiempo, Parallly muestra **pills de presencia** con el nombre y color de cada agente que la tiene abierta.
+
+**Cómo funciona:**
+
+- Al abrir una conversación, tu presencia se registra automáticamente
+- Si otro agente ya la tiene abierta, verás una pill coloreada con su nombre debajo del encabezado de la conversación (por ejemplo, una pill verde "María G." y una azul "Carlos P.")
+- El sistema envía un heartbeat cada **15 segundos** para mantener la presencia activa
+- Si un agente cierra la conversación o queda inactivo por más de **30 segundos**, su pill desaparece automáticamente
+
+**¿Por qué es útil?**
+
+- Evita que dos agentes respondan al mismo cliente simultáneamente
+- Reduce confusión en equipos grandes con inbox compartido
+- No requiere configuración — funciona de forma automática para todas las conversaciones
+
+> **Tip:** Si ves la pill de otro agente, coordina por chat interno antes de responder. La pill solo indica que la conversación está abierta, no que alguien esté escribiendo.
+
 ---
 
 # 7. CRM — Gestión de Contactos
@@ -562,6 +582,39 @@ Tarjeta en el detalle del lead con análisis automático:
 ## 7.8 Filtros Avanzados
 
 Drawer con chips combinables. Multi-criterio (AND), guardable como segmento.
+
+## 7.9 Múltiples Pipelines
+
+**Roles:** Admin/Supervisor
+**Ruta:** Sidebar → Pipeline
+
+Para negocios que manejan diferentes procesos de venta o tipos de producto, Parallly permite crear **múltiples pipelines independientes**, cada uno con sus propias etapas, probabilidades y reglas.
+
+### Crear un pipeline adicional
+
+1. Pipeline → selector de pestañas en la parte superior → **"+ Nuevo pipeline"**
+2. Nombre del pipeline (ej: "Ventas corporativas", "Postventa", "Renovaciones")
+3. Configura las etapas iniciales (se pueden editar después)
+4. Guardar
+
+### Cambiar entre pipelines
+
+En la parte superior de la vista kanban hay un **selector de pestañas** con todos tus pipelines. Click en la pestaña del pipeline que quieras ver. Cada uno tiene su propio tablero kanban independiente.
+
+### Límites por plan
+
+| Plan | Pipelines |
+|------|-----------|
+| Starter | 1 |
+| Pro | 3 |
+| Enterprise | 10 |
+| Custom | Ilimitados |
+
+### Mover deals entre pipelines
+
+Desde el detalle de un deal, puedes cambiar el pipeline asignado. El deal se reubica en la primera etapa del nuevo pipeline.
+
+> **Tip:** Usa pipelines separados cuando los procesos de venta son fundamentalmente diferentes (ej: venta directa vs. licitaciones), no cuando simplemente quieres separar por producto. Para filtrar por producto dentro de un mismo proceso, usa tags o campos personalizados.
 
 ---
 
@@ -746,7 +799,37 @@ Cron diario @6AM revisa y renueva tokens que expiran en menos de 30 días. Recib
 3. Configurar webhook en Twilio: `https://api.parallly-chat.cloud/api/v1/sms/webhook/{tenantId}`
 4. Listo
 
-## 9.6 Desconectar un canal
+## 9.6 Email
+
+Parallly ahora soporta **email como canal de comunicación**, permitiendo que los correos entrantes aparezcan en el inbox junto a WhatsApp, Instagram y los demás canales.
+
+### Conectar
+
+1. Canales → Email → **"Conectar"**
+2. Configurar los datos de envío:
+   - **From email**: dirección desde la cual se enviarán los correos (ej: `ventas@tuempresa.com`)
+   - **From name**: nombre que aparece como remitente (ej: "Equipo de Ventas — MiEmpresa")
+   - **Reply-to**: dirección a la que llegan las respuestas (puede ser diferente al from)
+3. Seleccionar proveedor de envío:
+   - **SMTP**: configuración manual (host, puerto, usuario, contraseña). Funciona con cualquier servidor de correo
+   - **SendGrid**: pega tu API Key de SendGrid. Ideal para alto volumen
+4. Guardar → Parallly envía un email de prueba para verificar la configuración
+5. Listo — los correos entrantes aparecen como conversaciones en tu inbox
+
+### Cómo funciona en el inbox
+
+- Los emails recibidos crean una conversación nueva (o se agregan a una existente si el contacto ya existe)
+- El agente IA puede responder emails igual que mensajes de WhatsApp o Instagram
+- Las respuestas se envían como email estándar desde la dirección configurada
+- El historial de emails se muestra con formato: asunto, cuerpo y adjuntos
+
+### Asignar agente IA al email
+
+Igual que cualquier otro canal: en el editor del agente IA, asigna el canal "Email". Recuerda la regla de un agente por canal.
+
+> **Tip:** Configura un Reply-to diferente al From si quieres que las respuestas de clientes lleguen a una bandeja específica monitoreada por Parallly.
+
+## 9.7 Desconectar un canal
 
 1. Canales → click en el canal → "Desconectar"
 2. Modal confirmación con resultado real:
@@ -877,6 +960,106 @@ Configurables: serie de mensajes con delays entre ellos. Cada paso puede:
 
 Las acciones se procesan con BullMQ — 3 reintentos automáticos si falla. Visible en el log de la regla.
 
+## 11.4 Acciones HTTP (llamadas a APIs externas)
+
+Al crear una regla de automatización, entre las acciones disponibles encontrarás el nodo **"HTTP Request"** (color teal en el builder visual). Esto permite que tus automatizaciones se comuniquen con sistemas externos.
+
+### Configurar una acción HTTP
+
+1. En el builder de automatización, agrega una acción → selecciona **"HTTP Request"**
+2. Configura los campos:
+   - **Método**: GET, POST, PUT, PATCH o DELETE
+   - **URL**: endpoint del servicio externo (ej: `https://tu-erp.com/api/leads`)
+   - **Headers**: encabezados HTTP (Content-Type, Authorization, etc.)
+   - **Body**: cuerpo de la petición (JSON). Soporta variables dinámicas:
+     - `{{contact.name}}` — nombre del contacto
+     - `{{contact.phone}}` — teléfono
+     - `{{contact.email}}` — email
+     - `{{deal.stage}}` — etapa actual del pipeline
+     - `{{deal.value}}` — valor del deal
+     - `{{conversation.channel}}` — canal de origen
+3. **Mapeo de respuesta** (opcional): extrae campos de la respuesta JSON para usarlos en acciones posteriores de la misma regla
+
+### Gestión de secretos
+
+Para tokens de API y credenciales, usa la sección de **Secretos** en la configuración de la regla. Los secretos se almacenan cifrados y se referencian como `{{secrets.MI_TOKEN}}` en headers o body — nunca quedan expuestos en texto plano en la regla.
+
+> **Tip:** Usa acciones HTTP para sincronizar leads con tu ERP, disparar webhooks en Slack, actualizar inventarios externos o registrar eventos en tu sistema de facturación.
+
+## 11.5 Secuencias Drip
+
+Las secuencias drip son flujos automatizados de **mensajes secuenciales con delays** entre cada paso. Ideales para nurturing de leads, onboarding de clientes o seguimiento post-venta.
+
+**Ruta:** Crecimiento → Automatización → **Secuencias Drip**
+
+### Crear una secuencia
+
+1. Click **"+ Nueva secuencia"**
+2. Nombre y descripción (ej: "Nurturing inmobiliaria — 7 días")
+3. **Evento disparador**: qué inicia la secuencia para un contacto:
+   - Lead creado
+   - Etapa del pipeline cambió a X
+   - Tag asignado
+   - Formulario enviado
+   - Manual (agregar contacto manualmente)
+4. Click **"+ Agregar paso"** para cada mensaje de la secuencia
+
+### Configurar cada paso
+
+Cada paso tiene 3 componentes:
+
+| Componente | Detalle |
+|------------|---------|
+| **Delay** | Tiempo de espera antes de enviar (minutos, horas o días) |
+| **Tipo de mensaje** | Template aprobado, texto personalizado o mensaje generado por IA |
+| **Condición de parada** | Cuándo sacar al contacto de la secuencia |
+
+### Condiciones de parada automáticas
+
+La secuencia se detiene para un contacto si:
+- El contacto **responde** a cualquier mensaje de la secuencia
+- El contacto **convierte** (avanza a una etapa terminal del pipeline)
+- El contacto hace **opt-out**
+- Se cumple una **condición custom** que configures (ej: "si el score supera 80")
+
+### Ejemplo práctico
+
+```
+Día 0: "Hola {{nombre}}, gracias por tu interés en nuestros apartamentos..."
+Día 2: "¿Sabías que tenemos financiación directa? Te cuento los beneficios..."
+Día 5: "{{nombre}}, este fin de semana tenemos jornada de puertas abiertas..."
+Día 10: "¿Te gustaría agendar una visita personalizada? Responde SÍ y te coordino"
+```
+
+> **Tip:** Mantén las secuencias cortas (3-5 pasos). Los leads que no responden después de 5 intentos tienen baja probabilidad de convertir — mejor redirige el esfuerzo.
+
+## 11.6 Plantillas de automatización (galería)
+
+Para facilitar la creación de reglas, Parallly ofrece una **galería de plantillas pre-configuradas** organizadas por categoría e industria.
+
+**Ruta:** Crecimiento → Automatización → **"Explorar plantillas"**
+
+### Categorías disponibles
+
+- **Bienvenida**: mensaje de bienvenida al primer contacto, presentación del negocio
+- **Nurturing**: secuencias de seguimiento para leads fríos o tibios
+- **Recordatorios**: recordatorio de cita, de pago pendiente, de carrito abandonado
+- **Clasificación**: auto-tagging por keywords, scoring automático, asignación a pipeline
+- **Reactivación**: contactar leads inactivos, recall de clientes perdidos
+- **Post-venta**: encuesta de satisfacción, solicitud de reseña, cross-sell
+
+Las plantillas también se filtran por **industria** — si tu tenant es de salud, verás primero las plantillas de recordatorio de cita médica, confirmación de turno, etc.
+
+### Instalar una plantilla
+
+1. Navega o busca en la galería
+2. Click en la plantilla → preview con descripción, trigger, condiciones y acciones
+3. **"Instalar"** → se crea una copia de la regla en tu cuenta
+4. Personaliza las variables (textos, delays, condiciones específicas de tu negocio)
+5. La regla se crea **inactiva** por defecto — revísala y actívala cuando estés listo
+
+> **Importante:** Las plantillas son un punto de partida. Siempre revisa y adapta los textos, delays y condiciones antes de activar.
+
 ---
 
 # 12. Campañas y Broadcast
@@ -908,6 +1091,43 @@ Las acciones se procesan con BullMQ — 3 reintentos automáticos si falla. Visi
 | Pro | Ilimitadas |
 | Enterprise | Ilimitadas |
 
+## 12.4 Pruebas A/B
+
+**Roles:** Admin/Supervisor
+**Planes:** Pro y superiores
+
+Las pruebas A/B permiten enviar dos variantes de contenido a tu audiencia para descubrir cuál funciona mejor antes de comprometer toda la campaña.
+
+### Crear una campaña con prueba A/B
+
+1. Al crear una campaña, activa el toggle **"Prueba A/B"**
+2. Se despliegan dos editores lado a lado: **Variante A** y **Variante B**
+3. Escribe contenido diferente para cada variante (asunto, texto, call-to-action, etc.)
+4. Configura el **porcentaje de split**: qué proporción del segmento recibe cada variante (ej: 50/50, 30/70)
+5. Programa el envío y confirma
+
+### Ver resultados
+
+Después del envío, la vista de detalle de la campaña muestra métricas separadas por variante:
+
+| Métrica | Variante A | Variante B |
+|---------|-----------|-----------|
+| Entregados | X | Y |
+| Tasa de lectura | X% | Y% |
+| Tasa de respuesta | X% | Y% |
+| Click-through | X% | Y% |
+
+### Selección automática de ganador
+
+En planes **Pro y superiores**, puedes activar la opción **"Auto-seleccionar ganador"**. El sistema:
+
+1. Envía ambas variantes al porcentaje configurado (ej: 20% a cada variante)
+2. Espera a que haya suficiente volumen para determinar significancia estadística
+3. Envía automáticamente la variante ganadora al **60% restante** de la audiencia
+4. Te notifica cuál ganó y por qué margen
+
+> **Tip:** Para pruebas A/B efectivas, cambia solo un elemento a la vez (el texto, el CTA o el horario), no todo junto. Así sabrás exactamente qué generó la diferencia.
+
 ---
 
 # 13. Base de Conocimiento
@@ -929,6 +1149,38 @@ RAG con pgvector: cuando el cliente pregunta algo, el agente busca chunks releva
 ## 13.3 Portal público
 
 `https://admin.parallly-chat.cloud/kb/{tu-slug}` — versión pública de tu KB para clientes (light theme, sin auth). Ideal para enlazar desde tu web.
+
+## 13.4 Análisis de brechas
+
+**Ruta:** Base de Conocimiento → pestaña **"Brechas"**
+**Roles:** Admin/Supervisor
+
+El análisis de brechas te muestra dónde tu base de conocimiento tiene vacíos o contenido que necesita mejora, basándose en la interacción real de los clientes con el agente IA.
+
+### Qué muestra
+
+La pestaña Brechas organiza la información en tres categorías:
+
+| Categoría | Qué contiene |
+|-----------|-------------|
+| **Consultas sin respuesta** | Preguntas de clientes que el agente no pudo responder porque no encontró información relevante en la KB |
+| **Documentos con baja satisfacción** | Artículos que se usaron para responder pero recibieron reacciones negativas (thumbs down) |
+| **Contenido obsoleto** | Documentos que no se actualizan hace tiempo y podrían necesitar revisión |
+
+### Cómo se alimenta
+
+El sistema de brechas se nutre de dos fuentes:
+
+1. **Búsquedas RAG sin resultados**: cuando el agente busca en la KB y no encuentra chunks relevantes, la consulta se registra como "brecha"
+2. **Feedback del inbox**: en cada respuesta del agente IA dentro del inbox, los agentes humanos pueden dar **thumbs up** 👍 o **thumbs down** 👎. Las respuestas negativas se vinculan al documento fuente para identificar contenido problemático
+
+### Acciones recomendadas
+
+- **Consultas sin respuesta** → crea un nuevo artículo o FAQ que cubra ese tema
+- **Baja satisfacción** → revisa y mejora el documento fuente, agrega más detalle o corrige información incorrecta
+- **Contenido obsoleto** → actualiza fechas, precios, políticas o elimina lo que ya no aplica
+
+> **Tip:** Revisa la pestaña de brechas al menos una vez por semana. Es la forma más directa de mejorar la calidad de las respuestas de tu agente IA — cada brecha cerrada es un cliente mejor atendido.
 
 ---
 
@@ -995,6 +1247,34 @@ Cada agente ve solo sus propias métricas en `/admin/agent-analytics`:
 - Mi tiempo de respuesta
 - Mis deals
 - Mi ranking interno
+
+## 15.4 Tasa de resolución IA
+
+**Roles:** Admin/Supervisor
+
+Widget dedicado en la vista de Analytics que muestra qué porcentaje de conversaciones fueron resueltas completamente por el agente IA sin intervención humana, versus las que requirieron handoff a un agente.
+
+### Qué muestra
+
+- **Porcentaje de resolución IA**: conversaciones resueltas sin handoff / total de conversaciones × 100
+- **Gráfico de tendencia**: evolución de la tasa a lo largo del tiempo (últimos 7, 30 o 90 días)
+- **Desglose por canal**: tasa de resolución separada por WhatsApp, Instagram, Messenger, Telegram, SMS y Email. Esto ayuda a identificar en qué canales el agente rinde mejor o peor
+
+### Cómo se calcula
+
+Una conversación se considera "resuelta por IA" si:
+1. Se marcó como resuelta (manual o automáticamente por inactividad de 72h)
+2. En ningún momento hubo handoff a un agente humano
+
+### Cómo interpretar
+
+| Tasa | Interpretación |
+|------|---------------|
+| **> 80%** | Excelente — tu KB y agente están bien configurados |
+| **60-80%** | Buena — revisa las brechas de KB para mejorar |
+| **< 60%** | Necesita atención — probablemente faltan FAQs, el tono no convence o las reglas de handoff son muy agresivas |
+
+> **Tip:** Si la tasa es baja en un canal específico, revisa el tipo de consultas que llegan por ese canal. Puede que necesites ajustar el agente IA asignado o enriquecer la KB con contenido específico para ese público.
 
 ---
 
@@ -1132,6 +1412,131 @@ Cuando inicias sesión con 2FA, podés marcar **"Confiar en este dispositivo"**.
 - Webhooks de salida (para integrar con sistemas externos)
 - Exportar datos
 - API keys del tenant
+
+## 18.7 Claves de API pública
+
+**Ruta:** Configuración → Claves de API
+**Roles:** Tenant Admin
+**Planes:** Pro y superiores
+
+Las claves de API permiten que sistemas externos se conecten con tu cuenta de Parallly de forma programática — ideal para integraciones con tu ERP, CRM externo, sitio web o herramientas de automatización como Zapier o Make.
+
+### Crear una clave de API
+
+1. Configuración → **Claves de API** → **"+ Nueva clave"**
+2. Nombre descriptivo (ej: "ERP Integración", "Zapier Webhook", "Sitio web")
+3. **Seleccionar scopes** (permisos): elige qué puede hacer esta clave:
+   - `contacts:read` — leer contactos
+   - `contacts:write` — crear/editar contactos
+   - `conversations:read` — leer conversaciones
+   - `deals:read` / `deals:write` — leer/escribir deals
+   - `appointments:read` / `appointments:write` — citas
+   - `campaigns:write` — crear campañas
+   - `kb:read` — consultar base de conocimiento
+4. Click **"Crear"**
+5. Se muestra la clave completa **una sola vez** — cópiala y guárdala en un lugar seguro
+
+### Advertencia de copia única
+
+> **IMPORTANTE:** La clave se muestra completa solo en el momento de creación. Después solo verás los últimos 4 caracteres. Si la perdés, deberás revocarla y crear una nueva.
+
+### Revocar o rotar una clave
+
+1. Lista de claves → click en la clave
+2. **"Revocar"** — la desactiva permanentemente. Cualquier sistema que la use dejará de funcionar
+3. Para rotar: revoca la anterior y crea una nueva con los mismos scopes
+
+### Uso de la clave
+
+Incluye la clave en el header `X-API-Key` de tus peticiones HTTP:
+
+```
+GET https://api.parallly-chat.cloud/api/v1/bi-api/contacts
+X-API-Key: pk_live_xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+> **Tip:** Crea claves separadas por integración (una para Zapier, otra para tu ERP). Así si necesitas revocar una, no afectas a las demás.
+
+## 18.8 Triggers proactivos del Web Chat Widget
+
+**Ruta:** Configuración → Integraciones → Web Chat → **Triggers**
+**Roles:** Admin/Supervisor
+
+Los triggers proactivos permiten que el widget de chat de tu sitio web se active automáticamente basándose en el comportamiento del visitante, sin esperar a que haga click.
+
+### Configurar un trigger
+
+1. Configuración → Integraciones → Web Chat → pestaña **"Triggers"**
+2. Click **"+ Nuevo trigger"**
+3. Selecciona la **condición** (cuándo se dispara):
+
+| Condición | Descripción |
+|-----------|-------------|
+| **Tiempo en página** | Después de X segundos en la página actual |
+| **Profundidad de scroll** | Cuando el visitante baja más del X% de la página |
+| **Intención de salida** | Cuando el cursor se mueve hacia el botón de cerrar pestaña (exit intent) |
+| **URL de la página** | Solo en páginas específicas (ej: `/precios`, `/contacto`) |
+| **Número de visitas** | Cuando el visitante ha entrado N o más veces al sitio |
+
+4. Selecciona la **acción** (qué hace al dispararse):
+
+| Acción | Resultado |
+|--------|-----------|
+| **Abrir widget** | Se abre el chat automáticamente |
+| **Mostrar burbuja** | Aparece un mensaje de burbuja junto al ícono del widget (ej: "¿Necesitas ayuda?") |
+| **Mostrar banner** | Banner superior o inferior con mensaje y botón de acción |
+
+5. Personaliza el **mensaje** del trigger
+6. Guardar → el trigger queda activo
+
+### Ejemplo práctico
+
+- **Página de precios + 15 segundos** → burbuja: "¿Tienes dudas sobre nuestros planes? Te ayudo a elegir el mejor para ti"
+- **Exit intent en checkout** → abrir widget: "¡Espera! ¿Puedo ayudarte a completar tu compra?"
+- **3ra visita sin conversión** → banner: "Bienvenido de vuelta — agenda una demo gratuita"
+
+> **Tip:** No sobrecargues con triggers. Uno o dos bien colocados generan más conversiones que bombardear al visitante en cada página.
+
+## 18.9 Suscripciones Webhook (integraciones externas)
+
+**Ruta:** Configuración → Avanzado → Webhooks
+**Roles:** Admin
+
+Las suscripciones webhook permiten que aplicaciones externas reciban notificaciones automáticas cuando ocurren eventos en tu cuenta de Parallly. Es la base para integraciones con **Zapier**, **Make (Integromat)**, **n8n** y cualquier sistema que consuma webhooks.
+
+### Eventos disponibles
+
+| Evento | Cuándo se dispara |
+|--------|-------------------|
+| `lead.created` | Se crea un nuevo contacto/lead |
+| `message.received` | Llega un mensaje de un cliente (cualquier canal) |
+| `conversation.closed` | Una conversación se marca como resuelta |
+| `deal.stage_changed` | Un deal cambia de etapa en el pipeline |
+| `appointment.booked` | Se agenda una nueva cita |
+
+### Crear una suscripción webhook
+
+1. Configuración → Avanzado → Webhooks → **"+ Nuevo webhook"**
+2. **URL de destino**: la URL que recibirá los eventos (ej: tu endpoint en Zapier, Make o tu servidor)
+3. **Eventos**: selecciona qué eventos quieres recibir
+4. Guardar → Parallly envía un ping de verificación
+
+### Payload
+
+Cada evento se envía como POST con un payload JSON que incluye:
+- `event`: nombre del evento
+- `timestamp`: fecha/hora ISO
+- `data`: objeto con los datos relevantes (contacto, mensaje, deal, cita, etc.)
+- `tenantId`: identificador de tu tenant
+
+### Ejemplo con Zapier
+
+1. En Zapier, crea un Zap con trigger "Webhooks by Zapier → Catch Hook"
+2. Copia la URL que te da Zapier
+3. En Parallly, crea un webhook con esa URL y selecciona `lead.created`
+4. Cada nuevo lead dispara el Zap → puedes enviarlo a Google Sheets, Slack, tu CRM externo, etc.
+
+> **Tip:** Los webhooks se envían con reintentos automáticos (3 intentos con backoff exponencial). Si tu endpoint está caído temporalmente, no se pierden eventos.
 
 ---
 
@@ -1890,7 +2295,34 @@ En la página de **Facturación** (Configuración → Facturación) verás:
 
 ---
 
-# 28. Preguntas Frecuentes
+# 28. Integraciones y API Pública
+
+Esta sección agrupa las funcionalidades de integración con sistemas externos. Para configuración detallada de cada una, consulta las secciones específicas:
+
+| Funcionalidad | Sección | Descripción |
+|--------------|---------|-------------|
+| **Claves de API** | [18.7](#187-claves-de-api-pública) | Crear y gestionar API keys para acceso programático |
+| **Webhooks** | [18.9](#189-suscripciones-webhook-integraciones-externas) | Recibir notificaciones de eventos en sistemas externos (Zapier, Make) |
+| **Acciones HTTP** | [11.4](#114-acciones-http-llamadas-a-apis-externas) | Llamar APIs externas desde reglas de automatización |
+| **Web Chat Triggers** | [18.8](#188-triggers-proactivos-del-web-chat-widget) | Automatizar comportamiento del widget en tu sitio web |
+
+### Guía rápida de integración
+
+**¿Quieres enviar datos de Parallly a otro sistema?**
+→ Usa **Suscripciones Webhook** (18.9). Parallly enviará eventos (lead creado, cita agendada, etc.) a tu endpoint.
+
+**¿Quieres leer o escribir datos desde otro sistema?**
+→ Crea una **Clave de API** (18.7) y usa la API REST de Parallly.
+
+**¿Quieres que una automatización llame a un servicio externo?**
+→ Agrega una **Acción HTTP** (11.4) en tu regla de automatización.
+
+**¿Quieres conectar con Zapier o Make?**
+→ Combina Webhooks (para recibir eventos) + API Keys (para enviar datos). Configura el trigger en Zapier como "Catch Hook" y la acción con la API de Parallly.
+
+---
+
+# 29. Preguntas Frecuentes
 
 ## General
 
@@ -1963,6 +2395,26 @@ Sí — Configuración → Seguridad. Soporta app autenticadora (TOTP), código 
 
 **¿Qué son los dispositivos de confianza?**
 Al marcar "Confiar en este dispositivo" al iniciar sesión con 2FA, no te pedirá el segundo factor por 30 días en ese navegador. Podés revocarlos en cualquier momento.
+
+## Integraciones y API
+
+**¿Puedo conectar Parallly con Zapier o Make?**
+Sí — crea una suscripción webhook (Configuración → Avanzado → Webhooks) para recibir eventos, y usa las claves de API para enviar datos. Ver secciones 18.7 y 18.9.
+
+**¿Cuántas API keys puedo crear?**
+Sin límite, pero necesitas plan Pro o superior. Recomendamos una clave por integración.
+
+**¿Parallly soporta email como canal?**
+Sí — configúralo en Canales → Email con SMTP o SendGrid. Los correos aparecen en el inbox junto a los demás canales. Ver sección 9.6.
+
+**¿Puedo hacer pruebas A/B en campañas?**
+Sí — al crear una campaña, activa el toggle "Prueba A/B". Disponible en planes Pro y superiores. Ver sección 12.4.
+
+**¿Puedo tener más de un pipeline?**
+Sí — según tu plan (Starter: 1, Pro: 3, Enterprise: 10). Ver sección 7.9.
+
+**¿Qué son las secuencias drip?**
+Son flujos automatizados de mensajes con delays entre cada paso. Ideales para nurturing de leads. Se detienen si el contacto responde o convierte. Ver sección 11.5.
 
 ## Datos y Privacidad
 

@@ -11,18 +11,23 @@
 |--------|-----------|-----------|------------|
 | Auth | `modules/auth/` | 4 | JWT login, register, refresh, me |
 | Agent Console | `modules/agent-console/` | 9 + WS | Inbox, chat, notas, canned responses |
-| Pipeline | `modules/pipeline/` | 6 | Kanban, deals CRUD, stages |
+| Pipeline | `modules/pipeline/` | 10 | Kanban, deals CRUD, stages, pipelines multi |
 | Automation | `modules/pipeline/` | 5 | Rules engine, SLA detection |
+| Drip Sequences | `modules/automation/` | 9 | Secuencias automatizadas de mensajes |
+| Automation Templates | `modules/automation/` | 3 | Plantillas de automatización por industria |
 | Analytics | `modules/analytics/` | 5 | KPIs, leaderboard, CSAT |
 | Tenants | `modules/tenants/` | 4 | Multi-tenant CRUD, AI usage stats |
 | Settings | `modules/settings/` | 3 | API keys management |
+| Public API Keys | `modules/public-api/` | 4 | API keys para integraciones externas |
+| Public API v1 | `modules/public-api/` | 3 | Endpoints públicos con X-API-Key |
 | Channels | `modules/channels/` | — | WhatsApp webhook, gateway |
+| Email Channel | `modules/channels/email/` | 3 | Canal de email (SendGrid inbound) |
 | AI | `modules/ai/` | — | LLM Router, providers |
 | Conversations | `modules/conversations/` | — | Orchestrator |
 | Persona | `modules/persona/` | — | YAML persona engine |
-| Knowledge | `modules/knowledge/` | — | RAG pipeline |
+| Knowledge | `modules/knowledge/` | 2 | RAG pipeline, feedback, gap report |
 | Handoff | `modules/handoff/` | 2 | Escalation triggers, EventEmitter2 |
-| Broadcast | `modules/broadcast/` | 4 | Campañas masivas, BullMQ rate-limited |
+| Broadcast | `modules/broadcast/` | 6 | Campañas masivas, A/B testing, BullMQ rate-limited |
 | Health | `modules/health/` | 2 | Health check, LLM provider status |
 | Customer Portal | `modules/customer-portal/` | 6 | Portal de autoservicio para clientes (OTP auth) |
 | White Label | `modules/white-label/` | 4 | Branding personalizado por tenant |
@@ -31,7 +36,8 @@
 | Staff Scheduling | `modules/staff/` | 8 | Personal, horarios, servicios, disponibilidad |
 | Vehicle Inventory | `modules/vehicles/` | 8 | Inventario vehicular, test drives, búsqueda IA |
 | SAML/SSO | `modules/auth/saml/` | 6 | Enterprise SSO via SAML 2.0 |
-| Widget | `modules/widget/` | 6 | Web chat widget embebible |
+| Widget | `modules/widget/` | 10 | Web chat widget embebible + triggers |
+| Dashboard Analytics | `modules/dashboard-analytics/` | 1 | Estadísticas resolución IA |
 
 ### Servicio WhatsApp (puerto 3002) — `apps/whatsapp`
 
@@ -293,6 +299,95 @@
 | GET | /widget/conversations/:id/messages | Public | Get messages for widget conversation |
 | GET | /widget/admin/config | JWT (tenant_admin) | Get widget admin config |
 | PUT | /widget/admin/config | JWT (tenant_admin) | Update widget admin config |
+
+### Widget Triggers (`/widget/triggers`)
+| Método | Ruta | Auth | Roles | Descripción |
+|--------|------|------|-------|-------------|
+| GET | `/widget/triggers/:tenantId` | JWT | tenant_admin | Listar triggers |
+| POST | `/widget/triggers/:tenantId` | JWT | tenant_admin | Crear trigger |
+| PUT | `/widget/triggers/:tenantId/:id` | JWT | tenant_admin | Actualizar trigger |
+| DELETE | `/widget/triggers/:tenantId/:id` | JWT | tenant_admin | Eliminar trigger |
+
+---
+
+## Public API Keys (`/public-api/keys`)
+| Método | Ruta | Auth | Roles | Descripción |
+|--------|------|------|-------|-------------|
+| GET | `/public-api/keys/:tenantId` | JWT | super_admin, tenant_admin | Listar API keys del tenant |
+| POST | `/public-api/keys/:tenantId` | JWT | super_admin, tenant_admin | Crear API key (name, scopes, expiresAt?) |
+| DELETE | `/public-api/keys/:tenantId/:keyId` | JWT | super_admin, tenant_admin | Revocar API key |
+| POST | `/public-api/keys/:tenantId/:keyId/rotate` | JWT | super_admin, tenant_admin | Rotar API key |
+
+## Public API v1 (`/api/v1/public` — auth via X-API-Key)
+| Método | Ruta | Auth | Scopes | Descripción |
+|--------|------|------|--------|-------------|
+| GET | `/api/v1/public/me` | X-API-Key | — | Test de autenticación |
+| POST | `/api/v1/public/hooks` | X-API-Key | write:webhooks | Suscribir webhook |
+| DELETE | `/api/v1/public/hooks` | X-API-Key | write:webhooks | Desuscribir webhook |
+
+---
+
+## Drip Sequences (`/automation/drip-sequences`)
+| Método | Ruta | Auth | Roles | Descripción |
+|--------|------|------|-------|-------------|
+| GET | `/automation/drip-sequences/:tenantId` | JWT | tenant_admin+ | Listar secuencias |
+| GET | `/automation/drip-sequences/:tenantId/:id` | JWT | tenant_admin+ | Obtener secuencia |
+| POST | `/automation/drip-sequences/:tenantId` | JWT | tenant_admin+ | Crear secuencia |
+| PUT | `/automation/drip-sequences/:tenantId/:id` | JWT | tenant_admin+ | Actualizar secuencia |
+| DELETE | `/automation/drip-sequences/:tenantId/:id` | JWT | tenant_admin+ | Eliminar secuencia |
+| POST | `/automation/drip-sequences/:tenantId/:id/toggle` | JWT | tenant_admin+ | Activar/desactivar |
+| POST | `/automation/drip-sequences/:tenantId/:id/enroll` | JWT | tenant_admin+ | Inscribir contacto |
+| POST | `/automation/drip-sequences/:tenantId/:id/unenroll` | JWT | tenant_admin+ | Desinscribir contacto |
+| GET | `/automation/drip-sequences/:tenantId/:id/enrollments` | JWT | tenant_admin+ | Listar inscritos |
+
+## Automation Templates (`/automation/templates`)
+| Método | Ruta | Auth | Roles | Descripción |
+|--------|------|------|-------|-------------|
+| GET | `/automation/templates` | JWT | any | Listar plantillas (filtros: category, industry) |
+| GET | `/automation/templates/:id` | JWT | any | Obtener plantilla |
+| POST | `/automation/templates/:tenantId/install` | JWT | tenant_admin+ | Instalar plantilla |
+
+---
+
+## Broadcast A/B Testing (`/broadcast/campaigns`)
+| Método | Ruta | Auth | Roles | Descripción |
+|--------|------|------|-------|-------------|
+| GET | `/broadcast/campaigns/:id/variants` | JWT | tenant_admin+ | Obtener variantes A/B |
+| POST | `/broadcast/campaigns/:id/winner` | JWT | tenant_admin+ | Seleccionar ganador A/B |
+
+---
+
+## Email Channel (`/channels/email`)
+| Método | Ruta | Auth | Roles | Descripción |
+|--------|------|------|-------|-------------|
+| POST | `/channels/email/inbound` | None (webhook) | — | Recibir email entrante (SendGrid Parse) |
+| GET | `/channels/email/config/:tenantId` | JWT | tenant_admin+ | Obtener config email |
+| PUT | `/channels/email/config/:tenantId` | JWT | tenant_admin+ | Guardar config email |
+
+---
+
+## Knowledge Gap (`/knowledge`)
+| Método | Ruta | Auth | Roles | Descripción |
+|--------|------|------|-------|-------------|
+| POST | `/knowledge/:tenantId/feedback` | JWT | any | Enviar feedback KB |
+| GET | `/knowledge/:tenantId/gap-report` | JWT | tenant_admin+ | Reporte de brechas |
+
+---
+
+## Pipeline — Pipelines CRUD (`/pipeline/pipelines`)
+| Método | Ruta | Auth | Roles | Descripción |
+|--------|------|------|-------|-------------|
+| GET | `/pipeline/pipelines/:tenantId` | JWT | tenant_admin+ | Listar pipelines |
+| POST | `/pipeline/pipelines/:tenantId` | JWT | tenant_admin+ | Crear pipeline |
+| PUT | `/pipeline/pipelines/:tenantId/:id` | JWT | tenant_admin+ | Actualizar pipeline |
+| DELETE | `/pipeline/pipelines/:tenantId/:id` | JWT | tenant_admin+ | Eliminar pipeline |
+
+---
+
+## AI Resolution (`/dashboard-analytics/ai-resolution`)
+| Método | Ruta | Auth | Roles | Descripción |
+|--------|------|------|-------|-------------|
+| GET | `/dashboard-analytics/ai-resolution/:tenantId` | JWT | tenant_admin+ | Estadísticas resolución IA |
 
 ---
 

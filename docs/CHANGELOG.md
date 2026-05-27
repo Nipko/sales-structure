@@ -4,6 +4,107 @@
 
 ---
 
+## v5.4.0 — May 27, 2026 (Public API + Workflows HTTP + Inbox Collision + Drip Sequences + Email Channel + Zapier)
+
+### Fase A — Foundations
+
+#### Public REST API + API Keys
+- **Nuevo módulo `public-api/`**: Gestión completa de API keys (crear/revocar/rotar) con almacenamiento hasheado SHA-256 y permisos por scopes (11 scopes: contacts, conversations, deals, campaigns, knowledge, appointments, properties, analytics, agents, automations, webhooks)
+- **Validación Redis-cached**: Lookup por hash con TTL, evita consulta DB en cada request
+- **Rate limiting por plan**: Sliding-window — Pro: 60 rpm, Enterprise: 300 rpm. Headers estándar `X-RateLimit-Remaining/Reset`
+- **Swagger docs** en todos los controllers del módulo público
+- **Dashboard `settings/api-keys/page.tsx`**: Tabla de keys con copy-once display (la key completa solo se muestra al crear), checkboxes de scopes, gating por plan, revocación con confirmación
+
+#### HTTP Request Step en Workflows
+- **Nuevo action type `http_request`** en el motor de automatización: permite llamadas HTTP arbitrarias como paso de un workflow
+- **`HttpRequestService` compartido** (extraído de webhooks) con protección SSRF (bloqueo de IPs privadas, resolución DNS previa)
+- **Interpolación de variables**: `{{contact.name}}`, `{{contact.phone}}`, `{{conversation.id}}` en URL, headers y body
+- **Extracción JSONPath** de la respuesta para alimentar pasos siguientes
+- **Secrets cifrados** (AES-256-GCM) para tokens/API keys en headers de automatización
+- **Timeout y retry configurables** por paso
+- **Dashboard**: `HttpRequestNode.tsx` + `VariableSelector.tsx` integrados en FlowBuilder con preview de variables disponibles
+
+#### Collision Detection en Inbox
+- **Redis ZSET `viewing:{tenantId}:{conversationId}`** con heartbeats de agente cada 15s, limpieza de stale >30s
+- **WebSocket events**: `conversation:viewing_start`, `conversation:viewing_stop`, `conversation:heartbeat`, `conversation:viewers_update`
+- **Dashboard `ViewersIndicator.tsx`**: Avatares/pills de agentes activos en la conversación, tooltip con nombre y tiempo activo
+- **Prevención de conflictos**: Indicador visual cuando otro agente ya está respondiendo en la misma conversación
+
+#### AI Resolution Rate Tracking
+- **Nuevas columnas en conversations**: `was_handed_off` (BOOLEAN), `handoff_at` (TIMESTAMPTZ), `ai_message_count` (INT), `resolution_type` (ENUM: ai_resolved, agent_resolved, auto_resolved)
+- **Endpoint de analytics**: `GET /analytics-v2/:tenantId/ai-resolution` — tasa de resolución IA vs agente, tiempo promedio, tendencia semanal
+- **Dashboard widget `AiResolutionWidget.tsx`**: KPI tiles (% resuelto por IA, por agente, auto), gráfico de tendencia, integrado en la página analytics-v2
+
+### Fase B — Mid-Value Features
+
+#### Drip Sequences
+- **Nuevas tablas**: `drip_sequences` (nombre, estado, trigger, stop conditions) y `drip_enrollments` (contacto, paso actual, estado, timestamps)
+- **Pasos con delays configurables**: Mensajes tipo template, AI-generated o custom con intervalos en minutos/horas/días
+- **Stop conditions**: replied (contacto respondió), converted (deal cerrado), manual unenroll
+- **Reutiliza BullMQ nurturing queue** con job type `drip_step` — misma infraestructura de retry y prioridad por plan
+- **Dashboard**: Página de listado con estado/enrollments + editor timeline con step cards arrastrables, preview de mensaje, selector de delay
+
+#### Content Gap Analytics para KB
+- **Nueva tabla `kb_feedback`**: satisfaction scoring (thumbs up/down) vinculado a documentos de knowledge base por conversación
+- **Gap report**: Queries sin respuesta (fallback count), documentos con baja satisfacción, detección de contenido stale (sin hits en 30+ días)
+- **Dashboard**: Tab "Gaps" en la página de knowledge con tabla ordenable por impacto + `KbFeedbackWidget.tsx` con thumbs up/down en mensajes AI del inbox
+- **Endpoint**: `GET /knowledge/:tenantId/gaps` — top queries sin match, documentos problemáticos, recomendaciones
+
+#### Multiple Pipelines
+- **Nueva tabla `pipelines`**: Soporte multi-pipeline con `pipeline_id` como FK en stages y deals
+- **Migración**: Pipeline default creado automáticamente para tenants existentes, stages existentes vinculados
+- **Plan-gated**: emprendedor: 1 pipeline, pro: 3, enterprise: 10
+- **Dashboard**: Selector de pipeline por tabs sobre el kanban, modales CRUD para crear/editar/eliminar pipelines, drag de deals entre pipelines
+
+#### Automation Templates Library
+- **Tabla global `automation_templates`**: 15+ templates pre-construidos en 8 categorías (lead nurturing, follow-up, appointment, onboarding, re-engagement, feedback, upsell, notification) × 12 industrias
+- **Flujo de instalación**: Al instalar, se crea `automation_rule` con sustitución de variables del tenant (nombre, industria, canal)
+- **Dashboard**: Galería con filtros por categoría e industria, cards con descripción y preview, modal de instalación con personalización de variables antes de activar
+
+### Fase C — Advanced Features
+
+#### Zapier Webhook Subscriptions
+- **Tabla global `webhook_subscriptions`**: Patrón REST Hook (subscribe/unsubscribe) compatible con Zapier, Make, n8n
+- **HMAC-SHA256 signed dispatch**: Cada payload firmado con secret por suscripción, header `X-Parallly-Signature`
+- **Event bridge**: 5 eventos — `lead.created`, `message.received`, `conversation.closed`, `deal.stage_changed`, `appointment.booked`
+- **Protección SSRF**: Validación de URL destino (bloqueo IPs privadas, resolución DNS), retry con backoff exponencial (3 intentos)
+- **Endpoints**: `POST /webhook-subscriptions/:tenantId/subscribe`, `DELETE .../unsubscribe`, `GET .../list`
+
+#### Email as Channel
+- **`EmailAdapter`** implementando `IChannelAdapter`: Integración completa de email como canal de conversación
+- **Inbound**: SendGrid Inbound Parse webhook — recibe emails, parsea HTML, extrae thread ID, crea/continúa conversación
+- **Outbound**: SMTP/SendGrid con templates HTML, tracking de threads (`email_threads` table), sanitización HTML (DOMPurify)
+- **`'email'` añadido a ChannelType**: Un agente AI puede atender email igual que WhatsApp/IG/Messenger/Telegram/SMS
+- **Idempotencia**: Redis key `idem:email:{messageId}` con 24h TTL
+- **Dashboard `channels/email/page.tsx`**: Formulario de setup (dominio, SendGrid API key, dirección de recepción), verificación de DNS, estado de conexión
+
+#### A/B Testing en Broadcasts
+- **Nueva tabla `campaign_variants`**: Variantes A/B por campaña con porcentaje de split y contenido independiente
+- **Asignación seeded random**: Distribución determinista de destinatarios por variante usando seed de campaña
+- **Significancia estadística**: Z-test con auto-selección de ganador cuando p < 0.05
+- **Auto-winner**: Al alcanzar significancia, la variante ganadora se envía automáticamente al grupo restante
+- **Dashboard**: Editor de variantes side-by-side, slider de split (%), resultados con badges de significancia (delivered, read, replied por variante)
+
+#### Proactive Widget Triggers
+- **Nueva tabla `widget_triggers`**: Reglas de activación proactiva del web chat widget
+- **5 tipos de condición**: `time_on_page` (segundos), `scroll_depth` (%), `exit_intent` (mouse leave viewport), `page_url` (regex match), `visit_count` (nth visit)
+- **3 acciones**: `open_widget` (abre el chat), `show_bubble_message` (burbuja con texto custom), `show_banner` (banner superior/inferior)
+- **Evaluación client-side**: Lógica en el SDK del widget con frequency capping (max 1 trigger por sesión por regla, configurable)
+- **Dashboard**: Editor de reglas con selector de condición, configuración de acción, preview visual, toggle activo/inactivo
+
+### Plan Gating Additions
+- **Nuevas feature flags**: `publicApi`, `publicApiKeys`, `publicApiRateLimit`, `httpRequestAction`, `maxPipelines`, `maxDripSequences`, `maxWebhookSubscriptions`, `abTestBroadcasts`, `widgetTriggers`
+- **`email` añadido a `channels[]`** en la configuración de plan
+- **Enforcement**: Todos los endpoints nuevos verifican plan del tenant antes de ejecutar
+
+### Notas Técnicas
+- Todas las features incluyen i18n en 4 idiomas (es/en/pt/fr)
+- Todos los queries usan `::uuid` casts, columnas snake_case, SQL dividido para compatibilidad PgBouncer
+- Redis con TTLs explícitos en todas las keys nuevas (viewing: 60s, drip jobs: según delay, webhook retry: 5min)
+- Patrón lazy table migration: tablas creadas en `add-missing-tables.js` al detectar ausencia
+
+---
+
 ## v5.3.0 — May 27, 2026 (LLM Router Redesign + Compliance Overhaul + AI Usage Dashboard)
 
 ### LLM Router Redesign

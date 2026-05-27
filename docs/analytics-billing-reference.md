@@ -2,7 +2,7 @@
 
 ---
 
-## Analytics — Dashboard Endpoints (12 total under `/dashboard-analytics/`)
+## Analytics — Dashboard Endpoints (13 total under `/dashboard-analytics/`)
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -10,6 +10,7 @@
 | `GET conversations-volume/:tenantId` | Daily volume stacked by channel |
 | `GET response-times/:tenantId` | Median + P90 first response and resolution times |
 | `GET ai-metrics/:tenantId` | AI resolution rate, containment, cost, model usage, handoff reasons |
+| `GET ai-resolution/:tenantId` | AI resolution rate trend, by-channel breakdown, avg messages to resolution. Params: `start`, `end`, `granularity` |
 | `GET heatmap/:tenantId` | 7-day x 24-hour message volume grid |
 | `GET export/:tenantId` | Full CSV report download |
 | `GET realtime/:tenantId` | Live: active convos, agents online/busy/offline, queue, messages today |
@@ -57,6 +58,13 @@ tenant_plan:{tenantId}                                    — Cached plan info
 handoff:{tenantId}:{conversationId}                       — Handoff state (24h TTL)
 vertical:{tenantId}                                       — Vertical config cache (10min TTL)
 idem:wa:{id}, idem:ig:{id}, idem:fb:{id}, idem:tg:{id}, idem:sms:{id}  — Webhook idempotency (24h TTL)
+idem:email:{messageId}                                     — Email idempotency (24h TTL)
+viewing:{tenantId}:{conversationId}                        — ZSET, collision detection viewers (score=timestamp)
+agent_viewing:{agentId}                                    — SET, reverse index of conversations an agent is viewing
+api_rl:{keyId}:{minuteBucket}                              — Sliding window rate limiter for API keys
+api_key:{keyHash}                                          — Cached API key lookup (60s TTL)
+email_channel:tables_created                               — DDL cache for email config table (24h TTL)
+email_channel:thread_table:{tenantId}                      — DDL cache for email threads (24h TTL)
 ```
 
 ## Tenant Schema Tables (Analytics & CRM)
@@ -81,6 +89,13 @@ properties             — Vacation rental properties
 ical_blocks            — Blocked periods imported from external iCal feeds
 ical_feeds             — iCal feed URLs to import
 property_bookings      — AI-created bookings for vacation rentals
+drip_sequences         — Drip campaign sequence definitions (steps, delays, conditions)
+drip_enrollments       — Contact enrollments in drip sequences (status, current step)
+automation_secrets     — Encrypted secrets for automation HTTP actions
+kb_feedback            — Knowledge base article feedback (thumbs up/down, comments)
+pipelines              — Named pipeline definitions (default, custom per vertical)
+email_threads          — Email conversation threading (in-reply-to, references)
+campaign_variants      — A/B test variants for broadcast campaigns
 ```
 
 ## Global Prisma Tables (Billing & Finance)
@@ -94,6 +109,11 @@ tenant_financial_snapshots — Per-tenant monthly snapshots
 infra_costs                — Monthly infrastructure costs by category
 exchange_rates             — Currency exchange rates
 audit_logs                 — Offboarding and billing audit trail
+api_keys                   — Public API key registry (key hash, tenant, permissions, rate limit)
+automation_templates       — Shared automation rule templates (global library)
+email_channel_configs      — Email channel configuration per tenant (SMTP/IMAP settings)
+webhook_subscriptions      — Tenant webhook subscription endpoints (URL, events, secret)
+widget_triggers            — Web chat widget trigger rules (conditions, actions, targeting)
 ```
 
 ---
@@ -113,6 +133,21 @@ audit_logs                 — Offboarding and billing audit trail
 - **Plan agent count**: starter=1, pro=3, enterprise=10, custom=unlimited
 - **Plan calendar count**: starter=1, pro=3, enterprise=10, custom=999
 - **Plan property count**: starter=2, pro=10, enterprise=50, custom=unlimited
+
+### Plan Feature Matrix (Competitive Analysis Additions)
+
+| Feature | Emprendedor | Starter | Pro | Enterprise | Custom |
+|---------|-------------|---------|-----|------------|--------|
+| publicApi | false | false | true | true | true |
+| publicApiKeys | 0 | 0 | 3 | -1 (unlimited) | -1 (unlimited) |
+| publicApiRateLimit | 0 | 0 | 60 req/min | 300 req/min | 1000 req/min |
+| httpRequestAction | false | false | true | true | true |
+| maxPipelines | 1 | 1 | 3 | 10 | -1 (unlimited) |
+| maxDripSequences | 0 | 3 | 10 | -1 (unlimited) | -1 (unlimited) |
+| maxWebhookSubscriptions | 0 | 3 | 10 | -1 (unlimited) | -1 (unlimited) |
+| abTestBroadcasts | false | false | true | true | true |
+| widgetTriggers | 0 | 3 | 10 | -1 (unlimited) | -1 (unlimited) |
+| channels += 'email' | no | yes | yes | yes | yes |
 
 ## Offboarding System
 

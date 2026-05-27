@@ -1,14 +1,14 @@
 # Modules Reference
 
-Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, and 29 cron jobs.
+Complete reference for all 70 API modules, 86 dashboard pages, 6 BullMQ queues, and 29 cron jobs.
 
 **Last updated:** May 2026 — full audit
 
 ---
 
-## API Modules (68 total)
+## API Modules (70 total)
 
-### Infrastructure (5 modules)
+### Infrastructure (6 modules)
 
 #### 1. prisma
 - **Purpose:** Database access layer. PgBouncer-aware connection pooling
@@ -44,6 +44,15 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
 - **Auth:** INTERNAL_API_KEY header
 - **Endpoints:**
   - `POST /internal/inbound-message` — Inject message into processing pipeline
+
+#### 5b. common/services
+- **Purpose:** Shared utilities consumed by multiple modules
+- **Services:** `http-request.service.ts` (shared HTTP client with SSRF protection, extracted from webhooks)
+- **Controller:** None (infrastructure)
+- **Key features:**
+  - Blocks private/loopback IP ranges (SSRF prevention)
+  - Configurable timeout + retries
+  - Consumed by automation HTTP handler + webhook dispatching
 
 ---
 
@@ -191,7 +200,8 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
 #### 11. channels
 - **Purpose:** Multi-channel message routing, webhook handling, outbound queue
 - **Services:** `channel-gateway.service.ts`, `channel-token.service.ts`, `outbound-queue.service.ts`, `instagram-token-refresh.service.ts`, `webhook-tap.service.ts`
-- **Adapters:** `whatsapp/whatsapp.adapter.ts`, `instagram/instagram.adapter.ts`, `messenger/messenger.adapter.ts`, `sms/sms.adapter.ts`, `telegram/telegram.adapter.ts`
+- **Adapters:** `whatsapp/whatsapp.adapter.ts`, `instagram/instagram.adapter.ts`, `messenger/messenger.adapter.ts`, `sms/sms.adapter.ts`, `telegram/telegram.adapter.ts`, `email/email.adapter.ts` (EmailAdapter implementing IChannelAdapter)
+- **Email sub-module:** `email/email-channel.service.ts` (config CRUD + thread tracking), `email/email-webhook.controller.ts`
 - **Controllers:** `channels.controller.ts` (webhooks), `channel-management.controller.ts` (management), `webhook-tap.controller.ts` (debug)
 - **Webhook Endpoints:**
   - `GET /channels/webhook/whatsapp` — WhatsApp verification
@@ -202,6 +212,7 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - `POST /channels/webhook/messenger` — Messenger events
   - `POST /channels/webhook/sms/:phoneNumber` — SMS/Twilio
   - `POST /channels/webhook/telegram/:botUsername` — Telegram
+  - `POST /channels/email/inbound` — Email inbound (SendGrid/SMTP parse)
 - **Management Endpoints:**
   - `GET /channels/overview` — All channels status + agent assignment
   - `GET /channels/:channelType/status` — Channel status
@@ -217,7 +228,12 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - `GET /channels/sms/status` — SMS status
   - `DELETE /channels/sms/disconnect` — Disconnect SMS
   - `POST /channels/sms/test` — Test SMS
+  - **Email Channel:**
+    - `GET /channels/email/config` — Email channel config
+    - `PUT /channels/email/config` — Update email config (SMTP/SendGrid)
+    - `DELETE /channels/email/disconnect` — Disconnect email channel
   - `GET /webhook-tap` — Debug: last captured webhook payload
+- **Tenant tables (email):** `email_channel_configs` (id, provider, smtp_config, thread_tracking_enabled), `email_threads` (id, thread_id, conversation_id, subject)
 - **BullMQ:** `outbound-messages` queue (concurrency: 5, 3 retries, priority by plan)
 - **Cron:** `0 6 * * *` — refreshExpiringSoonTokens: Instagram token refresh (30-day window)
 
@@ -273,10 +289,10 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - Email notification to assigned agent
 
 #### 15. agent-console
-- **Purpose:** Real-time agent workspace (WebSocket + REST)
-- **Services:** `agent-console.service.ts`, `agent-availability.service.ts`, `canned-responses.service.ts`, `macros.service.ts`, `snooze.service.ts`
+- **Purpose:** Real-time agent workspace (WebSocket + REST) with collision detection
+- **Services:** `agent-console.service.ts`, `agent-availability.service.ts`, `canned-responses.service.ts`, `macros.service.ts`, `snooze.service.ts`, `collision-detection.service.ts` (Redis ZSET viewer tracking with heartbeat/cleanup)
 - **Gateway:** `agent-console.gateway.ts` (WebSocket `/inbox` namespace)
-- **WebSocket Events:** `inbox:handoff`, `inbox:handoff_direct`, `inbox:escalation`
+- **WebSocket Events:** `inbox:handoff`, `inbox:handoff_direct`, `inbox:escalation`, `conversation:viewing_start`, `conversation:viewing_stop`, `conversation:viewing_heartbeat`, `conversation:viewers_update`
 - **Controller:** `agent-console.controller.ts`
 - **Endpoints:**
   - `GET /agent-console/inbox/:tenantId` — Fetch handoff inbox
@@ -362,7 +378,7 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - `DELETE /persona/:tenantId/agent-templates/:templateId` — Delete template
 
 #### 19. knowledge
-- **Purpose:** RAG with pgvector — hybrid vector + keyword search with citations
+- **Purpose:** RAG with pgvector — hybrid vector + keyword search with citations, feedback tracking
 - **Services:** `knowledge.service.ts`
 - **Controller:** `knowledge.controller.ts`
 - **Endpoints:**
@@ -374,6 +390,7 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - `GET /knowledge/search/:tenantId` — Tenant search
   - `GET /knowledge/public/:tenantSlug/articles` — Public KB portal (no auth)
   - `GET /knowledge/public/:tenantSlug/articles/:slug` — Single KB article (no auth)
+- **Tenant tables:** `kb_feedback` (id, document_id, conversation_id, rating, comment, created_at)
 
 #### 20. business-info
 - **Purpose:** Company identity (name, about, phone, email, address, website, socials, logo) — data the AI agent surfaces to customers
@@ -478,6 +495,7 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - `POST /pipeline/automation/:tenantId` — Create automation rule
   - `PUT /pipeline/automation/:tenantId/:ruleId/toggle` — Toggle rule
   - `DELETE /pipeline/automation/:tenantId/:ruleId` — Delete rule
+- **Tenant tables:** `pipelines` (id, name, stages_json, default, created_at)
 - **Cron:** `*/5 * * * *` — checkAllTenantSLAs: SLA violation detection
 
 #### 23. identity
@@ -513,9 +531,11 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - `crm-import` (concurrency: 2) — batch contact import
 
 #### 25. automation
-- **Purpose:** Event-driven automation rules, nurturing sequences
-- **Services:** `automation.service.ts`, `automation-listener.service.ts`, `nurturing.service.ts`, `action-executor.service.ts`
-- **Controller:** `automation.controller.ts`
+- **Purpose:** Event-driven automation rules, nurturing sequences, drip campaigns, HTTP actions, template library
+- **Services:** `automation.service.ts`, `automation-listener.service.ts`, `nurturing.service.ts`, `action-executor.service.ts`, `drip-sequence.service.ts` (drip sequence CRUD + enrollment management), `templates/automation-templates.service.ts` (template library CRUD + install)
+- **Handlers:** `handlers/http-request.handler.ts` (HTTP request action executor)
+- **Utils:** `utils/variable-interpolator.ts` ({{variable}} replacement), `utils/response-extractor.ts` (JSONPath response mapping)
+- **Controllers:** `automation.controller.ts`, `drip-sequence.controller.ts`, `templates/automation-templates.controller.ts`
 - **Endpoints:**
   - `GET /automation/rules/:tenantId` — List rules
   - `POST /automation/rules/:tenantId` — Create rule
@@ -523,6 +543,21 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - `PUT /automation/rules/:tenantId/:ruleId/toggle` — Toggle active
   - `GET /automation/rules/:tenantId/:ruleId/executions` — Execution history
   - `DELETE /automation/rules/:tenantId/:ruleId` — Delete rule
+  - **Drip Sequences:**
+    - `GET /automation/drip-sequences/:tenantId` — List drip sequences
+    - `POST /automation/drip-sequences/:tenantId` — Create drip sequence
+    - `GET /automation/drip-sequences/:tenantId/:sequenceId` — Sequence detail
+    - `PUT /automation/drip-sequences/:tenantId/:sequenceId` — Update sequence
+    - `DELETE /automation/drip-sequences/:tenantId/:sequenceId` — Delete sequence
+    - `POST /automation/drip-sequences/:tenantId/:sequenceId/enroll` — Enroll contacts
+    - `POST /automation/drip-sequences/:tenantId/:sequenceId/unenroll` — Unenroll contacts
+    - `PUT /automation/drip-sequences/:tenantId/:sequenceId/toggle` — Toggle active
+  - **Template Library:**
+    - `GET /automation/templates` — List automation templates
+    - `GET /automation/templates/:templateId` — Template detail
+    - `POST /automation/templates/:templateId/install` — Install template into tenant
+- **Tenant tables:** `drip_sequences` (id, name, steps[], active), `drip_enrollments` (id, sequence_id, contact_id, current_step, status), `automation_secrets` (id, key, encrypted_value)
+- **Global tables:** `automation_templates` (id, name, description, category, definition, install_count)
 - **BullMQ queues:**
   - `automation-jobs` (concurrency: 10, 3 retries) — deferred rule actions
   - `nurturing` (rate-limited) — lead nurturing sequences
@@ -743,8 +778,8 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
 ### Operations (8 modules)
 
 #### 30. broadcast
-- **Purpose:** Multi-channel mass campaigns via WhatsApp, Email, and SMS
-- **Services:** `broadcast.service.ts`
+- **Purpose:** Multi-channel mass campaigns via WhatsApp, Email, and SMS with A/B testing
+- **Services:** `broadcast.service.ts`, `ab-test.service.ts` (variant management, recipient assignment, z-test significance, auto-winner selection)
 - **Controller:** `broadcast.controller.ts`
 - **Processor:** `broadcast-queue.processor.ts` — Dispatches per channel (WA template send, Email SMTP, SMS Twilio)
 - **Endpoints:**
@@ -752,6 +787,10 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - `POST /broadcast/campaigns/:id/launch` — Launch campaign (queues per-recipient per-channel jobs)
   - `GET /broadcast/campaigns` — List campaigns with stats
   - `GET /broadcast/campaigns/:id/stats` — Campaign stats per channel (sent→delivered→read→failed)
+  - **A/B Testing:**
+    - `GET /broadcast/campaigns/:id/variants` — List campaign variants with performance stats
+    - `POST /broadcast/campaigns/:id/winner` — Select winning variant (manual or auto via z-test)
+- **Tenant tables:** `campaign_variants` (id, campaign_id, name, content, traffic_pct, stats_json)
 - **Multi-channel:** UI supports WA + Email + SMS selection, smart recipient resolution (WA→Email→SMS fallback based on contact info), per-channel content (template/subject+html/body), per-channel delivery stats
 - **BullMQ:** `broadcast-messages` (concurrency: 10, 80 msg/s rate limit)
 - **Cron:** `* * * * *` — Auto-launch scheduled campaigns
@@ -1259,16 +1298,22 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - Lazy table creation per tenant
 
 #### 62. widget
-- **Purpose:** Embeddable JavaScript chat widget for websites
-- **Services:** `widget.service.ts`
+- **Purpose:** Embeddable JavaScript chat widget for websites with proactive triggers
+- **Services:** `widget.service.ts`, `widget-triggers.service.ts` (CRUD for proactive triggers)
 - **Gateway:** `widget.gateway.ts` (WebSocket for real-time chat)
-- **Controller:** `widget-public.controller.ts`
+- **Controllers:** `widget-public.controller.ts`, `widget-triggers.controller.ts` (protected CRUD)
 - **Endpoints:**
-  - `GET /widget/:tenantId/config` — Get widget config (authenticated)
+  - `GET /widget/:tenantId/config` — Get widget config (includes active triggers)
   - `PUT /widget/:tenantId/config` — Update widget config (authenticated)
   - `GET /widget/public/:tenantId/config` — Public widget config (no auth, CORS)
   - `POST /widget/public/:tenantId/conversation` — Start or resume conversation (no auth)
   - `GET /widget/public/:tenantId/conversation/:conversationId/messages` — Get messages (no auth)
+  - **Proactive Triggers:**
+    - `GET /widget/:tenantId/triggers` — List triggers
+    - `POST /widget/:tenantId/triggers` — Create trigger
+    - `PUT /widget/:tenantId/triggers/:triggerId` — Update trigger
+    - `DELETE /widget/:tenantId/triggers/:triggerId` — Delete trigger
+- **Global tables:** `widget_triggers` (id, tenant_id, name, type, conditions_json, message, active)
 - **WebSocket Events:** Real-time message delivery for embedded chat
 - **Config fields:** bubble color, position (bottom-left/bottom-right), welcome message, pre-chat form toggle
 - **Key features:**
@@ -1276,6 +1321,7 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - WebSocket gateway for real-time chat
   - Conversation management (create + resume)
   - Customizable bubble appearance and position
+  - Proactive triggers (time-on-page, scroll depth, exit intent, URL match)
 
 #### 63. feature-requests
 - **Purpose:** User feature requests with voting, comments, AI signal extraction
@@ -1320,7 +1366,32 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - `GET /carla/context/:tenantId` — Context data
   - `GET /carla/context/:tenantId/build/:conversationId` — Build context for conversation
 
-#### 66. media-processing
+#### 66. public-api
+- **Purpose:** Tenant-facing REST API with key-based auth, scoped access, rate limiting, and outbound webhooks
+- **Services:** `public-api-key.service.ts` (API key CRUD, SHA-256 hashing, plan-gated limits), `webhook-subscription.service.ts` (subscribe/unsubscribe/dispatch with HMAC-SHA256), `webhook-event-listener.service.ts` (@OnEvent bridge for 5 event types)
+- **Guards:** `public-api.guard.ts` (X-API-Key validation with Redis cache 60s), `public-api-rate-limit.guard.ts` (sliding window rate limiting), `api-scope.guard.ts` (scope-based access control)
+- **Controller:** `public-api-key.controller.ts`, `public-api.controller.ts`
+- **Endpoints:**
+  - `GET /public-api/keys/:tenantId` — List API keys
+  - `POST /public-api/keys/:tenantId` — Create API key (SHA-256 hashed, shown once)
+  - `DELETE /public-api/keys/:tenantId/:keyId` — Revoke API key
+  - `POST /public-api/keys/:tenantId/:keyId/rotate` — Rotate API key
+  - `GET /api/v1/public/me` — API key identity info
+  - `GET /api/v1/public/contacts` — List contacts (scoped)
+  - `GET /api/v1/public/deals` — List deals (scoped)
+  - `GET /api/v1/public/conversations` — List conversations (scoped)
+  - `GET /api/v1/public/appointments` — List appointments (scoped)
+  - `POST /api/v1/public/hooks` — Subscribe to webhook events
+  - `DELETE /api/v1/public/hooks` — Unsubscribe from webhook events
+- **Global tables:** `api_keys` (id, tenant_id, name, key_hash, scopes, last_used_at, expires_at)
+- **Tenant tables:** `webhook_subscriptions` (id, url, events[], secret_hash, active)
+- **Key features:**
+  - Plan-gated key limits (starter=1, pro=3, enterprise=10, custom=unlimited)
+  - Scopes: contacts:read, deals:read, conversations:read, appointments:read, hooks:manage
+  - HMAC-SHA256 webhook payload signing
+  - Redis-cached key validation (60s TTL)
+
+#### 67. media-processing
 - **Purpose:** Multimedia message processing — audio transcription (Whisper) and image vision (multi-provider) with 6-layer abuse prevention
 - **Services:** `media-processing.service.ts` (orchestrator), `media-download.service.ts` (channel-specific download), `audio-transcription.service.ts` (OpenAI Whisper-1), `image-vision.service.ts` (multi-provider: Gemini/xAI/OpenAI), `media-throttle.service.ts` (6-layer abuse prevention)
 - **Controller:** `media-processing.controller.ts`
@@ -1411,7 +1482,7 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
 
 ---
 
-## Dashboard Pages (80 total)
+## Dashboard Pages (86 total)
 
 ### Public Pages (13)
 
@@ -1448,12 +1519,15 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
 | `/admin/users` | User management + invitations | Admin | ✅ |
 | `/admin/feature-requests` | Feature requests + voting + changelog | All | ✅ |
 
-### Growth Section (7)
+### Growth Section (10)
 
 | Route | Purpose | Role | i18n |
 |-------|---------|------|------|
 | `/admin/broadcast` | Campaign manager (WA templates) | Supervisor+ | ✅ |
 | `/admin/automation` | Automation rules wizard (4-step) | Supervisor+ | ✅ |
+| `/admin/automation/drip-sequences` | Drip sequence list | Supervisor+ | ✅ |
+| `/admin/automation/drip-sequences/[sequenceId]` | Sequence timeline editor | Supervisor+ | ✅ |
+| `/admin/automation/templates` | Template gallery with install | Supervisor+ | ✅ |
 | `/admin/agent` | AI agent list (multi-agent) | Admin | ✅ |
 | `/admin/agent/[agentId]` | Agent editor (hub cards + channel assignment) | Admin | ✅ |
 | `/admin/agent/[agentId]/test` | Agent test console with debug panel | Admin | ✅ |
@@ -1471,7 +1545,7 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
 | `/admin/analytics` | Legacy analytics (deprecated, not in sidebar) | Supervisor+ | ⚠️ |
 | `/admin/ai` | Legacy LLM config (deprecated, not in sidebar) | Super admin | ⚠️ |
 
-### Channels (8)
+### Channels (9)
 
 | Route | Purpose | Role | i18n |
 |-------|---------|------|------|
@@ -1483,8 +1557,9 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
 | `/admin/channels/messenger` | Messenger FB SDK setup | Admin | ✅ |
 | `/admin/channels/telegram` | Telegram bot setup | Admin | ✅ |
 | `/admin/channels/sms` | SMS/Twilio setup | Admin | ✅ |
+| `/admin/channels/email` | Email channel config (SMTP/SendGrid) | Admin | ✅ |
 
-### Settings (20)
+### Settings (22)
 
 | Route | Purpose | Role | i18n |
 |-------|---------|------|------|
@@ -1508,11 +1583,13 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
 | `/admin/settings/media` | Media library + logo | All | ✅ |
 | `/admin/settings/recall` | Re-engagement campaign config | Admin | ✅ |
 | `/admin/settings/alerts` | Alert rules + scheduled reports | Admin | ✅ |
+| `/admin/settings/api-keys` | API key management (CRUD, copy-once, scopes) | Admin | ✅ |
 | `/admin/settings/integrations/crm` | External CRM connections | Admin | ✅ |
 | `/admin/settings/ai-providers` | LLM API keys | Super admin | ✅ |
 | `/admin/settings/ai-config` | LLM routing config | Super admin | ✅ |
 | `/admin/settings/channels` | Global channel config | Super admin | ✅ |
 | `/admin/settings/platform` | Maintenance mode | Super admin | ✅ |
+| `/admin/settings/integrations/web-chat/triggers` | Widget proactive trigger editor | Admin | ✅ |
 | `/admin/settings/billing` | Subscription + payments + invoices | Admin | ✅ |
 
 ### Vertical-Specific Pages (13)
@@ -1565,6 +1642,18 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
 
 ---
 
+### Key Dashboard Components (competitive analysis features)
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `ViewersIndicator.tsx` | `inbox/_components/` | Collision detection — shows who else is viewing a conversation |
+| `KbFeedbackWidget.tsx` | `inbox/_components/` | KB feedback thumbs (up/down) on AI-sourced replies |
+| `HttpRequestNode.tsx` | `automation/_components/` | Flow builder node for HTTP request actions |
+| `VariableSelector.tsx` | `automation/_components/` | Variable picker ({{contact.name}}, {{deal.value}}, etc.) |
+| `AiResolutionWidget.tsx` | `analytics-v2/_components/` | AI resolution rate chart (auto-resolved vs escalated) |
+
+---
+
 ## Key Files Quick Reference
 
 | Task | File |
@@ -1594,6 +1683,19 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
 | Media throttle (6-layer abuse prevention) | `media-processing/media-throttle.service.ts` |
 | Audio transcription (Whisper) | `media-processing/audio-transcription.service.ts` |
 | Image vision (multi-provider) | `media-processing/image-vision.service.ts` |
+| Public API key service | `public-api/public-api-key.service.ts` |
+| Public API guard (X-API-Key) | `public-api/public-api.guard.ts` |
+| Webhook subscription dispatch | `public-api/webhook-subscription.service.ts` |
+| Drip sequence engine | `automation/drip-sequence.service.ts` |
+| Automation template library | `automation/templates/automation-templates.service.ts` |
+| HTTP request handler (automation) | `automation/handlers/http-request.handler.ts` |
+| Variable interpolation | `automation/utils/variable-interpolator.ts` |
+| Shared HTTP client (SSRF-safe) | `common/services/http-request.service.ts` |
+| Collision detection (agent console) | `agent-console/collision-detection.service.ts` |
+| Email channel adapter | `channels/email/email.adapter.ts` |
+| Email channel config | `channels/email/email-channel.service.ts` |
+| A/B test engine (broadcast) | `broadcast/ab-test.service.ts` |
+| Widget proactive triggers | `widget/widget-triggers.service.ts` |
 | Dashboard API client (110+ methods) | `dashboard/src/lib/api.ts` |
 | Auth context | `dashboard/src/contexts/AuthContext.tsx` |
 | Tenant context | `dashboard/src/contexts/TenantContext.tsx` |

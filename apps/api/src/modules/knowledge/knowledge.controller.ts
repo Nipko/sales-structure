@@ -263,6 +263,52 @@ export class KnowledgeController {
         return { success: true };
     }
 
+    // ─── KB Feedback & Gap Analysis ─────────────────────────────────────────
+
+    @Post(':tenantId/feedback')
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @ApiOperation({ summary: 'Submit KB feedback (thumbs up/down on AI response)' })
+    async submitFeedback(
+        @Param('tenantId') tenantId: string,
+        @Req() req: any,
+        @Body() payload: {
+            conversationId?: string; messageId?: string; documentId?: string;
+            query?: string; rating: number; comment?: string;
+        },
+    ) {
+        const data = await this.knowledgeService.submitFeedback(tenantId, {
+            ...payload,
+            createdBy: req.user?.id || req.user?.userId,
+        });
+        return { success: true, data };
+    }
+
+    @Put(':tenantId/feedback/:id/false-positive')
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @ApiOperation({ summary: 'Mark a KB feedback entry as false positive' })
+    async markFalsePositive(
+        @Param('tenantId') tenantId: string,
+        @Param('id') feedbackId: string,
+    ) {
+        await this.knowledgeService.markFalsePositive(tenantId, feedbackId);
+        return { success: true };
+    }
+
+    @Get(':tenantId/gap-report')
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @ApiOperation({ summary: 'Get KB content gap analysis report' })
+    async getGapReport(
+        @Param('tenantId') tenantId: string,
+        @Query('days') days?: string,
+    ) {
+        const features = await this.throttle.getPlanFeatures(tenantId);
+        if (!features.knowledgeAnalytics) {
+            return { success: false, error: 'plan_upgrade_required', message: 'KB analytics require Starter plan or higher.' };
+        }
+        const data = await this.knowledgeService.getGapReport(tenantId, days ? parseInt(days, 10) : 30);
+        return { success: true, data };
+    }
+
     // ─── Public Knowledge Base Endpoints (no auth) ────────────────────────────
 
     @Get('public/:tenantSlug/articles')

@@ -80,6 +80,7 @@ import { EcommerceModule } from './modules/ecommerce/ecommerce.module';
 import { ChannelManagerModule } from './modules/channel-manager/channel-manager.module';
 import { MediaProcessingModule } from './modules/media-processing/media-processing.module';
 import { SystemUpdatesModule } from './modules/system-updates/system-updates.module';
+import { PublicApiModule } from './modules/public-api/public-api.module';
 
 
 // Configuration
@@ -223,6 +224,7 @@ import llmConfig from './config/llm.config';
         EcommerceModule,
         ChannelManagerModule,
         MediaProcessingModule,
+        PublicApiModule,
     ],
 })
 export class AppModule { }

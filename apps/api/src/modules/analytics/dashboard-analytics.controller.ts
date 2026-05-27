@@ -3,7 +3,9 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { DashboardAnalyticsService } from './dashboard-analytics.service';
+import { AiResolutionService } from './ai-resolution.service';
 import { Response } from 'express';
 
 @ApiTags('dashboard-analytics')
@@ -11,7 +13,10 @@ import { Response } from 'express';
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 @ApiBearerAuth()
 export class DashboardAnalyticsController {
-    constructor(private dashboardAnalytics: DashboardAnalyticsService) { }
+    constructor(
+        private dashboardAnalytics: DashboardAnalyticsService,
+        private aiResolutionService: AiResolutionService,
+    ) { }
 
     @Get('overview-kpis/:tenantId')
     @ApiOperation({ summary: 'Get 6 KPIs with period comparison' })
@@ -137,5 +142,20 @@ export class DashboardAnalyticsController {
     ) {
         const result = await this.dashboardAnalytics.getAppointmentMetrics(tenantId, start, end);
         return { success: true, data: result };
+    }
+
+    @Get('ai-resolution/:tenantId')
+    @Roles('super_admin', 'tenant_admin')
+    @ApiOperation({ summary: 'AI resolution rate: stats, trend, and breakdown by channel' })
+    async getAiResolution(
+        @Param('tenantId') tenantId: string,
+        @Query('start') start: string,
+        @Query('end') end: string,
+        @Query('granularity') granularity: string,
+    ) {
+        const stats = await this.aiResolutionService.getResolutionStats(tenantId, start, end);
+        const trend = await this.aiResolutionService.getResolutionTrend(tenantId, start, end, (granularity as any) || 'day');
+        const byChannel = await this.aiResolutionService.getResolutionByChannel(tenantId, start, end);
+        return { success: true, data: { stats, trend, byChannel } };
     }
 }

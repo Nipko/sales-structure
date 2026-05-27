@@ -16,13 +16,13 @@ import {
     RefreshCw, Edit3, Trash2, BarChart3, ExternalLink, CheckCircle2,
     AlertCircle, TrendingUp, Target, Zap, Eye, Tag, GlobeLock, PlusCircle,
     Upload, Sparkles, Award, Loader2, History, Filter, Languages, RotateCcw,
-    Calendar, ChevronDown,
+    Calendar, ChevronDown, Clock, ThumbsDown, Star, XCircle,
 } from "lucide-react";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
-type Tab = "library" | "search" | "analytics" | "quality";
+type Tab = "library" | "search" | "analytics" | "quality" | "gaps";
 
 interface KBDocument {
     id: string;
@@ -116,6 +116,10 @@ export default function KnowledgePage() {
     // Quality scores
     const [qualityScores, setQualityScores] = useState<any[]>([]);
     const [qualityLoading, setQualityLoading] = useState(false);
+
+    // Gap report
+    const [gapReport, setGapReport] = useState<any>(null);
+    const [gapLoading, setGapLoading] = useState(false);
 
     // AI Suggestions
     const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -417,6 +421,16 @@ export default function KnowledgePage() {
             .finally(() => setQualityLoading(false));
     }, [tab]);
 
+    // Load gap report
+    useEffect(() => {
+        if (tab !== "gaps" || !activeTenantId) return;
+        setGapLoading(true);
+        api.fetch(`/knowledge/${activeTenantId}/gap-report`)
+            .then((res: any) => setGapReport(res.data || res))
+            .catch(() => {})
+            .finally(() => setGapLoading(false));
+    }, [tab, activeTenantId]);
+
     // AI suggestions
     const handleGenerateSuggestions = async () => {
         if (!activeTenantId) return;
@@ -549,6 +563,9 @@ export default function KnowledgePage() {
                 </button>
                 <button onClick={() => setTab("analytics")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "analytics" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
                     <BarChart3 size={16} /> {t("analytics.tab")}
+                </button>
+                <button onClick={() => setTab("gaps")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "gaps" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
+                    <Target size={16} /> {t("gaps.tab")}
                 </button>
             </div>
 
@@ -1050,6 +1067,168 @@ export default function KnowledgePage() {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Gaps Tab */}
+            {tab === "gaps" && (
+                <div>
+                    {gapLoading && <div className="text-center py-10 text-muted-foreground">{tc("loading")}</div>}
+
+                    {!gapLoading && !gapReport && (
+                        <div className="text-center py-10 text-muted-foreground">{t("gaps.noData")}</div>
+                    )}
+
+                    {!gapLoading && gapReport && (
+                        <div className="flex flex-col gap-6">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <KPICard icon={HelpCircle} label={t("gaps.kpi.unanswered")} value={gapReport.unansweredQueries?.length ?? 0} />
+                                <KPICard icon={ThumbsDown} label={t("gaps.kpi.lowSatisfaction")} value={gapReport.lowSatisfaction?.length ?? 0} />
+                                <KPICard icon={Clock} label={t("gaps.kpi.staleDocs")} value={gapReport.staleDocs?.length ?? 0} />
+                                <KPICard icon={XCircle} label={t("gaps.kpi.falsePositives")} value={gapReport.falsePositiveCount ?? 0} />
+                            </div>
+
+                            {gapReport.unansweredQueries?.length > 0 && (
+                                <div className="p-5 rounded-[14px] border border-border bg-card">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <HelpCircle size={18} className="text-amber-500" />
+                                        <h3 className="text-sm font-semibold m-0">{t("gaps.unanswered.title")}</h3>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mb-4 mt-0">{t("gaps.unanswered.description")}</p>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                            <thead>
+                                                <tr className="border-b border-border text-left">
+                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground">{t("gaps.unanswered.query")}</th>
+                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground text-center">{t("gaps.unanswered.occurrences")}</th>
+                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground text-right">{t("gaps.unanswered.lastSeen")}</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {gapReport.unansweredQueries.map((q: any, i: number) => (
+                                                    <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
+                                                        <td className="py-2.5 px-3 text-foreground">{q.query}</td>
+                                                        <td className="py-2.5 px-3 text-center">
+                                                            <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-500 text-xs font-semibold">
+                                                                {q.occurrences}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-right text-muted-foreground text-xs">
+                                                            {new Date(q.last_seen_at).toLocaleDateString()}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {gapReport.lowSatisfaction?.length > 0 && (
+                                <div className="p-5 rounded-[14px] border border-border bg-card">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <ThumbsDown size={18} className="text-red-500" />
+                                        <h3 className="text-sm font-semibold m-0">{t("gaps.lowSatisfaction.title")}</h3>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mb-4 mt-0">{t("gaps.lowSatisfaction.description")}</p>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                            <thead>
+                                                <tr className="border-b border-border text-left">
+                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground">{t("gaps.lowSatisfaction.document")}</th>
+                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground">{t("gaps.lowSatisfaction.score")}</th>
+                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground text-center">{t("gaps.lowSatisfaction.feedbackCount")}</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {gapReport.lowSatisfaction.map((doc: any, i: number) => (
+                                                    <tr key={doc.document_id || i} className="border-b border-border/50 hover:bg-muted/30">
+                                                        <td className="py-2.5 px-3 text-foreground font-medium">{doc.document_name}</td>
+                                                        <td className="py-2.5 px-3">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <div className="flex items-center gap-0.5">
+                                                                    {[1, 2, 3, 4, 5].map(s => (
+                                                                        <Star
+                                                                            key={s}
+                                                                            size={13}
+                                                                            className={s <= Math.round(doc.satisfaction_score * 5) ? "text-amber-500 fill-amber-500" : "text-muted-foreground/30"}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {(doc.satisfaction_score * 100).toFixed(0)}%
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-center text-muted-foreground">{doc.feedback_count}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {gapReport.staleDocs?.length > 0 && (
+                                <div className="p-5 rounded-[14px] border border-border bg-card">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Clock size={18} className="text-orange-500" />
+                                        <h3 className="text-sm font-semibold m-0">{t("gaps.staleDocs.title")}</h3>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mb-4 mt-0">{t("gaps.staleDocs.description")}</p>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                            <thead>
+                                                <tr className="border-b border-border text-left">
+                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground">{t("gaps.staleDocs.document")}</th>
+                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground text-center">{t("gaps.staleDocs.daysSinceUpdate")}</th>
+                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground">{t("gaps.staleDocs.freshnessScore")}</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {gapReport.staleDocs.map((doc: any, i: number) => (
+                                                    <tr key={doc.document_id || i} className="border-b border-border/50 hover:bg-muted/30">
+                                                        <td className="py-2.5 px-3 text-foreground font-medium">{doc.document_name}</td>
+                                                        <td className="py-2.5 px-3 text-center">
+                                                            <span className={cn(
+                                                                "inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-md text-xs font-semibold",
+                                                                doc.days_since_update > 90 ? "bg-red-500/10 text-red-500" :
+                                                                doc.days_since_update > 30 ? "bg-amber-500/10 text-amber-500" :
+                                                                "bg-emerald-500/10 text-emerald-500"
+                                                            )}>
+                                                                {doc.days_since_update}d
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-2.5 px-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden max-w-[120px]">
+                                                                    <div
+                                                                        className={cn("h-full rounded-full",
+                                                                            doc.freshness_score >= 70 ? "bg-emerald-500" :
+                                                                            doc.freshness_score >= 40 ? "bg-amber-500" : "bg-red-500"
+                                                                        )}
+                                                                        style={{ width: `${Math.min(doc.freshness_score, 100)}%` }}
+                                                                    />
+                                                                </div>
+                                                                <span className="text-xs text-muted-foreground">{doc.freshness_score}%</span>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {(gapReport.unansweredQueries?.length === 0 && gapReport.lowSatisfaction?.length === 0 && gapReport.staleDocs?.length === 0) && (
+                                <div className="text-center py-10">
+                                    <CheckCircle2 size={40} className="mx-auto mb-3 text-emerald-500" />
+                                    <p className="text-muted-foreground">{t("gaps.allClear")}</p>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

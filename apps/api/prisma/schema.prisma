@@ -646,3 +646,50 @@ model SystemUpdate {
   @@schema("public")
 }
 
+// ============================================
+// API KEYS — Public REST API authentication
+// ============================================
+model ApiKey {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  keyPrefix    String    @map("key_prefix") @db.VarChar(12)
+  keyHash      String    @unique @map("key_hash") @db.VarChar(128)
+  name         String    @db.VarChar(255)
+  scopes       String[]  @default([])
+  rateLimitRpm Int       @default(60) @map("rate_limit_rpm")
+  lastUsedAt   DateTime? @map("last_used_at")
+  expiresAt    DateTime? @map("expires_at")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdBy    String?   @map("created_by")
+  revokedAt    DateTime? @map("revoked_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId], map: "idx_api_keys_tenant")
+  @@index([keyPrefix], map: "idx_api_keys_prefix")
+  @@map("api_keys")
+  @@schema("public")
+}
+
+// ============================================
+// AUTOMATION TEMPLATES — Pre-built automation catalog
+// ============================================
+model AutomationTemplate {
+  id              String   @id @default(uuid())
+  name            Json
+  description     Json?
+  category        String   @db.VarChar(100)
+  industry        String?  @db.VarChar(100)
+  icon            String?  @db.VarChar(50)
+  triggerConfig   Json     @map("trigger_config")
+  actionsConfig   Json     @map("actions_config")
+  variables       Json     @default("[]")
+  isActive        Boolean  @default(true) @map("is_active")
+  popularityCount Int      @default(0) @map("popularity_count")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([category], map: "idx_automation_templates_category")
+  @@index([industry], map: "idx_automation_templates_industry")
+  @@map("automation_templates")
+  @@schema("public")
+}
+

@@ -9,7 +9,9 @@ import { useTranslations } from "next-intl";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
+import { ViewersIndicator } from "./_components/ViewersIndicator";
 import { io } from "socket.io-client";
+import type { Socket } from "socket.io-client";
 import {
     Search, Filter, Send, Paperclip, Smile, Phone, Mail, Tag,
     Clock, CheckCircle, AlertCircle, Bot, User, MessageSquare,
@@ -304,6 +306,11 @@ export default function InboxPage() {
 
     // --- Sending guard ---
     const [sending, setSending] = useState(false);
+
+    // --- Collision Detection: viewers ---
+    const [viewers, setViewers] = useState<{ agentId: string; agentName: string }[]>([]);
+    const socketRef = useRef<Socket | null>(null);
+    const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // --- Inline error/success feedback ---
     const [inboxError, setInboxError] = useState<string | null>(null);
@@ -661,6 +668,7 @@ export default function InboxPage() {
             query: { tenantId: activeTenantId },
             transports: ['websocket', 'polling'],
         });
+        socketRef.current = socket;
 
         socket.on('connect', () => {
             console.log('Connected to Inbox live updates');
@@ -833,10 +841,50 @@ export default function InboxPage() {
             loadInbox({ silent: true });
         });
 
+        // --- Collision Detection: listen for viewers updates ---
+        socket.on('conversation:viewers_update', (payload: { conversationId: string; viewers: { agentId: string; agentName: string }[] }) => {
+            if (payload.conversationId === selectedConvIdRef.current) {
+                setViewers(payload.viewers || []);
+            }
+        });
+
         return () => {
+            socketRef.current = null;
             socket.disconnect();
         };
     }, [activeTenantId, loadInbox]);
+
+    // --- Collision Detection: emit viewing_start / viewing_stop + heartbeat ---
+    useEffect(() => {
+        const socket = socketRef.current;
+        if (!socket || !selectedConv?.id || !user?.id) {
+            // Clear viewers when no conversation is selected
+            setViewers([]);
+            return;
+        }
+
+        const convId = selectedConv.id;
+        const agentName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || t('agent');
+
+        // Emit start viewing
+        socket.emit('conversation:viewing_start', { conversationId: convId, agentId: user.id, agentName });
+
+        // Heartbeat every 15 seconds
+        heartbeatRef.current = setInterval(() => {
+            socket.emit('conversation:heartbeat', { conversationId: convId, agentId: user.id, agentName });
+        }, 15000);
+
+        return () => {
+            // Emit stop viewing
+            socket.emit('conversation:viewing_stop', { conversationId: convId, agentId: user.id });
+            setViewers([]);
+            if (heartbeatRef.current) {
+                clearInterval(heartbeatRef.current);
+                heartbeatRef.current = null;
+            }
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedConv?.id, user?.id]);
 
     // --- Fetch AI Suggestion when conversation changes ---
     const fetchAiSuggestion = useCallback(async (convId?: string) => {
@@ -1403,6 +1451,8 @@ export default function InboxPage() {
                                             </>
                                         )}
                                     </div>
+                                    {/* Collision Detection: show other viewers */}
+                                    <ViewersIndicator viewers={viewers} currentAgentId={user?.id || ''} />
                                 </div>
                             </div>
                             {/* Action buttons — only 3 always visible + More dropdown */}

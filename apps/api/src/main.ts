@@ -8,6 +8,7 @@ import { Logger } from 'nestjs-pino';
 import * as Sentry from '@sentry/nestjs';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { PublicApiModule } from './modules/public-api/public-api.module';
 
 // PostgreSQL COUNT(*) returns BigInt which JSON.stringify cannot serialize
 (BigInt.prototype as any).toJSON = function () { return Number(this); };
@@ -35,6 +36,21 @@ async function bootstrap() {
             res.setHeader('Access-Control-Allow-Origin', origin);
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
             res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            if (req.method === 'OPTIONS') {
+                res.statusCode = 204;
+                return res.end();
+            }
+        }
+        next();
+    });
+
+    // Public API CORS — permissive (external integrations)
+    app.use((req: any, res: any, next: any) => {
+        if (req.url?.startsWith('/api/v1/public')) {
+            const origin = req.headers.origin || '*';
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
             if (req.method === 'OPTIONS') {
                 res.statusCode = 204;
                 return res.end();
@@ -87,6 +103,20 @@ async function bootstrap() {
         const document = SwaggerModule.createDocument(app, config);
         SwaggerModule.setup('docs', app, document);
     }
+
+    // Public API Swagger — available in all environments
+    const publicApiConfig = new DocumentBuilder()
+        .setTitle('Parallly Public API')
+        .setDescription('REST API for integrations, Zapier, and custom workflows')
+        .setVersion('1.0.0')
+        .addApiKey({ type: 'apiKey', name: 'X-API-Key', in: 'header' }, 'api-key')
+        .addTag('public-api', 'Public API endpoints')
+        .addTag('public-api-keys', 'API key management')
+        .build();
+    const publicDocument = SwaggerModule.createDocument(app, publicApiConfig, {
+        include: [PublicApiModule],
+    });
+    SwaggerModule.setup('docs/public', app, publicDocument);
 
     // Protect Bull Board with token (allow static assets through)
     const bullBoardToken = process.env.BULL_BOARD_TOKEN;

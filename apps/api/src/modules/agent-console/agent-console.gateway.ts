@@ -13,7 +13,9 @@ import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { AgentConsoleService } from './agent-console.service';
 import { CopilotService } from '../copilot/copilot.service';
+import { CollisionDetectionService } from './collision-detection.service';
 import { HandoffEscalatedEvent } from '../handoff/handoff.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from '@parallext/shared';
 
 @WebSocketGateway({
@@ -26,11 +28,13 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
 
     private readonly logger = new Logger(AgentConsoleGateway.name);
     private connectedAgents = new Map<string, string>(); // agentId -> socketId
-    private socketMeta = new Map<string, { agentId: string; tenantId: string; role: string }>();
+    private socketMeta = new Map<string, { agentId: string; tenantId: string; role: string; agentName: string }>();
 
     constructor(
         private agentConsoleService: AgentConsoleService,
         private copilotService: CopilotService,
+        private collisionDetectionService: CollisionDetectionService,
+        private prisma: PrismaService,
         private jwtService: JwtService,
         private configService: ConfigService,
     ) { }
@@ -70,6 +74,19 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
     async handleDisconnect(client: any) {
         const meta = this.socketMeta.get(client.id);
         if (meta) {
+            // Clean up collision detection state and notify affected conversations
+            try {
+                const affected = await this.collisionDetectionService.removeAgent(meta.agentId);
+                for (const { tenantId, conversationId } of affected) {
+                    const viewers = await this.collisionDetectionService.getViewers(tenantId, conversationId);
+                    this.server
+                        ?.to(`conversation:${conversationId}`)
+                        .emit('conversation:viewers_update', { conversationId, viewers });
+                }
+            } catch (error: any) {
+                this.logger.error(`Collision cleanup failed for agent ${meta.agentId}: ${error.message}`);
+            }
+
             this.connectedAgents.delete(meta.agentId);
             this.socketMeta.delete(client.id);
             this.logger.log(`Agent disconnected: ${meta.agentId}`);
@@ -102,10 +119,25 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
             return;
         }
 
+        // Resolve agent name from database (users.name is a generated column, use firstName/lastName)
+        let agentName = jwtPayload.email;
+        try {
+            const user = await this.prisma.user.findUnique({
+                where: { id: verifiedUserId },
+                select: { firstName: true, lastName: true, email: true },
+            });
+            if (user?.firstName) {
+                agentName = [user.firstName, user.lastName].filter(Boolean).join(' ');
+            }
+        } catch {
+            // Fallback to email from JWT
+        }
+
         this.socketMeta.set(client.id, {
             agentId: verifiedUserId,
             tenantId: verifiedTenantId,
             role: verifiedRole,
+            agentName,
         });
         this.connectedAgents.set(verifiedUserId, client.id);
 
@@ -117,7 +149,7 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
         const inbox = await this.agentConsoleService.getInbox(verifiedTenantId, verifiedUserId);
         client.emit('inbox:update', inbox);
 
-        this.logger.log(`Agent ${verifiedUserId} joined tenant ${verifiedTenantId} (role: ${verifiedRole})`);
+        this.logger.log(`Agent ${verifiedUserId} (${agentName}) joined tenant ${verifiedTenantId} (role: ${verifiedRole})`);
     }
 
     @SubscribeMessage('conversation:open')
@@ -135,6 +167,73 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
 
         client.join(`conversation:${data.conversationId}`);
         client.emit('conversation:detail', conversation);
+
+        // Track viewer and broadcast to other agents
+        await this.collisionDetectionService.startViewing(
+            meta.tenantId,
+            data.conversationId,
+            meta.agentId,
+            meta.agentName,
+        );
+        const viewers = await this.collisionDetectionService.getViewers(meta.tenantId, data.conversationId);
+        this.server
+            .to(`conversation:${data.conversationId}`)
+            .emit('conversation:viewers_update', { conversationId: data.conversationId, viewers });
+    }
+
+    @SubscribeMessage('conversation:viewing_start')
+    async handleViewingStart(
+        @ConnectedSocket() client: any,
+        @MessageBody() data: { conversationId: string },
+    ) {
+        const meta = this.socketMeta.get(client.id);
+        if (!meta) return;
+
+        await this.collisionDetectionService.startViewing(
+            meta.tenantId,
+            data.conversationId,
+            meta.agentId,
+            meta.agentName,
+        );
+        const viewers = await this.collisionDetectionService.getViewers(meta.tenantId, data.conversationId);
+        this.server
+            .to(`conversation:${data.conversationId}`)
+            .emit('conversation:viewers_update', { conversationId: data.conversationId, viewers });
+    }
+
+    @SubscribeMessage('conversation:viewing_stop')
+    async handleViewingStop(
+        @ConnectedSocket() client: any,
+        @MessageBody() data: { conversationId: string },
+    ) {
+        const meta = this.socketMeta.get(client.id);
+        if (!meta) return;
+
+        await this.collisionDetectionService.stopViewing(
+            meta.tenantId,
+            data.conversationId,
+            meta.agentId,
+        );
+        const viewers = await this.collisionDetectionService.getViewers(meta.tenantId, data.conversationId);
+        this.server
+            .to(`conversation:${data.conversationId}`)
+            .emit('conversation:viewers_update', { conversationId: data.conversationId, viewers });
+    }
+
+    @SubscribeMessage('conversation:heartbeat')
+    async handleHeartbeat(
+        @ConnectedSocket() client: any,
+        @MessageBody() data: { conversationId: string },
+    ) {
+        const meta = this.socketMeta.get(client.id);
+        if (!meta) return;
+
+        await this.collisionDetectionService.heartbeat(
+            meta.tenantId,
+            data.conversationId,
+            meta.agentId,
+            meta.agentName,
+        );
     }
 
     @SubscribeMessage('conversation:send')

@@ -214,6 +214,16 @@ export class NurturingService {
                         [],
                         { timeout: 30000 },
                     );
+
+                    // Mark auto-resolved conversations for AI resolution tracking
+                    if (result?.length) {
+                        const ids = result.map((r: any) => r.id);
+                        await this.prisma.executeInTenantSchema(
+                            tenant.schema_name,
+                            `UPDATE conversations SET resolution_type = 'auto_resolved' WHERE id = ANY($1::uuid[])`,
+                            [ids],
+                        ).catch(() => {}); // Column may not exist yet on older tenants
+                    }
                     const count = result?.length || 0;
                     if (count > 0) {
                         this.logger.log(`Auto-resolved ${count} stale conversation(s) for tenant ${tenant.id}`);

@@ -9,3 +9,4 @@ import { PipelineController } from './pipeline.controller';
     exports: [PipelineService, AutomationService],
 })
 export class PipelineModule {}
+// Note: TenantThrottleService is @Global so no import needed

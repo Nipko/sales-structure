@@ -5,6 +5,7 @@ import { RedisService } from '../redis/redis.service';
 import { EmailService } from '../email/email.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { NormalizedMessage, TenantConfig } from '@parallext/shared';
 
 export interface HandoffResult {
@@ -38,6 +39,7 @@ export class HandoffService {
         private emailService: EmailService,
         private emailTemplates: EmailTemplatesService,
         private llmRouter: LLMRouterService,
+        private aiResolutionService: AiResolutionService,
     ) {}
 
     /**
@@ -121,6 +123,13 @@ export class HandoffService {
                 startedAt: new Date().toISOString(),
                 contactId: message.contactId,
             })],
+        );
+
+        // 2b. Mark conversation as handed off for AI resolution tracking
+        await this.aiResolutionService.ensureResolutionColumns(schemaName);
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE conversations SET was_handed_off = true, handoff_at = NOW() WHERE id = $1::uuid`,
+            [conversationId],
         );
 
         // 3. Create internal note documenting the handoff

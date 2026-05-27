@@ -1211,6 +1211,146 @@ export class KnowledgeService {
         );
     }
 
+    // ─── KB Feedback & Gap Analysis ─────────────────────────────────────────
+
+    private async ensureKbFeedbackTable(schemaName: string): Promise<void> {
+        const cacheKey = `kb_feedback_tables:${schemaName}`;
+        const cached = await this.redis.get(cacheKey);
+        if (cached) return;
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `CREATE TABLE IF NOT EXISTS kb_feedback (
+                id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                conversation_id UUID,
+                message_id UUID,
+                document_id UUID,
+                query TEXT,
+                rating SMALLINT NOT NULL,
+                is_false_positive BOOLEAN DEFAULT false,
+                comment TEXT,
+                created_by VARCHAR(255),
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )`);
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `CREATE INDEX IF NOT EXISTS idx_kb_feedback_document ON kb_feedback(document_id)`);
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `CREATE INDEX IF NOT EXISTS idx_kb_feedback_rating ON kb_feedback(rating)`);
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS satisfaction_score DECIMAL(3,2)`);
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS feedback_count INTEGER DEFAULT 0`);
+
+        await this.redis.set(cacheKey, '1', 86400);
+    }
+
+    async submitFeedback(
+        tenantId: string,
+        data: { conversationId?: string; messageId?: string; documentId?: string; query?: string; rating: number; comment?: string; createdBy?: string },
+    ) {
+        const schema = await this.tenantSchema(tenantId);
+        await this.ensureKbFeedbackTable(schema);
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `INSERT INTO kb_feedback (conversation_id, message_id, document_id, query, rating, comment, created_by)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7) RETURNING *`,
+            [
+                data.conversationId || null,
+                data.messageId || null,
+                data.documentId || null,
+                data.query || null,
+                data.rating,
+                data.comment || null,
+                data.createdBy || null,
+            ]);
+
+        if (data.documentId) {
+            const stats = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT ROUND(AVG(rating)::numeric, 2) AS avg_rating, COUNT(*)::int AS cnt
+                 FROM kb_feedback WHERE document_id = $1::uuid`,
+                [data.documentId]);
+
+            if (stats?.[0]) {
+                await this.prisma.executeInTenantSchema(schema,
+                    `UPDATE knowledge_documents SET satisfaction_score = $2, feedback_count = $3, updated_at = NOW()
+                     WHERE id = $1::uuid`,
+                    [data.documentId, stats[0].avg_rating, stats[0].cnt]);
+            }
+        }
+
+        return rows?.[0] || { success: true };
+    }
+
+    async markFalsePositive(tenantId: string, feedbackId: string) {
+        const schema = await this.tenantSchema(tenantId);
+        await this.ensureKbFeedbackTable(schema);
+
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE kb_feedback SET is_false_positive = true WHERE id = $1::uuid`,
+            [feedbackId]);
+
+        return { success: true };
+    }
+
+    async getGapReport(tenantId: string, days: number) {
+        const schema = await this.tenantSchema(tenantId);
+        await this.ensureKbFeedbackTable(schema);
+        const since = new Date(Date.now() - days * 86_400_000).toISOString();
+
+        const unansweredQueries = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT id, query, occurrences, last_seen_at
+             FROM kb_unanswered_queries
+             WHERE resolved = false
+             ORDER BY occurrences DESC
+             LIMIT 20`).catch(() => []);
+
+        const lowSatisfactionDocs = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT id, title, satisfaction_score, feedback_count
+             FROM knowledge_documents
+             WHERE satisfaction_score < 3 AND feedback_count > 0 AND status != 'deleted'
+             ORDER BY satisfaction_score ASC`).catch(() => []);
+
+        let staleDocuments: any[] = [];
+        try {
+            staleDocuments = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT kd.id, kd.title, kd.updated_at,
+                        COALESCE(rl.retrieval_count, 0)::int AS query_frequency
+                 FROM knowledge_documents kd
+                 LEFT JOIN LATERAL (
+                     SELECT COUNT(*)::int AS retrieval_count
+                     FROM kb_retrieval_log
+                     WHERE document_id = kd.id AND created_at >= $1::timestamp
+                 ) rl ON true
+                 WHERE kd.status = 'ready'
+                   AND kd.updated_at < NOW() - INTERVAL '30 days'
+                   AND COALESCE(rl.retrieval_count, 0) > 0
+                 ORDER BY kd.updated_at ASC
+                 LIMIT 20`,
+                [since]) || [];
+        } catch {
+            staleDocuments = [];
+        }
+
+        const falsePositiveCounts = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT fb.document_id, kd.title, COUNT(*)::int AS false_positive_count
+             FROM kb_feedback fb
+             LEFT JOIN knowledge_documents kd ON kd.id = fb.document_id
+             WHERE fb.is_false_positive = true AND fb.created_at >= $1::timestamp
+             GROUP BY fb.document_id, kd.title
+             ORDER BY false_positive_count DESC`,
+            [since]).catch(() => []);
+
+        return {
+            unansweredQueries: unansweredQueries || [],
+            lowSatisfactionDocs: lowSatisfactionDocs || [],
+            staleDocuments: staleDocuments || [],
+            falsePositiveCounts: falsePositiveCounts || [],
+        };
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private async tenantSchema(tenantId: string): Promise<string> {

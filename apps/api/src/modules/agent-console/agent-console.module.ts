@@ -5,6 +5,7 @@ import { AgentConsoleGateway } from './agent-console.gateway';
 import { AgentConsoleService } from './agent-console.service';
 import { AgentConsoleController } from './agent-console.controller';
 import { CannedResponsesService } from './canned-responses.service';
+import { CollisionDetectionService } from './collision-detection.service';
 import { AgentAvailabilityService } from './agent-availability.service';
 import { MacrosService } from './macros.service';
 import { SnoozeService, SNOOZE_QUEUE } from './snooze.service';
@@ -14,6 +15,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { AIModule } from '../ai/ai.module';
 import { CopilotModule } from '../copilot/copilot.module';
 import { OffboardingModule } from '../offboarding/offboarding.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
     imports: [
@@ -22,6 +24,7 @@ import { OffboardingModule } from '../offboarding/offboarding.module';
         AIModule,
         CopilotModule,
         OffboardingModule,
+        AnalyticsModule,
         BullModule.registerQueue({ name: SNOOZE_QUEUE }),
         JwtModule.registerAsync({
             imports: [ConfigModule],
@@ -31,7 +34,7 @@ import { OffboardingModule } from '../offboarding/offboarding.module';
             inject: [ConfigService],
         }),
     ],
-    providers: [AgentConsoleGateway, AgentConsoleService, CannedResponsesService, AgentAvailabilityService, MacrosService, SnoozeService],
+    providers: [AgentConsoleGateway, AgentConsoleService, CollisionDetectionService, CannedResponsesService, AgentAvailabilityService, MacrosService, SnoozeService],
     controllers: [AgentConsoleController],
     exports: [AgentConsoleService, AgentConsoleGateway, AgentAvailabilityService],
 })

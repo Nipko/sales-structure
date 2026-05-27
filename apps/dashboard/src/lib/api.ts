@@ -209,6 +209,20 @@ export const api = {
     updateDeal: (tenantId: string, dealId: string, data: any) =>
         apiPut(`/pipeline/deals/${tenantId}/${dealId}`, data),
 
+    // --- Pipelines (multi) ---
+    listPipelines: (tenantId: string) =>
+        apiGet(`/pipeline/pipelines/${tenantId}`),
+    createPipeline: (tenantId: string, data: { name: string; description?: string }) =>
+        apiPost(`/pipeline/pipelines/${tenantId}`, data),
+    updatePipeline: (tenantId: string, pipelineId: string, data: { name?: string; description?: string }) =>
+        apiPut(`/pipeline/pipelines/${tenantId}/${pipelineId}`, data),
+    deletePipeline: (tenantId: string, pipelineId: string) =>
+        apiDelete(`/pipeline/pipelines/${tenantId}/${pipelineId}`),
+    getKanbanByPipeline: (tenantId: string, pipelineId: string) =>
+        apiGet(`/pipeline/kanban/${tenantId}?pipelineId=${pipelineId}`),
+    getStagesByPipeline: (tenantId: string, pipelineId: string) =>
+        apiGet(`/pipeline/stages/${tenantId}?pipelineId=${pipelineId}`),
+
     // --- Automation ---
     getAutomationRules: (tenantId: string) =>
         apiGet(`/automation/rules/${tenantId}`),
@@ -233,6 +247,34 @@ export const api = {
 
     updateNurturingConfig: (tenantId: string, data: any) =>
         apiPut(`/automation/nurturing/${tenantId}`, data),
+
+    // --- Drip Sequences ---
+    listDripSequences: (tenantId: string) =>
+        apiGet(`/automation/drip-sequences/${tenantId}`),
+    getDripSequence: (tenantId: string, id: string) =>
+        apiGet(`/automation/drip-sequences/${tenantId}/${id}`),
+    createDripSequence: (tenantId: string, data: any) =>
+        apiPost(`/automation/drip-sequences/${tenantId}`, data),
+    updateDripSequence: (tenantId: string, id: string, data: any) =>
+        apiPut(`/automation/drip-sequences/${tenantId}/${id}`, data),
+    deleteDripSequence: (tenantId: string, id: string) =>
+        apiDelete(`/automation/drip-sequences/${tenantId}/${id}`),
+    toggleDripSequence: (tenantId: string, id: string, isActive: boolean) =>
+        apiPost(`/automation/drip-sequences/${tenantId}/${id}/toggle`, { isActive }),
+    enrollDripContact: (tenantId: string, id: string, data: { contactId: string; conversationId?: string }) =>
+        apiPost(`/automation/drip-sequences/${tenantId}/${id}/enroll`, data),
+    unenrollDripContact: (tenantId: string, id: string, contactId: string) =>
+        apiPost(`/automation/drip-sequences/${tenantId}/${id}/unenroll`, { contactId }),
+    getDripEnrollments: (tenantId: string, id: string, status?: string) =>
+        apiGet(`/automation/drip-sequences/${tenantId}/${id}/enrollments${status ? `?status=${status}` : ''}`),
+
+    // --- Automation Templates ---
+    listAutomationTemplates: (category?: string, industry?: string) =>
+        apiGet(`/automation/templates${category || industry ? `?${category ? `category=${category}` : ''}${category && industry ? '&' : ''}${industry ? `industry=${industry}` : ''}` : ''}`),
+    getAutomationTemplate: (id: string) =>
+        apiGet(`/automation/templates/${id}`),
+    installAutomationTemplate: (tenantId: string, templateId: string, variables?: Record<string, string>) =>
+        apiPost(`/automation/templates/${tenantId}/install`, { templateId, variables }),
 
     // --- Persona / Agent Config ---
     getPersonaConfig: (tenantId: string) =>
@@ -757,6 +799,12 @@ export const api = {
 
     getDashboardAutomation: (tenantId: string, start: string, end: string) =>
         apiGet(`/dashboard-analytics/automation/${tenantId}?start=${start}&end=${end}`),
+
+    getAiResolutionStats: (tenantId: string, params: { start: string; end: string; granularity?: string }) => {
+        const qs = new URLSearchParams({ start: params.start, end: params.end });
+        if (params.granularity) qs.set('granularity', params.granularity);
+        return apiGet(`/dashboard-analytics/ai-resolution/${tenantId}?${qs.toString()}`);
+    },
 
     getDashboardBroadcast: (tenantId: string, start: string, end: string) =>
         apiGet(`/dashboard-analytics/broadcast/${tenantId}?start=${start}&end=${end}`),

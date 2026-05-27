@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 // ============================================
 // Types
@@ -100,16 +101,149 @@ export class PipelineService {
         private prisma: PrismaService,
         private redis: RedisService,
         private eventEmitter: EventEmitter2,
+        private throttle: TenantThrottleService,
     ) {}
+
+    // ============================================
+    // Multi-Pipeline Support
+    // ============================================
+
+    private async ensurePipelinesTables(schemaName: string): Promise<void> {
+        const cacheKey = `pipeline_tables:${schemaName}`;
+        const cached = await this.redis.get(cacheKey);
+        if (cached) return;
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `CREATE TABLE IF NOT EXISTS pipelines (
+                id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                tenant_id UUID NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                is_default BOOLEAN DEFAULT false,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )`);
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `ALTER TABLE pipeline_stages ADD COLUMN IF NOT EXISTS pipeline_id UUID`);
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `ALTER TABLE deals ADD COLUMN IF NOT EXISTS pipeline_id UUID`);
+
+        await this.redis.set(cacheKey, '1', 86400);
+    }
+
+    private async migrateToMultiPipeline(schemaName: string, tenantId: string): Promise<string> {
+        const existing = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT id FROM pipelines WHERE tenant_id = $1::uuid LIMIT 1`,
+            [tenantId]);
+
+        if (existing?.[0]) return existing[0].id;
+
+        const created = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `INSERT INTO pipelines (tenant_id, name, is_default, is_active)
+             VALUES ($1::uuid, 'Pipeline Principal', true, true) RETURNING id`,
+            [tenantId]);
+        const defaultId = created[0].id;
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE pipeline_stages SET pipeline_id = $1::uuid WHERE pipeline_id IS NULL`,
+            [defaultId]);
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE deals SET pipeline_id = $1::uuid WHERE pipeline_id IS NULL`,
+            [defaultId]);
+
+        return defaultId;
+    }
+
+    private async ensureMultiPipeline(tenantId: string): Promise<{ schema: string; defaultPipelineId: string }> {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) throw new Error('Tenant not found');
+        await this.ensurePipelinesTables(schema);
+        const defaultPipelineId = await this.migrateToMultiPipeline(schema, tenantId);
+        return { schema, defaultPipelineId };
+    }
+
+    async listPipelines(tenantId: string) {
+        const { schema } = await this.ensureMultiPipeline(tenantId);
+        return this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT * FROM pipelines WHERE tenant_id = $1::uuid AND is_active = true ORDER BY is_default DESC, created_at ASC`,
+            [tenantId]);
+    }
+
+    async createPipeline(tenantId: string, data: { name: string; description?: string }) {
+        const { schema } = await this.ensureMultiPipeline(tenantId);
+
+        const countRows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT COUNT(*)::int AS c FROM pipelines WHERE tenant_id = $1::uuid AND is_active = true`,
+            [tenantId]);
+        const count = countRows?.[0]?.c || 0;
+        await this.throttle.enforcePlanLimit(tenantId, 'maxPipelines', count, 'Pipelines');
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `INSERT INTO pipelines (tenant_id, name, description, is_default, is_active)
+             VALUES ($1::uuid, $2, $3, false, true) RETURNING *`,
+            [tenantId, data.name, data.description || null]);
+
+        return rows?.[0];
+    }
+
+    async updatePipeline(tenantId: string, pipelineId: string, data: { name?: string; description?: string }) {
+        const { schema } = await this.ensureMultiPipeline(tenantId);
+
+        const sets: string[] = ['updated_at = NOW()'];
+        const params: any[] = [pipelineId, tenantId];
+        let idx = 3;
+
+        if (data.name !== undefined) { sets.push(`name = $${idx}`); params.push(data.name); idx++; }
+        if (data.description !== undefined) { sets.push(`description = $${idx}`); params.push(data.description); idx++; }
+
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE pipelines SET ${sets.join(', ')} WHERE id = $1::uuid AND tenant_id = $2::uuid`,
+            params);
+
+        return { success: true };
+    }
+
+    async deletePipeline(tenantId: string, pipelineId: string) {
+        const { schema, defaultPipelineId } = await this.ensureMultiPipeline(tenantId);
+
+        if (pipelineId === defaultPipelineId) {
+            throw new ForbiddenException({ error: 'cannot_delete_default', message: 'No se puede eliminar el pipeline principal.' });
+        }
+
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE pipeline_stages SET pipeline_id = $1::uuid WHERE pipeline_id = $2::uuid`,
+            [defaultPipelineId, pipelineId]);
+
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE deals SET pipeline_id = $1::uuid WHERE pipeline_id = $2::uuid`,
+            [defaultPipelineId, pipelineId]);
+
+        await this.prisma.executeInTenantSchema(schema,
+            `UPDATE pipelines SET is_active = false, updated_at = NOW() WHERE id = $1::uuid AND tenant_id = $2::uuid`,
+            [pipelineId, tenantId]);
+
+        return { success: true };
+    }
 
     // ============================================
     // Stages
     // ============================================
 
     /** Get all pipeline stages with order, SLA config, deal counts */
-    async getStages(tenantId: string): Promise<PipelineStage[]> {
+    async getStages(tenantId: string, pipelineId?: string): Promise<PipelineStage[]> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return [];
+
+        let pipelineFilter = '';
+        const params: any[] = [];
+        if (pipelineId) {
+            pipelineFilter = 'WHERE ps.pipeline_id = $1::uuid';
+            params.push(pipelineId);
+        }
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
@@ -118,8 +252,10 @@ export class PipelineService {
                     COALESCE(SUM(d.value), 0) as total_value
              FROM pipeline_stages ps
              LEFT JOIN deals d ON d.stage_id = ps.id AND d.status = 'open'
+             ${pipelineFilter}
              GROUP BY ps.id
              ORDER BY ps.position ASC`,
+            params,
         );
 
         return (rows || []).map((r: any) => ({
@@ -139,19 +275,27 @@ export class PipelineService {
     /** Create a new pipeline stage */
     async createStage(tenantId: string, data: {
         name: string; color: string; defaultProbability?: number;
-        slug?: string; slaHours?: number; isTerminal?: boolean;
+        slug?: string; slaHours?: number; isTerminal?: boolean; pipelineId?: string;
     }): Promise<void> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return;
 
+        let pipelineCondition = '';
+        const posParams: any[] = [];
+        if (data.pipelineId) {
+            pipelineCondition = 'WHERE pipeline_id = $1::uuid';
+            posParams.push(data.pipelineId);
+        }
+
         const maxPos = await this.prisma.executeInTenantSchema<any[]>(
-            schema, `SELECT COALESCE(MAX(position), 0) + 1 as next_pos FROM pipeline_stages`,
+            schema, `SELECT COALESCE(MAX(position), 0) + 1 as next_pos FROM pipeline_stages ${pipelineCondition}`,
+            posParams,
         );
 
         await this.prisma.executeInTenantSchema(
             schema,
-            `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)`,
+            `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, pipeline_id)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::uuid)`,
             [
                 tenantId,
                 data.name,
@@ -161,6 +305,7 @@ export class PipelineService {
                 data.defaultProbability || 0,
                 data.slaHours ?? null,
                 data.isTerminal ?? false,
+                data.pipelineId || null,
             ],
         );
     }
@@ -170,14 +315,26 @@ export class PipelineService {
     // ============================================
 
     /** Get full Kanban board data */
-    async getKanban(tenantId: string): Promise<PipelineKanban> {
+    async getKanban(tenantId: string, pipelineId?: string): Promise<PipelineKanban> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return { stages: [], forecast: { total: 0, weighted: 0, dealCount: 0, avgDealValue: 0 } };
+
+        let stageFilter = '';
+        let dealFilter = '';
+        const stageParams: any[] = [];
+        const dealParams: any[] = [];
+        if (pipelineId) {
+            stageFilter = 'WHERE pipeline_id = $1::uuid';
+            stageParams.push(pipelineId);
+            dealFilter = 'AND d.pipeline_id = $1::uuid';
+            dealParams.push(pipelineId);
+        }
 
         const stages = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT id, name, slug, color, position, sla_hours, is_terminal, default_probability
-             FROM pipeline_stages ORDER BY position ASC`,
+             FROM pipeline_stages ${stageFilter} ORDER BY position ASC`,
+            stageParams,
         );
 
         const deals = await this.prisma.executeInTenantSchema<any[]>(
@@ -187,8 +344,9 @@ export class PipelineService {
              FROM deals d
              LEFT JOIN contacts ct ON d.contact_id = ct.id
              LEFT JOIN pipeline_stages ps ON d.stage_id = ps.id
-             WHERE d.status = 'open'
+             WHERE d.status = 'open' ${dealFilter}
              ORDER BY d.updated_at DESC`,
+            dealParams,
         );
 
         const kanbanStages = (stages || []).map((s: any) => {
@@ -227,7 +385,7 @@ export class PipelineService {
     /** List deals with filters, including SLA status */
     async getDeals(tenantId: string, filters?: {
         stageId?: string; status?: string; assignedAgentId?: string;
-        slaStatus?: 'on_track' | 'at_risk' | 'breached';
+        slaStatus?: 'on_track' | 'at_risk' | 'breached'; pipelineId?: string;
     }): Promise<Deal[]> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return [];
@@ -254,6 +412,10 @@ export class PipelineService {
         if (filters?.assignedAgentId) {
             query += ` AND d.assigned_agent_id = $${paramIdx++}::uuid`;
             params.push(filters.assignedAgentId);
+        }
+        if (filters?.pipelineId) {
+            query += ` AND d.pipeline_id = $${paramIdx++}::uuid`;
+            params.push(filters.pipelineId);
         }
 
         query += ` ORDER BY d.updated_at DESC`;
@@ -353,7 +515,7 @@ export class PipelineService {
     /** Create a new deal */
     async createDeal(tenantId: string, data: {
         contactId: string; title: string; value: number; stageId: string;
-        probability?: number; expectedCloseDate?: string; assignedAgentId?: string; notes?: string;
+        probability?: number; expectedCloseDate?: string; assignedAgentId?: string; notes?: string; pipelineId?: string;
     }): Promise<Deal> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant not found');
@@ -374,12 +536,13 @@ export class PipelineService {
             schema,
             `INSERT INTO deals (contact_id, title, value, stage_id, probability, expected_close_date,
                                 assigned_agent_id, notes, status, sla_deadline,
+                                pipeline_id,
                                 created_at, updated_at, stage_entered_at)
-             VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6, $7::uuid, $8, 'open', ${slaDeadline}, NOW(), NOW(), NOW())
+             VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6, $7::uuid, $8, 'open', ${slaDeadline}, $9::uuid, NOW(), NOW(), NOW())
              RETURNING *`,
             [data.contactId, data.title, data.value, data.stageId,
                 probability, data.expectedCloseDate || null,
-                data.assignedAgentId || null, data.notes || ''],
+                data.assignedAgentId || null, data.notes || '', data.pipelineId || null],
         );
 
         // Record initial stage transition

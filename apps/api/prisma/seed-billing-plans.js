@@ -50,6 +50,7 @@ const PLANS = [
             maxContacts: 100,
             maxProperties: 0,
             automationRules: 0,
+            maxDripSequences: 0,
             broadcastCampaigns: 0,
             appointmentsServices: 1,
             knowledgeArticles: 5,
@@ -60,6 +61,7 @@ const PLANS = [
             customAttributes: 0,
             emailTemplates: 2,
             pipelineStages: 3,
+            maxPipelines: 1,
             segments: 0,
             mediaStorageMb: 50,
             externalCrm: 0,
@@ -87,6 +89,9 @@ const PLANS = [
             customDomainKb: false,
             whiteLabel: false,
             prioritySupport: false,
+            publicApi: false,
+            publicApiKeys: 0,
+            publicApiRateLimit: 0,
 
             // ── Module access ──
             staffScheduling: false,
@@ -94,6 +99,7 @@ const PLANS = [
             ecommerce: false,
             channelManager: false,
             widget: false,
+            httpRequestAction: false,
 
             // ── Rate limits (per-hour sliding windows) ──
             rateLimits: {
@@ -135,6 +141,7 @@ const PLANS = [
             maxContacts: 500,
             maxProperties: 2,
             automationRules: 5,
+            maxDripSequences: 3,
             broadcastCampaigns: 3,
             appointmentsServices: 2,
             knowledgeArticles: 20,
@@ -145,6 +152,7 @@ const PLANS = [
             customAttributes: 5,
             emailTemplates: 4,
             pipelineStages: 5,
+            maxPipelines: 1,
             segments: 3,
             mediaStorageMb: 100,
             externalCrm: 0,
@@ -172,6 +180,9 @@ const PLANS = [
             customDomainKb: false,
             whiteLabel: false,
             prioritySupport: false,
+            publicApi: false,
+            publicApiKeys: 0,
+            publicApiRateLimit: 0,
 
             // ── Module access ──
             staffScheduling: false,
@@ -179,6 +190,7 @@ const PLANS = [
             ecommerce: true,
             channelManager: false,
             widget: true,
+            httpRequestAction: false,
 
             // ── Rate limits (per-hour sliding windows) ──
             rateLimits: {
@@ -220,6 +232,7 @@ const PLANS = [
             maxContacts: 5_000,
             maxProperties: 10,
             automationRules: -1,
+            maxDripSequences: 10,
             broadcastCampaigns: -1,
             appointmentsServices: -1,
             knowledgeArticles: -1,
@@ -230,6 +243,7 @@ const PLANS = [
             customAttributes: 20,
             emailTemplates: 20,
             pipelineStages: 15,
+            maxPipelines: 3,
             segments: 15,
             mediaStorageMb: 1024,
             externalCrm: 1,
@@ -257,6 +271,9 @@ const PLANS = [
             customDomainKb: false,
             whiteLabel: false,
             prioritySupport: false,
+            publicApi: true,
+            publicApiKeys: 3,
+            publicApiRateLimit: 60,
 
             // ── Module access ──
             staffScheduling: true,
@@ -264,6 +281,7 @@ const PLANS = [
             ecommerce: true,
             channelManager: false,
             widget: true,
+            httpRequestAction: true,
 
             // ── Rate limits (per-hour sliding windows) ──
             rateLimits: {
@@ -305,6 +323,7 @@ const PLANS = [
             maxContacts: 50_000,
             maxProperties: 50,
             automationRules: -1,
+            maxDripSequences: -1,
             broadcastCampaigns: -1,
             appointmentsServices: -1,
             knowledgeArticles: -1,
@@ -315,6 +334,7 @@ const PLANS = [
             customAttributes: -1,
             emailTemplates: -1,
             pipelineStages: -1,
+            maxPipelines: 10,
             segments: -1,
             mediaStorageMb: 10_240,
             externalCrm: -1,
@@ -342,6 +362,9 @@ const PLANS = [
             customDomainKb: true,
             whiteLabel: false,
             prioritySupport: true,
+            publicApi: true,
+            publicApiKeys: -1,
+            publicApiRateLimit: 300,
 
             // ── Module access ──
             staffScheduling: true,
@@ -349,6 +372,7 @@ const PLANS = [
             ecommerce: true,
             channelManager: true,
             widget: true,
+            httpRequestAction: true,
 
             // ── Rate limits (per-hour sliding windows) ──
             rateLimits: {
@@ -387,6 +411,7 @@ const PLANS = [
             maxContacts: -1,
             maxProperties: -1,
             automationRules: -1,
+            maxDripSequences: -1,
             broadcastCampaigns: -1,
             appointmentsServices: -1,
             knowledgeArticles: -1,
@@ -397,6 +422,7 @@ const PLANS = [
             customAttributes: -1,
             emailTemplates: -1,
             pipelineStages: -1,
+            maxPipelines: -1,
             segments: -1,
             mediaStorageMb: -1,
             externalCrm: -1,
@@ -426,6 +452,9 @@ const PLANS = [
             prioritySupport: true,
             salesLed: true,
             multiTenantSubAccounts: true,
+            publicApi: true,
+            publicApiKeys: -1,
+            publicApiRateLimit: 1000,
 
             // ── Module access ──
             staffScheduling: true,
@@ -433,6 +462,7 @@ const PLANS = [
             ecommerce: true,
             channelManager: true,
             widget: true,
+            httpRequestAction: true,
 
             // ── Rate limits (per-hour sliding windows) ──
             rateLimits: {

@@ -20,6 +20,7 @@ import {
 import KPICard from "@/components/analytics/KPICard";
 import DateRangePicker from "@/components/analytics/DateRangePicker";
 import Heatmap from "@/components/analytics/Heatmap";
+import AiResolutionWidget from "./_components/AiResolutionWidget";
 
 // ── Helpers ──
 
@@ -44,7 +45,7 @@ const CHANNEL_COLORS: Record<string, string> = {
 
 const MODEL_COLORS = ["#6c5ce7", "#00cec9", "#fdcb6e", "#e17055", "#0984e3", "#d63031", "#00b894"];
 
-const TABS = ["overview", "aiBotTab", "crmTab", "agentsTab", "automationTab", "broadcastTab", "channelsTab", "csatTab", "anomaliesTab", "cohortsTab"] as const;
+const TABS = ["overview", "aiBotTab", "aiResolutionTab", "crmTab", "agentsTab", "automationTab", "broadcastTab", "channelsTab", "csatTab", "anomaliesTab", "cohortsTab"] as const;
 
 // ── Main Page ──
 
@@ -200,6 +201,7 @@ export default function AnalyticsV2Page() {
                 <>
                     {activeTab === "overview" && <OverviewTab kpis={kpis} volume={volume} heatmap={heatmap} responseTimes={responseTimes} />}
                     {activeTab === "aiBotTab" && <AIBotTab data={aiMetrics} />}
+                    {activeTab === "aiResolutionTab" && tenantId && <AiResolutionWidget tenantId={tenantId} startDate={start} endDate={end} />}
                     {activeTab === "crmTab" && <CrmRedirectTab />}
                     {activeTab === "agentsTab" && <AgentsRedirectTab />}
                     {activeTab === "automationTab" && <AutomationTab data={automation} />}

@@ -13,6 +13,7 @@ import { KnowledgeService } from '../knowledge/knowledge.service';
 import { LeadScoringService } from '../crm/services/lead-scoring/lead-scoring.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { NurturingService } from '../automation/nurturing.service';
+import { DripSequenceService } from '../automation/drip-sequence.service';
 import { NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem, ModelTier } from '@parallext/shared';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
@@ -40,6 +41,7 @@ import { ComplianceService as AnalyticsComplianceService } from '../analytics/co
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MediaProcessingService } from '../media-processing/media-processing.service';
+import { AiResolutionService } from '../analytics/ai-resolution.service';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 const MAX_HISTORY_CHARS = 12_000;
@@ -63,6 +65,7 @@ export class ConversationsService {
         private pipelineService: PipelineService,
         private eventEmitter: EventEmitter2,
         private nurturingService: NurturingService,
+        private dripSequenceService: DripSequenceService,
         private identityService: IdentityService,
         private toolExecutor: AIToolExecutorService,
         private bookingEngine: BookingEngineService,
@@ -74,6 +77,7 @@ export class ConversationsService {
         private businessInfoService: BusinessInfoService,
         private throttle: TenantThrottleService,
         private mediaProcessing: MediaProcessingService,
+        private aiResolutionService: AiResolutionService,
     ) {}
 
     /**
@@ -120,6 +124,11 @@ export class ConversationsService {
         // Cancel any pending nurturing follow-ups — customer responded
         this.nurturingService.cancelFollowUp(tenantId, conversation.id).catch(e =>
             this.logger.warn(`Nurturing cancel failed (non-fatal): ${e.message}`),
+        );
+
+        // Stop drip sequences when customer replies
+        this.dripSequenceService.stopOnReply(tenantId, conversation.id).catch(e =>
+            this.logger.warn(`Drip stop-on-reply failed (non-fatal): ${(e as Error).message}`),
         );
 
         // Auto-progress stage from 'nuevo' to 'respondio' upon user message
@@ -718,6 +727,14 @@ export class ConversationsService {
             `UPDATE conversations SET updated_at = NOW() WHERE id = $1::uuid`,
             [conversationId],
         );
+
+        // Increment AI message count for resolution tracking (fire-and-forget)
+        this.aiResolutionService.ensureResolutionColumns(schemaName).then(() =>
+            this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations SET ai_message_count = COALESCE(ai_message_count, 0) + 1 WHERE id = $1::uuid`,
+                [conversationId],
+            ),
+        ).catch(e => this.logger.warn(`ai_message_count increment failed (non-fatal): ${(e as Error).message}`));
         // If the caller didn't supply channelType (legacy path), fall back to
         // looking it up on the conversation row so the WS payload is honest.
         let resolvedChannel = channelType;

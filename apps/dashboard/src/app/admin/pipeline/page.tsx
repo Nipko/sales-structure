@@ -2,7 +2,7 @@
 
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { cn } from "@/lib/utils";
 import {
     DollarSign,
@@ -22,6 +23,10 @@ import {
     Loader2,
     Check,
     X,
+    MoreHorizontal,
+    Pencil,
+    Trash2,
+    Lock,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -37,6 +42,7 @@ export default function PipelinePage() {
     const { activeTenantId } = useTenant();
     const { hasRole } = useAuth();
     const router = useRouter();
+    const { canCreate, getLimit } = usePlanLimits();
     const [kanban, setKanban] = useState<any>(null);
     const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
     const [dragOverStage, setDragOverStage] = useState<string | null>(null);
@@ -52,7 +58,34 @@ export default function PipelinePage() {
     const [dealCreating, setDealCreating] = useState(false);
     const [contacts, setContacts] = useState<any[]>([]);
 
+    const [pipelines, setPipelines] = useState<any[]>([]);
+    const [activePipelineId, setActivePipelineId] = useState<string | null>(null);
+    const [showPipelineModal, setShowPipelineModal] = useState(false);
+    const [pipelineForm, setPipelineForm] = useState({ name: '', description: '' });
+    const [editingPipeline, setEditingPipeline] = useState<any>(null);
+    const [pipelineSaving, setPipelineSaving] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+    const [pipelineMenuOpen, setPipelineMenuOpen] = useState<string | null>(null);
+
     const canApprove = hasRole('super_admin', 'tenant_admin', 'tenant_supervisor');
+
+    const loadKanban = useCallback(async (pipelineId?: string | null) => {
+        if (!activeTenantId) return;
+        setLoading(true);
+        try {
+            const json = pipelineId
+                ? await api.getKanbanByPipeline(activeTenantId, pipelineId)
+                : await api.fetch(`/crm/kanban/${activeTenantId}`);
+            if (json.success && json.data) {
+                setKanban(json.data);
+                setIsLive(true);
+            }
+        } catch (err) {
+            console.error("Failed to load kanban:", err);
+        } finally {
+            setLoading(false);
+        }
+    }, [activeTenantId]);
 
     const handleRequestApproval = async () => {
         if (!approvalModal || !activeTenantId) return;
@@ -62,7 +95,6 @@ export default function PipelinePage() {
                 method: "PUT",
                 body: JSON.stringify({ approval_stage: approvalModal.targetStage.id }),
             });
-            // Update local state: set approval_status to pending on the deal
             setKanban((prev: any) => {
                 if (!prev) return prev;
                 return {
@@ -93,9 +125,7 @@ export default function PipelinePage() {
             await api.fetch(`/crm/opportunities/${activeTenantId}/${dealId}/approve`, {
                 method: "PUT",
             });
-            // Reload kanban to reflect the move
-            const json = await api.fetch(`/crm/kanban/${activeTenantId}`);
-            if (json.success && json.data) setKanban(json.data);
+            await loadKanban(activePipelineId);
             setToast(t('approved'));
             setTimeout(() => setToast(null), 2000);
         } catch (err) {
@@ -160,8 +190,7 @@ export default function PipelinePage() {
             });
             setDealForm({ contactId: "", title: "", value: "", stageId: "", notes: "" });
             setShowCreateDeal(false);
-            const json = await api.fetch(`/crm/kanban/${activeTenantId}`);
-            if (json.success && json.data) setKanban(json.data);
+            await loadKanban(activePipelineId);
             setToast(t('dealCreated'));
             setTimeout(() => setToast(null), 2000);
         } catch {
@@ -172,31 +201,105 @@ export default function PipelinePage() {
         }
     };
 
-    // Load kanban from CRM API (opportunities grouped by stage)
-    useEffect(() => {
-        async function load() {
-            if (!activeTenantId) return;
-            setLoading(true);
-            try {
-                const json = await api.fetch(`/crm/kanban/${activeTenantId}`);
-                if (json.success && json.data) {
-                    setKanban(json.data);
-                    setIsLive(true);
+    const handleCreatePipeline = async () => {
+        if (!activeTenantId || !pipelineForm.name.trim()) return;
+        setPipelineSaving(true);
+        try {
+            const res = editingPipeline
+                ? await api.updatePipeline(activeTenantId, editingPipeline.id, {
+                    name: pipelineForm.name,
+                    description: pipelineForm.description || undefined,
+                })
+                : await api.createPipeline(activeTenantId, {
+                    name: pipelineForm.name,
+                    description: pipelineForm.description || undefined,
+                });
+            if (res.success) {
+                const listRes = await api.listPipelines(activeTenantId);
+                if (listRes.success && Array.isArray(listRes.data)) {
+                    setPipelines(listRes.data);
+                    if (!editingPipeline && res.data?.id) {
+                        setActivePipelineId(res.data.id);
+                    }
                 }
-            } catch (err) {
-                console.error("Failed to load kanban:", err);
-            } finally {
-                setLoading(false);
+                setToast(editingPipeline ? t('pipelines.updated') : t('pipelines.created'));
+                setTimeout(() => setToast(null), 2000);
+            }
+        } catch {
+            setToast(tc('errorSaving'));
+            setTimeout(() => setToast(null), 2000);
+        } finally {
+            setPipelineSaving(false);
+            setShowPipelineModal(false);
+            setPipelineForm({ name: '', description: '' });
+            setEditingPipeline(null);
+        }
+    };
+
+    const handleDeletePipeline = async (pipelineId: string) => {
+        if (!activeTenantId) return;
+        try {
+            const res = await api.deletePipeline(activeTenantId, pipelineId);
+            if (res.success) {
+                const listRes = await api.listPipelines(activeTenantId);
+                if (listRes.success && Array.isArray(listRes.data)) {
+                    setPipelines(listRes.data);
+                    const defaultPl = listRes.data.find((p: any) => p.is_default);
+                    if (activePipelineId === pipelineId) {
+                        setActivePipelineId(defaultPl?.id || listRes.data[0]?.id || null);
+                    }
+                }
+                setToast(t('pipelines.deleted'));
+                setTimeout(() => setToast(null), 2000);
+            }
+        } catch {
+            setToast(tc('errorSaving'));
+            setTimeout(() => setToast(null), 2000);
+        } finally {
+            setShowDeleteConfirm(null);
+        }
+    };
+
+    const openEditPipeline = (pipeline: any) => {
+        setEditingPipeline(pipeline);
+        setPipelineForm({ name: pipeline.name, description: pipeline.description || '' });
+        setShowPipelineModal(true);
+        setPipelineMenuOpen(null);
+    };
+
+    useEffect(() => {
+        async function loadPipelines() {
+            if (!activeTenantId) return;
+            try {
+                const res = await api.listPipelines(activeTenantId);
+                if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+                    setPipelines(res.data);
+                    const defaultPl = res.data.find((p: any) => p.is_default);
+                    setActivePipelineId(defaultPl?.id || res.data[0]?.id);
+                } else {
+                    setPipelines([]);
+                    setActivePipelineId(null);
+                    await loadKanban(null);
+                }
+            } catch {
+                setPipelines([]);
+                setActivePipelineId(null);
+                await loadKanban(null);
             }
         }
-        load();
-    }, [activeTenantId]);
+        loadPipelines();
+    }, [activeTenantId, loadKanban]);
+
+    useEffect(() => {
+        if (activePipelineId) {
+            loadKanban(activePipelineId);
+        }
+    }, [activePipelineId, loadKanban]);
 
     const stages = kanban?.stages || [];
     const forecast = kanban?.forecast || { total: 0, weighted: 0, dealCount: 0, avgDealValue: 0 };
 
-    if (loading) {
-        // Mini kanban skeleton — 4 columns of card stubs to telegraph the layout
+    if (loading && !kanban) {
         return (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 animate-stagger">
                 {Array.from({ length: 4 }).map((_, i) => (
@@ -211,10 +314,12 @@ export default function PipelinePage() {
         );
     }
 
+    const pipelineLimit = getLimit("maxPipelines");
+    const canAddPipeline = canCreate("maxPipelines", pipelines.length);
+
     return (
         <>
             <div>
-                {/* Header */}
                 <PageHeader
                     title={vt.pipelineNoun.charAt(0).toUpperCase() + vt.pipelineNoun.slice(1)}
                     subtitle={t('subtitle')}
@@ -243,6 +348,76 @@ export default function PipelinePage() {
                     description={tHelp("pipeline.description")}
                     tips={tHelp.raw("pipeline.tips") as string[]}
                 />
+
+                {pipelines.length > 0 && (
+                    <div className="flex items-center gap-1 mb-4 pb-2 border-b border-border overflow-x-auto">
+                        {pipelines.map((pl) => (
+                            <div key={pl.id} className="relative flex items-center group">
+                                <button
+                                    onClick={() => setActivePipelineId(pl.id)}
+                                    className={cn(
+                                        "relative px-4 py-2 text-sm font-medium rounded-t-lg transition-colors cursor-pointer whitespace-nowrap",
+                                        activePipelineId === pl.id
+                                            ? "text-foreground after:absolute after:bottom-[-9px] after:left-0 after:right-0 after:h-[2px] after:bg-indigo-600"
+                                            : "text-muted-foreground hover:text-foreground"
+                                    )}
+                                >
+                                    {pl.name}
+                                    {pl.is_default && (
+                                        <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-500 font-semibold">
+                                            {t('pipelines.default')}
+                                        </span>
+                                    )}
+                                </button>
+                                {!pl.is_default && activePipelineId === pl.id && (
+                                    <div className="relative">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setPipelineMenuOpen(pipelineMenuOpen === pl.id ? null : pl.id); }}
+                                            className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-muted-foreground cursor-pointer transition-colors"
+                                        >
+                                            <MoreHorizontal size={14} />
+                                        </button>
+                                        {pipelineMenuOpen === pl.id && (
+                                            <div className="absolute top-full right-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
+                                                <button
+                                                    onClick={() => openEditPipeline(pl)}
+                                                    className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors"
+                                                >
+                                                    <Pencil size={13} /> {t('pipelines.edit')}
+                                                </button>
+                                                <button
+                                                    onClick={() => { setShowDeleteConfirm(pl.id); setPipelineMenuOpen(null); }}
+                                                    className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-red-500 hover:bg-red-500/10 cursor-pointer transition-colors"
+                                                >
+                                                    <Trash2 size={13} /> {t('pipelines.delete')}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                        <button
+                            onClick={() => {
+                                if (!canAddPipeline) return;
+                                setEditingPipeline(null);
+                                setPipelineForm({ name: '', description: '' });
+                                setShowPipelineModal(true);
+                            }}
+                            disabled={!canAddPipeline}
+                            className={cn(
+                                "flex items-center gap-1 px-3 py-2 text-sm rounded-t-lg transition-colors whitespace-nowrap",
+                                canAddPipeline
+                                    ? "text-muted-foreground hover:text-foreground cursor-pointer"
+                                    : "text-muted-foreground/50 cursor-not-allowed"
+                            )}
+                            title={!canAddPipeline && pipelineLimit ? t('pipelines.limitReached') : undefined}
+                        >
+                            {canAddPipeline ? <Plus size={14} /> : <Lock size={13} />}
+                            {t('pipelines.create')}
+                        </button>
+                    </div>
+                )}
 
                 {/* Forecast Cards */}
                 <div className="grid grid-cols-4 gap-3 mb-5">
@@ -278,16 +453,13 @@ export default function PipelinePage() {
                                 onDragLeave={() => setDragOverStage(null)}
                                 onDrop={async () => {
                                     if (draggedDeal && activeTenantId) {
-                                        // If dropping on a terminal stage, request approval instead
                                         if (stage.is_terminal) {
                                             setApprovalModal({ dealId: draggedDeal, targetStage: stage });
                                             setDragOverStage(null);
                                             setDraggedDeal(null);
                                             return;
                                         }
-                                        // Save snapshot for rollback
                                         const kanbanSnapshot = kanban;
-                                        // Optimistic update
                                         setKanban((prev: any) => {
                                             if (!prev) return prev;
                                             const allDeals = prev.stages.flatMap((s: any) => s.deals);
@@ -306,7 +478,6 @@ export default function PipelinePage() {
                                                 })),
                                             };
                                         });
-                                        // API call to persist
                                         try {
                                             await api.fetch(`/crm/kanban/${activeTenantId}/${draggedDeal}/move`, {
                                                 method: "PUT",
@@ -317,7 +488,6 @@ export default function PipelinePage() {
                                             setTimeout(() => setToast(null), 2000);
                                         } catch (err) {
                                             console.error("Failed to move opportunity:", err);
-                                            // Rollback to previous state
                                             setKanban(kanbanSnapshot);
                                             setToast(t('errorMoving'));
                                             setTimeout(() => setToast(null), 3000);
@@ -417,12 +587,12 @@ export default function PipelinePage() {
 
                                             <div className="flex justify-between items-center mt-2.5">
                                                 <span className="text-[15px] font-semibold text-emerald-500">
-                                                    {deal.value > 0 ? formatCurrency(deal.value) : "\u2014"}
+                                                    {deal.value > 0 ? formatCurrency(deal.value) : "—"}
                                                 </span>
                                                 <div className="flex gap-1.5 items-center">
                                                     {deal.daysInStage > 3 && (
                                                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-500">
-                                                            {deal.daysInStage}d ⚠️
+                                                            {deal.daysInStage}d
                                                         </span>
                                                     )}
                                                     {deal.score > 0 && (
@@ -432,7 +602,7 @@ export default function PipelinePage() {
                                                                 ? "bg-emerald-500/15 text-emerald-500"
                                                                 : "bg-amber-500/15 text-amber-500"
                                                         )}>
-                                                            ★{deal.score}
+                                                            {deal.score}
                                                         </span>
                                                     )}
                                                     <span
@@ -623,10 +793,97 @@ export default function PipelinePage() {
                 </div>
             )}
 
+            {/* Pipeline Create/Edit Modal */}
+            {showPipelineModal && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowPipelineModal(false); setEditingPipeline(null); setPipelineForm({ name: '', description: '' }); }}>
+                    <div className="bg-card border border-border rounded-xl p-6 w-[420px] shadow-xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-5">
+                            <h3 className="text-lg font-semibold">
+                                {editingPipeline ? t('pipelines.edit') : t('pipelines.create')}
+                            </h3>
+                            <button
+                                onClick={() => { setShowPipelineModal(false); setEditingPipeline(null); setPipelineForm({ name: '', description: '' }); }}
+                                className="bg-transparent border-none text-muted-foreground cursor-pointer"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="space-y-3.5">
+                            <div>
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                                    {t('pipelines.name')}
+                                </label>
+                                <input
+                                    value={pipelineForm.name}
+                                    onChange={e => setPipelineForm(f => ({ ...f, name: e.target.value }))}
+                                    placeholder={t('pipelines.namePlaceholder')}
+                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
+                                    autoFocus
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                                    {t('pipelines.description')}
+                                </label>
+                                <textarea
+                                    value={pipelineForm.description}
+                                    onChange={e => setPipelineForm(f => ({ ...f, description: e.target.value }))}
+                                    placeholder={t('pipelines.descriptionPlaceholder')}
+                                    rows={3}
+                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none resize-none"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 mt-5">
+                            <button
+                                onClick={() => { setShowPipelineModal(false); setEditingPipeline(null); setPipelineForm({ name: '', description: '' }); }}
+                                className="px-4 py-2 rounded-lg border border-border text-sm cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                            >
+                                {tc('cancel')}
+                            </button>
+                            <button
+                                onClick={handleCreatePipeline}
+                                disabled={pipelineSaving || !pipelineForm.name.trim()}
+                                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm cursor-pointer hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {pipelineSaving && <Loader2 size={14} className="animate-spin" />}
+                                {editingPipeline ? tc('save') : tc('create')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Pipeline Confirmation */}
+            {showDeleteConfirm && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(null)}>
+                    <div className="bg-card border border-border rounded-xl p-6 w-[400px] shadow-xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="font-semibold text-base mb-2">{t('pipelines.delete')}</h3>
+                        <p className="text-sm text-muted-foreground mb-5">
+                            {t('pipelines.confirmDelete')}
+                        </p>
+                        <div className="flex justify-end gap-2">
+                            <button
+                                onClick={() => setShowDeleteConfirm(null)}
+                                className="px-4 py-2 rounded-lg border border-border text-sm cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                            >
+                                {tc('cancel')}
+                            </button>
+                            <button
+                                onClick={() => handleDeletePipeline(showDeleteConfirm)}
+                                className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm cursor-pointer hover:bg-red-700 transition-colors flex items-center gap-2"
+                            >
+                                {t('pipelines.delete')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Toast */}
             {toast && (
                 <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold bg-emerald-500 text-white shadow-[0_4px_20px_rgba(0,0,0,0.2)] animate-in slide-in-from-bottom-2 fade-in duration-300">
-                    ✓ {toast}
+                    {toast}
                 </div>
             )}
         </>

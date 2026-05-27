@@ -12,6 +12,7 @@ import { SavedReportsService } from './saved-reports.service';
 import { ComplianceService } from './compliance.service';
 import { AuditService } from './audit.service';
 import { CsatTriggerService } from './csat-trigger.service';
+import { AiResolutionService } from './ai-resolution.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 
@@ -20,9 +21,9 @@ import { RedisModule } from '../redis/redis.module';
     providers: [
         AnalyticsService, DashboardAnalyticsService, MetricsAggregationService,
         AlertsService, ScheduledReportsService, SavedReportsService,
-        ComplianceService, AuditService, CsatTriggerService,
+        ComplianceService, AuditService, CsatTriggerService, AiResolutionService,
     ],
     controllers: [AnalyticsController, DashboardAnalyticsController, AlertsController, BIApiController],
-    exports: [AnalyticsService, DashboardAnalyticsService, ComplianceService, AuditService, CsatTriggerService],
+    exports: [AnalyticsService, DashboardAnalyticsService, ComplianceService, AuditService, CsatTriggerService, AiResolutionService],
 })
 export class AnalyticsModule { }

@@ -12,8 +12,9 @@ import { useTranslations } from "next-intl";
 import {
     UserPlus, MessageSquare, UserCheck, Clock, Timer, ArrowRight,
     Send, ListTodo, Tag, Users, Shuffle, Hourglass, GitBranch,
-    Plus, Trash2, GripVertical, X, Save, Play,
+    Plus, Trash2, GripVertical, X, Save, Play, Globe,
 } from "lucide-react";
+import HttpRequestNode from "./HttpRequestNode";
 
 const TRIGGER_DEFS = [
     { value: "lead.captured", icon: UserPlus, i18n: "triggerLeadCaptured" },
@@ -254,6 +255,7 @@ const nodeTypes = {
     condition: ConditionNode,
     action: ActionNode,
     delay: DelayNode,
+    httpRequest: HttpRequestNode,
 };
 
 // ─── Flow Builder ────────────────────────────────────────────
@@ -325,6 +327,39 @@ function buildInitialNodes(rule?: any): { nodes: Node[]; edges: Edge[] } {
             lastId = delayId;
             yPos += 150;
         }
+
+        // HTTP Request nodes deserialized from http_request action type
+        if (act.type === "http_request") {
+            const cfg = act.config || {};
+            const httpId = nextId();
+            nodes.push({
+                id: httpId,
+                type: "httpRequest",
+                position: { x: 240, y: yPos },
+                data: {
+                    method: cfg.method || "GET",
+                    url: cfg.url || "",
+                    headers: cfg.headers || [],
+                    body: cfg.body || "",
+                    responseMapping: (cfg.response_mapping || []).map((m: any) => ({ variable: m.variable, jsonPath: m.jsonPath || m.json_path || "" })),
+                    retryCount: cfg.retry_count ?? 0,
+                    timeout: cfg.timeout_ms ?? 5000,
+                    onFailure: cfg.on_failure || "continue",
+                },
+            });
+            edges.push({
+                id: `e-${lastId}-${httpId}`,
+                source: lastId,
+                target: httpId,
+                sourceHandle: nodes.find(n => n.id === lastId)?.type === "condition" ? "yes" : undefined,
+                markerEnd: { type: MarkerType.ArrowClosed },
+                style: { stroke: "#6c5ce7", strokeWidth: 2 },
+            });
+            lastId = httpId;
+            yPos += 200;
+            continue;
+        }
+
         const actId = nextId();
         nodes.push({
             id: actId,
@@ -382,6 +417,23 @@ function serializeFlow(nodes: Node[], edges: Edge[]): {
                 type: (node.data as any).actionType || "",
                 config: (node.data as any).config || {},
                 delay: (node.data as any).delay || 0,
+            });
+        }
+        if (node.type === "httpRequest") {
+            const d = node.data as any;
+            orderedActions.push({
+                type: "http_request",
+                config: {
+                    method: d.method || "GET",
+                    url: d.url || "",
+                    headers: (d.headers || []).filter((h: any) => h.key),
+                    body: d.body || "",
+                    timeout_ms: d.timeout ?? 5000,
+                    retry_count: d.retryCount ?? 0,
+                    on_failure: d.onFailure || "continue",
+                    response_mapping: (d.responseMapping || []).filter((m: any) => m.variable),
+                },
+                delay: 0,
             });
         }
         if (node.type === "delay") {
@@ -444,19 +496,21 @@ export default function FlowBuilder({ rule, onSave, onCancel }: FlowBuilderProps
         }, eds));
     }, [setEdges]);
 
-    const addNode = useCallback((type: "condition" | "action" | "delay") => {
+    const addNode = useCallback((type: "condition" | "action" | "delay" | "httpRequest") => {
         const lastNode = nodes[nodes.length - 1];
         const y = lastNode ? lastNode.position.y + 200 : 200;
         const id = nextId();
+        const defaultData: Record<string, any> = {
+            condition: { field: "", operator: "equals", value: "" },
+            delay: { delayMinutes: 5, delayUnit: "minutes" },
+            action: { actionType: "", config: {}, delay: 0 },
+            httpRequest: { method: "GET", url: "", headers: [], body: "", responseMapping: [], retryCount: 0, timeout: 5000, onFailure: "continue" },
+        };
         const newNode: Node = {
             id,
             type,
             position: { x: 250, y },
-            data: type === "condition"
-                ? { field: "", operator: "equals", value: "" }
-                : type === "delay"
-                ? { delayMinutes: 5, delayUnit: "minutes" }
-                : { actionType: "", config: {}, delay: 0 },
+            data: defaultData[type] || {},
         };
         setNodes(nds => [...nds, newNode]);
 
@@ -515,6 +569,12 @@ export default function FlowBuilder({ rule, onSave, onCancel }: FlowBuilderProps
                     >
                         <Hourglass size={14} /> {t("flowDelay")}
                     </button>
+                    <button
+                        onClick={() => addNode("httpRequest")}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal-500/30 bg-teal-500/10 text-teal-500 text-xs font-medium hover:bg-teal-500/20 transition-colors"
+                    >
+                        <Globe size={14} /> {t("httpRequest")}
+                    </button>
                     <div className="w-px h-6 bg-border mx-1" />
                     <button
                         onClick={onCancel}
@@ -557,6 +617,7 @@ export default function FlowBuilder({ rule, onSave, onCancel }: FlowBuilderProps
                             if (n.type === "condition") return "#f59e0b";
                             if (n.type === "action") return "#6366f1";
                             if (n.type === "delay") return "#a855f7";
+                            if (n.type === "httpRequest") return "#14b8a6";
                             return "#6b7280";
                         }}
                         maskColor="hsl(var(--background) / 0.8)"

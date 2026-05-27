@@ -5,6 +5,7 @@ import { RedisService } from '../redis/redis.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
 import { WhatsappConnectionService } from '../whatsapp/services/whatsapp-connection.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { AiResolutionService } from '../analytics/ai-resolution.service';
 
 export interface InboxConversation {
     id: string;
@@ -83,6 +84,7 @@ export class AgentConsoleService {
         private whatsappConnection: WhatsappConnectionService,
         private llmRouter: LLMRouterService,
         private eventEmitter: EventEmitter2,
+        private aiResolutionService: AiResolutionService,
     ) { }
 
     /**
@@ -397,6 +399,21 @@ export class AgentConsoleService {
              WHERE conversation_id = $1::uuid AND agent_id = $2::uuid AND resolved_at IS NULL`,
             [conversationId, agentId],
         );
+
+        // Set resolution_type based on whether AI was handed off to a human
+        try {
+            await this.aiResolutionService.ensureResolutionColumns(schemaName);
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE conversations
+                 SET resolution_type = CASE WHEN was_handed_off = true THEN 'agent_resolved' ELSE 'ai_resolved' END,
+                     resolved_at = NOW()
+                 WHERE id = $1::uuid`,
+                [conversationId],
+            );
+        } catch (e: any) {
+            this.logger.warn(`Failed to set resolution_type: ${e.message}`);
+        }
 
         this.logger.log(`Conversation ${conversationId} resolved by agent ${agentId}, returned to AI`);
     }

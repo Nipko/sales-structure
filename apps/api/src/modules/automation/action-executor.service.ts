@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
+import { HttpRequestHandler } from './handlers/http-request.handler';
 
 @Injectable()
 export class ActionExecutorService {
@@ -9,6 +10,7 @@ export class ActionExecutorService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly whatsappMessaging: WhatsappMessagingService,
+        private readonly httpRequestHandler: HttpRequestHandler,
     ) {}
 
     async executeActions(schemaName: string, actions: any[], eventPayload: any) {
@@ -33,6 +35,9 @@ export class ActionExecutorService {
                         break;
                     case 'addTag':
                         await this.executeAddTag(schemaName, action.config, eventPayload);
+                        break;
+                    case 'http_request':
+                        await this.httpRequestHandler.execute(schemaName, action.config, eventPayload);
                         break;
                     default:
                         this.logger.warn(`[ActionExecutor] Unknown action type: ${action.type}`);

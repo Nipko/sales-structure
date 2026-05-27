@@ -147,6 +147,42 @@ audit_logs                 — Offboarding and billing audit trail
   - Activity (0-35): 35 if msg in 7d, 20 if in 30d, 5 if only historic
 - **Cross-tenant aggregation**: `getPlatformStats()` iterates all active tenant schemas
 
+### Unified AI Usage Dashboard (May 2026)
+
+**Endpoint:** `GET /tenants/ai-usage?months=3&tenantId=` (super_admin)
+
+**Architecture:**
+- `LLMRouterService.getUnifiedAiUsage()` aggregates data from 3 separate Redis key sets:
+  - LLM stats: `ai:stats:{tenantId}:{date}:*` (tokens, cost, model usage)
+  - Media stats: `media:audio:{tenantId}:{YYYY-MM}` + `media:image:{tenantId}:{YYYY-MM}`
+  - Embeddings stats: `ai:stats:{tenantId}:{date}:embeddings:*`
+
+**Dashboard Page:** `/admin/llm-stats`
+- Monthly selector (1/3/6/12 months)
+- 4 KPI tiles (total tokens, total cost, total requests, avg cost/request)
+- Stacked monthly bar charts by category
+- Category breakdown with percentages
+- Provider attribution table
+- Tenant ranking with per-tenant breakdown
+
+**tenantId Propagation Fix:**
+- Fixed 5 service call sites that never passed tenantId to Redis tracking:
+  - copilot.service.ts (4 call sites)
+  - intent-interpreter.service.ts
+  - nurturing.service.ts
+  - crm-insights.service.ts
+  - agent-console.service.ts
+- Added token estimation tracking to executeStream()
+- Added embeddings tracking to knowledge.service.ts generateEmbedding()
+
+**Redis Keys (AI stats):**
+```
+ai:stats:{tenantId}:{YYYY-MM-DD}:{category}:tokens    — Token count
+ai:stats:{tenantId}:{YYYY-MM-DD}:{category}:cost      — Cost in cents
+ai:stats:{tenantId}:{YYYY-MM-DD}:{category}:requests  — Request count
+ai:stats:{tenantId}:{YYYY-MM-DD}:{category}:provider:{name} — Per-provider breakdown
+```
+
 ---
 
 ## Vertical Adaptation System

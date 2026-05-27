@@ -342,3 +342,57 @@ IMPORTANTE: Los hostnames del Service URL usan el **nombre del servicio** del do
 | `infra/promtail/config.yml` | Config de Promtail (que logs enviar a Loki) |
 | `apps/api/src/main.ts` | Pino logger init + Bull Board auth middleware |
 | `apps/api/src/app.module.ts` | LoggerModule (Pino) + BullBoardModule config |
+
+---
+
+## 14. LLM Provider Health Monitoring
+
+**Added May 2026** — Sistema de monitoreo de 3 capas para la salud de proveedores LLM.
+
+### Circuit Breaker
+
+Tracking de salud por proveedor en memoria con cooldown de 2 minutos. Contadores de fallas en Redis (`llm:failures:{provider}`) con TTL de 10 minutos. Auto-recuperacion despues del cooldown.
+
+### Alert Thresholds
+
+EventEmitter2 emite `llm.provider.alert` al alcanzar los siguientes umbrales:
+
+| Failures | Nivel |
+|----------|-------|
+| 3 | warning |
+| 10 | critical |
+| 25 | down |
+
+### Layer 1 — WebSocket Real-time
+
+`conversations.gateway.ts` escucha `@OnEvent('llm.provider.alert')` y emite `system:llm_alert` a las rooms WebSocket de `super_admin` y `tenant_admin`.
+
+### Layer 2 — Cron Email
+
+`platform-monitor.service.ts` verifica cada 10 minutos si hay proveedores unhealthy, 5+ fallas recientes, o ningun proveedor configurado. Usa el metodo existente `alert()` con cooldown de 1 hora.
+
+### Layer 3 — API Endpoint
+
+`GET /health/llm-providers` (solo super_admin) retorna el estado por proveedor:
+
+| Campo | Tipo | Descripcion |
+|-------|------|-------------|
+| name | string | Nombre del proveedor (openai, anthropic, etc.) |
+| healthy | boolean | Estado actual de salud |
+| lastFailure | timestamp | Ultima falla registrada |
+| failureCount | number | Contador de fallas actual |
+| configured | boolean | Si el proveedor tiene API key configurada |
+
+### Dashboard Integration
+
+- El icono de campana en TopBar muestra alertas LLM
+- Push notifications del navegador para alertas criticas
+- Nuevas i18n keys: `llmCritical`, `llmWarning`, `llmDown`
+
+### Redis Keys
+
+| Key | Proposito | TTL |
+|-----|-----------|-----|
+| `llm:failures:{provider}` | Contador de fallas por proveedor | 10 min |
+
+La deduplicacion de alertas se maneja via EventEmitter2 (en memoria, se resetea al reiniciar).

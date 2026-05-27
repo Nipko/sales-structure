@@ -1,7 +1,7 @@
 # 🗂️ Estructura de la API — Parallext Engine
 
 > Referencia rápida de todos los módulos y endpoints del backend.
-> Actualizado: Mayo 10, 2026
+> Actualizado: Mayo 27, 2026
 
 ---
 
@@ -14,7 +14,7 @@
 | Pipeline | `modules/pipeline/` | 6 | Kanban, deals CRUD, stages |
 | Automation | `modules/pipeline/` | 5 | Rules engine, SLA detection |
 | Analytics | `modules/analytics/` | 5 | KPIs, leaderboard, CSAT |
-| Tenants | `modules/tenants/` | 3 | Multi-tenant CRUD |
+| Tenants | `modules/tenants/` | 4 | Multi-tenant CRUD, AI usage stats |
 | Settings | `modules/settings/` | 3 | API keys management |
 | Channels | `modules/channels/` | — | WhatsApp webhook, gateway |
 | AI | `modules/ai/` | — | LLM Router, providers |
@@ -23,7 +23,7 @@
 | Knowledge | `modules/knowledge/` | — | RAG pipeline |
 | Handoff | `modules/handoff/` | 2 | Escalation triggers, EventEmitter2 |
 | Broadcast | `modules/broadcast/` | 4 | Campañas masivas, BullMQ rate-limited |
-| Health | `modules/health/` | 1 | Health check |
+| Health | `modules/health/` | 2 | Health check, LLM provider status |
 | Customer Portal | `modules/customer-portal/` | 6 | Portal de autoservicio para clientes (OTP auth) |
 | White Label | `modules/white-label/` | 4 | Branding personalizado por tenant |
 | E-commerce | `modules/ecommerce/` | 5 | Catálogo de productos, sync con proveedores |
@@ -104,6 +104,17 @@
 | GET | `/api-keys` | Listar API keys |
 | POST | `/api-keys` | Crear/actualizar |
 | DELETE | `/api-keys/:provider` | Eliminar |
+
+### Health (`/health`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /health | Public | Basic health check |
+| GET | /health/llm-providers | JWT (super_admin) | LLM provider health status. Returns per-provider health (name, healthy, lastFailure, failureCount, configured) |
+
+### Tenants (`/api/v1/tenants`)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /tenants/ai-usage?months=3&tenantId= | JWT (super_admin) | Unified AI usage statistics (LLM + media + embeddings). Query params: months (1/3/6/12), tenantId (optional filter). Returns monthly breakdown by category, provider, and tenant |
 
 ### Handoff (`/api/v1/handoff`)
 | Método | Ruta | Auth | Descripción |
@@ -195,6 +206,10 @@
 | GET | /compliance/opt-outs/:tenantId/stats | JWT | Opt-out statistics |
 | PUT | /compliance/opt-outs/:tenantId/:id/confirm | JWT | Confirm opt-out |
 | PUT | /compliance/opt-outs/:tenantId/:id/reject | JWT | Reject (false positive) |
+| PUT | /compliance/legal-texts/:tenantId/:id | JWT (tenant_admin) | Update legal text |
+| DELETE | /compliance/legal-texts/:tenantId/:id | JWT (tenant_admin) | Delete legal text |
+| GET | /compliance/audit-log/:tenantId | JWT | Compliance audit log |
+| POST | /compliance/erase-contact/:tenantId/:contactId | JWT (tenant_admin, super_admin) | GDPR Article 17 erasure (anonymizes 11 tables) |
 
 ## Customer Portal (`/customer-portal`)
 | Method | Path | Auth | Description |

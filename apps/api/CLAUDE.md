@@ -8,7 +8,7 @@ NestJS 10 backend with 67 modules. Port 3000. Global prefix: `/api/v1`.
 **Infrastructure** (always available, global):
 - `prisma/` — DB access. `executeInTenantSchema(schema, sql, params)` for tenant queries. ALWAYS use `::uuid` casts
 - `redis/` — Cache, counters, rate limiting. Methods: get/set/del/getJson/setJson/tenantKey/isRateLimited
-- `health/` — GET /health
+- `health/` — GET /health, GET /health/llm-providers (super_admin — per-provider health status)
 - `throttle/` — @Global. TenantThrottleService: plan-based rate limiting (starter/pro/enterprise)
 - `internal/` — Service-to-service endpoint (POST /internal/inbound-message)
 
@@ -32,7 +32,7 @@ NestJS 10 backend with 67 modules. Port 3000. Global prefix: `/api/v1`.
 - `whatsapp/` — Webhook handling, connection management, templates (sync + in-app creation via Meta API), messaging
 
 **AI**:
-- `ai/router/` — LLM Router. 4 tiers, 5 providers. Skips unconfigured providers. Auto-upgrades tier
+- `ai/router/` — LLM Router. Task-based routing (conversation vs tool_calling) with ordered fallback chains. 4 tiers, 5 providers. Circuit breaker per provider (2min cooldown, Redis failure tracking). Plan-gated tier access (starter=tier_3+4, pro=tier_2+3+4, enterprise=all). Unified AI usage tracking
 - `ai/tool-executor.service.ts` — Executes tool calls from LLM. Emits `appointment.created` event on booking. Triggers calendar sync. Adds conversation context to calendar event description. Event summary format: "Service — Customer Name"
 - `ai/providers/` — OpenAI, Anthropic, Gemini, DeepSeek, xAI implementations
 - `persona/` — YAML/JSON config with versioning. REST API for dashboard. Default fallback for new tenants
@@ -68,7 +68,7 @@ NestJS 10 backend with 67 modules. Port 3000. Global prefix: `/api/v1`.
 - `catalog/` — Products/courses/campaigns
 - `inventory/` — Stock management
 - `orders/` — Order tracking
-- `compliance/` — Opt-out detection, consent records, audit logging
+- `compliance/` — Legal texts (named, typed, multi-channel, multi-agent), consent records, opt-out detection/review, GDPR erasure, audit logging
 - `email/` — Email service via nodemailer
 - `intake/` — Landing page forms
 - `offers/` — Promotional offers management
@@ -323,4 +323,7 @@ media:contact:{tenantId}:{contactId}:{YYYY-MM-DD} — Per-contact daily media co
 media:conv:{conversationId}:{5min-bucket} — Per-conversation burst count
 media:tenant:{tenantId}:{hour-bucket} — Per-tenant hourly media count
 media:cost:{tenantId}:{YYYY-MM-DD}  — Daily media cost accumulator (cents)
+llm:failures:{provider}         — LLM provider failure counter (10min TTL, circuit breaker)
+ai:stats:{tenantId}:{date}:{category}:tokens — AI usage token tracking
+ai:stats:{tenantId}:{date}:{category}:cost   — AI usage cost tracking
 ```

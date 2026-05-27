@@ -25,10 +25,11 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
 - **Notes:** noeviction policy (never allkeys-lru). BullMQ jobs must not be silently evicted
 
 #### 3. health
-- **Purpose:** Health check endpoint
+- **Purpose:** Health check + LLM provider monitoring
 - **Controller:** `health.controller.ts`
 - **Endpoints:**
   - `GET /health` — Health check (no auth)
+  - `GET /health/llm-providers` — LLM provider health status (super_admin, JWT required)
 
 #### 4. throttle
 - **Purpose:** Plan-based rate limiting and feature flags. `@Global()` module
@@ -324,11 +325,17 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
 ### AI & Configuration (4 modules)
 
 #### 17. ai
-- **Purpose:** LLM routing with multi-provider failover
-- **Services:** `LLMRouterService` (router)
-- **Providers:** `OpenAIProvider` (GPT-4o, GPT-4.1-mini, GPT-4o-mini), `AnthropicProvider` (claude-3-5-sonnet), `GeminiProvider` (gemini-2.5-pro/flash), `DeepSeekProvider` (deepseek-chat), `XAIProvider` (grok-4-1-fast)
+- **Purpose:** LLM routing with task-based model selection, automatic fallback, and circuit breaker
+- **Services:** `LLMRouterService` (router), `ToolExecutorService` (function calling executor)
+- **Providers:** `OpenAIProvider` (gpt-4o, gpt-4.1-mini), `AnthropicProvider` (claude-sonnet-4-6), `GeminiProvider` (gemini-2.5-flash), `DeepSeekProvider` (deepseek-chat), `XAIProvider` (grok-4-1-fast-non-reasoning)
 - **Controller:** None (consumed by conversations)
-- **Key features:** 4-tier routing (premium→budget), cost tracking in Redis, auto-upgrades tier if provider unavailable
+- **Key features:**
+  - Task-based routing: `conversation` vs `tool_calling` with ordered fallback chains
+  - MODEL_REGISTRY: 8 models across 4 tiers (premium/high/balanced/budget)
+  - Plan-based tier restrictions: starter (tier_3+4), pro (tier_2+3+4), enterprise (all)
+  - Circuit breaker: in-memory health + Redis failure counters + EventEmitter2 alerts
+  - Unified AI usage tracking: `getUnifiedAiUsage()` aggregates LLM + media + embeddings
+  - Cost tracking in Redis per tenant/date/category/provider
 
 #### 18. persona
 - **Purpose:** Multi-agent management, templates, channel assignment
@@ -781,24 +788,30 @@ Complete reference for all 68 API modules, 80 dashboard pages, 6 BullMQ queues, 
   - `GET /media/health` — Storage health
 
 #### 34. compliance
-- **Purpose:** Privacy & consent management, opt-outs, legal texts, GDPR
+- **Purpose:** Privacy & consent management, opt-outs, legal texts (multi-channel, multi-agent, typed), GDPR/LGPD erasure
 - **Services:** `compliance.service.ts`
 - **Controller:** `compliance.controller.ts`
+- **Legal text types:** general, privacy_policy, terms_of_service, consent_to_process, ai_disclosure, opt_in_message, opt_out_confirmation
+- **Legal text fields:** name, description, type, channels (TEXT[]), agent_ids (UUID[]), version, text, active
 - **Endpoints:**
-  - `GET /compliance/legal-texts/:tenantId` — List legal texts
-  - `POST /compliance/legal-texts/:tenantId` — Create/update
-  - `GET /compliance/consents/:tenantId` — Consent records
+  - `GET /compliance/legal-texts/:tenantId` — List legal texts (ordered by updated_at)
+  - `POST /compliance/legal-texts/:tenantId` — Create legal text (name, type, channels[], agent_ids[], text)
+  - `PUT /compliance/legal-texts/:tenantId/:id` — Update legal text
+  - `DELETE /compliance/legal-texts/:tenantId/:id` — Delete legal text
+  - `GET /compliance/consents/:tenantId` — Consent records (optional leadId filter)
   - `POST /compliance/consents/:tenantId` — Record consent
-  - `GET /compliance/opt-outs/:tenantId` — Opt-out list
+  - `GET /compliance/opt-outs/:tenantId` — Opt-out list (status filter, pagination)
   - `GET /compliance/opt-outs/:tenantId/stats` — Opt-out statistics
-  - `PUT /compliance/opt-outs/:tenantId/:id/confirm` — Confirm opt-out
-  - `PUT /compliance/opt-outs/:tenantId/:id/reject` — Reject opt-out
+  - `PUT /compliance/opt-outs/:tenantId/:id/confirm` — Confirm opt-out (with notes)
+  - `PUT /compliance/opt-outs/:tenantId/:id/reject` — Reject opt-out (false positive, with notes)
   - `POST /compliance/opt-outs/:tenantId` — Manual opt-out
   - `GET /compliance/deletion-requests/:tenantId` — Deletion requests
   - `POST /compliance/deletion-requests/:tenantId` — Create deletion request
-  - `PUT /compliance/deletion-requests/:tenantId/:id/process` — Process request
-  - `GET /compliance/admin/overview` — Platform compliance overview (super_admin)
-  - `POST /compliance/admin/export-contact-data/:tenantId/:contactId` — Export contact data
+  - `PUT /compliance/deletion-requests/:tenantId/:id/process` — Process deletion (GDPR Art. 17 erasure)
+  - `GET /compliance/audit-log/:tenantId` — Compliance audit log
+  - `GET /compliance/admin/overview` — Cross-tenant compliance overview (super_admin)
+  - `POST /compliance/admin/export-contact-data/:tenantId/:contactId` — GDPR data export (super_admin)
+  - `POST /compliance/erase-contact/:tenantId/:contactId` — GDPR erasure (anonymizes 11 tables)
 
 #### 35. inventory
 - **Purpose:** Product stock management

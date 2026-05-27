@@ -45,7 +45,7 @@ src/
       knowledge/        — RAG document management
       analytics/        — Platform analytics
       crm-analytics/    — CRM analytics (funnel, velocity, win/loss, leaderboard)
-      compliance/       — Privacy & consent management
+      compliance/       — Privacy & consent (5 tabs: legal texts, consents, opt-outs, deletions, audit). Legal texts: named, typed (7 types), multi-channel chips, multi-agent chips
       inventory/        — Stock management
       orders/           — Order tracking
       landings/         — Landing page builder

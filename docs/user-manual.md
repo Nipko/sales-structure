@@ -618,6 +618,8 @@ Hub con cards organizadas:
 - Modelo específico
 - Tier (basic, pro, premium)
 - Temperatura
+- **Monitoreo de salud**: indicador en tiempo real del estado de cada proveedor LLM. Si un proveedor falla repetidamente, un **circuit breaker** lo desactiva temporalmente y el sistema hace fallback automático al siguiente proveedor configurado en la cadena
+- **Ruteo por tarea**: las tareas de conversación (`conversation`) y las de uso de herramientas (`tool_calling`) pueden usar cadenas de modelos diferentes, optimizando costo y rendimiento según el tipo de operación
 
 ### Comportamiento
 - Reglas custom (free text)
@@ -1031,7 +1033,27 @@ Vista kanban: pendientes, confirmados, enviados, entregados, cancelados.
 - Exportación GDPR (descargar todos los datos de un contacto)
 - Eliminación bajo solicitud (right-to-erasure)
 
-## 17.2 Baja automática
+## 17.2 Textos legales
+
+**Ruta:** Configuración → Avanzado → Compliance → Textos legales
+
+Permite gestionar todos los documentos legales que se presentan a los contactos. Cada texto legal tiene:
+
+- **Nombre** y **descripción** del documento
+- **Tipo de documento** — 7 tipos disponibles:
+  - General
+  - Política de privacidad
+  - Términos de servicio
+  - Consentimiento de procesamiento de datos
+  - Divulgación de IA (AI disclosure)
+  - Mensaje de opt-in
+  - Confirmación de opt-out
+- **Asignación multi-canal**: cada texto legal puede aplicarse a uno o varios canales (WhatsApp, Instagram, Messenger, Telegram, SMS, Web, Email)
+- **Asignación multi-agente**: cada texto legal puede asignarse a agentes IA específicos. Si no se asigna a ninguno, aplica a todos los agentes
+- **Filtro por tipo de documento** para localizar rápidamente los textos necesarios
+- **Tarjeta visual mejorada**: cada texto legal muestra nombre, badge de tipo, versión, estado (activo/inactivo), chips de canales asignados y chips de agentes asignados
+
+## 17.3 Baja automática
 
 Si un cliente escribe "BAJA" o sinónimos → automáticamente:
 - Marca el contacto como `opted_out`
@@ -1069,6 +1091,9 @@ Si un cliente escribe "BAJA" o sinónimos → automáticamente:
 ## 18.4 IA (Admin)
 - Modelo por defecto del tenant
 - Configuración global de comportamiento del agente
+- **Monitoreo de salud de proveedores LLM**: panel que muestra el estado de cada proveedor (OpenAI, Anthropic, Google, xAI, DeepSeek). Alertas automáticas cuando un proveedor falla
+- **Circuit breaker**: si un proveedor acumula fallos consecutivos, se desactiva temporalmente y el tráfico se redirige al siguiente proveedor en la cadena de fallback
+- **Ruteo por tarea**: configuración de cadenas de modelos separadas para tareas de conversación y tareas de tool calling, permitiendo optimizar por costo o calidad según la operación
 
 ## 18.5 Seguridad (todos los roles)
 

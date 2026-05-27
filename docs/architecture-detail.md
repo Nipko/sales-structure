@@ -301,3 +301,79 @@ Tras identificar un cuello de botella crítico donde múltiples instancias de Pr
 - **Prisma Connection Tuning**: Se forzó un límite estricto de conexiones concurrentes en los archivos de configuración: API Principal $\le 8$, API Worker $\le 8$, WhatsApp Service $\le 4$.
 - **Mecanismo de Backoff**: El servicio `PrismaService` encapsula reintentos de conexión con un algoritmo de retroceso exponencial (hasta 5 intentos) para absorber picos temporales en la base de datos sin abortar las transacciones del usuario.
 - **Prevención de Doble Reserva (Double Booking)**: Control mediante mutex y verificación anticipada de duplicidad inmediatamente antes del comando SQL `INSERT`.
+
+---
+
+## 11. LLM Router — Enrutamiento por Tarea con Fallback Automático (Mayo 2026)
+
+El sistema de enrutamiento de modelos LLM fue rediseñado completamente para utilizar **enrutamiento basado en tareas** con cadenas de fallback automáticas y circuit breaker por proveedor.
+
+### Tipos de Tarea
+
+| Tarea | Propósito | Modelos Preferidos |
+|-------|-----------|-------------------|
+| `conversation` | Generación de texto conversacional | Todos los modelos |
+| `tool_calling` | Ejecución de herramientas (function calling) | Solo modelos con soporte nativo de tools |
+
+### Registro de Modelos (MODEL_REGISTRY)
+
+| Tier | Modelo | Proveedor | supportsTools | Costo Relativo |
+|------|--------|-----------|---------------|----------------|
+| tier_1_premium | claude-sonnet-4-6 | Anthropic | ✅ | $$$ |
+| tier_2_high | gpt-4o | OpenAI | ✅ | $$ |
+| tier_2_high | grok-4-1-fast-non-reasoning | xAI | ✅ | $$ |
+| tier_3_balanced | gemini-2.5-flash | Google | ❌ | $ |
+| tier_3_balanced | gpt-4.1-mini | OpenAI | ✅ | $ |
+| tier_4_budget | deepseek-chat | DeepSeek | ✅ | ¢ |
+
+> **Nota**: Gemini está marcado como `supportsTools: false` porque su provider no implementa function calling. Se excluye automáticamente de las cadenas de `tool_calling`.
+
+### Restricciones por Plan
+
+| Plan | Tiers Permitidos |
+|------|-----------------|
+| starter | tier_3 + tier_4 |
+| pro | tier_2 + tier_3 + tier_4 |
+| enterprise | Todos los tiers |
+| custom | Todos los tiers |
+
+### Cadenas de Fallback
+
+Para cada tipo de tarea, existe una cadena ordenada de modelos. El sistema filtra la cadena por:
+1. **Tier permitido** según el plan del tenant
+2. **Proveedor configurado** (API key presente)
+3. **Salud del proveedor** (circuit breaker verde)
+
+Si todos los candidatos del tier se agotan, el sistema **auto-escala** al tier superior más cercano disponible.
+
+### Circuit Breaker por Proveedor
+
+- **In-memory Map**: Rastrea el estado de salud de cada proveedor con cooldown de 2 minutos
+- **Redis failure counter**: `llm:failures:{provider}` con TTL de 10 minutos
+- **Umbrales de alerta**: EventEmitter2 emite `llm.provider.alert` en 3 (warning), 10 (critical), 25 (down) fallos
+- **Auto-recuperación**: Después de 2 minutos de cooldown, el proveedor se marca como saludable y re-entra al pool
+
+### Monitoreo de Salud (3 capas)
+
+1. **WebSocket real-time**: `conversations.gateway.ts` escucha `@OnEvent('llm.provider.alert')` y emite `system:llm_alert` a super_admin/tenant_admin
+2. **Cron email**: `platform-monitor.service.ts` verifica cada 10 minutos proveedores no saludables, +5 fallos recientes, o sin proveedores configurados
+3. **Endpoint API**: `GET /health/llm-providers` (super_admin) retorna estado actual de cada proveedor
+
+### Flujo de Selección de Modelo
+
+```
+execute(prompt, options) {
+  1. Si options.task está definido:
+     → buildCandidates(task, tenantId)
+       → Filtrar MODEL_REGISTRY por task + plan tier + configured + healthy
+     → Para cada candidato en orden:
+       → Intentar llamada al proveedor
+       → Si éxito → retornar respuesta + trackStats
+       → Si fallo → markProviderUnhealthy + continuar al siguiente
+     → Si todos fallan → auto-escalar tier + reintentar
+     → Si aún fallan → throw error
+
+  2. Si options.model está definido (path legacy):
+     → Llamar directamente al proveedor del modelo
+}
+```

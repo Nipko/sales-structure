@@ -159,7 +159,7 @@ parallext_engine (database)
 |-------|---------|-------------|
 | `consent_records` | GDPR consent tracking | contact_id, consent_type, granted |
 | `opt_out_records` | Opt-out registry | phone, channel, trigger_message |
-| `legal_text_versions` | Legal document versions | type, content, version |
+| `legal_text_versions` | Legal document versions (multi-channel, multi-agent, typed) | name, description, type, channel, channels[], agent_ids[], version, text, active, updated_at |
 | `customer_profiles` | Unified identity | contact_id, merged_data |
 | `contact_identities` | Cross-channel linking | contact_id, channel_type, external_id |
 | `merge_suggestions` | Identity merge proposals | contact_a_id, contact_b_id, match_type |

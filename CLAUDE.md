@@ -49,7 +49,7 @@ docs/            — Detailed reference (see Index at bottom)
 - **Event-driven**: HandoffService emits events, AgentConsoleGateway listens via @OnEvent
 - **Outbound messages**: Always through OutboundQueueService (BullMQ, 3 retries, priority by tenant plan)
 - **Webhook idempotency**: Redis keys `idem:{channel}:{id}` with 24h TTL
-- **LLM Router**: Skips unconfigured providers. Auto-upgrades tier if no key available
+- **LLM Router**: Task-based routing (conversation vs tool_calling). 4-tier fallback with circuit breaker. Plan-gated tier access
 - **Redis**: noeviction policy (never allkeys-lru). BullMQ jobs must not be silently evicted
 - **BigInt**: `BigInt.toJSON` polyfill in main.ts and worker.main.ts for PostgreSQL COUNT(*)
 - **Channels**: Adapter pattern via `IChannelAdapter`. One AI agent per channel (hard rule)
@@ -119,13 +119,13 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 
 | Topic | File |
 |-------|------|
-| **Detailed architecture, prompt layers (3-tier), 5-tier knowledge, language detection, auth/sessions, OAuth flows, calendar, observability, BullMQ, pipeline hardening, production resilience** | `docs/architecture-detail.md` |
-| **67 modules reference + all endpoints + 78 dashboard pages + 6 BullMQ queues + 28 cron jobs** | `docs/modules-reference.md` |
+| **Detailed architecture, prompt layers (3-tier), 5-tier knowledge, language detection, auth/sessions, OAuth flows, calendar, observability, BullMQ, pipeline hardening, production resilience, LLM Router task-based routing** | `docs/architecture-detail.md` |
+| **68+ modules reference + all endpoints + 78 dashboard pages + 6 BullMQ queues + 28 cron jobs** | `docs/modules-reference.md` |
 | **Platform audit (May 2026): functionality inventory, i18n gaps, industry scorecard, vertical matrix, improvement roadmap** | `docs/platform-audit-2026-05.md` |
-| **Analytics endpoints (12 dashboard + 7 BI), Redis keys, tenant/global schemas, billing, offboarding, financials, super admin, vertical adaptation, vacation rental, CRM overhaul, handoff system** | `docs/analytics-billing-reference.md` |
+| **Analytics endpoints (12 dashboard + 7 BI), Redis keys, tenant/global schemas, billing, offboarding, financials, super admin, vertical adaptation, vacation rental, CRM overhaul, handoff system, AI usage dashboard** | `docs/analytics-billing-reference.md` |
 | **Historical changelog (Session entries, navigation redesigns, security fixes, UX overhauls)** | `docs/CHANGELOG.md` |
 | **Vertical adaptation strategy** | `docs/vertical-strategy.md` |
-| **Observability manual** | `docs/observability-manual.md` |
+| **Observability manual, LLM provider health monitoring** | `docs/observability-manual.md` |
 | **Appointments manual** | `docs/appointments-manual.md` |
 | **Analytics manual** | `docs/analytics-manual.md` |
 | **Billing setup + runbook** | `docs/billing-mp-setup.md`, `docs/billing-runbook.md` |

@@ -4,6 +4,73 @@
 
 ---
 
+## v5.3.0 — May 27, 2026 (LLM Router Redesign + Compliance Overhaul + AI Usage Dashboard)
+
+### LLM Router Redesign
+- **Complete rewrite of LLMRouterService**: Replaced broken score-based routing with task-based routing. Two task types (`conversation` and `tool_calling`) with ordered fallback chains per task
+- **MODEL_REGISTRY**: 8 models across 4 tiers — tier_1_premium (claude-sonnet-4-6), tier_2_high (gpt-4o, grok-4-1-fast), tier_3_balanced (gemini-2.5-flash, gpt-4.1-mini), tier_4_budget (deepseek-chat)
+- **Circuit breaker pattern**: In-memory provider health tracking (2min cooldown), Redis failure counters (10min TTL)
+- **Plan-based tier restrictions**: starter (tier_3+4), pro (tier_2+3+4), enterprise (all tiers). Auto-escalation to higher tiers when all candidates exhausted
+- **Fixed**: Gemini excluded from `tool_calling` chains (provider doesn't implement function calling)
+- **Fixed**: Previous dual-model routing (grok/gemini hardcoded) was completely inert — `routingFactors` path always overrode it
+
+### LLM Health Monitoring
+- **3-layer alerting**: WebSocket real-time → cron email (every 10min) → API health endpoint
+- **`GET /health/llm-providers`** (super_admin): Returns per-provider health status
+- **EventEmitter2 alerts** at 3/10/25 failure thresholds
+- **Dashboard TopBar**: LLM alert notifications via `socket.on("system:llm_alert")` + browser push for critical alerts
+- **i18n keys**: `llmCritical`, `llmWarning`, `llmDown` (× 4 languages)
+
+### Compliance Module Redesign
+- **Legal texts expanded**: Name (VARCHAR 255), description (TEXT), document type (7 standard types: general, privacy_policy, terms_of_service, consent_to_process, ai_disclosure, opt_in_message, opt_out_confirmation)
+- **Multi-channel assignment**: `channels TEXT[]` array (was single VARCHAR channel)
+- **Multi-agent assignment**: `agent_ids UUID[]` array
+- **Dashboard**: Chip-based multi-select for channels and agents, type filter, improved card layout with color-coded badges
+- **Migration**: `ALTER TABLE` for existing tenants in `add-missing-tables.js`
+
+### Unified AI Usage Dashboard
+- **Fixed zero-value bug**: `tenantId` was never threaded to Redis tracking at 5 service call sites (copilot, intent-interpreter, nurturing, crm-insights, agent-console)
+- **Token tracking**: `executeStream()` in llm-router now tracks tokens; `generateEmbedding()` in knowledge.service writes Redis stats
+- **`getUnifiedAiUsage()`**: Aggregates LLM + media + embeddings by month/category/provider
+- **`GET /tenants/ai-usage`** (super_admin): New endpoint
+- **Dashboard page rewritten**: Monthly selector, 4 KPI tiles, stacked bar charts, category breakdown, provider attribution, tenant ranking
+
+### Agent Editor Redesign
+- **Tabs layout**: Identity, Behavior, Tools, Advanced
+- **Tone presets**: professional, friendly, casual, formal
+- **All 12 vertical tools** exposed prominently in agent capabilities editor — no hidden tool section, all tools visible and easily toggleable
+
+### CRM Import/Export
+- **Native Excel (.xlsx) imports**: Drag-and-drop dropzone, E.164 phone dedup, delimiter detection, company resolution
+- **Tabular Excel exports**: Full contact data export
+- **Export download crash fixed**
+- **Import template redesign**: Multi-sheet guidance
+
+### Handoff Notifications
+- **Real-time handoff notifications** in inbox
+- **Browser push notifications** for new handoffs
+- **Multi-agent cache invalidation fix**
+
+### Other Features
+- **Geographical country metrics**: Country-level analytics for tenants
+- **Booking engine improvements**: Loop optimization, stale state clearing, variational Spanish templates
+- **APPOINTMENT_TOOLS registration fix**: Tools were not registered in `conversations.service.ts`
+- **Tool execution unblocked**: Tool execution was blocked when appointments disabled — properties/catalog/etc never ran
+
+### Bug Fixes & Hardening
+- **UUID casting fixes** across appointments, vacation-rental, KB, segments, and critical backend modules (8 commits)
+- **Deep audit round 2**: Schema mismatches, uuid casts, error handling across API + dashboard
+- **Critical security + stability fixes** from comprehensive audit
+- **KB uuid casts** + standardized toast feedback across 6 pages
+- **WhatsApp**: Removed nonexistent `messaging_limit` field from Meta API call
+- **Migration**: `system_updates` table added
+- **Error feedback**: Added to catalog and landings pages
+- **iCal**: Soft-deleted feeds filtered from `listFeeds`
+- **Property UX fixes**: Delete button, number coercion, currency default, snake_case→camelCase key mapping fix
+- **Property create**: Sends snake_case keys correctly (API expects camelCase fix)
+
+---
+
 ## v5.2.0 — May 6, 2026 (Tier 1 Verticals Sprint + Channels Hardening)
 
 ### Sprint Tier 1 — Three new operational verticals

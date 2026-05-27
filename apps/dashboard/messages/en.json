@@ -136,7 +136,9 @@
       "analyticsOverview": "Overview",
       "agentAnalytics": "Agent performance",
       "crmAnalytics": "CRM Analytics",
-      "reportBuilder": "Custom Reports"
+      "reportBuilder": "Custom Reports",
+      "dripSequences": "Drip Sequences",
+      "automationTemplates": "Templates"
     }
   },
   "topbar": {
@@ -6272,5 +6274,99 @@
       "error": "Error saving"
     },
     "planLimit": "You have reached the trigger limit for your plan"
+  },
+  "emailChannel": {
+    "title": "Email Channel",
+    "subtitle": "Configure sending and receiving emails in your inbox",
+    "status": {
+      "connected": "Connected",
+      "notConfigured": "Not configured"
+    },
+    "helpText": "Configure email to receive and send emails through your Parallly inbox.",
+    "form": {
+      "senderSettings": "Sender settings",
+      "fromEmail": "From email",
+      "fromName": "From name",
+      "replyTo": "Reply to",
+      "provider": "Provider",
+      "providerSmtp": "SMTP",
+      "providerSendgrid": "SendGrid",
+      "providerConfig": "Configuration",
+      "smtpHost": "Host",
+      "smtpPort": "Port",
+      "smtpUser": "Username",
+      "smtpPass": "Password",
+      "smtpEncryption": "Encryption",
+      "sendgridApiKey": "SendGrid API Key",
+      "inboundType": "Email reception",
+      "inboundHint": "Set up SendGrid Inbound Parse to receive incoming emails in your inbox.",
+      "active": "Channel active"
+    },
+    "save": "Save configuration",
+    "saving": "Saving...",
+    "toast": {
+      "saved": "Email configuration saved",
+      "error": "Error saving configuration"
+    }
+  },
+  "apiKeys": {
+    "title": "API Keys",
+    "subtitle": "Manage the public API access keys for your account",
+    "createKey": "Create key",
+    "noKeys": "No API keys",
+    "noKeysHint": "Create a key to connect external applications with your account",
+    "upgradeRequired": "Public API keys are available on higher plans",
+    "upgradePlan": "Upgrade plan",
+    "createdAt": "Created",
+    "expiresAt": "Expires",
+    "lastUsedAt": "Last used",
+    "revoke": "Revoke",
+    "rotate": "Rotate",
+    "keyCreated": "Key created successfully",
+    "copyWarning": "This key will not be shown again. Copy it now and store it in a safe place.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "done": "Done",
+    "confirmRevoke": "Revoke API key",
+    "confirmRevokeDesc": "This action is permanent. Applications using this key will stop working.",
+    "confirmRotate": "Rotate API key",
+    "confirmRotateDesc": "A new key will be generated and the previous one will stop working immediately.",
+    "modal": {
+      "name": "Key name",
+      "namePlaceholder": "E.g.: CRM Integration, Mobile app...",
+      "scopes": "Permissions",
+      "expiry": "Expiration date (optional)",
+      "expiryHint": "Leave empty for a key that never expires",
+      "create": "Create key"
+    },
+    "scopeGroups": {
+      "contacts": "Contacts",
+      "deals": "Deals",
+      "conversations": "Conversations",
+      "messages": "Messages",
+      "appointments": "Appointments",
+      "webhooks": "Webhooks",
+      "analytics": "Analytics"
+    },
+    "scopes": {
+      "read_contacts": "Read contacts",
+      "write_contacts": "Write contacts",
+      "read_deals": "Read deals",
+      "write_deals": "Write deals",
+      "read_conversations": "Read conversations",
+      "write_messages": "Send messages",
+      "read_appointments": "Read appointments",
+      "write_appointments": "Write appointments",
+      "read_webhooks": "Read webhooks",
+      "write_webhooks": "Write webhooks",
+      "read_analytics": "Read analytics"
+    },
+    "toast": {
+      "created": "Key created successfully",
+      "revoked": "Key revoked",
+      "rotated": "Key rotated successfully",
+      "copied": "Key copied to clipboard",
+      "error": "Error processing request"
+    }
   }
 }

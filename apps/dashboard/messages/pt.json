@@ -136,7 +136,9 @@
       "analyticsOverview": "Visão geral",
       "agentAnalytics": "Desempenho de agentes",
       "crmAnalytics": "Analíticos CRM",
-      "reportBuilder": "Relatórios personalizados"
+      "reportBuilder": "Relatórios personalizados",
+      "dripSequences": "Sequências Drip",
+      "automationTemplates": "Modelos"
     }
   },
   "topbar": {
@@ -6272,5 +6274,99 @@
       "error": "Erro ao salvar"
     },
     "planLimit": "Você atingiu o limite de triggers do seu plano"
+  },
+  "emailChannel": {
+    "title": "Canal de Email",
+    "subtitle": "Configure o envio e recebimento de emails na sua caixa de entrada",
+    "status": {
+      "connected": "Conectado",
+      "notConfigured": "Não configurado"
+    },
+    "helpText": "Configure o email para receber e enviar emails através da sua caixa de entrada Parallly.",
+    "form": {
+      "senderSettings": "Configurações do remetente",
+      "fromEmail": "Email de envio",
+      "fromName": "Nome do remetente",
+      "replyTo": "Responder para",
+      "provider": "Provedor",
+      "providerSmtp": "SMTP",
+      "providerSendgrid": "SendGrid",
+      "providerConfig": "Configuração",
+      "smtpHost": "Host",
+      "smtpPort": "Porta",
+      "smtpUser": "Usuário",
+      "smtpPass": "Senha",
+      "smtpEncryption": "Criptografia",
+      "sendgridApiKey": "API Key do SendGrid",
+      "inboundType": "Recepção de email",
+      "inboundHint": "Configure o Inbound Parse do SendGrid para receber emails na sua caixa de entrada.",
+      "active": "Canal ativo"
+    },
+    "save": "Salvar configuração",
+    "saving": "Salvando...",
+    "toast": {
+      "saved": "Configuração de email salva",
+      "error": "Erro ao salvar a configuração"
+    }
+  },
+  "apiKeys": {
+    "title": "Chaves de API",
+    "subtitle": "Gerencie as chaves de acesso à API pública da sua conta",
+    "createKey": "Criar chave",
+    "noKeys": "Sem chaves de API",
+    "noKeysHint": "Crie uma chave para conectar aplicações externas com sua conta",
+    "upgradeRequired": "As chaves de API pública estão disponíveis em planos superiores",
+    "upgradePlan": "Melhorar plano",
+    "createdAt": "Criada",
+    "expiresAt": "Expira",
+    "lastUsedAt": "Último uso",
+    "revoke": "Revogar",
+    "rotate": "Rotacionar",
+    "keyCreated": "Chave criada com sucesso",
+    "copyWarning": "Esta chave não será exibida novamente. Copie-a agora e guarde-a em um local seguro.",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "done": "Pronto",
+    "confirmRevoke": "Revogar chave de API",
+    "confirmRevokeDesc": "Esta ação é permanente. As aplicações que usam esta chave deixarão de funcionar.",
+    "confirmRotate": "Rotacionar chave de API",
+    "confirmRotateDesc": "Uma nova chave será gerada e a anterior deixará de funcionar imediatamente.",
+    "modal": {
+      "name": "Nome da chave",
+      "namePlaceholder": "Ex: Integração CRM, App móvel...",
+      "scopes": "Permissões",
+      "expiry": "Data de expiração (opcional)",
+      "expiryHint": "Deixe vazio para uma chave sem expiração",
+      "create": "Criar chave"
+    },
+    "scopeGroups": {
+      "contacts": "Contatos",
+      "deals": "Negócios",
+      "conversations": "Conversas",
+      "messages": "Mensagens",
+      "appointments": "Compromissos",
+      "webhooks": "Webhooks",
+      "analytics": "Análises"
+    },
+    "scopes": {
+      "read_contacts": "Ler contatos",
+      "write_contacts": "Escrever contatos",
+      "read_deals": "Ler negócios",
+      "write_deals": "Escrever negócios",
+      "read_conversations": "Ler conversas",
+      "write_messages": "Enviar mensagens",
+      "read_appointments": "Ler compromissos",
+      "write_appointments": "Escrever compromissos",
+      "read_webhooks": "Ler webhooks",
+      "write_webhooks": "Escrever webhooks",
+      "read_analytics": "Ler análises"
+    },
+    "toast": {
+      "created": "Chave criada com sucesso",
+      "revoked": "Chave revogada",
+      "rotated": "Chave rotacionada com sucesso",
+      "copied": "Chave copiada para a área de transferência",
+      "error": "Erro ao processar a solicitação"
+    }
   }
 }

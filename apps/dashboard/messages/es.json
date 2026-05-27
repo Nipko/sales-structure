@@ -136,7 +136,9 @@
       "analyticsOverview": "Vista general",
       "agentAnalytics": "Rendimiento de agentes",
       "crmAnalytics": "Analíticas CRM",
-      "reportBuilder": "Reportes personalizados"
+      "reportBuilder": "Reportes personalizados",
+      "dripSequences": "Secuencias Drip",
+      "automationTemplates": "Plantillas"
     }
   },
   "topbar": {
@@ -6270,5 +6272,99 @@
       "error": "Error al guardar"
     },
     "planLimit": "Has alcanzado el límite de triggers de tu plan"
+  },
+  "emailChannel": {
+    "title": "Canal de Email",
+    "subtitle": "Configura el envío y recepción de correos electrónicos en tu bandeja",
+    "status": {
+      "connected": "Conectado",
+      "notConfigured": "No configurado"
+    },
+    "helpText": "Configura el email para recibir y enviar correos electrónicos a través de tu bandeja de Parallly.",
+    "form": {
+      "senderSettings": "Configuración del remitente",
+      "fromEmail": "Email de envío",
+      "fromName": "Nombre del remitente",
+      "replyTo": "Responder a",
+      "provider": "Proveedor",
+      "providerSmtp": "SMTP",
+      "providerSendgrid": "SendGrid",
+      "providerConfig": "Configuración",
+      "smtpHost": "Host",
+      "smtpPort": "Puerto",
+      "smtpUser": "Usuario",
+      "smtpPass": "Contraseña",
+      "smtpEncryption": "Encriptación",
+      "sendgridApiKey": "API Key de SendGrid",
+      "inboundType": "Recepción de email",
+      "inboundHint": "Configura el Inbound Parse de SendGrid para recibir emails entrantes en tu bandeja.",
+      "active": "Canal activo"
+    },
+    "save": "Guardar configuración",
+    "saving": "Guardando...",
+    "toast": {
+      "saved": "Configuración de email guardada",
+      "error": "Error al guardar la configuración"
+    }
+  },
+  "apiKeys": {
+    "title": "Claves de API",
+    "subtitle": "Administra las claves de acceso a la API pública de tu cuenta",
+    "createKey": "Crear clave",
+    "noKeys": "No hay claves de API",
+    "noKeysHint": "Crea una clave para conectar aplicaciones externas con tu cuenta",
+    "upgradeRequired": "Las claves de API pública están disponibles en planes superiores",
+    "upgradePlan": "Mejorar plan",
+    "createdAt": "Creada",
+    "expiresAt": "Expira",
+    "lastUsedAt": "Último uso",
+    "revoke": "Revocar",
+    "rotate": "Rotar",
+    "keyCreated": "Clave creada exitosamente",
+    "copyWarning": "Esta clave no se mostrará de nuevo. Cópiala ahora y guárdala en un lugar seguro.",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "done": "Listo",
+    "confirmRevoke": "Revocar clave de API",
+    "confirmRevokeDesc": "Esta acción es permanente. Las aplicaciones que usen esta clave dejarán de funcionar.",
+    "confirmRotate": "Rotar clave de API",
+    "confirmRotateDesc": "Se generará una nueva clave y la anterior dejará de funcionar inmediatamente.",
+    "modal": {
+      "name": "Nombre de la clave",
+      "namePlaceholder": "Ej: Integración CRM, App móvil...",
+      "scopes": "Permisos",
+      "expiry": "Fecha de expiración (opcional)",
+      "expiryHint": "Deja vacío para una clave sin expiración",
+      "create": "Crear clave"
+    },
+    "scopeGroups": {
+      "contacts": "Contactos",
+      "deals": "Negocios",
+      "conversations": "Conversaciones",
+      "messages": "Mensajes",
+      "appointments": "Citas",
+      "webhooks": "Webhooks",
+      "analytics": "Analíticas"
+    },
+    "scopes": {
+      "read_contacts": "Leer contactos",
+      "write_contacts": "Escribir contactos",
+      "read_deals": "Leer negocios",
+      "write_deals": "Escribir negocios",
+      "read_conversations": "Leer conversaciones",
+      "write_messages": "Enviar mensajes",
+      "read_appointments": "Leer citas",
+      "write_appointments": "Escribir citas",
+      "read_webhooks": "Leer webhooks",
+      "write_webhooks": "Escribir webhooks",
+      "read_analytics": "Leer analíticas"
+    },
+    "toast": {
+      "created": "Clave creada exitosamente",
+      "revoked": "Clave revocada",
+      "rotated": "Clave rotada exitosamente",
+      "copied": "Clave copiada al portapapeles",
+      "error": "Error al procesar la solicitud"
+    }
   }
 }

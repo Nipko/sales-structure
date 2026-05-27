@@ -268,6 +268,16 @@ export const api = {
     getDripEnrollments: (tenantId: string, id: string, status?: string) =>
         apiGet(`/automation/drip-sequences/${tenantId}/${id}/enrollments${status ? `?status=${status}` : ''}`),
 
+    // --- Public API Keys ---
+    listPublicApiKeys: (tenantId: string) =>
+        apiGet(`/public-api/keys/${tenantId}`),
+    createPublicApiKey: (tenantId: string, data: { name: string; scopes: string[]; expiresAt?: string }) =>
+        apiPost(`/public-api/keys/${tenantId}`, data),
+    revokePublicApiKey: (tenantId: string, keyId: string) =>
+        apiDelete(`/public-api/keys/${tenantId}/${keyId}`),
+    rotatePublicApiKey: (tenantId: string, keyId: string) =>
+        apiPost(`/public-api/keys/${tenantId}/${keyId}/rotate`, {}),
+
     // --- Automation Templates ---
     listAutomationTemplates: (category?: string, industry?: string) =>
         apiGet(`/automation/templates${category || industry ? `?${category ? `category=${category}` : ''}${category && industry ? '&' : ''}${industry ? `industry=${industry}` : ''}` : ''}`),

@@ -141,6 +141,8 @@ const tenantSections: NavSectionDef[] = [
         accent: "text-violet-500 dark:text-violet-400",
         children: [
           { labelKey: "automation", href: "/admin/automation", capability: "canEditAutomation" },
+          { labelKey: "dripSequences", href: "/admin/automation/drip-sequences", capability: "canEditAutomation" },
+          { labelKey: "automationTemplates", href: "/admin/automation/templates", capability: "canEditAutomation" },
           { labelKey: "aiAgent", href: "/admin/agent", capability: "canEditAgent" },
           { labelKey: "knowledgeBase", href: "/admin/knowledge", capability: "canViewKnowledge" },
         ]

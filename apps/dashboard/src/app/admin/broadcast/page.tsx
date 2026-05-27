@@ -16,6 +16,7 @@ import {
     Send, Users, MessageSquare, Calendar, Clock, Plus, X,
     CheckCircle2, AlertCircle, Megaphone, BarChart3, Target,
     FileText, Zap, ChevronRight, Mail, Phone, MessageCircle,
+    FlaskConical, Trophy, Loader2,
 } from "lucide-react";
 
 const CHANNEL_OPTIONS = [
@@ -42,7 +43,7 @@ export default function BroadcastPage() {
     const { user } = useAuth();
     const vt = useVerticalTerms();
     const { activeTenantId } = useTenant();
-    const { canCreate, getLimit } = usePlanLimits();
+    const { canCreate, getLimit, features } = usePlanLimits();
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
@@ -78,11 +79,61 @@ export default function BroadcastPage() {
     const [audienceType, setAudienceType] = useState<"all" | "segment">("all");
     const [selectedSegmentId, setSelectedSegmentId] = useState("");
 
+    // A/B Test state
+    const [abTestEnabled, setAbTestEnabled] = useState(false);
+    const [abSplitA, setAbSplitA] = useState(50);
+    const [abVariantA, setAbVariantA] = useState({ waTemplate: "", emailSubject: "", emailBody: "", smsBody: "" });
+    const [abVariantB, setAbVariantB] = useState({ waTemplate: "", emailSubject: "", emailBody: "", smsBody: "" });
+    const [abTestConfig, setAbTestConfig] = useState({
+        testPercentage: 20,
+        autoSelectWinner: true,
+        minSampleSize: 100,
+        significanceLevel: 0.05,
+    });
+    // A/B Results state (for selected campaign)
+    const [abVariants, setAbVariants] = useState<any[]>([]);
+    const [abVariantsLoading, setAbVariantsLoading] = useState(false);
+    const [showWinnerConfirm, setShowWinnerConfirm] = useState<string | null>(null);
+    const [selectingWinner, setSelectingWinner] = useState(false);
+
     const stats = {
         total: campaigns.length,
         sent: campaigns.filter(c => ["sent", "finished", "active"].includes(c.status)).length,
         scheduled: campaigns.filter(c => c.status === "scheduled").length,
         totalRecipients: campaigns.reduce((s, c) => s + (c.totalRecipients || 0), 0),
+    };
+
+    // Fetch A/B variants when selecting an A/B test campaign
+    useEffect(() => {
+        if (!activeTenantId || !selectedCampaign?.is_ab_test) {
+            setAbVariants([]);
+            return;
+        }
+        const fetchVariants = async () => {
+            setAbVariantsLoading(true);
+            const res = await api.getAbVariants(activeTenantId, selectedCampaign.id);
+            if (res?.success) {
+                setAbVariants(res.data || []);
+            }
+            setAbVariantsLoading(false);
+        };
+        fetchVariants();
+    }, [activeTenantId, selectedCampaign?.id, selectedCampaign?.is_ab_test]);
+
+    const handleSelectWinner = async (variantId: string) => {
+        if (!activeTenantId || !selectedCampaign) return;
+        setSelectingWinner(true);
+        const res = await api.selectAbWinner(activeTenantId, selectedCampaign.id, variantId);
+        if (res?.success) {
+            setToast(t('abTest.toast.winnerSelected'));
+            setTimeout(() => setToast(null), 2500);
+            // Refresh variants
+            const vRes = await api.getAbVariants(activeTenantId, selectedCampaign.id);
+            if (vRes?.success) setAbVariants(vRes.data || []);
+            loadCampaigns();
+        }
+        setSelectingWinner(false);
+        setShowWinnerConfirm(null);
     };
 
     const toggleChannel = (ch: string) => {
@@ -100,9 +151,18 @@ export default function BroadcastPage() {
     };
 
     const hasContent = () => {
-        if (selectedChannels.includes("whatsapp") && !newCampaign.waTemplate) return false;
-        if (selectedChannels.includes("email") && (!newCampaign.emailSubject || !newCampaign.emailBody)) return false;
-        if (selectedChannels.includes("sms") && !newCampaign.smsBody) return false;
+        if (abTestEnabled) {
+            // Both variants must have content for each selected channel
+            for (const variant of [abVariantA, abVariantB]) {
+                if (selectedChannels.includes("whatsapp") && !variant.waTemplate) return false;
+                if (selectedChannels.includes("email") && (!variant.emailSubject || !variant.emailBody)) return false;
+                if (selectedChannels.includes("sms") && !variant.smsBody) return false;
+            }
+        } else {
+            if (selectedChannels.includes("whatsapp") && !newCampaign.waTemplate) return false;
+            if (selectedChannels.includes("email") && (!newCampaign.emailSubject || !newCampaign.emailBody)) return false;
+            if (selectedChannels.includes("sms") && !newCampaign.smsBody) return false;
+        }
         return selectedChannels.length > 0 && !!newCampaign.name;
     };
 
@@ -126,13 +186,38 @@ export default function BroadcastPage() {
         }
 
         setCreating(true);
+
+        // Build A/B test payload if enabled
+        const buildVariantContent = (v: typeof abVariantA) => {
+            const content: any = {};
+            if (selectedChannels.includes("whatsapp")) {
+                content.whatsapp = { templateName: v.waTemplate, templateLanguage: "es" };
+            }
+            if (selectedChannels.includes("email")) {
+                content.email = { subject: v.emailSubject, html: v.emailBody, text: v.emailBody.replace(/<[^>]+>/g, "") };
+            }
+            if (selectedChannels.includes("sms")) {
+                content.sms = { body: v.smsBody };
+            }
+            return content;
+        };
+
+        const abPayload = abTestEnabled ? {
+            variants: [
+                { name: "A", content: buildVariantContent(abVariantA), percentage: abSplitA },
+                { name: "B", content: buildVariantContent(abVariantB), percentage: 100 - abSplitA },
+            ],
+            abTestConfig,
+        } : {};
+
         const res = await api.createCampaign(activeTenantId, {
             name: newCampaign.name,
             channels: selectedChannels,
-            channelContent,
-            templateName: channelContent.whatsapp?.templateName || "",
+            channelContent: abTestEnabled ? undefined : channelContent,
+            templateName: abTestEnabled ? undefined : (channelContent.whatsapp?.templateName || ""),
             targetAudience: audience,
             scheduledAt: newCampaign.scheduledAt || undefined,
+            ...abPayload,
         });
         if (res?.success) {
             setCreating(false);
@@ -140,6 +225,11 @@ export default function BroadcastPage() {
             setSelectedChannels(["whatsapp"]);
             setAudienceType("all");
             setSelectedSegmentId("");
+            setAbTestEnabled(false);
+            setAbSplitA(50);
+            setAbVariantA({ waTemplate: "", emailSubject: "", emailBody: "", smsBody: "" });
+            setAbVariantB({ waTemplate: "", emailSubject: "", emailBody: "", smsBody: "" });
+            setAbTestConfig({ testPercentage: 20, autoSelectWinner: true, minSampleSize: 100, significanceLevel: 0.05 });
             loadCampaigns();
             setShowNewCampaign(false);
             setToast(t('toast.created'));
@@ -267,6 +357,11 @@ export default function BroadcastPage() {
                                                         </span>
                                                     );
                                                 })}
+                                                {campaign.is_ab_test && (
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-primary/10 text-primary flex items-center gap-0.5">
+                                                        <FlaskConical size={10} /> A/B
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="text-[13px] text-muted-foreground mb-2">
@@ -302,6 +397,121 @@ export default function BroadcastPage() {
                                         </div>
                                     </div>
                                 )}
+
+                                {/* A/B Results Section */}
+                                {selectedCampaign?.id === campaign.id && campaign.is_ab_test && (
+                                    <div className="mt-4 pt-4 border-t border-border">
+                                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                                            <FlaskConical size={14} className="text-primary" /> {t('abTest.results')}
+                                        </h3>
+
+                                        {abVariantsLoading ? (
+                                            <div className="flex items-center justify-center py-6 text-muted-foreground">
+                                                <Loader2 size={18} className="animate-spin mr-2" /> ...
+                                            </div>
+                                        ) : abVariants.length === 0 ? (
+                                            <div className="text-sm text-muted-foreground text-center py-4">{t('abTest.noVariants')}</div>
+                                        ) : (
+                                            <>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    {abVariants.map((variant: any) => {
+                                                        const vDeliveryRate = variant.sent_count > 0 ? Math.round((variant.delivered_count / variant.sent_count) * 100) : 0;
+                                                        const vReadRate = variant.delivered_count > 0 ? Math.round((variant.read_count / variant.delivered_count) * 100) : 0;
+                                                        const isWinner = variant.is_winner === true;
+                                                        const pValue = variant.p_value;
+                                                        const isSignificant = typeof pValue === "number" && pValue < 0.05;
+
+                                                        return (
+                                                            <div
+                                                                key={variant.id}
+                                                                className={cn(
+                                                                    "p-4 rounded-[14px] bg-card border",
+                                                                    isWinner ? "border-emerald-500" : "border-border"
+                                                                )}
+                                                            >
+                                                                <div className="flex items-center justify-between mb-3">
+                                                                    <span className="text-sm font-semibold flex items-center gap-1.5">
+                                                                        {variant.name}
+                                                                        {isWinner && (
+                                                                            <span className="flex items-center gap-0.5 text-emerald-500">
+                                                                                <Trophy size={12} /> {t('abTest.winner')}
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                    {typeof pValue === "number" && (
+                                                                        <span className={cn(
+                                                                            "text-[10px] px-2 py-0.5 rounded-md font-semibold",
+                                                                            isSignificant
+                                                                                ? "bg-emerald-500/15 text-emerald-500"
+                                                                                : "bg-amber-500/15 text-amber-500"
+                                                                        )}>
+                                                                            {isSignificant ? t('abTest.significant') : t('abTest.notSignificant')}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+
+                                                                <div className="space-y-1.5 text-xs">
+                                                                    <div className="flex justify-between">
+                                                                        <span className="text-muted-foreground">{t('abTest.sent')}</span>
+                                                                        <span className="font-medium">{variant.sent_count ?? 0}</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between">
+                                                                        <span className="text-muted-foreground">{t('abTest.delivered')}</span>
+                                                                        <span className="font-medium">{variant.delivered_count ?? 0}</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between">
+                                                                        <span className="text-muted-foreground">{t('abTest.read')}</span>
+                                                                        <span className="font-medium">{variant.read_count ?? 0}</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between">
+                                                                        <span className="text-muted-foreground">{t('abTest.deliveryRate')}</span>
+                                                                        <span className="font-medium text-emerald-500">{vDeliveryRate}%</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between">
+                                                                        <span className="text-muted-foreground">{t('abTest.readRate')}</span>
+                                                                        <span className="font-medium text-blue-500">{vReadRate}%</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Select Winner button */}
+                                                                {!abVariants.some((v: any) => v.is_winner) && ["sent", "finished"].includes(campaign.status) && (
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); setShowWinnerConfirm(variant.id); }}
+                                                                        className="mt-3 w-full py-1.5 text-xs font-medium rounded-lg border border-primary text-primary bg-transparent cursor-pointer hover:bg-primary/10 transition-colors"
+                                                                    >
+                                                                        <Trophy size={12} className="inline mr-1" /> {t('abTest.selectWinner')}
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                {/* Winner confirmation dialog */}
+                                                {showWinnerConfirm && (
+                                                    <div className="mt-3 p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5">
+                                                        <p className="text-sm mb-2.5">{t('abTest.confirmWinner')}</p>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setShowWinnerConfirm(null); }}
+                                                                className="flex-1 py-1.5 text-xs rounded-lg border border-border bg-transparent text-foreground cursor-pointer"
+                                                            >
+                                                                {tc('cancel')}
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleSelectWinner(showWinnerConfirm); }}
+                                                                disabled={selectingWinner}
+                                                                className="flex-1 py-1.5 text-xs rounded-lg border-none bg-emerald-500 text-white font-semibold cursor-pointer hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                                                            >
+                                                                {selectingWinner ? "..." : t('abTest.selectWinner')}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
@@ -314,7 +524,7 @@ export default function BroadcastPage() {
                     className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm"
                     onClick={() => setShowNewCampaign(false)}
                 >
-                    <div onClick={e => e.stopPropagation()} className="w-[560px] max-h-[90vh] overflow-y-auto p-7 rounded-[18px] bg-card border border-border shadow-2xl">
+                    <div onClick={e => e.stopPropagation()} className={cn("max-h-[90vh] overflow-y-auto p-7 rounded-[18px] bg-card border border-border shadow-2xl", abTestEnabled ? "w-[780px]" : "w-[560px]")}>
                         <div className="flex justify-between items-center mb-5">
                             <h2 className="text-xl font-semibold m-0">{t('modal.title')}</h2>
                             <button onClick={() => setShowNewCampaign(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
@@ -349,58 +559,261 @@ export default function BroadcastPage() {
                             </div>
                         </div>
 
-                        {/* Per-Channel Content */}
-                        {selectedChannels.includes("whatsapp") && (
-                            <div className="mb-3.5 p-3.5 rounded-xl border border-[#25D366]/20 bg-[#25D366]/5">
-                                <label className="block text-xs font-semibold mb-1.5 flex items-center gap-1.5">
-                                    <MessageCircle size={14} style={{ color: "#25D366" }} /> {t('modal.waTemplateLabel')}
+                        {/* A/B Test Toggle */}
+                        {features.abTestBroadcasts && (
+                            <div className="mb-4">
+                                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                                    <div
+                                        onClick={() => setAbTestEnabled(!abTestEnabled)}
+                                        className={cn(
+                                            "relative w-10 h-5 rounded-full transition-colors duration-200",
+                                            abTestEnabled ? "bg-emerald-500" : "bg-muted"
+                                        )}
+                                    >
+                                        <div className={cn(
+                                            "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200",
+                                            abTestEnabled ? "translate-x-5" : "translate-x-0.5"
+                                        )} />
+                                    </div>
+                                    <span className="text-sm font-medium flex items-center gap-1.5">
+                                        <FlaskConical size={14} className="text-primary" /> {t('abTest.toggle')}
+                                    </span>
                                 </label>
-                                <textarea
-                                    value={newCampaign.waTemplate}
-                                    onChange={e => setNewCampaign(p => ({ ...p, waTemplate: e.target.value }))}
-                                    placeholder={t('modal.templatePlaceholder')}
-                                    rows={3}
-                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y"
-                                />
-                                <div className="text-[10px] text-muted-foreground mt-1">{t('modal.templateHint')}</div>
                             </div>
                         )}
 
-                        {selectedChannels.includes("email") && (
-                            <div className="mb-3.5 p-3.5 rounded-xl border border-[#6c5ce7]/20 bg-[#6c5ce7]/5">
-                                <label className="block text-xs font-semibold mb-1.5 flex items-center gap-1.5">
-                                    <Mail size={14} style={{ color: "#6c5ce7" }} /> {t('modal.emailLabel')}
-                                </label>
-                                <input
-                                    value={newCampaign.emailSubject}
-                                    onChange={e => setNewCampaign(p => ({ ...p, emailSubject: e.target.value }))}
-                                    placeholder={t('modal.emailSubjectPh')}
-                                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border mb-2"
-                                />
-                                <textarea
-                                    value={newCampaign.emailBody}
-                                    onChange={e => setNewCampaign(p => ({ ...p, emailBody: e.target.value }))}
-                                    placeholder={t('modal.emailBodyPh')}
-                                    rows={4}
-                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y"
-                                />
-                            </div>
+                        {/* Per-Channel Content — Normal mode */}
+                        {!abTestEnabled && (
+                            <>
+                                {selectedChannels.includes("whatsapp") && (
+                                    <div className="mb-3.5 p-3.5 rounded-xl border border-[#25D366]/20 bg-[#25D366]/5">
+                                        <label className="block text-xs font-semibold mb-1.5 flex items-center gap-1.5">
+                                            <MessageCircle size={14} style={{ color: "#25D366" }} /> {t('modal.waTemplateLabel')}
+                                        </label>
+                                        <textarea
+                                            value={newCampaign.waTemplate}
+                                            onChange={e => setNewCampaign(p => ({ ...p, waTemplate: e.target.value }))}
+                                            placeholder={t('modal.templatePlaceholder')}
+                                            rows={3}
+                                            className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y"
+                                        />
+                                        <div className="text-[10px] text-muted-foreground mt-1">{t('modal.templateHint')}</div>
+                                    </div>
+                                )}
+
+                                {selectedChannels.includes("email") && (
+                                    <div className="mb-3.5 p-3.5 rounded-xl border border-[#6c5ce7]/20 bg-[#6c5ce7]/5">
+                                        <label className="block text-xs font-semibold mb-1.5 flex items-center gap-1.5">
+                                            <Mail size={14} style={{ color: "#6c5ce7" }} /> {t('modal.emailLabel')}
+                                        </label>
+                                        <input
+                                            value={newCampaign.emailSubject}
+                                            onChange={e => setNewCampaign(p => ({ ...p, emailSubject: e.target.value }))}
+                                            placeholder={t('modal.emailSubjectPh')}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border mb-2"
+                                        />
+                                        <textarea
+                                            value={newCampaign.emailBody}
+                                            onChange={e => setNewCampaign(p => ({ ...p, emailBody: e.target.value }))}
+                                            placeholder={t('modal.emailBodyPh')}
+                                            rows={4}
+                                            className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y"
+                                        />
+                                    </div>
+                                )}
+
+                                {selectedChannels.includes("sms") && (
+                                    <div className="mb-3.5 p-3.5 rounded-xl border border-[#f39c12]/20 bg-[#f39c12]/5">
+                                        <label className="block text-xs font-semibold mb-1.5 flex items-center gap-1.5">
+                                            <Phone size={14} style={{ color: "#f39c12" }} /> {t('modal.smsLabel')}
+                                        </label>
+                                        <textarea
+                                            value={newCampaign.smsBody}
+                                            onChange={e => setNewCampaign(p => ({ ...p, smsBody: e.target.value }))}
+                                            placeholder={t('modal.smsBodyPh')}
+                                            rows={2}
+                                            maxLength={160}
+                                            className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y"
+                                        />
+                                        <div className="text-[10px] text-muted-foreground mt-1 text-right">{newCampaign.smsBody.length}/160</div>
+                                    </div>
+                                )}
+                            </>
                         )}
 
-                        {selectedChannels.includes("sms") && (
-                            <div className="mb-3.5 p-3.5 rounded-xl border border-[#f39c12]/20 bg-[#f39c12]/5">
-                                <label className="block text-xs font-semibold mb-1.5 flex items-center gap-1.5">
-                                    <Phone size={14} style={{ color: "#f39c12" }} /> {t('modal.smsLabel')}
-                                </label>
-                                <textarea
-                                    value={newCampaign.smsBody}
-                                    onChange={e => setNewCampaign(p => ({ ...p, smsBody: e.target.value }))}
-                                    placeholder={t('modal.smsBodyPh')}
-                                    rows={2}
-                                    maxLength={160}
-                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y"
-                                />
-                                <div className="text-[10px] text-muted-foreground mt-1 text-right">{newCampaign.smsBody.length}/160</div>
+                        {/* Per-Channel Content — A/B Test mode (Variant A & B side by side) */}
+                        {abTestEnabled && (
+                            <div className="mb-3.5">
+                                {/* Split percentage slider */}
+                                <div className="mb-4 p-3.5 rounded-xl border border-border bg-muted/30">
+                                    <label className="block text-xs font-semibold text-muted-foreground mb-2">{t('abTest.splitLabel')}</label>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-sm font-medium w-8 text-right">{abSplitA}%</span>
+                                        <input
+                                            type="range"
+                                            min={10}
+                                            max={90}
+                                            step={5}
+                                            value={abSplitA}
+                                            onChange={e => setAbSplitA(Number(e.target.value))}
+                                            className="flex-1 accent-primary"
+                                        />
+                                        <span className="text-sm font-medium w-8">{100 - abSplitA}%</span>
+                                    </div>
+                                    <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                                        <span>{t('abTest.variantA')}</span>
+                                        <span>{t('abTest.variantB')}</span>
+                                    </div>
+                                </div>
+
+                                {/* A/B Test Config */}
+                                <div className="mb-4 p-3.5 rounded-xl border border-border bg-muted/30">
+                                    <label className="block text-xs font-semibold text-muted-foreground mb-2">{t('abTest.testConfig')}</label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-[10px] text-muted-foreground mb-0.5">{t('abTest.minSample')}</label>
+                                            <input
+                                                type="number"
+                                                min={10}
+                                                value={abTestConfig.minSampleSize}
+                                                onChange={e => setAbTestConfig(p => ({ ...p, minSampleSize: Number(e.target.value) }))}
+                                                className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
+                                            />
+                                        </div>
+                                        <div className="flex items-end pb-1">
+                                            <label className="flex items-center gap-2 cursor-pointer select-none">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={abTestConfig.autoSelectWinner}
+                                                    onChange={e => setAbTestConfig(p => ({ ...p, autoSelectWinner: e.target.checked }))}
+                                                    className="accent-primary w-4 h-4"
+                                                />
+                                                <span className="text-xs">{t('abTest.autoWinner')}</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Variant editors side by side */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    {/* Variant A */}
+                                    <div className="p-4 rounded-[14px] bg-card border border-border">
+                                        <div className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                                            <FlaskConical size={14} className="text-blue-500" /> {t('abTest.variantA')}
+                                        </div>
+
+                                        {selectedChannels.includes("whatsapp") && (
+                                            <div className="mb-2.5">
+                                                <label className="block text-[10px] font-semibold mb-1 flex items-center gap-1">
+                                                    <MessageCircle size={12} style={{ color: "#25D366" }} /> WA
+                                                </label>
+                                                <textarea
+                                                    value={abVariantA.waTemplate}
+                                                    onChange={e => setAbVariantA(p => ({ ...p, waTemplate: e.target.value }))}
+                                                    placeholder={t('modal.templatePlaceholder')}
+                                                    rows={2}
+                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border resize-y"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {selectedChannels.includes("email") && (
+                                            <div className="mb-2.5">
+                                                <label className="block text-[10px] font-semibold mb-1 flex items-center gap-1">
+                                                    <Mail size={12} style={{ color: "#6c5ce7" }} /> Email
+                                                </label>
+                                                <input
+                                                    value={abVariantA.emailSubject}
+                                                    onChange={e => setAbVariantA(p => ({ ...p, emailSubject: e.target.value }))}
+                                                    placeholder={t('modal.emailSubjectPh')}
+                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border mb-1.5"
+                                                />
+                                                <textarea
+                                                    value={abVariantA.emailBody}
+                                                    onChange={e => setAbVariantA(p => ({ ...p, emailBody: e.target.value }))}
+                                                    placeholder={t('modal.emailBodyPh')}
+                                                    rows={3}
+                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border resize-y"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {selectedChannels.includes("sms") && (
+                                            <div className="mb-2.5">
+                                                <label className="block text-[10px] font-semibold mb-1 flex items-center gap-1">
+                                                    <Phone size={12} style={{ color: "#f39c12" }} /> SMS
+                                                </label>
+                                                <textarea
+                                                    value={abVariantA.smsBody}
+                                                    onChange={e => setAbVariantA(p => ({ ...p, smsBody: e.target.value }))}
+                                                    placeholder={t('modal.smsBodyPh')}
+                                                    rows={2}
+                                                    maxLength={160}
+                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border resize-y"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Variant B */}
+                                    <div className="p-4 rounded-[14px] bg-card border border-border">
+                                        <div className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                                            <FlaskConical size={14} className="text-orange-500" /> {t('abTest.variantB')}
+                                        </div>
+
+                                        {selectedChannels.includes("whatsapp") && (
+                                            <div className="mb-2.5">
+                                                <label className="block text-[10px] font-semibold mb-1 flex items-center gap-1">
+                                                    <MessageCircle size={12} style={{ color: "#25D366" }} /> WA
+                                                </label>
+                                                <textarea
+                                                    value={abVariantB.waTemplate}
+                                                    onChange={e => setAbVariantB(p => ({ ...p, waTemplate: e.target.value }))}
+                                                    placeholder={t('modal.templatePlaceholder')}
+                                                    rows={2}
+                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border resize-y"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {selectedChannels.includes("email") && (
+                                            <div className="mb-2.5">
+                                                <label className="block text-[10px] font-semibold mb-1 flex items-center gap-1">
+                                                    <Mail size={12} style={{ color: "#6c5ce7" }} /> Email
+                                                </label>
+                                                <input
+                                                    value={abVariantB.emailSubject}
+                                                    onChange={e => setAbVariantB(p => ({ ...p, emailSubject: e.target.value }))}
+                                                    placeholder={t('modal.emailSubjectPh')}
+                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border mb-1.5"
+                                                />
+                                                <textarea
+                                                    value={abVariantB.emailBody}
+                                                    onChange={e => setAbVariantB(p => ({ ...p, emailBody: e.target.value }))}
+                                                    placeholder={t('modal.emailBodyPh')}
+                                                    rows={3}
+                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border resize-y"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {selectedChannels.includes("sms") && (
+                                            <div className="mb-2.5">
+                                                <label className="block text-[10px] font-semibold mb-1 flex items-center gap-1">
+                                                    <Phone size={12} style={{ color: "#f39c12" }} /> SMS
+                                                </label>
+                                                <textarea
+                                                    value={abVariantB.smsBody}
+                                                    onChange={e => setAbVariantB(p => ({ ...p, smsBody: e.target.value }))}
+                                                    placeholder={t('modal.smsBodyPh')}
+                                                    rows={2}
+                                                    maxLength={160}
+                                                    className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs outline-none box-border resize-y"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         )}
 

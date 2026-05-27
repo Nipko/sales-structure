@@ -136,7 +136,9 @@
       "analyticsOverview": "Vue d'ensemble",
       "agentAnalytics": "Performance des agents",
       "crmAnalytics": "Analytiques CRM",
-      "reportBuilder": "Rapports personnalisés"
+      "reportBuilder": "Rapports personnalisés",
+      "dripSequences": "Séquences Drip",
+      "automationTemplates": "Modèles"
     }
   },
   "topbar": {
@@ -6272,5 +6274,99 @@
       "error": "Erreur lors de l'enregistrement"
     },
     "planLimit": "Vous avez atteint la limite de triggers de votre plan"
+  },
+  "emailChannel": {
+    "title": "Canal Email",
+    "subtitle": "Configurez l'envoi et la réception d'emails dans votre boîte de réception",
+    "status": {
+      "connected": "Connecté",
+      "notConfigured": "Non configuré"
+    },
+    "helpText": "Configurez l'email pour recevoir et envoyer des emails via votre boîte de réception Parallly.",
+    "form": {
+      "senderSettings": "Paramètres de l'expéditeur",
+      "fromEmail": "Email d'envoi",
+      "fromName": "Nom de l'expéditeur",
+      "replyTo": "Répondre à",
+      "provider": "Fournisseur",
+      "providerSmtp": "SMTP",
+      "providerSendgrid": "SendGrid",
+      "providerConfig": "Configuration",
+      "smtpHost": "Hôte",
+      "smtpPort": "Port",
+      "smtpUser": "Nom d'utilisateur",
+      "smtpPass": "Mot de passe",
+      "smtpEncryption": "Chiffrement",
+      "sendgridApiKey": "Clé API SendGrid",
+      "inboundType": "Réception d'email",
+      "inboundHint": "Configurez l'Inbound Parse de SendGrid pour recevoir les emails entrants dans votre boîte de réception.",
+      "active": "Canal actif"
+    },
+    "save": "Enregistrer la configuration",
+    "saving": "Enregistrement...",
+    "toast": {
+      "saved": "Configuration email enregistrée",
+      "error": "Erreur lors de l'enregistrement de la configuration"
+    }
+  },
+  "apiKeys": {
+    "title": "Clés API",
+    "subtitle": "Gérez les clés d'accès à l'API publique de votre compte",
+    "createKey": "Créer une clé",
+    "noKeys": "Aucune clé API",
+    "noKeysHint": "Créez une clé pour connecter des applications externes avec votre compte",
+    "upgradeRequired": "Les clés API publiques sont disponibles sur les plans supérieurs",
+    "upgradePlan": "Améliorer le plan",
+    "createdAt": "Créée",
+    "expiresAt": "Expire",
+    "lastUsedAt": "Dernière utilisation",
+    "revoke": "Révoquer",
+    "rotate": "Rotation",
+    "keyCreated": "Clé créée avec succès",
+    "copyWarning": "Cette clé ne sera plus affichée. Copiez-la maintenant et conservez-la en lieu sûr.",
+    "copy": "Copier",
+    "copied": "Copié",
+    "done": "Terminé",
+    "confirmRevoke": "Révoquer la clé API",
+    "confirmRevokeDesc": "Cette action est permanente. Les applications utilisant cette clé cesseront de fonctionner.",
+    "confirmRotate": "Rotation de la clé API",
+    "confirmRotateDesc": "Une nouvelle clé sera générée et l'ancienne cessera de fonctionner immédiatement.",
+    "modal": {
+      "name": "Nom de la clé",
+      "namePlaceholder": "Ex : Intégration CRM, Application mobile...",
+      "scopes": "Autorisations",
+      "expiry": "Date d'expiration (optionnel)",
+      "expiryHint": "Laisser vide pour une clé sans expiration",
+      "create": "Créer la clé"
+    },
+    "scopeGroups": {
+      "contacts": "Contacts",
+      "deals": "Affaires",
+      "conversations": "Conversations",
+      "messages": "Messages",
+      "appointments": "Rendez-vous",
+      "webhooks": "Webhooks",
+      "analytics": "Analyses"
+    },
+    "scopes": {
+      "read_contacts": "Lire les contacts",
+      "write_contacts": "Écrire les contacts",
+      "read_deals": "Lire les affaires",
+      "write_deals": "Écrire les affaires",
+      "read_conversations": "Lire les conversations",
+      "write_messages": "Envoyer des messages",
+      "read_appointments": "Lire les rendez-vous",
+      "write_appointments": "Écrire les rendez-vous",
+      "read_webhooks": "Lire les webhooks",
+      "write_webhooks": "Écrire les webhooks",
+      "read_analytics": "Lire les analyses"
+    },
+    "toast": {
+      "created": "Clé créée avec succès",
+      "revoked": "Clé révoquée",
+      "rotated": "Clé rotée avec succès",
+      "copied": "Clé copiée dans le presse-papiers",
+      "error": "Erreur lors du traitement de la demande"
+    }
   }
 }

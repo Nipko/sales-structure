@@ -361,6 +361,26 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'createdAt' | 'updatedAt'>[]
     },
 
     {
+        name: 'Confirmación de Reserva de Tour',
+        slug: 'tour_booking_confirmation',
+        subject: 'Reserva de aventura confirmada — {{package_name}}',
+        bodyHtml: `<h2>¡Tu aventura está confirmada!</h2>
+<p>Hola {{guest_name}},</p>
+<p>Tu reserva para el paquete/tour <strong>{{package_name}}</strong> ha sido confirmada con éxito.</p>
+<table style="width:100%;border-collapse:collapse;margin:16px 0">
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Fecha de salida</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{departure_date}}</td></tr>
+{{#if departure_time}}<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Hora de salida</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{departure_time}}</td></tr>{{/if}}
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Personas (Grupo)</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{party_size}} ({{adults}} adultos, {{children}} niños)</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #eee"><strong>Total</strong></td><td style="padding:8px;border-bottom:1px solid #eee">{{total_price}} {{currency}}</td></tr>
+</table>
+{{#if departure_location}}<h3>Punto de encuentro / Salida</h3><p>{{departure_location}}</p>{{/if}}
+<p>Por favor, asegúrate de llegar con 15 minutos de anticipación. ¡Prepárate para una experiencia inolvidable!</p>`,
+        bodyJson: {},
+        variables: ['guest_name', 'package_name', 'departure_date', 'departure_time', 'party_size', 'adults', 'children', 'total_price', 'currency', 'departure_location'],
+        isActive: true,
+    },
+
+    {
         name: 'Recordatorio de Check-in',
         slug: 'property_check_in_reminder',
         subject: 'Mañana es tu check-in — {{property_name}}',

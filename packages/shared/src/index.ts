@@ -512,6 +512,16 @@ export interface TurnContext {
     messageCount?: number;
     /** Vertical-specific context injected based on tenant industry */
     verticalContext?: VerticalContext;
+    /** Customer's active bookings across all verticals */
+    activeBookings?: Array<{
+        id: string;
+        type: 'property' | 'tour' | 'appointment';
+        name: string;
+        status: string;
+        dateLabel: string;
+        priceLabel?: string;
+        details?: string;
+    }>;
 }
 
 // ---- Vertical Context (injected into LLM turn) ----

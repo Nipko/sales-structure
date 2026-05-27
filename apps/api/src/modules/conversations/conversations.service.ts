@@ -869,6 +869,83 @@ export class ConversationsService {
                 isKnown: !!(contactName || contact.email),
                 knownSince: contact.first_contact_at || contact.created_at,
             };
+
+            // Fetch customer's active bookings and appointments across all verticals
+            try {
+                const activeBookings: any[] = [];
+                const contactId = contact.id;
+
+                // 1. Appointments (future and confirmed)
+                const appointments = await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT id, service_name, start_at, location, status
+                     FROM appointments
+                     WHERE contact_id = $1::uuid AND start_at >= NOW() AND status != 'cancelled'
+                     ORDER BY start_at ASC LIMIT 5`,
+                    [contactId],
+                );
+                for (const apt of appointments || []) {
+                    const dateObj = new Date(apt.start_at);
+                    activeBookings.push({
+                        id: apt.id,
+                        type: 'appointment',
+                        name: apt.service_name,
+                        status: apt.status,
+                        dateLabel: dateObj.toLocaleString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
+                        details: apt.location ? `Ubicación: ${apt.location}` : undefined,
+                    });
+                }
+
+                // 2. Property Bookings (future and confirmed)
+                const propBookings = await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT b.id, b.check_in, b.check_out, b.status, b.total_price, b.currency, p.name as property_name
+                     FROM property_bookings b
+                     JOIN properties p ON p.id = b.property_id
+                     WHERE b.contact_id = $1::uuid AND b.check_out >= CURRENT_DATE AND b.status != 'cancelled'
+                     ORDER BY b.check_in ASC LIMIT 5`,
+                    [contactId],
+                );
+                for (const pb of propBookings || []) {
+                    activeBookings.push({
+                        id: pb.id,
+                        type: 'property',
+                        name: pb.property_name,
+                        status: pb.status,
+                        dateLabel: `Desde ${pb.check_in} hasta ${pb.check_out}`,
+                        priceLabel: `${Number(pb.total_price).toLocaleString()} ${pb.currency || 'COP'}`,
+                    });
+                }
+
+                // 3. Tour Bookings (future and confirmed)
+                const tourBookings = await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT b.id, b.departure_date, b.departure_time, b.status, b.total_price, b.currency, b.party_size, p.name as package_name
+                     FROM tour_bookings b
+                     JOIN tour_packages p ON p.id = b.package_id
+                     WHERE b.contact_id = $1::uuid AND b.departure_date >= CURRENT_DATE AND b.status != 'cancelled'
+                     ORDER BY b.departure_date ASC LIMIT 5`,
+                    [contactId],
+                );
+                for (const tb of tourBookings || []) {
+                    const timeLabel = tb.departure_time ? ` a las ${tb.departure_time}` : '';
+                    activeBookings.push({
+                        id: tb.id,
+                        type: 'tour',
+                        name: tb.package_name,
+                        status: tb.status,
+                        dateLabel: `${tb.departure_date}${timeLabel}`,
+                        priceLabel: `${Number(tb.total_price).toLocaleString()} ${tb.currency || 'COP'}`,
+                        details: `Grupo: ${tb.party_size} personas`,
+                    });
+                }
+
+                if (activeBookings.length > 0) {
+                    turnContext.activeBookings = activeBookings;
+                }
+            } catch (err: any) {
+                this.logger.warn(`Failed to populate activeBookings for contact (non-fatal): ${err.message}`);
+            }
         }
 
         // Business identity — the "who we are" data the agent uses to answer

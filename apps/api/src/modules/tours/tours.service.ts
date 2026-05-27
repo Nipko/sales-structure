@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { EmailTemplatesService } from '../email-templates/email-templates.service';
 
 /**
  * Tours / travel packages module — supports both same-day experiences
@@ -18,6 +19,7 @@ export class ToursService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
+        private readonly emailTemplates: EmailTemplatesService,
     ) {}
 
     // ── Packages CRUD ──────────────────────────────────────────────
@@ -310,9 +312,30 @@ export class ToursService {
                 data.departureDate, data.departureTime || null,
                 data.partySize, adults, children,
                 unitPrice, totalPrice, pkg.currency || 'COP',
-                data.language || null, data.specialRequests || null,
             ],
         );
+
+        // Try to send confirmation email (fire-and-forget)
+        try {
+            const guestEmail = data.guestEmail;
+            if (guestEmail) {
+                await this.emailTemplates.renderAndSend(schemaName, 'tour_booking_confirmation', guestEmail, {
+                    guest_name: data.guestName || 'Huésped',
+                    package_name: pkg.name,
+                    departure_date: data.departureDate,
+                    departure_time: data.departureTime || '',
+                    party_size: String(data.partySize),
+                    adults: String(adults),
+                    children: String(children),
+                    total_price: String(totalPrice),
+                    currency: pkg.currency || 'COP',
+                    departure_location: pkg.departure_location || '',
+                });
+            }
+        } catch (e: any) {
+            this.logger.warn(`Tour confirmation email failed: ${e.message}`);
+        }
+
         return rows?.[0];
     }
 

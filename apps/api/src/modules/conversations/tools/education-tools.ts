@@ -58,4 +58,21 @@ export const EDUCATION_TOOLS: ToolDefinition[] = [
             },
         },
     },
+    {
+        name: 'cancel_enrollment',
+        description: 'Cancel a student enrollment. Seat is restored to the cohort. Only enrollments in "pending" or "enrolled" status can be cancelled. Use when the student wants to withdraw from a course.',
+        parameters: {
+            type: 'object',
+            properties: {
+                enrollmentId: { type: 'string', description: 'Enrollment UUID returned by enroll_student' },
+                reason: { type: 'string', description: 'Reason for cancellation' },
+            },
+            required: ['enrollmentId'],
+        },
+    },
+    {
+        name: 'list_my_enrollments',
+        description: 'List all enrollments for the current student. Use before cancel_enrollment so the student can identify which enrollment to cancel.',
+        parameters: { type: 'object', properties: {} },
+    },
 ];

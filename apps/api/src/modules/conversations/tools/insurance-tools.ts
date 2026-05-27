@@ -75,4 +75,25 @@ export const INSURANCE_TOOLS: ToolDefinition[] = [
             required: ['policyNumber', 'description'],
         },
     },
+    {
+        name: 'list_my_claims',
+        description: 'List all claims filed by the current customer. Use when the customer asks about their claim status or wants to see filed claims.',
+        parameters: {
+            type: 'object',
+            properties: {
+                policyNumber: { type: 'string', description: 'Optional — filter by policy number' },
+            },
+        },
+    },
+    {
+        name: 'cancel_quote',
+        description: 'Cancel a pending insurance quote. Only quotes in "pending" status can be cancelled. Use when the customer decides not to proceed with a quoted plan.',
+        parameters: {
+            type: 'object',
+            properties: {
+                quoteId: { type: 'string', description: 'Quote UUID returned by calculate_quote' },
+            },
+            required: ['quoteId'],
+        },
+    },
 ];

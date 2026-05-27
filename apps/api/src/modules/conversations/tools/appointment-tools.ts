@@ -63,6 +63,31 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
         description: 'Send the customer a link to book their appointment online (with their preferred date/time). Use when the customer wants to self-serve, or when scheduling by chat is taking too long. Returns the URL to share.',
         parameters: { type: 'object', properties: {}, required: [] },
     },
+    {
+        name: 'reschedule_appointment',
+        description: 'Reschedule an existing appointment to a new date/time. Call check_availability first to verify the new slot is open. The customer can only reschedule their own appointments.',
+        parameters: {
+            type: 'object',
+            properties: {
+                appointmentId: { type: 'string', description: 'Appointment UUID' },
+                newDate: { type: 'string', description: 'New date YYYY-MM-DD' },
+                newTime: { type: 'string', description: 'New time HH:MM 24h format' },
+                reason: { type: 'string', description: 'Reason for rescheduling' },
+            },
+            required: ['appointmentId', 'newDate', 'newTime'],
+        },
+    },
+    {
+        name: 'get_appointment_details',
+        description: 'Get full details of a specific appointment including service, date, time, status, and any notes. Use when the customer asks about a specific booking.',
+        parameters: {
+            type: 'object',
+            properties: {
+                appointmentId: { type: 'string', description: 'Appointment UUID' },
+            },
+            required: ['appointmentId'],
+        },
+    },
 ];
 
 /**

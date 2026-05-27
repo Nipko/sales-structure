@@ -70,4 +70,21 @@ export const VACATION_RENTAL_TOOLS: ToolDefinition[] = [
             required: ['propertyId', 'checkIn', 'checkOut', 'guestName'],
         },
     },
+    {
+        name: 'cancel_property_booking',
+        description: 'Cancel a property booking by ID. The customer can only cancel their own bookings. Blocked dates are released. Use when the guest wants to cancel a previously made reservation.',
+        parameters: {
+            type: 'object',
+            properties: {
+                bookingId: { type: 'string', description: 'Booking UUID returned by create_property_booking' },
+                reason: { type: 'string', description: 'Reason for cancellation' },
+            },
+            required: ['bookingId'],
+        },
+    },
+    {
+        name: 'list_my_property_bookings',
+        description: 'List all property bookings for the current guest. Use before cancel_property_booking so the guest can identify which booking to cancel.',
+        parameters: { type: 'object', properties: {} },
+    },
 ];

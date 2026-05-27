@@ -65,4 +65,21 @@ export const PETS_TOOLS: ToolDefinition[] = [
             required: ['symptoms'],
         },
     },
+    {
+        name: 'update_pet',
+        description: 'Update information for an existing pet. Use when the tutor provides updated data (new weight, allergies, chronic conditions, neutering status). Only the tutor who owns the pet can update it.',
+        parameters: {
+            type: 'object',
+            properties: {
+                petId: { type: 'string', description: 'Pet UUID from list_pets_for_contact' },
+                name: { type: 'string', description: 'Updated name' },
+                weightKg: { type: 'number', description: 'Updated weight in kg' },
+                allergies: { type: 'string', description: 'Updated allergies' },
+                chronicConditions: { type: 'string', description: 'Updated chronic conditions' },
+                isNeutered: { type: 'boolean', description: 'Updated neutering status' },
+                color: { type: 'string', description: 'Updated coat color' },
+            },
+            required: ['petId'],
+        },
+    },
 ];

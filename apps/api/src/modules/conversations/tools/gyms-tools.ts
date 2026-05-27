@@ -63,4 +63,15 @@ export const GYMS_TOOLS: ToolDefinition[] = [
             required: ['memberId', 'days'],
         },
     },
+    {
+        name: 'cancel_class_booking',
+        description: 'Cancel a class reservation. Credits are restored to the member. Use when the member wants to free up a spot they previously booked. Call get_my_membership first to get the memberId.',
+        parameters: {
+            type: 'object',
+            properties: {
+                bookingId: { type: 'string', description: 'Booking UUID returned by book_class' },
+            },
+            required: ['bookingId'],
+        },
+    },
 ];

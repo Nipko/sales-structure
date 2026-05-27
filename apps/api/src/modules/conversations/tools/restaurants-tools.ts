@@ -94,4 +94,37 @@ export const RESTAURANTS_TOOLS: ToolDefinition[] = [
             required: ['orderType', 'items'],
         },
     },
+    {
+        name: 'cancel_order',
+        description: 'Cancel a food order by ID. Only orders in "pending" or "confirmed" status can be cancelled — orders already being prepared or delivered cannot. The customer can only cancel their own orders.',
+        parameters: {
+            type: 'object',
+            properties: {
+                orderId: { type: 'string', description: 'Order UUID returned by place_order' },
+                reason: { type: 'string', description: 'Reason for cancellation' },
+            },
+            required: ['orderId'],
+        },
+    },
+    {
+        name: 'check_order_status',
+        description: 'Check the current status of a food order. Returns status, items, total, and estimated delivery time. Use when the customer asks about their order progress.',
+        parameters: {
+            type: 'object',
+            properties: {
+                orderId: { type: 'string', description: 'Order UUID returned by place_order' },
+            },
+            required: ['orderId'],
+        },
+    },
+    {
+        name: 'list_my_orders',
+        description: 'List recent orders for the current customer. Use to help the customer find an order ID for cancellation or status check.',
+        parameters: {
+            type: 'object',
+            properties: {
+                limit: { type: 'number', description: 'Max orders to return (default 5)' },
+            },
+        },
+    },
 ];

@@ -71,6 +71,12 @@ export class AIToolExecutorService {
                 case 'cancel_appointment':
                     return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason);
 
+                case 'reschedule_appointment':
+                    return this.rescheduleAppointment(schemaName, contactId, args.appointmentId, args.newDate, args.newTime, args.reason);
+
+                case 'get_appointment_details':
+                    return this.getAppointmentDetails(schemaName, contactId, args.appointmentId);
+
                 case 'list_customer_appointments':
                     return this.listCustomerAppointments(schemaName, contactId);
 
@@ -120,6 +126,12 @@ export class AIToolExecutorService {
                 case 'create_property_booking':
                     return this.createPropertyBooking(schemaName, contactId, args as any, conversationId);
 
+                case 'cancel_property_booking':
+                    return this.cancelPropertyBooking(schemaName, contactId, args.bookingId, args.reason);
+
+                case 'list_my_property_bookings':
+                    return this.listMyPropertyBookings(schemaName, contactId);
+
                 // ── Tours / Travel Packages tools ──────────────────
                 case 'search_packages':
                     return this.searchPackages(schemaName, args);
@@ -132,6 +144,12 @@ export class AIToolExecutorService {
 
                 case 'create_tour_booking':
                     return this.createTourBooking(schemaName, contactId, args, conversationId);
+
+                case 'cancel_tour_booking':
+                    return this.cancelTourBooking(schemaName, contactId, args.bookingId, args.reason);
+
+                case 'list_my_tour_bookings':
+                    return this.listMyTourBookings(schemaName, contactId);
 
                 // ── Treatment Plans tools ──────────────────────────
                 case 'get_treatment_plan':
@@ -160,6 +178,9 @@ export class AIToolExecutorService {
                 case 'triage_pet_emergency':
                     return this.triagePetEmergency({ symptoms: args.symptoms || '' });
 
+                case 'update_pet':
+                    return this.updatePetTool(schemaName, contactId, args);
+
                 // ── Restaurants tools ─────────────────────────────
                 case 'get_menu':
                     return this.getMenu(schemaName, args);
@@ -169,6 +190,15 @@ export class AIToolExecutorService {
 
                 case 'place_order':
                     return this.placeOrder(schemaName, contactId, conversationId, args);
+
+                case 'cancel_order':
+                    return this.cancelOrder(schemaName, contactId, args.orderId, args.reason);
+
+                case 'check_order_status':
+                    return this.checkOrderStatus(schemaName, contactId, args.orderId);
+
+                case 'list_my_orders':
+                    return this.listMyOrders(schemaName, contactId, args.limit);
 
                 // ── Gyms tools ────────────────────────────────────
                 case 'get_membership_plans':
@@ -186,6 +216,9 @@ export class AIToolExecutorService {
                 case 'freeze_membership':
                     return this.freezeMembershipTool(schemaName, args);
 
+                case 'cancel_class_booking':
+                    return this.cancelClassBooking(schemaName, args.bookingId);
+
                 // ── Education tools ───────────────────────────────
                 case 'get_courses':
                     return this.getCoursesTool(schemaName, args);
@@ -198,6 +231,12 @@ export class AIToolExecutorService {
 
                 case 'get_placement_test_link':
                     return this.getPlacementTestLinkTool(schemaName, contactId, args);
+
+                case 'cancel_enrollment':
+                    return this.cancelEnrollment(schemaName, contactId, args.enrollmentId, args.reason);
+
+                case 'list_my_enrollments':
+                    return this.listMyEnrollments(schemaName, contactId);
 
                 // ── Insurance tools ───────────────────────────────
                 case 'get_insurance_plans':
@@ -212,12 +251,21 @@ export class AIToolExecutorService {
                 case 'file_claim':
                     return this.fileInsuranceClaimTool(schemaName, args);
 
+                case 'list_my_claims':
+                    return this.listMyClaimsTool(schemaName, contactId, args.policyNumber);
+
+                case 'cancel_quote':
+                    return this.cancelQuoteTool(schemaName, contactId, args.quoteId);
+
                 // ── Tier 3 tools — home services ──────────────────
                 case 'create_service_request':
                     return this.createServiceRequestTool(schemaName, contactId, conversationId, args);
 
                 case 'check_request_status':
                     return this.checkServiceRequestStatusTool(schemaName, args);
+
+                case 'cancel_service_request':
+                    return this.cancelServiceRequest(schemaName, contactId, args.requestId, args.reason);
 
                 // ── Tier 3 tools — pet services & photography ─────
                 // These use the existing services + appointments engine
@@ -233,6 +281,9 @@ export class AIToolExecutorService {
 
                 case 'request_photo_quote':
                     return this.requestPhotoQuoteTool(schemaName, contactId, args);
+
+                case 'cancel_photo_session':
+                    return this.cancelPhotoSession(schemaName, contactId, args.sessionId, args.reason);
 
                 default:
                     return { error: `Unknown tool: ${toolName}` };
@@ -651,11 +702,11 @@ export class AIToolExecutorService {
                 return {
                     available: false,
                     error: 'appointments_not_configured',
-                    message: 'El sistema de agendamiento aún no está configurado en este negocio. Explícale al cliente que por ahora no puedes tomar turnos automáticamente y ofrécele escalar con un agente humano.',
+                    message: 'The scheduling system is not configured for this business yet. Tell the customer that automatic booking is not available right now and offer to escalate to a human agent.',
                     slots: [],
                 };
             }
-            return { available: false, message: 'No atendemos ese día de la semana. Sugerí otra fecha al cliente.', slots: [] };
+            return { available: false, message: 'Not available on this day of the week. Suggest an alternative date.', slots: [] };
         }
 
         // Get existing appointments for that date
@@ -785,7 +836,7 @@ export class AIToolExecutorService {
         );
 
         if (!slots.length) {
-            return { available: false, message: 'No atendemos ese día de la semana. Sugerí otra fecha al cliente.', slots: [] };
+            return { available: false, message: 'Not available on this day of the week. Suggest an alternative date.', slots: [] };
         }
 
         // For open services, return the availability windows as "slots" (no specific times)
@@ -810,7 +861,7 @@ export class AIToolExecutorService {
             available: true,
             date,
             durationType: 'open',
-            message: 'Este servicio no tiene duración fija. El cliente puede elegir cualquier hora dentro del horario disponible.',
+            message: 'This service has no fixed duration. The customer can choose any time within available hours.',
             slots: availableWindows,
         };
     }
@@ -1039,7 +1090,7 @@ export class AIToolExecutorService {
         if (!enabled) {
             return {
                 enabled: false,
-                message: 'El booking público no está activado. Contactá al equipo para que lo habilite o agendá por aquí.',
+                message: 'Public booking is not enabled. Contact the team to enable it, or book through this chat.',
             };
         }
         const baseUrl = process.env.DASHBOARD_URL || 'https://admin.parallly-chat.cloud';
@@ -1047,7 +1098,7 @@ export class AIToolExecutorService {
         return {
             enabled: true,
             url,
-            message: `Podés agendar tu cita acá: ${url}`,
+            message: `You can book your appointment here: ${url}`,
         };
     }
 
@@ -1485,7 +1536,7 @@ export class AIToolExecutorService {
             if (!summary.totalPets) {
                 return {
                     pets: [],
-                    message: 'El contacto aún no tiene mascotas registradas. Usa register_pet para agregar una.',
+                    message: 'No pets registered for this contact yet. Use register_pet to add one.',
                 };
             }
             return summary;
@@ -1514,7 +1565,7 @@ export class AIToolExecutorService {
                 name: pet.name,
                 species: pet.species,
                 breed: pet.breed,
-                message: `Mascota ${pet.name} registrada correctamente.`,
+                message: `Pet ${pet.name} registered successfully.`,
             };
         } catch (e: any) {
             return { error: e.message };
@@ -1584,20 +1635,20 @@ export class AIToolExecutorService {
         if (urgentSignals.some(s => text.includes(s))) {
             return {
                 severity: 'urgent',
-                recommendation: 'Atención inmediata — escalando con un médico veterinario.',
+                recommendation: 'Immediate attention required — escalating to a veterinarian.',
                 shouldHandoff: true,
             };
         }
         if (moderateSignals.some(s => text.includes(s))) {
             return {
                 severity: 'non_urgent',
-                recommendation: 'Síntomas que requieren consulta. Ofrecer agendar cita en las próximas 24-48h.',
+                recommendation: 'Symptoms that require a consultation. Offer to schedule an appointment within 24-48h.',
                 shouldHandoff: false,
             };
         }
         return {
             severity: 'unclear',
-            recommendation: 'Pedir más detalles sobre los síntomas (cuándo empezó, frecuencia, otros signos) antes de decidir.',
+            recommendation: 'Ask for more details about the symptoms (when it started, frequency, other signs) before deciding.',
             shouldHandoff: false,
         };
     }
@@ -1615,7 +1666,7 @@ export class AIToolExecutorService {
                 limit: 30,
             });
             if (!items.length) {
-                return { items: [], message: 'No hay platos que coincidan con esos criterios. Sugiere ampliar la búsqueda.' };
+                return { items: [], message: 'No items match those criteria. Suggest broadening the search.' };
             }
             return {
                 count: items.length,
@@ -1660,7 +1711,7 @@ export class AIToolExecutorService {
                 return true;
             });
             if (!eligible.length) {
-                return { promotions: [], message: 'Sin promociones activas en este momento.' };
+                return { promotions: [], message: 'No active promotions at this time.' };
             }
             return {
                 promotions: eligible.map((p: any) => ({
@@ -1723,7 +1774,7 @@ export class AIToolExecutorService {
                 currency: order.currency,
                 itemsCount: (order.items || []).length,
                 estimatedDelivery: order.order_type === 'delivery' ? '30-45 minutos' : '15-25 minutos',
-                message: `Pedido creado correctamente. Total: ${Number(order.total || 0).toLocaleString()} ${order.currency}`,
+                message: `Order created successfully. Total: ${Number(order.total || 0).toLocaleString()} ${order.currency}`,
             };
         } catch (e: any) {
             return { error: e.message };
@@ -1735,7 +1786,7 @@ export class AIToolExecutorService {
     private async getMembershipPlans(schemaName: string): Promise<any> {
         try {
             const plans = await this.gymsService.listPlans(schemaName, false);
-            if (!plans.length) return { plans: [], message: 'Sin planes disponibles.' };
+            if (!plans.length) return { plans: [], message: 'No plans available.' };
             return {
                 plans: plans.map(p => ({
                     id: p.id,
@@ -1761,7 +1812,7 @@ export class AIToolExecutorService {
             const days = Math.min(Math.max(args.daysAhead || 7, 1), 30);
             const classes = await this.gymsService.upcomingClasses(schemaName, days, args.classType);
             if (!classes.length) {
-                return { classes: [], message: 'No hay clases programadas en el rango solicitado.' };
+                return { classes: [], message: 'No classes scheduled in the requested range.' };
             }
             return {
                 count: classes.length,
@@ -1787,7 +1838,7 @@ export class AIToolExecutorService {
         try {
             const member = await this.gymsService.getMemberByContact(schemaName, contactId);
             if (!member) {
-                return { isMember: false, message: 'El contacto no tiene una membresía activa. Ofrecer get_membership_plans para que se inscriba.' };
+                return { isMember: false, message: 'Contact does not have an active membership. Offer get_membership_plans to sign up.' };
             }
             return {
                 isMember: true,
@@ -1814,7 +1865,7 @@ export class AIToolExecutorService {
                 bookingId: booking.id,
                 status: booking.status,
                 creditsUsed: booking.credits_used,
-                message: 'Reserva confirmada.',
+                message: 'Class booking confirmed.',
             };
         } catch (e: any) {
             return { error: e.message };
@@ -1829,7 +1880,7 @@ export class AIToolExecutorService {
                 status: member.status,
                 frozenFrom: member.frozen_from,
                 frozenUntil: member.frozen_until,
-                message: `Membresía congelada por ${args.days} días.`,
+                message: `Membership frozen for ${args.days} days.`,
             };
         } catch (e: any) {
             return { error: e.message };
@@ -1845,7 +1896,7 @@ export class AIToolExecutorService {
                 level: args.level,
                 modality: args.modality,
             });
-            if (!courses.length) return { courses: [], message: 'Sin cursos que coincidan con los criterios.' };
+            if (!courses.length) return { courses: [], message: 'No courses match the criteria.' };
             return {
                 count: courses.length,
                 courses: courses.slice(0, 20).map(c => ({
@@ -1876,7 +1927,7 @@ export class AIToolExecutorService {
                 daysAhead: args.daysAhead,
             });
             if (!cohorts.length) {
-                return { cohorts: [], message: 'No hay cohortes abiertas en el rango solicitado. Sugerir entrar a lista de espera.' };
+                return { cohorts: [], message: 'No open cohorts in the requested range. Suggest joining the waitlist.' };
             }
             return {
                 count: cohorts.length,
@@ -1918,7 +1969,7 @@ export class AIToolExecutorService {
                 cohortId: enrollment.cohort_id,
                 status: enrollment.status,
                 paymentStatus: enrollment.payment_status,
-                message: 'Inscripción registrada. Pendiente de pago para confirmar el cupo.',
+                message: 'Enrollment registered. Payment pending to confirm the seat.',
             };
         } catch (e: any) {
             return { error: e.message };
@@ -1940,8 +1991,8 @@ export class AIToolExecutorService {
                 status: test.status,
                 resultLevel: test.result_level || null,
                 message: test.test_url
-                    ? `Toma el test aquí: ${test.test_url}`
-                    : 'Test pendiente de asignación de URL — pídele al equipo académico que la cargue.',
+                    ? `Take the test here: ${test.test_url}`
+                    : 'Test URL pending — ask the academic team to upload it.',
             };
         } catch (e: any) {
             return { error: e.message };
@@ -1956,7 +2007,7 @@ export class AIToolExecutorService {
                 type: args.type,
                 coverageLevel: args.coverageLevel,
             });
-            if (!plans.length) return { plans: [], message: 'Sin planes que coincidan con los criterios.' };
+            if (!plans.length) return { plans: [], message: 'No insurance plans match the criteria.' };
             return {
                 count: plans.length,
                 plans: plans.map(p => ({
@@ -2000,7 +2051,7 @@ export class AIToolExecutorService {
                 annualPremium: Number(quote.annual_premium),
                 currency: quote.currency,
                 validUntil: quote.valid_until,
-                disclaimer: 'Esta cotización es una estimación preliminar. La prima final está sujeta a revisión del área de suscripción.',
+                disclaimer: 'This quote is a preliminary estimate. The final premium is subject to underwriting review.',
             };
         } catch (e: any) {
             return { error: e.message };
@@ -2010,7 +2061,7 @@ export class AIToolExecutorService {
     private async checkPolicyStatusTool(schemaName: string, args: any): Promise<any> {
         try {
             const policy = await this.insuranceService.getPolicyByNumber(schemaName, args.policyNumber);
-            if (!policy) return { error: 'Póliza no encontrada con ese número' };
+            if (!policy) return { error: 'Policy not found with that number' };
             return {
                 policyId: policy.id,
                 policyNumber: policy.policy_number,
@@ -2030,9 +2081,9 @@ export class AIToolExecutorService {
     private async fileInsuranceClaimTool(schemaName: string, args: any): Promise<any> {
         try {
             const policy = await this.insuranceService.getPolicyByNumber(schemaName, args.policyNumber);
-            if (!policy) return { error: 'Póliza no encontrada' };
+            if (!policy) return { error: 'Policy not found' };
             if (policy.status !== 'active') {
-                return { error: `La póliza está en estado ${policy.status}. No se puede radicar un reclamo.` };
+                return { error: `Policy is in "${policy.status}" status. Cannot file a claim.` };
             }
             const claim = await this.insuranceService.fileClaim(schemaName, {
                 policyId: policy.id,
@@ -2045,7 +2096,7 @@ export class AIToolExecutorService {
                 claimId: claim.id,
                 claimNumber: claim.claim_number,
                 status: claim.status,
-                message: `Reclamo radicado con número ${claim.claim_number}. Un agente humano lo revisará en las próximas horas.`,
+                message: `Claim filed with number ${claim.claim_number}. A human agent will review it shortly.`,
                 shouldHandoff: true,
             };
         } catch (e: any) {
@@ -2053,7 +2104,7 @@ export class AIToolExecutorService {
         }
     }
 
-    // ── Tier 3 — home services ───────────────────────────────────
+    // ── Tier 3 — home services ─────────────────────────────────
 
     private async createServiceRequestTool(
         schemaName: string,
@@ -2086,8 +2137,8 @@ export class AIToolExecutorService {
                 status: request.status,
                 urgency: request.urgency,
                 message: request.urgency === 'emergencia'
-                    ? 'Solicitud registrada como EMERGENCIA. Asignaremos un técnico de inmediato.'
-                    : 'Solicitud registrada. Te contactaremos para confirmar fecha y hora del servicio.',
+                    ? 'Request registered as EMERGENCY. A technician will be assigned immediately.'
+                    : 'Service request registered. We will contact you to confirm date and time.',
                 shouldHandoff: request.urgency === 'emergencia',
             };
         } catch (e: any) {
@@ -2098,7 +2149,7 @@ export class AIToolExecutorService {
     private async checkServiceRequestStatusTool(schemaName: string, args: any): Promise<any> {
         try {
             const request = await this.homeServicesService.getRequestById(schemaName, args.requestId);
-            if (!request) return { error: 'Solicitud no encontrada' };
+            if (!request) return { error: 'Service request not found' };
             return {
                 requestId: request.id,
                 status: request.status,
@@ -2128,7 +2179,7 @@ export class AIToolExecutorService {
                  FROM services WHERE is_active = true
                  ORDER BY category, name`,
             );
-            if (!services?.length) return { services: [], message: 'Sin servicios configurados.' };
+            if (!services?.length) return { services: [], message: 'No services configured.' };
             return {
                 count: services.length,
                 services: services.map(s => ({
@@ -2167,10 +2218,10 @@ export class AIToolExecutorService {
                 taken,
                 available: taken < 5,  // simple capacity heuristic — tenant can override via blocked_dates
                 message: taken === 0
-                    ? 'Fecha completamente disponible.'
+                    ? 'Date fully available.'
                     : taken < 5
-                        ? `Hay ${taken} reservas pero todavía hay disponibilidad.`
-                        : 'Fecha con alta ocupación, sugerir alternativa.',
+                        ? `${taken} bookings exist but there is still availability.`
+                        : 'Date has high occupancy, suggest an alternative.',
             };
         } catch (e: any) {
             return { error: e.message };
@@ -2182,6 +2233,534 @@ export class AIToolExecutorService {
      * studio can follow up. Low-fidelity — for proper quote tracking
      * a future iteration could create a CRM opportunity.
      */
+    // ── Appointment management handlers ─────────────────────────────
+
+    private async rescheduleAppointment(
+        schema: string, contactId: string, appointmentId: string,
+        newDate: string, newTime: string, reason?: string,
+    ): Promise<any> {
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT id, contact_id, service_id, service_name, start_at, status, assigned_to
+             FROM "${schema}".appointments WHERE id = $1::uuid`,
+            appointmentId,
+        );
+        if (!rows.length) return { error: 'Appointment not found' };
+        if (rows[0].contact_id !== contactId) return { error: 'You can only reschedule your own appointments' };
+        if (rows[0].status === 'cancelled') return { error: 'Cannot reschedule a cancelled appointment' };
+
+        const apt = rows[0];
+        const svcRows: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT duration_minutes FROM "${schema}".services WHERE id = $1::uuid`,
+            apt.service_id,
+        );
+        const duration = svcRows[0]?.duration_minutes || 30;
+
+        const newStartAt = `${newDate}T${newTime}:00`;
+        const endMinutes = parseInt(newTime.split(':')[0]) * 60 + parseInt(newTime.split(':')[1]) + duration;
+        const newEndAt = `${newDate}T${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}:00`;
+
+        const noteAppend = reason
+            ? `\n[Rescheduled: ${reason}]`
+            : '\n[Rescheduled by customer]';
+
+        await this.prisma.$queryRawUnsafe(
+            `UPDATE "${schema}".appointments
+             SET start_at = $1::timestamp, end_at = $2::timestamp,
+                 notes = COALESCE(notes, '') || $3,
+                 updated_at = NOW()
+             WHERE id = $4::uuid`,
+            newStartAt, newEndAt, noteAppend, appointmentId,
+        );
+
+        // Re-create calendar event for the new time (no patch API available)
+        try {
+            const calUsers: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT user_id FROM "${schema}".calendar_integrations WHERE is_active = true LIMIT 1`,
+            );
+            if (calUsers.length > 0) {
+                const calResult = await this.calendarIntegration.createEvent(schema, calUsers[0].user_id, {
+                    summary: `${apt.service_name} — Reprogramado`,
+                    startAt: newStartAt,
+                    endAt: newEndAt,
+                });
+                if (calResult.eventId) {
+                    await this.prisma.$queryRawUnsafe(
+                        `UPDATE "${schema}".appointments SET google_event_id = $2 WHERE id = $1::uuid`,
+                        appointmentId, calResult.eventId,
+                    );
+                }
+            }
+        } catch (e: any) {
+            this.logger.warn(`[Tool] Calendar re-create failed for rescheduled appointment: ${e.message}`);
+        }
+
+        this.eventEmitter.emit('appointment.rescheduled', {
+            schemaName: schema,
+            appointmentId,
+            oldStartAt: apt.start_at,
+            newStartAt,
+            newEndAt,
+        });
+
+        return {
+            success: true,
+            message: 'Appointment rescheduled successfully',
+            appointment: {
+                id: appointmentId,
+                service: apt.service_name,
+                date: newDate,
+                time: newTime,
+            },
+        };
+    }
+
+    private async getAppointmentDetails(schema: string, contactId: string, appointmentId: string): Promise<any> {
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT id, contact_id, service_name, start_at, end_at, status,
+                    customer_name, customer_email, customer_phone, notes, metadata
+             FROM "${schema}".appointments WHERE id = $1::uuid`,
+            appointmentId,
+        );
+        if (!rows.length) return { error: 'Appointment not found' };
+        if (rows[0].contact_id !== contactId) return { error: 'You can only view your own appointments' };
+
+        const apt = rows[0];
+        const metadata = apt.metadata || {};
+        return {
+            id: apt.id,
+            service: apt.service_name,
+            date: new Date(apt.start_at).toISOString().split('T')[0],
+            time: new Date(apt.start_at).toTimeString().slice(0, 5),
+            endTime: new Date(apt.end_at).toTimeString().slice(0, 5),
+            status: apt.status,
+            customerName: apt.customer_name,
+            customerEmail: apt.customer_email,
+            customerPhone: apt.customer_phone,
+            notes: apt.notes,
+            meetingUrl: metadata.meetingUrl || null,
+        };
+    }
+
+    // ── Vacation Rental management handlers ──────────────────────────
+
+    private async cancelPropertyBooking(schema: string, contactId: string, bookingId: string, reason?: string): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, contact_id, status FROM "${schema}".property_bookings WHERE id = $1::uuid`,
+                bookingId,
+            );
+            if (!rows.length) return { error: 'Property booking not found' };
+            if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own bookings' };
+            if (rows[0].status === 'cancelled') return { error: 'This booking is already cancelled' };
+
+            await this.propertiesService.cancelBooking(schema, bookingId);
+
+            if (reason) {
+                await this.prisma.$queryRawUnsafe(
+                    `UPDATE "${schema}".property_bookings SET notes = COALESCE(notes, '') || $1 WHERE id = $2::uuid`,
+                    `\n[Cancelled: ${reason}]`, bookingId,
+                );
+            }
+
+            return { success: true, message: 'Property booking cancelled successfully' };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async listMyPropertyBookings(schema: string, contactId: string): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT pb.id, pb.check_in, pb.check_out, pb.status, pb.total_price, pb.currency,
+                        pb.guest_name, p.name AS property_name
+                 FROM "${schema}".property_bookings pb
+                 LEFT JOIN "${schema}".properties p ON p.id = pb.property_id
+                 WHERE pb.contact_id = $1::uuid AND pb.status != 'cancelled'
+                 ORDER BY pb.check_in DESC LIMIT 10`,
+                contactId,
+            );
+            return {
+                bookings: rows.map(r => ({
+                    id: r.id,
+                    propertyName: r.property_name,
+                    checkIn: r.check_in,
+                    checkOut: r.check_out,
+                    status: r.status,
+                    totalPrice: Number(r.total_price || 0),
+                    currency: r.currency,
+                    guestName: r.guest_name,
+                })),
+            };
+        } catch (e: any) {
+            return { bookings: [], error: e.message };
+        }
+    }
+
+    // ── Tours management handlers ────────────────────────────────────
+
+    private async cancelTourBooking(schema: string, contactId: string, bookingId: string, reason?: string): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, contact_id, status FROM "${schema}".tour_bookings WHERE id = $1::uuid`,
+                bookingId,
+            );
+            if (!rows.length) return { error: 'Tour booking not found' };
+            if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own bookings' };
+            if (rows[0].status === 'cancelled') return { error: 'This booking is already cancelled' };
+
+            await this.toursService.cancelBooking(schema, bookingId);
+
+            if (reason) {
+                await this.prisma.$queryRawUnsafe(
+                    `UPDATE "${schema}".tour_bookings SET special_requests = COALESCE(special_requests, '') || $1, updated_at = NOW() WHERE id = $2::uuid`,
+                    `\n[Cancelled: ${reason}]`, bookingId,
+                );
+            }
+
+            return { success: true, message: 'Tour booking cancelled successfully. Seats have been released.' };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async listMyTourBookings(schema: string, contactId: string): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT tb.id, tb.departure_date, tb.departure_time, tb.party_size,
+                        tb.total_price, tb.currency, tb.status, tb.guest_name,
+                        tp.name AS package_name
+                 FROM "${schema}".tour_bookings tb
+                 LEFT JOIN "${schema}".tour_packages tp ON tp.id = tb.package_id
+                 WHERE tb.contact_id = $1::uuid AND tb.status != 'cancelled'
+                 ORDER BY tb.departure_date DESC LIMIT 10`,
+                contactId,
+            );
+            return {
+                bookings: rows.map(r => ({
+                    id: r.id,
+                    packageName: r.package_name,
+                    departureDate: r.departure_date,
+                    departureTime: r.departure_time,
+                    partySize: r.party_size,
+                    totalPrice: Number(r.total_price || 0),
+                    currency: r.currency,
+                    status: r.status,
+                    guestName: r.guest_name,
+                })),
+            };
+        } catch (e: any) {
+            return { bookings: [], error: e.message };
+        }
+    }
+
+    // ── Restaurants management handlers ──────────────────────────────
+
+    private async cancelOrder(schema: string, contactId: string, orderId: string, reason?: string): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, contact_id, status FROM "${schema}".food_orders WHERE id = $1::uuid`,
+                orderId,
+            );
+            if (!rows.length) return { error: 'Order not found' };
+            if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own orders' };
+
+            const cancellableStatuses = ['received', 'confirmed', 'pending'];
+            if (!cancellableStatuses.includes(rows[0].status)) {
+                return { error: `Cannot cancel an order in "${rows[0].status}" status. Only received or confirmed orders can be cancelled.` };
+            }
+
+            await this.restaurantsService.updateOrderStatus(schema, orderId, 'cancelled');
+
+            if (reason) {
+                await this.prisma.$queryRawUnsafe(
+                    `UPDATE "${schema}".food_orders SET notes = COALESCE(notes, '') || $1, updated_at = NOW() WHERE id = $2::uuid`,
+                    `\n[Cancelled: ${reason}]`, orderId,
+                );
+            }
+
+            this.eventEmitter.emit('food_order.cancelled', { orderId, tenantSchemaName: schema, contactId });
+
+            return { success: true, message: 'Order cancelled successfully' };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async checkOrderStatus(schema: string, contactId: string, orderId: string): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, contact_id, status, order_type, total, currency,
+                        customer_name, delivery_address, created_at, updated_at
+                 FROM "${schema}".food_orders WHERE id = $1::uuid`,
+                orderId,
+            );
+            if (!rows.length) return { error: 'Order not found' };
+            if (rows[0].contact_id !== contactId) return { error: 'You can only view your own orders' };
+
+            const items: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT name_snapshot, quantity, unit_price FROM "${schema}".food_order_items WHERE order_id = $1::uuid`,
+                orderId,
+            );
+
+            const o = rows[0];
+            return {
+                id: o.id,
+                status: o.status,
+                orderType: o.order_type,
+                total: Number(o.total || 0),
+                currency: o.currency,
+                items: items.map(i => ({ name: i.name_snapshot, quantity: i.quantity, unitPrice: Number(i.unit_price || 0) })),
+                customerName: o.customer_name,
+                deliveryAddress: o.delivery_address,
+                createdAt: o.created_at,
+                updatedAt: o.updated_at,
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async listMyOrders(schema: string, contactId: string, limit = 5): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT fo.id, fo.status, fo.order_type, fo.total, fo.currency, fo.created_at,
+                        (SELECT COUNT(*)::int FROM "${schema}".food_order_items WHERE order_id = fo.id) AS item_count
+                 FROM "${schema}".food_orders fo
+                 WHERE fo.contact_id = $1::uuid
+                 ORDER BY fo.created_at DESC LIMIT $2`,
+                contactId, Math.min(limit || 5, 20),
+            );
+            return {
+                orders: rows.map(o => ({
+                    id: o.id,
+                    status: o.status,
+                    orderType: o.order_type,
+                    total: Number(o.total || 0),
+                    currency: o.currency,
+                    itemCount: Number(o.item_count || 0),
+                    createdAt: o.created_at,
+                })),
+            };
+        } catch (e: any) {
+            return { orders: [], error: e.message };
+        }
+    }
+
+    // ── Gyms management handlers ─────────────────────────────────────
+
+    private async cancelClassBooking(schemaName: string, bookingId: string): Promise<any> {
+        try {
+            await this.gymsService.cancelBooking(schemaName, bookingId);
+            return { success: true, message: 'Class booking cancelled. Credits have been restored.' };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    // ── Education management handlers ────────────────────────────────
+
+    private async cancelEnrollment(schema: string, contactId: string, enrollmentId: string, reason?: string): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, contact_id, status FROM "${schema}".enrollments WHERE id = $1::uuid`,
+                enrollmentId,
+            );
+            if (!rows.length) return { error: 'Enrollment not found' };
+            if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own enrollments' };
+
+            const cancellableStatuses = ['enrolled', 'active'];
+            if (!cancellableStatuses.includes(rows[0].status)) {
+                return { error: `Cannot cancel an enrollment in "${rows[0].status}" status.` };
+            }
+
+            await this.educationService.updateEnrollment(schema, enrollmentId, {
+                status: 'cancelled',
+                cancellationReason: reason || 'Cancelled by student',
+            });
+
+            return { success: true, message: 'Enrollment cancelled successfully. The seat has been released.' };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    private async listMyEnrollments(schema: string, contactId: string): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT e.id, e.status, e.payment_status, e.created_at,
+                        c.name AS course_name, c.subject, c.level, c.modality,
+                        co.starts_at, co.schedule
+                 FROM "${schema}".enrollments e
+                 LEFT JOIN "${schema}".course_cohorts co ON co.id = e.cohort_id
+                 LEFT JOIN "${schema}".courses c ON c.id = co.course_id
+                 WHERE e.contact_id = $1::uuid AND e.status NOT IN ('dropped', 'refunded')
+                 ORDER BY e.created_at DESC LIMIT 10`,
+                contactId,
+            );
+            return {
+                enrollments: rows.map(r => ({
+                    id: r.id,
+                    courseName: r.course_name,
+                    subject: r.subject,
+                    level: r.level,
+                    modality: r.modality,
+                    startsAt: r.starts_at,
+                    schedule: r.schedule,
+                    status: r.status,
+                    paymentStatus: r.payment_status,
+                })),
+            };
+        } catch (e: any) {
+            return { enrollments: [], error: e.message };
+        }
+    }
+
+    // ── Insurance management handlers ────────────────────────────────
+
+    private async listMyClaimsTool(schema: string, contactId: string, policyNumber?: string): Promise<any> {
+        try {
+            let sql = `SELECT c.id, c.claim_number, c.status, c.incident_type, c.incident_at,
+                               c.claimed_amount, c.description, c.created_at,
+                               p.policy_number
+                        FROM "${schema}".insurance_claims c
+                        JOIN "${schema}".insurance_policies p ON p.id = c.policy_id
+                        WHERE p.contact_id = $1::uuid`;
+            const params: any[] = [contactId];
+            if (policyNumber) {
+                sql += ` AND p.policy_number = $2`;
+                params.push(policyNumber);
+            }
+            sql += ` ORDER BY c.created_at DESC LIMIT 10`;
+
+            const rows: any[] = await this.prisma.$queryRawUnsafe(sql, ...params);
+            return {
+                claims: rows.map(r => ({
+                    id: r.id,
+                    claimNumber: r.claim_number,
+                    policyNumber: r.policy_number,
+                    status: r.status,
+                    incidentType: r.incident_type,
+                    incidentAt: r.incident_at,
+                    claimedAmount: r.claimed_amount ? Number(r.claimed_amount) : null,
+                    description: r.description,
+                    createdAt: r.created_at,
+                })),
+            };
+        } catch (e: any) {
+            return { claims: [], error: e.message };
+        }
+    }
+
+    private async cancelQuoteTool(schema: string, contactId: string, quoteId: string): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, contact_id, status FROM "${schema}".insurance_quotes WHERE id = $1::uuid`,
+                quoteId,
+            );
+            if (!rows.length) return { error: 'Quote not found' };
+            if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own quotes' };
+            if (rows[0].status !== 'pending') {
+                return { error: `Cannot cancel a quote in "${rows[0].status}" status.` };
+            }
+
+            await this.insuranceService.updateQuoteStatus(schema, quoteId, 'cancelled');
+            return { success: true, message: 'Quote cancelled successfully' };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    // ── Home Services management handlers ────────────────────────────
+
+    private async cancelServiceRequest(schema: string, contactId: string, requestId: string, reason?: string): Promise<any> {
+        try {
+            const request = await this.homeServicesService.getRequestById(schema, requestId);
+            if (!request) return { error: 'Service request not found' };
+            if (request.contact_id !== contactId) return { error: 'You can only cancel your own service requests' };
+
+            const cancellableStatuses = ['pending', 'scheduled'];
+            if (!cancellableStatuses.includes(request.status)) {
+                return { error: `Cannot cancel a request in "${request.status}" status. Only pending or scheduled requests can be cancelled.` };
+            }
+
+            await this.homeServicesService.updateRequest(schema, requestId, {
+                status: 'cancelled',
+                notes: (request.notes || '') + (reason ? `\n[Cancelled: ${reason}]` : '\n[Cancelled by customer]'),
+            });
+
+            return { success: true, message: 'Service request cancelled successfully' };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    // ── Pets management handlers ─────────────────────────────────────
+
+    private async updatePetTool(schema: string, contactId: string, args: any): Promise<any> {
+        try {
+            const pet = await this.petsService.getById(schema, args.petId);
+            if (!pet) return { error: 'Pet not found' };
+            if (pet.contact_id !== contactId) return { error: 'You can only update your own pets' };
+
+            const updateData: any = {};
+            if (args.name !== undefined) updateData.name = args.name;
+            if (args.weightKg !== undefined) updateData.weight_kg = args.weightKg;
+            if (args.allergies !== undefined) updateData.allergies = args.allergies;
+            if (args.chronicConditions !== undefined) updateData.chronic_conditions = args.chronicConditions;
+            if (args.isNeutered !== undefined) updateData.is_neutered = args.isNeutered;
+            if (args.color !== undefined) updateData.color = args.color;
+
+            if (Object.keys(updateData).length === 0) {
+                return { error: 'No fields provided to update' };
+            }
+
+            const updated = await this.petsService.update(schema, args.petId, updateData);
+            return {
+                success: true,
+                message: `${updated.name || pet.name} updated successfully`,
+                pet: {
+                    id: updated.id,
+                    name: updated.name,
+                    species: updated.species,
+                    breed: updated.breed,
+                    weightKg: updated.weight_kg,
+                },
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    // ── Photography management handlers ──────────────────────────────
+
+    private async cancelPhotoSession(schema: string, contactId: string, sessionId: string, reason?: string): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, contact_id, status, package_name FROM "${schema}".photo_sessions WHERE id = $1::uuid`,
+                sessionId,
+            );
+            if (!rows.length) return { error: 'Photo session not found' };
+            if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own sessions' };
+            if (rows[0].status !== 'scheduled') {
+                return { error: `Cannot cancel a session in "${rows[0].status}" status.` };
+            }
+
+            await this.prisma.$queryRawUnsafe(
+                `UPDATE "${schema}".photo_sessions SET status = 'cancelled',
+                 notes = COALESCE(notes, '') || $1, updated_at = NOW()
+                 WHERE id = $2::uuid`,
+                reason ? `\n[Cancelled: ${reason}]` : '\n[Cancelled by customer]',
+                sessionId,
+            );
+
+            return { success: true, message: 'Photo session cancelled successfully' };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    // ── Tier 3 — pet services & photography (read-only catalog) ─────
+
     private async requestPhotoQuoteTool(schemaName: string, contactId: string, args: any): Promise<any> {
         try {
             // Persist the booking request as a photo_sessions row so the
@@ -2222,7 +2801,7 @@ export class AIToolExecutorService {
                 sessionId: rows?.[0]?.id,
                 date: args.date,
                 package: args.packageName,
-                message: 'Sesión registrada — el equipo te enviará la propuesta personalizada en las próximas horas. ¿Algo más en lo que te pueda ayudar?',
+                message: 'Session registered — the team will send a personalized proposal within the next few hours.',
             };
         } catch (e: any) {
             return { error: e.message };

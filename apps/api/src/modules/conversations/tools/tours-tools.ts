@@ -87,4 +87,21 @@ export const TOURS_TOOLS: ToolDefinition[] = [
             required: ['packageId', 'departureDate', 'partySize', 'guestName'],
         },
     },
+    {
+        name: 'cancel_tour_booking',
+        description: 'Cancel a tour booking by ID. The customer can only cancel their own bookings. Seats are restored to inventory. Use when the customer wants to cancel a previously booked tour.',
+        parameters: {
+            type: 'object',
+            properties: {
+                bookingId: { type: 'string', description: 'Booking UUID returned by create_tour_booking' },
+                reason: { type: 'string', description: 'Reason for cancellation' },
+            },
+            required: ['bookingId'],
+        },
+    },
+    {
+        name: 'list_my_tour_bookings',
+        description: 'List all tour bookings for the current customer. Use before cancel_tour_booking so the customer can identify which booking to cancel.',
+        parameters: { type: 'object', properties: {} },
+    },
 ];

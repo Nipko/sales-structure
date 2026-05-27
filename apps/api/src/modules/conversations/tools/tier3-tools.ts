@@ -46,6 +46,18 @@ export const HOME_SERVICES_TOOLS: ToolDefinition[] = [
             required: ['requestId'],
         },
     },
+    {
+        name: 'cancel_service_request',
+        description: 'Cancel a service request. Only requests in "pending" or "scheduled" status can be cancelled — requests already dispatched or in progress cannot. The customer can only cancel their own requests.',
+        parameters: {
+            type: 'object',
+            properties: {
+                requestId: { type: 'string', description: 'Request UUID returned by create_service_request' },
+                reason: { type: 'string', description: 'Reason for cancellation' },
+            },
+            required: ['requestId'],
+        },
+    },
 ];
 
 // ── Pet services (peluquería pet, guardería, hotel canino) ───────
@@ -115,6 +127,18 @@ export const PHOTOGRAPHY_TOOLS: ToolDefinition[] = [
                 specialRequests: { type: 'string' },
             },
             required: ['date', 'customerName'],
+        },
+    },
+    {
+        name: 'cancel_photo_session',
+        description: 'Cancel a previously scheduled photo session. Only sessions in "scheduled" status can be cancelled. The customer can only cancel their own sessions.',
+        parameters: {
+            type: 'object',
+            properties: {
+                sessionId: { type: 'string', description: 'Session UUID returned by request_photo_quote' },
+                reason: { type: 'string', description: 'Reason for cancellation' },
+            },
+            required: ['sessionId'],
         },
     },
 ];

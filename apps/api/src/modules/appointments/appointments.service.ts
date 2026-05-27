@@ -150,6 +150,7 @@ export class AppointmentsService {
         contactId?: string;
         conversationId?: string;
         assignedTo?: string;
+        serviceId?: string;
         serviceName: string;
         startAt: string;
         endAt: string;
@@ -163,6 +164,22 @@ export class AppointmentsService {
         const contactIdUuid = data.contactId && uuidRe.test(data.contactId) ? data.contactId : null;
         const conversationIdUuid = data.conversationId && uuidRe.test(data.conversationId) ? data.conversationId : null;
 
+        // Auto-resolve serviceId from serviceName if not directly provided
+        let serviceIdUuid = data.serviceId && uuidRe.test(data.serviceId) ? data.serviceId : null;
+        if (!serviceIdUuid && data.serviceName) {
+            try {
+                const svcRows = await this.prisma.executeInTenantSchema(schemaName,
+                    `SELECT id FROM services WHERE LOWER(name) = $1 AND is_active = true LIMIT 1`,
+                    [data.serviceName.toLowerCase()],
+                );
+                if ((svcRows as any[])?.length > 0) {
+                    serviceIdUuid = (svcRows as any[])[0].id;
+                }
+            } catch (e: any) {
+                this.logger.warn(`Failed to resolve serviceId from name "${data.serviceName}": ${e.message}`);
+            }
+        }
+
         if (assignedToUuid) {
             const conflict = await this.checkConflict(schemaName, assignedToUuid, data.startAt, data.endAt);
             if (conflict) {
@@ -172,9 +189,9 @@ export class AppointmentsService {
 
         const id = randomUUID();
         await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO appointments (id, contact_id, conversation_id, assigned_to, service_name, start_at, end_at, location, notes, metadata, created_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::timestamp, $7::timestamp, $8, $9, $10::jsonb, NOW(), NOW())`,
-            [id, contactIdUuid, conversationIdUuid, assignedToUuid,
+            `INSERT INTO appointments (id, contact_id, conversation_id, assigned_to, service_id, service_name, start_at, end_at, location, notes, metadata, created_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7::timestamp, $8::timestamp, $9, $10, $11::jsonb, NOW(), NOW())`,
+            [id, contactIdUuid, conversationIdUuid, assignedToUuid, serviceIdUuid,
              data.serviceName, data.startAt, data.endAt, data.location || null, data.notes || null,
              JSON.stringify(data.metadata || {})],
         );
@@ -260,6 +277,7 @@ export class AppointmentsService {
     async createRecurring(schemaName: string, data: {
         contactId?: string;
         assignedTo?: string;
+        serviceId?: string;
         serviceName: string;
         startAt: string;
         endAt: string;
@@ -282,6 +300,24 @@ export class AppointmentsService {
 
         const maxInstances = Math.min(rule.count || 52, 52); // cap at 52 weeks
 
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+        // Auto-resolve serviceId from serviceName if not directly provided
+        let serviceIdUuid = data.serviceId && uuidRe.test(data.serviceId) ? data.serviceId : null;
+        if (!serviceIdUuid && data.serviceName) {
+            try {
+                const svcRows = await this.prisma.executeInTenantSchema(schemaName,
+                    `SELECT id FROM services WHERE LOWER(name) = $1 AND is_active = true LIMIT 1`,
+                    [data.serviceName.toLowerCase()],
+                );
+                if ((svcRows as any[])?.length > 0) {
+                    serviceIdUuid = (svcRows as any[])[0].id;
+                }
+            } catch (e: any) {
+                this.logger.warn(`Failed to resolve serviceId from name "${data.serviceName}": ${e.message}`);
+            }
+        }
+
         for (let i = 0; i < maxInstances; i++) {
             const instanceStart = new Date(baseStart);
             const instanceEnd = new Date(baseStart);
@@ -301,18 +337,17 @@ export class AppointmentsService {
             const startIso = instanceStart.toISOString();
             const endIso = instanceEnd.toISOString();
 
-            const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             const contactIdUuid = data.contactId && uuidRe.test(data.contactId) ? data.contactId : null;
             const assignedToUuid = data.assignedTo && uuidRe.test(data.assignedTo) ? data.assignedTo : null;
 
             try {
                 await this.prisma.executeInTenantSchema(schemaName,
-                    `INSERT INTO appointments (id, contact_id, assigned_to, service_name, start_at, end_at,
+                    `INSERT INTO appointments (id, contact_id, assigned_to, service_id, service_name, start_at, end_at,
                         location, notes, metadata, recurring_group_id, recurrence_rule, created_at, updated_at)
-                     VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::timestamp, $6::timestamp,
-                        $7, $8, $9::jsonb, $10::uuid, $11::jsonb, NOW(), NOW())`,
+                     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::timestamp, $7::timestamp,
+                        $8, $9, $10::jsonb, $11::uuid, $12::jsonb, NOW(), NOW())`,
                     [
-                        id, contactIdUuid, assignedToUuid,
+                        id, contactIdUuid, assignedToUuid, serviceIdUuid,
                         data.serviceName, startIso, endIso,
                         data.location || null, data.notes || null,
                         JSON.stringify(data.metadata || {}),

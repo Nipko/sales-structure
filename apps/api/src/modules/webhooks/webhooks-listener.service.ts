@@ -63,10 +63,10 @@ export class WebhooksListenerService {
 
         await this.emit(tenantId, 'appointment.booked', {
             appointmentId: event.appointment.id,
-            contactId: event.appointment.contact_id,
-            serviceName: event.appointment.service_name,
-            startAt: event.appointment.start_at,
-            endAt: event.appointment.end_at,
+            contactId: event.appointment.contact_id || event.appointment.contactId,
+            serviceName: event.appointment.service_name || event.appointment.serviceName,
+            startAt: event.appointment.start_at || event.appointment.startAt,
+            endAt: event.appointment.end_at || event.appointment.endAt,
             status: event.appointment.status,
         });
     }
@@ -121,9 +121,9 @@ export class WebhooksListenerService {
 
         await this.emit(tenantId, 'appointment.cancelled', {
             appointmentId: event.appointment.id,
-            contactId: event.appointment.contact_id,
-            serviceName: event.appointment.service_name,
-            startAt: event.appointment.start_at,
+            contactId: event.appointment.contact_id || event.appointment.contactId,
+            serviceName: event.appointment.service_name || event.appointment.serviceName,
+            startAt: event.appointment.start_at || event.appointment.startAt,
             reason: event.reason,
         });
     }

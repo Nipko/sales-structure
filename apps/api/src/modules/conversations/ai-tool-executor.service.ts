@@ -625,7 +625,8 @@ export class AIToolExecutorService {
 
         let staffFilter = '';
         const params: any[] = [dayOfWeek];
-        if (staffId) {
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (staffId && uuidRe.test(staffId)) {
             staffFilter = ' AND user_id = $2::uuid';
             params.push(staffId);
         }
@@ -849,7 +850,7 @@ export class AIToolExecutorService {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `INSERT INTO "${schema}".appointments
              (contact_id, service_id, service_name, assigned_to, start_at, end_at, status, customer_name, customer_phone, customer_email, notes)
-             VALUES ($1::uuid, $2::uuid, $3, $4, $5::timestamp, $6::timestamp, 'confirmed', $7, $8, $9, $10)
+             VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5::timestamp, $6::timestamp, 'confirmed', $7, $8, $9, $10)
              RETURNING id, service_name, start_at, end_at, status`,
             contactId, args.serviceId, svc.name,
             args.staffId || null,

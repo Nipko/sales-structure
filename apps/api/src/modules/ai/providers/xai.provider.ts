@@ -76,18 +76,23 @@ export class XAIProvider implements ILLMProvider {
     }
 
     async *generateStream(options: LLMRequestOptions): AsyncGenerator<string, void, unknown> {
-        const client = await this.ensureClient();
-        const formattedMessages = this.formatMessages(options);
-        const req: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
-            model: options.model,
-            messages: formattedMessages as any,
-            temperature: Number(options.temperature ?? 0.7),
-            stream: true,
-        };
-        const stream = await client.chat.completions.create(req);
-        for await (const chunk of stream) {
-            const content = chunk.choices[0]?.delta?.content;
-            if (content) yield content;
+        try {
+            const client = await this.ensureClient();
+            const formattedMessages = this.formatMessages(options);
+            const req: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
+                model: options.model,
+                messages: formattedMessages as any,
+                temperature: Number(options.temperature ?? 0.7),
+                stream: true,
+            };
+            const stream = await client.chat.completions.create(req);
+            for await (const chunk of stream) {
+                const content = chunk.choices[0]?.delta?.content;
+                if (content) yield content;
+            }
+        } catch (error: any) {
+            this.logger.error(`xAI/Grok stream error: ${error.message}`, error.stack);
+            throw error;
         }
     }
 

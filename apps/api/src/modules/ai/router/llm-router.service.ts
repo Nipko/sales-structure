@@ -1,8 +1,10 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
-import { ModelTier, RoutingFactors, RoutingDecision, RoutingWeights } from '@parallext/shared';
+import { ModelTier, RoutingFactors, RoutingDecision } from '@parallext/shared';
 import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
 import { RedisService } from '../../redis/redis.service';
 import { LlmKeyService } from '../../settings/llm-key.service';
+
+type TaskType = 'conversation' | 'tool_calling';
 
 interface ModelConfig {
     id: string;
@@ -10,34 +12,55 @@ interface ModelConfig {
     tier: ModelTier;
     costPer1kTokens: number;
     maxContextTokens: number;
+    supportsTools: boolean;
 }
 
 const MODEL_REGISTRY: ModelConfig[] = [
-    // Tier 1 - Premium (best quality, highest cost)
-    { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.015, maxContextTokens: 128000 },
-    { id: 'claude-3-5-sonnet-20241022', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.015, maxContextTokens: 200000 },
-    { id: 'gemini-2.5-pro', provider: 'google', tier: 'tier_1_premium', costPer1kTokens: 0.010, maxContextTokens: 1000000 },
-    // Tier 2 - Conversational (natural dialogue, good value)
-    { id: 'grok-4-1-fast-non-reasoning', provider: 'xai', tier: 'tier_2_standard', costPer1kTokens: 0.0005, maxContextTokens: 131072 },
-    { id: 'gpt-4.1-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.004, maxContextTokens: 1000000 },
-    { id: 'gpt-4o-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.003, maxContextTokens: 128000 },
-    // Tier 3 - Efficient (fast, cheap)
-    { id: 'gemini-2.5-flash', provider: 'google', tier: 'tier_3_efficient', costPer1kTokens: 0.0005, maxContextTokens: 1000000 },
-    // Tier 4 - Budget
-    { id: 'deepseek-chat', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.0001, maxContextTokens: 64000 },
+    // Tier 1 — Premium (best quality, reserved for enterprise/custom plans)
+    { id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.015, maxContextTokens: 200000, supportsTools: true },
+    { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.0125, maxContextTokens: 128000, supportsTools: true },
+    { id: 'gemini-2.5-pro', provider: 'google', tier: 'tier_1_premium', costPer1kTokens: 0.010, maxContextTokens: 1000000, supportsTools: false },
+    // Tier 2 — Standard (good quality, good value — pro plans)
+    { id: 'grok-4-1-fast-non-reasoning', provider: 'xai', tier: 'tier_2_standard', costPer1kTokens: 0.0005, maxContextTokens: 131072, supportsTools: true },
+    { id: 'gpt-4.1-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.004, maxContextTokens: 1000000, supportsTools: true },
+    { id: 'gpt-4o-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.003, maxContextTokens: 128000, supportsTools: true },
+    // Tier 3 — Efficient (fast, cheap — starter plans)
+    { id: 'gemini-2.5-flash', provider: 'google', tier: 'tier_3_efficient', costPer1kTokens: 0.0005, maxContextTokens: 1000000, supportsTools: false },
+    // Tier 4 — Budget (cheapest available)
+    { id: 'deepseek-chat', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.0001, maxContextTokens: 64000, supportsTools: true },
 ];
 
-const DEFAULT_WEIGHTS: RoutingWeights = {
-    ticketValue: 0.30,
-    complexity: 0.30,
-    conversationStage: 0.20,
-    sentiment: 0.10,
-    intentType: 0.10,
+// Task-based fallback chains ordered by cost-effectiveness.
+// Conversation: natural tone + low cost. Gemini included (no tools needed).
+// Tool calling: only models with supportsTools:true. Gemini excluded.
+const FALLBACK_CHAINS: Record<TaskType, string[]> = {
+    conversation: [
+        'grok-4-1-fast-non-reasoning',   // tier_2 — most natural conversational, $0.0005/1k
+        'gemini-2.5-flash',              // tier_3 — fast + cheap, $0.0005/1k
+        'gpt-4o-mini',                   // tier_2 — reliable all-around, $0.003/1k
+        'deepseek-chat',                 // tier_4 — budget fallback, $0.0001/1k
+        'gpt-4.1-mini',                  // tier_2 — solid backup, $0.004/1k
+        'gemini-2.5-pro',                // tier_1 — premium conversation, $0.010/1k
+        'gpt-4o',                        // tier_1 — premium, $0.0125/1k
+        'claude-sonnet-4-6',             // tier_1 — premium reasoning, $0.015/1k
+    ],
+    tool_calling: [
+        'gpt-4.1-mini',                  // tier_2 — best tool/cost ratio, $0.004/1k
+        'gpt-4o-mini',                   // tier_2 — reliable tools, $0.003/1k
+        'grok-4-1-fast-non-reasoning',   // tier_2 — OpenAI-compat tools, $0.0005/1k
+        'deepseek-chat',                 // tier_4 — basic tools, $0.0001/1k
+        'gpt-4o',                        // tier_1 — gold standard tools, $0.0125/1k
+        'claude-sonnet-4-6',             // tier_1 — excellent tools, $0.015/1k
+    ],
 };
+
+const ALL_TIERS: ModelTier[] = ['tier_1_premium', 'tier_2_standard', 'tier_3_efficient', 'tier_4_budget'];
 
 @Injectable()
 export class LLMRouterService {
     private readonly logger = new Logger(LLMRouterService.name);
+    private providerHealth = new Map<string, number>();
+    private readonly CIRCUIT_BREAKER_TTL_MS = 120_000;
 
     constructor(
         @Inject('LLM_PROVIDERS') private providers: ILLMProvider[],
@@ -45,66 +68,149 @@ export class LLMRouterService {
         private llmKeys: LlmKeyService,
     ) { }
 
-    /**
-     * Get a registered provider by name
-     */
     getProvider(name: string): ILLMProvider {
         const provider = this.providers.find(p => p.providerName === name);
-        if (!provider) {
-            throw new Error(`Provider \${name} not found`);
-        }
+        if (!provider) throw new Error(`Provider ${name} not found`);
         return provider;
     }
 
-    /**
-     * Execute completion against the dynamically selected model.
-     * If tenantId is supplied, usage stats (calls, tokens, cost, latency)
-     * are persisted to Redis under the daily aggregation key so the
-     * super_admin observability page can show per-tenant LLM consumption.
-     */
-    async execute(options: LLMRequestOptions & {
+    private isProviderHealthy(provider: string): boolean {
+        const unhealthyUntil = this.providerHealth.get(provider);
+        if (!unhealthyUntil) return true;
+        if (Date.now() >= unhealthyUntil) {
+            this.providerHealth.delete(provider);
+            return true;
+        }
+        return false;
+    }
+
+    private markProviderUnhealthy(provider: string): void {
+        this.providerHealth.set(provider, Date.now() + this.CIRCUIT_BREAKER_TTL_MS);
+        this.logger.warn(`[CircuitBreaker] ${provider} marked unhealthy for ${this.CIRCUIT_BREAKER_TTL_MS / 1000}s`);
+    }
+
+    private async buildCandidates(
+        task: TaskType,
+        allowedTiers: ModelTier[],
+    ): Promise<ModelConfig[]> {
+        const chain = FALLBACK_CHAINS[task];
+        const allConfigs = chain
+            .map(id => MODEL_REGISTRY.find(m => m.id === id))
+            .filter((m): m is ModelConfig => !!m);
+
+        const eligible = task === 'tool_calling'
+            ? allConfigs.filter(m => m.supportsTools)
+            : allConfigs;
+
+        const configuredProviders = new Set<string>();
+        for (const p of ['openai', 'anthropic', 'google', 'xai', 'deepseek']) {
+            if (await this.llmKeys.isConfigured(p)) configuredProviders.add(p);
+        }
+
+        const available = eligible.filter(m =>
+            configuredProviders.has(m.provider) && this.isProviderHealthy(m.provider),
+        );
+
+        const primary = available.filter(m => allowedTiers.includes(m.tier));
+        const escalation = available.filter(m => !allowedTiers.includes(m.tier));
+
+        return [...primary, ...escalation];
+    }
+
+    async execute(options: Omit<LLMRequestOptions, 'model'> & {
+        model?: string;
+        task?: TaskType;
         routingFactors?: RoutingFactors;
         allowedTiers?: ModelTier[];
         tenantId?: string;
     }): Promise<LLMResponse & { routingDecision?: RoutingDecision }> {
-        let modelConfig: ModelConfig | undefined;
-        let routingDecision: RoutingDecision | undefined;
 
-        if (options.routingFactors) {
-            routingDecision = await this.selectModel(options.routingFactors, undefined, options.allowedTiers);
-            modelConfig = MODEL_REGISTRY.find(m => m.id === routingDecision!.selectedModel.id);
-        } else {
-            modelConfig = MODEL_REGISTRY.find(m => m.id === options.model);
+        if (options.task) {
+            const allowedTiers = options.allowedTiers || ALL_TIERS;
+            const candidates = await this.buildCandidates(options.task, allowedTiers);
+
+            if (candidates.length === 0) {
+                throw new Error('No LLM provider is configured — set at least one API key from the super admin dashboard');
+            }
+
+            let lastError: Error | undefined;
+            for (const candidate of candidates) {
+                const startTime = Date.now();
+                try {
+                    const provider = this.getProvider(candidate.provider);
+                    const reqOptions: LLMRequestOptions = {
+                        ...options as Omit<LLMRequestOptions, 'model'>,
+                        model: candidate.id,
+                    };
+
+                    const response = await provider.generate(reqOptions);
+                    const durationMs = Date.now() - startTime;
+
+                    const escalated = !allowedTiers.includes(candidate.tier);
+                    if (escalated) {
+                        this.logger.warn(`[LLM] Auto-escalated to ${candidate.id} (${candidate.tier}) — no model in plan tiers`);
+                    }
+
+                    this.logger.log(`[LLM] ${options.task} via ${candidate.provider} (${candidate.id}) in ${durationMs}ms`);
+                    this.trackStats(options.tenantId, candidate, durationMs, response.usage, false).catch(() => {});
+
+                    const decision: RoutingDecision = {
+                        selectedTier: candidate.tier,
+                        selectedModel: {
+                            id: candidate.id,
+                            provider: candidate.provider as any,
+                            name: candidate.id,
+                            tier: candidate.tier,
+                            costPer1kTokens: candidate.costPer1kTokens,
+                            maxContextTokens: candidate.maxContextTokens,
+                            supportsTools: candidate.supportsTools,
+                            supportsVision: candidate.tier === 'tier_1_premium',
+                        },
+                        compositeScore: 0,
+                        factors: { ticketValue: 0, complexity: 0, conversationStage: 0, sentiment: 0, intentType: 0 },
+                        reasoning: `task:${options.task} → ${candidate.id} (${candidate.provider})`,
+                    };
+
+                    return { ...response, routingDecision: decision };
+                } catch (err: any) {
+                    const durationMs = Date.now() - startTime;
+                    this.trackStats(options.tenantId, candidate, durationMs, undefined, true).catch(() => {});
+                    this.markProviderUnhealthy(candidate.provider);
+                    lastError = err;
+                    this.logger.warn(`[LLM] ${candidate.provider}/${candidate.id} failed: ${err.message} — trying next`);
+                }
+            }
+
+            throw lastError || new Error('All LLM providers failed');
         }
+
+        // Direct model selection (backwards compat for copilot, widget, etc.)
+        let modelConfig = options.model
+            ? MODEL_REGISTRY.find(m => m.id === options.model)
+            : undefined;
 
         if (!modelConfig) {
-            // Fallback
             modelConfig = MODEL_REGISTRY[0];
-            this.logger.warn(`Model config not found, falling back to ${modelConfig.id}`);
+            this.logger.warn(`Model ${options.model || '(none)'} not in registry, falling back to ${modelConfig.id}`);
         }
 
-        options.model = modelConfig.id;
         const provider = this.getProvider(modelConfig.provider);
+        const reqOptions: LLMRequestOptions = {
+            ...options as Omit<LLMRequestOptions, 'model'>,
+            model: modelConfig.id,
+        };
         const startTime = Date.now();
-        let response: LLMResponse;
-        let errored = false;
         try {
-            response = await provider.generate(options);
-        } catch (e) {
-            errored = true;
+            const response = await provider.generate(reqOptions);
+            const durationMs = Date.now() - startTime;
+            this.logger.log(`[LLM] Direct via ${provider.providerName} (${modelConfig.id}) in ${durationMs}ms`);
+            this.trackStats(options.tenantId, modelConfig, durationMs, response.usage, false).catch(() => {});
+            return { ...response };
+        } catch (e: any) {
             const durationMs = Date.now() - startTime;
             this.trackStats(options.tenantId, modelConfig, durationMs, undefined, true).catch(() => {});
             throw e;
         }
-        const durationMs = Date.now() - startTime;
-
-        this.logger.log(`[LLM] Generated via ${provider.providerName} (${modelConfig.id}) in ${durationMs}ms`);
-        // Fire-and-forget — never block the caller on telemetry
-        this.trackStats(options.tenantId, modelConfig, durationMs, response.usage, errored).catch(err => {
-            this.logger.warn(`Failed to track LLM stats: ${err.message}`);
-        });
-
-        return { ...response, routingDecision };
     }
 
     /**
@@ -413,31 +519,41 @@ export class LLMRouterService {
         };
     }
 
-    /**
-     * Execute streamed completion
-     */
-    async *executeStream(options: LLMRequestOptions & { routingFactors?: RoutingFactors, allowedTiers?: ModelTier[], tenantId?: string }): AsyncGenerator<string, void, unknown> {
+    async *executeStream(options: Omit<LLMRequestOptions, 'model'> & {
+        model?: string;
+        task?: TaskType;
+        allowedTiers?: ModelTier[];
+        tenantId?: string;
+    }): AsyncGenerator<string, void, unknown> {
         let modelConfig: ModelConfig | undefined;
 
-        if (options.routingFactors) {
-            const decision = await this.selectModel(options.routingFactors, undefined, options.allowedTiers);
-            modelConfig = MODEL_REGISTRY.find(m => m.id === decision.selectedModel.id);
-        } else {
-            modelConfig = MODEL_REGISTRY.find(m => m.id === options.model);
+        if (options.task) {
+            const allowedTiers = options.allowedTiers || ALL_TIERS;
+            const candidates = await this.buildCandidates(options.task, allowedTiers);
+            modelConfig = candidates[0];
+        }
+
+        if (!modelConfig) {
+            modelConfig = options.model
+                ? MODEL_REGISTRY.find(m => m.id === options.model)
+                : undefined;
         }
 
         if (!modelConfig) {
             modelConfig = MODEL_REGISTRY[0];
         }
 
-        options.model = modelConfig.id;
+        const reqOptions: LLMRequestOptions = {
+            ...options as Omit<LLMRequestOptions, 'model'>,
+            model: modelConfig.id,
+        };
         const provider = this.getProvider(modelConfig.provider);
         const startMs = Date.now();
         let charCount = 0;
         let errored = false;
 
         try {
-            for await (const chunk of provider.generateStream(options)) {
+            for await (const chunk of provider.generateStream(reqOptions)) {
                 charCount += chunk.length;
                 yield chunk;
             }
@@ -457,177 +573,48 @@ export class LLMRouterService {
         }
     }
 
-    /**
-     * Select the optimal model based on multi-factor analysis
-     */
-    async selectModel(factors: RoutingFactors, weights?: RoutingWeights, allowedTiers?: ModelTier[]): Promise<RoutingDecision> {
-        const w = weights || DEFAULT_WEIGHTS;
-
-        // Calculate composite score (0-100)
-        const compositeScore = Math.round(
-            factors.ticketValue * w.ticketValue +
-            factors.complexity * w.complexity +
-            factors.conversationStage * w.conversationStage +
-            factors.sentiment * w.sentiment +
-            factors.intentType * w.intentType
-        );
-
-        // Map score to tier
-        let selectedTier: ModelTier;
-        if (compositeScore >= 80) {
-            selectedTier = 'tier_1_premium';
-        } else if (compositeScore >= 50) {
-            selectedTier = 'tier_2_standard';
-        } else if (compositeScore >= 25) {
-            selectedTier = 'tier_3_efficient';
-        } else {
-            selectedTier = 'tier_4_budget';
-        }
-
-        // Filter by allowed tiers if specified
-        if (allowedTiers && !allowedTiers.includes(selectedTier)) {
-            selectedTier = allowedTiers[0];
-        }
-
-        // Build set of configured providers (single cache read)
-        const configuredProviders = new Set<string>();
-        for (const p of ['openai', 'anthropic', 'google', 'xai', 'deepseek']) {
-            if (await this.llmKeys.isConfigured(p)) configuredProviders.add(p);
-        }
-
-        // Select model from tier — only include models whose provider has an API key
-        let availableModels = MODEL_REGISTRY
-            .filter(m => m.tier === selectedTier)
-            .filter(m => configuredProviders.has(m.provider));
-
-        // If no configured provider in this tier, try upgrading tiers
-        if (availableModels.length === 0) {
-            const tierOrder: ModelTier[] = ['tier_4_budget', 'tier_3_efficient', 'tier_2_standard', 'tier_1_premium'];
-            const startIdx = tierOrder.indexOf(selectedTier) + 1;
-            for (let i = startIdx; i < tierOrder.length; i++) {
-                availableModels = MODEL_REGISTRY
-                    .filter(m => m.tier === tierOrder[i])
-                    .filter(m => configuredProviders.has(m.provider));
-                if (availableModels.length > 0) {
-                    selectedTier = tierOrder[i];
-                    this.logger.warn(`No configured provider in original tier — upgraded to ${selectedTier}`);
-                    break;
-                }
-            }
-        }
-
-        // Last resort: pick any model with a configured provider
-        if (availableModels.length === 0) {
-            availableModels = MODEL_REGISTRY.filter(m => configuredProviders.has(m.provider));
-        }
-
-        if (availableModels.length === 0) {
-            throw new Error('No LLM provider is configured — set at least one API key from the super admin dashboard');
-        }
-
-        const selectedModel = availableModels[0];
-
-        const decision: RoutingDecision = {
-            selectedTier,
-            selectedModel: {
-                id: selectedModel.id,
-                provider: selectedModel.provider as any,
-                name: selectedModel.id,
-                tier: selectedTier,
-                costPer1kTokens: selectedModel.costPer1kTokens,
-                maxContextTokens: selectedModel.maxContextTokens,
-                supportsTools: true,
-                supportsVision: selectedModel.tier === 'tier_1_premium',
-            },
-            compositeScore,
-            factors,
-            reasoning: `Score ${compositeScore}/100 → ${selectedTier} → ${selectedModel.id}`,
-        };
-
-        this.logger.debug(`Routing decision: ${decision.reasoning}`);
-        return decision;
-    }
-
-    /**
-     * Get fallback model (one tier higher)
-     */
-    getUpgradedModel(currentTier: ModelTier): ModelConfig | null {
-        const tierOrder: ModelTier[] = ['tier_4_budget', 'tier_3_efficient', 'tier_2_standard', 'tier_1_premium'];
-        const currentIndex = tierOrder.indexOf(currentTier);
-
-        if (currentIndex >= tierOrder.length - 1) return null;
-
-        const upgradedTier = tierOrder[currentIndex + 1];
-        return MODEL_REGISTRY.find(m => m.tier === upgradedTier) || null;
-    }
-
-    /**
-     * Analyze message complexity
-     */
     analyzeComplexity(message: string): number {
         let score = 0;
-
-        // Length factor
         if (message.length > 500) score += 30;
         else if (message.length > 200) score += 20;
         else if (message.length > 50) score += 10;
 
-        // Question marks (multiple questions)
         const questionCount = (message.match(/\?/g) || []).length;
         if (questionCount > 2) score += 25;
         else if (questionCount > 0) score += 10;
 
-        // Technical/specific terms
         const technicalPatterns = /\b(cotiaz|reserv|dispon|precio|factur|pago|devoluci|garant|especific|compar)/gi;
         const technicalMatches = (message.match(technicalPatterns) || []).length;
         score += Math.min(technicalMatches * 10, 30);
 
-        // Multiple topics/intenciones
         const sentences = message.split(/[.!?]+/).filter(s => s.trim().length > 0);
         if (sentences.length > 3) score += 15;
 
         return Math.min(score, 100);
     }
 
-    /**
-     * Analyze sentiment
-     */
     analyzeSentiment(message: string): number {
         const lowerMessage = message.toLowerCase();
-        let score = 50; // Neutral baseline
-
-        // Frustration indicators → higher score = needs better model
+        let score = 50;
         const frustrationWords = ['molest', 'queja', 'problema', 'mal', 'terrible', 'inaceptable', 'demand', 'urgen'];
         const positiveWords = ['gracias', 'excelente', 'perfecto', 'genial', 'bien', 'bueno'];
-
         for (const word of frustrationWords) {
             if (lowerMessage.includes(word)) score += 15;
         }
         for (const word of positiveWords) {
             if (lowerMessage.includes(word)) score -= 10;
         }
-
         return Math.max(0, Math.min(100, score));
     }
 
-    /**
-     * Map conversation stage to score
-     */
     stageToScore(stage: string): number {
         const stageScores: Record<string, number> = {
-            greeting: 10,
-            discovery: 40,
-            negotiation: 80,
-            closing: 90,
-            support: 50,
-            complaint: 85,
+            greeting: 10, discovery: 40, negotiation: 80,
+            closing: 90, support: 50, complaint: 85,
         };
         return stageScores[stage] || 50;
     }
 
-    /**
-     * Get all available models
-     */
     getModels(): ModelConfig[] {
         return MODEL_REGISTRY;
     }

@@ -1171,29 +1171,18 @@ export class ConversationsService {
             let currentMessages = [...messages] as any[];
             let finalResponse = '';
 
-            for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-                // Dual-model routing: Grok for conversation, Gemini for tools
-                const hasTools = tools.length > 0;
-                const conversationModel = 'grok-4-1-fast-non-reasoning'; // Natural, emotional, cheap
-                const toolModel = 'gemini-2.5-pro';       // Best tool calling (99.3%)
-                const selectedModel = hasTools ? toolModel : conversationModel;
+            const planFeatures = await this.throttle.getPlanFeatures(tenantId);
+            const allowedTiers = this.mapLlmTierToAllowed(planFeatures.llmTier);
 
-                const planFeatures = await this.throttle.getPlanFeatures(tenantId);
-                const allowedTiers = this.mapLlmTierToAllowed(planFeatures.llmTier);
+            for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+                const hasTools = tools.length > 0;
 
                 const response = await this.llmRouter.execute({
-                    model: selectedModel,
+                    task: hasTools ? 'tool_calling' : 'conversation',
                     messages: currentMessages,
                     systemPrompt,
                     temperature: hasTools ? 0.3 : 0.8,
                     tools: hasTools ? tools : undefined,
-                    routingFactors: {
-                        ticketValue: 50,
-                        complexity,
-                        conversationStage: stageScore,
-                        sentiment,
-                        intentType: complexity,
-                    },
                     allowedTiers,
                     tenantId,
                 });

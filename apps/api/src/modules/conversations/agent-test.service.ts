@@ -175,13 +175,13 @@ export class AgentTestService {
 
         const MAX_ITERATIONS = 3;
         for (let i = 0; i < MAX_ITERATIONS; i++) {
+            const hasTools = tools.length > 0;
             const response = await this.llmRouter.execute({
-                model: 'gpt-4.1-mini',
+                task: hasTools ? 'tool_calling' : 'conversation',
                 messages: currentMessages,
                 systemPrompt,
                 temperature: config.llm?.temperature ?? 0.7,
-                tools: tools.length > 0 ? tools : undefined,
-                routingFactors: { ticketValue: 50, complexity: 50, conversationStage: 50, sentiment: 50, intentType: 50 },
+                tools: hasTools ? tools : undefined,
                 tenantId,
             });
 

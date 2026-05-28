@@ -19,6 +19,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             try {
                 await this.$connect();
                 this.logger.log('Database connection established');
+                
+                // Widen critical columns system-wide at startup
+                await this.ensureVarcharColumnsWiden().catch((err) => {
+                    this.logger.error(`Column widening failed (non-blocking): ${err.message}`);
+                });
                 return;
             } catch (err: any) {
                 this.logger.warn(`Database connection attempt ${attempt}/${maxRetries} failed: ${err.message}`);
@@ -55,11 +60,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     async executeInTenantSchema<T>(schemaName: string, query: string, params: any[] = [], options?: { timeout?: number }): Promise<T> {
         this.validateSchemaName(schemaName);
 
+        const sanitizedParams = this.sanitizeParams(query, params);
+
         // Use a transaction + SET LOCAL so search_path is guaranteed to be scoped
         // to this query lifecycle and cannot leak across pooled connections.
         return this.$transaction(async (tx: any) => {
             await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}", public`);
-            return tx.$queryRawUnsafe(query, ...params) as Promise<T>;
+            return tx.$queryRawUnsafe(query, ...sanitizedParams) as Promise<T>;
         }, { timeout: options?.timeout ?? 15000 });
     }
 
@@ -250,5 +257,113 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         }
 
         this.logger.log(`[cleanStaleSchemaData] Cleaned ${tablesToClean.length} tables in "${schemaName}"`);
+    }
+
+    override $queryRawUnsafe<T = any>(query: string, ...values: any[]): any {
+        const sanitized = this.sanitizeParams(query, values);
+        return super.$queryRawUnsafe<T>(query, ...sanitized);
+    }
+
+    override $executeRawUnsafe(query: string, ...values: any[]): any {
+        const sanitized = this.sanitizeParams(query, values);
+        return super.$executeRawUnsafe(query, ...sanitized);
+    }
+
+    /**
+     * Widen URL and tracking columns to TEXT for all existing tenant schemas.
+     * Runs once at startup, completely non-blocking and idempotent.
+     */
+    private async ensureVarcharColumnsWiden(): Promise<void> {
+        try {
+            const schemas = await super.$queryRawUnsafe<any[]>(
+                `SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'tenant_%'`
+            );
+
+            if (!schemas || schemas.length === 0) {
+                this.logger.log('[Schema Migration] No tenant schemas found to migrate.');
+                return;
+            }
+
+            this.logger.log(`[Schema Migration] Checking/migrating ${schemas.length} tenant schemas for column widening...`);
+
+            for (const schema of schemas) {
+                const schemaName = schema.schema_name;
+                
+                const alterStatements = [
+                    `ALTER TABLE "${schemaName}"."contacts" ALTER COLUMN "avatar_url" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."messages" ALTER COLUMN "media_url" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."knowledge_documents" ALTER COLUMN "file_url" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."knowledge_resources" ALTER COLUMN "source_url" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."courses" ALTER COLUMN "brochure_url" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."companies" ALTER COLUMN "website" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."leads" ALTER COLUMN "referrer_url" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."leads" ALTER COLUMN "gclid" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."leads" ALTER COLUMN "fbclid" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."consent_records" ALTER COLUMN "origin_url" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."whatsapp_channels" ALTER COLUMN "webhook_callback_url" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."form_submissions" ALTER COLUMN "source_url" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."form_submissions" ALTER COLUMN "referrer" TYPE TEXT;`
+                ];
+
+                for (const sql of alterStatements) {
+                    try {
+                        await super.$executeRawUnsafe(sql);
+                    } catch (e: any) {
+                        // Suppress error for tables or columns that don't exist in older or custom tenant schemas
+                    }
+                }
+            }
+            this.logger.log('[Schema Migration] Completed column widening migration for all schemas successfully.');
+        } catch (error: any) {
+            this.logger.error(`[Schema Migration] Column widening failed: ${error.message}`);
+        }
+    }
+
+    /**
+     * Defensive raw SQL parameter sanitization. Prevents Postgres VARCHAR length errors (22001)
+     * by safely truncating strings that would exceed column bounds, while preserving TEXT and JSONB fields.
+     */
+    private sanitizeParams(query: string, params: any[]): any[] {
+        if (!params || params.length === 0) return params;
+
+        return params.map((p) => {
+            if (typeof p !== 'string') return p;
+
+            if (p.length <= 255) return p;
+
+            const lowerQuery = query.toLowerCase();
+            const isKnownLongField = 
+                lowerQuery.includes('content_text') ||
+                lowerQuery.includes('description') ||
+                lowerQuery.includes('summary') ||
+                lowerQuery.includes('metadata') ||
+                lowerQuery.includes('config_json') ||
+                lowerQuery.includes('config_yaml') ||
+                lowerQuery.includes('content') ||
+                lowerQuery.includes('key_facts') ||
+                lowerQuery.includes('request_payload_json') ||
+                lowerQuery.includes('response_payload_json') ||
+                lowerQuery.includes('payload_json') ||
+                lowerQuery.includes('error_message');
+
+            if (isKnownLongField) {
+                return p;
+            }
+
+            if (p.startsWith('http://') || p.startsWith('https://')) {
+                if (p.length > 2048) {
+                    this.logger.warn(`[Param Sanitizer] Truncating extremely long URL parameter from ${p.length} to 2048 chars`);
+                    return p.substring(0, 2048);
+                }
+                return p;
+            }
+
+            if (p.length > 500) {
+                this.logger.warn(`[Param Sanitizer] Truncating long string parameter from ${p.length} to 500 chars to prevent SQL error 22001`);
+                return p.substring(0, 500);
+            }
+
+            return p;
+        });
     }
 }

@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."contacts" (
     "phone" VARCHAR(50),
     "phone_normalized" VARCHAR(20),
     "email" VARCHAR(255),
-    "avatar_url" VARCHAR(500),
+    "avatar_url" TEXT,
     "metadata" JSONB DEFAULT '{}',
     "tags" TEXT[] DEFAULT '{}',
     "first_contact_at" TIMESTAMP DEFAULT NOW(),
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."messages" (
     "direction" VARCHAR(20) NOT NULL, -- inbound, outbound
     "content_type" VARCHAR(50) NOT NULL DEFAULT 'text',
     "content_text" TEXT,
-    "media_url" VARCHAR(500),
+    "media_url" TEXT,
     "media_mime_type" VARCHAR(100),
     "caption" TEXT,
     "status" VARCHAR(50) DEFAULT 'pending', -- pending, sent, delivered, read, failed
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_documents" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "title" VARCHAR(500) NOT NULL,
     "file_name" VARCHAR(500),
-    "file_url" VARCHAR(500),
+    "file_url" TEXT,
     "file_type" VARCHAR(50),
     "file_size" INTEGER DEFAULT 0,
     "content_text" TEXT,
@@ -312,7 +312,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."courses" (
     "currency"        VARCHAR(10) DEFAULT 'COP',
     "duration_hours"  INTEGER,
     "modality"        VARCHAR(50) DEFAULT 'presencial',  -- presencial, virtual, hibrido
-    "brochure_url"    VARCHAR(500),
+    "brochure_url"    TEXT,
     "faq_version"     INTEGER DEFAULT 1,
     "policy_version"  INTEGER DEFAULT 1,
     "is_active"       BOOLEAN DEFAULT true,
@@ -383,7 +383,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."companies" (
     "industry"    VARCHAR(255),
     "city"        VARCHAR(255),
     "country"     VARCHAR(100) DEFAULT 'CO',
-    "website"     VARCHAR(500),
+    "website"     TEXT,
     "metadata"    JSONB DEFAULT '{}',
     "created_at"  TIMESTAMP DEFAULT NOW(),
     "updated_at"  TIMESTAMP DEFAULT NOW()
@@ -412,9 +412,9 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."leads" (
     "utm_medium"          VARCHAR(255),
     "utm_campaign"        VARCHAR(255),
     "utm_content"         VARCHAR(255),
-    "referrer_url"        VARCHAR(500),
-    "gclid"               VARCHAR(500),
-    "fbclid"              VARCHAR(500),
+    "referrer_url"        TEXT,
+    "gclid"               TEXT,
+    "fbclid"              TEXT,
     -- Operational
     "assigned_to"         VARCHAR(255),                  -- agent user id
     "opted_out"           BOOLEAN DEFAULT false,
@@ -471,7 +471,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."consent_records" (
     "legal_text_hash" VARCHAR(64),                       -- SHA-256 of the consent text shown
     "ip_address"      VARCHAR(45),
     "user_agent"      TEXT,
-    "origin_url"      VARCHAR(500),
+    "origin_url"      TEXT,
     "created_at"      TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "idx_consent_records_lead_id" ON "{{SCHEMA_NAME}}"."consent_records" ("lead_id");
@@ -634,7 +634,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."whatsapp_channels" (
     "access_token_ref" TEXT, -- Encrypted or reference
     "app_id" VARCHAR(255),
     "webhook_verify_token_ref" VARCHAR(255),
-    "webhook_callback_url" VARCHAR(500),
+    "webhook_callback_url" TEXT,
     "webhook_subscription_status" VARCHAR(50),
     "channel_status" VARCHAR(50) DEFAULT 'pending', -- pending, connected, disconnected, restricted
     "is_coexistence" BOOLEAN DEFAULT false,
@@ -745,8 +745,8 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."form_submissions" (
     "lead_id" UUID REFERENCES "{{SCHEMA_NAME}}"."leads"("id") ON DELETE SET NULL,
     "raw_payload_json" JSONB NOT NULL,
     "normalized_payload_json" JSONB,
-    "source_url" VARCHAR(500),
-    "referrer" VARCHAR(500),
+    "source_url" TEXT,
+    "referrer" TEXT,
     "utm_json" JSONB DEFAULT '{}',
     "ip_address" VARCHAR(45),
     "user_agent" TEXT,
@@ -955,7 +955,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_resources" (
     "type" VARCHAR(50) NOT NULL DEFAULT 'manual',
     "title" VARCHAR(500) NOT NULL,
     "source" VARCHAR(100),
-    "source_url" VARCHAR(500),
+    "source_url" TEXT,
     "content" TEXT,
     "content_hash" VARCHAR(64),
     "course_id" UUID,

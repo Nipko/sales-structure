@@ -259,14 +259,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         this.logger.log(`[cleanStaleSchemaData] Cleaned ${tablesToClean.length} tables in "${schemaName}"`);
     }
 
-    override $queryRawUnsafe<T = any>(query: string, ...values: any[]): any {
+    $queryRawUnsafe<T = any>(query: string, ...values: any[]): any {
         const sanitized = this.sanitizeParams(query, values);
-        return super.$queryRawUnsafe<T>(query, ...sanitized);
+        return (super.$queryRawUnsafe as any)(query, ...sanitized);
     }
 
-    override $executeRawUnsafe(query: string, ...values: any[]): any {
+    $executeRawUnsafe(query: string, ...values: any[]): any {
         const sanitized = this.sanitizeParams(query, values);
-        return super.$executeRawUnsafe(query, ...sanitized);
+        return (super.$executeRawUnsafe as any)(query, ...sanitized);
     }
 
     /**
@@ -275,7 +275,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      */
     private async ensureVarcharColumnsWiden(): Promise<void> {
         try {
-            const schemas = await super.$queryRawUnsafe<any[]>(
+            const schemas = await (super.$queryRawUnsafe as any)(
                 `SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'tenant_%'`
             );
 
@@ -307,7 +307,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
                 for (const sql of alterStatements) {
                     try {
-                        await super.$executeRawUnsafe(sql);
+                        await (super.$executeRawUnsafe as any)(sql);
                     } catch (e: any) {
                         // Suppress error for tables or columns that don't exist in older or custom tenant schemas
                     }

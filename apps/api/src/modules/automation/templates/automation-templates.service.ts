@@ -1,17 +1,39 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AutomationService } from '../automation.service';
+import { seedAutomationTemplates } from './seed-templates';
 
 @Injectable()
-export class AutomationTemplatesService {
+export class AutomationTemplatesService implements OnModuleInit {
     private readonly logger = new Logger(AutomationTemplatesService.name);
+    private seeded = false;
 
     constructor(
         private readonly prisma: PrismaService,
         private readonly automationService: AutomationService,
     ) {}
 
+    async onModuleInit() {
+        try {
+            await this.ensureSeeded();
+        } catch (err: any) {
+            this.logger.warn(`Auto-seed skipped (table may not exist yet): ${err.message}`);
+        }
+    }
+
+    private async ensureSeeded(): Promise<void> {
+        if (this.seeded) return;
+        const count = await this.prisma.automationTemplate.count();
+        if (count === 0) {
+            this.logger.log('No automation templates found — seeding defaults...');
+            await seedAutomationTemplates(this.prisma as any);
+            this.logger.log('Automation templates seeded successfully');
+        }
+        this.seeded = true;
+    }
+
     async listTemplates(filters?: { category?: string; industry?: string }) {
+        await this.ensureSeeded();
         const where: any = { isActive: true };
         if (filters?.category) where.category = filters.category;
         if (filters?.industry) {

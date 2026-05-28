@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { EmailService } from '../email/email.service';
 import { DashboardAnalyticsService } from './dashboard-analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -8,17 +9,50 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 @Injectable()
 export class ScheduledReportsService {
     private readonly logger = new Logger(ScheduledReportsService.name);
+    private readonly TABLE_CACHE_PREFIX = 'sched_report_tables:';
 
     constructor(
         private prisma: PrismaService,
+        private redis: RedisService,
         private email: EmailService,
         private dashboardAnalytics: DashboardAnalyticsService,
         private throttle: TenantThrottleService,
     ) { }
 
+    private async ensureTable(schemaName: string): Promise<void> {
+        const cacheKey = `${this.TABLE_CACHE_PREFIX}${schemaName}`;
+        const cached = await this.redis.get(cacheKey);
+        if (cached) return;
+
+        await this.prisma.$queryRawUnsafe(
+            `CREATE TABLE IF NOT EXISTS "${schemaName}".scheduled_reports (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id UUID NOT NULL,
+                frequency TEXT NOT NULL DEFAULT 'weekly',
+                recipients TEXT[] DEFAULT '{}',
+                is_active BOOLEAN DEFAULT true,
+                last_sent_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )`,
+        );
+
+        try {
+            await this.prisma.$queryRawUnsafe(
+                `ALTER TABLE "${schemaName}".scheduled_reports
+                 ALTER COLUMN tenant_id TYPE UUID USING tenant_id::uuid`,
+            );
+        } catch {
+            // Already UUID or empty table — ignore
+        }
+
+        await this.redis.set(cacheKey, '1', 86400);
+    }
+
     // ── CRUD ──────────────────────────────────────────────────────
 
     async getConfig(schemaName: string, tenantId: string): Promise<any> {
+        await this.ensureTable(schemaName);
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT * FROM "${schemaName}".scheduled_reports WHERE tenant_id = $1::uuid LIMIT 1`,
             tenantId,
@@ -29,6 +63,7 @@ export class ScheduledReportsService {
     async upsertConfig(schemaName: string, tenantId: string, data: {
         frequency: string; recipients: string[]; isActive: boolean;
     }): Promise<any> {
+        await this.ensureTable(schemaName);
         const existing = await this.getConfig(schemaName, tenantId);
 
         if (existing) {

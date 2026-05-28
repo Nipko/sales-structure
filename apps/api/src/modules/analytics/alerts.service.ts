@@ -22,6 +22,7 @@ interface AlertRule {
 @Injectable()
 export class AlertsService {
     private readonly logger = new Logger(AlertsService.name);
+    private readonly TABLE_CACHE_PREFIX = 'alert_tables:';
 
     constructor(
         private prisma: PrismaService,
@@ -30,9 +31,57 @@ export class AlertsService {
         private dashboardAnalytics: DashboardAnalyticsService,
     ) { }
 
+    private async ensureAlertTables(schemaName: string): Promise<void> {
+        const cacheKey = `${this.TABLE_CACHE_PREFIX}${schemaName}`;
+        const cached = await this.redis.get(cacheKey);
+        if (cached) return;
+
+        await this.prisma.$queryRawUnsafe(
+            `CREATE TABLE IF NOT EXISTS "${schemaName}".alert_rules (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id UUID NOT NULL,
+                name TEXT NOT NULL,
+                metric TEXT NOT NULL,
+                operator TEXT NOT NULL DEFAULT 'gt',
+                threshold NUMERIC NOT NULL DEFAULT 0,
+                channel TEXT DEFAULT 'in_app',
+                notify_emails TEXT[] DEFAULT '{}',
+                is_active BOOLEAN DEFAULT true,
+                last_triggered_at TIMESTAMPTZ,
+                cooldown_minutes INTEGER DEFAULT 60,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )`,
+        );
+
+        await this.prisma.$queryRawUnsafe(
+            `CREATE TABLE IF NOT EXISTS "${schemaName}".alert_history (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                rule_id UUID NOT NULL,
+                metric_value NUMERIC,
+                threshold NUMERIC,
+                notified_via TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )`,
+        );
+
+        // Migrate existing schemas where tenant_id is text → uuid
+        try {
+            await this.prisma.$queryRawUnsafe(
+                `ALTER TABLE "${schemaName}".alert_rules
+                 ALTER COLUMN tenant_id TYPE UUID USING tenant_id::uuid`,
+            );
+        } catch {
+            // Already UUID or empty table — ignore
+        }
+
+        await this.redis.set(cacheKey, '1', 86400);
+    }
+
     // ── CRUD ──────────────────────────────────────────────────────
 
     async getRules(schemaName: string, tenantId: string): Promise<any[]> {
+        await this.ensureAlertTables(schemaName);
         const rules: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT ar.*,
                     (SELECT COUNT(*)::int FROM "${schemaName}".alert_history ah WHERE ah.rule_id = ar.id) as trigger_count,
@@ -49,6 +98,7 @@ export class AlertsService {
         name: string; metric: string; operator: string; threshold: number;
         channel?: string; notifyEmails?: string[]; cooldownMinutes?: number;
     }): Promise<any> {
+        await this.ensureAlertTables(schemaName);
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `INSERT INTO "${schemaName}".alert_rules
              (tenant_id, name, metric, operator, threshold, channel, notify_emails, cooldown_minutes)
@@ -66,6 +116,7 @@ export class AlertsService {
         name?: string; metric?: string; operator?: string; threshold?: number;
         channel?: string; notifyEmails?: string[]; isActive?: boolean; cooldownMinutes?: number;
     }): Promise<any> {
+        await this.ensureAlertTables(schemaName);
         const sets: string[] = [];
         const params: any[] = [];
         let idx = 1;
@@ -90,6 +141,7 @@ export class AlertsService {
     }
 
     async deleteRule(schemaName: string, ruleId: string): Promise<void> {
+        await this.ensureAlertTables(schemaName);
         await this.prisma.$queryRawUnsafe(
             `DELETE FROM "${schemaName}".alert_rules WHERE id = $1::uuid`,
             ruleId,
@@ -97,6 +149,7 @@ export class AlertsService {
     }
 
     async getHistory(schemaName: string, ruleId: string): Promise<any[]> {
+        await this.ensureAlertTables(schemaName);
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT * FROM "${schemaName}".alert_history
              WHERE rule_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
@@ -127,6 +180,7 @@ export class AlertsService {
     }
 
     private async evaluateTenantAlerts(tenantId: string, schemaName: string): Promise<void> {
+        await this.ensureAlertTables(schemaName);
         const rules: AlertRule[] = await this.prisma.$queryRawUnsafe(
             `SELECT * FROM "${schemaName}".alert_rules WHERE tenant_id = $1::uuid AND is_active = true`,
             tenantId,

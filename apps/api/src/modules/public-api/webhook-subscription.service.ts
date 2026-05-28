@@ -104,7 +104,7 @@ export class WebhookSubscriptionService {
 
         const secret = crypto.randomBytes(32).toString('hex');
 
-        const rows = await this.prisma.$queryRawUnsafe<WebhookSubscription[]>(
+        const rows = await this.prisma.$queryRawUnsafe(
             `INSERT INTO public.webhook_subscriptions (tenant_id, target_url, event, secret)
              VALUES ($1::uuid, $2, $3, $4)
              RETURNING id, tenant_id, target_url, event, secret, is_active, created_at, last_triggered_at`,
@@ -112,7 +112,7 @@ export class WebhookSubscriptionService {
             targetUrl,
             event,
             secret,
-        );
+        ) as any[];
 
         return rows[0];
     }
@@ -120,13 +120,13 @@ export class WebhookSubscriptionService {
     async unsubscribe(tenantId: string, hookId: string): Promise<void> {
         await this.ensureTable();
 
-        const rows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
+        const rows = await this.prisma.$queryRawUnsafe(
             `DELETE FROM public.webhook_subscriptions
              WHERE id = $1::uuid AND tenant_id = $2::uuid
              RETURNING id`,
             hookId,
             tenantId,
-        );
+        ) as any[];
 
         if (!rows || rows.length === 0) {
             throw new BadRequestException('Webhook subscription not found');
@@ -136,13 +136,13 @@ export class WebhookSubscriptionService {
     async listHooks(tenantId: string): Promise<WebhookSubscription[]> {
         await this.ensureTable();
 
-        return this.prisma.$queryRawUnsafe<WebhookSubscription[]>(
+        return this.prisma.$queryRawUnsafe(
             `SELECT id, tenant_id, target_url, event, is_active, created_at, last_triggered_at
              FROM public.webhook_subscriptions
              WHERE tenant_id = $1::uuid AND is_active = true
              ORDER BY created_at DESC`,
             tenantId,
-        );
+        ) as any;
     }
 
     // ── Dispatch (fire-and-forget) ────────────────────────────────────
@@ -154,13 +154,13 @@ export class WebhookSubscriptionService {
     ): Promise<void> {
         await this.ensureTable();
 
-        const subs = await this.prisma.$queryRawUnsafe<WebhookSubscription[]>(
+        const subs = await this.prisma.$queryRawUnsafe(
             `SELECT id, target_url, secret
              FROM public.webhook_subscriptions
              WHERE tenant_id = $1::uuid AND event = $2 AND is_active = true`,
             tenantId,
             event,
-        );
+        ) as any[];
 
         if (!subs || subs.length === 0) return;
 

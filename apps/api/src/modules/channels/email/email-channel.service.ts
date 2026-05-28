@@ -83,14 +83,14 @@ export class EmailChannelService {
     async getConfig(tenantId: string): Promise<EmailChannelConfig | null> {
         await this.ensureConfigTable();
 
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows = await this.prisma.$queryRawUnsafe(
             `SELECT id, tenant_id, provider, from_email, from_name, reply_to,
                     inbound_type, provider_config, is_active, created_at, updated_at
              FROM public.email_channel_configs
              WHERE tenant_id = $1::uuid AND is_active = true
              LIMIT 1`,
             tenantId,
-        );
+        ) as any[];
 
         if (!rows?.length) return null;
 
@@ -124,7 +124,7 @@ export class EmailChannelService {
     }): Promise<EmailChannelConfig> {
         await this.ensureConfigTable();
 
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows = await this.prisma.$queryRawUnsafe(
             `INSERT INTO public.email_channel_configs (tenant_id, provider, from_email, from_name, reply_to, inbound_type, provider_config, is_active)
              VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb, $8)
              ON CONFLICT (tenant_id) DO UPDATE SET
@@ -146,7 +146,7 @@ export class EmailChannelService {
             data.inboundType || 'sendgrid_parse',
             JSON.stringify(data.providerConfig || {}),
             data.isActive !== false,
-        );
+        ) as any[];
 
         const row = rows[0];
         return {
@@ -170,12 +170,12 @@ export class EmailChannelService {
     async findTenantByInboundEmail(toEmail: string): Promise<string | null> {
         await this.ensureConfigTable();
 
-        const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        const rows = await this.prisma.$queryRawUnsafe(
             `SELECT tenant_id FROM public.email_channel_configs
              WHERE LOWER(from_email) = LOWER($1) AND is_active = true
              LIMIT 1`,
             toEmail,
-        );
+        ) as any[];
 
         return rows?.length ? rows[0].tenant_id : null;
     }

@@ -4840,6 +4840,69 @@
       ]
     }
   },
+  "helpAssistant": {
+    "launcherTooltip": "Assistant d'aide",
+    "drawerTitle": "Guide & Support",
+    "drawerSubtitle": "Votre assistant interactif étape par étape",
+    "searchPlaceholder": "Rechercher des guides ou FAQ...",
+    "noResults": "Aucun guide trouvé pour votre recherche.",
+    "copy": "Copier",
+    "copied": "Copié !",
+    "faqTitle": "Questions Fréquentes",
+    "back": "Retour à l'accueil",
+    "industryTitle": "Guide pour votre Industrie : {industry}",
+    "industryDesc": "Voici des suggestions de prompts adaptés à votre entreprise :",
+    "currentPathGuide": "Guide pour cet écran",
+    "seeMore": "Voir plus...",
+    "apiKeys": {
+      "title": "Clés API et Webhooks",
+      "description": "Configurez vos clés API pour authentifier les requêtes et configurez des webhooks pour recevoir des événements en temps réel.",
+      "sub1Title": "Signature de Sécurité Meta",
+      "sub1Desc": "Pour valider les signatures HMAC-SHA256, vérifiez l'en-tête `x-hub-signature-256`. Voici un exemple en JavaScript :",
+      "sub2Title": "Synchronisation HubSpot",
+      "sub2Desc": "Acheminez les leads directement en mappant les propriétés personnalisées à votre CRM à l'aide d'intégrations de webhook."
+    },
+    "smtp": {
+      "title": "SMTP et Modèles d'Email",
+      "description": "Configurez votre serveur de messagerie sortant pour envoyer des notifications par e-mail personnalisées à vos clients.",
+      "sub1Title": "Enregistrement SPF / DKIM",
+      "sub1Desc": "Ajoutez des enregistrements TXT à votre domaine (`v=spf1 include:mailgun.org ~all`) pour éviter que vos e-mails ne finissent dans les spams.",
+      "sub2Title": "Utilisation des Variables Dynamiques",
+      "sub2Desc": "Utilisez des variables telles que `{{business_name}}`, `{{customer_name}}` et `{{appointment_date}}` pour personnaliser vos modèles sortants."
+    },
+    "automation": {
+      "title": "Automatisations et Règles",
+      "description": "Automatisez les workflows de vente et les suivis basés sur des événements spécifiques de manière déterministe.",
+      "sub1Title": "Le Modèle en 3 Étapes",
+      "sub1Desc": "Chaque règle se compose de 3 éléments : 1. Trigger (quand elle se déclenche), 2. Conditions (filtres logiques supplémentaires), et 3. Actions (tâches à exécuter).",
+      "sub2Title": "Délais de Refroidissement",
+      "sub2Desc": "Utilisez des délais (ex. 4 heures) pour envoyer des messages de relance de manière organique sans submerger le client."
+    },
+    "knowledge": {
+      "title": "Base de Connaissances RAG++",
+      "description": "Alimentez votre agent IA avec des informations sur votre catalogue, vos politiques et vos FAQ en utilisant la génération augmentée par récupération.",
+      "sub1Title": "Étalonnage de la Similarité Cosinus",
+      "sub1Desc": "Définissez la Similarité Cosinus sur `0.75` pour un équilibre optimal entre précision et couverture. Des valeurs plus élevées limitent les réponses aux correspondances presque exactes.",
+      "sub2Title": "Citations dans les Réponses",
+      "sub2Desc": "Votre agent IA citera sa source à l'aide des formats `[FAQ #id]` ou `[Politique : type]` pour des réponses clients transparentes et fiables."
+    },
+    "alerts": {
+      "title": "Alertes & Surveillance Z-Score",
+      "description": "Le système surveille les écarts statistiques supérieurs à `2σ` pour vous alerter en cas de comportement inhabituel.",
+      "sub1Title": "Formule Z-Score",
+      "sub1Desc": "Mesure les écarts-types par rapport à la moyenne. Une valeur supérieure à 2 indique une anomalie statistique.",
+      "sub2Title": "Intégration Slack & Discord",
+      "sub2Desc": "Configurez un Webhook Endpoint pour recevoir des notifications d'alerte immédiates sur les canaux internes de votre équipe."
+    },
+    "appointments": {
+      "title": "Planification Multi-Calendrier",
+      "description": "Synchronisez plusieurs calendriers et permettez à votre agent IA de réserver automatiquement des rendez-vous sans conflit.",
+      "sub1Title": "Génération Auto de Liens de Réunion",
+      "sub1Desc": "Activez la génération automatique de liens Google Meet ou Microsoft Teams dans vos paramètres de planification pour les inclure automatiquement dans les réservations.",
+      "sub2Title": "Dates de Blocage Exclues",
+      "sub2Desc": "Définissez des jours fériés ou des périodes de repos afin que le moteur de réservation bloque ces créneaux de manière dynamique."
+    }
+  },
   "tours": {
     "title": "Tours et Forfaits",
     "subtitle": "Gérez vos expériences et forfaits de voyage",

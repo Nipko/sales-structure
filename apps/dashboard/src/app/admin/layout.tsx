@@ -10,6 +10,7 @@ import ImpersonationBanner from "@/components/ImpersonationBanner";
 import MaintenanceBanner from "@/components/MaintenanceBanner";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { OfflineIndicator } from "@/components/pwa/OfflineIndicator";
+import { HelpAssistant } from "@/components/HelpAssistant";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRole } from "@/hooks/useRole";
 import { TenantProvider } from "@/contexts/TenantContext";
@@ -116,6 +117,7 @@ export default function AdminLayout({
       </div>
       <InstallPrompt />
       <OfflineIndicator />
+      <HelpAssistant />
     </TenantProvider>
   );
 }

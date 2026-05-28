@@ -4891,6 +4891,69 @@
       ]
     }
   },
+  "helpAssistant": {
+    "launcherTooltip": "Help Assistant",
+    "drawerTitle": "Guide & Support",
+    "drawerSubtitle": "Your step-by-step interactive assistant",
+    "searchPlaceholder": "Search guides or FAQs...",
+    "noResults": "No guides found matching your search.",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "faqTitle": "Frequently Asked Questions",
+    "back": "Back to home",
+    "industryTitle": "Guide for your Industry: {industry}",
+    "industryDesc": "Here are prompt suggestions tailored to your business:",
+    "currentPathGuide": "Guide for this screen",
+    "seeMore": "See more...",
+    "apiKeys": {
+      "title": "API Keys and Webhooks",
+      "description": "Configure your API keys to authenticate requests and configure webhooks to receive real-time events.",
+      "sub1Title": "Meta Security Signature",
+      "sub1Desc": "To validate HMAC-SHA256 signatures, check the `x-hub-signature-256` header. Here is a Node.js fetch example:",
+      "sub2Title": "HubSpot Synchronization",
+      "sub2Desc": "Route leads directly by mapping custom properties to your CRM using webhook integrations."
+    },
+    "smtp": {
+      "title": "SMTP and Email Templates",
+      "description": "Configure your outbound mail server to send personalized email notifications to your customers.",
+      "sub1Title": "SPF / DKIM Registration",
+      "sub1Desc": "Add TXT records to your domain (`v=spf1 include:mailgun.org ~all`) to prevent your emails from landing in spam.",
+      "sub2Title": "Dynamic Variables Usage",
+      "sub2Desc": "Use variables like `{{business_name}}`, `{{customer_name}}`, and `{{appointment_date}}` to personalize your outbound templates."
+    },
+    "automation": {
+      "title": "Automations and Rules",
+      "description": "Automate sales workflows and follow-ups based on specific, deterministic events.",
+      "sub1Title": "The 3-Step Model",
+      "sub1Desc": "Every rule consists of 3 elements: 1. Trigger (when it fires), 2. Conditions (extra logic filters), and 3. Actions (tasks to execute).",
+      "sub2Title": "Cooling-off Wait Times",
+      "sub2Desc": "Use delays (e.g. 4 hours) to send nurturing messages naturally without overwhelming the customer."
+    },
+    "knowledge": {
+      "title": "RAG++ Knowledge Base",
+      "description": "Feed your AI agent with business information from your catalog, policies, and FAQs using Retrieval-Augmented Generation.",
+      "sub1Title": "Cosine Similarity Calibration",
+      "sub1Desc": "Set Cosine Similarity to `0.75` for an optimal balance between precision and coverage. Higher values restrict replies to almost-exact matches.",
+      "sub2Title": "Citations in Replies",
+      "sub2Desc": "Your AI agent will cite its source using `[FAQ #id]` or `[Policy: type]` formats for transparent, trustworthy customer answers."
+    },
+    "alerts": {
+      "title": "Z-Score Alerts & Monitoring",
+      "description": "The system monitors statistical deviations greater than `2σ` to alert you about unusual behavior.",
+      "sub1Title": "Z-Score Formula",
+      "sub1Desc": "Measures standard deviations from the mean. A value above 2 indicates a statistical anomaly.",
+      "sub2Title": "Slack & Discord Integration",
+      "sub2Desc": "Configure a Webhook Endpoint to receive immediate alert notifications on your team's internal communication channels."
+    },
+    "appointments": {
+      "title": "Multi-Calendar Scheduling",
+      "description": "Synchronize multiple calendars and allow your AI agent to auto-book appointments without conflicts.",
+      "sub1Title": "Meeting Link Auto-generation",
+      "sub1Desc": "Enable Google Meet or Microsoft Teams meeting link auto-generation in your scheduling settings to automatically include them in bookings.",
+      "sub2Title": "Blocked Out dates",
+      "sub2Desc": "Define national holidays or corporate blockouts so the booking engine blocks those slots dynamically."
+    }
+  },
   "tours": {
     "title": "Tours & Packages",
     "subtitle": "Manage your experiences and travel packages",

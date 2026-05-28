@@ -4840,6 +4840,69 @@
       ]
     }
   },
+  "helpAssistant": {
+    "launcherTooltip": "Assistente de Ajuda",
+    "drawerTitle": "Guia & Suporte",
+    "drawerSubtitle": "Seu assistente interativo passo a passo",
+    "searchPlaceholder": "Buscar guias ou FAQs...",
+    "noResults": "Nenhum guia encontrado para sua busca.",
+    "copy": "Copiar",
+    "copied": "Copiado!",
+    "faqTitle": "Perguntas Frequentes",
+    "back": "Volver ao início",
+    "industryTitle": "Guia para sua Indústria: {industry}",
+    "industryDesc": "Aqui estão sugestões de prompts adaptadas ao seu negócio:",
+    "currentPathGuide": "Guia para esta tela",
+    "seeMore": "Ver mais...",
+    "apiKeys": {
+      "title": "Chaves de API e Webhooks",
+      "description": "Configure suas chaves de API para autenticar solicitações e configure webhooks para receber eventos em tempo real.",
+      "sub1Title": "Assinatura de Segurança da Meta",
+      "sub1Desc": "Para validar assinaturas HMAC-SHA256, verifique o cabeçalho `x-hub-signature-256`. Aqui está um exemplo em JavaScript:",
+      "sub2Title": "Sincronização com HubSpot",
+      "sub2Desc": "Encaminhe leads diretamente mapeando propriedades personalizadas para o seu CRM usando integrações de webhook."
+    },
+    "smtp": {
+      "title": "SMTP e Modelos de Email",
+      "description": "Configure seu servidor de e-mail de saída para enviar notificações de e-mail personalizadas aos seus clientes.",
+      "sub1Title": "Registro de SPF / DKIM",
+      "sub1Desc": "Adicione registros TXT ao seu domínio (`v=spf1 include:mailgun.org ~all`) para evitar que seus e-mails caiam na caixa de spam.",
+      "sub2Title": "Uso de Variáveis Dinâmicas",
+      "sub2Desc": "Use variáveis como `{{business_name}}`, `{{customer_name}}` e `{{appointment_date}}` para personalizar seus modelos de saída."
+    },
+    "automation": {
+      "title": "Automações e Regras",
+      "description": "Automatize fluxos de trabalho de vendas e acompanhamentos com base em eventos específicos de forma determinista.",
+      "sub1Title": "O Modelo de 3 Passos",
+      "sub1Desc": "Cada regra consiste em 3 elementos: 1. Trigger (quando dispara), 2. Condições (filtros lógicos extras) e 3. Ações (tarefas a executar).",
+      "sub2Title": "Períodos de Resfriamento",
+      "sub2Desc": "Use atrasos (ex. 4 horas) para enviar mensagens de acompanhamento de forma orgânica sem sobrecarregar o cliente."
+    },
+    "knowledge": {
+      "title": "Base de Conhecimento RAG++",
+      "description": "Alimente seu agente de IA com informações do seu catálogo, políticas e FAQs usando Geração Aumentada de Recuperação.",
+      "sub1Title": "Calibração de Similaridade de Cosseno",
+      "sub1Desc": "Defina a Similaridade de Cosseno como `0.75` para um equilíbrio ideal entre precisão e cobertura. Valores mais altos limitan as respostas a correspondências quase exatas.",
+      "sub2Title": "Citações nas Respostas",
+      "sub2Desc": "Seu agente de IA citará a fonte usando os formatos `[FAQ #id]` ou `[Política: tipo]` para respostas transparentes e confiáveis para o cliente."
+    },
+    "alerts": {
+      "title": "Alertas e Monitoramento Z-Score",
+      "description": "O sistema monitora desvios estatísticos maiores que `2σ` para alertar você sobre comportamentos incomuns.",
+      "sub1Title": "Fórmula Z-Score",
+      "sub1Desc": "Mede os desvios padrão em relação à média. Um valor acima de 2 indica uma anomalia estatística.",
+      "sub2Title": "Integração com Slack e Discord",
+      "sub2Desc": "Configure um Webhook Endpoint para receber notificações de alerta imediatas nos canais de comunicação interna da sua equipe."
+    },
+    "appointments": {
+      "title": "Agendamiento Multi-Calendário",
+      "description": "Sincronize vários calendários e permita que seu agente de IA reserve compromissos automaticamente sem conflitos.",
+      "sub1Title": "Geração Automática de Links de Reunião",
+      "sub1Desc": "Ative a geração automática de links do Google Meet ou Microsoft Teams em suas configurações de agendamento para incluí-los automaticamente nas reservas.",
+      "sub2Title": "Datas de Bloqueio Excluídas",
+      "sub2Desc": "Defina feriados ou períodos de folga para que o mecanismo de agendamento bloqueie esses slots dinamicamente."
+    }
+  },
   "tours": {
     "title": "Passeios e Pacotes",
     "subtitle": "Gerencie suas experiências e pacotes de viagem",

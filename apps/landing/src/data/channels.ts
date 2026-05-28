@@ -1,4 +1,4 @@
-export type ChannelKey = "whatsapp" | "instagram" | "messenger" | "telegram";
+export type ChannelKey = "whatsapp" | "instagram" | "messenger" | "telegram" | "email";
 
 export interface ChannelSkin {
   name: string;
@@ -60,6 +60,18 @@ export const CHANNELS: Record<ChannelKey, ChannelSkin> = {
     incomingBg: "#182533",
     incomingText: "#f5f5f5",
     statusText: "en línea",
+    logoSrc: "",
+  },
+  email: {
+    name: "Email",
+    headerBg: "linear-gradient(135deg, #1e293b, #0f172a)",
+    bodyBg: "#0f172a",
+    accent: "#f43f5e",
+    outgoingBg: "#3b82f6",
+    outgoingText: "#ffffff",
+    incomingBg: "#1e293b",
+    incomingText: "#f8fafc",
+    statusText: "Conexión segura",
     logoSrc: "",
   },
 };

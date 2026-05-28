@@ -63,7 +63,7 @@
   },
   "channels": {
     "title": "Fonctionne sur tous vos canaux",
-    "subtitle": "WhatsApp, Instagram DM, Messenger et Telegram. Votre agent IA opère avec la même personnalité et les mêmes données partout — le client choisit son préféré.",
+    "subtitle": "WhatsApp, Instagram DM, Messenger, Telegram et Email. Votre agent IA opère avec la même personnalité, les mêmes données et la même base de connaissances partout — le client choisit son préféré.",
     "note": "Chaque client a un profil unique peu importe le canal utilisé. Identité cross-canal automatique."
   },
   "tools": {
@@ -71,22 +71,22 @@
     "subtitle": "Voici quelques-uns des outils inclus. Tout fonctionne automatiquement — vous configurez une fois au démarrage.",
     "tool1Title": "Pipeline kanban intelligent",
     "tool1Desc": "Vos leads avancent seuls dans les étapes selon le comportement client. Scoring automatique et approbations au besoin.",
-    "tool2Title": "Boîte de réception unifiée",
-    "tool2Desc": "WhatsApp, Instagram, Messenger, Telegram et SMS — tout sur un seul écran avec notifications en temps réel.",
-    "tool3Title": "Planification par chat",
-    "tool3Desc": "Votre IA planifie en vérifiant la disponibilité réelle. Synchronise avec Google Calendar et envoie des rappels automatiques.",
+    "tool2Title": "Boîte de Réception Unifiée et Omnicanal",
+    "tool2Desc": "WhatsApp, Instagram, Messenger, Telegram et Email — tout unifié sur une seule console avec notifications de transfert en temps réel et alertes SLA.",
+    "tool3Title": "Planification Multi-Calendrier",
+    "tool3Desc": "L'IA planifie les rendez-vous en vérifiant la disponibilité réelle. Synchronise de manière bidirectionnelle avec Google et Microsoft Outlook Calendar, générant des liens Meet/Teams et envoyant des confirmations d'email personnalisées.",
     "tool4Title": "Analytique temps réel",
-    "tool4Desc": "Volume, temps de réponse, conversion par canal, classement des agents. Sans attendre les rapports de fin de mois.",
-    "tool5Title": "Base de connaissances IA",
-    "tool5Desc": "Vous téléchargez catalogue, FAQ et politiques. L'IA cherche et répond avec info réelle — n'invente pas.",
-    "tool6Title": "Multi-agent personnalisable",
-    "tool6Desc": "Configurez ton, modèle IA et canal par agent. Sofia formelle en email, Sofia amicale sur Instagram."
+    "tool4Desc": "Volume, temps de réponse, écarts de Z-score et détection d'anomalies. Sans attendre les rapports de fin de mois.",
+    "tool5Title": "Base de Connaissances à 5 Niveaux",
+    "tool5Desc": "Alimentée par votre identité d'entreprise, FAQ, catalogue, politiques de marque et articles détaillés (RAG++). L'IA cherche et répond avec des informations 100% réelles — elle n'invente rien.",
+    "tool6Title": "Architecture Cognitive à 3 Couches",
+    "tool6Desc": "Configurez le ton, les règles (Layer 1) et la personnalité (Layer 2) de l'agent par canal. De plus, la couche de tour (Layer 3) contextualise instantanément chaque conversation."
   },
   "hero": {
-    "badge": "IA conversationnelle · 18 industries · Fait en LatAm",
+    "badge": "IA conversationnelle à 5 canaux · 18 industries · Fait en LatAm",
     "title": "L'IA qui <em>vend, planifie et sert</em> — 24/7",
     "titleHighlight": "vend, planifie et sert",
-    "subtitle": "Connectez WhatsApp, Instagram et Messenger en quelques minutes. Votre agent IA répond en secondes, remplit votre CRM tout seul et planifie pendant que vous dormez. Sans code. Adapté à votre activité.",
+    "subtitle": "Connectez WhatsApp, Instagram, Messenger, Telegram et Email. Votre agent IA répond en secondes avec un moteur cognitif à 3 couches, remplit votre CRM tout seul et planifie intelligemment.",
     "cta": "Essai gratuit 7 jours",
     "ctaSecondary": "Voir comment ça marche",
     "beforeLabel": "Sans IA",
@@ -573,10 +573,10 @@
     "emprendedorFeatures": [
       "1 canal (WhatsApp)",
       "1 000 messages IA/mois",
-      "1 agent IA",
-      "Pipeline basique",
-      "1 Google Calendar",
-      "7 jours d'essai gratuit"
+      "1 agent IA avec Layer 1",
+      "Pipeline de vente basique",
+      "1 calendrier Google/Microsoft",
+      "Confirmations premium par email"
     ],
     "starterName": "Starter",
     "starterDesc": "Pour les entrepreneurs qui veulent plus de canaux.",
@@ -585,20 +585,21 @@
       "3 canaux (WA + IG + Messenger)",
       "5 000 messages IA/mois",
       "1 agent IA",
-      "CRM basique + pipeline",
-      "1 Google Calendar",
+      "CRM avec profils unifiés",
+      "1 calendrier Google/Microsoft sync",
       "Support par email"
     ],
     "proName": "Pro",
     "proDesc": "Pour les equipes qui veulent grandir.",
     "proCta": "Commencer avec Pro",
     "proFeatures": [
-      "5 canaux (tous)",
+      "5 canaux (tous, inclut l'Email)",
       "25 000 messages IA/mois",
       "3 agents IA",
-      "CRM avance + automatisations",
-      "3 Google Calendars",
-      "Modeles personnalises + analytics complet",
+      "CRM avancé + automatisations",
+      "3 calendriers Google/Microsoft sync",
+      "Modèles personnalisés + analytics complet",
+      "Console par WebSockets en direct",
       "Support prioritaire"
     ],
     "enterpriseName": "Enterprise",
@@ -606,12 +607,13 @@
     "enterpriseCta": "Commencer avec Enterprise",
     "enterprisePrice": "Sur mesure",
     "enterpriseFeatures": [
-      "Tous les canaux + SMS",
+      "Tous les canaux (WhatsApp + IG + FB + TG + Email)",
       "100 000 messages IA/mois",
-      "10 agents IA",
+      "10 agents IA + RAG de 5 niveaux",
+      "Détection des anomalies Z-Score",
+      "10 calendriers Google/Microsoft sync",
       "SSO + journal d'audit",
-      "10 Google Calendars",
-      "Support prioritaire dedie"
+      "Support prioritaire dédié"
     ],
     "perMonth": "/mois",
     "currencyHint": "Prix en COP (pesos colombiens)",

@@ -88,6 +88,24 @@ const CHANNEL_SCENARIOS: ChannelScenario[] = [
       },
     ],
   },
+  {
+    channel: "email",
+    emoji: "✉️",
+    agentName: "Clara",
+    business: "Soporte Parallly",
+    messages: [
+      { from: "customer", text: "Hola, ¿la IA se integra con mi CRM de HubSpot?" },
+      {
+        from: "ai",
+        text: "¡Hola! Sí, nos integramos nativamente. Sincronizamos contactos y tratos en tiempo real.",
+      },
+      { from: "customer", text: "Súper, me interesa una demo" },
+      {
+        from: "ai",
+        text: "Te envié el enlace a tu bandeja para el martes a las 3pm. ¡Nos vemos!",
+      },
+    ],
+  },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -228,7 +246,7 @@ export function MultiChannelShowcase() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {CHANNEL_SCENARIOS.map((s, i) => (
           <motion.div
             key={s.channel}

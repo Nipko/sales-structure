@@ -14,6 +14,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import DateRangePicker from "@/components/analytics/DateRangePicker";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 type SavedReport = {
     id: string;
@@ -125,6 +126,7 @@ function ChartPreview({ config, data }: { config: ReportConfig; data: any[] }) {
 
 export default function ReportBuilderPage() {
     const t = useTranslations("reportBuilder");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const tenantId = user?.tenantId;
 
@@ -319,6 +321,12 @@ export default function ReportBuilderPage() {
                     {t("newReport")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("reportBuilder.title")}
+                description={tHelp("reportBuilder.description")}
+                tips={tHelp.raw("reportBuilder.tips") as string[]}
+            />
 
             {/* Toast */}
             {message && (

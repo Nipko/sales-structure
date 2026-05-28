@@ -4889,6 +4889,78 @@
         "The 'Costs' tab shows infrastructure + LLM costs per tenant",
         "Generate monthly snapshots for historical tracking"
       ]
+    },
+    "dashboard": {
+      "title": "How does the Dashboard work?",
+      "description": "Your centralized control panel with key health metrics, volume of processed messages, accumulated costs, and lead activity in real time.",
+      "tips": [
+        "Review hot leads to prioritize your sales opportunities",
+        "Monitor accumulated AI cost daily to optimize your budget",
+        "Use the activity widget to view live events in the messaging flow"
+      ]
+    },
+    "dripSequences": {
+      "title": "How to use Drip Sequences?",
+      "description": "Send automated messaging sequences over time to nurture your leads. Set specific delays and stop conditions to automatically halt the sequence when the customer replies.",
+      "tips": [
+        "Establish organic delays so that messages don't feel like spam",
+        "Define robust stop conditions to avoid sending messages to customers who have already responded",
+        "Analyze enrolled and active subscriber stats to evaluate your nurturing success"
+      ]
+    },
+    "automationTemplates": {
+      "title": "How to use Templates?",
+      "description": "Accelerate your workflows by importing rules and triggers pre-configured specifically for your industry (health, real estate, retail, etc.).",
+      "tips": [
+        "Filter by your industry or category to find ready-to-use automations",
+        "Click any template to preview its logical triggers before installing",
+        "Configure variables and default values in the template to adapt it to your business"
+      ]
+    },
+    "crmAnalytics": {
+      "title": "How to read CRM Analytics?",
+      "description": "Analyze your business's sales health through conversion metrics, close velocity, pipeline stages, and sales team performance.",
+      "tips": [
+        "Monitor the funnel to detect at which stage you lose the most opportunities",
+        "Review lead velocity to optimize average closing time",
+        "Check the agent leaderboard to incentivize and reward top performance"
+      ]
+    },
+    "agentAnalytics": {
+      "title": "How to evaluate Agent Performance?",
+      "description": "Measure the performance of your support agents. Track first response times, resolution rates, and customer satisfaction (CSAT) scores.",
+      "tips": [
+        "Compare average response time with P90 to avoid critical delays with customers",
+        "Monitor satisfaction (CSAT) for each agent to ensure high support standards",
+        "Use the channel breakdown to see where your agents are concentrated"
+      ]
+    },
+    "reportBuilder": {
+      "title": "How to use the Report Builder?",
+      "description": "Design dynamic reports crossing metrics like message volume, AI cost, and CRM conversions. Choose between bar, line, area, or pie charts.",
+      "tips": [
+        "Use favorites to keep your commercial reports always accessible",
+        "Export to CSV from the main screen to process data externally",
+        "Combine multiple metrics to contrast volume against AI cost"
+      ]
+    },
+    "compliance": {
+      "title": "How to manage Compliance & Legal?",
+      "description": "Centralize privacy policies, terms of service, and explicit consent texts. Manage opt-out registries and data deletion requests according to global regulations.",
+      "tips": [
+        "Define specific consent texts per channel (e.g. WhatsApp vs. Web)",
+        "Keep the opt-out registry updated to avoid spam complaints",
+        "Use the Audit tab to track all policy modifications and signatures"
+      ]
+    },
+    "featureRequests": {
+      "title": "How to suggest and vote on Features?",
+      "description": "Propose improvement ideas and vote on suggestions from other users. The Parallly product team prioritizes the most voted features.",
+      "tips": [
+        "Search before posting to avoid duplicating an already proposed idea",
+        "Vote for suggestions you consider critical to your business growth",
+        "Check the Changelog to see what new tools and improvements we have launched"
+      ]
     }
   },
   "helpAssistant": {

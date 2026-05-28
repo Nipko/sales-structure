@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { SkeletonKPIs, SkeletonTable } from "@/components/ui/skeleton-loader";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTenant } from "@/contexts/TenantContext";
@@ -48,6 +49,7 @@ type SortDir = "asc" | "desc";
 
 export default function AgentAnalyticsPage() {
     const t = useTranslations('analytics');
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const [activeTab, setActiveTab] = useState("overview");
     const [loading, setLoading] = useState(false);
@@ -381,6 +383,12 @@ export default function AgentAnalyticsPage() {
                     />
                 </div>
                 }
+            />
+
+            <HelpPanel
+                title={tHelp("agentAnalytics.title")}
+                description={tHelp("agentAnalytics.description")}
+                tips={tHelp.raw("agentAnalytics.tips") as string[]}
             />
 
             {/* Tabs */}

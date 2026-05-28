@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
@@ -118,6 +119,7 @@ function getLocalizedText(obj: Record<string, string>): string {
 
 export default function AutomationTemplatesPage() {
   const t = useTranslations("automationTemplates");
+  const tHelp = useTranslations("help");
   const tc = useTranslations("common");
   const { activeTenantId } = useTenant();
 
@@ -233,6 +235,12 @@ export default function AutomationTemplatesPage() {
         subtitle={t("subtitle")}
         icon={Sparkles}
         iconColor="bg-indigo-500/10"
+      />
+
+      <HelpPanel
+        title={tHelp("automationTemplates.title")}
+        description={tHelp("automationTemplates.description")}
+        tips={tHelp.raw("automationTemplates.tips") as string[]}
       />
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">

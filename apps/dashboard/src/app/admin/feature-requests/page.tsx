@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Lightbulb, ChevronUp, MessageSquare, Plus, X, AlertCircle, Search } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { TabNav } from "@/components/ui/tab-nav";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -30,6 +31,7 @@ const CATEGORIES = ["ai", "integrations", "analytics", "crm", "billing", "ux", "
 
 export default function FeatureRequestsPage() {
     const t = useTranslations("featureRequests");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const isAdmin = user?.role === "super_admin";
 
@@ -122,6 +124,12 @@ export default function FeatureRequestsPage() {
                         {t("submit")}
                     </button>
                 }
+            />
+
+            <HelpPanel
+                title={tHelp("featureRequests.title")}
+                description={tHelp("featureRequests.description")}
+                tips={tHelp.raw("featureRequests.tips") as string[]}
             />
 
             <div className="flex gap-1 mb-4 border-b border-neutral-200 dark:border-neutral-800">

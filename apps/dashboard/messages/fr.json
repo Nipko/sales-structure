@@ -4838,6 +4838,78 @@
         "L'onglet 'Coûts' montre l'infrastructure + les coûts LLM par tenant",
         "Générez des instantanés mensuels pour un suivi historique"
       ]
+    },
+    "dashboard": {
+      "title": "Comment fonctionne le Tableau de bord ?",
+      "description": "Votre panneau de contrôle centralisé avec des métriques clés de santé, le volume de messages traités, les coûts cumulés et l'activité de vos prospects en temps réel.",
+      "tips": [
+        "Consultez les leads chauds pour prioriser vos opportunités commerciales",
+        "Contrôlez quotidiennement le coût de l'IA accumulé pour optimiser vos budgets",
+        "Utilisez le widget d'activité pour voir les événements en direct du flux de messagerie"
+      ]
+    },
+    "dripSequences": {
+      "title": "Comment utiliser les Séquences Drip ?",
+      "description": "Envoyez des flux automatisés de messages au fil du temps pour nourrir vos prospects. Configurez des attentes et des conditions d'arrêt spécifiques pour suspendre la séquence dès que le client répond.",
+      "tips": [
+        "Établissez des délais d'attente organiques pour que les messages ne ressemblent pas à du spam",
+        "Définissez des conditions d'arrêt robustes pour éviter d'envoyer des messages aux clients ayant déjà répondu",
+        "Analysez les statistiques des abonnés inscrits et actifs pour évaluer le succès de votre nurturing"
+      ]
+    },
+    "automationTemplates": {
+      "title": "Comment utiliser les Modèles ?",
+      "description": "Accélérez vos flux de travail en important des règles et déclencheurs préconfigurés spécifiquement pour votre secteur (santé, immobilier, vente au détail, etc.).",
+      "tips": [
+        "Filtrez par secteur ou catégorie pour trouver des automatisations prêtes à l'emploi",
+        "Cliquez sur n'importe quel modèle pour prévisualiser la logique des déclencheurs avant l'installation",
+        "Configurez les variables et les valeurs par défaut dans le modèle pour l'adapter à votre entreprise"
+      ]
+    },
+    "crmAnalytics": {
+      "title": "Comment interpréter les Analyses CRM ?",
+      "description": "Analysez la santé commerciale de votre entreprise grâce aux métriques de conversion, à la vitesse de clôture, à l'entonnoir des étapes et aux performances de l'équipe de vente.",
+      "tips": [
+        "Surveillez l'entonnoir pour détecter à quelle étape vous perdez le plus d'opportunités",
+        "Vérifiez la vélocité des leads pour optimiser le temps moyen de clôture",
+        "Consultez le classement des agents pour encourager et récompenser les meilleurs résultats"
+      ]
+    },
+    "agentAnalytics": {
+      "title": "Comment évaluer les Performances des Agents ?",
+      "description": "Mesurez l'efficacité de vos agents de support. Suivez les temps de première réponse, les taux de résolution et les scores de satisfaction client (CSAT).",
+      "tips": [
+        "Comparez le temps de réponse moyen avec le P90 pour éviter les retards critiques avec les clients",
+        "Surveillez la satisfaction (CSAT) de chaque agent pour garantir des normes de support élevées",
+        "Utilisez la ventilation par canal pour voir sur quel réseau vos agents sont concentrés"
+      ]
+    },
+    "reportBuilder": {
+      "title": "Comment utiliser le Générateur de rapports ?",
+      "description": "Concevez des rapports dynamiques en croisant des métriques telles que le volume de messages, le coût de l'IA et les conversions CRM. Choisissez parmi des graphiques en barres, lignes, aires ou secteurs.",
+      "tips": [
+        "Utilisez les favoris pour garder vos rapports commerciaux toujours accessibles",
+        "Exportez au format CSV depuis l'écran principal pour traiter les données en externe",
+        "Combinez plusieurs métriques pour contraster le volume par rapport au coût de l'IA"
+      ]
+    },
+    "compliance": {
+      "title": "Comment gérer la Conformité & le Légal ?",
+      "description": "Centralisez les textes des politiques de confidentialité, des conditions d'utilisation et des consentements explicites. Gérez les registres d'opt-out (non-contact) et les demandes de suppression de données conformément aux réglementations mondiales.",
+      "tips": [
+        "Définissez des textes de consentement spécifiques par canal (ex. WhatsApp vs Web)",
+        "Gardez le registre des opt-outs à jour pour éviter les plaintes pour spam",
+        "Utilisez l'onglet Audit pour suivre toutes les modifications de politiques et les signatures"
+      ]
+    },
+    "featureRequests": {
+      "title": "Comment suggérer et voter pour des Fonctionnalités ?",
+      "description": "Proposez des idées d'amélioration et votez pour les suggestions d'autres utilisateurs. L'équipe produit de Parallly donne la priorité aux fonctionnalités les plus votées.",
+      "tips": [
+        "Recherchez avant de publier pour éviter de dupliquer une idée déjà proposée",
+        "Votez pour les suggestions que vous jugez critiques pour la croissance de votre entreprise",
+        "Consultez le Changelog pour voir quelles nouvelles fonctionnalités et améliorations nous avons lancées"
+      ]
     }
   },
   "helpAssistant": {

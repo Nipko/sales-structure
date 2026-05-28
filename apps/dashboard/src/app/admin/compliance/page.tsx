@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
@@ -23,6 +24,7 @@ const ALL_CHANNELS = ["whatsapp", "instagram", "messenger", "telegram", "sms", "
 
 export default function CompliancePage() {
   const t = useTranslations("compliance");
+  const tHelp = useTranslations("help");
   const tc = useTranslations("common");
   const { activeTenantId } = useTenant();
   const [tab, setTab] = useState<Tab>("legal");
@@ -240,6 +242,12 @@ export default function CompliancePage() {
               </button>
             ) : undefined
           }
+        />
+
+        <HelpPanel
+          title={tHelp("compliance.title")}
+          description={tHelp("compliance.description")}
+          tips={tHelp.raw("compliance.tips") as string[]}
         />
 
         {/* Info banner */}

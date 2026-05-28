@@ -29,6 +29,7 @@ import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const ICON_MAP: Record<string, any> = {
     Calendar, UserPlus, UserX, MessageSquare, Flame, MapPin, Car,
@@ -54,6 +55,7 @@ export default function AdminDashboard() {
     const { user, verticalConfig } = useAuth();
     const t = useTranslations("dashboard");
     const tVw = useTranslations("verticalWelcome");
+    const tHelp = useTranslations("help");
     const vt = useVerticalTerms();
     const locale = useLocale() as "es" | "en" | "pt" | "fr";
 
@@ -299,6 +301,12 @@ export default function AdminDashboard() {
                 </div>
                 <DataSourceBadge isLive={isLive} />
             </div>
+
+            <HelpPanel
+                title={tHelp("dashboard.title")}
+                description={tHelp("dashboard.description")}
+                tips={tHelp.raw("dashboard.tips") as string[]}
+            />
 
             {/* Platform Section — super_admin only */}
             {user?.role === "super_admin" && (

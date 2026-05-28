@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { TabNav } from "@/components/ui/tab-nav";
 import { SkeletonPage } from "@/components/ui/skeleton-loader";
 import {
@@ -26,6 +27,7 @@ const STAGE_COLORS: Record<string, string> = {
 
 export default function CrmAnalyticsPage() {
     const t = useTranslations("crmAnalytics");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const vt = useVerticalTerms();
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -73,6 +75,11 @@ export default function CrmAnalyticsPage() {
     return (
         <div className="space-y-6">
             <PageHeader title={t("title")} subtitle={t("subtitle")} />
+            <HelpPanel
+                title={tHelp("crmAnalytics.title")}
+                description={tHelp("crmAnalytics.description")}
+                tips={tHelp.raw("crmAnalytics.tips") as string[]}
+            />
             <TabNav tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
             {activeTab === "overview" && (

@@ -4887,6 +4887,78 @@
         "La pestaña 'Costos' muestra infraestructura + costos LLM por tenant",
         "Genera snapshots mensuales para tracking histórico"
       ]
+    },
+    "dashboard": {
+      "title": "¿Cómo funciona el Dashboard?",
+      "description": "Tu panel de control centralizado con métricas clave de salud, volumen de mensajes procesados, costos acumulados y actividad de tus leads en tiempo real.",
+      "tips": [
+        "Revisa los leads calientes para priorizar tus oportunidades comerciales",
+        "Controla diariamente el costo de IA acumulado para optimizar tus presupuestos",
+        "Usa el widget de actividad para ver eventos en vivo del flujo de mensajería"
+      ]
+    },
+    "dripSequences": {
+      "title": "¿Cómo usar Secuencias Drip?",
+      "description": "Envía flujos automatizados de mensajes a lo largo del tiempo para nutrir tus leads. Configura esperas y condiciones específicas de detención para que la secuencia pare cuando el cliente responda.",
+      "tips": [
+        "Establece esperas de tiempo orgánicas para que los mensajes no parezcan spam",
+        "Define condiciones de parada robustas para evitar enviar correos o mensajes a clientes que ya respondieron",
+        "Analiza las estadísticas de inscritos y activos para evaluar el éxito de tu nurturing"
+      ]
+    },
+    "automationTemplates": {
+      "title": "¿Cómo usar las Plantillas?",
+      "description": "Acelera tus flujos de trabajo importando reglas y disparadores preconfigurados específicamente para tu industria (salud, inmobiliaria, retail, etc.).",
+      "tips": [
+        "Filtra por tu industria o categoría para encontrar automatizaciones listas para usar",
+        "Haz clic en cualquier plantilla para previsualizar los triggers lógicos antes de instalarla",
+        "Configura las variables y valores predeterminados de la plantilla para adaptarla a tu negocio"
+      ]
+    },
+    "crmAnalytics": {
+      "title": "¿Cómo interpretar Analíticas de CRM?",
+      "description": "Analiza la salud comercial de tu negocio a través de métricas de conversión, velocidad de cierre, embudo de etapas y rendimiento del equipo de ventas.",
+      "tips": [
+        "Monitorea el embudo (funnel) para detectar en qué etapa pierdes más oportunidades",
+        "Revisa la velocidad del lead para optimizar el tiempo promedio de cierre",
+        "Consulta el leaderboard de agentes para incentivar y premiar los mejores resultados"
+      ]
+    },
+    "agentAnalytics": {
+      "title": "¿Cómo evaluar el Rendimiento de Agentes?",
+      "description": "Mide el rendimiento de tus agentes de atención. Haz seguimiento de los tiempos de primera respuesta, tasas de resolución y calificaciones de satisfacción (CSAT).",
+      "tips": [
+        "Compara la respuesta promedio con el P90 para evitar demoras críticas con clientes",
+        "Monitorea la satisfacción (CSAT) de cada agente para garantizar altos estándares de soporte",
+        "Usa el desglose por canal para ver en qué red social se concentran tus agentes"
+      ]
+    },
+    "reportBuilder": {
+      "title": "¿Cómo usar el Creador de Reportes?",
+      "description": "Diseña informes dinámicos cruzando métricas como volumen de mensajes, costo de IA y conversiones de CRM. Elige entre gráficos de barras, líneas, áreas o pastel.",
+      "tips": [
+        "Usa favoritos para tener tus reportes comerciales siempre accesibles",
+        "Exporta a CSV desde la pantalla principal para procesar los datos externamente",
+        "Combina múltiples métricas para contrastar el volumen frente al costo de IA"
+      ]
+    },
+    "compliance": {
+      "title": "¿Cómo gestionar Cumplimiento & Legal?",
+      "description": "Centraliza los textos de políticas de privacidad, términos de servicio y consentimientos explícitos. Administra registros de opt-out (no contacto) y solicitudes de eliminación de datos de acuerdo a regulaciones globales.",
+      "tips": [
+        "Define textos de consentimiento específicos por canal (ej. WhatsApp vs. Web)",
+        "Mantén actualizado el registro de opt-outs para evitar quejas de spam",
+        "Usa la pestaña de Auditoría para rastrear todas las modificaciones y firmas de políticas"
+      ]
+    },
+    "featureRequests": {
+      "title": "¿Cómo sugerir y votar Funciones?",
+      "description": "Propón ideas de mejora y vota por las sugerencias de otros usuarios. El equipo de producto de Parallly prioriza las características más votadas.",
+      "tips": [
+        "Busca antes de publicar para evitar duplicar una idea ya propuesta",
+        "Vota las sugerencias que consideres críticas para el crecimiento de tu negocio",
+        "Consulta el Changelog para ver qué nuevas herramientas y mejoras hemos lanzado"
+      ]
     }
   },
   "helpAssistant": {

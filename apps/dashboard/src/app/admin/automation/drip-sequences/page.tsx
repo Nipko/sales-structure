@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { UpgradeBanner, UpgradeModal } from "@/components/ui/upgrade-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
@@ -56,6 +57,7 @@ const TRIGGER_MAP: Record<string, string> = {
 
 export default function DripSequencesPage() {
   const t = useTranslations("dripSequences");
+  const tHelp = useTranslations("help");
   const tc = useTranslations("common");
   const { activeTenantId } = useTenant();
   const { canCreate, getLimit } = usePlanLimits();
@@ -149,6 +151,12 @@ export default function DripSequencesPage() {
             <Plus size={18} /> {t("newSequence")}
           </Button>
         }
+      />
+
+      <HelpPanel
+        title={tHelp("dripSequences.title")}
+        description={tHelp("dripSequences.description")}
+        tips={tHelp.raw("dripSequences.tips") as string[]}
       />
 
       <div className="grid grid-cols-3 gap-3 mb-6">

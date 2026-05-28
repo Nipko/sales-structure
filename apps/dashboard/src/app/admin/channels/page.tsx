@@ -14,6 +14,7 @@ import {
     MessageCircle,
     Send,
     Phone,
+    Mail,
     CheckCircle,
     AlertCircle,
     ArrowRight,
@@ -51,6 +52,14 @@ const channels = [
         Icon: Send,
         href: "/admin/channels/telegram",
         description: "telegramDesc",
+    },
+    {
+        key: "email",
+        name: "Email",
+        color: "#6c5ce7",
+        Icon: Mail,
+        href: "/admin/channels/email",
+        description: "emailDesc",
     },
     // SMS hidden until integration is ready
     // { key: "sms", name: "SMS (Twilio)", color: "#0D9B47", Icon: Phone, href: "/admin/channels/sms", description: "smsDesc" },

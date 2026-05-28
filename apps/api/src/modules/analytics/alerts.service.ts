@@ -38,7 +38,7 @@ export class AlertsService {
                     (SELECT COUNT(*)::int FROM "${schemaName}".alert_history ah WHERE ah.rule_id = ar.id) as trigger_count,
                     (SELECT MAX(created_at) FROM "${schemaName}".alert_history ah WHERE ah.rule_id = ar.id) as last_alert_at
              FROM "${schemaName}".alert_rules ar
-             WHERE ar.tenant_id = $1
+             WHERE ar.tenant_id = $1::uuid
              ORDER BY ar.created_at DESC`,
             tenantId,
         );
@@ -52,7 +52,7 @@ export class AlertsService {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `INSERT INTO "${schemaName}".alert_rules
              (tenant_id, name, metric, operator, threshold, channel, notify_emails, cooldown_minutes)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)
              RETURNING *`,
             tenantId, data.name, data.metric, data.operator, data.threshold,
             data.channel || 'in_app',
@@ -128,7 +128,7 @@ export class AlertsService {
 
     private async evaluateTenantAlerts(tenantId: string, schemaName: string): Promise<void> {
         const rules: AlertRule[] = await this.prisma.$queryRawUnsafe(
-            `SELECT * FROM "${schemaName}".alert_rules WHERE tenant_id = $1 AND is_active = true`,
+            `SELECT * FROM "${schemaName}".alert_rules WHERE tenant_id = $1::uuid AND is_active = true`,
             tenantId,
         );
 

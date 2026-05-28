@@ -6,8 +6,9 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import {
     MessageCircle, Plus, Copy, Check, Trash2, Settings,
-    Eye, Palette, Globe, Code, ToggleLeft, ToggleRight,
+    Eye, Palette, Globe, Code, ToggleLeft, ToggleRight, Zap,
 } from "lucide-react";
+import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -132,14 +133,23 @@ export default function WebChatWidgetPage() {
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
                 </div>
-                <button
-                    onClick={createWidget}
-                    disabled={creating}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
-                >
-                    <Plus size={16} />
-                    {t("create")}
-                </button>
+                <div className="flex items-center gap-2">
+                    <Link
+                        href="/admin/settings/integrations/web-chat/triggers"
+                        className="flex items-center gap-2 px-4 py-2 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-lg text-sm font-medium hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                    >
+                        <Zap size={16} />
+                        {t("triggers")}
+                    </Link>
+                    <button
+                        onClick={createWidget}
+                        disabled={creating}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                        <Plus size={16} />
+                        {t("create")}
+                    </button>
+                </div>
             </div>
 
             {widgets.length === 0 && (

@@ -808,6 +808,10 @@
         "label": "Alertes système",
         "description": "Règles de notification à l'équipe"
       },
+      "apiKeys": {
+        "label": "Clés API",
+        "description": "Clés d'API pour les intégrations externes (Zapier, Make, custom)"
+      },
       "aiProviders": {
         "label": "Fournisseurs LLM",
         "description": "API keys OpenAI, Anthropic, Google et autres"
@@ -2243,6 +2247,7 @@
     "messengerDesc": "Messenger via integration de page Facebook",
     "telegramDesc": "Telegram Bot API — messages directs automatises",
     "smsDesc": "Twilio SMS — messages texte bidirectionnels",
+    "emailDesc": "Recevez et répondez aux e-mails comme canal de communication",
     "configIdNotSet": "Facebook Login Configuration ID non configure. Contactez le support.",
     "connectingInstagram": "Connexion Instagram...",
     "sms": {
@@ -5895,7 +5900,8 @@
     "preChatForm": "Formulaire pré-chat",
     "embedCode": "Code d'intégration",
     "cancel": "Annuler",
-    "save": "Enregistrer"
+    "save": "Enregistrer",
+    "triggers": "Déclencheurs proactifs"
   },
   "pwa": {
     "installTitle": "Installer Parallly",

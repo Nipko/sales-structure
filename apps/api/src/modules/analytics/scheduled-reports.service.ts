@@ -43,7 +43,7 @@ export class ScheduledReportsService {
 
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `INSERT INTO "${schemaName}".scheduled_reports (tenant_id, frequency, recipients, is_active)
-             VALUES ($1, $2, $3, $4) RETURNING *`,
+             VALUES ($1::uuid, $2, $3, $4) RETURNING *`,
             tenantId, data.frequency, data.recipients, data.isActive,
         );
         return rows[0];
@@ -205,7 +205,7 @@ export class ScheduledReportsService {
 
         // Update last_sent_at
         await this.prisma.$queryRawUnsafe(
-            `UPDATE "${config.id ? `${tenant.schemaName}` : tenant.schemaName}".scheduled_reports
+            `UPDATE "${tenant.schemaName}".scheduled_reports
              SET last_sent_at = NOW() WHERE id = $1::uuid`,
             config.id,
         );

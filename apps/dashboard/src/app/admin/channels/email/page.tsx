@@ -242,6 +242,9 @@ export default function EmailChannelPage() {
                         placeholder="noreply@yourdomain.com"
                         className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-blue-500 transition-colors"
                     />
+                    <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                        {t("form.fromEmailHelp")}
+                    </p>
                 </div>
 
                 {/* From Name */}
@@ -256,6 +259,9 @@ export default function EmailChannelPage() {
                         placeholder="Parallly Support"
                         className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-blue-500 transition-colors"
                     />
+                    <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                        {t("form.fromNameHelp")}
+                    </p>
                 </div>
 
                 {/* Reply-To */}
@@ -270,6 +276,9 @@ export default function EmailChannelPage() {
                         placeholder="support@yourdomain.com"
                         className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-blue-500 transition-colors"
                     />
+                    <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                        {t("form.replyToHelp")}
+                    </p>
                 </div>
             </div>
 
@@ -334,6 +343,9 @@ export default function EmailChannelPage() {
                                         placeholder="smtp.gmail.com"
                                         className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-blue-500 transition-colors"
                                     />
+                                    <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                                        {t("form.smtpHostHelp")}
+                                    </p>
                                 </div>
 
                                 {/* SMTP Port */}
@@ -348,6 +360,9 @@ export default function EmailChannelPage() {
                                         placeholder="587"
                                         className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-blue-500 transition-colors"
                                     />
+                                    <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                                        {t("form.smtpPortHelp")}
+                                    </p>
                                 </div>
 
                                 {/* SMTP Username */}
@@ -362,6 +377,9 @@ export default function EmailChannelPage() {
                                         placeholder="user@gmail.com"
                                         className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-blue-500 transition-colors"
                                     />
+                                    <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                                        {t("form.smtpUserHelp")}
+                                    </p>
                                 </div>
 
                                 {/* SMTP Password */}
@@ -376,6 +394,9 @@ export default function EmailChannelPage() {
                                         placeholder="••••••••"
                                         className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none focus:border-blue-500 transition-colors"
                                     />
+                                    <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                                        {t("form.smtpPassHelp")}
+                                    </p>
                                 </div>
 
                                 {/* SMTP Encryption */}
@@ -401,6 +422,36 @@ export default function EmailChannelPage() {
                                         ))}
                                     </div>
                                 </div>
+
+                                {/* SMTP Guide Banner */}
+                                <div className="mt-4 rounded-xl border border-dashed border-border p-4 bg-[var(--bg-tertiary)]">
+                                    <p className="text-[12px] font-bold text-foreground mb-3 flex items-center gap-1.5">
+                                        <Server size={14} className="text-blue-400" />
+                                        {t("form.smtpGuideTitle")}
+                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] text-[var(--text-secondary)]">
+                                        <div className="space-y-1">
+                                            <p className="font-semibold text-foreground">Google Gmail / Workspace</p>
+                                            <p>{t("form.smtpHost")}: <code className="font-mono bg-background px-1 py-0.5 rounded text-[10px]">smtp.gmail.com</code></p>
+                                            <p>{t("form.smtpPort")}: <code className="font-mono bg-background px-1 py-0.5 rounded text-[10px]">587</code> (TLS)</p>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="font-semibold text-foreground">Microsoft Outlook / Office 365</p>
+                                            <p>{t("form.smtpHost")}: <code className="font-mono bg-background px-1 py-0.5 rounded text-[10px]">smtp.office365.com</code></p>
+                                            <p>{t("form.smtpPort")}: <code className="font-mono bg-background px-1 py-0.5 rounded text-[10px]">587</code> (TLS)</p>
+                                        </div>
+                                        <div className="space-y-1 mt-1">
+                                            <p className="font-semibold text-foreground">SendGrid</p>
+                                            <p>{t("form.smtpHost")}: <code className="font-mono bg-background px-1 py-0.5 rounded text-[10px]">smtp.sendgrid.net</code></p>
+                                            <p>{t("form.smtpPort")}: <code className="font-mono bg-background px-1 py-0.5 rounded text-[10px]">587</code> (TLS)</p>
+                                        </div>
+                                        <div className="space-y-1 mt-1">
+                                            <p className="font-semibold text-foreground">Mailgun</p>
+                                            <p>{t("form.smtpHost")}: <code className="font-mono bg-background px-1 py-0.5 rounded text-[10px]">smtp.mailgun.org</code></p>
+                                            <p>{t("form.smtpPort")}: <code className="font-mono bg-background px-1 py-0.5 rounded text-[10px]">587</code> (TLS)</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </>
                         ) : (
                             /* SendGrid API Key */
@@ -415,6 +466,9 @@ export default function EmailChannelPage() {
                                     placeholder="SG.xxxxxxxxxxxx..."
                                     className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm font-mono outline-none focus:border-blue-500 transition-colors"
                                 />
+                                <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                                    {t("form.sendgridApiKeyHelp")}
+                                </p>
                             </div>
                         )}
                     </div>
@@ -427,15 +481,40 @@ export default function EmailChannelPage() {
                     {t("form.inboundType")}
                 </p>
 
-                <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-[var(--bg-tertiary)]">
-                    <Mail size={16} className="text-[var(--text-secondary)] flex-shrink-0" />
+                <div className="flex items-start gap-3 px-4 py-4 rounded-xl border border-border bg-[var(--bg-tertiary)] mb-4">
+                    <Mail size={16} className="text-[var(--text-secondary)] flex-shrink-0 mt-0.5" />
                     <div>
                         <p className="text-sm font-medium text-foreground m-0">
                             SendGrid Inbound Parse
                         </p>
-                        <p className="text-[12px] text-[var(--text-secondary)] m-0 mt-0.5 leading-relaxed">
+                        <p className="text-[12px] text-[var(--text-secondary)] m-0 mt-1 leading-relaxed">
                             {t("form.inboundHint")}
                         </p>
+                    </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-background p-4">
+                    <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
+                        <Info size={14} className="text-blue-400" />
+                        {t("form.webhookCopyTitle")}
+                    </p>
+                    <p className="text-[11px] text-[var(--text-secondary)] mb-3 leading-relaxed">
+                        {t("form.webhookCopyHint")}
+                    </p>
+                    <div className="flex gap-2">
+                        <code className="flex-1 select-all font-mono text-[11px] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-3 py-2 rounded-lg border border-border truncate flex items-center">
+                            https://api.parallly-chat.cloud/api/v1/channels/email/inbound
+                        </code>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                navigator.clipboard.writeText("https://api.parallly-chat.cloud/api/v1/channels/email/inbound");
+                                setToast({ type: "success", message: t("form.webhookCopied") });
+                            }}
+                            className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer transition-colors whitespace-nowrap"
+                        >
+                            {t("form.webhookCopyBtn")}
+                        </button>
                     </div>
                 </div>
             </div>

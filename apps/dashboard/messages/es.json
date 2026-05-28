@@ -2558,6 +2558,9 @@
       "infoMaxTokensDesc": "limita la longitud de respuesta. 800 tokens ~ 2-3 párrafos."
     },
     "capabilities": {
+      "editTemplate": "Editar plantilla",
+      "sendEmailConfirmation": "Enviar confirmación por correo",
+      "sendEmailConfirmationDesc": "Envía un correo de confirmación formal automáticamente al agendar la cita.",
       "appointmentScheduling": "Agendamiento de citas",
       "appointmentDesc": "Verificar disponibilidad, agendar y cancelar citas",
       "ready": "Listo",
@@ -3490,7 +3493,58 @@
     "active": "Activa",
     "createFromTemplate": "Crear desde plantilla",
     "presetTitle": "Elige un tipo de email",
-    "presetSubtitle": "Selecciona una plantilla pre-diseñada para personalizar"
+    "presetSubtitle": "Selecciona una plantilla pre-diseñada para personalizar",
+    "description": "Diseña y gestiona correos electrónicos transaccionales",
+    "createTemplate": "Crear plantilla",
+    "createFirstTemplate": "Crear primera plantilla",
+    "noTemplates": "No se han creado plantillas",
+    "name": "Nombre",
+    "namePlaceholder": "ej.: Bienvenida a clientes",
+    "slug": "Slug (identificador único)",
+    "slugPlaceholder": "bienvenida-cliente",
+    "subjectHint": "— Usa {{variable}} para datos dinámicos",
+    "subjectPlaceholder": "Ej.: Hola {{customer_name}}, tu orden {{order_id}} está lista",
+    "availableVariables": "Variables disponibles",
+    "variablesHint": "Haz clic para insertar en el asunto o cuerpo (según la posición del cursor)",
+    "htmlBody": "Cuerpo HTML",
+    "htmlBodyPlaceholder": "<h1>Hola {{customer_name}}</h1><p>Gracias por tu compra...</p>",
+    "inactive": "Inactivo",
+    "sendTest": "Enviar prueba",
+    "rendered": "Renderizado",
+    "html": "HTML",
+    "presetFooterHint": "La plantilla se creará lista para personalizar",
+    "sendTestEmail": "Enviar email de prueba",
+    "testEmailDesc": "Se enviará un correo de prueba con datos de ejemplo.",
+    "destinationEmail": "Email de destino",
+    "destinationPlaceholder": "tu@email.com",
+    "cancel": "Cancelar",
+    "sending": "Enviando...",
+    "presets": {
+      "preset_appointment_confirm": {
+        "name": "Confirmación de cita",
+        "description": "Email automático cuando se agenda una cita"
+      },
+      "preset_appointment_reminder": {
+        "name": "Recordatorio de cita",
+        "description": "Enviado automáticamente 24h antes de la cita"
+      },
+      "preset_booking_confirm": {
+        "name": "Confirmación de reserva",
+        "description": "Para reservas de propiedades/alojamiento"
+      },
+      "preset_checkin_reminder": {
+        "name": "Recordatorio de check-in",
+        "description": "Instrucciones de llegada 24h antes"
+      },
+      "preset_welcome": {
+        "name": "Bienvenida",
+        "description": "Email de bienvenida para nuevos clientes"
+      },
+      "preset_team_notification": {
+        "name": "Notificación al equipo",
+        "description": "Alerta interna cuando se escala una conversación"
+      }
+    }
   },
   "changePassword": {
     "title": "Cambiar Contraseña",
@@ -6253,6 +6307,7 @@
     "frequencyHint": "0 = una vez por sesión",
     "priority": "Prioridad",
     "active": "Activo",
+    "inactive": "Inactivo",
     "save": "Guardar",
     "cancel": "Cancelar",
     "confirmDelete": "¿Eliminar este trigger?",
@@ -6304,7 +6359,20 @@
       "sendgridApiKey": "API Key de SendGrid",
       "inboundType": "Recepción de email",
       "inboundHint": "Configura el Inbound Parse de SendGrid para recibir emails entrantes en tu bandeja.",
-      "active": "Canal activo"
+      "active": "Canal activo",
+      "fromEmailHelp": "El correo desde el cual el agente IA enviará las respuestas (ej. contacto@tudominio.com).",
+      "fromNameHelp": "El nombre que verán tus clientes al recibir tus correos (ej. Soporte Parallly).",
+      "replyToHelp": "Dirección opcional a donde se enviarán las respuestas si no deseas que se procesen por chat.",
+      "smtpHostHelp": "Servidor de salida de tu proveedor de correo (ej. smtp.gmail.com o smtp.office365.com).",
+      "smtpPortHelp": "Puerto de conexión. TLS: 587 (recomendado), SSL: 465, Sin cifrado: 25.",
+      "smtpUserHelp": "Tu dirección de correo electrónico completa de inicio de sesión.",
+      "smtpPassHelp": "Tu contraseña. IMPORTANTE: Si usas Gmail u Outlook con verificación de 2 pasos activa, debes crear y usar una 'Contraseña de Aplicación' de 16 caracteres.",
+      "sendgridApiKeyHelp": "Clave API de SendGrid con privilegios de envío (Mail Send).",
+      "webhookCopyTitle": "Webhook de recepción de correos",
+      "webhookCopyHint": "Copia esta URL de recepción e ingresala en SendGrid > Settings > Inbound Parse para recibir emails en tu bandeja de Parallly:",
+      "webhookCopyBtn": "Copiar URL de Webhook",
+      "webhookCopied": "¡URL copiada!",
+      "smtpGuideTitle": "Guía de puertos y hosts SMTP comunes"
     },
     "save": "Guardar configuración",
     "saving": "Guardando...",
@@ -6371,6 +6439,57 @@
       "rotated": "Clave rotada exitosamente",
       "copied": "Clave copiada al portapapeles",
       "error": "Error al procesar la solicitud"
-    }
+    },
+    "authGuideTitle": "¿Cómo autenticarse con la API de Parallly?",
+    "authGuideDesc": "Todas las solicitudes API entrantes deben incluir tu clave secreta en el encabezado HTTP de autorización como un token Bearer:",
+    "baseEndpoint": "Endpoint base:",
+    "moreDetails": "Para más detalles, consulta la <docsLink>Documentación de API Completa</docsLink> o la sección de Integraciones.",
+    "fullApiDocs": "Documentación de API Completa"
+  },
+  "alertsSettings": {
+    "title": "Alertas del sistema",
+    "newAlert": "Nueva alerta",
+    "subtitle": "Recibe notificaciones cuando una métrica supere un límite. Evaluado cada 15 minutos.",
+    "alertName": "Nombre de la alerta",
+    "alertNamePlaceholder": "ej.: Tráfico inusual",
+    "metric": "Métrica",
+    "operator": "Operador",
+    "threshold": "Límite / Umbral",
+    "emails": "Emails (separados por comas)",
+    "emailsPlaceholder": "email1@empresa.com, email2@empresa.com",
+    "cooldown": "Inactividad",
+    "create": "Crear",
+    "creating": "Creando...",
+    "noAlerts": "No hay alertas configuradas.",
+    "active": "Activa",
+    "inactive": "Inactiva",
+    "min": "min",
+    "metrics": {
+      "active_conversations": "Conversaciones activas",
+      "queue_depth": "Profundidad de la cola",
+      "agents_online": "Agentes conectados",
+      "messages_today": "Mensajes hoy",
+      "handoffs_today": "Escalaciones hoy",
+      "llm_cost_today": "Costo de LLM hoy"
+    },
+    "operators": {
+      "greater": "Mayor que (>)",
+      "greater_equal": "Mayor o igual (>=)",
+      "less": "Menor que (<)",
+      "less_equal": "Menor o igual (<=)",
+      "equal": "Igual (=)"
+    },
+    "reportsTitle": "Reportes programados",
+    "reportsSubtitle": "Recibe un resumen automático de KPIs por email.",
+    "frequency": "Frecuencia",
+    "frequencyOptions": {
+      "weekly": "Semanal (Lunes 8 AM)",
+      "monthly": "Mensual (Día 1, 8 AM)"
+    },
+    "recipients": "Destinatarios",
+    "recipientsPlaceholder": "email1@empresa.com, email2@empresa.com",
+    "enabled": "Habilitado",
+    "disabled": "Deshabilitado",
+    "lastSent": "Último envío: {date}"
   }
 }

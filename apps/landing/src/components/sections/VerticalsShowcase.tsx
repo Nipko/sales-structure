@@ -28,6 +28,13 @@ export function VerticalsShowcase() {
   const [activeVertical, setActiveVertical] = useState<string>(clusterVerticals[0]?.slug || VERTICALS[0].slug);
   const [chatStep, setChatStep] = useState<number>(0);
 
+  const CLUSTER_FALLBACKS: Record<VerticalCluster, string> = {
+    "salud-bienestar": "Salud y Bienestar",
+    "comercio-servicios": "Comercio y Servicios",
+    "profesional-finanzas": "Profesional y Finanzas",
+    "lifestyle-creativos": "Lifestyle y Creativos",
+  };
+
   const handleClusterChange = (cluster: VerticalCluster) => {
     setActiveCluster(cluster);
     const verticals = getVerticalsByCluster(cluster);
@@ -44,7 +51,7 @@ export function VerticalsShowcase() {
     <Section id="industrias">
       <div className="text-center mb-12">
         <span className="text-accent text-xs font-semibold tracking-widest uppercase mb-2 block">
-          {t("subtitle") ? "Omnichannel Verticals" : "Soluciones Omnicanal"}
+          {t("solutionsOmnichannel", { defaultValue: "Soluciones Omnicanal" })}
         </span>
         <h2 className="text-3xl sm:text-5xl font-bold mb-4 tracking-tight">
           {t("title")}
@@ -75,7 +82,7 @@ export function VerticalsShowcase() {
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
-              <span className="relative z-10">{t(CLUSTER_LABELS[cluster])}</span>
+              <span className="relative z-10">{t(CLUSTER_LABELS[cluster], { defaultValue: CLUSTER_FALLBACKS[cluster] })}</span>
             </button>
           );
         })}
@@ -115,7 +122,7 @@ export function VerticalsShowcase() {
                 <span className="w-4 h-4 flex items-center justify-center" style={isActive ? { color: "white" } : { color: v.color }}>
                   {getVerticalIcon(v.slug, "w-4 h-4")}
                 </span>
-                <span>{t(`${v.slug}.name`)}</span>
+                <span>{t(`${v.slug}.name`, { defaultValue: v.slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) })}</span>
                 {isActive && (
                   <motion.span
                     layoutId="vertical-pill-glow"
@@ -191,13 +198,13 @@ export function VerticalsShowcase() {
                 }}
               >
                 {getVerticalIcon(current.slug, "w-4 h-4")}
-                <span>{t(`${activeVertical}.subtitle`)}</span>
+                <span>{t(`${activeVertical}.subtitle`, { defaultValue: activeVertical.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) })}</span>
               </span>
               <h3 className="text-2xl sm:text-4xl font-extrabold mb-3 tracking-tight">
-                {t(`${activeVertical}.name`)}
+                {t(`${activeVertical}.name`, { defaultValue: activeVertical.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) })}
               </h3>
               <p className="text-text-secondary text-sm sm:text-base leading-relaxed">
-                {t(`${activeVertical}.tagline`)}
+                {t(`${activeVertical}.tagline`, { defaultValue: "" })}
               </p>
             </div>
 
@@ -222,7 +229,7 @@ export function VerticalsShowcase() {
                     {Icon.check("w-3.5 h-3.5")}
                   </span>
                   <span className="text-text-secondary text-sm sm:text-base">
-                    {t(`${activeVertical}.feature${n}`)}
+                    {t(`${activeVertical}.feature${n}`, { defaultValue: `Feature ${n}` })}
                   </span>
                 </motion.li>
               ))}
@@ -235,15 +242,15 @@ export function VerticalsShowcase() {
             >
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-text-muted font-bold mb-0.5">
-                  Agente IA Recomendado
+                  {t("recommendedAgent", { defaultValue: "Agente IA Recomendado" })}
                 </p>
                 <p className="font-bold flex items-center gap-2 text-sm sm:text-base">
                   <span style={{ color: current.color }}>
                     {getVerticalIcon(current.slug, "w-4 h-4")}
                   </span>
-                  <span>{t(`${activeVertical}.agentName`)}</span>
+                  <span>{t(`${activeVertical}.agentName`, { defaultValue: "Agente IA" })}</span>
                   <span className="text-xs text-text-muted font-normal">
-                    · Pre-configurado
+                    · {t("preConfigured", { defaultValue: "Pre-configurado" })}
                   </span>
                 </p>
               </div>

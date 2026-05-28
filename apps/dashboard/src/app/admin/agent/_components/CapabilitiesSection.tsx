@@ -179,10 +179,10 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
                 />
                 <div>
                   <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                    Enviar confirmación por correo
+                    {t("sendEmailConfirmation")}
                   </span>
                   <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    Envía un correo de confirmación formal automáticamente al agendar la cita.
+                    {t("sendEmailConfirmationDesc")}
                   </p>
                 </div>
               </label>
@@ -190,7 +190,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
                 href="/admin/settings/email-templates?template=appointment_confirmation_email"
                 className="text-xs font-semibold text-indigo-500 hover:underline shrink-0 ml-3"
               >
-                Editar plantilla
+                {t("editTemplate")}
               </Link>
             </div>
           </div>
@@ -257,6 +257,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
                 });
               } : undefined}
               templateSlug={templateSlug}
+              t={t}
             />
           );
         })}
@@ -270,10 +271,10 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <ToolToggleCard icon={ShoppingBag} title={t("catalogTitle")} description={t("catalogDesc")} enabled={tools.catalog?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, catalog: { ...(tools.catalog ?? { enabled: false }), enabled: v } } })} />
-        <ToolToggleCard icon={HelpCircle} title={t("faqsTitle")} description={t("faqsDesc")} enabled={tools.faqs?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, faqs: { enabled: v } } })} />
-        <ToolToggleCard icon={Scale} title={t("policiesTitle")} description={t("policiesDesc")} enabled={tools.policies?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, policies: { enabled: v } } })} />
-        <ToolToggleCard icon={Tag} title={t("offersTitle")} description={t("offersDesc")} enabled={tools.offers?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, offers: { enabled: v } } })} />
+        <ToolToggleCard icon={ShoppingBag} title={t("catalogTitle")} description={t("catalogDesc")} enabled={tools.catalog?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, catalog: { ...(tools.catalog ?? { enabled: false }), enabled: v } } })} t={t} />
+        <ToolToggleCard icon={HelpCircle} title={t("faqsTitle")} description={t("faqsDesc")} enabled={tools.faqs?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, faqs: { enabled: v } } })} t={t} />
+        <ToolToggleCard icon={Scale} title={t("policiesTitle")} description={t("policiesDesc")} enabled={tools.policies?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, policies: { enabled: v } } })} t={t} />
+        <ToolToggleCard icon={Tag} title={t("offersTitle")} description={t("offersDesc")} enabled={tools.offers?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, offers: { enabled: v } } })} t={t} />
         
         {/* Orders supports confirmation emails! */}
         <ToolToggleCard
@@ -285,9 +286,10 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
           emailConfirmations={tools.orders?.emailConfirmations}
           onEmailConfirmationsChange={(v) => onChange({ tools: { ...tools, orders: { ...(tools.orders ?? { enabled: false }), emailConfirmations: v } } })}
           templateSlug="order_confirmation"
+          t={t}
         />
 
-        <ToolToggleCard icon={UserCircle} title={t("crmTitle")} description={t("crmDesc")} enabled={tools.crm?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, crm: { enabled: v } } })} />
+        <ToolToggleCard icon={UserCircle} title={t("crmTitle")} description={t("crmDesc")} enabled={tools.crm?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, crm: { enabled: v } } })} t={t} />
       </div>
 
       {/* ── Knowledge base ── */}
@@ -313,6 +315,7 @@ function ToolToggleCard({
   emailConfirmations,
   onEmailConfirmationsChange,
   templateSlug,
+  t,
 }: {
   icon: any;
   title: string;
@@ -324,6 +327,7 @@ function ToolToggleCard({
   emailConfirmations?: boolean;
   onEmailConfirmationsChange?: (v: boolean) => void;
   templateSlug?: string;
+  t: any;
 }) {
   return (
     <div className={cn(
@@ -380,7 +384,7 @@ function ToolToggleCard({
               className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 accent-indigo-500"
             />
             <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-              Enviar confirmación por correo
+              {t("sendEmailConfirmation")}
             </span>
           </label>
           {templateSlug && (
@@ -388,7 +392,7 @@ function ToolToggleCard({
               href={`/admin/settings/email-templates?template=${templateSlug}`}
               className="text-[11px] font-semibold text-indigo-500 hover:underline"
             >
-              Editar plantilla
+              {t("editTemplate")}
             </Link>
           )}
         </div>

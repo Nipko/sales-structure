@@ -289,7 +289,7 @@ export default function WidgetTriggersPage() {
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tr.is_active ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-500"}`}>
-                                {tr.is_active ? t("active") : "Off"}
+                                {tr.is_active ? t("active") : t("inactive")}
                             </span>
                             <button onClick={() => toggleActive(tr)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg">
                                 {tr.is_active ? <ToggleRight size={18} className="text-indigo-500" /> : <ToggleLeft size={18} className="text-neutral-400" />}

@@ -500,7 +500,7 @@ export default function EmailTemplatesPage() {
           <div>
             <h1 className="text-[22px] font-semibold text-foreground m-0">{t('title')}</h1>
             <p className="text-[13px] text-muted-foreground m-0">
-              Design and manage transactional emails
+              {t("description")}
             </p>
           </div>
         </div>
@@ -517,7 +517,7 @@ export default function EmailTemplatesPage() {
             disabled={!canCreate("emailTemplates", templates.length)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Plus size={16} /> Create template
+            <Plus size={16} /> {t("createTemplate")}
           </button>
         </div>
       </div>
@@ -533,57 +533,57 @@ export default function EmailTemplatesPage() {
         >
           <UpgradeBanner current={templates.length} limit={getLimit("emailTemplates")} resourceLabel="plantillas de email" />
           {loading ? (
-            <div className="p-10 text-center text-muted-foreground">Loading...</div>
+            <div className="p-10 text-center text-muted-foreground">{tc("loading")}</div>
           ) : templates.length === 0 ? (
             <div className="p-12 text-center bg-card rounded-[14px] border border-border">
               <Mail size={36} className="text-muted-foreground opacity-40 mx-auto mb-3" />
-              <p className="text-muted-foreground text-sm mb-4">No templates created</p>
+              <p className="text-muted-foreground text-sm mb-4">{t("noTemplates")}</p>
               <button
                 onClick={startCreate}
                 disabled={!canCreate("emailTemplates", templates.length)}
                 className="px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Create first template
+                {t("createFirstTemplate")}
               </button>
             </div>
           ) : (
-            templates.map((t) => (
+            templates.map((tpl) => (
               <div
-                key={t.id}
-                onClick={() => selectTemplate(t.id)}
+                key={tpl.id}
+                onClick={() => selectTemplate(tpl.id)}
                 className={cn(
                   "bg-card rounded-[14px] border px-4 py-3.5 cursor-pointer transition-all hover:border-primary/50 group",
-                  selectedId === t.id ? "border-primary shadow-md shadow-primary/10" : "border-border"
+                  selectedId === tpl.id ? "border-primary shadow-md shadow-primary/10" : "border-border"
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-semibold text-foreground truncate">{t.name}</div>
+                    <div className="text-[14px] font-semibold text-foreground truncate">{tpl.name}</div>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-[11px] font-mono">
-                        {t.slug}
+                        {tpl.slug}
                       </span>
                       <span
                         className={cn(
                           "px-2 py-0.5 rounded-full text-[11px] font-semibold",
-                          t.isActive
+                          tpl.isActive
                             ? "bg-[var(--success)]/15 text-[var(--success)]"
                             : "bg-muted text-muted-foreground"
                         )}
                       >
-                        {t.isActive ? "Active" : "Inactive"}
+                        {tpl.isActive ? t("active") : t("inactive")}
                       </span>
                     </div>
                     {!editorOpen && (
-                      <p className="text-xs text-muted-foreground mt-1.5 truncate">{t.subject}</p>
+                      <p className="text-xs text-muted-foreground mt-1.5 truncate">{tpl.subject}</p>
                     )}
                   </div>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDelete(t.id);
+                      handleDelete(tpl.id);
                     }}
-                    disabled={deleting === t.id}
+                    disabled={deleting === tpl.id}
                     className="w-7 h-7 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive cursor-pointer flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                   >
                     <Trash2 size={13} />
@@ -614,20 +614,20 @@ export default function EmailTemplatesPage() {
               {/* Name & Slug */}
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className={labelCls}>Name</label>
+                  <label className={labelCls}>{t("name")}</label>
                   <input
                     value={form.name}
                     onChange={(e) => handleNameChange(e.target.value)}
-                    placeholder="e.g.: Customer welcome"
+                    placeholder={t("namePlaceholder")}
                     className={inputCls}
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Slug (unique identifier)</label>
+                  <label className={labelCls}>{t("slug")}</label>
                   <input
                     value={form.slug}
                     onChange={(e) => setForm((prev) => ({ ...prev, slug: e.target.value }))}
-                    placeholder="welcome-customer"
+                    placeholder={t("slugPlaceholder")}
                     className={cn(inputCls, "font-mono text-[13px]")}
                   />
                 </div>
@@ -636,25 +636,25 @@ export default function EmailTemplatesPage() {
               {/* Subject */}
               <div className="mb-4">
                 <label className={labelCls}>
-                  Subject{" "}
+                  {t("subject")}{" "}
                   <span className="font-normal text-muted-foreground/70">
-                    — Use {"{{variable}}"} for dynamic data
+                    {t("subjectHint")}
                   </span>
                 </label>
                 <input
                   ref={subjectRef}
                   value={form.subject}
                   onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
-                  placeholder='E.g.: Hello {{customer_name}}, your order {{order_id}} is ready'
+                  placeholder={t("subjectPlaceholder")}
                   className={inputCls}
                 />
               </div>
 
               {/* Variables */}
               <div className="mb-4">
-                <label className={labelCls}>Available variables</label>
+                <label className={labelCls}>{t("availableVariables")}</label>
                 <p className="text-[11px] text-muted-foreground mb-2">
-                  Click to insert in subject or body (depending on cursor position)
+                  {t("variablesHint")}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {AVAILABLE_VARIABLES.map((v) => (
@@ -681,12 +681,12 @@ export default function EmailTemplatesPage() {
 
               {/* HTML body */}
               <div className="mb-4">
-                <label className={labelCls}>HTML Body</label>
+                <label className={labelCls}>{t("htmlBody")}</label>
                 <textarea
                   ref={bodyRef}
                   value={form.bodyHtml}
                   onChange={(e) => setForm((prev) => ({ ...prev, bodyHtml: e.target.value }))}
-                  placeholder="<h1>Hello {{customer_name}}</h1><p>Thank you for your purchase...</p>"
+                  placeholder={t("htmlBodyPlaceholder")}
                   rows={14}
                   className={cn(inputCls, "font-mono text-[13px] leading-relaxed resize-y min-h-[200px]")}
                 />
@@ -705,7 +705,7 @@ export default function EmailTemplatesPage() {
                   )}
                 >
                   {form.isActive ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                  {form.isActive ? "Active" : "Inactive"}
+                  {form.isActive ? t("active") : t("inactive")}
                 </button>
               </div>
 
@@ -725,7 +725,7 @@ export default function EmailTemplatesPage() {
                     className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-card border border-border text-foreground cursor-pointer text-sm font-semibold hover:bg-muted transition-colors"
                   >
                     <Send size={16} />
-                    Send test
+                    {t("sendTest")}
                   </button>
                 )}
               </div>
@@ -734,7 +734,7 @@ export default function EmailTemplatesPage() {
             {/* Preview */}
             <div className="bg-card rounded-[14px] border border-border overflow-hidden">
               <div className="flex items-center border-b border-border px-5 py-3">
-                <h3 className="text-sm font-semibold text-foreground m-0 flex-1">Preview</h3>
+                <h3 className="text-sm font-semibold text-foreground m-0 flex-1">{t("preview")}</h3>
                 <div className="flex rounded-lg bg-muted p-0.5">
                   <button
                     onClick={() => setPreviewTab("preview")}
@@ -745,7 +745,7 @@ export default function EmailTemplatesPage() {
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    <Eye size={13} /> Rendered
+                    <Eye size={13} /> {t("rendered")}
                   </button>
                   <button
                     onClick={() => setPreviewTab("code")}
@@ -756,7 +756,7 @@ export default function EmailTemplatesPage() {
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    <Code2 size={13} /> HTML
+                    <Code2 size={13} /> {t("html")}
                   </button>
                 </div>
               </div>
@@ -827,11 +827,11 @@ export default function EmailTemplatesPage() {
                         <Icon size={15} className="text-primary" />
                       </div>
                       <h4 className="text-sm font-semibold text-foreground m-0 leading-tight">
-                        {preset.name}
+                        {t(`presets.${preset.id}.name`, { defaultValue: preset.name })}
                       </h4>
                     </div>
                     <p className="text-xs text-muted-foreground m-0 leading-relaxed">
-                      {preset.description}
+                      {t(`presets.${preset.id}.description`, { defaultValue: preset.description })}
                     </p>
                     <div className="flex flex-wrap gap-1 mt-2.5">
                       {preset.variables.slice(0, 3).map((v) => (
@@ -855,7 +855,7 @@ export default function EmailTemplatesPage() {
 
             {/* Footer hint */}
             <p className="text-xs text-muted-foreground text-center mt-4">
-              La plantilla se creará lista para personalizar
+              {t("presetFooterHint")}
             </p>
           </div>
         </div>
@@ -874,7 +874,7 @@ export default function EmailTemplatesPage() {
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-semibold text-foreground m-0 flex items-center gap-2">
                 <Send size={18} className="text-primary" />
-                Send test email
+                {t("sendTestEmail")}
               </h3>
               <button
                 onClick={() => setTestModalOpen(false)}
@@ -884,14 +884,14 @@ export default function EmailTemplatesPage() {
               </button>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
-              A test email with sample data will be sent.
+              {t("testEmailDesc")}
             </p>
-            <label className={labelCls}>Destination email</label>
+            <label className={labelCls}>{t("destinationEmail")}</label>
             <input
               type="email"
               value={testEmail}
               onChange={(e) => setTestEmail(e.target.value)}
-              placeholder="you@email.com"
+              placeholder={t("destinationPlaceholder")}
               className={cn(inputCls, "mb-5")}
               onKeyDown={(e) => e.key === "Enter" && handleSendTest()}
               autoFocus
@@ -901,7 +901,7 @@ export default function EmailTemplatesPage() {
                 onClick={() => setTestModalOpen(false)}
                 className="px-4 py-2.5 rounded-[10px] bg-muted border border-border text-foreground text-sm font-semibold cursor-pointer hover:bg-muted/80 transition-colors"
               >
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 onClick={handleSendTest}
@@ -909,7 +909,7 @@ export default function EmailTemplatesPage() {
                 className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 <Send size={14} />
-                {sendingTest ? "Sending..." :  tc("save")}
+                {sendingTest ? t("sending") : t("sendTest")}
               </button>
             </div>
           </div>

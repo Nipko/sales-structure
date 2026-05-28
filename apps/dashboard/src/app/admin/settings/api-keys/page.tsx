@@ -225,6 +225,34 @@ export default function ApiKeysPage() {
         }
       />
 
+      {/* ── API Reference & Help Card ─────────────────── */}
+      <div className="flex items-start gap-3 p-4 rounded-xl bg-indigo-500/5 border border-indigo-500/10 mb-4">
+        <Shield size={18} className="text-indigo-400 mt-0.5 flex-shrink-0" />
+        <div className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
+          <p className="font-bold text-neutral-900 dark:text-neutral-100 mb-1">
+            {t("authGuideTitle")}
+          </p>
+          <p className="mb-2">
+            {t("authGuideDesc")}
+          </p>
+          <code className="block font-mono text-[11px] bg-neutral-100 dark:bg-neutral-800 p-2.5 rounded-lg border border-border text-neutral-700 dark:text-neutral-300 mb-3 select-all">
+            Authorization: Bearer pk_live_YOUR_KEY_HERE
+          </code>
+          <p className="mb-1.5">
+            <strong>{t("baseEndpoint")}</strong> <code className="font-mono bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded text-[11px]">https://api.parallly-chat.cloud/api/v1</code>
+          </p>
+          <p>
+            {t.rich("moreDetails", {
+              docsLink: (chunks) => (
+                <a href="/docs/API_REFERENCE.md" className="text-indigo-500 hover:underline font-semibold">
+                  {chunks}
+                </a>
+              )
+            })}
+          </p>
+        </div>
+      </div>
+
       {/* Key list */}
       {loading ? (
         <div className="flex items-center gap-3 py-8">

@@ -200,13 +200,16 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          {tenant.industry && tenant.industry !== "N/A" ? (
-                            <span className={cn("px-2 py-0.5 rounded-md text-xs font-medium", industryColor[tenant.industry] || industryColor.otro)}>
-                              {t(`industries.${tenant.industry}`, { defaultValue: tenant.industry })}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-neutral-400">--</span>
-                          )}
+                          {(() => {
+                            const cleanInd = tenant.industry ? tenant.industry.replace(/^tenants\.industries\./, "") : "";
+                            return cleanInd && cleanInd !== "N/A" ? (
+                              <span className={cn("px-2 py-0.5 rounded-md text-xs font-medium", industryColor[cleanInd] || (cleanInd.includes("servicio") ? industryColor.servicios : industryColor.otro))}>
+                                {t(`industries.${cleanInd}`, { defaultValue: cleanInd.replace(/_/g, " ") })}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-neutral-400">--</span>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3 text-center">
                           {(() => {

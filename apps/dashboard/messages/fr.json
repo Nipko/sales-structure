@@ -2560,6 +2560,9 @@
       "infoMaxTokensDesc": "limite la longueur de réponse. 800 tokens ~ 2-3 paragraphes."
     },
     "capabilities": {
+      "editTemplate": "Modifier le modèle",
+      "sendEmailConfirmation": "Envoyer une confirmation par e-mail",
+      "sendEmailConfirmationDesc": "Envoie automatiquement un e-mail de confirmation formel lors de la prise de rendez-vous.",
       "appointmentScheduling": "Prise de rendez-vous",
       "appointmentDesc": "Vérifier la disponibilité, planifier et annuler des rendez-vous",
       "ready": "Prêt",
@@ -6255,6 +6258,7 @@
     "frequencyHint": "0 = une fois par session",
     "priority": "Priorité",
     "active": "Actif",
+    "inactive": "Inactif",
     "save": "Enregistrer",
     "cancel": "Annuler",
     "confirmDelete": "Supprimer ce trigger ?",
@@ -6373,6 +6377,57 @@
       "rotated": "Clé rotée avec succès",
       "copied": "Clé copiée dans le presse-papiers",
       "error": "Erreur lors du traitement de la demande"
-    }
+    },
+    "authGuideTitle": "Comment s'authentifier avec l'API Parallly ?",
+    "authGuideDesc": "Toutes les requêtes API entrantes doivent inclure votre clé secrète dans l'en-tête HTTP Authorization sous forme de jeton Bearer :",
+    "baseEndpoint": "Endpoint de base :",
+    "moreDetails": "Pour plus de détails, consultez la <docsLink>Documentation API complète</docsLink> ou la section Intégrations.",
+    "fullApiDocs": "Documentation API complète"
+  },
+  "alertsSettings": {
+    "title": "Alertes Système",
+    "newAlert": "Nouvelle alerte",
+    "subtitle": "Recevez des notifications lorsqu'une métrique dépasse un seuil. Évalué toutes les 15 minutes.",
+    "alertName": "Nom de l'alerte",
+    "alertNamePlaceholder": "ex : Trafic inhabituel",
+    "metric": "Métrique",
+    "operator": "Opérateur",
+    "threshold": "Seuil",
+    "emails": "E-mails (séparés par des virgules)",
+    "emailsPlaceholder": "email1@entreprise.com, email2@entreprise.com",
+    "cooldown": "Inactivité",
+    "create": "Créer",
+    "creating": "Création...",
+    "noAlerts": "Aucune alerte configurée.",
+    "active": "Active",
+    "inactive": "Inactive",
+    "min": "min",
+    "metrics": {
+      "active_conversations": "Conversations actives",
+      "queue_depth": "Profondeur de file d'attente",
+      "agents_online": "Agents en ligne",
+      "messages_today": "Messages aujourd'hui",
+      "handoffs_today": "Escalades aujourd'hui",
+      "llm_cost_today": "Coût LLM aujourd'hui"
+    },
+    "operators": {
+      "greater": "Supérieur à (>)",
+      "greater_equal": "Supérieur ou égal (>=)",
+      "less": "Inférieur à (<)",
+      "less_equal": "Inférieur ou égal (<=)",
+      "equal": "Égal (=)"
+    },
+    "reportsTitle": "Rapports Planifiés",
+    "reportsSubtitle": "Recevez un résumé automatique des KPI par e-mail.",
+    "frequency": "Fréquence",
+    "frequencyOptions": {
+      "weekly": "Hebdomadaire (Lundi 8h)",
+      "monthly": "Mensuel (1er du mois, 8h)"
+    },
+    "recipients": "Destinataires",
+    "recipientsPlaceholder": "email1@entreprise.com, email2@entreprise.com",
+    "enabled": "Activé",
+    "disabled": "Désactivé",
+    "lastSent": "Dernier envoi : {date}"
   }
 }

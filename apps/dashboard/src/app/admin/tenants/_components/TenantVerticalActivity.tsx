@@ -48,9 +48,10 @@ export default function TenantVerticalActivity({ tenantId }: { tenantId: string 
 
     if (numericEntries.length === 0) return null;
 
-    const industryLabel = data.industry && tInd.has(data.industry)
-        ? tInd(data.industry)
-        : data.industry || "—";
+    const cleanInd = data.industry ? data.industry.replace(/^tenants\.industries\./, "") : "";
+    const industryLabel = cleanInd && tInd.has(cleanInd)
+        ? tInd(cleanInd)
+        : cleanInd || "—";
 
     return (
         <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">

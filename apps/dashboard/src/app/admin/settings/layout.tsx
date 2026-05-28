@@ -30,8 +30,8 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
             .map((s) => ({
                 ...s,
                 items: s.items.filter((item) =>
-                    t(`items.${item.key}.label`).toLowerCase().includes(q) ||
-                    t(`items.${item.key}.description`).toLowerCase().includes(q)
+                    t(`items.${item.key}.label`, { defaultValue: item.key.charAt(0).toUpperCase() + item.key.slice(1).replace(/_/g, " ") }).toLowerCase().includes(q) ||
+                    t(`items.${item.key}.description`, { defaultValue: "" }).toLowerCase().includes(q)
                 ),
             }))
             .filter((s) => s.items.length > 0);
@@ -84,7 +84,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
                         filteredSections.map((section) => (
                             <div key={section.key}>
                                 <p className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
-                                    {t(`sections.${section.key}.title`)}
+                                    {t(`sections.${section.key}.title`, { defaultValue: section.key.charAt(0).toUpperCase() + section.key.slice(1) })}
                                 </p>
                                 <ul className="space-y-0.5">
                                     {section.items.map((item) => {
@@ -109,7 +109,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
                                                     )}
                                                 >
                                                     <Icon size={16} className={cn("shrink-0", active ? "text-indigo-500" : "")} />
-                                                    <span className="truncate">{t(`items.${item.key}.label`)}</span>
+                                                    <span className="truncate">{t(`items.${item.key}.label`, { defaultValue: item.key.charAt(0).toUpperCase() + item.key.slice(1).replace(/_/g, " ") })}</span>
                                                 </Link>
                                             </li>
                                         );

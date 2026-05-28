@@ -2560,6 +2560,9 @@
       "infoMaxTokensDesc": "limits response length. 800 tokens ~ 2-3 paragraphs."
     },
     "capabilities": {
+      "editTemplate": "Edit template",
+      "sendEmailConfirmation": "Send email confirmation",
+      "sendEmailConfirmationDesc": "Automatically sends a formal confirmation email when scheduling the appointment.",
       "appointmentScheduling": "Appointment Scheduling",
       "appointmentDesc": "Check availability, schedule and cancel appointments",
       "ready": "Ready",
@@ -3492,7 +3495,58 @@
     "active": "Active",
     "createFromTemplate": "Create from template",
     "presetTitle": "Choose an email type",
-    "presetSubtitle": "Select a pre-designed template to customize"
+    "presetSubtitle": "Select a pre-designed template to customize",
+    "description": "Design and manage transactional emails",
+    "createTemplate": "Create template",
+    "createFirstTemplate": "Create first template",
+    "noTemplates": "No templates created",
+    "name": "Name",
+    "namePlaceholder": "e.g.: Customer welcome",
+    "slug": "Slug (unique identifier)",
+    "slugPlaceholder": "welcome-customer",
+    "subjectHint": "— Use {{variable}} for dynamic data",
+    "subjectPlaceholder": "E.g.: Hello {{customer_name}}, your order {{order_id}} is ready",
+    "availableVariables": "Available variables",
+    "variablesHint": "Click to insert in subject or body (depending on cursor position)",
+    "htmlBody": "HTML Body",
+    "htmlBodyPlaceholder": "<h1>Hello {{customer_name}}</h1><p>Thank you for your purchase...</p>",
+    "inactive": "Inactive",
+    "sendTest": "Send test",
+    "rendered": "Rendered",
+    "html": "HTML",
+    "presetFooterHint": "The template will be created ready for customization",
+    "sendTestEmail": "Send test email",
+    "testEmailDesc": "A test email with sample data will be sent.",
+    "destinationEmail": "Destination email",
+    "destinationPlaceholder": "you@email.com",
+    "cancel": "Cancel",
+    "sending": "Sending...",
+    "presets": {
+      "preset_appointment_confirm": {
+        "name": "Appointment confirmation",
+        "description": "Automatic email when an appointment is scheduled"
+      },
+      "preset_appointment_reminder": {
+        "name": "Appointment reminder",
+        "description": "Automatically sent 24h before the appointment"
+      },
+      "preset_booking_confirm": {
+        "name": "Booking confirmation",
+        "description": "For property/accommodation bookings"
+      },
+      "preset_checkin_reminder": {
+        "name": "Check-in reminder",
+        "description": "Arrival instructions 24h before"
+      },
+      "preset_welcome": {
+        "name": "Welcome",
+        "description": "Welcome email for new customers"
+      },
+      "preset_team_notification": {
+        "name": "Team notification",
+        "description": "Internal alert when a conversation is escalated"
+      }
+    }
   },
   "changePassword": {
     "title": "Change Password",
@@ -6255,6 +6309,7 @@
     "frequencyHint": "0 = once per session",
     "priority": "Priority",
     "active": "Active",
+    "inactive": "Inactive",
     "save": "Save",
     "cancel": "Cancel",
     "confirmDelete": "Delete this trigger?",
@@ -6306,7 +6361,20 @@
       "sendgridApiKey": "SendGrid API Key",
       "inboundType": "Email reception",
       "inboundHint": "Set up SendGrid Inbound Parse to receive incoming emails in your inbox.",
-      "active": "Channel active"
+      "active": "Channel active",
+      "fromEmailHelp": "The email from which the AI agent sends replies (e.g. contact@yourdomain.com).",
+      "fromNameHelp": "The name your customers see when receiving your emails (e.g. Parallly Support).",
+      "replyToHelp": "Optional address where direct customer replies will be sent if not processed by chat.",
+      "smtpHostHelp": "Outgoing server address from your email provider (e.g. smtp.gmail.com or smtp.office365.com).",
+      "smtpPortHelp": "Connection port. TLS: 587 (recommended), SSL: 465, None: 25.",
+      "smtpUserHelp": "Your full email login username.",
+      "smtpPassHelp": "Your password. IMPORTANT: If using Gmail or Outlook with 2-Step Verification active, you must create and use a 16-character 'App Password'.",
+      "sendgridApiKeyHelp": "SendGrid API Key with Mail Send permissions.",
+      "webhookCopyTitle": "Email Inbound Webhook URL",
+      "webhookCopyHint": "Copy this inbound URL and enter it in SendGrid > Settings > Inbound Parse to receive emails in your Parallly inbox:",
+      "webhookCopyBtn": "Copy Webhook URL",
+      "webhookCopied": "URL copied!",
+      "smtpGuideTitle": "Guide to Common SMTP Servers and Ports"
     },
     "save": "Save configuration",
     "saving": "Saving...",
@@ -6373,6 +6441,57 @@
       "rotated": "Key rotated successfully",
       "copied": "Key copied to clipboard",
       "error": "Error processing request"
-    }
+    },
+    "authGuideTitle": "How to authenticate with Parallly API?",
+    "authGuideDesc": "All incoming API requests must include your secret key in the Authorization HTTP header as a Bearer token:",
+    "baseEndpoint": "Base endpoint:",
+    "moreDetails": "For more details, consult the <docsLink>Full API Documentation</docsLink> or the Integrations section.",
+    "fullApiDocs": "Full API Documentation"
+  },
+  "alertsSettings": {
+    "title": "System Alerts",
+    "newAlert": "New alert",
+    "subtitle": "Receive notifications when a metric exceeds a threshold. Evaluated every 15 minutes.",
+    "alertName": "Alert name",
+    "alertNamePlaceholder": "e.g.: Unusual traffic",
+    "metric": "Metric",
+    "operator": "Operator",
+    "threshold": "Threshold",
+    "emails": "Emails (comma separated)",
+    "emailsPlaceholder": "email1@company.com, email2@company.com",
+    "cooldown": "Cooldown",
+    "create": "Create",
+    "creating": "Creating...",
+    "noAlerts": "No alerts configured.",
+    "active": "Active",
+    "inactive": "Inactive",
+    "min": "min",
+    "metrics": {
+      "active_conversations": "Active conversations",
+      "queue_depth": "Queue depth",
+      "agents_online": "Agents online",
+      "messages_today": "Messages today",
+      "handoffs_today": "Escalations today",
+      "llm_cost_today": "LLM cost today"
+    },
+    "operators": {
+      "greater": "Greater than (>)",
+      "greater_equal": "Greater or equal (>=)",
+      "less": "Less than (<)",
+      "less_equal": "Less or equal (<=)",
+      "equal": "Equals (=)"
+    },
+    "reportsTitle": "Scheduled Reports",
+    "reportsSubtitle": "Receive an automatic KPI summary by email.",
+    "frequency": "Frequency",
+    "frequencyOptions": {
+      "weekly": "Weekly (Monday 8 AM)",
+      "monthly": "Monthly (1st, 8 AM)"
+    },
+    "recipients": "Recipients",
+    "recipientsPlaceholder": "email1@company.com, email2@company.com",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "lastSent": "Last sent: {date}"
   }
 }

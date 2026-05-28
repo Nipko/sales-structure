@@ -121,6 +121,9 @@
     "latamBadge": "🇧🇷 🇨🇴 🇲🇽 🇦🇷 🇨🇱 LatAm"
   },
   "verticals": {
+    "solutionsOmnichannel": "Soluções Omnicanal",
+    "recommendedAgent": "Agente de IA Recomendado",
+    "preConfigured": "Pré-configurado",
     "title": "Feito sob medida para sua indústria",
     "subtitle": "Parallly se adapta automaticamente a 18 indústrias. O agente IA, o pipeline, as perguntas frequentes e até o vocabulário se ajustam ao seu negócio. Em 10 minutos você está operando.",
     "pickVertical": "Escolha sua indústria",

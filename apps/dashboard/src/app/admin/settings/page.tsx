@@ -39,10 +39,10 @@ export default function SettingsHub() {
                 >
                     <div>
                         <h2 className="text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                            {t(`sections.${section.key}.title`)}
+                            {t(`sections.${section.key}.title`, { defaultValue: section.key.charAt(0).toUpperCase() + section.key.slice(1) })}
                         </h2>
                         <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-0.5">
-                            {t(`sections.${section.key}.description`)}
+                            {t(`sections.${section.key}.description`, { defaultValue: "" })}
                         </p>
                     </div>
 
@@ -77,12 +77,12 @@ export default function SettingsHub() {
                                     <div className="relative flex-1 min-w-0">
                                         <div className="flex items-center justify-between gap-2">
                                             <span className="font-semibold text-sm text-neutral-900 dark:text-neutral-100">
-                                                {t(`items.${card.key}.label`)}
+                                                {t(`items.${card.key}.label`, { defaultValue: card.key.charAt(0).toUpperCase() + card.key.slice(1).replace(/_/g, " ") })}
                                             </span>
                                             <ArrowRight className="h-3.5 w-3.5 text-neutral-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
                                         </div>
                                         <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">
-                                            {t(`items.${card.key}.description`)}
+                                            {t(`items.${card.key}.description`, { defaultValue: "" })}
                                         </p>
                                     </div>
                                 </motion.button>

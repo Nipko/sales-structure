@@ -1086,7 +1086,7 @@ export default function KnowledgePage() {
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <KPICard icon={HelpCircle} label={t("gaps.kpi.unanswered")} value={gapReport.unansweredQueries?.length ?? 0} />
                                 <KPICard icon={ThumbsDown} label={t("gaps.kpi.lowSatisfaction")} value={gapReport.lowSatisfaction?.length ?? 0} />
-                                <KPICard icon={Clock} label={t("gaps.kpi.staleDocs")} value={gapReport.staleDocs?.length ?? 0} />
+                                <KPICard icon={Clock} label={t("gaps.kpi.stale")} value={gapReport.staleDocs?.length ?? 0} />
                                 <KPICard icon={XCircle} label={t("gaps.kpi.falsePositives")} value={gapReport.falsePositiveCount ?? 0} />
                             </div>
 

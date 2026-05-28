@@ -153,7 +153,7 @@ export default function TenantDetailPage() {
           id: d.id,
           name: d.name,
           slug: d.slug,
-          industry: d.industry || "N/A",
+          industry: d.industry ? d.industry.replace(/^tenants\.industries\./, "") : "N/A",
           language: d.language || "es-CO",
           plan: d.plan || "starter",
           isActive: d.isActive ?? true,
@@ -188,7 +188,11 @@ export default function TenantDetailPage() {
       setEngagementLoading(true);
       api.getTenantEngagement(tenantId).then((res: any) => {
         if (res.success && res.data) {
-          setEngagement(res.data);
+          const d = res.data;
+          if (d.industry) {
+            d.industry = d.industry.replace(/^tenants\.industries\./, "");
+          }
+          setEngagement(d);
         }
         setEngagementLoaded(true);
         setEngagementLoading(false);
@@ -274,7 +278,7 @@ export default function TenantDetailPage() {
               {[
                 { label: t("modals.name"), value: tenant.name },
                 { label: "Slug", value: tenant.slug },
-                { label: t("industry"), value: tenant.industry },
+                { label: t("industry"), value: tenant.industry && tenant.industry !== "N/A" ? t(`industries.${tenant.industry}`, { defaultValue: tenant.industry.replace(/_/g, " ") }) : "--" },
                 { label: t("modals.language"), value: tenant.language },
                 { label: t("plan"), value: tenant.plan },
                 { label: t("table.created"), value: tenant.createdAt ? new Date(tenant.createdAt).toLocaleDateString() : "--" },

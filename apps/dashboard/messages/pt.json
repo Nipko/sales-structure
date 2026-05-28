@@ -2560,6 +2560,9 @@
       "infoMaxTokensDesc": "limita o comprimento da resposta. 800 tokens ~ 2-3 parágrafos."
     },
     "capabilities": {
+      "editTemplate": "Editar template",
+      "sendEmailConfirmation": "Enviar confirmação por e-mail",
+      "sendEmailConfirmationDesc": "Envia um e-mail de confirmação formal automaticamente ao agendar a consulta.",
       "appointmentScheduling": "Agendamento de consultas",
       "appointmentDesc": "Verificar disponibilidade, agendar e cancelar consultas",
       "ready": "Pronto",
@@ -6255,6 +6258,7 @@
     "frequencyHint": "0 = uma vez por sessão",
     "priority": "Prioridade",
     "active": "Ativo",
+    "inactive": "Inativo",
     "save": "Salvar",
     "cancel": "Cancelar",
     "confirmDelete": "Excluir este trigger?",
@@ -6373,6 +6377,57 @@
       "rotated": "Chave rotacionada com sucesso",
       "copied": "Chave copiada para a área de transferência",
       "error": "Erro ao processar a solicitação"
-    }
+    },
+    "authGuideTitle": "Como se autenticar com a API da Parallly?",
+    "authGuideDesc": "Todas as solicitações de API recebidas devem incluir sua chave secreta no cabeçalho HTTP de Autorização como um token Bearer:",
+    "baseEndpoint": "Endpoint base:",
+    "moreDetails": "Para mais detalhes, consulte a <docsLink>Documentación de API Completa</docsLink> ou a seção de Integrações.",
+    "fullApiDocs": "Documentação de API Completa"
+  },
+  "alertsSettings": {
+    "title": "Alertas do Sistema",
+    "newAlert": "Novo alerta",
+    "subtitle": "Receba notificações quando uma métrica exceder um limite. Avaliado a cada 15 minutos.",
+    "alertName": "Nome do alerta",
+    "alertNamePlaceholder": "ex.: Tráfego incomum",
+    "metric": "Métrica",
+    "operator": "Operador",
+    "threshold": "Limite / Umbral",
+    "emails": "Emails (separados por vírgula)",
+    "emailsPlaceholder": "email1@empresa.com, email2@empresa.com",
+    "cooldown": "Inatividade",
+    "create": "Criar",
+    "creating": "Criando...",
+    "noAlerts": "Nenhum alerta configurado.",
+    "active": "Ativa",
+    "inactive": "Inativa",
+    "min": "min",
+    "metrics": {
+      "active_conversations": "Conversas ativas",
+      "queue_depth": "Profundidade da fila",
+      "agents_online": "Agentes conectados",
+      "messages_today": "Mensagens hoje",
+      "handoffs_today": "Escalações hoje",
+      "llm_cost_today": "Custo de LLM hoje"
+    },
+    "operators": {
+      "greater": "Maior que (>)",
+      "greater_equal": "Maior ou igual (>=)",
+      "less": "Menor que (<)",
+      "less_equal": "Menor ou igual (<=)",
+      "equal": "Igual (=)"
+    },
+    "reportsTitle": "Relatórios Programados",
+    "reportsSubtitle": "Receba um resumo automático de KPIs por email.",
+    "frequency": "Frequência",
+    "frequencyOptions": {
+      "weekly": "Semanal (Segunda-feira 8 AM)",
+      "monthly": "Mensal (Dia 1, 8 AM)"
+    },
+    "recipients": "Destinatários",
+    "recipientsPlaceholder": "email1@empresa.com, email2@empresa.com",
+    "enabled": "Habilitado",
+    "disabled": "Deshabilitado",
+    "lastSent": "Último envio: {date}"
   }
 }

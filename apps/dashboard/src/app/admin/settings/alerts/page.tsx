@@ -11,24 +11,24 @@ import {
 } from "lucide-react";
 
 const METRICS = [
-    { value: "active_conversations", label: "Active conversations" },
-    { value: "queue_depth", label: "Queue depth" },
-    { value: "agents_online", label: "Agents online" },
-    { value: "messages_today", label: "Messages today" },
-    { value: "handoffs_today", label: "Escalations today" },
-    { value: "llm_cost_today", label: "LLM cost today" },
+    { value: "active_conversations" },
+    { value: "queue_depth" },
+    { value: "agents_online" },
+    { value: "messages_today" },
+    { value: "handoffs_today" },
+    { value: "llm_cost_today" },
 ];
 
 const OPERATORS = [
-    { value: ">", label: "Greater than (>)" },
-    { value: ">=", label: "Greater or equal (>=)" },
-    { value: "<", label: "Less than (<)" },
-    { value: "<=", label: "Less or equal (<=)" },
-    { value: "=", label: "Equals (=)" },
+    { value: ">", key: "greater" },
+    { value: ">=", key: "greater_equal" },
+    { value: "<", key: "less" },
+    { value: "<=", key: "less_equal" },
+    { value: "=", key: "equal" },
 ];
 
 export default function AlertsSettingsPage() {
-    const t = useTranslations("settings");
+    const t = useTranslations("alertsSettings");
     const tc = useTranslations("common");
     const { user } = useAuth();
     const tenantId = user?.tenantId;
@@ -112,7 +112,7 @@ export default function AlertsSettingsPage() {
     if (loading) {
         return (
             <div className="flex items-center justify-center py-20 text-muted-foreground gap-2">
-                <Loader2 size={20} className="animate-spin" /> Loading...
+                <Loader2 size={20} className="animate-spin" /> {tc("loading")}
             </div>
         );
     }
@@ -126,62 +126,62 @@ export default function AlertsSettingsPage() {
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                         <Bell size={20} className="text-amber-400" />
-                        <h2 className="text-lg font-semibold text-foreground">Alerts</h2>
+                        <h2 className="text-lg font-semibold text-foreground">{t("title")}</h2>
                     </div>
                     <button
                         onClick={() => setShowForm(!showForm)}
                         className="px-3 py-1.5 rounded-lg text-[13px] font-medium bg-indigo-500 text-white hover:bg-indigo-600 transition-colors inline-flex items-center gap-1.5"
                     >
-                        <Plus size={14} /> New alert
+                        <Plus size={14} /> {t("newAlert")}
                     </button>
                 </div>
 
                 <p className="text-sm text-muted-foreground mb-4">
-                    Receive notifications when a metric exceeds a threshold. Evaluated every 15 minutes.
+                    {t("subtitle")}
                 </p>
 
                 {/* Create form */}
                 {showForm && (
                     <div className="p-5 mb-4 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] space-y-3">
                         <input
-                            type="text" placeholder="Alert name"
+                            type="text" placeholder={t("alertNamePlaceholder")}
                             value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                             className={inputCls}
                         />
                         <div className="grid grid-cols-3 gap-3">
                             <select value={form.metric} onChange={e => setForm({ ...form, metric: e.target.value })} className={inputCls}>
-                                {METRICS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                {METRICS.map(m => <option key={m.value} value={m.value}>{t("metrics." + m.value, { defaultValue: m.value })}</option>)}
                             </select>
                             <select value={form.operator} onChange={e => setForm({ ...form, operator: e.target.value })} className={inputCls}>
-                                {OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                {OPERATORS.map(o => <option key={o.value} value={o.value}>{t("operators." + o.key, { defaultValue: o.value })}</option>)}
                             </select>
                             <input
-                                type="number" placeholder="Threshold"
+                                type="number" placeholder={t("threshold")}
                                 value={form.threshold} onChange={e => setForm({ ...form, threshold: Number(e.target.value) })}
                                 className={inputCls}
                             />
                         </div>
                         <input
-                            type="text" placeholder="Emails (comma separated)"
+                            type="text" placeholder={t("emailsPlaceholder")}
                             value={form.notifyEmails} onChange={e => setForm({ ...form, notifyEmails: e.target.value })}
                             className={inputCls}
                         />
                         <div className="flex items-center gap-3">
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <Clock size={14} /> Cooldown:
+                                <Clock size={14} /> {t("cooldown")}:
                             </div>
                             <input
                                 type="number" value={form.cooldownMinutes}
                                 onChange={e => setForm({ ...form, cooldownMinutes: Number(e.target.value) })}
                                 className={`${inputCls} w-20`}
                             />
-                            <span className="text-sm text-muted-foreground">min</span>
+                            <span className="text-sm text-muted-foreground">{t("min")}</span>
                             <div className="flex-1" />
                             <button
                                 onClick={handleCreateAlert} disabled={saving || !form.name}
                                 className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
                             >
-                                <Save size={14} /> Create
+                                <Save size={14} /> {t("create")}
                             </button>
                         </div>
                     </div>
@@ -190,7 +190,7 @@ export default function AlertsSettingsPage() {
                 {/* Rules list */}
                 <div className="space-y-2">
                     {rules.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-6 text-center">No alerts configured.</p>
+                        <p className="text-sm text-muted-foreground py-6 text-center">{t("noAlerts")}</p>
                     ) : (
                         rules.map((rule: any) => (
                             <div key={rule.id} className="flex items-center gap-4 p-4 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
@@ -198,7 +198,7 @@ export default function AlertsSettingsPage() {
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-medium text-foreground truncate">{rule.name}</p>
                                     <p className="text-[12px] text-muted-foreground">
-                                        {METRICS.find(m => m.value === rule.metric)?.label || rule.metric} {rule.operator} {Number(rule.threshold)}
+                                        {t("metrics." + rule.metric, { defaultValue: rule.metric })} {rule.operator} {Number(rule.threshold)}
                                         {rule.trigger_count > 0 && <span className="ml-2 text-amber-400">({rule.trigger_count}x)</span>}
                                     </p>
                                 </div>
@@ -210,7 +210,7 @@ export default function AlertsSettingsPage() {
                                             : "border-neutral-300 dark:border-white/10 text-muted-foreground"
                                     }`}
                                 >
-                                    {rule.is_active ? "Active" : "Inactive"}
+                                    {rule.is_active ? t("active") : t("inactive")}
                                 </button>
                                 <button
                                     onClick={() => handleDeleteRule(rule.id)}
@@ -228,31 +228,31 @@ export default function AlertsSettingsPage() {
             <div>
                 <div className="flex items-center gap-2 mb-4">
                     <Calendar size={20} className="text-blue-400" />
-                    <h2 className="text-lg font-semibold text-foreground">Scheduled Reports</h2>
+                    <h2 className="text-lg font-semibold text-foreground">{t("reportsTitle")}</h2>
                 </div>
 
                 <p className="text-sm text-muted-foreground mb-4">
-                    Receive an automatic KPI summary by email.
+                    {t("reportsSubtitle")}
                 </p>
 
                 <div className="p-5 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] space-y-4">
                     <div className="flex items-center gap-3">
-                        <label className="text-sm text-muted-foreground w-24 shrink-0">Frequency</label>
+                        <label className="text-sm text-muted-foreground w-24 shrink-0">{t("frequency")}</label>
                         <select
                             value={reportForm.frequency}
                             onChange={e => setReportForm({ ...reportForm, frequency: e.target.value })}
                             className={inputCls}
                         >
-                            <option value="weekly">Weekly (Monday 8 AM)</option>
-                            <option value="monthly">Monthly (1st, 8 AM)</option>
+                            <option value="weekly">{t("frequencyOptions.weekly")}</option>
+                            <option value="monthly">{t("frequencyOptions.monthly")}</option>
                         </select>
                     </div>
 
                     <div className="flex items-center gap-3">
-                        <label className="text-sm text-muted-foreground w-24 shrink-0">Recipients</label>
+                        <label className="text-sm text-muted-foreground w-24 shrink-0">{t("recipients")}</label>
                         <input
                             type="text"
-                            placeholder="email1@company.com, email2@company.com"
+                            placeholder={t("recipientsPlaceholder")}
                             value={reportForm.recipients}
                             onChange={e => setReportForm({ ...reportForm, recipients: e.target.value })}
                             className={inputCls}
@@ -260,7 +260,7 @@ export default function AlertsSettingsPage() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        <label className="text-sm text-muted-foreground w-24 shrink-0">Active</label>
+                        <label className="text-sm text-muted-foreground w-24 shrink-0">{t("active")}</label>
                         <label className="flex items-center gap-2 cursor-pointer">
                             <input
                                 type="checkbox"
@@ -269,14 +269,18 @@ export default function AlertsSettingsPage() {
                                 className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-500 focus:ring-indigo-500/30"
                             />
                             <span className="text-sm text-foreground">
-                                {reportForm.isActive ? "Enabled" : "Disabled"}
+                                {reportForm.isActive ? t("enabled") : t("disabled")}
                             </span>
                         </label>
                     </div>
 
                     {reportConfig?.last_sent_at && (
                         <p className="text-[12px] text-muted-foreground">
-                            Last sent: {new Date(reportConfig.last_sent_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            {t("lastSent", {
+                                date: new Date(reportConfig.last_sent_at).toLocaleDateString(undefined, {
+                                    day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                                })
+                            })}
                         </p>
                     )}
 

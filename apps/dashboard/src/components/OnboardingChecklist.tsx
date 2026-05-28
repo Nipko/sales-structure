@@ -113,7 +113,7 @@ export default function OnboardingChecklist() {
         return (
             <button
                 onClick={() => { setDismissed(false); setMinimized(false); }}
-                className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition-all hover:scale-105 cursor-pointer"
+                className="fixed bottom-6 right-24 z-40 flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition-all hover:scale-105 cursor-pointer"
                 title={t("reopenChecklist")}
             >
                 <ListChecks size={16} />

@@ -4901,6 +4901,78 @@
       "sub1Desc": "Ative a geração automática de links do Google Meet ou Microsoft Teams em suas configurações de agendamento para incluí-los automaticamente nas reservas.",
       "sub2Title": "Datas de Bloqueio Excluídas",
       "sub2Desc": "Defina feriados ou períodos de folga para que o mecanismo de agendamento bloqueie esses slots dinamicamente."
+    },
+    "overview": {
+      "title": "Painel de Métricas Gerais",
+      "description": "Seu centro de controle em tempo real. Monitore leads, taxas de contenção da IA e custos operacionais de seus canais de mensagens.",
+      "sub1Title": "Taxa de Contenção da IA",
+      "sub1Desc": "Exibe o percentual de chats resolvidos 100% de forma automática pela Carla sem exigir handoff para um agente humano.",
+      "sub2Title": "Acesso Rápido",
+      "sub2Desc": "Navegue usando o menu esquerdo para interagir com leads na caixa de entrada, configurar agentes ou visualizar análises."
+    },
+    "inbox": {
+      "title": "Caixa de Entrada Unificada",
+      "description": "Gerencie conversas do WhatsApp, Instagram, Telegram e SMS em um só lugar e previna colisões entre seus agentes.",
+      "sub1Title": "Presencia de Agentes",
+      "sub1Desc": "Observe indicadores visuais em tempo real para saber qual colega está visualizando ou digitando no chat de um cliente.",
+      "sub2Title": "Handoff Manual e IA",
+      "sub2Desc": "Atribua chats manualmente a membros da equipe, ou deixe o bot encaminhar a conversa para a fila humana quando necessário."
+    },
+    "contacts": {
+      "title": "CRM de Contatos",
+      "description": "Centralize o histórico de interações, pontuações de conversão e informações essenciais de todos os seus leads em perfis unificados.",
+      "sub1Title": "Fórmula de Lead Scoring",
+      "sub1Desc": "Atribua pontos automáticos (1 a 10) a cada lead com base em suas interações e etapa do funil para focar o esforço comercial.",
+      "sub2Title": "Atributos Personalizados",
+      "sub2Desc": "Crie campos dinâmicos para armazenar dados específicos do negócio que a IA coletará durante as conversas."
+    },
+    "pipeline": {
+      "title": "Funil Kanban de Vendas",
+      "description": "Arraste e gerencie leads ao longo das etapas comerciais. Automatize o progresso com base na pontuação de interesse.",
+      "sub1Title": "Fases Comerciais",
+      "sub1Desc": "Visualize o progresso desde: Novo -> Contatado -> Qualificado -> Quente -> Pronto para Fechamento -> Ganho.",
+      "sub2Title": "Fluxo de Aprovações",
+      "sub2Desc": "Supervisores podem auditar ou exigir aprovação expressa de transações antes de avançar um lead para fases finais."
+    },
+    "broadcast": {
+      "title": "Campanhas de Transmissão",
+      "description": "Envie mensagens em massa e sequências de aquecimento para segmentos específicos usando modelos autorizados do WhatsApp.",
+      "sub1Title": "Modelos Aprovados",
+      "sub1Desc": "Crie e aprove seus modelos no Meta Suite. Use chaves como `{{1}}` para injetar campos personalizados em suas mensagens.",
+      "sub2Title": "Monitoramento do Funil",
+      "sub2Desc": "Inspecione o status dos seus envios em massa detalhando porcentagens de mensagens enviadas, entregues, lidas e com falha."
+    },
+    "agent": {
+      "title": "Configuração de Agente IA",
+      "description": "Personalize a identidade, objetivos de vendas, tom de voz e limites de contenção de seu bot de inteligência artificial.",
+      "sub1Title": "Prompts por Camadas",
+      "sub1Desc": "Defina o comportamento livre (L2). Nosso montador injeta as diretivas duras (L1) e o contexto do turno (L3) em cada mensagem.",
+      "sub2Title": "Circuit Breakers de IA",
+      "sub2Desc": "Configure palavras-chave ou limites de repetição de mensagens que forcem um handoff imediato para proteger a experiência."
+    },
+    "channels": {
+      "title": "Conexão de Canais",
+      "description": "Integre WhatsApp Cloud API, Instagram Business, Telegram e SMS para centralizar o fluxo de mensagens do negócio.",
+      "sub1Title": "Embedded Signup",
+      "sub1Desc": "Use o Facebook Login para vincular seu número de telefone e validar o perfil comercial da Meta de forma automática.",
+      "sub2Title": "Autenticação OAuth",
+      "sub2Desc": "Conecte suas páginas do Instagram e Facebook de forma segura. O sistema renova tokens automaticamente para evitar quedas."
+    },
+    "users": {
+      "title": "Membros da Equipe",
+      "description": "Convide colaboradores, defina funções (Admin, Supervisor, Agente) e gerencie permissões específicas sob o plano ativo.",
+      "sub1Title": "Funções e Permissões",
+      "sub1Desc": "Agentes veem apenas seus chats atribuídos; supervisores auditam; e administradores gerenciam finanças e APIs.",
+      "sub2Title": "Gestão de Habilidades",
+      "sub2Desc": "Defina tags de especialidade (habilidades) para encaminhar conversas da caixa de entrada automaticamente ao agente ideal."
+    },
+    "billing": {
+      "title": "Assinaturas e Consumos",
+      "description": "Monitore as cotas ativas do seu plano (Starter, Pro, Enterprise), atualize seus métodos de pagamento e baixe faturas.",
+      "sub1Title": "Consumo de Tokens e IA",
+      "sub1Desc": "Revise os contadores mensais acumulados de conversas automáticas processadas pela IA e interações de transmissão.",
+      "sub2Title": "Limites do Plano",
+      "sub2Desc": "Verifique seus limites de agentes (Starter: 1, Pro: 3, Enterprise: 10) e calendários vinculados a qualquer momento."
     }
   },
   "tours": {

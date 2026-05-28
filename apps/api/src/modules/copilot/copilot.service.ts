@@ -4,6 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import * as path from 'path';
+import * as fs from 'fs';
 
 // ─── Existing interfaces (platform copilot chat) ────────────────────────────
 
@@ -63,6 +65,114 @@ export class CopilotService {
         private llmRouter: LLMRouterService,
         private knowledgeService: KnowledgeService,
     ) {}
+
+    private manualSections: { title: string; content: string }[] = [];
+
+    private loadUserManual(): void {
+        if (this.manualSections.length > 0) return;
+
+        const pathsToTry = [
+            path.join(process.cwd(), 'docs', 'user-manual.md'),
+            path.join(process.cwd(), '..', '..', 'docs', 'user-manual.md'),
+            path.join(process.cwd(), 'apps', 'api', '..', '..', 'docs', 'user-manual.md'),
+            path.resolve(__dirname, '../../../../docs/user-manual.md'),
+            path.resolve(__dirname, '../../../../../docs/user-manual.md'),
+        ];
+
+        let manualContent = '';
+        let foundPath = '';
+        for (const p of pathsToTry) {
+            try {
+                if (fs.existsSync(p)) {
+                    manualContent = fs.readFileSync(p, 'utf-8');
+                    foundPath = p;
+                    break;
+                }
+            } catch (e: any) {
+                // Suppress warning during loop
+            }
+        }
+
+        if (!manualContent) {
+            this.logger.error(`Could not locate user-manual.md in any of the searched locations: ${JSON.stringify(pathsToTry)}`);
+            return;
+        }
+
+        this.logger.log(`Successfully loaded user-manual.md from: ${foundPath}`);
+
+        // Parse sections split by headers (e.g. # or ##)
+        const lines = manualContent.split('\n');
+        let currentTitle = 'General';
+        let currentContent: string[] = [];
+
+        for (const line of lines) {
+            if (line.startsWith('#')) {
+                if (currentContent.length > 0) {
+                    this.manualSections.push({
+                        title: currentTitle,
+                        content: currentContent.join('\n').trim(),
+                    });
+                }
+                currentTitle = line.replace(/#+\s*/, '').trim();
+                currentContent = [line];
+            } else {
+                currentContent.push(line);
+            }
+        }
+        if (currentContent.length > 0) {
+            this.manualSections.push({
+                title: currentTitle,
+                content: currentContent.join('\n').trim(),
+            });
+        }
+    }
+
+    private searchManual(query: string): string {
+        try {
+            this.loadUserManual();
+        } catch (e: any) {
+            this.logger.error(`Error loading user manual in search: ${e.message}`);
+        }
+
+        if (this.manualSections.length === 0) {
+            return '';
+        }
+
+        const cleanQuery = (query || '').toLowerCase().trim();
+        const words = cleanQuery.split(/\s+/).filter(w => w.length > 3);
+        
+        if (words.length === 0) {
+            return this.manualSections.slice(0, 3).map(s => s.content).join('\n\n---\n\n');
+        }
+
+        // Score sections based on keyword matches
+        const scored = this.manualSections.map(sec => {
+            let score = 0;
+            const text = (sec.title + ' ' + sec.content).toLowerCase();
+            for (const word of words) {
+                if (text.includes(word)) {
+                    score += 1;
+                    if (sec.title.toLowerCase().includes(word)) {
+                        score += 3;
+                    }
+                }
+            }
+            return { sec, score };
+        });
+
+        // Filter out 0 scores, sort desc, and take top 4
+        const relevant = scored
+            .filter(x => x.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 4)
+            .map(x => x.sec.content);
+
+        if (relevant.length === 0) {
+            return this.manualSections.slice(0, 3).map(s => s.content).join('\n\n---\n\n');
+        }
+
+        return relevant.join('\n\n---\n\n');
+    }
 
     // ─── Conversation Copilot Methods ───────────────────────────────────────
 
@@ -338,62 +448,68 @@ Reglas:
     // ─── Platform Copilot Chat (existing) ───────────────────────────────────
 
     async chat(request: CopilotChatRequest): Promise<CopilotChatResponse> {
-        const openaiKey = this.configService.get<string>('OPENAI_API_KEY');
+        const tenantId = request.context.tenantId;
+        const retrievedManualText = this.searchManual(request.message);
 
-        if (!openaiKey || openaiKey.startsWith('sk-your')) {
-            this.logger.warn('OpenAI API key not configured, returning fallback response');
-            return { reply: this.getFallbackResponse(request.message, request.context.page) };
-        }
+        const systemPrompt = `Eres **Parallly Help Copilot**, el asistente de inteligencia artificial oficial de la plataforma Parallly.
+Tu única misión es ayudar a los usuarios de la plataforma (administradores, supervisores y agentes de negocios) a comprender, configurar y operar la plataforma a nivel funcional.
 
-        const systemPrompt = this.buildSystemPrompt(request.context);
+## INFORMACIÓN DE LA PLATAFORMA (Manual de Usuario):
+${retrievedManualText}
+
+## REGLAS CRÍTICAS DE SEGURIDAD Y COMPORTAMIENTO:
+1. **SOLO NIVEL DE USUARIO FUNCIONAL**: Tus respuestas deben limitarse estrictamente a explicar cómo usar la interfaz del dashboard, menús, configuraciones visuales, campos y flujos desde la perspectiva de un usuario final o administrador de negocio.
+2. **PROHIBIDO DETALLES DE CONSTRUCCIÓN/ARQUITECTURA**:
+   - NUNCA reveles detalles del código fuente, NestJS, Next.js, TypeScript, Docker, Docker Compose, Nginx, o archivos de configuración del servidor.
+   - NUNCA menciones nombres de tablas de la base de datos (como "tenants", "channel_accounts"), esquemas PostgreSQL, scripts de base de datos o el uso de Prisma.
+   - NUNCA des detalles de VPS (como Hostinger), configuraciones de infraestructura, redes de Cloudflare o despliegue.
+   - Si el usuario te pregunta sobre el código o cómo está programada la plataforma, responde amablemente indicando que eres un asistente funcional para usuarios de negocio y no tienes acceso al código fuente.
+3. **IDIOMA Y TONO**:
+   - Responde SIEMPRE en español latinoamericano (cálido, servicial y profesional).
+   - Usa listas ordenadas, viñetas y formato Markdown para estructurar tus explicaciones paso a paso de forma hermosa.
+4. **MENÚS Y NAVEGACIÓN**:
+   - Si el usuario pregunta cómo hacer algo, guíalo indicándole las secciones exactas del menú en mayúsculas (ej: "OPERACIÓN -> Bandeja de entrada" o "GESTIÓN -> Canales").
+5. **ASISTENTE DE CONFIGURACIÓN**:
+   - Si pregunta por el porcentaje de configuración, explícale que se refiere al "Onboarding Checklist" que muestra las tareas esenciales recomendadas para que su negocio comience a operar.
+
+## Contexto de la consulta actual:
+- **Usuario:** ${request.context.userName} (Rol: ${request.context.userRole})
+- **Página actual en el dashboard:** ${request.context.page}
+- **Tenant:** ${request.context.tenantName || 'Ninguno'}`;
+
         const messages = [
-            { role: 'system', content: systemPrompt },
-            ...request.history.slice(-10),
-            { role: 'user', content: request.message },
+            ...request.history.slice(-10).map(m => ({
+                role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+                content: m.content
+            })),
+            { role: 'user' as const, content: request.message }
         ];
 
         try {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${openaiKey}`,
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o-mini',
-                    messages,
-                    max_tokens: 800,
-                    temperature: 0.7,
-                }),
+            const response = await this.llmRouter.execute({
+                task: 'conversation',
+                messages,
+                systemPrompt,
+                tenantId,
+                temperature: 0.7,
+                maxTokens: 800,
             });
-
-            if (!response.ok) {
-                this.logger.error(`OpenAI API error: ${response.status} ${response.statusText}`);
-                return { reply: this.getFallbackResponse(request.message, request.context.page) };
-            }
-
-            const data = await response.json() as {
-                choices: { message: { content: string } }[];
-                usage?: { total_tokens: number };
-                model?: string;
-            };
-
-            const reply = data.choices?.[0]?.message?.content
-                || 'No pude generar una respuesta. ¿Podrías reformular tu pregunta?';
 
             this.logger.log(
                 `Copilot reply for user "${request.context.userName}" on ${request.context.page} ` +
-                `(tokens: ${data.usage?.total_tokens ?? '?'})`
+                `via ${response.routingDecision?.selectedModel?.id || 'default'}`
             );
 
             return {
-                reply,
-                model: data.model,
-                tokensUsed: data.usage?.total_tokens,
+                reply: response.content || 'No pude generar una respuesta. ¿Podrías reformular tu pregunta?',
+                model: response.routingDecision?.selectedModel?.id,
+                tokensUsed: response.usage?.totalTokens,
             };
-        } catch (error) {
-            this.logger.error('Copilot chat error:', error);
-            return { reply: this.getFallbackResponse(request.message, request.context.page) };
+        } catch (error: any) {
+            this.logger.error('Copilot chat error, returning fallback:', error);
+            return {
+                reply: this.getFallbackResponse(request.message, request.context.page)
+            };
         }
     }
 

@@ -4952,6 +4952,78 @@
       "sub1Desc": "Enable Google Meet or Microsoft Teams meeting link auto-generation in your scheduling settings to automatically include them in bookings.",
       "sub2Title": "Blocked Out dates",
       "sub2Desc": "Define national holidays or corporate blockouts so the booking engine blocks those slots dynamically."
+    },
+    "overview": {
+      "title": "General Metrics Panel",
+      "description": "Your real-time control center. Monitor leads, AI containment rates, and operational costs across your messaging channels.",
+      "sub1Title": "AI Containment Rate",
+      "sub1Desc": "Displays the percentage of chats resolved 100% automatically by Carla without requiring a human agent handoff.",
+      "sub2Title": "Quick Access",
+      "sub2Desc": "Navigate using the left menu to interact with leads in the inbox, configure agents, or view detailed analytics."
+    },
+    "inbox": {
+      "title": "Unified Inbox",
+      "description": "Manage WhatsApp, Instagram, Telegram, and SMS conversations in one place while preventing collisions between your agents.",
+      "sub1Title": "Agent Presence",
+      "sub1Desc": "Observe real-time visual indicators to know which teammate is viewing or typing in a customer's chat.",
+      "sub2Title": "Manual & AI Handoff",
+      "sub2Desc": "Manually assign chats to team members, or let the bot escalate the conversation to the human waiting queue when necessary."
+    },
+    "contacts": {
+      "title": "CRM Contacts",
+      "description": "Centralize interaction history, conversion scores, and key information of all your leads in unified profiles.",
+      "sub1Title": "Lead Scoring Formula",
+      "sub1Desc": "Automatically assign points (1 to 10) to each lead based on their interactions and funnel stage to focus your sales efforts.",
+      "sub2Title": "Custom Attributes",
+      "sub2Desc": "Create dynamic fields to store business-specific data that the AI will collect during conversations."
+    },
+    "pipeline": {
+      "title": "Sales Kanban Funnel",
+      "description": "Drag and manage leads through different commercial stages. Automate progress based on interest scores.",
+      "sub1Title": "Commercial Phases",
+      "sub1Desc": "Visualize progress from: New -> Contacted -> Qualified -> Hot -> Ready to Close -> Won.",
+      "sub2Title": "Approval Workflow",
+      "sub2Desc": "Supervisors can audit or require explicit approval of deals before advancing a lead to final phases."
+    },
+    "broadcast": {
+      "title": "Broadcast Campaigns",
+      "description": "Send bulk messages and warming sequences to specific segments using authorized WhatsApp templates.",
+      "sub1Title": "Approved Templates",
+      "sub1Desc": "Create and approve your templates in Meta Suite. Use placeholders like `{{1}}` to inject custom fields into your messages.",
+      "sub2Title": "Funnel Monitoring",
+      "sub2Desc": "Inspect the status of your bulk campaigns by detailing percentages of sent, delivered, read, and failed messages."
+    },
+    "agent": {
+      "title": "AI Agent Configuration",
+      "description": "Customize the identity, sales goals, tone of voice, and containment limits of your artificial intelligence bot.",
+      "sub1Title": "Layered Prompts",
+      "sub1Desc": "Define free behavior rules (L2). Our assembler injects hard directives (L1) and turn context (L3) into each message.",
+      "sub2Title": "AI Circuit Breakers",
+      "sub2Desc": "Configure keywords or message repetition thresholds that force an immediate handoff to protect the user experience."
+    },
+    "channels": {
+      "title": "Channel Connection",
+      "description": "Integrate WhatsApp Cloud API, Instagram Business, Telegram, and SMS to centralize your business messaging flow.",
+      "sub1Title": "Embedded Signup",
+      "sub1Desc": "Use Facebook Login to link your phone number and validate your Meta business profile automatically.",
+      "sub2Title": "OAuth Authentication",
+      "sub2Desc": "Connect your Instagram and Facebook pages securely. The system automatically renews tokens to prevent disconnects."
+    },
+    "users": {
+      "title": "Team Members",
+      "description": "Invite collaborators, define roles (Admin, Supervisor, Agent), and manage specific permissions under your active plan.",
+      "sub1Title": "Roles & Permissions",
+      "sub1Desc": "Agents see only their assigned chats; supervisors audit; and administrators manage finance and APIs.",
+      "sub2Title": "Skill Management",
+      "sub2Desc": "Define specialty tags (skills) to automatically route inbox conversations to the right agent."
+    },
+    "billing": {
+      "title": "Subscriptions & Usage",
+      "description": "Monitor active plan quotas (Starter, Pro, Enterprise), update payment methods, and download invoices.",
+      "sub1Title": "Tokens & AI Usage",
+      "sub1Desc": "Review monthly counters of automatic conversations processed by AI and outbound campaign interactions.",
+      "sub2Title": "Plan Limits",
+      "sub2Desc": "Check your agent limits (Starter: 1, Pro: 3, Enterprise: 10) and connected calendars at any time."
     }
   },
   "tours": {

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
+import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/lib/api";
 import {
   HelpCircle,
   Sparkles,
@@ -21,7 +23,17 @@ import {
   Mail,
   Code,
   Terminal,
-  X
+  X,
+  Home,
+  MessageSquare,
+  Users,
+  TrendingUp,
+  Megaphone,
+  Bot,
+  Link as LinkIcon,
+  CreditCard,
+  Send,
+  Loader2
 } from "lucide-react";
 import {
   Sheet,
@@ -36,28 +48,67 @@ export function HelpAssistant() {
   const t = useTranslations("helpAssistant");
   const pathname = usePathname();
   const vt = useVerticalTerms();
+  const { user } = useAuth();
 
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeGuideId, setActiveGuideId] = useState<string | null>(null);
+  
+  // Dual-tab navigation state
+  const [activeTab, setActiveTab] = useState<'guides' | 'chat'>('guides');
 
-  // Auto-detect guide based on current pathname
+  // AI Chat state
+  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([
+    {
+      role: 'assistant',
+      content: '¡Hola! 👋 Soy tu copiloto de ayuda de Parallly. Estoy aquí para responder tus preguntas funcionales sobre la plataforma: configuración de canales, CRM, automatizaciones, citas y más. ¿En qué puedo ayudarte hoy?'
+    }
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll chat timeline to the bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isSending]);
+
+  // Auto-detect guide based on current pathname (mapping 12 distinct routes)
   useEffect(() => {
     if (!pathname) return;
     
-    if (pathname.includes("/admin/settings/api-keys") || pathname.includes("/admin/webhooks")) {
-      setActiveGuideId("apiKeys");
-    } else if (pathname.includes("/admin/settings/smtp") || pathname.includes("/admin/settings/email-templates")) {
-      setActiveGuideId("smtp");
+    if (pathname === "/admin" || pathname === "/admin/") {
+      setActiveGuideId("overview");
+    } else if (pathname.includes("/admin/inbox")) {
+      setActiveGuideId("inbox");
+    } else if (pathname.includes("/admin/contacts")) {
+      setActiveGuideId("contacts");
+    } else if (pathname.includes("/admin/pipeline")) {
+      setActiveGuideId("pipeline");
+    } else if (pathname.includes("/admin/appointments")) {
+      setActiveGuideId("appointments");
+    } else if (pathname.includes("/admin/broadcast")) {
+      setActiveGuideId("broadcast");
     } else if (pathname.includes("/admin/automation")) {
       setActiveGuideId("automation");
     } else if (pathname.includes("/admin/knowledge")) {
       setActiveGuideId("knowledge");
+    } else if (pathname.includes("/admin/agent")) {
+      setActiveGuideId("agent");
+    } else if (pathname.includes("/admin/channels")) {
+      setActiveGuideId("channels");
+    } else if (pathname.includes("/admin/users")) {
+      setActiveGuideId("users");
+    } else if (pathname.includes("/admin/settings/billing")) {
+      setActiveGuideId("billing");
+    } else if (pathname.includes("/admin/settings/api-keys") || pathname.includes("/admin/webhooks")) {
+      setActiveGuideId("apiKeys");
+    } else if (pathname.includes("/admin/settings/smtp") || pathname.includes("/admin/settings/email-templates")) {
+      setActiveGuideId("smtp");
     } else if (pathname.includes("/admin/alerts")) {
       setActiveGuideId("alerts");
-    } else if (pathname.includes("/admin/appointments")) {
-      setActiveGuideId("appointments");
     } else {
       setActiveGuideId(null);
     }
@@ -69,8 +120,272 @@ export function HelpAssistant() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Define guide data dynamically using translations
+  const handleSuggestionClick = (text: string) => {
+    if (isSending) return;
+    sendMessage(text);
+  };
+
+  const sendMessage = async (text: string) => {
+    if (!text.trim()) return;
+    const userMsg = { role: 'user' as const, content: text };
+    setMessages(prev => [...prev, userMsg]);
+    setChatInput("");
+    setIsSending(true);
+    
+    try {
+      const chatHistory = messages.map(m => ({ role: m.role, content: m.content }));
+      
+      const response = await api.copilotChat({
+        message: text,
+        context: {
+          page: pathname,
+          tenantId: user?.tenantId,
+          userName: user?.firstName || 'Usuario',
+          userRole: user?.role || 'agent'
+        },
+        history: chatHistory
+      });
+      
+      if (response && response.success && response.data?.reply) {
+        const replyContent = response.data.reply;
+        setMessages(prev => [...prev, { role: 'assistant', content: replyContent }]);
+      } else {
+        const errorMsg = response?.error || 'No he recibido una respuesta válida. ¿Podrías intentar nuevamente?';
+        setMessages(prev => [...prev, { role: 'assistant', content: errorMsg }]);
+      }
+    } catch (error) {
+      console.error('Error calling copilotChat API:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Lo siento, ha ocurrido un error al conectar con mi cerebro de IA. Por favor, asegúrate de que tu suscripción esté activa y tus proveedores de IA estén configurados en la plataforma.'
+      }]);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Helper to parse bold, inline code, paragraphs, and list formatting inline in chat bubbles
+  const renderFormattedText = (text: string) => {
+    return text.split("\n").map((line, lineIdx) => {
+      const isListItem = line.trim().startsWith("- ") || line.trim().startsWith("* ");
+      const isNumberedItem = /^\d+\.\s/.test(line.trim());
+      
+      let cleanLine = line;
+      if (isListItem) cleanLine = line.trim().substring(2);
+      if (isNumberedItem) cleanLine = line.trim().replace(/^\d+\.\s/, "");
+
+      const parts = [];
+      let currentText = cleanLine;
+      const regex = /(\*\*.*?\*\*|`.*?`)/g;
+      let match;
+      let lastIndex = 0;
+
+      while ((match = regex.exec(cleanLine)) !== null) {
+        const index = match.index;
+        const matchStr = match[0];
+
+        if (index > lastIndex) {
+          parts.push(<span key={lastIndex}>{cleanLine.substring(lastIndex, index)}</span>);
+        }
+
+        if (matchStr.startsWith("**") && matchStr.endsWith("**")) {
+          parts.push(<strong key={index} className="font-extrabold text-neutral-900 dark:text-white">{matchStr.slice(2, -2)}</strong>);
+        } else if (matchStr.startsWith("`") && matchStr.endsWith("`")) {
+          parts.push(<code key={index} className="font-mono bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded-md text-[10px] text-pink-600 dark:text-pink-400 border border-neutral-200/30 dark:border-neutral-700/30">{matchStr.slice(1, -1)}</code>);
+        }
+
+        lastIndex = regex.lastIndex;
+      }
+
+      if (lastIndex < cleanLine.length) {
+        parts.push(<span key={lastIndex}>{cleanLine.substring(lastIndex)}</span>);
+      }
+
+      if (isListItem) {
+        return (
+          <li key={lineIdx} className="list-disc ml-4 my-1 pl-1 text-[11px] leading-relaxed text-neutral-700 dark:text-neutral-300">
+            {parts}
+          </li>
+        );
+      }
+      if (isNumberedItem) {
+        return (
+          <li key={lineIdx} className="list-decimal ml-4 my-1 pl-1 text-[11px] leading-relaxed text-neutral-700 dark:text-neutral-300">
+            {parts}
+          </li>
+        );
+      }
+
+      return (
+        <p key={lineIdx} className="min-h-[8px] my-1 text-[11px] leading-relaxed text-neutral-700 dark:text-neutral-300">
+          {parts}
+        </p>
+      );
+    });
+  };
+
+  // Define guide data dynamically using translations (15 comprehensive items)
   const guides = [
+    {
+      id: "overview",
+      icon: Home,
+      title: t("overview.title"),
+      description: t("overview.description"),
+      sub1Title: t("overview.sub1Title"),
+      sub1Desc: t("overview.sub1Desc"),
+      code1: `// Fórmula de Contención de IA
+tasaContencion = (conversacionesResueltasPorIA / totalConversaciones) * 100
+
+// Monitorea el ahorro operativo mensual directamente en tu panel principal.`,
+      sub2Title: t("overview.sub2Title"),
+      sub2Desc: t("overview.sub2Desc"),
+      code2: `Estimación de Costo de Tokens:
+Costos = tokensEntrada * $0.0015 + tokensSalida * $0.002`
+    },
+    {
+      id: "inbox",
+      icon: MessageSquare,
+      title: t("inbox.title"),
+      description: t("inbox.description"),
+      sub1Title: t("inbox.sub1Title"),
+      sub1Desc: t("inbox.sub1Desc"),
+      code1: `// Mutex de Conversación (Redis Lock)
+// Previene condiciones de carrera cuando llegan múltiples mensajes simultáneos.
+lockKey = "lock:conv:" + conversationId
+SETNX lockKey "1" EX 30`,
+      sub2Title: t("inbox.sub2Title"),
+      sub2Desc: t("inbox.sub2Desc"),
+      code2: `Asignación manual de agente a conversación:
+POST /api/v1/conversations/:id/assign
+Payload: { "agentId": "agent-uuid" }`
+    },
+    {
+      id: "contacts",
+      icon: Users,
+      title: t("contacts.title"),
+      description: t("contacts.description"),
+      sub1Title: t("contacts.sub1Title"),
+      sub1Desc: t("contacts.sub1Desc"),
+      code1: `// Algoritmo de scoring automático de leads (1 al 10)
+score = Math.min(10, Math.max(1, countMessages * 0.5 + stageWeight))`,
+      sub2Title: t("contacts.sub2Title"),
+      sub2Desc: t("contacts.sub2Desc"),
+      code2: `Ejemplo de esquema de Atributos Personalizados:
+{
+  "custom_attributes": {
+    "preferred_modality": "virtual",
+    "budget_range": "1000-2000"
+  }
+}`
+    },
+    {
+      id: "pipeline",
+      icon: TrendingUp,
+      title: t("pipeline.title"),
+      description: t("pipeline.description"),
+      sub1Title: t("pipeline.sub1Title"),
+      sub1Desc: t("pipeline.sub1Desc"),
+      code1: `Etapas del Embudo Kanban:
+1. Nuevo
+2. Contactado
+3. Calificado
+4. Caliente
+5. Listo para Cierre
+6. Ganado`,
+      sub2Title: t("pipeline.sub2Title"),
+      sub2Desc: t("pipeline.sub2Desc"),
+      code2: `Regla de avance automático por Scoring:
+IF lead_score >= 8 THEN MOVE_STAGE("caliente")`
+    },
+    {
+      id: "broadcast",
+      icon: Megaphone,
+      title: t("broadcast.title"),
+      description: t("broadcast.description"),
+      sub1Title: t("broadcast.sub1Title"),
+      sub1Desc: t("broadcast.sub1Desc"),
+      code1: `// Envío masivo con plantilla aprobada por Meta
+POST /api/v1/broadcast/send
+{
+  "templateName": "bienvenida_cliente",
+  "segmentId": "segment-uuid",
+  "parameters": ["Juan"]
+}`,
+      sub2Title: t("broadcast.sub2Title"),
+      sub2Desc: t("broadcast.sub2Desc"),
+      code2: `Métricas del Embudo de Campaña:
+Enviado -> Entregado -> Leído -> Conversión`
+    },
+    {
+      id: "agent",
+      icon: Bot,
+      title: t("agent.title"),
+      description: t("agent.description"),
+      sub1Title: t("agent.sub1Title"),
+      sub1Desc: t("agent.sub1Desc"),
+      code1: `// Arquitectura del Prompt de Turno
+SystemPrompt = Layer1 (Contract) + Layer2 (Persona) + Layer3 (Turn Context)`,
+      sub2Title: t("agent.sub2Title"),
+      sub2Desc: t("agent.sub2Desc"),
+      code2: `Configuración de Circuit Breaker (Handoff Express):
+{
+  "maxRepetitions": 3,
+  "forceHandoffKeywords": ["humano", "asesor", "hablar con alguien"]
+}`
+    },
+    {
+      id: "channels",
+      icon: LinkIcon,
+      title: t("channels.title"),
+      description: t("channels.description"),
+      sub1Title: t("channels.sub1Title"),
+      sub1Desc: t("channels.sub1Desc"),
+      code1: `// Payloads de Conexión de Canales (Instagram OAuth)
+POST /api/v1/channels/instagram/connect
+{
+  "provider": "instagram",
+  "accessToken": "EAAG...",
+  "pageId": "10492837..."
+}`,
+      sub2Title: t("channels.sub2Title"),
+      sub2Desc: t("channels.sub2Desc"),
+      code2: `Cron de renovación de tokens de API:
+0 6 * * * -> InstagramTokenRefreshService (Ejecución Diaria @6AM)`
+    },
+    {
+      id: "users",
+      icon: Users,
+      title: t("users.title"),
+      description: t("users.description"),
+      sub1Title: t("users.sub1Title"),
+      sub1Desc: t("users.sub1Desc"),
+      code1: `Jerarquía de Roles de Plataforma:
+- super_admin (Control global)
+- tenant_admin (Ajustes y facturación)
+- tenant_supervisor (Auditoría y CRM)
+- tenant_agent (Atención al cliente)`,
+      sub2Title: t("users.sub2Title"),
+      sub2Desc: t("users.sub2Desc"),
+      code2: `Enrutamiento por Habilidades:
+IF tags CONTAINS "soporte_tecnico" THEN ROUTE_TO_SKILL("soporte")`
+    },
+    {
+      id: "billing",
+      icon: CreditCard,
+      title: t("billing.title"),
+      description: t("billing.description"),
+      sub1Title: t("billing.sub1Title"),
+      sub1Desc: t("billing.sub1Desc"),
+      code1: `Límites de Suscripción por Plan:
+- Starter: 1 agente, 1 calendario
+- Pro: 3 agentes, 3 calendarios
+- Enterprise: 10 agentes, 10 calendarios`,
+      sub2Title: t("billing.sub2Title"),
+      sub2Desc: t("billing.sub2Desc"),
+      code2: `Cuotas de envío y automatización por hora:
+- Starter: 50 auto + 200 outbound
+- Pro: 500 auto + 2000 outbound`
+    },
     {
       id: "apiKeys",
       icon: Shield,
@@ -271,6 +586,14 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
     faq.answer.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Quick suggestion chips for Asistente IA Chat
+  const chatSuggestions = [
+    "¿Cómo conecto WhatsApp?",
+    "¿Cómo funciona el Lead Scoring?",
+    "¿Cómo configuro el RAG++?",
+    "¿Cómo sincronizo mi calendario?"
+  ];
+
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -303,243 +626,362 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
             </SheetDescription>
           </SheetHeader>
 
-          {/* Luxury Rounded Search Bar */}
-          <div className="relative mt-4">
-            <Search className="absolute left-3 top-2.5 size-4 text-neutral-400 dark:text-neutral-500" />
-            <input
-              type="text"
-              placeholder={t("searchPlaceholder")}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 rounded-xl text-sm bg-neutral-100/80 dark:bg-neutral-900/80 border border-neutral-200/50 dark:border-neutral-800/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 text-neutral-900 dark:text-white transition-all placeholder-neutral-400 dark:placeholder-neutral-500"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-2.5 p-0.5 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors"
-              >
-                <X className="size-3 text-neutral-500" />
-              </button>
-            )}
+          {/* Premium Glassmorphic Toggle Tabs */}
+          <div className="flex p-1 mt-4 bg-neutral-100/80 dark:bg-neutral-900/80 rounded-xl border border-neutral-200/50 dark:border-neutral-800/50 backdrop-blur-md">
+            <button
+              onClick={() => setActiveTab('guides')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300 cursor-pointer ${
+                activeTab === 'guides'
+                  ? 'bg-white dark:bg-neutral-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-neutral-200/30 dark:border-neutral-700/30'
+                  : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-300'
+              }`}
+            >
+              <BookOpen className="size-3.5" />
+              Guías & FAQs
+            </button>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300 cursor-pointer ${
+                activeTab === 'chat'
+                  ? 'bg-white dark:bg-neutral-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-neutral-200/30 dark:border-neutral-700/30'
+                  : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-300'
+              }`}
+            >
+              <Sparkles className="size-3.5 animate-pulse text-indigo-500" />
+              Asistente IA
+            </button>
           </div>
-        </div>
 
-        {/* Dynamic & Searchable Content Area */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-thin scrollbar-thumb-neutral-200 dark:scrollbar-thumb-neutral-800">
-          
-          {/* 1. Dynamic Path-Aware Guide */}
-          {activeGuideId && !searchQuery && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 border-b border-indigo-500/10 pb-2">
-                <BookOpen className="size-4 text-indigo-500" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-                  {t("currentPathGuide")}
-                </h3>
-              </div>
-              
-              {guides.filter(g => g.id === activeGuideId).map((guide) => (
-                <div key={guide.id} className="space-y-4">
-                  <div className="rounded-xl border border-indigo-500/15 bg-indigo-500/5 dark:bg-indigo-500/10 p-4 space-y-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-600 dark:text-indigo-400">
-                        <guide.icon className="size-5" />
-                      </div>
-                      <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">
-                        {guide.title}
-                      </h4>
-                    </div>
-                    <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed pt-1">
-                      {guide.description}
-                    </p>
-                  </div>
-
-                  {/* Config Sub-Step 1 */}
-                  <div className="space-y-2">
-                    <h5 className="text-xs font-bold text-neutral-800 dark:text-neutral-300 flex items-center gap-1.5">
-                      <span className="size-1.5 rounded-full bg-indigo-500" />
-                      {guide.sub1Title}
-                    </h5>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed pl-3">
-                      {guide.sub1Desc}
-                    </p>
-                    
-                    {guide.code1 && (
-                      <div className="relative group/code pl-3">
-                        <pre className="text-[11px] font-mono p-3 bg-neutral-950 dark:bg-neutral-900 text-neutral-200 dark:text-neutral-300 rounded-lg overflow-x-auto border border-neutral-800 shadow-inner select-all leading-normal">
-                          <code>{guide.code1}</code>
-                        </pre>
-                        <button
-                          onClick={() => copyToClipboard(guide.code1, `${guide.id}-c1`)}
-                          className="absolute right-2 top-2 p-1.5 rounded-md bg-neutral-800/80 dark:bg-neutral-800 hover:bg-neutral-700 text-neutral-300 opacity-0 group-hover/code:opacity-100 transition-opacity duration-200 border border-neutral-700/50 cursor-pointer"
-                        >
-                          {copiedId === `${guide.id}-c1` ? (
-                            <Check className="size-3 text-emerald-400" />
-                          ) : (
-                            <Copy className="size-3" />
-                          )}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Config Sub-Step 2 */}
-                  <div className="space-y-2">
-                    <h5 className="text-xs font-bold text-neutral-800 dark:text-neutral-300 flex items-center gap-1.5">
-                      <span className="size-1.5 rounded-full bg-purple-500" />
-                      {guide.sub2Title}
-                    </h5>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed pl-3">
-                      {guide.sub2Desc}
-                    </p>
-
-                    {guide.code2 && (
-                      <div className="relative group/code pl-3">
-                        <pre className="text-[11px] font-mono p-3 bg-neutral-950 dark:bg-neutral-900 text-neutral-200 dark:text-neutral-300 rounded-lg overflow-x-auto border border-neutral-800 shadow-inner select-all leading-normal">
-                          <code>{guide.code2}</code>
-                        </pre>
-                        <button
-                          onClick={() => copyToClipboard(guide.code2, `${guide.id}-c2`)}
-                          className="absolute right-2 top-2 p-1.5 rounded-md bg-neutral-800/80 dark:bg-neutral-800 hover:bg-neutral-700 text-neutral-300 opacity-0 group-hover/code:opacity-100 transition-opacity duration-200 border border-neutral-700/50 cursor-pointer"
-                        >
-                          {copiedId === `${guide.id}-c2` ? (
-                            <Check className="size-3 text-emerald-400" />
-                          ) : (
-                            <Copy className="size-3" />
-                          )}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* 2. Industry-Tailored RAG / AI Coach Tips */}
-          {!searchQuery && (
-            <div className="space-y-3 pt-2">
-              <div className="flex items-center gap-2 border-b border-purple-500/10 pb-2">
-                <Lightbulb className="size-4 text-purple-500" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                  {t("industryTitle", { industry: vt.industry === "otro" ? "General" : vt.industry })}
-                </h3>
-              </div>
-              
-              <div className="rounded-xl border border-purple-500/15 bg-linear-to-r from-purple-500/5 to-indigo-500/5 dark:from-purple-500/10 dark:to-indigo-500/10 p-4 space-y-3 relative overflow-hidden">
-                {/* Glowing decorative shape */}
-                <div className="absolute -right-4 -bottom-4 size-16 rounded-full bg-purple-500/10 blur-xl pointer-events-none" />
-                
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed font-medium">
-                  {t("industryDesc")}
-                </p>
-
-                <div className="space-y-2 pl-1">
-                  <div className="relative group/advice bg-white/50 dark:bg-neutral-900/50 p-3 rounded-lg border border-neutral-200/50 dark:border-neutral-800/50">
-                    <span className="text-[10px] font-bold tracking-wider text-purple-500 uppercase flex items-center gap-1">
-                      <Code className="size-3" /> Prompt del Sistema
-                    </span>
-                    <p className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed italic mt-1 font-mono">
-                      "{industryAdvice.prompt}"
-                    </p>
-                    <button
-                      onClick={() => copyToClipboard(industryAdvice.prompt, "industry-prompt")}
-                      className="absolute right-2 top-2 p-1 rounded-md bg-neutral-200 dark:bg-neutral-800 hover:bg-neutral-300 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-400 opacity-0 group-hover/advice:opacity-100 transition-opacity duration-200 cursor-pointer"
-                    >
-                      {copiedId === "industry-prompt" ? (
-                        <Check className="size-3 text-emerald-500" />
-                      ) : (
-                        <Copy className="size-3" />
-                      )}
-                    </button>
-                  </div>
-
-                  <div className="bg-white/30 dark:bg-neutral-900/30 p-3 rounded-lg border border-neutral-200/30 dark:border-neutral-800/30">
-                    <span className="text-[10px] font-bold tracking-wider text-indigo-500 uppercase flex items-center gap-1">
-                      <Terminal className="size-3" /> Casos de Ejemplo
-                    </span>
-                    <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-1 leading-relaxed">
-                      {industryAdvice.example}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 3. Search Results or All Guides List */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 border-b border-neutral-200/50 dark:border-neutral-800/50 pb-2">
-              <BookOpen className="size-4 text-neutral-500" />
-              <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-800 dark:text-neutral-300">
-                {searchQuery ? `Resultados (${filteredGuides.length + filteredFaqs.length})` : t("faqTitle")}
-              </h3>
-            </div>
-
-            {/* List filtered guides first if searching */}
-            {searchQuery && filteredGuides.map((guide) => (
-              <div
-                key={guide.id}
-                onClick={() => {
-                  setActiveGuideId(guide.id);
-                  setSearchQuery("");
-                }}
-                className="p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:border-indigo-500/30 dark:hover:border-indigo-500/30 hover:bg-indigo-500/5 dark:hover:bg-indigo-500/5 transition-all duration-200 cursor-pointer group"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-1 rounded-md bg-neutral-100 dark:bg-neutral-900 text-neutral-500 group-hover:text-indigo-500 transition-colors">
-                      <guide.icon className="size-4" />
-                    </div>
-                    <span className="text-xs font-bold text-neutral-900 dark:text-white">
-                      {guide.title}
-                    </span>
-                  </div>
-                  <ChevronRight className="size-3.5 text-neutral-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
-                </div>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 pl-7 line-clamp-2">
-                  {guide.description}
-                </p>
-              </div>
-            ))}
-
-            {/* Filtered general FAQs */}
-            <div className="space-y-3.5">
-              {filteredFaqs.map((faq, index) => (
-                <div
-                  key={index}
-                  className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200/50 dark:border-neutral-800/50 hover:border-neutral-300 dark:hover:border-neutral-700 transition-all duration-200"
+          {/* Guide Search Bar - Only rendered when on Guides tab */}
+          {activeTab === 'guides' && (
+            <div className="relative mt-4">
+              <Search className="absolute left-3 top-2.5 size-4 text-neutral-400 dark:text-neutral-500" />
+              <input
+                type="text"
+                placeholder={t("searchPlaceholder")}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 rounded-xl text-sm bg-neutral-100/80 dark:bg-neutral-900/80 border border-neutral-200/50 dark:border-neutral-800/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 text-neutral-900 dark:text-white transition-all placeholder-neutral-400 dark:placeholder-neutral-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-2.5 p-0.5 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
                 >
-                  <div className="flex items-start gap-2">
-                    <span className="text-[13px] mt-0.5">💬</span>
-                    <div>
-                      <h4 className="text-xs font-bold text-neutral-900 dark:text-white leading-snug">
-                        {faq.question}
-                      </h4>
-                      <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-1 leading-relaxed">
-                        {faq.answer}
-                      </p>
-                      <span className="inline-block text-[9px] font-bold text-indigo-500/80 bg-indigo-500/5 px-2 py-0.5 rounded-md mt-2 border border-indigo-500/10">
-                        {faq.category}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {filteredGuides.length === 0 && filteredFaqs.length === 0 && (
-                <div className="text-center py-8">
-                  <p className="text-xs text-neutral-400 dark:text-neutral-500">
-                    {t("noResults")}
-                  </p>
-                </div>
+                  <X className="size-3 text-neutral-500" />
+                </button>
               )}
             </div>
-          </div>
-
+          )}
         </div>
 
+        {/* Tab View Content Logic */}
+        {activeTab === 'guides' ? (
+          /* ========================================================================= */
+          /* TAB 1: GUIDES & FAQS                                                      */
+          /* ========================================================================= */
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-thin scrollbar-thumb-neutral-200 dark:scrollbar-thumb-neutral-800">
+            
+            {/* 1. Dynamic Path-Aware Guide */}
+            {activeGuideId && !searchQuery && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 border-b border-indigo-500/10 pb-2">
+                  <BookOpen className="size-4 text-indigo-500" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                    {t("currentPathGuide")}
+                  </h3>
+                </div>
+                
+                {guides.filter(g => g.id === activeGuideId).map((guide) => (
+                  <div key={guide.id} className="space-y-4">
+                    <div className="rounded-xl border border-indigo-500/15 bg-indigo-500/5 dark:bg-indigo-500/10 p-4 space-y-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-600 dark:text-indigo-400">
+                          <guide.icon className="size-5" />
+                        </div>
+                        <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">
+                          {guide.title}
+                        </h4>
+                      </div>
+                      <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed pt-1">
+                        {guide.description}
+                      </p>
+                    </div>
+
+                    {/* Config Sub-Step 1 */}
+                    <div className="space-y-2">
+                      <h5 className="text-xs font-bold text-neutral-800 dark:text-neutral-300 flex items-center gap-1.5">
+                        <span className="size-1.5 rounded-full bg-indigo-500" />
+                        {guide.sub1Title}
+                      </h5>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed pl-3">
+                        {guide.sub1Desc}
+                      </p>
+                      
+                      {guide.code1 && (
+                        <div className="relative group/code pl-3">
+                          <pre className="text-[11px] font-mono p-3 bg-neutral-950 dark:bg-neutral-900 text-neutral-200 dark:text-neutral-300 rounded-lg overflow-x-auto border border-neutral-800 shadow-inner select-all leading-normal">
+                            <code>{guide.code1}</code>
+                          </pre>
+                          <button
+                            onClick={() => copyToClipboard(guide.code1, `${guide.id}-c1`)}
+                            className="absolute right-2 top-2 p-1.5 rounded-md bg-neutral-800/80 dark:bg-neutral-800 hover:bg-neutral-700 text-neutral-300 opacity-0 group-hover/code:opacity-100 transition-opacity duration-200 border border-neutral-700/50 cursor-pointer"
+                          >
+                            {copiedId === `${guide.id}-c1` ? (
+                              <Check className="size-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="size-3" />
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Config Sub-Step 2 */}
+                    <div className="space-y-2">
+                      <h5 className="text-xs font-bold text-neutral-800 dark:text-neutral-300 flex items-center gap-1.5">
+                        <span className="size-1.5 rounded-full bg-purple-500" />
+                        {guide.sub2Title}
+                      </h5>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed pl-3">
+                        {guide.sub2Desc}
+                      </p>
+
+                      {guide.code2 && (
+                        <div className="relative group/code pl-3">
+                          <pre className="text-[11px] font-mono p-3 bg-neutral-950 dark:bg-neutral-900 text-neutral-200 dark:text-neutral-300 rounded-lg overflow-x-auto border border-neutral-800 shadow-inner select-all leading-normal">
+                            <code>{guide.code2}</code>
+                          </pre>
+                          <button
+                            onClick={() => copyToClipboard(guide.code2, `${guide.id}-c2`)}
+                            className="absolute right-2 top-2 p-1.5 rounded-md bg-neutral-800/80 dark:bg-neutral-800 hover:bg-neutral-700 text-neutral-300 opacity-0 group-hover/code:opacity-100 transition-opacity duration-200 border border-neutral-700/50 cursor-pointer"
+                          >
+                            {copiedId === `${guide.id}-c2` ? (
+                              <Check className="size-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="size-3" />
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 2. Industry-Tailored AI Coach Tips */}
+            {!searchQuery && (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center gap-2 border-b border-purple-500/10 pb-2">
+                  <Lightbulb className="size-4 text-purple-500" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                    {t("industryTitle", { industry: vt.industry === "otro" ? "General" : vt.industry })}
+                  </h3>
+                </div>
+                
+                <div className="rounded-xl border border-purple-500/15 bg-linear-to-r from-purple-500/5 to-indigo-500/5 dark:from-purple-500/10 dark:to-indigo-500/10 p-4 space-y-3 relative overflow-hidden">
+                  <div className="absolute -right-4 -bottom-4 size-16 rounded-full bg-purple-500/10 blur-xl pointer-events-none" />
+                  
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed font-medium">
+                    {t("industryDesc")}
+                  </p>
+
+                  <div className="space-y-2 pl-1">
+                    <div className="relative group/advice bg-white/50 dark:bg-neutral-900/50 p-3 rounded-lg border border-neutral-200/50 dark:border-neutral-800/50">
+                      <span className="text-[10px] font-bold tracking-wider text-purple-500 uppercase flex items-center gap-1">
+                        <Code className="size-3" /> Prompt del Sistema
+                      </span>
+                      <p className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed italic mt-1 font-mono">
+                        "{industryAdvice.prompt}"
+                      </p>
+                      <button
+                        onClick={() => copyToClipboard(industryAdvice.prompt, "industry-prompt")}
+                        className="absolute right-2 top-2 p-1 rounded-md bg-neutral-200 dark:bg-neutral-800 hover:bg-neutral-300 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-400 opacity-0 group-hover/advice:opacity-100 transition-opacity duration-200 cursor-pointer"
+                      >
+                        {copiedId === "industry-prompt" ? (
+                          <Check className="size-3 text-emerald-500" />
+                        ) : (
+                          <Copy className="size-3" />
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="bg-white/30 dark:bg-neutral-900/30 p-3 rounded-lg border border-neutral-200/30 dark:border-neutral-800/30">
+                      <span className="text-[10px] font-bold tracking-wider text-indigo-500 uppercase flex items-center gap-1">
+                        <Terminal className="size-3" /> Casos de Ejemplo
+                      </span>
+                      <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-1 leading-relaxed">
+                        {industryAdvice.example}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 3. Search Results or All Guides List */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 border-b border-neutral-200/50 dark:border-neutral-800/50 pb-2">
+                <BookOpen className="size-4 text-neutral-500" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-800 dark:text-neutral-300">
+                  {searchQuery ? `Resultados (${filteredGuides.length + filteredFaqs.length})` : t("faqTitle")}
+                </h3>
+              </div>
+
+              {/* List filtered guides first if searching */}
+              {searchQuery && filteredGuides.map((guide) => (
+                <div
+                  key={guide.id}
+                  onClick={() => {
+                    setActiveGuideId(guide.id);
+                    setSearchQuery("");
+                  }}
+                  className="p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:border-indigo-500/30 dark:hover:border-indigo-500/30 hover:bg-indigo-500/5 dark:hover:bg-indigo-500/5 transition-all duration-200 cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1 rounded-md bg-neutral-100 dark:bg-neutral-900 text-neutral-500 group-hover:text-indigo-500 transition-colors">
+                        <guide.icon className="size-4" />
+                      </div>
+                      <span className="text-xs font-bold text-neutral-900 dark:text-white">
+                        {guide.title}
+                      </span>
+                    </div>
+                    <ChevronRight className="size-3.5 text-neutral-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 pl-7 line-clamp-2">
+                    {guide.description}
+                  </p>
+                </div>
+              ))}
+
+              {/* Filtered general FAQs */}
+              <div className="space-y-3.5">
+                {filteredFaqs.map((faq, index) => (
+                  <div
+                    key={index}
+                    className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200/50 dark:border-neutral-800/50 hover:border-neutral-300 dark:hover:border-neutral-700 transition-all duration-200"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-[13px] mt-0.5">💬</span>
+                      <div>
+                        <h4 className="text-xs font-bold text-neutral-900 dark:text-white leading-snug">
+                          {faq.question}
+                        </h4>
+                        <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-1 leading-relaxed">
+                          {faq.answer}
+                        </p>
+                        <span className="inline-block text-[9px] font-bold text-indigo-500/80 bg-indigo-500/5 px-2 py-0.5 rounded-md mt-2 border border-indigo-500/10">
+                          {faq.category}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {filteredGuides.length === 0 && filteredFaqs.length === 0 && (
+                  <div className="text-center py-8">
+                    <p className="text-xs text-neutral-400 dark:text-neutral-500">
+                      {t("noResults")}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
+        ) : (
+          /* ========================================================================= */
+          /* TAB 2: INTERACTIVE AI COPILOT CHET                                         */
+          /* ========================================================================= */
+          <div className="flex-1 flex flex-col overflow-hidden bg-neutral-50/10 dark:bg-neutral-950/10">
+            {/* Messages timeline area */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 flex flex-col scrollbar-thin scrollbar-thumb-neutral-200 dark:scrollbar-thumb-neutral-800">
+              {messages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`max-w-[85%] ${
+                    msg.role === 'user' ? 'self-end' : 'self-start'
+                  }`}
+                >
+                  <div
+                    className={`rounded-2xl px-4 py-2.5 text-xs shadow-xs leading-relaxed transition-all duration-200 ${
+                      msg.role === 'user'
+                        ? 'bg-linear-to-r from-indigo-600 to-purple-600 dark:from-indigo-500 dark:to-purple-500 text-white rounded-tr-none border border-white/5 shadow-md shadow-indigo-500/10'
+                        : 'bg-white dark:bg-neutral-900 border border-neutral-200/50 dark:border-neutral-800/50 text-neutral-800 dark:text-neutral-200 rounded-tl-none shadow-2xs'
+                    }`}
+                  >
+                    {msg.role === 'user' ? msg.content : renderFormattedText(msg.content)}
+                  </div>
+                </div>
+              ))}
+              
+              {/* Typing indicator */}
+              {isSending && (
+                <div className="self-start max-w-[85%] flex items-center gap-1.5 bg-white dark:bg-neutral-900 border border-neutral-200/50 dark:border-neutral-800/50 text-neutral-400 dark:text-neutral-500 rounded-2xl rounded-tl-none px-4 py-3 shadow-2xs text-xs select-none">
+                  <span className="size-1.5 rounded-full bg-indigo-500/80 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="size-1.5 rounded-full bg-indigo-500/80 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="size-1.5 rounded-full bg-indigo-500/80 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="ml-1 text-[10px] text-neutral-400 dark:text-neutral-500 animate-pulse">
+                    Copilot está escribiendo...
+                  </span>
+                </div>
+              )}
+              
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Quick Suggestion Chips */}
+            <div className="flex gap-2 px-6 py-2 overflow-x-auto scrollbar-none select-none border-t border-neutral-200/30 dark:border-neutral-800/30 bg-neutral-50/20 dark:bg-neutral-950/20 shrink-0">
+              {chatSuggestions.map((sug, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSuggestionClick(sug)}
+                  disabled={isSending}
+                  className="text-[10px] font-semibold text-neutral-600 dark:text-neutral-400 bg-white dark:bg-neutral-900 border border-neutral-200/50 dark:border-neutral-800/50 hover:border-indigo-500/30 dark:hover:border-indigo-500/30 hover:bg-indigo-500/5 dark:hover:bg-indigo-500/5 px-2.5 py-1.5 rounded-full whitespace-nowrap shadow-2xs hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                >
+                  {sug}
+                </button>
+              ))}
+            </div>
+
+            {/* Bottom input area */}
+            <div className="p-4 border-t border-neutral-200/50 dark:border-neutral-800/50 bg-neutral-50 dark:bg-neutral-900/50 shrink-0">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  sendMessage(chatInput);
+                }}
+                className="flex gap-2 relative items-center"
+              >
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  disabled={isSending}
+                  placeholder="Pregúntame sobre la plataforma..."
+                  className="w-full pl-4 pr-12 py-2.5 text-xs bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 text-neutral-900 dark:text-white transition-all disabled:opacity-50 placeholder-neutral-400"
+                />
+                <button
+                  type="submit"
+                  disabled={isSending || !chatInput.trim()}
+                  className="absolute right-1.5 p-2 rounded-lg bg-indigo-600 dark:bg-indigo-500 hover:bg-indigo-700 text-white disabled:opacity-40 hover:scale-105 active:scale-95 disabled:hover:scale-100 transition-all cursor-pointer"
+                >
+                  {isSending ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Send className="size-3.5" />
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* Footer Area with Branding and Quick links */}
-        <div className="p-4 border-t border-neutral-200/50 dark:border-neutral-800/50 bg-neutral-50 dark:bg-neutral-900/50 flex items-center justify-between">
+        <div className="p-4 border-t border-neutral-200/50 dark:border-neutral-800/50 bg-neutral-50 dark:bg-neutral-900/50 flex items-center justify-between shrink-0">
           <span className="text-[10px] font-medium text-neutral-400 dark:text-neutral-500">
             Parallly SaaS · V4.0.0
           </span>

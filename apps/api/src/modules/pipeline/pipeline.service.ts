@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -551,6 +551,210 @@ export class PipelineService {
         return this.mapDeal(result[0]);
     }
 
+    /** Synchronize an opportunity/lead stage change to the corresponding deal */
+    async syncOpportunityToDeal(tenantId: string, leadId: string, opportunityStage: string): Promise<void> {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) return;
+
+        // 1. Get lead information to obtain contact_id and details
+        const leadRows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT contact_id, first_name, last_name, email, phone, score FROM leads WHERE id = $1::uuid`,
+            [leadId],
+        );
+        const lead = leadRows?.[0];
+        if (!lead || !lead.contact_id) return;
+
+        // 2. Fetch pipelines for the tenant. If none exist, we cannot sync a deal.
+        const pipelines = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT id FROM pipelines WHERE is_active = true ORDER BY is_default DESC, created_at ASC LIMIT 1`,
+        );
+        const pipelineId = pipelines?.[0]?.id;
+        if (!pipelineId) return;
+
+        // 3. Find the stage matching the opportunity stage by slug/name.
+        // Support listo_cierre / listo_para_cierre matching.
+        let targetStageSlug = opportunityStage;
+        if (opportunityStage === 'listo_cierre') targetStageSlug = 'listo_para_cierre';
+        else if (opportunityStage === 'listo_para_cierre') targetStageSlug = 'listo_cierre';
+
+        let stageRows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT id FROM pipeline_stages WHERE (slug = $1 OR slug = $2) AND tenant_id = $3::uuid LIMIT 1`,
+            [opportunityStage, targetStageSlug, tenantId],
+        );
+
+        if (!stageRows?.length) {
+            // Fallback to first stage in the pipeline
+            stageRows = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `SELECT id FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC LIMIT 1`,
+                [tenantId],
+            );
+        }
+
+        const stageId = stageRows?.[0]?.id;
+        if (!stageId) return;
+
+        // 4. Check if a deal already exists for this contact in this pipeline
+        const existingDeals = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT id, stage_id FROM deals WHERE contact_id = $1::uuid AND status = 'open' LIMIT 1`,
+            [lead.contact_id],
+        );
+
+        const title = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || lead.phone || 'Interés Automatizado';
+
+        if (existingDeals?.length > 0) {
+            const deal = existingDeals[0];
+            if (deal.stage_id !== stageId) {
+                // Update deal stage
+                const stageInfo = await this.prisma.executeInTenantSchema<any[]>(
+                    schema,
+                    `SELECT sla_hours, default_probability, is_terminal, slug FROM pipeline_stages WHERE id = $1::uuid`,
+                    [stageId],
+                );
+                const stg = stageInfo?.[0];
+                const prob = stg?.default_probability || 0;
+                const sla = stg?.sla_hours ? `NOW() + INTERVAL '${parseInt(stg.sla_hours)} hours'` : 'NULL';
+                
+                let statusUpdate = '';
+                if (stg?.is_terminal) {
+                    statusUpdate = stg.slug === 'ganado' ? `, status = 'won'` : `, status = 'lost'`;
+                }
+
+                await this.prisma.executeInTenantSchema(
+                    schema,
+                    `UPDATE deals
+                     SET stage_id = $1::uuid, probability = $2, stage_entered_at = NOW(),
+                         updated_at = NOW(), sla_deadline = ${sla}, sla_status = 'on_track'${statusUpdate}
+                     WHERE id = $3::uuid`,
+                    [stageId, prob, deal.id],
+                );
+
+                await this.recordStageTransition(schema, deal.id, deal.stage_id, stageId, 'system', 'Synchronized from Opportunity');
+            }
+        } else {
+            // Create a new deal in the matched stage
+            await this.createDeal(tenantId, {
+                contactId: lead.contact_id,
+                title,
+                value: 0,
+                stageId,
+                notes: 'Creado por la IA mediante chat interactivo',
+                pipelineId,
+            });
+        }
+    }
+
+    /** Evaluate all transition rules for a stage before allowing a move */
+    async evaluateTransitionRules(schema: string, dealId: string, rules: any[]): Promise<void> {
+        if (!rules || rules.length === 0) return;
+
+        // 1. Get lead information, contact information, and assigned agent
+        const dealData = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT d.contact_id, l.id as lead_id, l.email as lead_email, l.phone as lead_phone,
+                    l.first_name, l.last_name, l.score, d.assigned_agent_id,
+                    ct.email as contact_email, ct.phone as contact_phone
+             FROM deals d
+             LEFT JOIN contacts ct ON ct.id = d.contact_id
+             LEFT JOIN leads l ON l.contact_id = d.contact_id
+             WHERE d.id = $1::uuid
+             LIMIT 1`,
+            [dealId],
+        ).then(res => res[0]);
+
+        if (!dealData) return;
+
+        const email = (dealData.lead_email || dealData.contact_email || '').trim();
+        const phone = (dealData.lead_phone || dealData.contact_phone || '').trim();
+        const score = dealData.score || 0;
+        const name = `${dealData.first_name || ''} ${dealData.last_name || ''}`.trim();
+
+        // 2. Fetch custom attribute values
+        const customAttributes = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT def.key, val.value
+             FROM custom_attribute_values val
+             JOIN custom_attribute_definitions def ON val.definition_id = def.id
+             WHERE val.entity_id = $1::uuid OR val.entity_id = $2::uuid`,
+            [dealData.contact_id, dealData.lead_id || '00000000-0000-0000-0000-000000000000'],
+        );
+
+        const attrMap = new Map(customAttributes.map(a => [a.key, a.value]));
+
+        // 3. Evaluate each rule
+        for (const rule of rules) {
+            const ruleType = rule.type;
+            switch (ruleType) {
+                case 'email_required':
+                    if (!email) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:email_required');
+                    }
+                    break;
+                case 'phone_required':
+                    if (!phone) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:phone_required');
+                    }
+                    break;
+                case 'name_required':
+                    if (!name) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:name_required');
+                    }
+                    break;
+                case 'min_score':
+                    const minScore = Number(rule.value) || 0;
+                    if (score < minScore) {
+                        throw new BadRequestException(`TRANSITION_RULE_FAILED:min_score:${minScore}`);
+                    }
+                    break;
+                case 'agent_assigned':
+                    if (!dealData.assigned_agent_id) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:agent_assigned');
+                    }
+                    break;
+                case 'appointment_required':
+                    const appointments = await this.prisma.executeInTenantSchema<any[]>(
+                        schema,
+                        `SELECT 1 FROM appointments WHERE contact_id = $1::uuid AND status IN ('scheduled', 'completed') LIMIT 1`,
+                        [dealData.contact_id],
+                    );
+                    if (!appointments || appointments.length === 0) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:appointment_required');
+                    }
+                    break;
+                case 'offer_required':
+                    if (dealData.lead_id) {
+                        const offers = await this.prisma.executeInTenantSchema<any[]>(
+                            schema,
+                            `SELECT 1 FROM commercial_offers WHERE lead_id = $1::uuid AND status = 'active' LIMIT 1`,
+                            [dealData.lead_id],
+                        );
+                        if (!offers || offers.length === 0) {
+                            throw new BadRequestException('TRANSITION_RULE_FAILED:offer_required');
+                        }
+                    } else {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:offer_required');
+                    }
+                    break;
+                case 'custom_attribute_required':
+                    const val = attrMap.get(rule.field);
+                    if (!val || !val.trim()) {
+                        throw new BadRequestException(`TRANSITION_RULE_FAILED:custom_attribute_required:${rule.field}`);
+                    }
+                    break;
+                case 'custom_attribute_equals':
+                    const curVal = attrMap.get(rule.field);
+                    if (curVal !== rule.value) {
+                        throw new BadRequestException(`TRANSITION_RULE_FAILED:custom_attribute_equals:${rule.field}:${rule.value}`);
+                    }
+                    break;
+            }
+        }
+    }
+
     /** Move a deal to a new stage with validation, audit, and SLA */
     async moveToStage(tenantId: string, dealId: string, newStageId: string, agentId?: string, reason?: string): Promise<void> {
         const schema = await this.getTenantSchema(tenantId);
@@ -577,13 +781,18 @@ export class PipelineService {
         // Get new stage info
         const newStageRows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT id, sla_hours, default_probability, is_terminal, slug FROM pipeline_stages WHERE id = $1::uuid`,
+            `SELECT id, sla_hours, default_probability, is_terminal, slug, transition_rules FROM pipeline_stages WHERE id = $1::uuid`,
             [newStageId],
         );
         if (!newStageRows || newStageRows.length === 0) {
             throw new Error('Target stage not found');
         }
         const newStage = newStageRows[0];
+
+        // Evaluate stage transition rules
+        const transitionRules = newStage.transition_rules || [];
+        await this.evaluateTransitionRules(schema, dealId, transitionRules);
+
         const probability = newStage.default_probability || 0;
 
         // Calculate SLA deadline for new stage
@@ -610,6 +819,38 @@ export class PipelineService {
              WHERE id = $3::uuid`,
             [newStageId, probability, dealId],
         );
+
+        // Synchronize the opportunity and lead stage to match the deal stage
+        const oppRows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT o.id, o.lead_id FROM opportunities o
+             WHERE o.lead_id IN (
+                 SELECT id FROM leads WHERE contact_id = (SELECT contact_id FROM deals WHERE id = $1::uuid)
+             )
+             LIMIT 1`,
+            [dealId],
+        );
+        if (oppRows?.length > 0) {
+            const opp = oppRows[0];
+            let oppStage = newStage.slug;
+            // Map 'listo_para_cierre' back to opportunity's 'listo_cierre' slug
+            if (newStage.slug === 'listo_para_cierre') {
+                oppStage = 'listo_cierre';
+            }
+
+            await this.prisma.executeInTenantSchema(
+                schema,
+                `UPDATE opportunities SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
+                [oppStage, opp.id],
+            );
+            if (opp.lead_id) {
+                await this.prisma.executeInTenantSchema(
+                    schema,
+                    `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
+                    [oppStage, opp.lead_id],
+                );
+            }
+        }
 
         // Record audit trail
         await this.recordStageTransition(
@@ -926,6 +1167,9 @@ export class PipelineService {
                 schema,
                 `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
                 [targetSlug, opp.lead_id],
+            );
+            await this.syncOpportunityToDeal(tenantId, opp.lead_id, targetSlug).catch(e =>
+                this.logger.error(`Failed to sync opportunity to deal in autoProgressFromConversation: ${e.message}`)
             );
         }
 

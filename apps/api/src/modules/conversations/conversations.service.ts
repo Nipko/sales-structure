@@ -145,6 +145,12 @@ export class ConversationsService {
             [conversation.id],
         );
 
+        if (lead?.id) {
+            await this.pipelineService.syncOpportunityToDeal(tenantId, String(lead.id), 'respondio').catch(e =>
+                this.logger.error(`Failed to sync opportunity to deal on customer reply: ${e.message}`)
+            );
+        }
+
         // 2. Load Persona & Check Business Hours
         const config = await this.personaService.getPersonaForChannel(tenantId, channelType);
         this.logger.log(`[Pipeline] Persona loaded: ${config?.persona?.name || 'default'} (mode: ${(config as any)?._mode || 'wizard'})`);
@@ -511,6 +517,17 @@ export class ConversationsService {
                     [String(lead.id), String(conversation.id)],
                 );
             }
+        }
+
+        if (lead?.id) {
+            const activeOpp = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT stage FROM opportunities WHERE lead_id = $1::uuid AND stage NOT IN ('ganado', 'perdido', 'no_interesado') LIMIT 1`,
+                [String(lead.id)],
+            );
+            const oppStage = activeOpp?.[0]?.stage || 'nuevo';
+            await this.pipelineService.syncOpportunityToDeal(tenantId, String(lead.id), oppStage).catch(e =>
+                this.logger.error(`Failed to sync opportunity to deal on conversation start: ${e.message}`)
+            );
         }
 
         // Emit lead.captured event for new leads so automation rules can fire

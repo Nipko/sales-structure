@@ -479,22 +479,65 @@ export default function PipelinePage() {
                                             };
                                         });
                                         try {
-                                            await api.fetch(`/crm/kanban/${activeTenantId}/${draggedDeal}/move`, {
-                                                method: "PUT",
-                                                body: JSON.stringify({ stage: stage.id }),
-                                            });
-                                            const stageName = KNOWN_STAGE_KEYS.includes(stage.id) ? tc(`stages.${stage.id}`) : stage.name;
-                                            setToast(t('movedTo', { stage: stageName }));
-                                            setTimeout(() => setToast(null), 2000);
-                                        } catch (err) {
-                                            console.error("Failed to move opportunity:", err);
-                                            setKanban(kanbanSnapshot);
-                                            setToast(t('errorMoving'));
-                                            setTimeout(() => setToast(null), 3000);
-                                        }
+                                             if (activePipelineId) {
+                                                 await api.fetch(`/pipeline/deals/${activeTenantId}/${draggedDeal}/move`, {
+                                                     method: "PUT",
+                                                     body: JSON.stringify({ stageId: stage.id }),
+                                                 });
+                                             } else {
+                                                 await api.fetch(`/crm/kanban/${activeTenantId}/${draggedDeal}/move`, {
+                                                     method: "PUT",
+                                                     body: JSON.stringify({ stage: stage.id }),
+                                                 });
+                                             }
+                                             const stageName = KNOWN_STAGE_KEYS.includes(stage.id) ? tc(`stages.${stage.id}`) : stage.name;
+                                             setToast(t('movedTo', { stage: stageName }));
+                                             setTimeout(() => setToast(null), 2000);
+                                         } catch (err: any) {
+                                             console.error("Failed to move opportunity:", err);
+                                             setKanban(kanbanSnapshot);
+                                             
+                                             let errMsg = t('errorMoving');
+                                             const errStr = err.message || '';
+                                             if (errStr.includes('TRANSITION_RULE_FAILED:')) {
+                                                 const parts = errStr.split(':');
+                                                 const ruleType = parts[1];
+                                                 switch (ruleType) {
+                                                     case 'email_required':
+                                                         errMsg = "No se cumplen las reglas de la etapa: El lead debe tener registrado un correo electrónico.";
+                                                         break;
+                                                     case 'phone_required':
+                                                         errMsg = "No se cumplen las reglas de la etapa: El lead debe tener registrado un número de teléfono.";
+                                                         break;
+                                                     case 'name_required':
+                                                         errMsg = "No se cumplen las reglas de la etapa: El lead debe tener un nombre completo registrado.";
+                                                         break;
+                                                     case 'min_score':
+                                                         errMsg = `No se cumplen las reglas de la etapa: El score del lead debe ser de al menos ${parts[2] || 0}/10.`;
+                                                         break;
+                                                     case 'agent_assigned':
+                                                         errMsg = "No se cumplen las reglas de la etapa: El lead debe tener un asesor humano asignado.";
+                                                         break;
+                                                     case 'appointment_required':
+                                                         errMsg = "No se cumplen las reglas de la etapa: El lead debe tener al menos una cita agendada o completada en el calendario.";
+                                                         break;
+                                                     case 'offer_required':
+                                                         errMsg = "No se cumplen las reglas de la etapa: Se requiere una propuesta o cotización comercial activa vinculada.";
+                                                         break;
+                                                     case 'custom_attribute_required':
+                                                         errMsg = `No se cumplen las reglas de la etapa: El atributo personalizado '${parts[2] || ''}' es obligatorio.`;
+                                                         break;
+                                                     case 'custom_attribute_equals':
+                                                         errMsg = `No se cumplen las reglas de la etapa: El atributo personalizado '${parts[2] || ''}' debe tener el valor '${parts[3] || ''}'.`;
+                                                         break;
+                                                 }
+                                             }
+                                             setToast(errMsg);
+                                             setTimeout(() => setToast(null), 5000);
+                                         }
+                                         setDragOverStage(null);
+                                         setDraggedDeal(null);
                                     }
-                                    setDragOverStage(null);
-                                    setDraggedDeal(null);
                                 }}
                                 className={cn(
                                     "min-w-[260px] w-[260px] flex-shrink-0 flex flex-col rounded-xl transition-all duration-200",

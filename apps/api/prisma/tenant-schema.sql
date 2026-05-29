@@ -571,6 +571,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pipeline_stages" (
     "default_probability" INTEGER DEFAULT 0,
     "sla_hours"           INTEGER,
     "is_terminal"         BOOLEAN DEFAULT false,
+    "transition_rules"    JSONB DEFAULT '[]'::jsonb,
     "created_at"          TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "idx_pipeline_stages_tenant_id" ON "{{SCHEMA_NAME}}"."pipeline_stages" ("tenant_id");

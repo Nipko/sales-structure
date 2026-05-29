@@ -302,7 +302,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                     `ALTER TABLE "${schemaName}"."consent_records" ALTER COLUMN "origin_url" TYPE TEXT;`,
                     `ALTER TABLE "${schemaName}"."whatsapp_channels" ALTER COLUMN "webhook_callback_url" TYPE TEXT;`,
                     `ALTER TABLE "${schemaName}"."form_submissions" ALTER COLUMN "source_url" TYPE TEXT;`,
-                    `ALTER TABLE "${schemaName}"."form_submissions" ALTER COLUMN "referrer" TYPE TEXT;`
+                    `ALTER TABLE "${schemaName}"."form_submissions" ALTER COLUMN "referrer" TYPE TEXT;`,
+                    `ALTER TABLE "${schemaName}"."pipeline_stages" ADD COLUMN IF NOT EXISTS "transition_rules" JSONB DEFAULT '[]'::jsonb;`
                 ];
 
                 for (const sql of alterStatements) {

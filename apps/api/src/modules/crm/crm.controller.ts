@@ -651,7 +651,7 @@ export class CrmController {
     @Post('pipeline-stages/:tenantId')
     async createPipelineStage(
         @Param('tenantId') tenantId: string,
-        @Body() body: { name: string; slug?: string; color?: string; position?: number; default_probability?: number; sla_hours?: number; is_terminal?: boolean },
+        @Body() body: { name: string; slug?: string; color?: string; position?: number; default_probability?: number; sla_hours?: number; is_terminal?: boolean; transition_rules?: any[] },
     ) {
         const schema = await this.getSchema(tenantId);
         const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
@@ -659,9 +659,9 @@ export class CrmController {
         await this.throttle.enforcePlanLimit(tenantId, 'pipelineStages', cnt?.[0]?.c || 0, 'etapas de pipeline');
         const slug = body.slug || body.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
         const result = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-            [tenantId, body.name, slug, body.color || '#3498db', body.position ?? 0, body.default_probability ?? 0, body.sla_hours || null, body.is_terminal ?? false],
+            `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, transition_rules)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) RETURNING *`,
+            [tenantId, body.name, slug, body.color || '#3498db', body.position ?? 0, body.default_probability ?? 0, body.sla_hours || null, body.is_terminal ?? false, JSON.stringify(body.transition_rules || [])],
         );
         return { success: true, data: result?.[0] };
     }
@@ -673,12 +673,12 @@ export class CrmController {
         @Body() body: Record<string, any>,
     ) {
         const schema = await this.getSchema(tenantId);
-        const allowed = ['name', 'slug', 'color', 'position', 'default_probability', 'sla_hours', 'is_terminal'];
+        const allowed = ['name', 'slug', 'color', 'position', 'default_probability', 'sla_hours', 'is_terminal', 'transition_rules'];
         const fields = Object.keys(body).filter(k => allowed.includes(k) && body[k] !== undefined);
         if (fields.length === 0) return { success: true };
 
-        const setClause = fields.map((k, i) => `${k} = $${i + 2}`).join(', ');
-        const values = [stageId, ...fields.map(k => body[k])];
+        const setClause = fields.map((k, i) => `${k} = $${i + 2}${k === 'transition_rules' ? '::jsonb' : ''}`).join(', ');
+        const values = [stageId, ...fields.map(k => k === 'transition_rules' ? JSON.stringify(body[k]) : body[k])];
 
         await this.prisma.executeInTenantSchema(schema,
             `UPDATE pipeline_stages SET ${setClause} WHERE id = $1::uuid`,

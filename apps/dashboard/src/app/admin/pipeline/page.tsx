@@ -504,31 +504,31 @@ export default function PipelinePage() {
                                                  const ruleType = parts[1];
                                                  switch (ruleType) {
                                                      case 'email_required':
-                                                         errMsg = "No se cumplen las reglas de la etapa: El lead debe tener registrado un correo electrónico.";
+                                                         errMsg = t('ruleErrorEmail');
                                                          break;
                                                      case 'phone_required':
-                                                         errMsg = "No se cumplen las reglas de la etapa: El lead debe tener registrado un número de teléfono.";
+                                                         errMsg = t('ruleErrorPhone');
                                                          break;
                                                      case 'name_required':
-                                                         errMsg = "No se cumplen las reglas de la etapa: El lead debe tener un nombre completo registrado.";
+                                                         errMsg = t('ruleErrorName');
                                                          break;
                                                      case 'min_score':
-                                                         errMsg = `No se cumplen las reglas de la etapa: El score del lead debe ser de al menos ${parts[2] || 0}/10.`;
+                                                         errMsg = t('ruleErrorScore', { score: parts[2] || '0' });
                                                          break;
                                                      case 'agent_assigned':
-                                                         errMsg = "No se cumplen las reglas de la etapa: El lead debe tener un asesor humano asignado.";
+                                                         errMsg = t('ruleErrorAgent');
                                                          break;
                                                      case 'appointment_required':
-                                                         errMsg = "No se cumplen las reglas de la etapa: El lead debe tener al menos una cita agendada o completada en el calendario.";
+                                                         errMsg = t('ruleErrorAppointment');
                                                          break;
                                                      case 'offer_required':
-                                                         errMsg = "No se cumplen las reglas de la etapa: Se requiere una propuesta o cotización comercial activa vinculada.";
+                                                         errMsg = t('ruleErrorOffer');
                                                          break;
                                                      case 'custom_attribute_required':
-                                                         errMsg = `No se cumplen las reglas de la etapa: El atributo personalizado '${parts[2] || ''}' es obligatorio.`;
+                                                         errMsg = t('ruleErrorCustomRequired', { field: parts[2] || '' });
                                                          break;
                                                      case 'custom_attribute_equals':
-                                                         errMsg = `No se cumplen las reglas de la etapa: El atributo personalizado '${parts[2] || ''}' debe tener el valor '${parts[3] || ''}'.`;
+                                                         errMsg = t('ruleErrorCustomEquals', { field: parts[2] || '', value: parts[3] || '' });
                                                          break;
                                                  }
                                              }

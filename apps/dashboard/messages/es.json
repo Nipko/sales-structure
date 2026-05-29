@@ -1743,7 +1743,11 @@
     "fieldKeyLabel": "Clave del Campo",
     "fieldKeyPlaceholder": "ej. ciudad",
     "expectedValueLabel": "Valor Esperado",
-    "expectedValuePlaceholder": "ej. Bogota"
+    "expectedValuePlaceholder": "ej. Bogota",
+    "loadPresetBtn": "Cargar preajustes de la industria",
+    "loadPresetConfirm": "¿Deseas cargar las etapas y condiciones de transición estándar para tu vertical? Esto reemplazará las etapas actuales de tu embudo.",
+    "loadPresetSuccess": "Plantilla de la industria cargada con éxito. Recuerda guardar los cambios.",
+    "presetsLoaded": "Preajustes Cargados"
   },
   "scoringConfig": {
     "title": "Lead Scoring",

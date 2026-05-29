@@ -207,10 +207,11 @@ export class VerticalsService {
                 const name = stage.name[lang] || stage.name['es'] || stage.slug;
                 await this.prisma.$queryRawUnsafe(
                     `INSERT INTO "${schemaName}"."pipeline_stages"
-                     (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal)
-                     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)
+                     (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, transition_rules)
+                     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
                      ON CONFLICT DO NOTHING`,
                     tenantId, name, stage.slug, stage.color, i, stage.probability, stage.slaHours || null, stage.isTerminal,
+                    JSON.stringify((stage as any).transitionRules || []),
                 );
             }
             this.logger.debug(`Seeded ${definition.pipeline.stages.length} pipeline stages`);

@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { PageHeader } from "@/components/ui/page-header";
 import { cn } from "@/lib/utils";
 import {
-    GripVertical, Plus, Trash2, Save, Loader2, Settings, Eye, EyeOff, X,
+    GripVertical, Plus, Trash2, Save, Loader2, Settings, Eye, EyeOff, X, Sparkles,
 } from "lucide-react";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { UpgradeBanner } from "@/components/ui/upgrade-banner";
@@ -43,12 +43,45 @@ export default function PipelineSettingsPage() {
     const { activeTenantId } = useTenant();
     const { canCreate, getLimit } = usePlanLimits();
 
+    const locale = useLocale();
     const [stages, setStages] = useState<PipelineStage[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
     const [dragIdx, setDragIdx] = useState<number | null>(null);
     const [expandedStageIdx, setExpandedStageIdx] = useState<number | null>(null);
+    const [loadingPresets, setLoadingPresets] = useState(false);
+
+    const handleLoadPresets = async () => {
+        if (!activeTenantId) return;
+        if (!confirm(t("loadPresetConfirm"))) return;
+        setLoadingPresets(true);
+        try {
+            const res = await api.fetch(`/verticals/${activeTenantId}/stages-presets`);
+            const presets = res?.data || [];
+            if (presets.length > 0) {
+                const mappedStages = presets.map((p: any, i: number) => ({
+                    name: p.name[locale] || p.name['es'] || p.slug,
+                    slug: p.slug,
+                    color: p.color,
+                    position: i,
+                    default_probability: p.probability,
+                    sla_hours: p.slaHours || null,
+                    is_terminal: p.isTerminal,
+                    transition_rules: p.transitionRules || [],
+                }));
+                setStages(mappedStages);
+                setDirty(true);
+                alert(t("loadPresetSuccess"));
+            } else {
+                alert("No presets found for this vertical.");
+            }
+        } catch (err) {
+            console.error('Failed to load stages presets:', err);
+        } finally {
+            setLoadingPresets(false);
+        }
+    };
 
     useEffect(() => {
         if (!activeTenantId) return;
@@ -163,6 +196,19 @@ export default function PipelineSettingsPage() {
             />
 
             <UpgradeBanner current={stages.length} limit={getLimit("pipelineStages")} resourceLabel="etapas de pipeline" />
+
+            {/* Industry Preset Trigger Bar */}
+            <div className="flex justify-end mb-4">
+                <button
+                    onClick={handleLoadPresets}
+                    disabled={loadingPresets}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-indigo-500/20 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-semibold shadow-sm backdrop-blur-md cursor-pointer transition-all duration-200 disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98]"
+                >
+                    {loadingPresets ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    {t("loadPresetBtn")}
+                </button>
+            </div>
+
              <div className="bg-card border border-border rounded-xl overflow-hidden">
                 {/* Header row */}
                 <div className="grid grid-cols-[40px_1fr_80px_100px_80px_40px_40px] gap-2 px-4 py-3 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">

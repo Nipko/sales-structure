@@ -642,6 +642,7 @@ export interface VerticalStageDefinition {
     probability: number;
     slaHours?: number;
     isTerminal: boolean;
+    transitionRules?: any[];
 }
 
 export interface VerticalFaqDefinition {

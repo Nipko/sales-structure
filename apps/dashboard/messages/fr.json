@@ -1745,7 +1745,11 @@
     "fieldKeyLabel": "Clé du Champ",
     "fieldKeyPlaceholder": "ex: ville",
     "expectedValueLabel": "Valeur Attendue",
-    "expectedValuePlaceholder": "ex: Paris"
+    "expectedValuePlaceholder": "ex: Paris",
+    "loadPresetBtn": "Charger les préréglages de l'industrie",
+    "loadPresetConfirm": "Voulez-vous charger les étapes et règles de transition standard pour votre secteur ? Cela remplacera les étapes actuelles.",
+    "loadPresetSuccess": "Modèle de l'industrie chargé avec succès. N'oubliez pas d'enregistrer les modifications.",
+    "presetsLoaded": "Préréglages Chargés"
   },
   "scoringConfig": {
     "title": "Lead Scoring",

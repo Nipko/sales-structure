@@ -1745,7 +1745,11 @@
     "fieldKeyLabel": "Field Key",
     "fieldKeyPlaceholder": "e.g. city",
     "expectedValueLabel": "Expected Value",
-    "expectedValuePlaceholder": "e.g. London"
+    "expectedValuePlaceholder": "e.g. London",
+    "loadPresetBtn": "Load Industry Presets",
+    "loadPresetConfirm": "Do you want to load the standard stages and transition rules for your vertical? This will replace your current stages.",
+    "loadPresetSuccess": "Industry template loaded successfully. Remember to save changes.",
+    "presetsLoaded": "Presets Loaded"
   },
   "scoringConfig": {
     "title": "Lead Scoring",

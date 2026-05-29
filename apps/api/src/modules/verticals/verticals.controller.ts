@@ -3,7 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { VerticalsService } from './verticals.service';
-import { VERTICAL_REGISTRY } from './vertical-definitions';
+import { VERTICAL_REGISTRY, getVerticalDefinition } from './vertical-definitions';
 
 @ApiTags('verticals')
 @Controller('verticals')
@@ -17,6 +17,17 @@ export class VerticalsController {
     async getConfig(@Param('tenantId') tenantId: string) {
         const config = await this.verticalsService.getVerticalConfig(tenantId);
         return { success: true, data: config };
+    }
+
+    @Get(':tenantId/stages-presets')
+    @ApiOperation({ summary: 'Get default stages and transition rules for tenant vertical' })
+    async getStagesPresets(@Param('tenantId') tenantId: string) {
+        const config = await this.verticalsService.getVerticalConfig(tenantId);
+        if (!config || !config.industry) {
+            return { success: true, data: [] };
+        }
+        const definition = getVerticalDefinition(config.industry);
+        return { success: true, data: definition.pipeline?.stages || [] };
     }
 
     @Get('definitions/all')

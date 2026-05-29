@@ -1745,7 +1745,11 @@
     "fieldKeyLabel": "Chave do Campo",
     "fieldKeyPlaceholder": "ex: cidade",
     "expectedValueLabel": "Valor Esperado",
-    "expectedValuePlaceholder": "ex: Lisboa"
+    "expectedValuePlaceholder": "ex: Lisboa",
+    "loadPresetBtn": "Carregar predefinições do setor",
+    "loadPresetConfirm": "Deseja carregar as etapas e regras de transição padrão para o seu setor? Isso substituirá as etapas atuais.",
+    "loadPresetSuccess": "Modelo do setor carregado com sucesso. Lembre-se de salvar as alterações.",
+    "presetsLoaded": "Predefinições Carregadas"
   },
   "scoringConfig": {
     "title": "Lead Scoring",

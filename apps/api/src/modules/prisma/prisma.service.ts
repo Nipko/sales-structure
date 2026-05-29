@@ -24,6 +24,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 await this.ensureVarcharColumnsWiden().catch((err) => {
                     this.logger.error(`Column widening failed (non-blocking): ${err.message}`);
                 });
+
+                // Retroactively sync historical opportunities to deals
+                await this.syncHistoricalOpportunitiesToDeals().catch((err) => {
+                    this.logger.error(`Historical opportunity sync failed (non-blocking): ${err.message}`);
+                });
                 return;
             } catch (err: any) {
                 this.logger.warn(`Database connection attempt ${attempt}/${maxRetries} failed: ${err.message}`);
@@ -366,5 +371,109 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
             return p;
         });
+    }
+
+    /**
+     * Retroactively synchronize all historical opportunities to deals for active schemas
+     */
+    private async syncHistoricalOpportunitiesToDeals(): Promise<void> {
+        try {
+            const schemas = await (super.$queryRawUnsafe as any)(
+                `SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'tenant_%'`
+            );
+
+            if (!schemas || schemas.length === 0) return;
+
+            this.logger.log(`[Historical Sync] Checking ${schemas.length} tenant schemas for retroactive Opportunity -> Deal sync...`);
+
+            for (const schema of schemas) {
+                const schemaName = schema.schema_name;
+                const tenantIdRows = await (super.$queryRawUnsafe as any)(
+                    `SELECT id FROM tenants WHERE schema_name = $1 LIMIT 1`,
+                    schemaName
+                );
+                const tenantId = tenantIdRows?.[0]?.id;
+                if (!tenantId) continue;
+
+                // 1. Ensure pipelines table exists in this schema
+                const hasPipelines = await (super.$queryRawUnsafe as any)(
+                    `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'pipelines' LIMIT 1`,
+                    schemaName
+                );
+                
+                if (!hasPipelines?.length) continue;
+
+                // 2. Query opportunities that do NOT have open deals linked to their contact
+                const opportunities = await (super.$queryRawUnsafe as any)(
+                    `SELECT o.lead_id, o.stage, l.contact_id, l.first_name, l.last_name, l.phone
+                     FROM "${schemaName}"."opportunities" o
+                     JOIN "${schemaName}"."leads" l ON l.id = o.lead_id
+                     WHERE l.contact_id IS NOT NULL 
+                       AND l.contact_id NOT IN (SELECT contact_id FROM "${schemaName}"."deals" WHERE status = 'open')`
+                );
+
+                if (!opportunities?.length) continue;
+
+                this.logger.log(`[Historical Sync] Found ${opportunities.length} opportunities needing deal sync in schema ${schemaName}`);
+
+                // Get the primary default active pipeline ID
+                const pipelines = await (super.$queryRawUnsafe as any)(
+                    `SELECT id FROM "${schemaName}"."pipelines" WHERE is_active = true ORDER BY is_default DESC, created_at ASC LIMIT 1`
+                );
+                const pipelineId = pipelines?.[0]?.id;
+                if (!pipelineId) continue;
+
+                for (const opp of opportunities) {
+                    let targetStageSlug = opp.stage;
+                    if (opp.stage === 'listo_cierre') targetStageSlug = 'listo_para_cierre';
+                    else if (opp.stage === 'listo_para_cierre') targetStageSlug = 'listo_cierre';
+
+                    let stageRows = await (super.$queryRawUnsafe as any)(
+                        `SELECT id, default_probability, sla_hours FROM "${schemaName}"."pipeline_stages" 
+                         WHERE (slug = $1 OR slug = $2) AND tenant_id = $3::uuid LIMIT 1`,
+                        opp.stage, targetStageSlug, tenantId
+                    );
+
+                    if (!stageRows?.length) {
+                        stageRows = await (super.$queryRawUnsafe as any)(
+                            `SELECT id, default_probability, sla_hours FROM "${schemaName}"."pipeline_stages" 
+                             WHERE tenant_id = $1::uuid ORDER BY position ASC LIMIT 1`,
+                            tenantId
+                        );
+                    }
+
+                    const stage = stageRows?.[0];
+                    if (!stage) continue;
+
+                    const title = `${opp.first_name || ''} ${opp.last_name || ''}`.trim() || opp.phone || 'Interés Conversacional';
+                    const probability = stage.default_probability || 0;
+                    const slaDeadline = stage.sla_hours ? `NOW() + INTERVAL '${parseInt(stage.sla_hours)} hours'` : 'NULL';
+
+                    // Insert retroactive deal
+                    const dealRes = await (super.$queryRawUnsafe as any)(
+                        `INSERT INTO "${schemaName}"."deals" 
+                           (contact_id, title, value, stage_id, probability, status, sla_deadline, pipeline_id, created_at, updated_at, stage_entered_at)
+                         VALUES 
+                           ($1::uuid, $2, 0, $3::uuid, $4, 'open', ${slaDeadline}, $5::uuid, NOW(), NOW(), NOW())
+                         RETURNING id`,
+                        opp.contact_id, title, stage.id, probability, pipelineId
+                    );
+
+                    const dealId = dealRes?.[0]?.id;
+                    if (dealId) {
+                        await (super.$queryRawUnsafe as any)(
+                            `INSERT INTO "${schemaName}"."stage_transitions" 
+                               (deal_id, to_stage_id, actor, reason, created_at)
+                             VALUES 
+                               ($1::uuid, $2::uuid, 'system', 'Retroactive sync from opportunity', NOW())`,
+                            dealId, stage.id
+                        );
+                    }
+                }
+            }
+            this.logger.log('[Historical Sync] Retroactive Opportunity -> Deal synchronization completed successfully.');
+        } catch (error: any) {
+            this.logger.error(`[Historical Sync] Retroactive synchronization failed: ${error.message}`);
+        }
     }
 }

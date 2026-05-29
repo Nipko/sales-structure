@@ -349,8 +349,14 @@ export class PipelineService {
             dealParams,
         );
 
-        const kanbanStages = (stages || []).map((s: any) => {
-            const stageDeals = (deals || []).filter((d: any) => d.stage_id === s.id);
+        const kanbanStages = (stages || []).map((s: any, idx: number) => {
+            const stageDeals = (deals || []).filter((d: any) => {
+                if (idx === 0) {
+                    const validStageIds = (stages || []).map((st: any) => st.id);
+                    return d.stage_id === s.id || !d.stage_id || !validStageIds.includes(d.stage_id);
+                }
+                return d.stage_id === s.id;
+            });
             const totalValue = stageDeals.reduce((sum: number, d: any) => sum + parseFloat(d.value || 0), 0);
             return {
                 id: s.id,

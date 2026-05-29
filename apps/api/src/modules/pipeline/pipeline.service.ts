@@ -556,6 +556,10 @@ export class PipelineService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return;
 
+        // Ensure the pipelines tables exist and are migrated for this tenant (crucial for background webhook/bot sync!)
+        await this.ensurePipelinesTables(schema);
+        await this.migrateToMultiPipeline(schema, tenantId);
+
         // 1. Get lead information to obtain contact_id and details
         const leadRows = await this.prisma.executeInTenantSchema<any[]>(
             schema,

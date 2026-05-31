@@ -42,6 +42,7 @@ import { MediaProcessingModule } from '../media-processing/media-processing.modu
 import { EcommerceModule } from '../ecommerce/ecommerce.module';
 import { VerticalIntegrationsModule } from '../vertical-integrations/vertical-integrations.module';
 import { McpModule } from '../mcp/mcp.module';
+import { AttributionModule } from '../attribution/attribution.module';
 
 @Module({
     imports: [
@@ -72,6 +73,7 @@ import { McpModule } from '../mcp/mcp.module';
         HomeServicesModule,
         EcommerceModule,
         VerticalIntegrationsModule,
+        AttributionModule,
         forwardRef(() => McpModule),
         forwardRef(() => MediaProcessingModule),
         JwtModule.registerAsync({

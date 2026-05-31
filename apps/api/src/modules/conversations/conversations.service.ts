@@ -25,6 +25,7 @@ import { ECOMMERCE_TOOLS, APPLY_DISCOUNT_TOOL } from './tools/ecommerce-tools';
 import { GET_RESTAURANT_MENU_TOOL, GET_FITNESS_SCHEDULE_TOOL, LIST_CLINIC_SERVICES_TOOL, CHECK_CLINIC_AVAILABILITY_TOOL } from './tools/vertical-integration-tools';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { McpClientService } from '../mcp/mcp-client.service';
+import { AttributionService } from '../attribution/attribution.service';
 import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
 import { TOURS_TOOLS } from './tools/tours-tools';
 import { TREATMENT_TOOLS } from './tools/treatment-tools';
@@ -86,6 +87,7 @@ export class ConversationsService {
         private aiResolutionService: AiResolutionService,
         private verticalIntegrations: VerticalIntegrationsService,
         private mcpClient: McpClientService,
+        private attributionService: AttributionService,
     ) {}
 
     /**
@@ -98,6 +100,15 @@ export class ConversationsService {
         // 1. Resolve Contact & Conversation
         const { contact, lead, conversation } = await this.resolveConversation(tenantId, contactId, channelType, normalizedMsg);
         normalizedMsg.conversationId = conversation.id;
+
+        // Click-to-WhatsApp ads attribution (T3.22): capture the ad referral on
+        // the first ad-originated message. Best-effort, never blocks the pipeline.
+        const referral = (normalizedMsg.metadata as any)?.referral;
+        if (referral && contact?.id) {
+            this.attributionService.captureReferral(tenantId, {
+                contactId: contact.id, conversationId: conversation.id, referral,
+            }).catch(() => {});
+        }
 
         // Serialize message processing per conversation to prevent race conditions.
         // If user sends 2 messages in quick succession, the second one waits for the first.

@@ -136,6 +136,8 @@ export class WhatsAppAdapter implements IChannelAdapter {
                     waMessageId: message.id,
                     contactName: contact?.profile?.name,
                     phoneNumberId: metadata?.phone_number_id,
+                    // Click-to-WhatsApp ads / Free Entry Point referral (T3.22)
+                    referral: message.referral || undefined,
                 },
             };
 

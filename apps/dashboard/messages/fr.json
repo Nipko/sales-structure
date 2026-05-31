@@ -141,7 +141,8 @@
       "automationTemplates": "Modèles",
       "agentSimulation": "Tester l'agent",
       "procedures": "Procédures",
-      "organizations": "Organisations"
+      "organizations": "Organisations",
+      "attribution": "Attribution"
     }
   },
   "topbar": {
@@ -6933,5 +6934,33 @@
     "save": "Enregistrer",
     "delete": "Supprimer",
     "members": "Contacts"
+  },
+  "attribution": {
+    "title": "Attribution marketing",
+    "subtitle": "Tunnel Ads → WhatsApp → vente et revenus attribués par annonce et campagne.",
+    "range_30": "30 jours",
+    "range_90": "90 jours",
+    "range_365": "1 an",
+    "adClicks": "Clics publicitaires",
+    "adsCount": "{n} annonces",
+    "conversions": "Conversions",
+    "convRate": "conv.",
+    "attributedRevenue": "Revenus attribués",
+    "leadsGenerated": "Leads générés",
+    "funnelTitle": "Tunnel Ads → WhatsApp → vente",
+    "funnel_clicks": "Clics annonce",
+    "funnel_contacts": "Contacts",
+    "funnel_leads": "Leads",
+    "funnel_won": "Ventes",
+    "byAd": "Performance par annonce",
+    "noAds": "Pas encore de données Click-to-WhatsApp.",
+    "ad": "Annonce",
+    "clicks": "Clics",
+    "won": "Ventes",
+    "revenue": "Revenus",
+    "broadcastRevenue": "Revenus des campagnes (broadcast)",
+    "noBroadcasts": "Aucun revenu attribué aux campagnes.",
+    "campaign": "Campagne",
+    "recipients": "Destinataires"
   }
 }

@@ -141,7 +141,8 @@
       "automationTemplates": "Modelos",
       "agentSimulation": "Testar agente",
       "procedures": "Procedimentos",
-      "organizations": "Organizações"
+      "organizations": "Organizações",
+      "attribution": "Atribuição"
     }
   },
   "topbar": {
@@ -6933,5 +6934,33 @@
     "save": "Salvar",
     "delete": "Excluir",
     "members": "Contatos"
+  },
+  "attribution": {
+    "title": "Atribuição de marketing",
+    "subtitle": "Funil Ads → WhatsApp → venda e receita atribuída por anúncio e campanha.",
+    "range_30": "30 dias",
+    "range_90": "90 dias",
+    "range_365": "1 ano",
+    "adClicks": "Cliques em anúncios",
+    "adsCount": "{n} anúncios",
+    "conversions": "Conversões",
+    "convRate": "conv.",
+    "attributedRevenue": "Receita atribuída",
+    "leadsGenerated": "Leads gerados",
+    "funnelTitle": "Funil Ads → WhatsApp → venda",
+    "funnel_clicks": "Cliques no anúncio",
+    "funnel_contacts": "Contatos",
+    "funnel_leads": "Leads",
+    "funnel_won": "Vendas",
+    "byAd": "Desempenho por anúncio",
+    "noAds": "Ainda sem dados de Click-to-WhatsApp.",
+    "ad": "Anúncio",
+    "clicks": "Cliques",
+    "won": "Vendas",
+    "revenue": "Receita",
+    "broadcastRevenue": "Receita por campanhas (broadcast)",
+    "noBroadcasts": "Sem receita atribuída a campanhas.",
+    "campaign": "Campanha",
+    "recipients": "Destinatários"
   }
 }

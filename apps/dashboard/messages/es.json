@@ -141,7 +141,8 @@
       "automationTemplates": "Plantillas",
       "agentSimulation": "Probar agente",
       "procedures": "Procedimientos",
-      "organizations": "Organizaciones"
+      "organizations": "Organizaciones",
+      "attribution": "Atribución"
     }
   },
   "topbar": {
@@ -6997,5 +6998,33 @@
     "save": "Guardar",
     "delete": "Eliminar",
     "members": "Contactos"
+  },
+  "attribution": {
+    "title": "Atribución de marketing",
+    "subtitle": "Embudo Ads → WhatsApp → venta e ingresos atribuidos por anuncio y campaña.",
+    "range_30": "30 días",
+    "range_90": "90 días",
+    "range_365": "1 año",
+    "adClicks": "Clics de anuncios",
+    "adsCount": "{n} anuncios",
+    "conversions": "Conversiones",
+    "convRate": "conv.",
+    "attributedRevenue": "Ingresos atribuidos",
+    "leadsGenerated": "Leads generados",
+    "funnelTitle": "Embudo Ads → WhatsApp → venta",
+    "funnel_clicks": "Clics en anuncio",
+    "funnel_contacts": "Contactos",
+    "funnel_leads": "Leads",
+    "funnel_won": "Ventas",
+    "byAd": "Rendimiento por anuncio",
+    "noAds": "Sin datos de Click-to-WhatsApp todavía.",
+    "ad": "Anuncio",
+    "clicks": "Clics",
+    "won": "Ventas",
+    "revenue": "Ingresos",
+    "broadcastRevenue": "Ingresos por campañas (broadcast)",
+    "noBroadcasts": "Sin ingresos atribuidos a campañas.",
+    "campaign": "Campaña",
+    "recipients": "Destinatarios"
   }
 }

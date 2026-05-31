@@ -141,7 +141,8 @@
       "automationTemplates": "Templates",
       "agentSimulation": "Test agent",
       "procedures": "Procedures",
-      "organizations": "Organizations"
+      "organizations": "Organizations",
+      "attribution": "Attribution"
     }
   },
   "topbar": {
@@ -6997,5 +6998,33 @@
     "save": "Save",
     "delete": "Delete",
     "members": "Contacts"
+  },
+  "attribution": {
+    "title": "Marketing attribution",
+    "subtitle": "Ads → WhatsApp → sale funnel and revenue attributed per ad and campaign.",
+    "range_30": "30 days",
+    "range_90": "90 days",
+    "range_365": "1 year",
+    "adClicks": "Ad clicks",
+    "adsCount": "{n} ads",
+    "conversions": "Conversions",
+    "convRate": "conv.",
+    "attributedRevenue": "Attributed revenue",
+    "leadsGenerated": "Leads generated",
+    "funnelTitle": "Ads → WhatsApp → sale funnel",
+    "funnel_clicks": "Ad clicks",
+    "funnel_contacts": "Contacts",
+    "funnel_leads": "Leads",
+    "funnel_won": "Sales",
+    "byAd": "Performance by ad",
+    "noAds": "No Click-to-WhatsApp data yet.",
+    "ad": "Ad",
+    "clicks": "Clicks",
+    "won": "Sales",
+    "revenue": "Revenue",
+    "broadcastRevenue": "Broadcast campaign revenue",
+    "noBroadcasts": "No revenue attributed to campaigns.",
+    "campaign": "Campaign",
+    "recipients": "Recipients"
   }
 }

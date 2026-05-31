@@ -891,6 +891,14 @@ export const api = {
     getForecast: (tenantId: string) => apiGet(`/crm-b2b/${tenantId}/forecast`),
     getRottingDeals: (tenantId: string, days = 14) => apiGet(`/crm-b2b/${tenantId}/rotting?days=${days}`),
 
+    // Attribution (T3.22) — CTWA ads + revenue
+    getCtwaSummary: (tenantId: string, range?: { start?: string; end?: string }) =>
+        apiGet(`/attribution/${tenantId}/ctwa/summary${range?.start ? `?start=${range.start}&end=${range.end}` : ""}`),
+    getCtwaAds: (tenantId: string, range?: { start?: string; end?: string }) =>
+        apiGet(`/attribution/${tenantId}/ctwa/ads${range?.start ? `?start=${range.start}&end=${range.end}` : ""}`),
+    getBroadcastRevenue: (tenantId: string, range?: { start?: string; end?: string }) =>
+        apiGet(`/attribution/${tenantId}/broadcast/revenue${range?.start ? `?start=${range.start}&end=${range.end}` : ""}`),
+
     // Slack integration (T2.16)
     getSlackConfig: (tenantId: string) => apiGet(`/slack/${tenantId}/config`),
     updateSlackConfig: (tenantId: string, body: any) => apiPut(`/slack/${tenantId}/config`, body),

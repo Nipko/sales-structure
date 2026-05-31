@@ -913,6 +913,12 @@ export const api = {
     postReviewReply: (tenantId: string, reviewId: string, comment: string) =>
         apiPost(`/reviews/${tenantId}/reviews/${reviewId}/reply`, { comment }),
 
+    // Managed / done-for-you tier (T3.24) — super admin
+    listManaged: () => apiGet(`/managed`),
+    getManagedConfig: (tenantId: string) => apiGet(`/managed/${tenantId}/config`),
+    setManagedConfig: (tenantId: string, body: any) => apiPut(`/managed/${tenantId}/config`, body),
+    getManagedReport: (tenantId: string) => apiGet(`/managed/${tenantId}/report`),
+
     // Slack integration (T2.16)
     getSlackConfig: (tenantId: string) => apiGet(`/slack/${tenantId}/config`),
     updateSlackConfig: (tenantId: string, body: any) => apiPut(`/slack/${tenantId}/config`, body),

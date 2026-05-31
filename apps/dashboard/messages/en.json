@@ -142,7 +142,8 @@
       "agentSimulation": "Test agent",
       "procedures": "Procedures",
       "organizations": "Organizations",
-      "attribution": "Attribution"
+      "attribution": "Attribution",
+      "managed": "Managed"
     }
   },
   "topbar": {
@@ -7051,5 +7052,30 @@
     "replyPlaceholder": "Write a reply or generate one with AI…",
     "aiSuggest": "AI suggest",
     "postReply": "Post reply"
+  },
+  "managed": {
+    "title": "Managed accounts (Done-for-you)",
+    "subtitle": "Outcome-based resolution guarantee: target vs. actual verified rate per account.",
+    "managedAccounts": "Managed accounts",
+    "met": "Met",
+    "atRisk": "At risk",
+    "breached": "Breached",
+    "addAccount": "Add managed account",
+    "selectTenant": "Select a company…",
+    "targetPct": "Target %",
+    "enable": "Enable",
+    "guaranteeTracking": "Guarantee tracking",
+    "empty": "No managed accounts yet.",
+    "account": "Account",
+    "target": "Target",
+    "verifiedRate": "Verified rate",
+    "delta": "Delta",
+    "closed": "Closed",
+    "status": "Status",
+    "disable": "Disable",
+    "status_met": "Met",
+    "status_at_risk": "At risk",
+    "status_breached": "Breached",
+    "status_unknown": "No data"
   }
 }

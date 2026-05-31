@@ -142,7 +142,8 @@
       "agentSimulation": "Tester l'agent",
       "procedures": "Procédures",
       "organizations": "Organisations",
-      "attribution": "Attribution"
+      "attribution": "Attribution",
+      "managed": "Gérés"
     }
   },
   "topbar": {
@@ -6987,5 +6988,30 @@
     "replyPlaceholder": "Écrivez une réponse ou générez-en une avec l’IA…",
     "aiSuggest": "Suggérer avec IA",
     "postReply": "Publier la réponse"
+  },
+  "managed": {
+    "title": "Comptes gérés (Done-for-you)",
+    "subtitle": "Garantie de résolution par résultat : objectif vs. taux vérifié réel par compte.",
+    "managedAccounts": "Comptes gérés",
+    "met": "Atteints",
+    "atRisk": "À risque",
+    "breached": "Non atteints",
+    "addAccount": "Ajouter un compte géré",
+    "selectTenant": "Sélectionnez une entreprise…",
+    "targetPct": "Objectif %",
+    "enable": "Activer",
+    "guaranteeTracking": "Suivi de la garantie",
+    "empty": "Aucun compte géré pour le moment.",
+    "account": "Compte",
+    "target": "Objectif",
+    "verifiedRate": "Taux vérifié",
+    "delta": "Delta",
+    "closed": "Fermées",
+    "status": "Statut",
+    "disable": "Désactiver",
+    "status_met": "Atteint",
+    "status_at_risk": "À risque",
+    "status_breached": "Non atteint",
+    "status_unknown": "Sans données"
   }
 }

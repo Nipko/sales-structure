@@ -142,7 +142,8 @@
       "agentSimulation": "Testar agente",
       "procedures": "Procedimentos",
       "organizations": "Organizações",
-      "attribution": "Atribuição"
+      "attribution": "Atribuição",
+      "managed": "Gerenciados"
     }
   },
   "topbar": {
@@ -6987,5 +6988,30 @@
     "replyPlaceholder": "Escreva uma resposta ou gere uma com IA…",
     "aiSuggest": "Sugerir com IA",
     "postReply": "Publicar resposta"
+  },
+  "managed": {
+    "title": "Contas gerenciadas (Done-for-you)",
+    "subtitle": "Garantia de resolução por outcome: meta vs. taxa verificada real por conta.",
+    "managedAccounts": "Contas gerenciadas",
+    "met": "Cumprem",
+    "atRisk": "Em risco",
+    "breached": "Não cumprem",
+    "addAccount": "Adicionar conta gerenciada",
+    "selectTenant": "Selecione uma empresa…",
+    "targetPct": "Meta %",
+    "enable": "Ativar",
+    "guaranteeTracking": "Acompanhamento da garantia",
+    "empty": "Ainda não há contas gerenciadas.",
+    "account": "Conta",
+    "target": "Meta",
+    "verifiedRate": "Taxa verificada",
+    "delta": "Delta",
+    "closed": "Fechadas",
+    "status": "Status",
+    "disable": "Desativar",
+    "status_met": "Cumpre",
+    "status_at_risk": "Em risco",
+    "status_breached": "Não cumpre",
+    "status_unknown": "Sem dados"
   }
 }

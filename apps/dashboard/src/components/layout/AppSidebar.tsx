@@ -192,6 +192,7 @@ const platformSections: NavSectionDef[] = [
     items: [
       { labelKey: "tenants", href: "/admin/tenants", icon: Building2, shortcut: "⌘ 1", accent: "text-blue-500 dark:text-blue-400" },
       { labelKey: "financials", href: "/admin/financials", icon: DollarSign, accent: "text-emerald-500 dark:text-emerald-400" },
+      { labelKey: "managed", href: "/admin/managed", icon: ShieldCheck, accent: "text-indigo-500 dark:text-indigo-400" },
       { labelKey: "platformUsage", href: "/admin/usage", icon: TrendingUp },
       { labelKey: "platformHealth", href: "/admin/health", icon: Activity, accent: "text-rose-500 dark:text-rose-400" },
       { labelKey: "platformAudit", href: "/admin/audit", icon: ShieldCheck },

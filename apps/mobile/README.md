@@ -25,7 +25,7 @@ Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../pack
 ```bash
 cd apps/mobile
 npm install
-npx expo install          # alinea versiones nativas con el SDK 52
+npx expo install --fix    # alinea TODAS las deps con el SDK (54) instalado
 npx expo start            # escanea el QR con Expo Go
 ```
 

@@ -679,6 +679,22 @@
     "viewerSingle": "{name} está viendo esta conversación",
     "viewerMultiple": "{count} agentes están viendo esta conversación"
   },
+  "slackIntegration": {
+    "title": "Slack",
+    "subtitle": "Recibe alertas de Parallly en tu canal de Slack",
+    "enable": "Activar notificaciones a Slack",
+    "enableHint": "Envía eventos clave a tu webhook de Slack",
+    "webhookUrl": "URL del webhook de Slack",
+    "webhookHint": "Créala en Slack → Apps → Incoming Webhooks. Debe empezar con https://hooks.slack.com/",
+    "events": "Eventos a notificar",
+    "eventHandoff": "Conversación escalada (handoff)",
+    "eventAppointment": "Nueva cita agendada",
+    "sendTest": "Enviar prueba",
+    "saved": "Configuración guardada",
+    "saveFailed": "No se pudo guardar",
+    "testSent": "Mensaje de prueba enviado",
+    "testFailed": "No se pudo enviar la prueba"
+  },
   "quality": {
     "noData": "Aún no hay conversaciones evaluadas en este período",
     "avgOverall": "Calidad promedio",
@@ -845,6 +861,10 @@
       "webChat": {
         "label": "Chat web",
         "description": "Widget de chat embebible para tu sitio web"
+      },
+      "slack": {
+        "label": "Slack",
+        "description": "Recibe alertas de handoff y citas en Slack"
       },
       "alerts": {
         "label": "Alertas del sistema",

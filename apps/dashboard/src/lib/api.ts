@@ -840,6 +840,11 @@ export const api = {
     getConversationTrace: (tenantId: string, conversationId: string) =>
         apiGet(`/trace/${tenantId}/${conversationId}`),
 
+    // Slack integration (T2.16)
+    getSlackConfig: (tenantId: string) => apiGet(`/slack/${tenantId}/config`),
+    updateSlackConfig: (tenantId: string, body: any) => apiPut(`/slack/${tenantId}/config`, body),
+    testSlack: (tenantId: string) => apiPost(`/slack/${tenantId}/test`, {}),
+
     // KB health / contradictions (T2.14)
     getKbHealth: (tenantId: string) => apiGet(`/kb-health/${tenantId}`),
     scanKbHealth: (tenantId: string) => apiPost(`/kb-health/${tenantId}/scan`, {}),

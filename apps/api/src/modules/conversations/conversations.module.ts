@@ -38,6 +38,7 @@ import { EducationModule } from '../education/education.module';
 import { InsuranceModule } from '../insurance/insurance.module';
 import { HomeServicesModule } from '../home-services/home-services.module';
 import { MediaProcessingModule } from '../media-processing/media-processing.module';
+import { EcommerceModule } from '../ecommerce/ecommerce.module';
 
 @Module({
     imports: [
@@ -66,6 +67,7 @@ import { MediaProcessingModule } from '../media-processing/media-processing.modu
         EducationModule,
         InsuranceModule,
         HomeServicesModule,
+        EcommerceModule,
         forwardRef(() => MediaProcessingModule),
         JwtModule.registerAsync({
             imports: [ConfigModule],

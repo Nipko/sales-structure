@@ -48,6 +48,7 @@ export interface PersonaConfig {
     policies?: { enabled: boolean };
     knowledge?: { enabled: boolean };
     orders?: { enabled: boolean; emailConfirmations?: boolean };
+    ecommerce?: { enabled: boolean; canRecommend?: boolean; canApplyDiscount?: boolean };
     offers?: { enabled: boolean };
     crm?: { enabled: boolean };
     properties?: { enabled: boolean; emailConfirmations?: boolean };
@@ -63,6 +64,8 @@ export interface PersonaConfig {
     petServices?: { enabled: boolean; emailConfirmations?: boolean };
     photography?: { enabled: boolean; emailConfirmations?: boolean };
   };
+  skillset?: "sales" | "support" | "both";
+  upsell?: { enabled: boolean; intensity?: "subtle" | "moderate" | "aggressive"; maxDiscountPercent?: number };
   industry: string;
   language: string;
   name: string;

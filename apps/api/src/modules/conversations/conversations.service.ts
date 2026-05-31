@@ -21,6 +21,7 @@ import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
 import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
 import { FAQ_TOOL, POLICY_TOOL, KB_TOOL } from './tools/knowledge-tools';
 import { ORDER_TOOL, CUSTOMER_CONTEXT_TOOL } from './tools/crm-tools';
+import { ECOMMERCE_TOOLS, APPLY_DISCOUNT_TOOL } from './tools/ecommerce-tools';
 import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
 import { TOURS_TOOLS } from './tools/tours-tools';
 import { TREATMENT_TOOLS } from './tools/treatment-tools';
@@ -1132,6 +1133,13 @@ export class ConversationsService {
         if (cfgTools?.crm?.enabled === true) {
             tools = [...tools, CUSTOMER_CONTEXT_TOOL];
         }
+        // E-commerce dual-skillset tools (T2.17)
+        if (cfgTools?.ecommerce?.enabled === true) {
+            tools = [...tools, ...ECOMMERCE_TOOLS];
+            if (cfgTools.ecommerce.canApplyDiscount === true) {
+                tools = [...tools, APPLY_DISCOUNT_TOOL];
+            }
+        }
         if (cfgTools?.properties?.enabled === true) {
             tools = [...tools, ...VACATION_RENTAL_TOOLS];
         }
@@ -1232,6 +1240,53 @@ export class ConversationsService {
             }
         } catch (ragError: any) {
             this.logger.warn(`RAG search failed (non-fatal): ${ragError.message}`);
+        }
+
+        // 5b. E-commerce context (T2.17 — dual-skillset). Inject a small sample of
+        // REAL store products + the customer's recent orders so the agent grounds
+        // recommendations and support without inventing data. Best-effort.
+        if (cfgTools?.ecommerce?.enabled === true) {
+            try {
+                const products = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `SELECT external_id, title, price_cents, currency, inventory_quantity, product_type
+                     FROM ecommerce_products WHERE status = 'active'
+                     ORDER BY synced_at DESC LIMIT 12`,
+                    [],
+                );
+                if (products?.length) {
+                    turnContext.catalog = products.map((p: any) => ({
+                        id: String(p.external_id),
+                        title: p.title,
+                        price: p.price_cents != null ? Number(p.price_cents) / 100 : undefined,
+                        currency: p.currency || 'USD',
+                        inStock: (p.inventory_quantity ?? 0) > 0,
+                        category: p.product_type || undefined,
+                    }));
+                }
+            } catch (e: any) {
+                this.logger.debug(`[T2.17] catalog injection skipped: ${e.message}`);
+            }
+        }
+        if ((cfgTools?.ecommerce?.enabled === true || cfgTools?.orders?.enabled === true) && conversation.contact_id) {
+            try {
+                const orders = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `SELECT id, status, total_amount, currency, created_at
+                     FROM orders WHERE contact_id = $1::uuid
+                     ORDER BY created_at DESC LIMIT 3`,
+                    [conversation.contact_id],
+                );
+                if (orders?.length) {
+                    turnContext.recentOrders = orders.map((o: any) => ({
+                        id: String(o.id),
+                        status: o.status,
+                        total: o.total_amount != null ? Number(o.total_amount) : undefined,
+                        currency: o.currency || undefined,
+                        date: o.created_at ? new Date(o.created_at).toISOString() : undefined,
+                    }));
+                }
+            } catch (e: any) {
+                this.logger.debug(`[T2.17] recent orders injection skipped: ${e.message}`);
+            }
         }
 
         // 6. Assemble system prompt.

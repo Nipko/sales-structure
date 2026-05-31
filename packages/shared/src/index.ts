@@ -122,6 +122,22 @@ export interface TenantConfig {
     editorMode?: EditorMode;
     customPrompt?: string;
     tools?: ToolsConfig;
+    /** Dual-skillset (T2.17): whether the agent sells, supports, or both. Default 'both'. */
+    skillset?: AgentSkillset;
+    /** Upsell/cross-sell behavior (T2.17), only meaningful for sales/both skillsets. */
+    upsell?: UpsellConfig;
+}
+
+/** T2.17 — the agent's primary skillset. */
+export type AgentSkillset = 'sales' | 'support' | 'both';
+
+/** T2.17 — proactive upsell / cross-sell configuration. */
+export interface UpsellConfig {
+    enabled: boolean;
+    /** How assertive the upsell should be. Default 'subtle'. */
+    intensity?: 'subtle' | 'moderate' | 'aggressive';
+    /** Max discount % the agent may offer via apply_discount (0 disables). */
+    maxDiscountPercent?: number;
 }
 
 export interface PersonaConfig {
@@ -204,6 +220,12 @@ export interface ToolsConfig {
     orders?: {
         enabled: boolean;
         emailConfirmations?: boolean;
+    };
+    /** E-commerce sales tools (T2.17): recommend_products / get_order_status / apply_discount. */
+    ecommerce?: {
+        enabled: boolean;
+        canRecommend?: boolean;
+        canApplyDiscount?: boolean;
     };
     offers?: {
         enabled: boolean;
@@ -556,6 +578,23 @@ export interface TurnContext {
         currency?: string;
     }>;
     retrievedKnowledge?: RetrievedKnowledgeItem[];
+    /** E-commerce catalog sample (T2.17): real products so the agent never invents them. */
+    catalog?: Array<{
+        id: string;
+        title: string;
+        price?: number;
+        currency?: string;
+        inStock?: boolean;
+        category?: string;
+    }>;
+    /** The current customer's recent orders (T2.17) for support/sales context. */
+    recentOrders?: Array<{
+        id: string;
+        status: string;
+        total?: number;
+        currency?: string;
+        date?: string;
+    }>;
     /** Directive from booking engine — tells the LLM WHAT to communicate, not HOW */
     directive?: string;
     /** Number of messages in the current conversation (used for anti-repetition) */

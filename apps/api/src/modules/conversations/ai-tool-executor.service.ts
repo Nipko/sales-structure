@@ -15,6 +15,7 @@ import { GymsService } from '../gyms/gyms.service';
 import { EducationService } from '../education/education.service';
 import { InsuranceService } from '../insurance/insurance.service';
 import { HomeServicesService } from '../home-services/home-services.service';
+import { EcommerceService } from '../ecommerce/ecommerce.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -42,6 +43,7 @@ export class AIToolExecutorService {
         private educationService: EducationService,
         private insuranceService: InsuranceService,
         private homeServicesService: HomeServicesService,
+        private ecommerceService: EcommerceService,
     ) { }
 
     /**
@@ -109,6 +111,16 @@ export class AIToolExecutorService {
 
                 case 'get_customer_context':
                     return this.getCustomerContext(schemaName, contactId);
+
+                // ── E-commerce dual-skillset tools (T2.17) ──────────
+                case 'recommend_products':
+                    return this.recommendProducts(schemaName, args.search, args.maxPrice, args.category);
+
+                case 'get_order_status':
+                    return this.getOrderStatus(schemaName, contactId, args.orderId);
+
+                case 'apply_discount':
+                    return this.applyDiscount(args.percent, args.reason);
 
                 // ── Vacation Rental tools ───────────────────────────
                 case 'list_properties':
@@ -576,6 +588,106 @@ export class AIToolExecutorService {
             } : null,
             opportunitiesCount,
         };
+    }
+
+    // ── E-commerce dual-skillset tools (T2.17) ──────────
+
+    /**
+     * Recommend products from the connected store catalog (ecommerce_products).
+     * Falls back to the internal catalog `products` table if the store catalog
+     * is empty/unavailable. Returns ONLY real products so the agent never invents.
+     */
+    private async recommendProducts(schema: string, search?: string, maxPrice?: number, category?: string): Promise<any> {
+        try {
+            const rows = await this.ecommerceService.searchProductsForAI(schema, {
+                search: search || undefined,
+                maxPrice: typeof maxPrice === 'number' ? Math.round(maxPrice * 100) : undefined,
+                category: category || undefined,
+            });
+            if (rows && rows.length > 0) {
+                return {
+                    products: rows.map((p: any) => ({
+                        id: p.external_id,
+                        title: p.title,
+                        price: p.price_cents != null ? Number(p.price_cents) / 100 : null,
+                        currency: p.currency || 'USD',
+                        inStock: (p.inventory_quantity ?? 0) > 0,
+                        handle: p.handle,
+                    })),
+                    source: 'store',
+                };
+            }
+        } catch (e: any) {
+            this.logger.warn(`[Tool] recommend_products store catalog unavailable: ${e.message}`);
+        }
+        // Fallback to the internal catalog so the agent still grounds recommendations.
+        const fallback = await this.searchProducts(schema, search || '', 5, category);
+        return { ...fallback, source: 'catalog' };
+    }
+
+    /**
+     * Order status for the current customer. Specific order when orderId given,
+     * otherwise the most recent order. Read-only.
+     */
+    private async getOrderStatus(schema: string, contactId: string, orderId?: string): Promise<any> {
+        if (!contactId) return { error: 'No contact resolved for this conversation.' };
+        try {
+            const isUuid = orderId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId);
+            const sql = isUuid
+                ? `SELECT id, status, total_amount, currency, payment_status, items, created_at
+                   FROM "${schema}".orders WHERE id = $1::uuid AND contact_id = $2::uuid LIMIT 1`
+                : `SELECT id, status, total_amount, currency, payment_status, items, created_at
+                   FROM "${schema}".orders WHERE contact_id = $1::uuid ORDER BY created_at DESC LIMIT 1`;
+            const params = isUuid ? [orderId, contactId] : [contactId];
+            const rows: any[] = await this.prisma.$queryRawUnsafe(sql, ...params);
+            if (!rows.length) return { found: false };
+            const o = rows[0];
+            return {
+                found: true,
+                order: {
+                    id: o.id,
+                    status: o.status,
+                    paymentStatus: o.payment_status,
+                    totalAmount: Number(o.total_amount || 0),
+                    currency: o.currency,
+                    items: Array.isArray(o.items) ? o.items : [],
+                    createdAt: o.created_at,
+                },
+            };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] get_order_status failed: ${e.message}`);
+            return { found: false };
+        }
+    }
+
+    /**
+     * Approve a discount to help close a sale. Clamped to a platform hard cap;
+     * the tenant's configured max is enforced softly via the persona prompt.
+     * Returns an approved code or a refusal — no external write.
+     */
+    private async applyDiscount(percent?: number, reason?: string): Promise<any> {
+        const HARD_CAP = 30;
+        const requested = Math.round(Number(percent) || 0);
+        if (requested <= 0) {
+            return { approved: false, reason: 'El porcentaje de descuento debe ser mayor a 0.' };
+        }
+        if (requested > HARD_CAP) {
+            return {
+                approved: false,
+                reason: `El descuento solicitado (${requested}%) supera el máximo permitido (${HARD_CAP}%).`,
+                maxPercent: HARD_CAP,
+            };
+        }
+        const code = `SAVE${requested}-${Math.abs(this.hashCode(`${requested}:${reason || ''}`)).toString(36).toUpperCase().slice(0, 5)}`;
+        return { approved: true, percent: requested, code, reason: reason || null };
+    }
+
+    private hashCode(s: string): number {
+        let h = 0;
+        for (let i = 0; i < s.length; i++) {
+            h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+        }
+        return h;
     }
 
     // ── Knowledge tools ─────────────────────────────

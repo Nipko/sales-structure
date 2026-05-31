@@ -178,6 +178,31 @@ export class PromptAssemblerService {
             lines.push('  </available_services>');
         }
 
+        if (turn.catalog && turn.catalog.length > 0) {
+            lines.push('  <catalog>');
+            for (const p of turn.catalog) {
+                const attrs: string[] = [`id="${p.id}"`];
+                if (p.price != null) attrs.push(`price="${p.price}"`);
+                if (p.currency) attrs.push(`currency="${p.currency}"`);
+                if (p.inStock != null) attrs.push(`in_stock="${p.inStock}"`);
+                if (p.category) attrs.push(`category="${this.attrEscape(p.category)}"`);
+                lines.push(`    <product ${attrs.join(' ')}>${this.attrEscape(p.title)}</product>`);
+            }
+            lines.push('  </catalog>');
+        }
+
+        if (turn.recentOrders && turn.recentOrders.length > 0) {
+            lines.push('  <recent_orders>');
+            for (const o of turn.recentOrders) {
+                const attrs: string[] = [`id="${o.id}"`, `status="${o.status}"`];
+                if (o.total != null) attrs.push(`total="${o.total}"`);
+                if (o.currency) attrs.push(`currency="${o.currency}"`);
+                if (o.date) attrs.push(`date="${o.date}"`);
+                lines.push(`    <order ${attrs.join(' ')} />`);
+            }
+            lines.push('  </recent_orders>');
+        }
+
         if (turn.retrievedKnowledge && turn.retrievedKnowledge.length > 0) {
             lines.push('  <retrieved_knowledge>');
             for (const item of turn.retrievedKnowledge) {

@@ -246,6 +246,34 @@ export class PersonaService {
             lines.push('  </business_hours>');
         }
 
+        // Skillset (T2.17) — sales / support / both, plus upsell behavior.
+        const skillset = (config as any).skillset || 'both';
+        const upsell = (config as any).upsell as { enabled?: boolean; intensity?: string; maxDiscountPercent?: number } | undefined;
+        lines.push('  <skillset>');
+        lines.push(`    <mode>${skillset}</mode>`);
+        if (skillset === 'sales' || skillset === 'both') {
+            lines.push('    <sales>Eres un vendedor consultivo: detecta la necesidad real del cliente, recomienda productos del catálogo (<turn><catalog> o la tool recommend_products) que encajen, resalta beneficios y guía hacia la compra/acción. Nunca inventes productos ni precios; usa solo los del catálogo real.</sales>');
+        }
+        if (skillset === 'support' || skillset === 'both') {
+            lines.push('    <support>Eres soporte experto: resuelve dudas, da seguimiento a pedidos (<turn><recent_orders> o la tool get_order_status) y problemas con precisión y empatía. Escala cuando corresponda.</support>');
+        }
+        if (skillset === 'both') {
+            lines.push('    <balance>Equilibra venta y soporte: primero resuelve lo que el cliente necesita; cuando sea natural y aporte valor, conecta con una recomendación o siguiente paso de compra. No fuerces la venta si el cliente solo busca ayuda.</balance>');
+        }
+        if (upsell?.enabled && (skillset === 'sales' || skillset === 'both')) {
+            const intensity = upsell.intensity || 'subtle';
+            const intensityText: Record<string, string> = {
+                subtle: 'Sugiere complementos solo cuando encajen de forma natural, sin insistir.',
+                moderate: 'Ofrece de forma proactiva un complemento o mejora relevante por conversación cuando aporte valor.',
+                aggressive: 'Busca activamente oportunidades de upsell y cross-sell en cada interacción, siempre con tacto.',
+            };
+            lines.push(`    <upsell intensity="${intensity}">${intensityText[intensity] || intensityText.subtle}</upsell>`);
+            if (typeof upsell.maxDiscountPercent === 'number' && upsell.maxDiscountPercent > 0) {
+                lines.push(`    <max_discount_percent>${upsell.maxDiscountPercent}</max_discount_percent>`);
+            }
+        }
+        lines.push('  </skillset>');
+
         lines.push('</persona>');
         return lines.join('\n');
     }

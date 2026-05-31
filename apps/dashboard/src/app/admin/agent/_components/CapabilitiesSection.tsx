@@ -8,7 +8,7 @@ import {
   Scale, BookOpen, Sliders, Tag, Package, UserCircle,
   Home, Compass, HeartPulse, Building2, Stethoscope,
   UtensilsCrossed, Dumbbell, GraduationCap, ShieldCheck,
-  Wrench, Scissors, Camera, Star,
+  Wrench, Scissors, Camera, Star, Sparkles, Store, Headset, Handshake,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { PersonaConfig } from "../_types";
@@ -80,8 +80,107 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
     );
   }
 
+  const skillset = config.skillset || "both";
+  const upsell = config.upsell || { enabled: false, intensity: "subtle" as const };
+
   return (
     <div className="space-y-4">
+      {/* ── Skillset (T2.17) ── */}
+      <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-9 h-9 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+            <Sparkles size={18} className="text-indigo-500" />
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("skillsetTitle")}</h4>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t("skillsetDesc")}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            { key: "sales", icon: Handshake },
+            { key: "support", icon: Headset },
+            { key: "both", icon: Sparkles },
+          ] as const).map(({ key, icon: Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onChange({ skillset: key })}
+              className={cn(
+                "rounded-lg border p-3 text-left transition-colors",
+                skillset === key
+                  ? "border-indigo-400 dark:border-indigo-500/50 bg-indigo-500/[0.05]"
+                  : "border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
+              )}
+            >
+              <Icon size={16} className={skillset === key ? "text-indigo-500" : "text-neutral-400"} />
+              <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200 mt-1.5">{t(`skillset_${key}`)}</div>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-tight">{t(`skillset_${key}_desc`)}</p>
+            </button>
+          ))}
+        </div>
+
+        {(skillset === "sales" || skillset === "both") && (
+          <div className="mt-4 pt-3 border-t border-neutral-100 dark:border-neutral-800 space-y-3">
+            <label className="flex items-center justify-between cursor-pointer">
+              <div className="flex items-center gap-2">
+                <Sparkles size={14} className="text-indigo-500" />
+                <div>
+                  <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{t("upsellTitle")}</span>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("upsellDesc")}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onChange({ upsell: { ...upsell, enabled: !upsell.enabled } })}
+                className={cn(
+                  "relative w-11 h-6 rounded-full transition-colors shrink-0",
+                  upsell.enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-600"
+                )}
+              >
+                <div className={cn("absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform", upsell.enabled ? "translate-x-[22px]" : "translate-x-0.5")} />
+              </button>
+            </label>
+
+            {upsell.enabled && (
+              <div className="space-y-3 pl-1">
+                <div>
+                  <label className="text-xs text-neutral-600 dark:text-neutral-400">{t("upsellIntensity")}</label>
+                  <div className="grid grid-cols-3 gap-2 mt-1.5">
+                    {(["subtle", "moderate", "aggressive"] as const).map((lvl) => (
+                      <button
+                        key={lvl}
+                        type="button"
+                        onClick={() => onChange({ upsell: { ...upsell, intensity: lvl } })}
+                        className={cn(
+                          "rounded-lg border px-2 py-1.5 text-xs transition-colors",
+                          (upsell.intensity || "subtle") === lvl
+                            ? "border-indigo-400 dark:border-indigo-500/50 bg-indigo-500/[0.05] text-neutral-800 dark:text-neutral-200"
+                            : "border-neutral-200 dark:border-neutral-700 text-neutral-500"
+                        )}
+                      >
+                        {t(`upsell_${lvl}`)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-neutral-600 dark:text-neutral-400">{t("upsellMaxDiscount")}</label>
+                  <input
+                    type="number" min={0} max={30}
+                    value={upsell.maxDiscountPercent ?? 0}
+                    onChange={(e) => onChange({ upsell: { ...upsell, maxDiscountPercent: Math.min(30, Math.max(0, parseInt(e.target.value) || 0)) } })}
+                    className="mt-1.5 w-28 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent px-3 py-1.5 text-sm text-neutral-800 dark:text-neutral-200"
+                  />
+                  <p className="text-[10px] text-neutral-500 mt-1">{t("upsellMaxDiscountHint")}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* ── Appointments ── */}
       <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
         <div className="flex items-center justify-between mb-2">
@@ -229,6 +328,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             knowledge: "",
             offers: "",
             crm: "",
+            ecommerce: "",
             orders: "order_confirmation"
           };
           const templateSlug = slugMap[key];
@@ -290,6 +390,45 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
         />
 
         <ToolToggleCard icon={UserCircle} title={t("crmTitle")} description={t("crmDesc")} enabled={tools.crm?.enabled === true} onToggle={(v) => onChange({ tools: { ...tools, crm: { enabled: v } } })} t={t} />
+      </div>
+
+      {/* ── E-commerce sales tools (T2.17) ── */}
+      <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-4 mt-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", tools.ecommerce?.enabled ? "bg-indigo-500/15" : "bg-neutral-100 dark:bg-neutral-800")}>
+              <Store size={18} className={tools.ecommerce?.enabled ? "text-indigo-500" : "text-neutral-500 dark:text-neutral-400"} />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("ecommerceTitle")}</h4>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t("ecommerceDesc")}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onChange({ tools: { ...tools, ecommerce: { ...(tools.ecommerce ?? { enabled: false }), enabled: !(tools.ecommerce?.enabled) } } })}
+            className={cn("relative w-11 h-6 rounded-full transition-colors shrink-0 ml-3", tools.ecommerce?.enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-600")}
+          >
+            <div className={cn("absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform", tools.ecommerce?.enabled ? "translate-x-[22px]" : "translate-x-0.5")} />
+          </button>
+        </div>
+
+        {tools.ecommerce?.enabled && (
+          <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={tools.ecommerce?.canApplyDiscount === true}
+                onChange={(e) => onChange({ tools: { ...tools, ecommerce: { ...(tools.ecommerce ?? { enabled: true }), canApplyDiscount: e.target.checked } } })}
+                className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-indigo-500 accent-indigo-500"
+              />
+              <div>
+                <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{t("ecommerceDiscounts")}</span>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("ecommerceDiscountsDesc")}</p>
+              </div>
+            </label>
+          </div>
+        )}
       </div>
 
       {/* ── Knowledge base ── */}

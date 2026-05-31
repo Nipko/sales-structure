@@ -162,3 +162,17 @@ components/
 - `NEXT_PUBLIC_INSTAGRAM_APP_ID` — Instagram OAuth app ID
 - `NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI` — Instagram OAuth callback URL
 - `NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID` — Facebook Login configuration ID for Messenger
+
+## New pages (May 31, 2026 — Competitive Roadmap Q2)
+
+- `agent/simulation/` — **T2.13** Probar agente: launch panel (synthetic/replay), forecast-style results, regression diff, scenario transcript drawer, history polling
+- `procedures/` — **T2.12** SOP editor: "write your SOP" (compile NL→steps), step-list editor (message/ask/tool/condition/handoff), trigger keywords, activate/version
+- `agent/_components/CapabilitiesSection.tsx` — **T2.17** adds skillset selector (sales/support/both) + upsell (intensity, max discount) + e-commerce tools card
+- `contacts/organizations/` — **T3.21** B2B accounts + forecast KPIs (weighted/committed/best-case/velocity) + weighted-by-stage + rotting alerts
+- `attribution/` — **T3.22** Ads→WhatsApp→sale funnel, per-ad performance, broadcast revenue, range selector
+- `managed/` — **T3.24** super-admin done-for-you tier: guarantee tracking table (target vs verified rate, met/at-risk/breached)
+- `settings/integrations/vertical/` — **T3.19** Toast/Mindbody/Cliniko connect/test/sync
+- `settings/integrations/mcp/` — **T3.20** MCP server endpoint + external MCP connectors
+- `settings/integrations/reviews/` — **T3.23** Google Business Profile connect + reviews list with AI-suggest/post reply
+
+All add nav entries (AppSidebar.tsx) + i18n namespaces in 4 languages. Vertical/MCP/Reviews are registered in `settings/_settings-config.ts` (integrations section).

@@ -1,12 +1,12 @@
 # Modules Reference
 
-Complete reference for all 70 API modules, 86 dashboard pages, 6 BullMQ queues, and 29 cron jobs.
+Complete reference for all 78 API modules, 94 dashboard pages, 7 BullMQ queues, and 31 cron jobs.
 
-**Last updated:** May 2026 — full audit
+**Last updated:** May 31, 2026 — Roadmap Q2 complete (+8 modules)
 
 ---
 
-## API Modules (70 total)
+## API Modules (78 total)
 
 ### Infrastructure (6 modules)
 
@@ -1429,9 +1429,22 @@ Complete reference for all 70 API modules, 86 dashboard pages, 6 BullMQ queues, 
   - `media:cost:{tenantId}:{YYYY-MM-DD}` — Daily cost accumulator (cents)
 - **Dashboard integration:** Billing page shows audio/image usage bars with 80%/95% threshold warnings + upgrade CTA. Super admin tenant detail includes TenantMediaStats component
 
+### Roadmap Q2 modules (8 modules — May 31, 2026)
+
+| Module | Purpose | Key endpoints | Dashboard |
+|--------|---------|---------------|-----------|
+| `simulation/` | **T2.13** Agent simulation pre-deploy. Runs N simulated conversations vs persona/KB (no prod side-effects), graded by the QA LLM-judge; regression diff vs baseline. BullMQ queue `agent-simulation`, table `simulation_runs`. Reuses `AgentTestService` + `QualityService.judgeTranscript`. | `POST /simulation/:t/run`, `GET /simulation/:t`, `GET /simulation/:t/:runId` | `/admin/agent/simulation` |
+| `procedures/` | **T2.12** Vertical procedures (AOP/SOP). NL→graph LLM compiler + CRUD; deterministic execution engine `ProcedureEngineService` (in conversations/, Redis state, message/ask/tool/condition/handoff steps). Table `procedures`. | `POST /procedures/:t/compile`, CRUD `/procedures/:t`, `PUT .../status` | `/admin/procedures` |
+| `vertical-integrations/` | **T3.19** Real vertical integrations: Toast (menu), Mindbody (classes), Cliniko (appointment types + availability). Config in `tenant.settings`, table `vi_items`, AI tools per connected provider. | `/vertical-integrations/:t/config`, `.../:provider/sync\|test`, `.../items` | Settings → Integraciones → Verticales |
+| `mcp/` | **T3.20** MCP native. Consume external MCP servers (`McpClientService`, tools namespaced `mcp__server__tool`) + expose platform tools (`McpServerService`, JSON-RPC at `POST /mcp/rpc`, API-key auth). forwardRef with ConversationsModule. | `/mcp/:t/servers` (CRUD/test/tools), `POST /mcp/rpc` | Settings → Integraciones → MCP |
+| `crm-b2b/` | **T3.21** B2B organizations (on existing `companies` table) + weighted-pipeline forecast (`ForecastingService`) + deal-rotting cron (flags stale opps, `crm.deal_rotting`). | `/crm-b2b/:t/organizations` (CRUD), `.../forecast`, `.../rotting` | `/admin/contacts/organizations` |
+| `attribution/` | **T3.22** Click-to-WhatsApp ads + revenue attribution. Captures WA `referral` (via whatsapp.adapter), derives Ads→WhatsApp→sale funnel + revenue at query time; broadcast revenue. Table `ctwa_attributions`. | `/attribution/:t/ctwa/summary\|ctwa/ads\|broadcast/revenue` | `/admin/attribution` |
+| `reviews/` | **T3.23** Reviews & reputation. Google Business Profile OAuth, sync reviews (`gbp_reviews`), AI Spanish replies (rating-aware), post back; cron sync + auto-reply. | `GET /reviews/google/callback` (public), `/reviews/:t/*` | Settings → Integraciones → Reseñas |
+| `managed/` | **T3.24** Done-for-you managed tier (super-admin). Per-tenant resolution guarantee in `tenant.settings.managed`; tracks verified resolution rate vs target (met/at_risk/breached). Leverages T0.1 + T1.8. | `/managed` (list), `/managed/:t/config\|report` | `/admin/managed` |
+
 ---
 
-## BullMQ Queues (6 total)
+## BullMQ Queues (7 total)
 
 | Queue | Module | Processor | Concurrency | Purpose |
 |-------|--------|-----------|-------------|---------|
@@ -1441,10 +1454,13 @@ Complete reference for all 70 API modules, 86 dashboard pages, 6 BullMQ queues, 
 | `nurturing` | automation | `nurturing-queue.processor.ts` | rate-limited | Lead nurturing sequences |
 | `crm-sync` | external-crm | `external-crm.processor.ts` | 10 | Bidirectional CRM sync (HubSpot/Pipedrive) |
 | `crm-import` | external-crm | `crm-import.processor.ts` | 2 | Batch contact import from external CRMs |
+| `agent-simulation` | simulation | `simulation.processor.ts` | 2 | Pre-deploy agent simulation runs (T2.13, attempts:1) |
+
+> Note: `quality-scoring` (T1.6) is also a BullMQ queue but registered without a BullBoard adapter.
 
 ---
 
-## Cron Jobs (29 total)
+## Cron Jobs (31 total)
 
 | Schedule | Module | Method | Purpose |
 |----------|--------|--------|---------|
@@ -1479,10 +1495,12 @@ Complete reference for all 70 API modules, 86 dashboard pages, 6 BullMQ queues, 
 | `0 9 * * *` | recall | processRecalls | Daily re-engagement campaigns |
 | `0 8 1 * *` | analytics | sendMonthlyReports | Monthly email reports |
 | `0 1 1 * *` | financials | generateMonthlySnapshot | Monthly SaaS financial snapshot |
+| `0 */6 * * *` | crm-b2b | detectRotting | Flag stale open opportunities (T3.21, per-tenant rottingDays) |
+| `30 */6 * * *` | reviews | syncAll | Sync GBP reviews + auto-reply for connected tenants (T3.23) |
 
 ---
 
-## Dashboard Pages (86 total)
+## Dashboard Pages (94 total)
 
 ### Public Pages (13)
 

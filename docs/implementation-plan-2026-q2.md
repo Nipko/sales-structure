@@ -4,6 +4,39 @@
 > Fecha: 29 mayo 2026. Cada ítem está a nivel de archivos reales, tablas, endpoints, UX, i18n y criterios de aceptación.
 > **Convenciones obligatorias** (de CLAUDE.md): i18n en los 4 archivos (es/en/pt/fr) en cada página; `$queryRawUnsafe` con casts `::uuid` y columnas snake_case; tablas globales vía Prisma client; LLM router con `tenantId` para tracking; trabajo async vía BullMQ; guards `AuthGuard('jwt'), RolesGuard, TenantGuard`; verificación pre-push (`tsc --noEmit` + `test:bootstrap`).
 
+## ✅ ESTADO DE EJECUCIÓN (actualizado 31 may 2026) — ROADMAP COMPLETO
+
+Todos los ítems **no aplazados** están **desplegados a producción** (`main`).
+
+| Tier | Ítem | Estado | Commit |
+|------|------|--------|--------|
+| 0 | T0.1 Resolution Rate | ✅ Desplegado | 050edfe |
+| 0 | T0.2 AI Rewriter + Summarizer | ✅ Desplegado | 050edfe |
+| 0 | T0.4 Pricing transparente | ✅ Desplegado | 050edfe |
+| 0 | T0.5 Vibe Selling LatAm | ✅ Desplegado | 050edfe |
+| 1 | T1.6 CX/Quality Score (LLM-judge) | ✅ Desplegado | 050edfe |
+| 1 | T1.7 Trace View | ✅ Desplegado | 050edfe |
+| 1 | T1.8 Validador resolución 2ª capa | ✅ Desplegado | 050edfe |
+| 1 | T1.10 Copilot gratis embebido | ✅ Desplegado | 050edfe |
+| 1 | T1.11 PWA / push | ✅ Desplegado | 050edfe |
+| 2 | T2.12 Procedimientos (AOP/SOP) | ✅ Desplegado | f9785f0 |
+| 2 | T2.13 Agent Simulation | ✅ Desplegado | 8548b11 |
+| 2 | T2.14 KB auto-sanante | ✅ Desplegado | b61e061 |
+| 2 | T2.16 Zapier/Slack | ✅ Desplegado (Slack) | 931a618 |
+| 2 | T2.17 Agente dual-skillset | ✅ Desplegado | f306618 |
+| 3 | T3.19 Integraciones verticales (Toast/Mindbody/Cliniko) | ✅ Desplegado¹ | a75d339 |
+| 3 | T3.20 MCP nativo | ✅ Desplegado | 617ee95 |
+| 3 | T3.21 CRM B2B + forecast/rotting | ✅ Desplegado | fba00ed |
+| 3 | T3.22 CTWA attribution + revenue | ✅ Desplegado | a5a1fc7 |
+| 3 | T3.23 Reviews/reputación IA | ✅ Desplegado¹ | 5330bd9 |
+| 3 | T3.24 Tier managed/done-for-you | ✅ Desplegado | d95af7e |
+
+¹ Adapters externos (Toast/Mindbody/Cliniko, Google Business Profile) fieles a la documentación oficial de cada API pero **no probados en vivo** por falta de credenciales en el entorno de desarrollo — validar end-to-end al conectar cuentas reales.
+
+**APLAZADOS (no trabajados — requieren decisión de negocio o credenciales):** T0.3 payment-at-booking · T1.9 factura fiscal CFDI/NF-e · T2.15 SaaS Mode/rebilling · T3.18 Voice AI.
+
+---
+
 ## Ítems APLAZADOS (no se trabajan ahora)
 - **Tier 1 · #9** — Factura fiscal local (CFDI/NF-e)
 - **Tier 2 · #15** — Parallly SaaS Mode + Wallet/rebilling

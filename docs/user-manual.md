@@ -46,7 +46,15 @@
 | 25 | [Subir fotos a catálogos](#25-subir-fotos-a-catálogos) |
 | 27 | [Procesamiento multimedia](#27-procesamiento-multimedia) |
 | 28 | [Integraciones y API pública](#28-integraciones-y-api-pública) |
-| 29 | [Preguntas frecuentes (FAQ)](#29-preguntas-frecuentes) |
+| 29 | [Probar agente — simulación](#29-probar-agente--simulación) |
+| 30 | [Procedimientos (SOP)](#30-procedimientos-sop) |
+| 31 | [Agente que vende — skillsets y upsell](#31-agente-que-vende--skillsets-y-upsell) |
+| 32 | [Integraciones verticales (Toast / Mindbody / Cliniko)](#32-integraciones-verticales) |
+| 33 | [Conectores MCP](#33-conectores-mcp) |
+| 34 | [Organizaciones B2B y forecast](#34-organizaciones-b2b-y-forecast) |
+| 35 | [Atribución de marketing](#35-atribución-de-marketing) |
+| 36 | [Reseñas y reputación](#36-reseñas-y-reputación) |
+| 37 | [Preguntas frecuentes (FAQ)](#37-preguntas-frecuentes) |
 
 ---
 
@@ -2322,7 +2330,194 @@ Esta sección agrupa las funcionalidades de integración con sistemas externos. 
 
 ---
 
-# 29. Preguntas Frecuentes
+# 29. Probar agente — Simulación
+
+Antes de publicar cambios en tu agente IA, pruébalo contra conversaciones realistas sin tocar producción. Es como un "CI/CD para tu agente".
+
+**Dónde:** menú → **Agente IA → Probar agente** (`/admin/agent/simulation`).
+
+## 29.1 Cómo funciona
+
+1. Elige el **agente** a probar.
+2. Elige el **origen de escenarios**:
+   - **Sintéticos** — la IA genera clientes variados de tu industria (fáciles, escépticos, molestos, comparadores de precio, etc.).
+   - **Históricos** — reproduce conversaciones reales de tus clientes pasados.
+3. Define cuántos escenarios correr (por defecto 50).
+4. (Opcional) Elige una corrida previa como **línea base** para detectar regresiones.
+5. Pulsa **Ejecutar simulación**.
+
+La simulación corre en segundo plano: un "cliente simulado" conversa con tu agente y un evaluador IA califica cada conversación (resolución, tono, precisión, empatía).
+
+> 🔒 **Seguro:** la simulación NUNCA crea citas, pedidos ni descuentos reales — las herramientas se desactivan durante la prueba.
+
+## 29.2 Resultados
+
+- **Puntaje promedio** (0-10) y **tasa de resolución** estimada.
+- **Sub-puntajes** por dimensión (resolución, tono, precisión, empatía).
+- **Detección de regresiones** vs. la línea base: te avisa si una respuesta empeoró.
+- **Tabla de escenarios**: clic en cualquiera para ver la transcripción completa y los problemas detectados.
+
+Úsalo cada vez que cambies la persona, las reglas o la base de conocimiento, antes de exponerlo a clientes reales.
+
+---
+
+# 30. Procedimientos (SOP)
+
+Escribe un procedimiento operativo en español ("cuando pidan un reembolso: verifica la orden → si está entregada ofrece un cupón → si no, escala a un agente") y el agente lo ejecutará **paso a paso, sin improvisar el flujo**.
+
+**Dónde:** menú → **Agente IA → Procedimientos** (`/admin/procedures`).
+
+## 30.1 Crear un procedimiento
+
+**Opción A — Escribe tu SOP (recomendada):**
+1. Pulsa **Escribir SOP**.
+2. Describe el procedimiento en lenguaje natural.
+3. La IA lo **compila** a una secuencia de pasos determinísticos que quedan como **borrador** para tu revisión.
+
+**Opción B — En blanco:** construye los pasos manualmente.
+
+## 30.2 Tipos de paso
+
+| Tipo | Qué hace |
+|------|----------|
+| **Mensaje** | Comunica algo al cliente |
+| **Preguntar** | Pide un dato y lo guarda (ej: número de orden) |
+| **Herramienta** | Ejecuta una acción (consultar pedido, buscar producto…) |
+| **Condición** | Evalúa un dato y bifurca el flujo |
+| **Escalar** | Transfiere a un agente humano |
+
+## 30.3 Activar
+
+- Define las **palabras que lo activan** (ej: "reembolso, devolución, garantía"). Cuando un cliente las menciona, el procedimiento arranca.
+- Activa/desactiva el procedimiento y consulta su **versión** (se incrementa en cada cambio).
+
+> El agente solo decide *cómo* expresar cada paso con naturalidad; el *flujo* lo controla el motor — por eso nunca se "inventa" pasos.
+
+---
+
+# 31. Agente que vende — Skillsets y upsell
+
+Configura si tu agente **vende, da soporte, o ambos**, y cómo recomienda productos.
+
+**Dónde:** menú → **Agente IA → (tu agente) → Capacidades**.
+
+## 31.1 Skillset
+
+- **Ventas** — recomienda y cierra ventas.
+- **Soporte** — resuelve dudas y pedidos.
+- **Ambos** — equilibra: primero resuelve, y cuando aporta valor, conecta con una recomendación.
+
+## 31.2 Upsell / cross-sell
+
+Cuando el skillset es Ventas o Ambos, puedes activar el **upsell** y elegir su intensidad:
+- **Sutil** — sugiere complementos solo cuando encajan.
+- **Moderada** — ofrece una mejora relevante por conversación.
+- **Agresiva** — busca oportunidades en cada interacción (siempre con tacto).
+- **Descuento máximo (%)** — tope que el agente puede ofrecer al negociar.
+
+## 31.3 Tienda e-commerce
+
+Si activas la tarjeta **Tienda e-commerce**, el agente puede:
+- **Recomendar productos** del catálogo conectado (Shopify/WooCommerce) — nunca inventa productos.
+- Consultar el **estado de un pedido** del cliente.
+- Aprobar **descuentos** dentro del límite (si lo habilitas).
+
+---
+
+# 32. Integraciones verticales
+
+Conecta tu **sistema real** por industria para que el agente trabaje con datos en vivo, no solo con prompts.
+
+**Dónde:** **Configuración → Integraciones → Integraciones verticales**.
+
+| Integración | Industria | Qué sincroniza |
+|-------------|-----------|----------------|
+| **Toast** | Restaurantes | Menú, ítems y precios (toma de pedidos por chat) |
+| **Mindbody** | Gimnasios | Clases y horarios |
+| **Cliniko** | Salud | Tipos de cita y disponibilidad (sin acceder al historial clínico) |
+
+Para cada una: ingresa las credenciales, pulsa **Probar** la conexión y **Sincronizar**. Una vez conectada, el agente usa automáticamente esos datos al responder.
+
+---
+
+# 33. Conectores MCP
+
+**MCP (Model Context Protocol)** es un estándar abierto para conectar "herramientas de acción" a la IA, sin quedar atado a un proveedor.
+
+**Dónde:** **Configuración → Integraciones → MCP**.
+
+- **Tu servidor MCP** — expón las herramientas de tu agente (catálogo, FAQs, base de conocimiento…) a clientes MCP externos mediante un endpoint, autenticado con tu API Key.
+- **Servidores MCP externos** — conecta servidores MCP de terceros (añadir/probar/activar): tu agente podrá usar sus herramientas automáticamente.
+
+---
+
+# 34. Organizaciones B2B y forecast
+
+Agrupa contactos por **empresa/cuenta** y proyecta tus ingresos.
+
+**Dónde:** menú → **CRM → Organizaciones** (`/admin/contacts/organizations`).
+
+## 34.1 Organizaciones
+
+- Crea cuentas empresariales con industria, sitio web, tamaño, etc.
+- Cada cuenta muestra sus **contactos**, **deals abiertos** y **valor ponderado** del pipeline.
+- Clic en una cuenta para ver su detalle (miembros + oportunidades).
+
+## 34.2 Forecast (pronóstico)
+
+- **Pipeline ponderado** — suma de (valor × probabilidad de cada etapa).
+- **Comprometido** — valor en etapas con ≥80% de probabilidad.
+- **Mejor caso** — valor total del pipeline abierto.
+- **Velocidad** — días promedio para ganar + ventas por mes.
+- Desglose del valor ponderado **por etapa**.
+
+## 34.3 Deals estancados (rotting)
+
+El sistema marca automáticamente las oportunidades abiertas **sin movimiento** durante demasiados días y las muestra como alertas, para que tu equipo las reactive.
+
+---
+
+# 35. Atribución de marketing
+
+Mide el embudo **Anuncios → WhatsApp → venta** y el ROI de tus campañas.
+
+**Dónde:** menú → **Análisis → Atribución** (`/admin/attribution`).
+
+## 35.1 Click-to-WhatsApp
+
+Cuando un cliente llega desde un **anuncio de Click-to-WhatsApp** (Facebook/Instagram), Parallly captura automáticamente el anuncio de origen. Luego verás:
+- **Embudo**: clics → contactos → leads → ventas.
+- **KPIs**: clics, conversiones, ingresos atribuidos, tasa de conversión.
+- **Rendimiento por anuncio**: qué anuncio genera más ventas e ingresos.
+
+## 35.2 Ingresos por campañas (broadcast)
+
+Atribuye ingresos a tus campañas de broadcast: de los destinatarios que recibieron la campaña, cuántos compraron y cuánto ingreso generaron (ventana de 30 días).
+
+Usa el selector de rango (30 / 90 / 365 días).
+
+---
+
+# 36. Reseñas y reputación
+
+Conecta **Google Business Profile** y responde reseñas con IA en español.
+
+**Dónde:** **Configuración → Integraciones → Reseñas**.
+
+## 36.1 Conectar
+
+Pulsa **Conectar Google Business** y autoriza el acceso. Luego configura tu Account ID / Location ID.
+
+## 36.2 Gestionar reseñas
+
+- **Sincroniza** tus reseñas de Google.
+- Verás el **rating promedio**, total, sin responder y negativas.
+- Para cada reseña: pulsa **Sugerir con IA** para generar una respuesta en español (empática para reseñas negativas, cálida para positivas), edítala si quieres y **Publica la respuesta** directamente en Google.
+- Activa la **respuesta automática** para que la IA responda sola las reseñas nuevas.
+
+---
+
+# 37. Preguntas Frecuentes
 
 ## General
 

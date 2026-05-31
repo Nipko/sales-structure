@@ -4,6 +4,54 @@
 
 ---
 
+## v6.0.0 — May 31, 2026 (Roadmap Competitivo Q2 — COMPLETO: Tier 2 + Tier 3)
+
+> Cierre del plan `docs/implementation-plan-2026-q2.md`. 9 features desplegadas; todos los ítems no aplazados completados (Tier 0-3). Cada feature: módulo backend + integración + página dashboard + i18n ×4, verificada con `tsc` + `test:bootstrap`.
+
+### Tier 2 — Diferenciadores arquitectónicos
+
+#### T2.13 — Agent Simulation pre-deploy (`8548b11`)
+- **Nuevo módulo `simulation/`**: "CI/CD para tu agente IA". Corre N conversaciones simuladas contra la persona/KB **sin tocar producción** y las califica con el LLM-judge de T1.6.
+- Reusa `AgentTestService` (pipeline completo, sin persistir, con `disableTools` → cero efectos en prod) y `QualityService.judgeTranscript` (juez compartido extraído).
+- Escenarios **sintéticos** (generados por LLM por vertical) o **replay** de transcripts reales; cliente-simulador LLM para multi-turno; **diff de regresión** vs. baseline.
+- Cola BullMQ `agent-simulation`, tabla `simulation_runs`. Página `/admin/agent/simulation` con polling + drawer de transcripción.
+
+#### T2.17 — Agente dual-skillset (vende + soporte) (`f306618`)
+- `TenantConfig.skillset` (sales/support/both) + `upsell` (intensidad + descuento máx) + `tools.ecommerce`. Layer 2 de la persona renderiza un bloque `<skillset>`.
+- Nuevas AI tools: `recommend_products` (catálogo real vía EcommerceService), `get_order_status`, `apply_discount` (cap duro 30%).
+- Layer 3 inyecta `<catalog>` real + `<recent_orders>` del cliente → "nunca inventa productos".
+- Editor de agente (Capacidades): selector de skillset + upsell + tarjeta e-commerce.
+
+#### T2.12 — Procedimientos por vertical (AOP/SOP) (`f9785f0`)
+- **Nuevo módulo `procedures/`**: el tenant escribe un SOP en español → **compilador LLM NL→grafo** (borrador para revisión) → motor determinístico lo ejecuta (el LLM solo expresa, nunca decide el flujo).
+- `ProcedureEngineService` (reusa AIToolExecutor): estado Redis, matching por keywords, step types message/ask/tool/condition/handoff con branching, 1 directiva por turno.
+- Integrado en `conversations.service` tras el booking (todo en try/catch — nunca rompe el chat). Página `/admin/procedures` con editor de pasos.
+
+### Tier 3 — Frontera y profundidad
+
+#### T3.19 — Integraciones verticales reales (`a75d339`)
+- **Nuevo módulo `vertical-integrations/`**: adapters Toast (restaurantes: menú/precios), Mindbody (gimnasios: clases), Cliniko (salud: tipos de cita + disponibilidad, sin tocar EHR). Config en `tenant.settings`, tabla `vi_items`, AI tools por proveedor conectado. Página en Settings → Integraciones.
+
+#### T3.20 — MCP nativo (`617ee95`)
+- **Nuevo módulo `mcp/`**: **consumir** servidores MCP externos (el agente gana tools vía estándar abierto) + **exponer** las tools de la plataforma (JSON-RPC sobre Streamable HTTP, autenticado con API key). Página en Settings → Integraciones → MCP.
+
+#### T3.21 — CRM B2B + forecast/rotting/weighted (`fba00ed`)
+- **Nuevo módulo `crm-b2b/`**: organizaciones (sobre tabla `companies` existente), **valor ponderado** del pipeline (Σ valor × probabilidad), comprometido/mejor-caso, velocity, y **deal rotting** (cron 6h marca deals estancados). Página `/admin/contacts/organizations`.
+
+#### T3.22 — Click-to-WhatsApp attribution + revenue (`a5a1fc7`)
+- **Nuevo módulo `attribution/`**: captura el `referral` de anuncios CTWA en el webhook de WhatsApp; deriva el embudo Ads→WhatsApp→venta + ingresos por anuncio y por campaña broadcast. Página `/admin/attribution`.
+
+#### T3.23 — Reviews/reputación con IA (`5330bd9`)
+- **Nuevo módulo `reviews/`**: conecta Google Business Profile (OAuth), sincroniza reseñas, genera respuestas con IA en español (consciente del rating) y las publica; cron de sync + auto-reply. Página en Settings → Integraciones → Reseñas.
+
+#### T3.24 — Tier managed / done-for-you (`d95af7e`)
+- **Nuevo módulo `managed/`** (super-admin): marca tenants como gestionados con **garantía de % de resolución** y trackea lo real vs. objetivo (apalanca T0.1 + T1.8). Página `/admin/managed`.
+
+### Aplazados (no trabajados)
+T0.3 payment-at-booking · T1.9 factura fiscal (CFDI/NF-e) · T2.15 SaaS Mode/rebilling · T3.18 Voice AI.
+
+---
+
 ## v5.4.0 — May 27, 2026 (Public API + Workflows HTTP + Inbox Collision + Drip Sequences + Email Channel + Zapier)
 
 ### Fase A — Foundations

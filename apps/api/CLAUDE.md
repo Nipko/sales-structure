@@ -327,3 +327,18 @@ llm:failures:{provider}         — LLM provider failure counter (10min TTL, cir
 ai:stats:{tenantId}:{date}:{category}:tokens — AI usage token tracking
 ai:stats:{tenantId}:{date}:{category}:cost   — AI usage cost tracking
 ```
+
+## New modules (May 31, 2026 — Competitive Roadmap Q2)
+
+8 modules closing `docs/implementation-plan-2026-q2.md` (Tier 2 + Tier 3). All deterministic flows reuse the booking-engine directive pattern; external adapters are doc-faithful but not live-tested (no external creds in dev).
+
+- **`simulation/`** (T2.13) — Agent simulation pre-deploy. Queue `agent-simulation`, table `simulation_runs`. Reuses `AgentTestService` (full pipeline, `{disableTools:true}` → zero prod side-effects) + `QualityService.judgeTranscript`. Synthetic (LLM per-vertical) + replay scenarios, customer-simulator LLM, regression diff vs baseline run.
+- **`procedures/`** (T2.12) — AOP/SOP. `procedures` table, LLM NL→graph compiler (draft for review). Engine `conversations/procedure-engine.service.ts` (reuses AIToolExecutor, Redis `procedure:{conversationId}`, steps message/ask/tool/condition/handoff, 1 directive/turn). Hooked into `conversations.service.generateResponse` after booking (guarded). Active-procedures cached `procedures:active:{tenantId}`.
+- **`vertical-integrations/`** (T3.19) — Toast/Mindbody/Cliniko adapters. Config in `tenant.settings.verticalIntegrations.{provider}`, table `vi_items`. AI tools gated per connected provider (`getConnectedProviders` cached). Tools in ai-tool-executor: get_restaurant_menu, get_fitness_schedule, list_clinic_services, check_clinic_availability.
+- **`mcp/`** (T3.20) — Consume (`McpClientService`, JSON-RPC Streamable HTTP, tools `mcp__server__tool`, cached `mcp:tools:{tenantId}`) + expose (`McpServerService`, `POST /mcp/rpc` API-key auth, curated read-only tools). **forwardRef** with ConversationsModule (which now exports `AIToolExecutorService`).
+- **`crm-b2b/`** (T3.21) — Organizations = existing `companies` table (non-primary) via `leads.company_id`. `ForecastingService` (weighted = Σ value×stage probability). `DealRottingCronService` @Cron 6h flags stale opps (`crm.deal_rotting`, dedup via `metadata.is_rotting`).
+- **`attribution/`** (T3.22) — CTWA referral captured in `whatsapp.adapter` → `ctwa_attributions`. Funnel/revenue derived at query time (join → leads → won opps). `conversations.service` calls `captureReferral` after resolveConversation.
+- **`reviews/`** (T3.23) — Google Business Profile OAuth (encrypted refresh token in `tenant.settings.googleBusiness`), `gbp_reviews` table, AI Spanish replies (rating-aware), post via GBP v4. Public callback `/reviews/google/callback`. Cron `30 */6 * * *` sync + auto-reply.
+- **`managed/`** (T3.24) — Done-for-you tier (super_admin). Config in `tenant.settings.managed`. Resolution guarantee tracking (verified rate vs target). Leverages T0.1 resolution + T1.8 `resolution_verified`.
+
+**Conventions reused:** lazy tenant tables guarded against dup errors (23505/42P07); config in `tenant.settings` JSONB; cached connection flags in Redis for cheap per-turn tool gating; new long-running queues use `attempts:1` + low concurrency.

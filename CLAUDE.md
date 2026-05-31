@@ -2,7 +2,7 @@
 
 ## What is this project?
 Multi-tenant conversational AI SaaS platform (Parallly) for automating sales across WhatsApp, Instagram, Messenger, Telegram, and SMS.
-Monorepo with 4 NestJS/Next.js apps (67+ API modules, 80+ dashboard pages), deployed on Hostinger VPS via Docker + Cloudflare Tunnel.
+Monorepo with 4 NestJS/Next.js apps (78 API modules, 94 dashboard pages), deployed on Hostinger VPS via Docker + Cloudflare Tunnel.
 
 ## Architecture (high-level)
 

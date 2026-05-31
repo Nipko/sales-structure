@@ -16,6 +16,7 @@ import { EducationService } from '../education/education.service';
 import { InsuranceService } from '../insurance/insurance.service';
 import { HomeServicesService } from '../home-services/home-services.service';
 import { EcommerceService } from '../ecommerce/ecommerce.service';
+import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -44,6 +45,7 @@ export class AIToolExecutorService {
         private insuranceService: InsuranceService,
         private homeServicesService: HomeServicesService,
         private ecommerceService: EcommerceService,
+        private verticalIntegrations: VerticalIntegrationsService,
     ) { }
 
     /**
@@ -121,6 +123,19 @@ export class AIToolExecutorService {
 
                 case 'apply_discount':
                     return this.applyDiscount(args.percent, args.reason);
+
+                // ── Vertical integrations (T3.19): Toast / Mindbody / Cliniko ──
+                case 'get_restaurant_menu':
+                    return this.verticalIntegrations.getMenuForAI(schemaName);
+
+                case 'get_fitness_schedule':
+                    return this.verticalIntegrations.getScheduleForAI(schemaName);
+
+                case 'list_clinic_services':
+                    return this.verticalIntegrations.getClinicServicesForAI(schemaName);
+
+                case 'check_clinic_availability':
+                    return this.verticalIntegrations.checkClinikoAvailability(tenantId, args.appointmentTypeId, args.from, args.to);
 
                 // ── Vacation Rental tools ───────────────────────────
                 case 'list_properties':

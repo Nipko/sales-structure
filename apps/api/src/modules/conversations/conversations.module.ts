@@ -40,6 +40,7 @@ import { InsuranceModule } from '../insurance/insurance.module';
 import { HomeServicesModule } from '../home-services/home-services.module';
 import { MediaProcessingModule } from '../media-processing/media-processing.module';
 import { EcommerceModule } from '../ecommerce/ecommerce.module';
+import { VerticalIntegrationsModule } from '../vertical-integrations/vertical-integrations.module';
 
 @Module({
     imports: [
@@ -69,6 +70,7 @@ import { EcommerceModule } from '../ecommerce/ecommerce.module';
         InsuranceModule,
         HomeServicesModule,
         EcommerceModule,
+        VerticalIntegrationsModule,
         forwardRef(() => MediaProcessingModule),
         JwtModule.registerAsync({
             imports: [ConfigModule],

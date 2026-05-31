@@ -861,6 +861,19 @@ export const api = {
         apiPut(`/procedures/${tenantId}/${id}/status`, { status }),
     deleteProcedure: (tenantId: string, id: string) => apiDelete(`/procedures/${tenantId}/${id}`),
 
+    // Vertical integrations (T3.19) — Toast / Mindbody / Cliniko
+    getVerticalIntegrations: (tenantId: string) => apiGet(`/vertical-integrations/${tenantId}/config`),
+    updateVerticalIntegration: (tenantId: string, provider: string, body: any) =>
+        apiPut(`/vertical-integrations/${tenantId}/${provider}/config`, body),
+    testVerticalIntegration: (tenantId: string, provider: string) =>
+        apiPost(`/vertical-integrations/${tenantId}/${provider}/test`, {}),
+    syncVerticalIntegration: (tenantId: string, provider: string) =>
+        apiPost(`/vertical-integrations/${tenantId}/${provider}/sync`, {}),
+    disconnectVerticalIntegration: (tenantId: string, provider: string) =>
+        apiDelete(`/vertical-integrations/${tenantId}/${provider}`),
+    listVerticalIntegrationItems: (tenantId: string, provider?: string) =>
+        apiGet(`/vertical-integrations/${tenantId}/items${provider ? `?provider=${provider}` : ""}`),
+
     // Slack integration (T2.16)
     getSlackConfig: (tenantId: string) => apiGet(`/slack/${tenantId}/config`),
     updateSlackConfig: (tenantId: string, body: any) => apiPut(`/slack/${tenantId}/config`, body),

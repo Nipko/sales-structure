@@ -895,6 +895,10 @@
       "changelog": {
         "label": "Novedades y Anuncios",
         "description": "Redacta, traduce y publica anuncios del sistema"
+      },
+      "verticalIntegrations": {
+        "label": "Integraciones verticales",
+        "description": "Conecta Toast, Mindbody o Cliniko"
       }
     },
     "account": "Mi Cuenta",
@@ -6912,5 +6916,26 @@
     "cfg_then": "Si cumple → paso",
     "cfg_else": "Si no → paso",
     "cfg_reason": "Motivo de la escalada"
+  },
+  "verticalIntegrations": {
+    "title": "Integraciones verticales",
+    "subtitle": "Conecta tu sistema real por industria: Toast (restaurantes), Mindbody (gimnasios) y Cliniko (salud).",
+    "saved": "Configuración guardada",
+    "saveFailed": "No se pudo guardar",
+    "testOk": "Conexión exitosa",
+    "testFailed": "Conexión fallida",
+    "syncedCount": "Sincronizado: {count} elementos",
+    "syncFailed": "No se pudo sincronizar",
+    "disconnected": "Integración desconectada",
+    "connected": "Conectado",
+    "save": "Guardar",
+    "test": "Probar",
+    "sync": "Sincronizar",
+    "provider_toast": "Toast (POS de restaurante)",
+    "provider_toast_desc": "Sincroniza el menú, ítems y precios para tomar pedidos por chat.",
+    "provider_mindbody": "Mindbody (gimnasios)",
+    "provider_mindbody_desc": "Sincroniza clases y horarios para reservas por chat.",
+    "provider_cliniko": "Cliniko (salud)",
+    "provider_cliniko_desc": "Tipos de cita y disponibilidad. No accede al historial clínico (evita HIPAA)."
   }
 }

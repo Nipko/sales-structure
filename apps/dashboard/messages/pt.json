@@ -895,6 +895,10 @@
       "changelog": {
         "label": "Novidades e Atualizações",
         "description": "Escreva, traduza e publique anúncios do sistema"
+      },
+      "verticalIntegrations": {
+        "label": "Integrações verticais",
+        "description": "Conecte Toast, Mindbody ou Cliniko"
       }
     },
     "account": "Minha Conta",
@@ -6848,5 +6852,26 @@
     "cfg_then": "Se verdadeiro → passo",
     "cfg_else": "Se falso → passo",
     "cfg_reason": "Motivo da escalada"
+  },
+  "verticalIntegrations": {
+    "title": "Integrações verticais",
+    "subtitle": "Conecte seu sistema real por setor: Toast (restaurantes), Mindbody (academias) e Cliniko (saúde).",
+    "saved": "Configuração salva",
+    "saveFailed": "Não foi possível salvar",
+    "testOk": "Conexão bem-sucedida",
+    "testFailed": "Falha na conexão",
+    "syncedCount": "Sincronizado: {count} itens",
+    "syncFailed": "Não foi possível sincronizar",
+    "disconnected": "Integração desconectada",
+    "connected": "Conectado",
+    "save": "Salvar",
+    "test": "Testar",
+    "sync": "Sincronizar",
+    "provider_toast": "Toast (PDV de restaurante)",
+    "provider_toast_desc": "Sincronize o cardápio, itens e preços para receber pedidos pelo chat.",
+    "provider_mindbody": "Mindbody (academias)",
+    "provider_mindbody_desc": "Sincronize aulas e horários para reservas pelo chat.",
+    "provider_cliniko": "Cliniko (saúde)",
+    "provider_cliniko_desc": "Tipos de consulta e disponibilidade. Sem acesso ao prontuário (evita HIPAA)."
   }
 }

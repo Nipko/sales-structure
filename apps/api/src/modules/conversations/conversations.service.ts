@@ -22,6 +22,8 @@ import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
 import { FAQ_TOOL, POLICY_TOOL, KB_TOOL } from './tools/knowledge-tools';
 import { ORDER_TOOL, CUSTOMER_CONTEXT_TOOL } from './tools/crm-tools';
 import { ECOMMERCE_TOOLS, APPLY_DISCOUNT_TOOL } from './tools/ecommerce-tools';
+import { GET_RESTAURANT_MENU_TOOL, GET_FITNESS_SCHEDULE_TOOL, LIST_CLINIC_SERVICES_TOOL, CHECK_CLINIC_AVAILABILITY_TOOL } from './tools/vertical-integration-tools';
+import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
 import { TOURS_TOOLS } from './tools/tours-tools';
 import { TREATMENT_TOOLS } from './tools/treatment-tools';
@@ -81,6 +83,7 @@ export class ConversationsService {
         private throttle: TenantThrottleService,
         private mediaProcessing: MediaProcessingService,
         private aiResolutionService: AiResolutionService,
+        private verticalIntegrations: VerticalIntegrationsService,
     ) {}
 
     /**
@@ -1170,6 +1173,18 @@ export class ConversationsService {
             if (cfgTools.ecommerce.canApplyDiscount === true) {
                 tools = [...tools, APPLY_DISCOUNT_TOOL];
             }
+        }
+
+        // Vertical integration tools (T3.19) — registered per connected provider
+        // (Toast / Mindbody / Cliniko). Connection state is cached (5min), so this
+        // is a cheap per-turn check. Guarded so it never breaks the pipeline.
+        try {
+            const connected = await this.verticalIntegrations.getConnectedProviders(tenantId);
+            if (connected.toast) tools = [...tools, GET_RESTAURANT_MENU_TOOL];
+            if (connected.mindbody) tools = [...tools, GET_FITNESS_SCHEDULE_TOOL];
+            if (connected.cliniko) tools = [...tools, LIST_CLINIC_SERVICES_TOOL, CHECK_CLINIC_AVAILABILITY_TOOL];
+        } catch (e: any) {
+            this.logger.debug(`[T3.19] vertical integration tool gating skipped: ${e.message}`);
         }
         if (cfgTools?.properties?.enabled === true) {
             tools = [...tools, ...VACATION_RENTAL_TOOLS];

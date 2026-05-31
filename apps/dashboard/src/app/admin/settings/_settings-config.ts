@@ -97,6 +97,7 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
             { key: "outboundWebhooks", href: "/admin/settings/integrations/webhooks", icon: Webhook, iconColor: "text-indigo-500", iconBg: "bg-indigo-500/10" },
             { key: "webChat", href: "/admin/settings/integrations/web-chat", icon: MessageCircle, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
             { key: "slack", href: "/admin/settings/integrations/slack", icon: Slack, iconColor: "text-fuchsia-500", iconBg: "bg-fuchsia-500/10" },
+            { key: "verticalIntegrations", href: "/admin/settings/integrations/vertical", icon: Plug, iconColor: "text-orange-500", iconBg: "bg-orange-500/10" },
             { key: "apiKeys", href: "/admin/settings/api-keys", icon: Key, iconColor: "text-amber-500", iconBg: "bg-amber-500/10" },
             { key: "alerts", href: "/admin/settings/alerts", icon: BellRing, iconColor: "text-rose-500", iconBg: "bg-rose-500/10" },
         ],

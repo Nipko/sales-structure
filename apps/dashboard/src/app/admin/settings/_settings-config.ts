@@ -16,7 +16,7 @@ import {
     Database, Zap, MessageSquare, Mail, Image as ImageIcon, Brain,
     SlidersHorizontal, Settings, Info, Scale, RotateCcw, Phone,
     BellRing, GitBranch, BarChart2, Plug, CalendarCheck, Webhook, MessageCircle,
-    RefreshCw, Sparkles, Key, Slack, Plug2,
+    RefreshCw, Sparkles, Key, Slack, Plug2, Star,
 } from "lucide-react";
 
 export type Role = {
@@ -99,6 +99,7 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
             { key: "slack", href: "/admin/settings/integrations/slack", icon: Slack, iconColor: "text-fuchsia-500", iconBg: "bg-fuchsia-500/10" },
             { key: "verticalIntegrations", href: "/admin/settings/integrations/vertical", icon: Plug, iconColor: "text-orange-500", iconBg: "bg-orange-500/10" },
             { key: "mcp", href: "/admin/settings/integrations/mcp", icon: Plug2, iconColor: "text-cyan-500", iconBg: "bg-cyan-500/10" },
+            { key: "reviews", href: "/admin/settings/integrations/reviews", icon: Star, iconColor: "text-yellow-500", iconBg: "bg-yellow-500/10" },
             { key: "apiKeys", href: "/admin/settings/api-keys", icon: Key, iconColor: "text-amber-500", iconBg: "bg-amber-500/10" },
             { key: "alerts", href: "/admin/settings/alerts", icon: BellRing, iconColor: "text-rose-500", iconBg: "bg-rose-500/10" },
         ],

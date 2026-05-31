@@ -905,6 +905,10 @@
       "mcp": {
         "label": "MCP",
         "description": "Conectores de ações (padrão aberto)"
+      },
+      "reviews": {
+        "label": "Avaliações",
+        "description": "Google Business + respostas com IA"
       }
     },
     "account": "Minha Conta",
@@ -6962,5 +6966,26 @@
     "noBroadcasts": "Sem receita atribuída a campanhas.",
     "campaign": "Campanha",
     "recipients": "Destinatários"
+  },
+  "reviewsModule": {
+    "title": "Avaliações e reputação",
+    "subtitle": "Conecte o Google Business Profile e responda avaliações com IA em espanhol.",
+    "connectPrompt": "Conecte seu perfil do Google Business para gerenciar e responder avaliações.",
+    "connectGbp": "Conectar Google Business",
+    "connected": "Google Business conectado",
+    "disconnect": "Desconectar",
+    "locationName": "Nome do local",
+    "save": "Salvar",
+    "sync": "Sincronizar",
+    "autoReply": "Resposta automática com IA",
+    "avgRating": "Avaliação média",
+    "totalReviews": "Avaliações",
+    "unreplied": "Sem resposta",
+    "negative": "Negativas",
+    "noReviews": "Ainda não há avaliações sincronizadas.",
+    "replied": "Respondida",
+    "replyPlaceholder": "Escreva uma resposta ou gere uma com IA…",
+    "aiSuggest": "Sugerir com IA",
+    "postReply": "Publicar resposta"
   }
 }

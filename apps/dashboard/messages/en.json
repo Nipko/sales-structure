@@ -905,6 +905,10 @@
       "mcp": {
         "label": "MCP",
         "description": "Action connectors (open standard)"
+      },
+      "reviews": {
+        "label": "Reviews",
+        "description": "Google Business + AI replies"
       }
     },
     "account": "My Account",
@@ -7026,5 +7030,26 @@
     "noBroadcasts": "No revenue attributed to campaigns.",
     "campaign": "Campaign",
     "recipients": "Recipients"
+  },
+  "reviewsModule": {
+    "title": "Reviews & reputation",
+    "subtitle": "Connect Google Business Profile and reply to reviews with AI in Spanish.",
+    "connectPrompt": "Connect your Google Business profile to manage and reply to reviews.",
+    "connectGbp": "Connect Google Business",
+    "connected": "Google Business connected",
+    "disconnect": "Disconnect",
+    "locationName": "Location name",
+    "save": "Save",
+    "sync": "Sync",
+    "autoReply": "AI auto-reply",
+    "avgRating": "Average rating",
+    "totalReviews": "Reviews",
+    "unreplied": "Unreplied",
+    "negative": "Negative",
+    "noReviews": "No synced reviews yet.",
+    "replied": "Replied",
+    "replyPlaceholder": "Write a reply or generate one with AI…",
+    "aiSuggest": "AI suggest",
+    "postReply": "Post reply"
   }
 }

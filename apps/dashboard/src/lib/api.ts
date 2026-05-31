@@ -899,6 +899,20 @@ export const api = {
     getBroadcastRevenue: (tenantId: string, range?: { start?: string; end?: string }) =>
         apiGet(`/attribution/${tenantId}/broadcast/revenue${range?.start ? `?start=${range.start}&end=${range.end}` : ""}`),
 
+    // Reviews / reputation (T3.23) — Google Business Profile
+    getReviewsConfig: (tenantId: string) => apiGet(`/reviews/${tenantId}/config`),
+    updateReviewsConfig: (tenantId: string, body: any) => apiPut(`/reviews/${tenantId}/config`, body),
+    connectReviews: (tenantId: string) => apiGet(`/reviews/${tenantId}/connect`),
+    disconnectReviews: (tenantId: string) => apiDelete(`/reviews/${tenantId}`),
+    syncReviews: (tenantId: string) => apiPost(`/reviews/${tenantId}/sync`, {}),
+    listReviews: (tenantId: string, unreplied = false) =>
+        apiGet(`/reviews/${tenantId}/reviews${unreplied ? "?unreplied=true" : ""}`),
+    getReviewsStats: (tenantId: string) => apiGet(`/reviews/${tenantId}/stats`),
+    generateReviewReply: (tenantId: string, reviewId: string) =>
+        apiPost(`/reviews/${tenantId}/reviews/${reviewId}/generate`, {}),
+    postReviewReply: (tenantId: string, reviewId: string, comment: string) =>
+        apiPost(`/reviews/${tenantId}/reviews/${reviewId}/reply`, { comment }),
+
     // Slack integration (T2.16)
     getSlackConfig: (tenantId: string) => apiGet(`/slack/${tenantId}/config`),
     updateSlackConfig: (tenantId: string, body: any) => apiPut(`/slack/${tenantId}/config`, body),

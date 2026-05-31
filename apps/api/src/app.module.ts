@@ -38,6 +38,7 @@ import { VerticalIntegrationsModule } from './modules/vertical-integrations/vert
 import { McpModule } from './modules/mcp/mcp.module';
 import { CrmB2bModule } from './modules/crm-b2b/crm-b2b.module';
 import { AttributionModule } from './modules/attribution/attribution.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 import { SlackModule } from './modules/slack/slack.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { OrdersModule } from './modules/orders/orders.module';
@@ -193,6 +194,7 @@ import llmConfig from './config/llm.config';
         McpModule,
         CrmB2bModule,
         AttributionModule,
+        ReviewsModule,
         SlackModule,
         InventoryModule,
         OrdersModule,

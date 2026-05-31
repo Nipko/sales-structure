@@ -13,12 +13,11 @@ const config = getDefaultConfig(projectRoot);
 config.watchFolders = [monorepoRoot];
 
 // 2. Resolve modules from the app first, then the monorepo root.
+//    (Hierarchical lookup stays ENABLED — apps/mobile is a standalone install,
+//    not a hoisted workspace, so nested node_modules must still resolve.)
 config.resolver.nodeModulesPaths = [
     path.resolve(projectRoot, 'node_modules'),
     path.resolve(monorepoRoot, 'node_modules'),
 ];
-
-// 3. Avoid hoisting surprises with duplicate React copies.
-config.resolver.disableHierarchicalLookup = true;
 
 module.exports = config;

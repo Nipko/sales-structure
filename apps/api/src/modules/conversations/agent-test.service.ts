@@ -53,7 +53,12 @@ export class AgentTestService {
         private readonly tenantsService: TenantsService,
     ) {}
 
-    async test(tenantId: string, agentId: string, req: TestAgentRequest): Promise<TestAgentResponse> {
+    async test(
+        tenantId: string,
+        agentId: string,
+        req: TestAgentRequest,
+        options?: { disableTools?: boolean },
+    ): Promise<TestAgentResponse> {
         const startedAt = Date.now();
 
         // 1. Resolve the agent config (may be a draft the user just saved)
@@ -128,7 +133,10 @@ export class AgentTestService {
 
         // 4. Tools — enable based on config flags (NO booking engine in test mode
         // to keep this pipeline simple and synchronous).
-        const cfgTools = (config.tools ?? (config as any)?.tools) as any;
+        // In simulation mode (T2.13) tools are disabled so a pre-deploy run can
+        // execute dozens of scenarios without ever writing to production
+        // (no real appointments/orders created, no events emitted).
+        const cfgTools = options?.disableTools ? null : ((config.tools ?? (config as any)?.tools) as any);
         const tools: any[] = [];
         if (cfgTools?.appointments?.enabled === true) tools.push(...APPOINTMENT_TOOLS);
         if (cfgTools?.catalog?.enabled === true) tools.push(...CATALOG_TOOLS);

@@ -32,6 +32,7 @@ import { CopilotModule } from './modules/copilot/copilot.module';
 import { QualityModule } from './modules/quality/quality.module';
 import { TraceModule } from './modules/trace/trace.module';
 import { KbHealthModule } from './modules/kb-health/kb-health.module';
+import { SimulationModule } from './modules/simulation/simulation.module';
 import { SlackModule } from './modules/slack/slack.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { OrdersModule } from './modules/orders/orders.module';
@@ -155,6 +156,7 @@ import llmConfig from './config/llm.config';
         BullBoardModule.forFeature({ name: 'conversation-snooze', adapter: BullMQAdapter }),
         BullBoardModule.forFeature({ name: 'crm-sync', adapter: BullMQAdapter }),
         BullBoardModule.forFeature({ name: 'crm-import', adapter: BullMQAdapter }),
+        BullBoardModule.forFeature({ name: 'agent-simulation', adapter: BullMQAdapter }),
 
         // Core infrastructure
         PrismaModule,
@@ -180,6 +182,7 @@ import llmConfig from './config/llm.config';
         QualityModule,
         TraceModule,
         KbHealthModule,
+        SimulationModule,
         SlackModule,
         InventoryModule,
         OrdersModule,

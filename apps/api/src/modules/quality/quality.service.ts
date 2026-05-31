@@ -12,7 +12,7 @@ export interface QualityJob {
     conversationId: string;
 }
 
-interface JudgeResult {
+export interface JudgeResult {
     overall: number;
     resolution: number;
     tone: number;
@@ -161,15 +161,7 @@ export class QualityService {
 
         let judge: JudgeResult;
         try {
-            const response = await this.llmRouter.execute({
-                model: 'gpt-4o-mini',
-                messages: [{ role: 'user', content: transcript }],
-                systemPrompt: RUBRIC_PROMPT,
-                temperature: 0.2,
-                maxTokens: 500,
-                tenantId,
-            });
-            judge = this.parseJudge(response.content);
+            judge = await this.judgeTranscript(tenantId, transcript);
         } catch (err: any) {
             this.logger.error(`[QA] LLM judge failed for ${conversationId}: ${err.message}`);
             return;
@@ -298,6 +290,24 @@ export class QualityService {
             verificationReason: r.verification_reason,
             createdAt: r.created_at,
         }));
+    }
+
+    /**
+     * Reusable LLM-as-judge: scores a raw transcript against the QA rubric.
+     * Shared with the Agent Simulation module (T2.13) so pre-deploy runs are
+     * graded with the exact same rubric as production conversations (T1.6).
+     * The transcript should use "Cliente:" / "Agente:" line prefixes.
+     */
+    async judgeTranscript(tenantId: string, transcript: string): Promise<JudgeResult> {
+        const response = await this.llmRouter.execute({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: transcript }],
+            systemPrompt: RUBRIC_PROMPT,
+            temperature: 0.2,
+            maxTokens: 500,
+            tenantId,
+        });
+        return this.parseJudge(response.content);
     }
 
     private parseJudge(raw: string): JudgeResult {

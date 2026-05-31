@@ -144,6 +144,7 @@ const tenantSections: NavSectionDef[] = [
           { labelKey: "dripSequences", href: "/admin/automation/drip-sequences", capability: "canEditAutomation" },
           { labelKey: "automationTemplates", href: "/admin/automation/templates", capability: "canEditAutomation" },
           { labelKey: "aiAgent", href: "/admin/agent", capability: "canEditAgent" },
+          { labelKey: "agentSimulation", href: "/admin/agent/simulation", capability: "canEditAgent" },
           { labelKey: "knowledgeBase", href: "/admin/knowledge", capability: "canViewKnowledge" },
         ]
       },

@@ -840,6 +840,16 @@ export const api = {
     getConversationTrace: (tenantId: string, conversationId: string) =>
         apiGet(`/trace/${tenantId}/${conversationId}`),
 
+    // Agent simulation pre-deploy (T2.13)
+    runAgentSimulation: (
+        tenantId: string,
+        body: { agentId?: string; channelType?: string; scenarioSource: 'synthetic' | 'replay'; count?: number; vertical?: string; baselineRunId?: string },
+    ) => apiPost(`/simulation/${tenantId}/run`, body),
+    listAgentSimulations: (tenantId: string, limit = 20) =>
+        apiGet(`/simulation/${tenantId}?limit=${limit}`),
+    getAgentSimulation: (tenantId: string, runId: string) =>
+        apiGet(`/simulation/${tenantId}/${runId}`),
+
     // Slack integration (T2.16)
     getSlackConfig: (tenantId: string) => apiGet(`/slack/${tenantId}/config`),
     updateSlackConfig: (tenantId: string, body: any) => apiPut(`/slack/${tenantId}/config`, body),

@@ -77,6 +77,6 @@ import { MediaProcessingModule } from '../media-processing/media-processing.modu
     ],
     providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, BookingEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, AgentTestService, PreChatService],
     controllers: [ConversationsController, AgentTestController],
-    exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService],
+    exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, AgentTestService],
 })
 export class ConversationsModule {}

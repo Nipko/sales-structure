@@ -5,7 +5,11 @@ Consume la API existente (`auth` + `agent-console`) y Socket.io `/inbox`. Codeba
 
 Ver el plan completo en `docs/mobile-app-plan.md`.
 
+## Contexto / contrato compartido
+Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../packages/shared`) → el contrato de tipos de la API queda **enforced por TypeScript** (si el backend cambia un tipo, el mobile no compila). Metro está configurado para monorepo en `metro.config.js` (`watchFolders` + `nodeModulesPaths`). La superficie completa de API a espejar está en `apps/dashboard/src/lib/api.ts`.
+
 ## Estado (S1 — fundación + Inbox MVP)
+- ✅ Tipos compartidos conectados (`@parallext/shared`) — contrato enforced
 - ✅ Auth (email/contraseña → JWT en SecureStore) + **desbloqueo biométrico**
 - ✅ Navegación (tabs: Inbox · CRM · Citas · Más) + stack de Inbox
 - ✅ **Inbox en tiempo real** (lista → chat → responder) vía Socket.io

@@ -1,17 +1,13 @@
 import * as SecureStore from 'expo-secure-store';
+import type { AuthUser as SharedAuthUser } from '@parallext/shared';
 import { API_URL } from './config';
 
 const ACCESS_KEY = 'parallly_access';
 const REFRESH_KEY = 'parallly_refresh';
 const USER_KEY = 'parallly_user';
 
-export interface AuthUser {
-    id: string;
-    email: string;
-    name?: string;
-    role: string;
-    tenantId?: string;
-}
+// Shared contract (packages/shared) + the display name returned by /auth/login.
+export type AuthUser = SharedAuthUser & { name?: string };
 
 // ── Token storage (SecureStore) ──────────────────────────────
 export const tokens = {

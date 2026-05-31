@@ -840,6 +840,12 @@ export const api = {
     getConversationTrace: (tenantId: string, conversationId: string) =>
         apiGet(`/trace/${tenantId}/${conversationId}`),
 
+    // KB health / contradictions (T2.14)
+    getKbHealth: (tenantId: string) => apiGet(`/kb-health/${tenantId}`),
+    scanKbHealth: (tenantId: string) => apiPost(`/kb-health/${tenantId}/scan`, {}),
+    updateKbHealthIssue: (tenantId: string, id: string, status: string) =>
+        apiPost(`/kb-health/${tenantId}/${id}/status`, { status }),
+
     getDashboardBroadcast: (tenantId: string, start: string, end: string) =>
         apiGet(`/dashboard-analytics/broadcast/${tenantId}?start=${start}&end=${end}`),
 

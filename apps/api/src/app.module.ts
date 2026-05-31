@@ -31,6 +31,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { CopilotModule } from './modules/copilot/copilot.module';
 import { QualityModule } from './modules/quality/quality.module';
 import { TraceModule } from './modules/trace/trace.module';
+import { KbHealthModule } from './modules/kb-health/kb-health.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { BroadcastModule } from './modules/broadcast/broadcast.module';
@@ -177,6 +178,7 @@ import llmConfig from './config/llm.config';
         CopilotModule,
         QualityModule,
         TraceModule,
+        KbHealthModule,
         InventoryModule,
         OrdersModule,
         BroadcastModule,

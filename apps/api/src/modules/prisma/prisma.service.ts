@@ -463,9 +463,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                     if (dealId) {
                         await (super.$queryRawUnsafe as any)(
                             `INSERT INTO "${schemaName}"."stage_transitions" 
-                               (deal_id, to_stage_id, actor, reason, created_at)
+                               (deal_id, to_stage, changed_by, reason, created_at)
                              VALUES 
-                               ($1::uuid, $2::uuid, 'system', 'Retroactive sync from opportunity', NOW())`,
+                               ($1::uuid, $2, 'system', 'Retroactive sync from opportunity', NOW())`,
                             dealId, stage.id
                         );
                     }

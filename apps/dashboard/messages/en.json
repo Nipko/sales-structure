@@ -2925,6 +2925,15 @@
     "categorySaved": "Category saved",
     "limitReachedTitle": "Document limit reached",
     "limitReachedDesc": "You have reached the knowledge document limit on your current plan. Upgrade to add more.",
+    "health": {
+      "title": "KB Health — Contradictions",
+      "description": "Automatically detects KB chunks that contradict each other (prices, policies, conflicting facts).",
+      "scan": "Scan now",
+      "scanning": "Scanning...",
+      "empty": "No contradictions detected.",
+      "markResolved": "Mark resolved",
+      "dismiss": "Dismiss"
+    },
     "gaps": {
       "tab": "Gaps",
       "title": "Content gap analysis",

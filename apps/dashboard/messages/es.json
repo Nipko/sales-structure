@@ -2923,6 +2923,15 @@
     "categorySaved": "Categoría guardada",
     "limitReachedTitle": "Límite de documentos alcanzado",
     "limitReachedDesc": "Has llegado al límite de documentos de conocimiento en tu plan actual. Mejora tu plan para añadir más.",
+    "health": {
+      "title": "Salud del KB — Contradicciones",
+      "description": "Detecta automáticamente fragmentos del KB que se contradicen entre sí (precios, políticas, datos en conflicto).",
+      "scan": "Escanear ahora",
+      "scanning": "Escaneando...",
+      "empty": "No se detectaron contradicciones.",
+      "markResolved": "Marcar resuelta",
+      "dismiss": "Descartar"
+    },
     "gaps": {
       "tab": "Brechas",
       "title": "Análisis de brechas de contenido",

@@ -2925,6 +2925,15 @@
     "categorySaved": "Categoria salva",
     "limitReachedTitle": "Limite de documentos atingido",
     "limitReachedDesc": "Você atingiu o limite de documentos de conhecimento no seu plano atual. Faça upgrade para adicionar mais.",
+    "health": {
+      "title": "Saúde do KB — Contradições",
+      "description": "Detecta automaticamente trechos do KB que se contradizem (preços, políticas, dados em conflito).",
+      "scan": "Escanear agora",
+      "scanning": "Escaneando...",
+      "empty": "Nenhuma contradição detectada.",
+      "markResolved": "Marcar resolvida",
+      "dismiss": "Descartar"
+    },
     "gaps": {
       "tab": "Lacunas",
       "title": "Análise de lacunas de conteúdo",

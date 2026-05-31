@@ -121,6 +121,10 @@ export default function KnowledgePage() {
     const [gapReport, setGapReport] = useState<any>(null);
     const [gapLoading, setGapLoading] = useState(false);
 
+    // KB Health (contradictions — T2.14)
+    const [kbIssues, setKbIssues] = useState<any[]>([]);
+    const [kbScanning, setKbScanning] = useState(false);
+
     // AI Suggestions
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -429,7 +433,28 @@ export default function KnowledgePage() {
             .then((res: any) => setGapReport(res.data || res))
             .catch(() => {})
             .finally(() => setGapLoading(false));
+        // KB health contradictions
+        api.getKbHealth(activeTenantId)
+            .then((res: any) => { if (res?.success) setKbIssues(res.data || []); })
+            .catch(() => {});
     }, [tab, activeTenantId]);
+
+    const scanKbHealth = async () => {
+        if (!activeTenantId || kbScanning) return;
+        setKbScanning(true);
+        try {
+            await api.scanKbHealth(activeTenantId);
+            const res: any = await api.getKbHealth(activeTenantId);
+            if (res?.success) setKbIssues(res.data || []);
+        } catch { /* best-effort */ }
+        finally { setKbScanning(false); }
+    };
+
+    const resolveKbIssue = async (id: string, status: string) => {
+        if (!activeTenantId) return;
+        setKbIssues(prev => prev.filter((i: any) => i.id !== id)); // optimistic
+        try { await api.updateKbHealthIssue(activeTenantId, id, status); } catch { /* noop */ }
+    };
 
     // AI suggestions
     const handleGenerateSuggestions = async () => {
@@ -1222,6 +1247,57 @@ export default function KnowledgePage() {
                                     </div>
                                 </div>
                             )}
+
+                            {/* KB Health — contradiction detection (T2.14) */}
+                            <div className="p-5 rounded-[14px] border border-border bg-card">
+                                <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                                    <div className="flex items-center gap-2">
+                                        <AlertCircle size={18} className="text-purple-500" />
+                                        <h3 className="text-sm font-semibold m-0">{t("health.title")}</h3>
+                                    </div>
+                                    <button
+                                        onClick={scanKbHealth}
+                                        disabled={kbScanning}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                                    >
+                                        {kbScanning ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                                        {kbScanning ? t("health.scanning") : t("health.scan")}
+                                    </button>
+                                </div>
+                                <p className="text-xs text-muted-foreground mb-4 mt-0">{t("health.description")}</p>
+                                {kbIssues.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground py-4 text-center">{t("health.empty")}</p>
+                                ) : (
+                                    <div className="flex flex-col gap-3">
+                                        {kbIssues.map((issue: any) => (
+                                            <div key={issue.id} className="p-3 rounded-xl border border-purple-500/20 bg-purple-500/[0.04]">
+                                                <div className="flex items-center gap-2 mb-1 text-xs font-semibold text-foreground">
+                                                    <AlertCircle size={14} className="text-purple-500 flex-shrink-0" />
+                                                    <span>{issue.documentTitle || "—"} ↔ {issue.relatedDocumentTitle || "—"}</span>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground mb-1">{issue.detail}</p>
+                                                {issue.suggestion && (
+                                                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-2">💡 {issue.suggestion}</p>
+                                                )}
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => resolveKbIssue(issue.id, "resolved")}
+                                                        className="text-[11px] px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                                                    >
+                                                        {t("health.markResolved")}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => resolveKbIssue(issue.id, "dismissed")}
+                                                        className="text-[11px] px-2 py-1 rounded-md bg-muted text-muted-foreground hover:bg-muted/70 transition-colors"
+                                                    >
+                                                        {t("health.dismiss")}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
 
                             {(gapReport.unansweredQueries?.length === 0 && gapReport.lowSatisfaction?.length === 0 && gapReport.staleDocs?.length === 0) && (
                                 <div className="text-center py-10">

@@ -221,6 +221,19 @@ export function PricingSection() {
         {t("currencyHint")}
       </p>
 
+      {/* Transparency strip — IA incluida + WhatsApp pass-through + sin permanencia */}
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5 max-w-3xl mx-auto">
+        {["transparencyAiIncluded", "transparencyWhatsapp", "transparencyNoLockin"].map((k) => (
+          <span
+            key={k}
+            className="inline-flex items-center gap-1.5 text-xs text-text-secondary glass-card rounded-full px-3 py-1.5 border border-border/60"
+          >
+            <span className="text-emerald-400 flex-shrink-0">{Icon.check("w-3.5 h-3.5")}</span>
+            {t(k)}
+          </span>
+        ))}
+      </div>
+
       <div className="text-center mt-6">
         <Link
           href="/precios"

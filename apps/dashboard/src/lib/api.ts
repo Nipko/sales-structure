@@ -631,6 +631,14 @@ export const api = {
     }) =>
         apiPost<{ reply: string }>("/copilot/chat", data),
 
+    // Conversation copilot (inbox)
+    getCopilotSuggestions: (conversationId: string) =>
+        apiGet(`/copilot/${conversationId}/suggestions`),
+    getCopilotSummary: (conversationId: string) =>
+        apiGet(`/copilot/${conversationId}/summary`),
+    rewriteCopilotReply: (conversationId: string, draft: string, tone: string) =>
+        apiPost<{ text: string }>(`/copilot/${conversationId}/rewrite`, { draft, tone }),
+
     // --- Media ---
     uploadMedia: async (tenantId: string, file: File, entityType?: string, entityId?: string) => {
         const formData = new FormData();
@@ -821,6 +829,16 @@ export const api = {
         if (params.granularity) qs.set('granularity', params.granularity);
         return apiGet(`/dashboard-analytics/ai-resolution/${tenantId}?${qs.toString()}`);
     },
+
+    // Quality / QA scoring (T1.6/T1.8)
+    getQualitySummary: (tenantId: string, params: { start: string; end: string }) =>
+        apiGet(`/quality/${tenantId}?start=${params.start}&end=${params.end}`),
+    getQualityFlagged: (tenantId: string, params: { start: string; end: string; limit?: number }) =>
+        apiGet(`/quality/${tenantId}/flagged?start=${params.start}&end=${params.end}&limit=${params.limit || 50}`),
+
+    // Conversation trace (T1.7 — observability)
+    getConversationTrace: (tenantId: string, conversationId: string) =>
+        apiGet(`/trace/${tenantId}/${conversationId}`),
 
     getDashboardBroadcast: (tenantId: string, start: string, end: string) =>
         apiGet(`/dashboard-analytics/broadcast/${tenantId}?start=${start}&end=${end}`),

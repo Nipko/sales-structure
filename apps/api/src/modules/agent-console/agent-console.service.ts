@@ -415,6 +415,9 @@ export class AgentConsoleService {
             this.logger.warn(`Failed to set resolution_type: ${e.message}`);
         }
 
+        // QA scoring + resolution verification (async via BullMQ — T1.6/T1.8)
+        this.eventEmitter.emit('conversation.resolved', { tenantId, conversationId });
+
         this.logger.log(`Conversation ${conversationId} resolved by agent ${agentId}, returned to AI`);
     }
 

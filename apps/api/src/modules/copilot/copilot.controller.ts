@@ -71,6 +71,22 @@ export class CopilotController {
         return { success: true, data: intent };
     }
 
+    @Post(':conversationId/rewrite')
+    @ApiOperation({ summary: 'Rewrite an agent draft reply in a given tone' })
+    async rewriteReply(
+        @CurrentTenant() tenantId: string,
+        @Param('conversationId') conversationId: string,
+        @Body() body: { draft: string; tone: string },
+    ) {
+        const result = await this.copilotService.rewriteReply(
+            tenantId,
+            body?.draft || '',
+            body?.tone || 'professional',
+            conversationId,
+        );
+        return { success: true, data: result };
+    }
+
     @Post(':conversationId/ask')
     @ApiOperation({ summary: 'Agent asks Copilot a question about the conversation' })
     async askCopilot(

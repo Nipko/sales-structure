@@ -94,6 +94,7 @@
     "afterLabel": "Con Parallly",
     "afterStat": "Respuesta en 3 seg",
     "pickIndustry": "Elige tu industria y mirá la IA en acción",
+    "vibeSelling": "Sin armar flujos: elige tu industria y tu agente queda listo en minutos.",
     "demoLabel": "Conversación real con tu agente IA",
     "verticalName": {
       "salud": "Salud",
@@ -617,6 +618,10 @@
     ],
     "perMonth": "/mes",
     "currencyHint": "Precios en COP (pesos colombianos). ",
+    "transparencyTitle": "Precios honestos, sin sorpresas",
+    "transparencyAiIncluded": "IA incluida en todos los planes — sin add-ons sorpresa",
+    "transparencyWhatsapp": "Costos de WhatsApp de Meta sin recargo (pass-through transparente)",
+    "transparencyNoLockin": "Sin permanencia — cancela cuando quieras",
     "viewAllPlans": "Ver comparación completa de planes →",
     "fullComparison": "Ver comparación completa →"
   },

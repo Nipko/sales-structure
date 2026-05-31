@@ -36,6 +36,42 @@ export class PushListenerService {
         }
     }
 
+    @OnEvent('message.inbound')
+    async onInboundMessage(event: {
+        tenantId: string;
+        conversationId: string;
+        contactId?: string;
+        channel?: string;
+        messageType?: string;
+        text?: string;
+    }) {
+        if (!event?.tenantId || !event?.conversationId) return;
+        try {
+            const schemaName = await this.prisma.getTenantSchemaName(event.tenantId);
+            if (!schemaName) return;
+
+            // Only push when a human agent owns the conversation — otherwise the AI
+            // is handling it and the agent shouldn't be pinged for every message.
+            const rows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT assigned_to FROM conversations WHERE id = $1::uuid`,
+                [event.conversationId],
+            );
+            const assignedTo = rows?.[0]?.assigned_to;
+            if (!assignedTo) return;
+
+            const preview = (event.text || '').trim().slice(0, 120) || 'Nuevo mensaje';
+            await this.pushService.sendToUser(assignedTo, {
+                title: 'Nuevo mensaje',
+                body: preview,
+                url: '/admin/inbox',
+                tag: `msg-${event.conversationId}`, // replaces prior notification for this chat
+            }).catch(() => {});
+        } catch (err: any) {
+            this.logger.warn(`Inbound-message push failed: ${err.message}`);
+        }
+    }
+
     @OnEvent('handoff.escalated_supervisor')
     async onSupervisorEscalation(event: {
         tenantId: string;

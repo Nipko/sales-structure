@@ -432,6 +432,72 @@ Reglas:
     }
 
     /**
+     * Rewrites an agent's draft reply in a given tone, preserving meaning and language.
+     * Tones: professional | friendly | empathetic | shorter | expand | fix_grammar
+     */
+    async rewriteReply(
+        tenantId: string,
+        draft: string,
+        tone: string,
+        conversationId?: string,
+    ): Promise<{ text: string }> {
+        if (!draft || !draft.trim()) {
+            return { text: '' };
+        }
+
+        const toneInstructions: Record<string, string> = {
+            professional: 'Reescribe el texto en un tono profesional y cortés.',
+            friendly: 'Reescribe el texto en un tono cálido, cercano y amigable.',
+            empathetic: 'Reescribe el texto mostrando empatía y comprensión hacia el cliente.',
+            shorter: 'Haz el texto más corto y directo, conservando el mensaje esencial.',
+            expand: 'Expande ligeramente el texto con un poco más de detalle y cordialidad, sin volverlo largo.',
+            fix_grammar: 'Corrige ortografía, gramática y puntuación sin cambiar el significado ni el tono.',
+        };
+        const instruction = toneInstructions[tone] || toneInstructions['professional'];
+
+        // Optional conversation context (only to inform tone, never to invent content).
+        let contextBlock = '';
+        if (conversationId) {
+            try {
+                const messages = await this.loadRecentMessages(tenantId, conversationId);
+                if (messages && messages.length) {
+                    const ctx = messages
+                        .slice(-6)
+                        .map((m: any) => `${m.direction === 'inbound' ? 'Cliente' : 'Agente'}: ${m.content_text}`)
+                        .join('\n');
+                    contextBlock = `\n\n## Contexto reciente (solo referencia, no copiar):\n${ctx}`;
+                }
+            } catch {
+                // best-effort; context is optional
+            }
+        }
+
+        try {
+            const response = await this.llmRouter.execute({
+                model: 'gpt-4o-mini',
+                messages: [{ role: 'user', content: draft }],
+                systemPrompt: `Eres un asistente de redacción para agentes de atención al cliente y ventas.
+${instruction}
+
+Reglas estrictas:
+- Mantén EXACTAMENTE el mismo idioma del texto original.
+- Conserva el significado y la intención del mensaje.
+- No inventes datos, precios, fechas ni compromisos que no estén en el texto original.
+- Devuelve ÚNICAMENTE el texto reescrito: sin comillas, sin explicaciones, sin prefijos.${contextBlock}`,
+                temperature: 0.4,
+                maxTokens: 400,
+                tenantId,
+            });
+
+            const text = (response.content || '').trim();
+            return { text: text || draft };
+        } catch (error: any) {
+            this.logger.error(`rewriteReply failed: ${error.message}`);
+            return { text: draft };
+        }
+    }
+
+    /**
      * Invalidate all copilot caches for a conversation (call on new message).
      */
     async invalidateCache(tenantId: string, conversationId: string): Promise<void> {

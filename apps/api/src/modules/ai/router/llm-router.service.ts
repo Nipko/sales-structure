@@ -139,6 +139,7 @@ export class LLMRouterService {
         routingFactors?: RoutingFactors;
         allowedTiers?: ModelTier[];
         tenantId?: string;
+        traceContext?: { conversationId?: string; kbSources?: string[]; stage?: string };
     }): Promise<LLMResponse & { routingDecision?: RoutingDecision }> {
 
         if (options.task) {
@@ -169,6 +170,7 @@ export class LLMRouterService {
 
                     this.logger.log(`[LLM] ${options.task} via ${candidate.provider} (${candidate.id}) in ${durationMs}ms`);
                     this.trackStats(options.tenantId, candidate, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
+                    this.emitTurnTrace(options, candidate, durationMs, response, escalated, options.task);
 
                     const decision: RoutingDecision = {
                         selectedTier: candidate.tier,
@@ -229,6 +231,7 @@ export class LLMRouterService {
             const durationMs = Date.now() - startTime;
             this.logger.log(`[LLM] Direct via ${provider.providerName} (${modelConfig.id}) in ${durationMs}ms`);
             this.trackStats(options.tenantId, modelConfig, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
+            this.emitTurnTrace(options, modelConfig, durationMs, response, false, undefined);
             return { ...response };
         } catch (e: any) {
             const durationMs = Date.now() - startTime;
@@ -285,6 +288,42 @@ export class LLMRouterService {
             this.redis.expire(`${baseKey}:cost_centi_usd`, ttl),
             this.redis.expire(`${baseKey}:latency_sum_ms`, ttl),
         ]);
+    }
+
+    /**
+     * Emit a per-turn trace event (T1.7 — Trace View) when the caller passes a
+     * traceContext.conversationId. A listener persists it asynchronously, so this
+     * never blocks the conversation hot path. Only opted-in call sites are traced.
+     */
+    private emitTurnTrace(
+        opts: { tenantId?: string; traceContext?: { conversationId?: string; kbSources?: string[]; stage?: string } },
+        model: ModelConfig,
+        latencyMs: number,
+        response: LLMResponse | undefined,
+        fallbackUsed: boolean,
+        task?: TaskType,
+    ): void {
+        const ctx = opts.traceContext;
+        if (!ctx?.conversationId || !opts.tenantId) return;
+        try {
+            this.eventEmitter.emit('llm.turn', {
+                tenantId: opts.tenantId,
+                conversationId: ctx.conversationId,
+                provider: model.provider,
+                model: model.id,
+                tier: model.tier,
+                task: task || null,
+                latencyMs,
+                promptTokens: response?.usage?.promptTokens || 0,
+                completionTokens: response?.usage?.completionTokens || 0,
+                totalTokens: response?.usage?.totalTokens || 0,
+                fallbackUsed,
+                kbSources: Array.isArray(ctx.kbSources) ? ctx.kbSources.slice(0, 10) : [],
+                stage: ctx.stage || null,
+            });
+        } catch {
+            // tracing must never break generation
+        }
     }
 
     /**

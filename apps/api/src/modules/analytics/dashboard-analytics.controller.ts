@@ -153,9 +153,46 @@ export class DashboardAnalyticsController {
         @Query('end') end: string,
         @Query('granularity') granularity: string,
     ) {
-        const stats = await this.aiResolutionService.getResolutionStats(tenantId, start, end);
-        const trend = await this.aiResolutionService.getResolutionTrend(tenantId, start, end, (granularity as any) || 'day');
-        const byChannel = await this.aiResolutionService.getResolutionByChannel(tenantId, start, end);
-        return { success: true, data: { stats, trend, byChannel } };
+        const [stats, rawTrend, byChannel] = await Promise.all([
+            this.aiResolutionService.getResolutionStats(tenantId, start, end),
+            this.aiResolutionService.getResolutionTrend(tenantId, start, end, (granularity as any) || 'day'),
+            this.aiResolutionService.getResolutionByChannel(tenantId, start, end),
+        ]);
+
+        // Map to the shape consumed by the dashboard widget (AiResolutionWidget):
+        // it reads `summary` + `trend` with `date`/`aiResolutionRate` fields.
+        const summary = {
+            totalConversations: stats.total,
+            aiResolved: stats.aiResolved,
+            agentResolved: stats.agentResolved,
+            autoResolved: stats.autoResolved,
+            unresolved: stats.unresolved,
+            aiResolutionRate: stats.aiResolutionRate,
+            avgMessages: stats.avgMessagesToResolution,
+            avgMessagesBeforeHandoff: stats.avgAiMessagesBeforeHandoff,
+        };
+
+        const trend = (rawTrend || []).map((r: any) => {
+            // `period` is a timestamptz text (e.g. "2026-05-01 00:00:00+00"); normalize to YYYY-MM-DD.
+            let date = r.period as string;
+            try {
+                date = new Date(r.period).toISOString().slice(0, 10);
+            } catch {
+                date = (r.period || '').slice(0, 10);
+            }
+            return {
+                date,
+                period: r.period,
+                aiResolutionRate: r.rate,
+                rate: r.rate,
+                aiResolved: r.aiResolved,
+                agentResolved: r.agentResolved,
+                autoResolved: 0,
+                total: r.total,
+            };
+        });
+
+        // Return both `summary` (widget contract) and `stats` (back-compat) for safety.
+        return { success: true, data: { summary, stats, trend, byChannel } };
     }
 }

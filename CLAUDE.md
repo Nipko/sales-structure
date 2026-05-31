@@ -136,3 +136,5 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **Server installation** | `docs/server-installation.md` |
 | **Infrastructure capacity, scaling projections, cost analysis, 1000-tenant scenario, provider comparison** | `docs/infrastructure-capacity-analysis.md` |
 | **User manual** | `docs/user-manual.md` |
+| **Competitive analysis (May 2026 Q2 — DEFINITIVO): ~40 competidores en 6 clusters (AI-native, incumbentes, messaging, LatAm, booking/vertical/all-in-one), 31 dimensiones code-grounded, joya de la corona + UX + blueprint por competidor, 8 macro-tendencias, pricing WhatsApp/Meta, plan priorizado** | `docs/competitive-analysis-2026-q2.md` (supersede `competitive-analysis-2026-05.md` y `-enhanced.md`) |
+| **Platform test plan (May 2026): ~450 test items, 27 sections, 68 modules** | `docs/test-plan-2026-05.md` |

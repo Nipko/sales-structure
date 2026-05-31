@@ -94,6 +94,7 @@
     "afterLabel": "With Parallly",
     "afterStat": "Reply in 3 sec",
     "pickIndustry": "Pick your industry and see AI in action",
+    "vibeSelling": "No flow-building: pick your industry and your agent is ready in minutes.",
     "demoLabel": "Real conversation with your AI agent",
     "verticalName": {
       "salud": "Healthcare",
@@ -617,6 +618,10 @@
     ],
     "perMonth": "/mo",
     "currencyHint": "Prices in COP (Colombian pesos)",
+    "transparencyTitle": "Honest pricing, no surprises",
+    "transparencyAiIncluded": "AI included in every plan — no surprise add-ons",
+    "transparencyWhatsapp": "Meta's WhatsApp fees at cost (transparent pass-through)",
+    "transparencyNoLockin": "No lock-in — cancel anytime",
     "viewAllPlans": "See full plan comparison →",
     "fullComparison": "See full comparison →"
   },

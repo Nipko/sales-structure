@@ -17,7 +17,7 @@ import {
     Clock, CheckCircle, AlertCircle, Bot, User, MessageSquare,
     ArrowRight, ArrowLeft, StickyNote, Sparkles, Hash, RefreshCw, Zap, Loader2, UserCheck,
     Bell, Globe, Building2, MapPin, Instagram, Facebook, Linkedin, ExternalLink, Edit2, Save,
-    Archive, Trash2, PanelRightClose, PanelRightOpen, MoreHorizontal, FileText,
+    Archive, Trash2, PanelRightClose, PanelRightOpen, MoreHorizontal, FileText, Activity, X,
 } from "lucide-react";
 
 // ============================================
@@ -293,6 +293,17 @@ export default function InboxPage() {
     // --- AI Suggestion State ---
     const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
     const [aiSuggestionLoading, setAiSuggestionLoading] = useState(false);
+
+    // --- Copilot Rewrite / Summarize State ---
+    const [rewriting, setRewriting] = useState(false);
+    const [showRewriteMenu, setShowRewriteMenu] = useState(false);
+    const [summaryText, setSummaryText] = useState<string | null>(null);
+    const [summaryLoading, setSummaryLoading] = useState(false);
+
+    // --- AI Trace (observability) State ---
+    const [showTrace, setShowTrace] = useState(false);
+    const [traceData, setTraceData] = useState<any[]>([]);
+    const [traceLoading, setTraceLoading] = useState(false);
 
     // --- Assign State ---
     const [assignLoading, setAssignLoading] = useState(false);
@@ -1026,6 +1037,62 @@ export default function InboxPage() {
         return c.status !== "resolved";
     });
 
+    // ---- Copilot: rewrite agent draft / summarize conversation ----
+    const handleRewrite = async (tone: string) => {
+        if (!selectedConv?.id || !messageInput.trim() || rewriting) return;
+        setShowRewriteMenu(false);
+        setRewriting(true);
+        try {
+            const res: any = await api.rewriteCopilotReply(selectedConv.id, messageInput, tone);
+            if (res?.success && res.data?.text) {
+                setMessageInput(res.data.text);
+                messageInputRef.current?.focus();
+            }
+        } catch {
+            // best-effort; leave the draft untouched on failure
+        } finally {
+            setRewriting(false);
+        }
+    };
+
+    const handleSummarize = async () => {
+        if (!selectedConv?.id || summaryLoading) return;
+        if (summaryText) { setSummaryText(null); return; } // toggle off
+        setSummaryLoading(true);
+        try {
+            const res: any = await api.getCopilotSummary(selectedConv.id);
+            if (res?.success && res.data) {
+                const d = res.data;
+                const parts: string[] = [];
+                if (d.summary) parts.push(d.summary);
+                if (d.customerIntent) parts.push(`${t("copilotIntent")}: ${d.customerIntent}`);
+                if (Array.isArray(d.pendingQuestions) && d.pendingQuestions.length) {
+                    parts.push(`${t("copilotPending")}: ${d.pendingQuestions.join("; ")}`);
+                }
+                setSummaryText(parts.filter(Boolean).join("\n") || t("copilotNoSummary"));
+            }
+        } catch {
+            setSummaryText(t("copilotNoSummary"));
+        } finally {
+            setSummaryLoading(false);
+        }
+    };
+
+    const toggleTrace = async () => {
+        if (showTrace) { setShowTrace(false); return; }
+        if (!activeTenantId || !selectedConv?.id) return;
+        setShowTrace(true);
+        setTraceLoading(true);
+        try {
+            const res: any = await api.getConversationTrace(activeTenantId, selectedConv.id);
+            setTraceData(res?.success && Array.isArray(res.data) ? res.data : []);
+        } catch {
+            setTraceData([]);
+        } finally {
+            setTraceLoading(false);
+        }
+    };
+
     // ---- Interactive functions ----
     const handleSend = async () => {
         if (!messageInput.trim() || sending) return;
@@ -1411,6 +1478,57 @@ export default function InboxPage() {
                             </div>
                         )}
 
+                        {/* AI Trace drawer (T1.7 — observability per conversation) */}
+                        {showTrace && (
+                            <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setShowTrace(false)}>
+                                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+                                <div
+                                    className="relative w-full max-w-md h-full bg-card border-l border-border overflow-auto p-5"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                            <Activity size={16} className="text-indigo-500" /> {t("traceTitle")}
+                                        </h3>
+                                        <button onClick={() => setShowTrace(false)} className="p-1 rounded-lg hover:bg-muted text-muted-foreground">
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                    {traceLoading ? (
+                                        <div className="flex justify-center py-10"><Loader2 size={20} className="animate-spin text-muted-foreground" /></div>
+                                    ) : traceData.length === 0 ? (
+                                        <p className="text-xs text-muted-foreground text-center py-10">{t("traceEmpty")}</p>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {traceData.map((tr: any, i: number) => (
+                                                <div key={i} className="rounded-xl border border-border bg-muted/30 p-3 text-[12px]">
+                                                    <div className="flex items-center justify-between mb-1.5">
+                                                        <span className="font-semibold text-foreground">{tr.provider} · {tr.model}</span>
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-500 font-medium">{tr.tier}</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-1.5 text-muted-foreground">
+                                                        <span>{t("traceLatency")}: <span className="text-foreground">{tr.latencyMs}ms</span></span>
+                                                        <span>{t("traceTokens")}: <span className="text-foreground">{tr.totalTokens}</span></span>
+                                                        <span>{t("traceStage")}: <span className="text-foreground">{tr.stage || "—"}</span></span>
+                                                        <span>{tr.task || "—"}</span>
+                                                    </div>
+                                                    {tr.fallbackUsed && (
+                                                        <div className="mt-1.5 text-[10px] text-amber-500 font-medium">⚠ {t("traceFallback")}</div>
+                                                    )}
+                                                    {tr.kbSources?.length > 0 && (
+                                                        <div className="mt-1.5 text-[11px]">
+                                                            <span className="text-muted-foreground">{t("traceKbSources")}: </span>
+                                                            <span className="text-foreground">{tr.kbSources.join(", ")}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Chat Header */}
                         <div className="px-4 md:px-5 py-3 border-b border-border flex justify-between items-center bg-card gap-3">
                             <div className="flex items-center gap-3 min-w-0">
@@ -1457,6 +1575,14 @@ export default function InboxPage() {
                             </div>
                             {/* Action buttons — only 3 always visible + More dropdown */}
                             <div className="flex gap-1.5 items-center flex-shrink-0">
+                                {/* AI Trace (observability) */}
+                                <button
+                                    onClick={toggleTrace}
+                                    className="p-1.5 rounded-lg border-none bg-transparent text-muted-foreground cursor-pointer hover:text-foreground hover:bg-muted transition-colors"
+                                    title={t("traceTitle")}
+                                >
+                                    <Activity size={16} />
+                                </button>
                                 {/* Resolve — always visible */}
                                 <button
                                     onClick={handleResolve}
@@ -1840,7 +1966,58 @@ export default function InboxPage() {
 
                         {/* Message Input — hidden when conversation is resolved */}
                         {selectedConv && selectedConv.status !== 'resolved' && (
-                        <div className="px-4 md:px-5 py-3 border-t border-border flex gap-2.5 items-center bg-card">
+                        <div className="border-t border-border bg-card">
+                            {/* Copilot summary banner */}
+                            {summaryText && (
+                                <div className="px-4 md:px-5 pt-2.5 flex gap-2.5 items-start">
+                                    <FileText size={15} className="text-indigo-500 mt-0.5 flex-shrink-0" />
+                                    <div className="flex-1 text-[13px] text-muted-foreground whitespace-pre-line leading-relaxed">{summaryText}</div>
+                                    <button onClick={() => setSummaryText(null)} className="text-muted-foreground hover:text-foreground text-xs px-1">✕</button>
+                                </div>
+                            )}
+                            {/* Copilot toolbar */}
+                            <div className="px-4 md:px-5 pt-2 flex gap-2 items-center relative">
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setShowRewriteMenu(v => !v)}
+                                        disabled={!messageInput.trim() || rewriting}
+                                        className="py-1 px-2.5 rounded-lg border border-border bg-transparent text-muted-foreground text-[12px] cursor-pointer flex gap-1.5 items-center hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        {rewriting ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} className="text-purple-500" />}
+                                        {rewriting ? t("copilotRewriting") : t("copilotRewrite")}
+                                    </button>
+                                    {showRewriteMenu && (
+                                        <div className="absolute bottom-full left-0 mb-1.5 bg-card border border-border rounded-xl shadow-lg z-50 py-1 min-w-[160px]">
+                                            {([
+                                                ["professional", "copilotToneProfessional"],
+                                                ["friendly", "copilotToneFriendly"],
+                                                ["empathetic", "copilotToneEmpathetic"],
+                                                ["shorter", "copilotToneShorter"],
+                                                ["expand", "copilotToneExpand"],
+                                                ["fix_grammar", "copilotToneFixGrammar"],
+                                            ] as const).map(([tone, key]) => (
+                                                <button
+                                                    key={tone}
+                                                    onClick={() => handleRewrite(tone)}
+                                                    className="w-full text-left px-3 py-1.5 text-[12px] text-foreground hover:bg-muted transition-colors"
+                                                >
+                                                    {t(key)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={handleSummarize}
+                                    disabled={summaryLoading}
+                                    className="py-1 px-2.5 rounded-lg border border-border bg-transparent text-muted-foreground text-[12px] cursor-pointer flex gap-1.5 items-center hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
+                                >
+                                    {summaryLoading ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} className="text-indigo-500" />}
+                                    {t("copilotSummarize")}
+                                </button>
+                            </div>
+                            {/* Input row */}
+                            <div className="px-4 md:px-5 py-3 flex gap-2.5 items-center">
                             <button className="bg-transparent border-none text-muted-foreground cursor-pointer p-1.5 hover:text-foreground rounded-lg hover:bg-muted transition-colors">
                                 <Paperclip size={18} />
                             </button>
@@ -1909,6 +2086,7 @@ export default function InboxPage() {
                             >
                                 {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                             </button>
+                            </div>
                         </div>
                         )}
                     </>

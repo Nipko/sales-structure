@@ -1296,6 +1296,13 @@ export class ConversationsService {
                     tools: hasTools ? tools : undefined,
                     allowedTiers,
                     tenantId,
+                    traceContext: {
+                        conversationId: conversation.id,
+                        kbSources: ((turnContext.retrievedKnowledge as any[]) || [])
+                            .map((k: any) => k?.title)
+                            .filter(Boolean),
+                        stage: engineProducedText ? 'booking' : 'conversation',
+                    },
                 });
 
                 // Check if LLM wants to call tools

@@ -145,6 +145,9 @@ export function HeroSection() {
               </motion.button>
             ))}
           </div>
+          <p className="text-center text-xs text-accent/80 mt-3 font-medium max-w-xl mx-auto">
+            {t("vibeSelling")}
+          </p>
         </motion.div>
 
         {/* Demo — the star of the hero */}

@@ -64,7 +64,19 @@ function CrmStackNavigator() {
     );
 }
 
+function loc(v: any): string {
+    if (!v) return '';
+    const s = typeof v === 'string' ? v : (v.es || v.en || '');
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+}
+
 function MainTabs() {
+    const { verticalConfig } = useAuth();
+    const term = verticalConfig?.terminology || {};
+    // Vertical-aware tab labels (e.g. turismo → "Reservas", restaurantes → "Pedidos").
+    const citasLabel = loc(term.transactionNoun) || 'Citas';
+    const crmLabel = loc(term.customerNounPlural) || 'CRM';
+
     return (
         <Tabs.Navigator
             screenOptions={({ route }) => ({
@@ -81,8 +93,8 @@ function MainTabs() {
             })}
         >
             <Tabs.Screen name="Inbox" component={InboxStackNavigator} />
-            <Tabs.Screen name="CRM" component={CrmStackNavigator} />
-            <Tabs.Screen name="Citas" component={AppointmentsScreen} />
+            <Tabs.Screen name="CRM" component={CrmStackNavigator} options={{ tabBarLabel: crmLabel }} />
+            <Tabs.Screen name="Citas" component={AppointmentsScreen} options={{ tabBarLabel: citasLabel }} />
             <Tabs.Screen name="Más" component={MoreScreen} />
         </Tabs.Navigator>
     );

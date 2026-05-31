@@ -13,13 +13,14 @@ Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../pack
 - ✅ Auth (email/contraseña → JWT en SecureStore) + **desbloqueo biométrico**
 - ✅ Navegación (tabs: Inbox · CRM · Citas · Más)
 - ✅ **Inbox en tiempo real** (lista → chat → responder) vía Socket.io
-- ✅ Acciones de chat: **asignarme**, **resolver**, **respuestas rápidas (canned)**, **sugerencia IA**
+- ✅ Acciones de chat: **asignarme**, **resolver**, **respuestas rápidas (canned)**, **macros**, **sugerencia IA**
 - ✅ **CRM**: lista de leads (búsqueda) + detalle 360° (datos, etiquetas, oportunidades, llamar/email)
 - ✅ **Embudo**: etapas del pipeline + **mover deals** entre etapas (desde el header de CRM)
 - ✅ **Citas**: agenda próxima + **confirmar / cancelar**
 - ✅ **Más**: KPIs (resolución IA/verificada, 30 días) + **disponibilidad** + cerrar sesión
+- ✅ **Adaptación por vertical**: las pestañas se relabelan según `verticalConfig` (ej. turismo → "Reservas", restaurantes → "Pedidos", salud → "Pacientes")
 - ✅ **Push nativo** (Expo): registro del token + `/push/expo-subscribe`; el backend envía vía Expo Push API en mensaje/handoff/SLA/cita; tap → Inbox. *Requiere `eas init` (projectId) y un **development build** — NO funciona en Expo Go (SDK 53+ quitó remote push de Expo Go).*
-- 🚧 Pendiente: macros, adaptación por vertical, EAS build para tiendas
+- 🚧 Pendiente: EAS build/submit a tiendas (Apple $99 / Google $25)
 
 ## Push nativo — cómo activarlo
 1. `npm i -g eas-cli && eas login`

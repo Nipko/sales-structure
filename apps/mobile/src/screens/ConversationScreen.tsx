@@ -36,16 +36,30 @@ export function ConversationScreen() {
     const [suggesting, setSuggesting] = useState(false);
     const [canned, setCanned] = useState<any[]>([]);
     const [cannedOpen, setCannedOpen] = useState(false);
+    const [macros, setMacros] = useState<any[]>([]);
+    const [macrosOpen, setMacrosOpen] = useState(false);
     const [acting, setActing] = useState(false);
     const listRef = useRef<FlatList>(null);
 
-    // Load canned responses once.
+    // Load canned responses + macros once.
     useEffect(() => {
         if (!tenantId) return;
         api.getCannedResponses(tenantId).then((res: any) => {
             if (res?.success && Array.isArray(res.data)) setCanned(res.data);
         });
+        api.getMacros(tenantId).then((res: any) => {
+            if (res?.success && Array.isArray(res.data)) setMacros(res.data);
+        });
     }, [tenantId]);
+
+    const runMacro = async (macroId: string) => {
+        if (!tenantId || !user?.id) return;
+        setMacrosOpen(false);
+        setActing(true);
+        await api.executeMacro(tenantId, macroId, conversationId, user.id);
+        setActing(false);
+        await load();
+    };
 
     const assignToMe = async () => {
         if (!tenantId || !user?.id) return;
@@ -163,6 +177,11 @@ export function ConversationScreen() {
                         <Ionicons name="albums-outline" size={22} color={theme.textSecondary} />
                     </TouchableOpacity>
                 )}
+                {macros.length > 0 && (
+                    <TouchableOpacity onPress={() => setMacrosOpen(true)} style={styles.iconBtn} disabled={acting}>
+                        <Ionicons name="flash-outline" size={22} color={theme.warning} />
+                    </TouchableOpacity>
+                )}
                 <TouchableOpacity onPress={suggest} style={styles.iconBtn} disabled={suggesting}>
                     {suggesting ? <ActivityIndicator color={theme.accent} size="small" /> : <Ionicons name="sparkles-outline" size={22} color={theme.accent} />}
                 </TouchableOpacity>
@@ -195,6 +214,28 @@ export function ConversationScreen() {
                                     </TouchableOpacity>
                                 );
                             }}
+                        />
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
+            <Modal visible={macrosOpen} transparent animationType="slide" onRequestClose={() => setMacrosOpen(false)}>
+                <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setMacrosOpen(false)}>
+                    <View style={styles.sheet}>
+                        <Text style={styles.sheetTitle}>Macros</Text>
+                        <FlatList
+                            data={macros}
+                            keyExtractor={(m, i) => m.id || String(i)}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity style={styles.cannedRow} onPress={() => runMacro(item.id)}>
+                                    <Text style={styles.cannedTitle}>{item.name || item.title || 'Macro'}</Text>
+                                    {!!(item.description || item.actions?.length) && (
+                                        <Text style={styles.cannedBody} numberOfLines={1}>
+                                            {item.description || `${item.actions?.length || 0} acciones`}
+                                        </Text>
+                                    )}
+                                </TouchableOpacity>
+                            )}
                         />
                     </View>
                 </TouchableOpacity>

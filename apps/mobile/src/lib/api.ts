@@ -123,6 +123,12 @@ export const api = {
     setAvailability: (userId: string, status: string) =>
         json(`/agent-console/status/${userId}`, { method: 'PUT', body: JSON.stringify({ status }) }),
     getCannedResponses: (tenantId: string) => json(`/agent-console/canned/${tenantId}`),
+    getMacros: (tenantId: string) => json(`/agent-console/macros/${tenantId}`),
+    executeMacro: (tenantId: string, macroId: string, conversationId: string, agentId: string) =>
+        json(`/agent-console/macros/${tenantId}/${macroId}/execute`, { method: 'POST', body: JSON.stringify({ conversationId, agentId }) }),
+
+    // Vertical config (terminology per industry)
+    getVerticalConfig: (tenantId: string) => json(`/verticals/${tenantId}`),
 
     // CRM
     getLeads: (tenantId: string, params?: string) =>

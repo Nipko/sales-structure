@@ -122,4 +122,25 @@ export const api = {
         json(`/agent-console/conversation/${tenantId}/${id}/suggest`),
     setAvailability: (userId: string, status: string) =>
         json(`/agent-console/status/${userId}`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    getCannedResponses: (tenantId: string) => json(`/agent-console/canned/${tenantId}`),
+
+    // CRM
+    getLeads: (tenantId: string, params?: string) =>
+        json(`/crm/leads/${tenantId}${params ? `?${params}` : ''}`),
+    getLead: (tenantId: string, leadId: string) => json(`/crm/leads/${tenantId}/${leadId}`),
+
+    // Appointments
+    getAppointments: (tenantId: string, params?: string) =>
+        json(`/appointments/${tenantId}${params ? `?${params}` : ''}`),
+    updateAppointment: (tenantId: string, id: string, data: any) =>
+        json(`/appointments/${tenantId}/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    cancelAppointment: (tenantId: string, id: string, reason?: string) =>
+        json(`/appointments/${tenantId}/${id}/cancel`, { method: 'PUT', body: JSON.stringify({ reason }) }),
+
+    // Analytics
+    getResolutionStats: (tenantId: string, start: string, end: string) =>
+        json(`/dashboard-analytics/ai-resolution/${tenantId}?start=${start}&end=${end}`),
+    getOverviewKpis: (tenantId: string, start: string, end: string) =>
+        json(`/dashboard-analytics/overview-kpis/${tenantId}?start=${start}&end=${end}`),
 };
+

@@ -8,24 +8,44 @@ import { theme } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
 import { InboxScreen } from '../screens/InboxScreen';
 import { ConversationScreen } from '../screens/ConversationScreen';
-import { PlaceholderScreen } from '../screens/PlaceholderScreen';
+import { CrmScreen } from '../screens/CrmScreen';
+import { LeadDetailScreen } from '../screens/LeadDetailScreen';
+import { AppointmentsScreen } from '../screens/AppointmentsScreen';
+import { MoreScreen } from '../screens/MoreScreen';
 
 export type InboxStackParams = {
     InboxList: undefined;
     Conversation: { conversationId: string; title: string };
 };
+export type CrmStackParams = {
+    CrmList: undefined;
+    LeadDetail: { leadId: string; title: string };
+};
 
 const Stack = createNativeStackNavigator();
 const InboxStack = createNativeStackNavigator<InboxStackParams>();
+const CrmStack = createNativeStackNavigator<CrmStackParams>();
 const Tabs = createBottomTabNavigator();
+
+const stackOptions = { headerStyle: { backgroundColor: theme.bgCard }, headerTintColor: theme.text };
 
 function InboxStackNavigator() {
     return (
-        <InboxStack.Navigator screenOptions={{ headerStyle: { backgroundColor: theme.bgCard }, headerTintColor: theme.text }}>
+        <InboxStack.Navigator screenOptions={stackOptions}>
             <InboxStack.Screen name="InboxList" component={InboxScreen} options={{ title: 'Inbox' }} />
             <InboxStack.Screen name="Conversation" component={ConversationScreen}
                 options={({ route }) => ({ title: route.params?.title || 'Conversación' })} />
         </InboxStack.Navigator>
+    );
+}
+
+function CrmStackNavigator() {
+    return (
+        <CrmStack.Navigator screenOptions={stackOptions}>
+            <CrmStack.Screen name="CrmList" component={CrmScreen} options={{ title: 'CRM' }} />
+            <CrmStack.Screen name="LeadDetail" component={LeadDetailScreen}
+                options={({ route }) => ({ title: route.params?.title || 'Lead' })} />
+        </CrmStack.Navigator>
     );
 }
 
@@ -46,9 +66,9 @@ function MainTabs() {
             })}
         >
             <Tabs.Screen name="Inbox" component={InboxStackNavigator} />
-            <Tabs.Screen name="CRM" children={() => <PlaceholderScreen title="CRM" subtitle="Próximamente: contactos, pipeline y deals." />} />
-            <Tabs.Screen name="Citas" children={() => <PlaceholderScreen title="Citas" subtitle="Próximamente: agenda del día y confirmaciones." />} />
-            <Tabs.Screen name="Más" children={() => <PlaceholderScreen title="Más" subtitle="Analytics, perfil y disponibilidad." showLogout />} />
+            <Tabs.Screen name="CRM" component={CrmStackNavigator} />
+            <Tabs.Screen name="Citas" component={AppointmentsScreen} />
+            <Tabs.Screen name="Más" component={MoreScreen} />
         </Tabs.Navigator>
     );
 }

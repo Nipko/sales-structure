@@ -11,10 +11,13 @@ Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../pack
 ## Estado (S1 — fundación + Inbox MVP)
 - ✅ Tipos compartidos conectados (`@parallext/shared`) — contrato enforced
 - ✅ Auth (email/contraseña → JWT en SecureStore) + **desbloqueo biométrico**
-- ✅ Navegación (tabs: Inbox · CRM · Citas · Más) + stack de Inbox
+- ✅ Navegación (tabs: Inbox · CRM · Citas · Más)
 - ✅ **Inbox en tiempo real** (lista → chat → responder) vía Socket.io
-- ✅ Sugerencia IA (copilot) en el composer
-- 🚧 Siguientes sprints: push nativo, quick replies/macros, CRM, booking, analytics, vertical
+- ✅ Acciones de chat: **asignarme**, **resolver**, **respuestas rápidas (canned)**, **sugerencia IA**
+- ✅ **CRM**: lista de leads (búsqueda) + detalle 360° (datos, etiquetas, oportunidades, llamar/email)
+- ✅ **Citas**: agenda próxima + **confirmar / cancelar**
+- ✅ **Más**: KPIs (resolución IA/verificada, 30 días) + **disponibilidad** + cerrar sesión
+- 🚧 Pendiente: **push nativo** (requiere endpoint backend para tokens Expo/FCM; el actual es Web-Push), macros, pipeline kanban, adaptación por vertical
 
 ## Requisitos previos
 - Node 18+, `npm`

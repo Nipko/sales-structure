@@ -140,7 +140,8 @@
       "dripSequences": "Drip Sequences",
       "automationTemplates": "Templates",
       "agentSimulation": "Test agent",
-      "procedures": "Procedures"
+      "procedures": "Procedures",
+      "organizations": "Organizations"
     }
   },
   "topbar": {
@@ -6961,5 +6962,40 @@
     "saveFailed": "Could not save",
     "testOk": "Connected · {count} tools",
     "testFailed": "Connection failed"
+  },
+  "organizations": {
+    "title": "Organizations (B2B)",
+    "subtitle": "Company accounts, weighted pipeline value, and stalled-deal alerts.",
+    "newOrg": "New organization",
+    "editOrg": "Edit organization",
+    "weightedPipeline": "Weighted pipeline",
+    "weightedHint": "Σ value × stage probability",
+    "committed": "Committed",
+    "committedHint": "Stages with ≥80% probability",
+    "bestCase": "Best case",
+    "bestCaseHint": "Total open pipeline value",
+    "avgDaysToWin": "Avg days to win",
+    "velocityHint": "Last 90 days",
+    "openDeals": "Open deals",
+    "monthlyWins": "{n} won/mo",
+    "byStage": "Weighted value by stage",
+    "rottingTitle": "Stalled deals",
+    "daysStale": "{n} days",
+    "organizations": "Organizations",
+    "searchPlaceholder": "Search…",
+    "empty": "No organizations yet.",
+    "name": "Name",
+    "industry": "Industry",
+    "contacts": "Contacts",
+    "weighted": "Weighted",
+    "size": "Size",
+    "city": "City",
+    "phone": "Phone",
+    "email": "Email",
+    "notes": "Notes",
+    "edit": "Edit",
+    "save": "Save",
+    "delete": "Delete",
+    "members": "Contacts"
   }
 }

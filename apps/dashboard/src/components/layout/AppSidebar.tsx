@@ -107,7 +107,8 @@ const tenantSections: NavSectionDef[] = [
         accent: "text-blue-500 dark:text-blue-400",
         children: [
           { labelKey: "crm", href: "/admin/contacts" },
-          { labelKey: "pipeline", href: "/admin/pipeline" }
+          { labelKey: "pipeline", href: "/admin/pipeline" },
+          { labelKey: "organizations", href: "/admin/contacts/organizations", capability: "canEditPipeline" }
         ]
       },
       { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays, capability: "canHandleConversations", accent: "text-amber-500 dark:text-amber-400" },

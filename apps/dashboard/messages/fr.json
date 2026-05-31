@@ -140,7 +140,8 @@
       "dripSequences": "Séquences Drip",
       "automationTemplates": "Modèles",
       "agentSimulation": "Tester l'agent",
-      "procedures": "Procédures"
+      "procedures": "Procédures",
+      "organizations": "Organisations"
     }
   },
   "topbar": {
@@ -6897,5 +6898,40 @@
     "saveFailed": "Échec de l'enregistrement",
     "testOk": "Connecté · {count} outils",
     "testFailed": "Échec de la connexion"
+  },
+  "organizations": {
+    "title": "Organisations (B2B)",
+    "subtitle": "Comptes d'entreprise, valeur pondérée du pipeline et alertes d'affaires bloquées.",
+    "newOrg": "Nouvelle organisation",
+    "editOrg": "Modifier l'organisation",
+    "weightedPipeline": "Pipeline pondéré",
+    "weightedHint": "Σ valeur × probabilité d'étape",
+    "committed": "Engagé",
+    "committedHint": "Étapes avec ≥80% de probabilité",
+    "bestCase": "Meilleur cas",
+    "bestCaseHint": "Valeur totale du pipeline ouvert",
+    "avgDaysToWin": "Jours moy. pour gagner",
+    "velocityHint": "90 derniers jours",
+    "openDeals": "Affaires ouvertes",
+    "monthlyWins": "{n} gagnées/mois",
+    "byStage": "Valeur pondérée par étape",
+    "rottingTitle": "Affaires bloquées",
+    "daysStale": "{n} jours",
+    "organizations": "Organisations",
+    "searchPlaceholder": "Rechercher…",
+    "empty": "Aucune organisation pour l'instant.",
+    "name": "Nom",
+    "industry": "Secteur",
+    "contacts": "Contacts",
+    "weighted": "Pondéré",
+    "size": "Taille",
+    "city": "Ville",
+    "phone": "Téléphone",
+    "email": "Email",
+    "notes": "Notes",
+    "edit": "Modifier",
+    "save": "Enregistrer",
+    "delete": "Supprimer",
+    "members": "Contacts"
   }
 }

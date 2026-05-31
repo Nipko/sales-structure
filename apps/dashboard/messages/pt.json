@@ -140,7 +140,8 @@
       "dripSequences": "Sequências Drip",
       "automationTemplates": "Modelos",
       "agentSimulation": "Testar agente",
-      "procedures": "Procedimentos"
+      "procedures": "Procedimentos",
+      "organizations": "Organizações"
     }
   },
   "topbar": {
@@ -6897,5 +6898,40 @@
     "saveFailed": "Não foi possível salvar",
     "testOk": "Conectado · {count} ferramentas",
     "testFailed": "Falha na conexão"
+  },
+  "organizations": {
+    "title": "Organizações (B2B)",
+    "subtitle": "Contas empresariais, valor ponderado do pipeline e alertas de negócios parados.",
+    "newOrg": "Nova organização",
+    "editOrg": "Editar organização",
+    "weightedPipeline": "Pipeline ponderado",
+    "weightedHint": "Σ valor × probabilidade da etapa",
+    "committed": "Comprometido",
+    "committedHint": "Etapas com ≥80% de probabilidade",
+    "bestCase": "Melhor caso",
+    "bestCaseHint": "Valor total do pipeline aberto",
+    "avgDaysToWin": "Dias méd. p/ ganhar",
+    "velocityHint": "Últimos 90 dias",
+    "openDeals": "Negócios abertos",
+    "monthlyWins": "{n} ganhos/mês",
+    "byStage": "Valor ponderado por etapa",
+    "rottingTitle": "Negócios parados",
+    "daysStale": "{n} dias",
+    "organizations": "Organizações",
+    "searchPlaceholder": "Buscar…",
+    "empty": "Ainda não há organizações.",
+    "name": "Nome",
+    "industry": "Setor",
+    "contacts": "Contatos",
+    "weighted": "Ponderado",
+    "size": "Tamanho",
+    "city": "Cidade",
+    "phone": "Telefone",
+    "email": "Email",
+    "notes": "Notas",
+    "edit": "Editar",
+    "save": "Salvar",
+    "delete": "Excluir",
+    "members": "Contatos"
   }
 }

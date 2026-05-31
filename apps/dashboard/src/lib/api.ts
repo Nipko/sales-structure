@@ -881,6 +881,16 @@ export const api = {
     testMcpServer: (tenantId: string, id: string) => apiPost(`/mcp/${tenantId}/servers/${id}/test`, {}),
     getMcpServerTools: (tenantId: string) => apiGet(`/mcp/${tenantId}/tools`),
 
+    // CRM B2B (T3.21) — organizations, forecast, rotting
+    listOrganizations: (tenantId: string, search?: string) =>
+        apiGet(`/crm-b2b/${tenantId}/organizations${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+    getOrganization: (tenantId: string, id: string) => apiGet(`/crm-b2b/${tenantId}/organizations/${id}`),
+    createOrganization: (tenantId: string, body: any) => apiPost(`/crm-b2b/${tenantId}/organizations`, body),
+    updateOrganization: (tenantId: string, id: string, body: any) => apiPut(`/crm-b2b/${tenantId}/organizations/${id}`, body),
+    deleteOrganization: (tenantId: string, id: string) => apiDelete(`/crm-b2b/${tenantId}/organizations/${id}`),
+    getForecast: (tenantId: string) => apiGet(`/crm-b2b/${tenantId}/forecast`),
+    getRottingDeals: (tenantId: string, days = 14) => apiGet(`/crm-b2b/${tenantId}/rotting?days=${days}`),
+
     // Slack integration (T2.16)
     getSlackConfig: (tenantId: string) => apiGet(`/slack/${tenantId}/config`),
     updateSlackConfig: (tenantId: string, body: any) => apiPut(`/slack/${tenantId}/config`, body),

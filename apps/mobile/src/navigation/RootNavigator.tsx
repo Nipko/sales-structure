@@ -1,21 +1,22 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNavigationContainerRef } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { registerForPush, onNotificationTap } from '../lib/push';
-
-export const navigationRef = createNavigationContainerRef<any>();
 import { theme } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
 import { InboxScreen } from '../screens/InboxScreen';
 import { ConversationScreen } from '../screens/ConversationScreen';
 import { CrmScreen } from '../screens/CrmScreen';
 import { LeadDetailScreen } from '../screens/LeadDetailScreen';
+import { PipelineScreen } from '../screens/PipelineScreen';
 import { AppointmentsScreen } from '../screens/AppointmentsScreen';
 import { MoreScreen } from '../screens/MoreScreen';
+
+export const navigationRef = createNavigationContainerRef<any>();
 
 export type InboxStackParams = {
     InboxList: undefined;
@@ -24,6 +25,7 @@ export type InboxStackParams = {
 export type CrmStackParams = {
     CrmList: undefined;
     LeadDetail: { leadId: string; title: string };
+    Pipeline: undefined;
 };
 
 const Stack = createNativeStackNavigator();
@@ -46,9 +48,18 @@ function InboxStackNavigator() {
 function CrmStackNavigator() {
     return (
         <CrmStack.Navigator screenOptions={stackOptions}>
-            <CrmStack.Screen name="CrmList" component={CrmScreen} options={{ title: 'CRM' }} />
+            <CrmStack.Screen name="CrmList" component={CrmScreen}
+                options={({ navigation }) => ({
+                    title: 'CRM',
+                    headerRight: () => (
+                        <TouchableOpacity onPress={() => navigation.navigate('Pipeline')} style={{ paddingHorizontal: 4 }}>
+                            <Ionicons name="git-branch-outline" size={22} color={theme.accent} />
+                        </TouchableOpacity>
+                    ),
+                })} />
             <CrmStack.Screen name="LeadDetail" component={LeadDetailScreen}
                 options={({ route }) => ({ title: route.params?.title || 'Lead' })} />
+            <CrmStack.Screen name="Pipeline" component={PipelineScreen} options={{ title: 'Embudo' }} />
         </CrmStack.Navigator>
     );
 }

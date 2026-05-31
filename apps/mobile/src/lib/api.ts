@@ -143,6 +143,12 @@ export const api = {
     getOverviewKpis: (tenantId: string, start: string, end: string) =>
         json(`/dashboard-analytics/overview-kpis/${tenantId}?start=${start}&end=${end}`),
 
+    // Pipeline
+    getPipelineStages: (tenantId: string) => json(`/pipeline/stages/${tenantId}`),
+    getKanban: (tenantId: string) => json(`/pipeline/kanban/${tenantId}`),
+    moveDeal: (tenantId: string, dealId: string, stageId: string) =>
+        json(`/pipeline/deals/${tenantId}/${dealId}/move`, { method: 'PUT', body: JSON.stringify({ stageId }) }),
+
     // Native push (Expo token)
     subscribeExpoPush: (token: string) =>
         json('/push/expo-subscribe', { method: 'POST', body: JSON.stringify({ token }) }),

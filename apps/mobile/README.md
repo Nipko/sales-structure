@@ -15,10 +15,11 @@ Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../pack
 - ✅ **Inbox en tiempo real** (lista → chat → responder) vía Socket.io
 - ✅ Acciones de chat: **asignarme**, **resolver**, **respuestas rápidas (canned)**, **sugerencia IA**
 - ✅ **CRM**: lista de leads (búsqueda) + detalle 360° (datos, etiquetas, oportunidades, llamar/email)
+- ✅ **Embudo**: etapas del pipeline + **mover deals** entre etapas (desde el header de CRM)
 - ✅ **Citas**: agenda próxima + **confirmar / cancelar**
 - ✅ **Más**: KPIs (resolución IA/verificada, 30 días) + **disponibilidad** + cerrar sesión
 - ✅ **Push nativo** (Expo): registro del token + `/push/expo-subscribe`; el backend envía vía Expo Push API en mensaje/handoff/SLA/cita; tap → Inbox. *Requiere `eas init` (projectId) y un **development build** — NO funciona en Expo Go (SDK 53+ quitó remote push de Expo Go).*
-- 🚧 Pendiente: macros, pipeline kanban, adaptación por vertical, EAS build para tiendas
+- 🚧 Pendiente: macros, adaptación por vertical, EAS build para tiendas
 
 ## Push nativo — cómo activarlo
 1. `npm i -g eas-cli && eas login`

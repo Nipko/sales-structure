@@ -125,6 +125,7 @@ jobs:
             NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/instagram/callback
             NEXT_PUBLIC_APP_VERSION=${{ github.sha }}
             NEXT_PUBLIC_MP_PUBLIC_KEY=${{ secrets.MP_PUBLIC_KEY }}
+            NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}
           cache-from: type=gha,scope=billing-v2
           cache-to: type=gha,mode=max,scope=billing-v2
 
@@ -246,6 +247,9 @@ jobs:
           PROD_HUBSPOT_CLIENT_SECRET: ${{ secrets.HUBSPOT_CLIENT_SECRET }}
           PROD_PIPEDRIVE_CLIENT_ID: ${{ secrets.PIPEDRIVE_CLIENT_ID }}
           PROD_PIPEDRIVE_CLIENT_SECRET: ${{ secrets.PIPEDRIVE_CLIENT_SECRET }}
+          # VAPID keys for push notifications
+          PROD_VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          PROD_VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -269,7 +273,8 @@ jobs:
             PROD_MP_SYNC_COUNTRIES,
             PROD_MP_FX_CO,PROD_MP_FX_AR,PROD_MP_FX_MX,PROD_MP_FX_CL,PROD_MP_FX_PE,PROD_MP_FX_UY,PROD_MP_FX_BR,
             PROD_HUBSPOT_CLIENT_ID,PROD_HUBSPOT_CLIENT_SECRET,
-            PROD_PIPEDRIVE_CLIENT_ID,PROD_PIPEDRIVE_CLIENT_SECRET
+            PROD_PIPEDRIVE_CLIENT_ID,PROD_PIPEDRIVE_CLIENT_SECRET,
+            PROD_VAPID_PUBLIC_KEY,PROD_VAPID_PRIVATE_KEY
           script_stop: true
           # ↑ timeout: tiempo máximo para ESTABLECER la conexión SSH
           # ↑ command_timeout: tiempo máximo de ejecución del script completo
@@ -369,6 +374,9 @@ jobs:
             echo "HUBSPOT_CLIENT_SECRET=${PROD_HUBSPOT_CLIENT_SECRET}" >> .env
             echo "PIPEDRIVE_CLIENT_ID=${PROD_PIPEDRIVE_CLIENT_ID}" >> .env
             echo "PIPEDRIVE_CLIENT_SECRET=${PROD_PIPEDRIVE_CLIENT_SECRET}" >> .env
+            echo "# VAPID Keys for Push Notifications" >> .env
+            echo "VAPID_PUBLIC_KEY=${PROD_VAPID_PUBLIC_KEY}" >> .env
+            echo "VAPID_PRIVATE_KEY=${PROD_VAPID_PRIVATE_KEY}" >> .env
             echo "API_PUBLIC_URL=https://api.parallly-chat.cloud/api/v1" >> .env
             echo "DASHBOARD_URL=https://admin.parallly-chat.cloud" >> .env
             echo "GIT_SHA=${GIT_SHA}" >> .env

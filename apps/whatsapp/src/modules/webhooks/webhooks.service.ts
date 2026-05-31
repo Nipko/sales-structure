@@ -107,7 +107,7 @@ export class WebhooksService implements OnModuleDestroy {
       }, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
-        jobId: `process-message:${msg.id}`,
+        jobId: `process-message-${msg.id}`,
         removeOnComplete: 100,
         removeOnFail: 1000,
       });
@@ -132,7 +132,7 @@ export class WebhooksService implements OnModuleDestroy {
       }, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
-        jobId: `process-status:${status.id}:${status.status}`,
+        jobId: `process-status-${status.id}-${status.status}`,
         removeOnComplete: 100,
       });
 
@@ -172,7 +172,7 @@ export class WebhooksService implements OnModuleDestroy {
       }, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
-        jobId: `coex-echo:${echo.id}`,
+        jobId: `coex-echo-${echo.id}`,
         removeOnComplete: 100,
         removeOnFail: 500,
       });
@@ -224,7 +224,7 @@ export class WebhooksService implements OnModuleDestroy {
       }, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 3000 },
-        jobId: `coex-hist:${phoneNumberId}:${phase}:${chunkOrder}`,
+        jobId: `coex-hist-${phoneNumberId}-${phase}-${chunkOrder}`,
         removeOnComplete: 200,
         removeOnFail: 1000,
       });
@@ -274,7 +274,7 @@ export class WebhooksService implements OnModuleDestroy {
     }, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 },
-      jobId: `coex-contacts:${phoneNumberId}:${Date.now()}`,
+      jobId: `coex-contacts-${phoneNumberId}-${Date.now()}`,
       removeOnComplete: 100,
       removeOnFail: 500,
     });

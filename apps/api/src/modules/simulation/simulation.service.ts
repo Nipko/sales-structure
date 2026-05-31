@@ -146,7 +146,7 @@ export class SimulationService {
             'run',
             { tenantId, runId },
             {
-                jobId: `sim:${runId}`,
+                jobId: `sim-${runId}`,
                 attempts: 1, // long-running multi-LLM job — never auto-retry the whole batch
                 removeOnComplete: true,
                 removeOnFail: 50,

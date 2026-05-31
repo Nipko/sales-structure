@@ -31,31 +31,59 @@ export class TraceService {
         const cacheKey = `trace_cols:${schemaName}`;
         if (await this.redis.get(cacheKey)) return;
 
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `CREATE TABLE IF NOT EXISTS conversation_traces (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                conversation_id UUID NOT NULL,
-                provider VARCHAR(40),
-                model VARCHAR(80),
-                tier VARCHAR(40),
-                task VARCHAR(40),
-                latency_ms INTEGER,
-                prompt_tokens INTEGER,
-                completion_tokens INTEGER,
-                total_tokens INTEGER,
-                fallback_used BOOLEAN DEFAULT false,
-                kb_sources JSONB DEFAULT '[]'::jsonb,
-                stage VARCHAR(40),
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            )`,
-            [],
-        );
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `CREATE INDEX IF NOT EXISTS idx_ctrace_conversation ON conversation_traces(conversation_id, created_at)`,
-            [],
-        );
+        const ignoreDupError = (err: any) => {
+            const msg = err?.message || '';
+            const code = String(err?.code || err?.meta?.code || '');
+            if (
+                code === '23505' ||
+                code === '42P07' ||
+                code === '42710' ||
+                msg.includes('already exists') ||
+                msg.includes('23505') ||
+                msg.includes('42P07') ||
+                msg.includes('42710')
+            ) {
+                this.logger.debug(`[Trace ensureTables] Skip non-fatal database existence/concurrency error: ${msg}`);
+                return;
+            }
+            throw err;
+        };
+
+        try {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `CREATE TABLE IF NOT EXISTS conversation_traces (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    conversation_id UUID NOT NULL,
+                    provider VARCHAR(40),
+                    model VARCHAR(80),
+                    tier VARCHAR(40),
+                    task VARCHAR(40),
+                    latency_ms INTEGER,
+                    prompt_tokens INTEGER,
+                    completion_tokens INTEGER,
+                    total_tokens INTEGER,
+                    fallback_used BOOLEAN DEFAULT false,
+                    kb_sources JSONB DEFAULT '[]'::jsonb,
+                    stage VARCHAR(40),
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )`,
+                [],
+            );
+        } catch (err) {
+            ignoreDupError(err);
+        }
+
+        try {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `CREATE INDEX IF NOT EXISTS idx_ctrace_conversation ON conversation_traces(conversation_id, created_at)`,
+                [],
+            );
+        } catch (err) {
+            ignoreDupError(err);
+        }
+
         await this.redis.set(cacheKey, '1', 86400);
     }
 

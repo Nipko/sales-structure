@@ -67,7 +67,7 @@ export class QualityService {
                 'score',
                 { tenantId, conversationId },
                 {
-                    jobId: `q:${conversationId}`, // dedupe repeated resolves of same conversation
+                    jobId: `q-${conversationId}`, // dedupe repeated resolves of same conversation
                     attempts: 3,
                     backoff: { type: 'exponential', delay: 5000 },
                     removeOnComplete: true,
@@ -84,42 +84,81 @@ export class QualityService {
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `CREATE TABLE IF NOT EXISTS conversation_quality_scores (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                conversation_id UUID NOT NULL,
-                overall_score NUMERIC,
-                resolution_score NUMERIC,
-                tone_score NUMERIC,
-                accuracy_score NUMERIC,
-                empathy_score NUMERIC,
-                flags JSONB DEFAULT '[]'::jsonb,
-                resolution_type VARCHAR(50),
-                resolution_verified BOOLEAN,
-                verification_reason TEXT,
-                scored_by VARCHAR(20) DEFAULT 'ai',
-                rubric_version VARCHAR(20) DEFAULT 'v1',
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            )`,
-            [],
-        );
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `CREATE INDEX IF NOT EXISTS idx_cqs_conversation ON conversation_quality_scores(conversation_id)`,
-            [],
-        );
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `CREATE INDEX IF NOT EXISTS idx_cqs_created ON conversation_quality_scores(created_at)`,
-            [],
-        );
-        // T1.8 — resolution verification flag on conversations
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS resolution_verified BOOLEAN`,
-            [],
-        );
+        const ignoreDupError = (err: any) => {
+            const msg = err?.message || '';
+            const code = String(err?.code || err?.meta?.code || '');
+            if (
+                code === '23505' ||
+                code === '42P07' ||
+                code === '42710' ||
+                code === '42701' ||
+                msg.includes('already exists') ||
+                msg.includes('23505') ||
+                msg.includes('42P07') ||
+                msg.includes('42710') ||
+                msg.includes('42701')
+            ) {
+                this.logger.debug(`[QA ensureTables] Skip non-fatal database existence/concurrency error: ${msg}`);
+                return;
+            }
+            throw err;
+        };
+
+        try {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `CREATE TABLE IF NOT EXISTS conversation_quality_scores (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    conversation_id UUID NOT NULL,
+                    overall_score NUMERIC,
+                    resolution_score NUMERIC,
+                    tone_score NUMERIC,
+                    accuracy_score NUMERIC,
+                    empathy_score NUMERIC,
+                    flags JSONB DEFAULT '[]'::jsonb,
+                    resolution_type VARCHAR(50),
+                    resolution_verified BOOLEAN,
+                    verification_reason TEXT,
+                    scored_by VARCHAR(20) DEFAULT 'ai',
+                    rubric_version VARCHAR(20) DEFAULT 'v1',
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )`,
+                [],
+            );
+        } catch (err) {
+            ignoreDupError(err);
+        }
+
+        try {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `CREATE INDEX IF NOT EXISTS idx_cqs_conversation ON conversation_quality_scores(conversation_id)`,
+                [],
+            );
+        } catch (err) {
+            ignoreDupError(err);
+        }
+
+        try {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `CREATE INDEX IF NOT EXISTS idx_cqs_created ON conversation_quality_scores(created_at)`,
+                [],
+            );
+        } catch (err) {
+            ignoreDupError(err);
+        }
+
+        try {
+            // T1.8 — resolution verification flag on conversations
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS resolution_verified BOOLEAN`,
+                [],
+            );
+        } catch (err) {
+            ignoreDupError(err);
+        }
 
         await this.redis.set(cacheKey, '1', 86400);
     }

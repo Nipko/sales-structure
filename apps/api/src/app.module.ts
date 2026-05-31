@@ -33,6 +33,7 @@ import { QualityModule } from './modules/quality/quality.module';
 import { TraceModule } from './modules/trace/trace.module';
 import { KbHealthModule } from './modules/kb-health/kb-health.module';
 import { SimulationModule } from './modules/simulation/simulation.module';
+import { ProceduresModule } from './modules/procedures/procedures.module';
 import { SlackModule } from './modules/slack/slack.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { OrdersModule } from './modules/orders/orders.module';
@@ -183,6 +184,7 @@ import llmConfig from './config/llm.config';
         TraceModule,
         KbHealthModule,
         SimulationModule,
+        ProceduresModule,
         SlackModule,
         InventoryModule,
         OrdersModule,

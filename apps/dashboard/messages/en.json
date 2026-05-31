@@ -139,7 +139,8 @@
       "reportBuilder": "Custom Reports",
       "dripSequences": "Drip Sequences",
       "automationTemplates": "Templates",
-      "agentSimulation": "Test agent"
+      "agentSimulation": "Test agent",
+      "procedures": "Procedures"
     }
   },
   "topbar": {
@@ -6871,5 +6872,45 @@
     "transcript": "Transcript",
     "roleCustomer": "Customer",
     "roleAgent": "Agent"
+  },
+  "procedures": {
+    "title": "Procedures",
+    "subtitle": "Write a procedure (SOP) in plain language and the agent runs it step by step, without improvising the flow.",
+    "writeSop": "Write SOP",
+    "blank": "Blank",
+    "untitled": "Untitled procedure",
+    "yourProcedures": "Your procedures",
+    "empty": "No procedures yet.",
+    "selectOrCreate": "Select a procedure or create a new one.",
+    "steps": "steps",
+    "status_active": "Active",
+    "status_draft": "Draft",
+    "status_inactive": "Inactive",
+    "sopHint": "Describe the procedure in natural language. The AI converts it into deterministic steps for your review.",
+    "sopPlaceholder": "E.g.: When a customer asks for a refund, ask for the order number, check its status; if delivered offer a coupon, otherwise escalate to an agent.",
+    "compile": "Compile to steps",
+    "descriptionPlaceholder": "Short description…",
+    "triggerKeywords": "Trigger keywords",
+    "triggerPlaceholder": "refund, return, warranty",
+    "triggerHint": "If the customer message contains any of these words, the procedure starts.",
+    "addStep": "Add step",
+    "save": "Save",
+    "activate": "Activate",
+    "deactivate": "Deactivate",
+    "step_message": "Message",
+    "step_ask": "Ask",
+    "step_tool": "Tool",
+    "step_condition": "Condition",
+    "step_handoff": "Handoff",
+    "cfg_message": "Text to communicate to the customer",
+    "cfg_field": "Field (e.g. order_number)",
+    "cfg_question": "Question for the customer",
+    "cfg_tool": "Tool (e.g. get_order_status)",
+    "cfg_saveAs": "Save result as",
+    "cfg_conditionField": "Field to evaluate (e.g. order.found)",
+    "cfg_value": "Value",
+    "cfg_then": "If true → step",
+    "cfg_else": "If false → step",
+    "cfg_reason": "Handoff reason"
   }
 }

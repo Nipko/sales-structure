@@ -757,3 +757,69 @@ export interface TenantVerticalConfig {
     dashboard: { kpis: VerticalKpiDefinition[] };
     bookingEnabled: boolean;
 }
+
+// ---- Procedures (AOP/SOP) — T2.12 ----
+// A tenant writes an SOP in natural language; it compiles to a deterministic
+// step graph the engine executes (the LLM only voices the steps, never decides
+// the flow), mirroring the booking engine's directive pattern.
+export type ProcedureStepType = 'message' | 'ask' | 'tool' | 'condition' | 'handoff';
+
+export type ProcedureConditionOperator = 'eq' | 'neq' | 'contains' | 'exists' | 'not_exists';
+
+export interface ProcedureStep {
+    /** Stable step id (referenced by next/then/else). */
+    id: string;
+    type: ProcedureStepType;
+    config: {
+        /** message: what to communicate to the customer. */
+        text?: string;
+        /** ask: the field to collect + the question to ask. */
+        field?: string;
+        question?: string;
+        /** tool: an AI tool name (same registry as the agent tools) + args + where to store the result. */
+        tool?: string;
+        args?: Record<string, any>;
+        saveAs?: string;
+        /** condition: evaluate a collected field and branch. */
+        conditionField?: string;
+        operator?: ProcedureConditionOperator;
+        value?: string;
+        then?: string;
+        else?: string;
+        /** handoff: reason passed to the handoff service. */
+        reason?: string;
+    };
+    /** Explicit next step id; defaults to the next step in order. */
+    next?: string;
+}
+
+export interface ProcedureTrigger {
+    /** Lowercased keywords; if any appears in the customer message, the procedure starts. */
+    keywords: string[];
+    description?: string;
+}
+
+export type ProcedureStatus = 'draft' | 'active' | 'inactive';
+
+export interface ProcedureDefinition {
+    id: string;
+    name: string;
+    description?: string;
+    trigger: ProcedureTrigger;
+    steps: ProcedureStep[];
+    status: ProcedureStatus;
+    vertical?: string;
+    version: number;
+    sourceSop?: string;
+}
+
+/** Redis-backed execution state for an in-progress procedure. */
+export interface ProcedureRunState {
+    procedureId: string;
+    version: number;
+    currentStepId: string | null;
+    collected: Record<string, any>;
+    /** When set, the previous turn asked for this field and we await the answer. */
+    awaitingField?: string | null;
+    startedAt: string;
+}

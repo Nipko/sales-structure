@@ -139,7 +139,8 @@
       "reportBuilder": "Rapports personnalisés",
       "dripSequences": "Séquences Drip",
       "automationTemplates": "Modèles",
-      "agentSimulation": "Tester l'agent"
+      "agentSimulation": "Tester l'agent",
+      "procedures": "Procédures"
     }
   },
   "topbar": {
@@ -6807,5 +6808,45 @@
     "transcript": "Transcription",
     "roleCustomer": "Client",
     "roleAgent": "Agent"
+  },
+  "procedures": {
+    "title": "Procédures",
+    "subtitle": "Rédigez une procédure (SOP) en langage naturel et l'agent l'exécute étape par étape, sans improviser le flux.",
+    "writeSop": "Rédiger un SOP",
+    "blank": "Vierge",
+    "untitled": "Procédure sans titre",
+    "yourProcedures": "Vos procédures",
+    "empty": "Aucune procédure pour le moment.",
+    "selectOrCreate": "Sélectionnez une procédure ou créez-en une nouvelle.",
+    "steps": "étapes",
+    "status_active": "Active",
+    "status_draft": "Brouillon",
+    "status_inactive": "Inactive",
+    "sopHint": "Décrivez la procédure en langage naturel. L'IA la convertit en étapes déterministes pour votre révision.",
+    "sopPlaceholder": "Ex. : Quand un client demande un remboursement, demandez le numéro de commande, vérifiez son statut ; si livrée proposez un coupon, sinon transférez à un agent.",
+    "compile": "Compiler en étapes",
+    "descriptionPlaceholder": "Brève description…",
+    "triggerKeywords": "Mots déclencheurs",
+    "triggerPlaceholder": "remboursement, retour, garantie",
+    "triggerHint": "Si le message du client contient un de ces mots, la procédure démarre.",
+    "addStep": "Ajouter une étape",
+    "save": "Enregistrer",
+    "activate": "Activer",
+    "deactivate": "Désactiver",
+    "step_message": "Message",
+    "step_ask": "Demander",
+    "step_tool": "Outil",
+    "step_condition": "Condition",
+    "step_handoff": "Transfert",
+    "cfg_message": "Texte à communiquer au client",
+    "cfg_field": "Champ (ex : numero_commande)",
+    "cfg_question": "Question au client",
+    "cfg_tool": "Outil (ex : get_order_status)",
+    "cfg_saveAs": "Enregistrer le résultat sous",
+    "cfg_conditionField": "Champ à évaluer (ex : commande.found)",
+    "cfg_value": "Valeur",
+    "cfg_then": "Si vrai → étape",
+    "cfg_else": "Si faux → étape",
+    "cfg_reason": "Motif du transfert"
   }
 }

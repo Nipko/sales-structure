@@ -5,6 +5,7 @@ import { ConversationsService } from './conversations.service';
 import { ConversationsController } from './conversations.controller';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { BookingEngineService } from './booking-engine.service';
+import { ProcedureEngineService } from './procedure-engine.service';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { LanguageDetectorService } from './language-detector.service';
 import { AgentTestService } from './agent-test.service';
@@ -77,7 +78,7 @@ import { EcommerceModule } from '../ecommerce/ecommerce.module';
             inject: [ConfigService],
         }),
     ],
-    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, BookingEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, AgentTestService, PreChatService],
+    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, BookingEngineService, ProcedureEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, AgentTestService, PreChatService],
     controllers: [ConversationsController, AgentTestController],
     exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, AgentTestService],
 })

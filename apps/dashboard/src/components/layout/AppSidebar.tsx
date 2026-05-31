@@ -145,6 +145,7 @@ const tenantSections: NavSectionDef[] = [
           { labelKey: "automationTemplates", href: "/admin/automation/templates", capability: "canEditAutomation" },
           { labelKey: "aiAgent", href: "/admin/agent", capability: "canEditAgent" },
           { labelKey: "agentSimulation", href: "/admin/agent/simulation", capability: "canEditAgent" },
+          { labelKey: "procedures", href: "/admin/procedures", capability: "canEditAgent" },
           { labelKey: "knowledgeBase", href: "/admin/knowledge", capability: "canViewKnowledge" },
         ]
       },

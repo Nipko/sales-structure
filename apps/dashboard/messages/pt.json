@@ -139,7 +139,8 @@
       "reportBuilder": "Relatórios personalizados",
       "dripSequences": "Sequências Drip",
       "automationTemplates": "Modelos",
-      "agentSimulation": "Testar agente"
+      "agentSimulation": "Testar agente",
+      "procedures": "Procedimentos"
     }
   },
   "topbar": {
@@ -6807,5 +6808,45 @@
     "transcript": "Transcrição",
     "roleCustomer": "Cliente",
     "roleAgent": "Agente"
+  },
+  "procedures": {
+    "title": "Procedimentos",
+    "subtitle": "Escreva um procedimento (SOP) em linguagem natural e o agente o executa passo a passo, sem improvisar o fluxo.",
+    "writeSop": "Escrever SOP",
+    "blank": "Em branco",
+    "untitled": "Procedimento sem título",
+    "yourProcedures": "Seus procedimentos",
+    "empty": "Ainda não há procedimentos.",
+    "selectOrCreate": "Selecione um procedimento ou crie um novo.",
+    "steps": "passos",
+    "status_active": "Ativo",
+    "status_draft": "Rascunho",
+    "status_inactive": "Inativo",
+    "sopHint": "Descreva o procedimento em linguagem natural. A IA o converte em passos determinísticos para sua revisão.",
+    "sopPlaceholder": "Ex.: Quando um cliente pedir reembolso, peça o número do pedido, verifique o status; se entregue ofereça um cupom, senão escale para um agente.",
+    "compile": "Compilar em passos",
+    "descriptionPlaceholder": "Descrição breve…",
+    "triggerKeywords": "Palavras que ativam",
+    "triggerPlaceholder": "reembolso, devolução, garantia",
+    "triggerHint": "Se a mensagem do cliente contiver alguma destas palavras, o procedimento inicia.",
+    "addStep": "Adicionar passo",
+    "save": "Salvar",
+    "activate": "Ativar",
+    "deactivate": "Desativar",
+    "step_message": "Mensagem",
+    "step_ask": "Perguntar",
+    "step_tool": "Ferramenta",
+    "step_condition": "Condição",
+    "step_handoff": "Escalar",
+    "cfg_message": "Texto a comunicar ao cliente",
+    "cfg_field": "Campo (ex: numero_pedido)",
+    "cfg_question": "Pergunta ao cliente",
+    "cfg_tool": "Ferramenta (ex: get_order_status)",
+    "cfg_saveAs": "Salvar resultado como",
+    "cfg_conditionField": "Campo a avaliar (ex: pedido.found)",
+    "cfg_value": "Valor",
+    "cfg_then": "Se verdadeiro → passo",
+    "cfg_else": "Se falso → passo",
+    "cfg_reason": "Motivo da escalada"
   }
 }

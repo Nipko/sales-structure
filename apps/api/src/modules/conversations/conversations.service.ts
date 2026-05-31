@@ -33,6 +33,7 @@ import { EDUCATION_TOOLS } from './tools/education-tools';
 import { INSURANCE_TOOLS } from './tools/insurance-tools';
 import { HOME_SERVICES_TOOLS, PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS } from './tools/tier3-tools';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
+import { ProcedureEngineService } from './procedure-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
@@ -70,6 +71,7 @@ export class ConversationsService {
         private identityService: IdentityService,
         private toolExecutor: AIToolExecutorService,
         private bookingEngine: BookingEngineService,
+        private procedureEngine: ProcedureEngineService,
         private intentInterpreter: IntentInterpreterService,
         private complianceService: AnalyticsComplianceService,
         private analyticsService: AnalyticsService,
@@ -1104,6 +1106,35 @@ export class ConversationsService {
                     this.logger.log(`[Pipeline] Not booking-related, LLM handles`);
                     await this.persistBookingState(schemaName, conversation.id, engineResult.state);
                 }
+            }
+        }
+
+        // 4b. Deterministic Procedure Engine (T2.12 — AOP/SOP). Runs only when the
+        // booking engine didn't take over. If an active procedure is in progress or
+        // a trigger matches, it produces a directive the LLM voices (like booking),
+        // keeping the flow deterministic. Fully guarded so it can never break chat.
+        if (!engineProducedText) {
+            try {
+                const procResult = await this.procedureEngine.process(
+                    schemaName, tenantId, conversation.id, conversation.contact_id || '', userText,
+                );
+                if (procResult.handled) {
+                    tools = [];
+                    if (procResult.text) engineProducedText = procResult.text;
+                    if (procResult.handoff) {
+                        if (!engineProducedText) engineProducedText = 'Te voy a transferir con un agente de nuestro equipo.';
+                        try {
+                            await this.handoffService.executeHandoff(
+                                tenantId, conversation.id, msg, procResult.handoffReason || `Procedimiento: ${procResult.procedureName || ''}`,
+                            );
+                        } catch (e: any) {
+                            this.logger.warn(`[Procedure] handoff failed: ${e.message}`);
+                        }
+                    }
+                    this.logger.log(`[Procedure] handled (proc="${procResult.procedureName}", completed=${!!procResult.completed}, handoff=${!!procResult.handoff})`);
+                }
+            } catch (e: any) {
+                this.logger.warn(`[Procedure] engine error (non-fatal): ${e.message}`);
             }
         }
 

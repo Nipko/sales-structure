@@ -850,6 +850,17 @@ export const api = {
     getAgentSimulation: (tenantId: string, runId: string) =>
         apiGet(`/simulation/${tenantId}/${runId}`),
 
+    // Procedures / SOP (T2.12)
+    listProcedures: (tenantId: string) => apiGet(`/procedures/${tenantId}`),
+    getProcedure: (tenantId: string, id: string) => apiGet(`/procedures/${tenantId}/${id}`),
+    compileProcedure: (tenantId: string, body: { sop: string; vertical?: string }) =>
+        apiPost(`/procedures/${tenantId}/compile`, body),
+    createProcedure: (tenantId: string, body: any) => apiPost(`/procedures/${tenantId}`, body),
+    updateProcedure: (tenantId: string, id: string, body: any) => apiPut(`/procedures/${tenantId}/${id}`, body),
+    setProcedureStatus: (tenantId: string, id: string, status: string) =>
+        apiPut(`/procedures/${tenantId}/${id}/status`, { status }),
+    deleteProcedure: (tenantId: string, id: string) => apiDelete(`/procedures/${tenantId}/${id}`),
+
     // Slack integration (T2.16)
     getSlackConfig: (tenantId: string) => apiGet(`/slack/${tenantId}/config`),
     updateSlackConfig: (tenantId: string, body: any) => apiPut(`/slack/${tenantId}/config`, body),

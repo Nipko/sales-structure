@@ -33,4 +33,14 @@ export class PushController {
         await this.pushService.unsubscribe(body.endpoint);
         return { success: true };
     }
+
+    @Post('expo-subscribe')
+    @ApiOperation({ summary: 'Register a native Expo push token (mobile app)' })
+    async expoSubscribe(
+        @CurrentUser() user: any,
+        @Body() body: { token: string },
+    ) {
+        await this.pushService.subscribeExpo(user.id || user.sub, user.tenantId, body.token);
+        return { success: true };
+    }
 }

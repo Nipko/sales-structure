@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNavigationContainerRef } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import { registerForPush, onNotificationTap } from '../lib/push';
+
+export const navigationRef = createNavigationContainerRef<any>();
 import { theme } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
 import { InboxScreen } from '../screens/InboxScreen';
@@ -75,6 +79,18 @@ function MainTabs() {
 
 export function RootNavigator() {
     const { user, loading } = useAuth();
+
+    // Register native push + handle taps once logged in.
+    useEffect(() => {
+        if (!user) return;
+        registerForPush();
+        const sub = onNotificationTap(() => {
+            if (navigationRef.isReady()) {
+                navigationRef.navigate('Main', { screen: 'Inbox' });
+            }
+        });
+        return () => sub.remove();
+    }, [user]);
 
     if (loading) {
         return (

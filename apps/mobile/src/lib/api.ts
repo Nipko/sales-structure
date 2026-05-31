@@ -142,5 +142,9 @@ export const api = {
         json(`/dashboard-analytics/ai-resolution/${tenantId}?start=${start}&end=${end}`),
     getOverviewKpis: (tenantId: string, start: string, end: string) =>
         json(`/dashboard-analytics/overview-kpis/${tenantId}?start=${start}&end=${end}`),
+
+    // Native push (Expo token)
+    subscribeExpoPush: (token: string) =>
+        json('/push/expo-subscribe', { method: 'POST', body: JSON.stringify({ token }) }),
 };
 

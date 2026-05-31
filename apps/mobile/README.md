@@ -8,7 +8,7 @@ Ver el plan completo en `docs/mobile-app-plan.md`.
 ## Contexto / contrato compartido
 Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../packages/shared`) → el contrato de tipos de la API queda **enforced por TypeScript** (si el backend cambia un tipo, el mobile no compila). Metro está configurado para monorepo en `metro.config.js` (`watchFolders` + `nodeModulesPaths`). La superficie completa de API a espejar está en `apps/dashboard/src/lib/api.ts`.
 
-## Estado (S1 — fundación + Inbox MVP)
+## Estado
 - ✅ Tipos compartidos conectados (`@parallext/shared`) — contrato enforced
 - ✅ Auth (email/contraseña → JWT en SecureStore) + **desbloqueo biométrico**
 - ✅ Navegación (tabs: Inbox · CRM · Citas · Más)
@@ -17,7 +17,14 @@ Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../pack
 - ✅ **CRM**: lista de leads (búsqueda) + detalle 360° (datos, etiquetas, oportunidades, llamar/email)
 - ✅ **Citas**: agenda próxima + **confirmar / cancelar**
 - ✅ **Más**: KPIs (resolución IA/verificada, 30 días) + **disponibilidad** + cerrar sesión
-- 🚧 Pendiente: **push nativo** (requiere endpoint backend para tokens Expo/FCM; el actual es Web-Push), macros, pipeline kanban, adaptación por vertical
+- ✅ **Push nativo** (Expo): registro del token + `/push/expo-subscribe`; el backend envía vía Expo Push API en mensaje/handoff/SLA/cita; tap → Inbox. *Requiere `eas init` (projectId) y un **development build** — NO funciona en Expo Go (SDK 53+ quitó remote push de Expo Go).*
+- 🚧 Pendiente: macros, pipeline kanban, adaptación por vertical, EAS build para tiendas
+
+## Push nativo — cómo activarlo
+1. `npm i -g eas-cli && eas login`
+2. `eas init` (crea el projectId en `app.config.ts > extra.eas.projectId`)
+3. `eas build --profile development -p android` → instala el APK en tu teléfono
+4. Abre la app (dev build, no Expo Go), acepta permisos → el token Expo se registra solo
 
 ## Requisitos previos
 - Node 18+, `npm`

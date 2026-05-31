@@ -874,6 +874,13 @@ export const api = {
     listVerticalIntegrationItems: (tenantId: string, provider?: string) =>
         apiGet(`/vertical-integrations/${tenantId}/items${provider ? `?provider=${provider}` : ""}`),
 
+    // MCP native (T3.20) — external MCP server connectors
+    listMcpServers: (tenantId: string) => apiGet(`/mcp/${tenantId}/servers`),
+    saveMcpServer: (tenantId: string, body: any) => apiPost(`/mcp/${tenantId}/servers`, body),
+    deleteMcpServer: (tenantId: string, id: string) => apiDelete(`/mcp/${tenantId}/servers/${id}`),
+    testMcpServer: (tenantId: string, id: string) => apiPost(`/mcp/${tenantId}/servers/${id}/test`, {}),
+    getMcpServerTools: (tenantId: string) => apiGet(`/mcp/${tenantId}/tools`),
+
     // Slack integration (T2.16)
     getSlackConfig: (tenantId: string) => apiGet(`/slack/${tenantId}/config`),
     updateSlackConfig: (tenantId: string, body: any) => apiPut(`/slack/${tenantId}/config`, body),

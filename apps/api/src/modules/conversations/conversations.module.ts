@@ -41,6 +41,7 @@ import { HomeServicesModule } from '../home-services/home-services.module';
 import { MediaProcessingModule } from '../media-processing/media-processing.module';
 import { EcommerceModule } from '../ecommerce/ecommerce.module';
 import { VerticalIntegrationsModule } from '../vertical-integrations/vertical-integrations.module';
+import { McpModule } from '../mcp/mcp.module';
 
 @Module({
     imports: [
@@ -71,6 +72,7 @@ import { VerticalIntegrationsModule } from '../vertical-integrations/vertical-in
         HomeServicesModule,
         EcommerceModule,
         VerticalIntegrationsModule,
+        forwardRef(() => McpModule),
         forwardRef(() => MediaProcessingModule),
         JwtModule.registerAsync({
             imports: [ConfigModule],
@@ -82,6 +84,6 @@ import { VerticalIntegrationsModule } from '../vertical-integrations/vertical-in
     ],
     providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, BookingEngineService, ProcedureEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, AgentTestService, PreChatService],
     controllers: [ConversationsController, AgentTestController],
-    exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, AgentTestService],
+    exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, AgentTestService, AIToolExecutorService],
 })
 export class ConversationsModule {}

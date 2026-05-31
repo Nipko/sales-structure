@@ -17,6 +17,7 @@ import { InsuranceService } from '../insurance/insurance.service';
 import { HomeServicesService } from '../home-services/home-services.service';
 import { EcommerceService } from '../ecommerce/ecommerce.service';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
+import { McpClientService } from '../mcp/mcp-client.service';
 import type { PolicyType } from '@parallext/shared';
 
 /**
@@ -46,6 +47,7 @@ export class AIToolExecutorService {
         private homeServicesService: HomeServicesService,
         private ecommerceService: EcommerceService,
         private verticalIntegrations: VerticalIntegrationsService,
+        private mcpClient: McpClientService,
     ) { }
 
     /**
@@ -62,6 +64,11 @@ export class AIToolExecutorService {
         this.logger.log(`[Tool] Executing: ${toolName} args=${JSON.stringify(args)}`);
 
         try {
+            // External MCP tools (T3.20) — namespaced mcp__{server}__{tool}.
+            if (toolName.startsWith('mcp__')) {
+                return this.mcpClient.callRemoteTool(tenantId, toolName, args);
+            }
+
             switch (toolName) {
                 case 'list_services':
                     return this.listServices(schemaName);

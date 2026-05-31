@@ -24,6 +24,7 @@ import { ORDER_TOOL, CUSTOMER_CONTEXT_TOOL } from './tools/crm-tools';
 import { ECOMMERCE_TOOLS, APPLY_DISCOUNT_TOOL } from './tools/ecommerce-tools';
 import { GET_RESTAURANT_MENU_TOOL, GET_FITNESS_SCHEDULE_TOOL, LIST_CLINIC_SERVICES_TOOL, CHECK_CLINIC_AVAILABILITY_TOOL } from './tools/vertical-integration-tools';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
+import { McpClientService } from '../mcp/mcp-client.service';
 import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
 import { TOURS_TOOLS } from './tools/tours-tools';
 import { TREATMENT_TOOLS } from './tools/treatment-tools';
@@ -84,6 +85,7 @@ export class ConversationsService {
         private mediaProcessing: MediaProcessingService,
         private aiResolutionService: AiResolutionService,
         private verticalIntegrations: VerticalIntegrationsService,
+        private mcpClient: McpClientService,
     ) {}
 
     /**
@@ -1185,6 +1187,15 @@ export class ConversationsService {
             if (connected.cliniko) tools = [...tools, LIST_CLINIC_SERVICES_TOOL, CHECK_CLINIC_AVAILABILITY_TOOL];
         } catch (e: any) {
             this.logger.debug(`[T3.19] vertical integration tool gating skipped: ${e.message}`);
+        }
+
+        // External MCP tools (T3.20) — tools discovered from the tenant's connected
+        // MCP servers (cached 5min). Namespaced mcp__{server}__{tool}. Guarded.
+        try {
+            const { tools: mcpTools } = await this.mcpClient.listRemoteTools(tenantId);
+            if (mcpTools.length) tools = [...tools, ...mcpTools];
+        } catch (e: any) {
+            this.logger.debug(`[T3.20] MCP tool registration skipped: ${e.message}`);
         }
         if (cfgTools?.properties?.enabled === true) {
             tools = [...tools, ...VACATION_RENTAL_TOOLS];

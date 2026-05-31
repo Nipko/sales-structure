@@ -899,6 +899,10 @@
       "verticalIntegrations": {
         "label": "Integraciones verticales",
         "description": "Conecta Toast, Mindbody o Cliniko"
+      },
+      "mcp": {
+        "label": "MCP",
+        "description": "Conectores de acciones (estándar abierto)"
       }
     },
     "account": "Mi Cuenta",
@@ -6937,5 +6941,25 @@
     "provider_mindbody_desc": "Sincroniza clases y horarios para reservas por chat.",
     "provider_cliniko": "Cliniko (salud)",
     "provider_cliniko_desc": "Tipos de cita y disponibilidad. No accede al historial clínico (evita HIPAA)."
+  },
+  "mcp": {
+    "title": "MCP (Model Context Protocol)",
+    "subtitle": "Estándar abierto para conectores de acciones. Conecta servidores MCP externos y expón tus herramientas sin lock-in.",
+    "exposeTitle": "Tu servidor MCP",
+    "exposeDesc": "Expón las herramientas de tu agente a clientes MCP externos vía este endpoint.",
+    "exposeAuthHint": "Autenticación con tu API Key (header X-API-Key). Genera una en Configuración → API Keys.",
+    "copy": "Copiar",
+    "copied": "Copiado al portapapeles",
+    "consumeTitle": "Servidores MCP externos",
+    "consumeDesc": "Conecta servidores MCP de terceros; tu agente podrá usar sus herramientas automáticamente.",
+    "namePlaceholder": "Nombre",
+    "authPlaceholder": "Authorization (opcional)",
+    "addServer": "Añadir servidor",
+    "test": "Probar",
+    "toggle": "Activar/Desactivar",
+    "saved": "Guardado",
+    "saveFailed": "No se pudo guardar",
+    "testOk": "Conectado · {count} herramientas",
+    "testFailed": "Conexión fallida"
   }
 }

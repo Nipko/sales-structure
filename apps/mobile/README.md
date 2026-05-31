@@ -55,4 +55,11 @@ src/screens/           Login · Inbox · Conversation · Placeholder
 src/theme.ts
 ```
 
-> Nota: faltan los assets binarios (`assets/icon.png`, `splash.png`, `adaptive-icon.png`). Genera los tuyos o quita esas referencias de `app.config.ts` para el primer `expo start`.
+## Assets (icono / splash)
+Incluidos en `assets/` (burbuja de chat de marca, morado `#6c5ce7`):
+- `icon.png` 1024×1024 · `adaptive-icon.png` 1024×1024 · `splash.png` 1242×2436
+
+Para **regenerarlos** o personalizarlos (edita el SVG en el script):
+```bash
+node apps/mobile/scripts/generate-assets.cjs   # usa sharp del root del monorepo
+```

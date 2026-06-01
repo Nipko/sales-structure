@@ -1,13 +1,18 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { AppState } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { api, tokens, AuthUser } from '../lib/api';
 import { disconnectSocket } from '../lib/socket';
+
+const RELOCK_AFTER_MS = 90_000; // re-prompt biometrics if backgrounded > 90s
 
 interface AuthState {
     user: AuthUser | null;
     tenantId: string | null;
     verticalConfig: any | null;
     loading: boolean;
+    locked: boolean;
+    unlock: () => Promise<void>;
     login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
     logout: () => Promise<void>;
 }
@@ -19,6 +24,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [verticalConfig, setVerticalConfig] = useState<any | null>(null);
     const [loading, setLoading] = useState(true);
+    const [locked, setLocked] = useState(false);
+    const bgAt = useRef<number | null>(null);
 
     // Load the tenant's vertical config (terminology) — best-effort.
     const loadVertical = useCallback(async (tenantId?: string) => {
@@ -70,10 +77,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await tokens.clear();
         setUser(null);
         setVerticalConfig(null);
+        setLocked(false);
     }, []);
 
+    const unlock = useCallback(async () => {
+        try {
+            const res = await LocalAuthentication.authenticateAsync({ promptMessage: 'Desbloquea Parallly', fallbackLabel: 'Usar contraseña' });
+            if (res.success) setLocked(false);
+        } catch { /* keep locked */ }
+    }, []);
+
+    // Re-lock with biometrics after the app has been backgrounded a while.
+    useEffect(() => {
+        const sub = AppState.addEventListener('change', async (state) => {
+            if (state === 'background' || state === 'inactive') {
+                bgAt.current = Date.now();
+            } else if (state === 'active' && bgAt.current && user) {
+                const away = Date.now() - bgAt.current;
+                bgAt.current = null;
+                if (away > RELOCK_AFTER_MS) {
+                    const [hw, enrolled] = await Promise.all([
+                        LocalAuthentication.hasHardwareAsync().catch(() => false),
+                        LocalAuthentication.isEnrolledAsync().catch(() => false),
+                    ]);
+                    if (hw && enrolled) setLocked(true);
+                }
+            }
+        });
+        return () => sub.remove();
+    }, [user]);
+
     return (
-        <AuthContext.Provider value={{ user, tenantId: user?.tenantId || null, verticalConfig, loading, login, logout }}>
+        <AuthContext.Provider value={{ user, tenantId: user?.tenantId || null, verticalConfig, loading, locked, unlock, login, logout }}>
             {children}
         </AuthContext.Provider>
     );

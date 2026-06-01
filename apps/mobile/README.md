@@ -19,8 +19,9 @@ Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../pack
 - ✅ **Citas**: agenda próxima + **confirmar / cancelar**
 - ✅ **Más**: KPIs (resolución IA/verificada, 30 días) + **disponibilidad** + cerrar sesión
 - ✅ **Adaptación por vertical**: las pestañas se relabelan según `verticalConfig` (ej. turismo → "Reservas", restaurantes → "Pedidos", salud → "Pacientes")
-- ✅ **Push nativo** (Expo): registro del token + `/push/expo-subscribe`; el backend envía vía Expo Push API en mensaje/handoff/SLA/cita; tap → Inbox. *Requiere `eas init` (projectId) y un **development build** — NO funciona en Expo Go (SDK 53+ quitó remote push de Expo Go).*
-- 🚧 Pendiente: EAS build/submit a tiendas (Apple $99 / Google $25)
+- ✅ **Push nativo** (Expo): registro del token + `/push/expo-subscribe`; el backend envía vía Expo Push API en mensaje/handoff/SLA/cita; **tap → conversación exacta** (deep-link, también en cold start). *Requiere `eas init` (projectId) y un **development build** — NO funciona en Expo Go (SDK 53+ quitó remote push de Expo Go).*
+- ✅ **Seguridad**: re-bloqueo biométrico al volver de segundo plano (>90s) con overlay de desbloqueo
+- 🚧 Pendiente: EAS build/submit a tiendas (Apple $99 / Google $25). Opcionales aplazados (bajo valor para agentes / refactor invasivo): tema claro, switch multi-tenant, centro de notificaciones persistente.
 
 ## Push nativo — cómo activarlo
 1. `npm i -g eas-cli && eas login`

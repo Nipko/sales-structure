@@ -107,13 +107,17 @@ export class PushService implements OnModuleInit {
     /** Send via the Expo Push API (native FCM/APNS — no VAPID needed). */
     private async sendExpo(tokens: string[], payload: { title: string; body: string; url?: string; tag?: string }): Promise<number> {
         try {
+            // Derive the conversationId from the tag (msg-/handoff-/sla-<id>) so the
+            // mobile app can deep-link straight to the conversation on tap.
+            const tagMatch = /^(?:msg|handoff|sla)-(.+)$/.exec(payload.tag || '');
+            const conversationId = tagMatch ? tagMatch[1] : undefined;
             const messages = tokens.map((to) => ({
                 to,
                 title: payload.title,
                 body: payload.body,
                 sound: 'default',
                 channelId: 'default',
-                data: { url: payload.url, tag: payload.tag },
+                data: { url: payload.url, tag: payload.tag, conversationId },
             }));
             const res = await fetch('https://exp.host/--/api/v2/push/send', {
                 method: 'POST',

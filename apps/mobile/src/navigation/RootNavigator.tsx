@@ -5,7 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNavigationContainerRef } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { registerForPush, onNotificationTap } from '../lib/push';
+import { registerForPush, onNotificationTap, getColdStartData } from '../lib/push';
 import { theme } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
 import { InboxScreen } from '../screens/InboxScreen';
@@ -103,15 +103,26 @@ function MainTabs() {
 export function RootNavigator() {
     const { user, loading } = useAuth();
 
-    // Register native push + handle taps once logged in.
+    // Register native push + deep-link taps to the exact conversation.
     useEffect(() => {
         if (!user) return;
         registerForPush();
-        const sub = onNotificationTap(() => {
-            if (navigationRef.isReady()) {
+
+        const goTo = (data: any) => {
+            if (!navigationRef.isReady()) return;
+            if (data?.conversationId) {
+                navigationRef.navigate('Main', {
+                    screen: 'Inbox',
+                    params: { screen: 'Conversation', params: { conversationId: data.conversationId, title: 'Conversación' } },
+                });
+            } else {
                 navigationRef.navigate('Main', { screen: 'Inbox' });
             }
-        });
+        };
+
+        const sub = onNotificationTap(goTo);
+        // Cold start: app opened by tapping a notification while closed.
+        getColdStartData().then((data) => { if (data) setTimeout(() => goTo(data), 600); });
         return () => sub.remove();
     }, [user]);
 

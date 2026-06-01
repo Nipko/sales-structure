@@ -60,3 +60,13 @@ export function onNotificationTap(handler: (data: any) => void) {
         handler(response?.notification?.request?.content?.data || {});
     });
 }
+
+/** Notification that cold-started the app (tapped while closed), if any. */
+export async function getColdStartData(): Promise<any | null> {
+    try {
+        const r = await Notifications.getLastNotificationResponseAsync();
+        return r?.notification?.request?.content?.data || null;
+    } catch {
+        return null;
+    }
+}

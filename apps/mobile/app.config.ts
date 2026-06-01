@@ -44,8 +44,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     extra: {
         apiUrl: process.env.EXPO_PUBLIC_API_URL || 'https://api.parallly-chat.cloud/api/v1',
-        // Web OAuth client ID (= backend GOOGLE_OAUTH_CLIENT_ID). The mobile id_token
+        // WEB OAuth client ID (= backend GOOGLE_OAUTH_CLIENT_ID / dashboard
+        // NEXT_PUBLIC_GOOGLE_CLIENT_ID). NOT the Android client. The mobile id_token
         // is audienced to this so /auth/google verifies it unchanged.
-        googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '',
+        googleWebClientId:
+            process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+            '950001098107-4ctk2jm3876afqktip7r4f04120kt0ou.apps.googleusercontent.com',
     },
 });

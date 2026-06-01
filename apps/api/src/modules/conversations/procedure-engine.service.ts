@@ -60,25 +60,38 @@ export class ProcedureEngineService {
         const cached = await this.redis.getJson<ProcedureDefinition[]>(cacheKey);
         if (cached) return cached;
 
-        let rows: any[] = [];
+        let procs: ProcedureDefinition[] = [];
         try {
-            rows = await this.prisma.executeInTenantSchema<any[]>(
+            // The per-tenant `procedures` table is created lazily by ProceduresService.
+            // For tenants without procedures it doesn't exist yet — probe with
+            // to_regclass first (returns NULL, no error) so we never issue a failing
+            // query that Prisma logs on every incoming message.
+            const reg = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT id, name, trigger, steps, version FROM procedures WHERE status = 'active'`,
+                `SELECT to_regclass('procedures') AS reg`,
                 [],
             );
+            if (reg?.[0]?.reg) {
+                const rows = await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT id, name, trigger, steps, version FROM procedures WHERE status = 'active'`,
+                    [],
+                );
+                procs = (rows || []).map((r) => ({
+                    id: r.id,
+                    name: r.name,
+                    trigger: r.trigger && typeof r.trigger === 'object' ? r.trigger : { keywords: [] },
+                    steps: Array.isArray(r.steps) ? r.steps : [],
+                    status: 'active' as const,
+                    version: Number(r.version) || 1,
+                }));
+            }
         } catch {
-            return []; // table not created yet for this tenant
+            procs = []; // table missing or transient error — treat as no active procedures
         }
-        const procs: ProcedureDefinition[] = (rows || []).map((r) => ({
-            id: r.id,
-            name: r.name,
-            trigger: r.trigger && typeof r.trigger === 'object' ? r.trigger : { keywords: [] },
-            steps: Array.isArray(r.steps) ? r.steps : [],
-            status: 'active' as const,
-            version: Number(r.version) || 1,
-        }));
-        await this.redis.setJson(cacheKey, procs, ACTIVE_CACHE_TTL);
+        // Cache either way (empty included) so we don't re-query on every message.
+        // ProceduresService invalidates `procedures:active:{tenantId}` on create/activate.
+        await this.redis.setJson(cacheKey, procs, ACTIVE_CACHE_TTL).catch(() => {});
         return procs;
     }
 

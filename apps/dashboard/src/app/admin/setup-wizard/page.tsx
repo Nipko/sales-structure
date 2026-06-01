@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
@@ -52,6 +52,7 @@ export default function SetupWizardPage() {
     const [tone, setTone] = useState("amigable");
     const [is247, setIs247] = useState(true);
     const [channelConnected, setChannelConnected] = useState(false);
+    const autoAdvancedRef = useRef(false);
 
     useEffect(() => {
         if (!tenantId) return;
@@ -76,6 +77,17 @@ export default function SetupWizardPage() {
         const iv = setInterval(check, 4000);
         return () => { active = false; clearInterval(iv); };
     }, [step, channelConnected, tenantId]);
+
+    // Once a channel connects (via the WhatsApp panel OR a secondary channel page
+    // opened in another tab), smoothly advance to the "Descúbrelo" tour so the
+    // guided flow continues instead of leaving the user stranded.
+    useEffect(() => {
+        if (channelConnected && step === 3 && !autoAdvancedRef.current) {
+            autoAdvancedRef.current = true;
+            const tm = setTimeout(() => setStep(4), 1400);
+            return () => clearTimeout(tm);
+        }
+    }, [channelConnected, step]);
 
     const verticalTemplates = templates.filter(tmpl => tmpl.name && !tmpl.nameKey);
     const builtinTemplates = templates.filter(tmpl => tmpl.nameKey);
@@ -274,6 +286,7 @@ export default function SetupWizardPage() {
                                     type="text" value={agentName} onChange={e => setAgentName(e.target.value)}
                                     className="w-full py-2.5 px-3.5 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none focus:border-indigo-500"
                                 />
+                                <p className="text-[11px] text-muted-foreground mt-1.5">{t("customize.agentNameHint")}</p>
                             </div>
                             <div>
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("customize.greeting")}</label>

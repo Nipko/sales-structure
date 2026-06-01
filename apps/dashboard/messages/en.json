@@ -62,7 +62,13 @@
       "ganado": "Won",
       "perdido": "Lost",
       "no_interesado": "Not interested"
-    }
+    },
+    "confirmDelete": "Are you sure you want to delete?",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "dismiss": "Dismiss",
+    "createdAt": "Created"
   },
   "nav": {
     "platformConsole": "Platform console",
@@ -2202,7 +2208,20 @@
       "significance": "Statistical significance",
       "significant": "Significant (p < 0.05)",
       "notSignificant": "Not significant",
-      "stats": "Stats by variant"
+      "stats": "Stats by variant",
+      "confirmWinner": "Confirm the winning variant?",
+      "delivered": "Delivered",
+      "deliveryRate": "Delivery rate",
+      "minSample": "Minimum sample for reliable results",
+      "noVariants": "No variants",
+      "read": "Read",
+      "readRate": "Read rate",
+      "results": "Results",
+      "sent": "Sent",
+      "splitLabel": "Send split",
+      "testConfig": "A/B test configuration",
+      "toggle": "Test two variants (A/B)",
+      "toast": { "winnerSelected": "Winning variant selected" }
     }
   },
   "channels": {
@@ -2419,7 +2438,8 @@
       "testReady": "Your bot is ready to receive messages",
       "disconnectTitle": "Disconnect bot",
       "disconnectDesc": "The webhook will be removed and it will stop receiving messages",
-      "disconnect": "Disconnect"
+      "disconnect": "Disconnect",
+      "testFailed": "Couldn't send the test message"
     },
     "webhook": "Webhook",
     "callbackUrl": "Callback URL",
@@ -2803,7 +2823,11 @@
         "connection": "Connection error"
       }
     },
-    "testAgent": "Test agent"
+    "testAgent": "Test agent",
+    "agentCreated": "Agent created",
+    "changeTemplate": "Change template",
+    "changeTemplateDesc": "Apply a different template to this agent (replaces its base configuration).",
+    "templateApplied": "Template applied"
   },
   "knowledge": {
     "title": "Knowledge Base",
@@ -3809,6 +3833,9 @@
       "title": "Connect your first channel",
       "subtitle": "It's the last step to start receiving customers. WhatsApp is recommended.",
       "recommendedWhatsapp": "Recommended · WhatsApp",
+      "whatsappBrandTitle": "WhatsApp Business",
+      "officialMeta": "Official connection via Meta",
+      "otherChannelsHint": "Opens in a new tab. Once connected, come back here and the wizard continues on its own.",
       "otherChannels": "Or connect another channel",
       "recommended": "Recommended",
       "back": "Back",
@@ -3903,6 +3930,7 @@
     },
     "customize": {
       "agentName": "Agent name",
+      "agentNameHint": "It's a suggested name. Use your brand or business name to personalize it.",
       "greeting": "Welcome message",
       "tone": "Communication tone",
       "toneAmigable": "Friendly (informal)",
@@ -4323,7 +4351,8 @@
       "active": "Active",
       "pastDue": "Payment due",
       "cancelled": "Cancelled",
-      "expired": "Expired"
+      "expired": "Expired",
+      "unlimited": "Unlimited"
     },
     "pause": "Pause subscription",
     "resume": "Resume",
@@ -6710,11 +6739,13 @@
       "success": "Template installed successfully",
       "error": "Error installing template",
       "trigger": "Trigger",
-      "actions": "Actions"
+      "actions": "Actions",
+      "actionsCount": "Actions"
     },
     "empty": {
       "title": "No templates found",
-      "subtitle": "Try different search filters"
+      "subtitle": "Try different search filters",
+      "clearFilters": "Clear filters"
     }
   },
   "widgetTriggers": {

@@ -62,7 +62,13 @@
       "ganado": "Ganado",
       "perdido": "Perdido",
       "no_interesado": "No interesado"
-    }
+    },
+    "confirmDelete": "¿Seguro que quieres eliminar?",
+    "name": "Nombre",
+    "email": "Correo",
+    "phone": "Teléfono",
+    "dismiss": "Descartar",
+    "createdAt": "Creado"
   },
   "nav": {
     "platformConsole": "Consola de plataforma",
@@ -2202,7 +2208,20 @@
       "significance": "Significancia estadística",
       "significant": "Significativo (p < 0.05)",
       "notSignificant": "No significativo",
-      "stats": "Estadísticas por variante"
+      "stats": "Estadísticas por variante",
+      "confirmWinner": "¿Confirmar la variante ganadora?",
+      "delivered": "Entregados",
+      "deliveryRate": "Tasa de entrega",
+      "minSample": "Muestra mínima para resultados confiables",
+      "noVariants": "Sin variantes",
+      "read": "Leídos",
+      "readRate": "Tasa de lectura",
+      "results": "Resultados",
+      "sent": "Enviados",
+      "splitLabel": "División del envío",
+      "testConfig": "Configuración de la prueba A/B",
+      "toggle": "Probar dos variantes (A/B)",
+      "toast": { "winnerSelected": "Variante ganadora seleccionada" }
     }
   },
   "channels": {
@@ -2419,7 +2438,8 @@
       "testReady": "Tu bot esta listo para recibir mensajes",
       "disconnectTitle": "Desconectar bot",
       "disconnectDesc": "Se eliminara el webhook y dejara de recibir mensajes",
-      "disconnect": "Desconectar"
+      "disconnect": "Desconectar",
+      "testFailed": "No se pudo enviar el mensaje de prueba"
     },
     "webhook": "Webhook",
     "callbackUrl": "URL de Callback",
@@ -2803,7 +2823,11 @@
         "connection": "Error de conexión"
       }
     },
-    "testAgent": "Probar agente"
+    "testAgent": "Probar agente",
+    "agentCreated": "Agente creado",
+    "changeTemplate": "Cambiar plantilla",
+    "changeTemplateDesc": "Aplica otra plantilla a este agente (reemplaza su configuración base).",
+    "templateApplied": "Plantilla aplicada"
   },
   "knowledge": {
     "title": "Knowledge Base",
@@ -3809,6 +3833,9 @@
       "title": "Conecta tu primer canal",
       "subtitle": "Es el último paso para empezar a recibir clientes. WhatsApp es el recomendado.",
       "recommendedWhatsapp": "Recomendado · WhatsApp",
+      "whatsappBrandTitle": "WhatsApp Business",
+      "officialMeta": "Conexión oficial vía Meta",
+      "otherChannelsHint": "Se abre en otra pestaña. Al conectar, vuelve aquí y el asistente continúa solo.",
       "otherChannels": "O conecta otro canal",
       "recommended": "Recomendado",
       "back": "Volver",
@@ -3903,6 +3930,7 @@
     },
     "customize": {
       "agentName": "Nombre del agente",
+      "agentNameHint": "Es un nombre sugerido. Ponle el de tu marca o empresa para personalizarlo.",
       "greeting": "Mensaje de bienvenida",
       "tone": "Tono de comunicación",
       "toneAmigable": "Amigable (tú)",
@@ -4323,7 +4351,8 @@
       "active": "Activa",
       "pastDue": "Pago pendiente",
       "cancelled": "Cancelada",
-      "expired": "Vencida"
+      "expired": "Vencida",
+      "unlimited": "Ilimitado"
     },
     "pause": "Pausar suscripción",
     "resume": "Reanudar",
@@ -6710,11 +6739,13 @@
       "success": "Plantilla instalada correctamente",
       "error": "Error al instalar la plantilla",
       "trigger": "Disparador",
-      "actions": "Acciones"
+      "actions": "Acciones",
+      "actionsCount": "Acciones"
     },
     "empty": {
       "title": "No se encontraron plantillas",
-      "subtitle": "Prueba con otros filtros de búsqueda"
+      "subtitle": "Prueba con otros filtros de búsqueda",
+      "clearFilters": "Limpiar filtros"
     }
   },
   "widgetTriggers": {

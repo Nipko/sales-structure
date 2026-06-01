@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Instagram, Facebook, Send, Mail, Globe, ArrowRight } from "lucide-react";
 
@@ -13,16 +12,16 @@ const CHANNELS = [
 ];
 
 export default function SecondaryChannels() {
-    const router = useRouter();
     const t = useTranslations("setupWizard.connect");
     return (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {CHANNELS.map((ch) => {
                 const Icon = ch.icon;
                 return (
                     <button
                         key={ch.id}
-                        onClick={() => router.push(ch.href)}
+                        onClick={() => window.open(ch.href, "_blank", "noopener")}
                         className="flex items-center gap-3 p-3 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30 text-left transition-all cursor-pointer"
                     >
                         <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: ch.color }}>
@@ -33,6 +32,8 @@ export default function SecondaryChannels() {
                     </button>
                 );
             })}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-2">{t("otherChannelsHint")}</p>
         </div>
     );
 }

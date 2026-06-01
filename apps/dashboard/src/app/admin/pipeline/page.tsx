@@ -674,7 +674,7 @@ export default function PipelinePage() {
                     <div className="flex flex-col items-center justify-center py-16 text-center">
                         <Target size={48} className="text-muted-foreground opacity-20 mb-4" />
                         <p className="text-sm text-muted-foreground">
-                            {tEmpty(vt.industry !== 'otro' ? `${vt.industry}.pipeline` : 'default.pipeline')}
+                            {tEmpty(vt.industry !== 'otro' && tEmpty.has(`${vt.industry}.pipeline`) ? `${vt.industry}.pipeline` : 'default.pipeline')}
                         </p>
                     </div>
                 )}

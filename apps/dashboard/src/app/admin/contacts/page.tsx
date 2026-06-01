@@ -694,7 +694,7 @@ export default function ContactsPage() {
                     <div className="flex flex-col items-center justify-center py-16 text-center">
                         <Users size={48} className="text-[var(--text-secondary)] opacity-20 mb-4" />
                         <p className="text-sm text-[var(--text-secondary)]">
-                            {tEmpty(vt.industry !== 'otro' ? `${vt.industry}.contacts` : 'default.contacts')}
+                            {tEmpty(vt.industry !== 'otro' && tEmpty.has(`${vt.industry}.contacts`) ? `${vt.industry}.contacts` : 'default.contacts')}
                         </p>
                     </div>
                 )}
@@ -1153,7 +1153,7 @@ export default function ContactsPage() {
                                         <div className="mt-1.5 text-neutral-600 dark:text-neutral-300 space-y-0.5">
                                             <div>✅ {t('importModal.imported')}: {importResult.imported ?? 0}</div>
                                             <div>⏭️ {t('importModal.skipped')}: {importResult.skipped ?? 0}</div>
-                                            <div>⚠️ {t('importResult.errors.length') || (importResult.errors && importResult.errors.length) || 0} errores encontrados.</div>
+                                            <div>⚠️ {(importResult.errors && importResult.errors.length) || 0} errores encontrados.</div>
                                         </div>
                                         {importResult.errors && importResult.errors.length > 0 && (
                                             <ul className="mt-2.5 list-disc pl-4 text-[10px] text-red-500 space-y-1">

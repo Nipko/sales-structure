@@ -62,7 +62,13 @@
       "ganado": "Ganho",
       "perdido": "Perdido",
       "no_interesado": "Sem interesse"
-    }
+    },
+    "confirmDelete": "Tem certeza que deseja excluir?",
+    "name": "Nome",
+    "email": "E-mail",
+    "phone": "Telefone",
+    "dismiss": "Dispensar",
+    "createdAt": "Criado"
   },
   "nav": {
     "platformConsole": "Console da plataforma",
@@ -2202,7 +2208,20 @@
       "significance": "Significância estatística",
       "significant": "Significativo (p < 0.05)",
       "notSignificant": "Não significativo",
-      "stats": "Estatísticas por variante"
+      "stats": "Estatísticas por variante",
+      "confirmWinner": "Confirmar a variante vencedora?",
+      "delivered": "Entregues",
+      "deliveryRate": "Taxa de entrega",
+      "minSample": "Amostra mínima para resultados confiáveis",
+      "noVariants": "Sem variantes",
+      "read": "Lidos",
+      "readRate": "Taxa de leitura",
+      "results": "Resultados",
+      "sent": "Enviados",
+      "splitLabel": "Divisão do envio",
+      "testConfig": "Configuração do teste A/B",
+      "toggle": "Testar duas variantes (A/B)",
+      "toast": { "winnerSelected": "Variante vencedora selecionada" }
     }
   },
   "channels": {
@@ -2419,7 +2438,8 @@
       "testReady": "Seu bot esta pronto para receber mensagens",
       "disconnectTitle": "Desconectar bot",
       "disconnectDesc": "O webhook sera removido e parara de receber mensagens",
-      "disconnect": "Desconectar"
+      "disconnect": "Desconectar",
+      "testFailed": "Não foi possível enviar a mensagem de teste"
     },
     "webhook": "Webhook",
     "callbackUrl": "URL de Callback",
@@ -2803,7 +2823,11 @@
         "connection": "Erro de conexão"
       }
     },
-    "testAgent": "Testar agente"
+    "testAgent": "Testar agente",
+    "agentCreated": "Agente criado",
+    "changeTemplate": "Trocar modelo",
+    "changeTemplateDesc": "Aplique outro modelo a este agente (substitui a configuração base).",
+    "templateApplied": "Modelo aplicado"
   },
   "knowledge": {
     "title": "Base de Conhecimento",
@@ -3632,7 +3656,29 @@
     "active": "Ativo",
     "createFromTemplate": "Criar a partir de modelo",
     "presetTitle": "Escolha um tipo de email",
-    "presetSubtitle": "Selecione um modelo pré-desenhado para personalizar"
+    "presetSubtitle": "Selecione um modelo pré-desenhado para personalizar",
+    "availableVariables": "Variáveis disponíveis",
+    "createFirstTemplate": "Criar primeiro modelo",
+    "createTemplate": "Criar modelo",
+    "description": "Crie e gerencie e-mails transacionais",
+    "destinationEmail": "E-mail de destino",
+    "destinationPlaceholder": "seu@email.com",
+    "html": "HTML",
+    "htmlBody": "Corpo HTML",
+    "htmlBodyPlaceholder": "<h1>Olá {{customer_name}}</h1><p>Obrigado pela sua compra...</p>",
+    "namePlaceholder": "ex.: Boas-vindas a clientes",
+    "noTemplates": "Nenhum modelo criado",
+    "presetFooterHint": "O modelo será criado pronto para personalizar",
+    "rendered": "Renderizado",
+    "sendTest": "Enviar teste",
+    "sendTestEmail": "Enviar e-mail de teste",
+    "sending": "Enviando...",
+    "slug": "Slug (identificador único)",
+    "slugPlaceholder": "boas-vindas-cliente",
+    "subjectHint": "— Use {{variable}} para dados dinâmicos",
+    "subjectPlaceholder": "Ex.: Olá {{customer_name}}, seu pedido {{order_id}} está pronto",
+    "testEmailDesc": "Será enviado um e-mail de teste com dados de exemplo.",
+    "variablesHint": "Clique para inserir no assunto ou no corpo (conforme a posição do cursor)"
   },
   "changePassword": {
     "title": "Alterar Senha",
@@ -3758,6 +3804,9 @@
       "title": "Conecte seu primeiro canal",
       "subtitle": "É o último passo para começar a receber clientes. O WhatsApp é o recomendado.",
       "recommendedWhatsapp": "Recomendado · WhatsApp",
+      "whatsappBrandTitle": "WhatsApp Business",
+      "officialMeta": "Conexão oficial via Meta",
+      "otherChannelsHint": "Abre em outra aba. Ao conectar, volte aqui e o assistente continua sozinho.",
       "otherChannels": "Ou conecte outro canal",
       "recommended": "Recomendado",
       "back": "Voltar",
@@ -3852,6 +3901,7 @@
     },
     "customize": {
       "agentName": "Nome do agente",
+      "agentNameHint": "É um nome sugerido. Use o da sua marca ou empresa para personalizar.",
       "greeting": "Mensagem de boas-vindas",
       "tone": "Tom de comunicação",
       "toneAmigable": "Amigável (você)",
@@ -4272,7 +4322,8 @@
       "active": "Ativa",
       "pastDue": "Pagamento pendente",
       "cancelled": "Cancelada",
-      "expired": "Expirada"
+      "expired": "Expirada",
+      "unlimited": "Ilimitado"
     },
     "pause": "Pausar assinatura",
     "resume": "Retomar",
@@ -6659,11 +6710,13 @@
       "success": "Template instalado com sucesso",
       "error": "Erro ao instalar o template",
       "trigger": "Gatilho",
-      "actions": "Ações"
+      "actions": "Ações",
+      "actionsCount": "Ações"
     },
     "empty": {
       "title": "Nenhum template encontrado",
-      "subtitle": "Tente outros filtros de busca"
+      "subtitle": "Tente outros filtros de busca",
+      "clearFilters": "Limpar filtros"
     }
   },
   "widgetTriggers": {
@@ -6743,7 +6796,20 @@
       "sendgridApiKey": "API Key do SendGrid",
       "inboundType": "Recepção de email",
       "inboundHint": "Configure o Inbound Parse do SendGrid para receber emails na sua caixa de entrada.",
-      "active": "Canal ativo"
+      "active": "Canal ativo",
+      "fromEmailHelp": "O e-mail a partir do qual o agente de IA enviará as respostas (ex. contato@seudominio.com).",
+      "fromNameHelp": "O nome que seus clientes verão ao receber seus e-mails (ex. Suporte Parallly).",
+      "replyToHelp": "Endereço opcional para onde as respostas serão enviadas se você não quiser que sejam processadas por chat.",
+      "sendgridApiKeyHelp": "Chave de API do SendGrid com permissão de envio (Mail Send).",
+      "smtpGuideTitle": "Guia de portas e hosts SMTP comuns",
+      "smtpHostHelp": "Servidor de saída do seu provedor de e-mail (ex. smtp.gmail.com ou smtp.office365.com).",
+      "smtpPassHelp": "Sua senha. IMPORTANTE: Se você usa Gmail ou Outlook com verificação em duas etapas ativa, deve criar e usar uma 'Senha de Aplicativo' de 16 caracteres.",
+      "smtpPortHelp": "Porta de conexão. TLS: 587 (recomendado), SSL: 465, Sem criptografia: 25.",
+      "smtpUserHelp": "Seu endereço de e-mail completo de login.",
+      "webhookCopied": "URL copiada!",
+      "webhookCopyBtn": "Copiar URL do Webhook",
+      "webhookCopyHint": "Copie esta URL de recebimento e insira em SendGrid > Settings > Inbound Parse para receber e-mails na sua caixa do Parallly:",
+      "webhookCopyTitle": "Webhook de recebimento de e-mails"
     },
     "save": "Salvar configuração",
     "saving": "Salvando...",

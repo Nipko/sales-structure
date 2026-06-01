@@ -1429,7 +1429,7 @@ export default function InboxPage() {
                     {!loadingConv && filteredConversations.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
                             <MessageSquare size={32} className="opacity-20" />
-                            <span className="text-sm">{tEmpty(vt.industry !== 'otro' ? `${vt.industry}.inbox` : 'default.inbox')}</span>
+                            <span className="text-sm">{tEmpty(vt.industry !== 'otro' && tEmpty.has(`${vt.industry}.inbox`) ? `${vt.industry}.inbox` : 'default.inbox')}</span>
                         </div>
                     )}
                 </div>

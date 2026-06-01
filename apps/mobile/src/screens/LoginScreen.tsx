@@ -28,6 +28,7 @@ export function LoginScreen() {
     const [verifying, setVerifying] = useState(false);
     const [emailSending, setEmailSending] = useState(false);
     const [emailSent, setEmailSent] = useState(false);
+    const [trustDevice, setTrustDevice] = useState(true); // remember this device → skip 2FA next time
 
     useEffect(() => {
         if (googleAvailable) {
@@ -76,7 +77,7 @@ export function LoginScreen() {
     const verify = async () => {
         if (!twoFA || !code.trim()) return;
         setVerifying(true); setError(null);
-        const res = await verifyTwoFactor(twoFA.token, code.trim(), effectiveMethod);
+        const res = await verifyTwoFactor(twoFA.token, code.trim(), effectiveMethod, trustDevice);
         if (!res.ok) setError(res.error || 'Código incorrecto');
         // On success the AuthProvider sets `user` and this screen unmounts.
         setVerifying(false);
@@ -179,6 +180,11 @@ export function LoginScreen() {
                         {emailSent && <Text style={styles.info}>Código enviado a tu correo.</Text>}
                         {error && <Text style={styles.error}>{error}</Text>}
 
+                        <TouchableOpacity style={styles.checkboxRow} onPress={() => setTrustDevice(!trustDevice)} activeOpacity={0.7}>
+                            <Ionicons name={trustDevice ? 'checkbox' : 'square-outline'} size={20} color={trustDevice ? theme.accent : theme.textSecondary} />
+                            <Text style={styles.checkboxLabel}>Confiar en este dispositivo por 30 días</Text>
+                        </TouchableOpacity>
+
                         <TouchableOpacity style={styles.button} onPress={verify} disabled={verifying || !code.trim()}>
                             {verifying ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verificar</Text>}
                         </TouchableOpacity>
@@ -222,6 +228,8 @@ const styles = StyleSheet.create({
     twoFaTitle: { color: theme.text, fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 8 },
     twoFaDesc: { color: theme.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
     codeInput: { textAlign: 'center', fontSize: 22, letterSpacing: 6, fontWeight: '600' },
+    checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, marginBottom: 4 },
+    checkboxLabel: { color: theme.textSecondary, fontSize: 13, flex: 1 },
     linkBtn: { alignItems: 'center', paddingVertical: 12 },
     link: { color: theme.accent, fontSize: 14, fontWeight: '600' },
     linkMuted: { color: theme.textSecondary, fontSize: 14 },

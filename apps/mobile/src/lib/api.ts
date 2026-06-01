@@ -5,6 +5,9 @@ import { API_URL } from './config';
 const ACCESS_KEY = 'parallly_access';
 const REFRESH_KEY = 'parallly_refresh';
 const USER_KEY = 'parallly_user';
+// Trusted-device token: lets future logins skip 2FA for 30 days. Persists across
+// logout (it identifies the DEVICE, not the session) — only cleared if revoked.
+const DEVICE_TRUST_KEY = 'parallly_device_trust';
 
 // Shared contract (packages/shared) + the display name returned by /auth/login.
 export type AuthUser = SharedAuthUser & { name?: string };
@@ -34,6 +37,10 @@ export const tokens = {
         const raw = await SecureStore.getItemAsync(USER_KEY);
         return raw ? JSON.parse(raw) : null;
     },
+    // Device-trust token — NOT cleared by clear()/logout on purpose.
+    async getDeviceTrust(): Promise<string | null> { return SecureStore.getItemAsync(DEVICE_TRUST_KEY); },
+    async setDeviceTrust(token: string) { await SecureStore.setItemAsync(DEVICE_TRUST_KEY, token); },
+    async clearDeviceTrust() { await SecureStore.deleteItemAsync(DEVICE_TRUST_KEY); },
 };
 
 // ── Core fetch with auth + single refresh retry ──────────────
@@ -92,30 +99,33 @@ async function json<T = any>(path: string, options?: RequestInit): Promise<{ suc
 
 // ── Public API ───────────────────────────────────────────────
 export const api = {
-    async login(email: string, password: string) {
+    // rememberMe=true → long-lived session (mobile standard). deviceTrustToken (if
+    // present) lets the backend skip the 2FA challenge on a previously trusted device.
+    async login(email: string, password: string, deviceTrustToken?: string) {
         const res = await fetch(`${API_URL}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
+            body: JSON.stringify({ email, password, rememberMe: true, deviceTrustToken }),
         });
         return res.json();
     },
 
-    async googleLogin(idToken: string) {
+    async googleLogin(idToken: string, deviceTrustToken?: string) {
         const res = await fetch(`${API_URL}/auth/google`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken }),
+            body: JSON.stringify({ idToken, rememberMe: true, deviceTrustToken }),
         });
         return res.json();
     },
 
-    // 2FA challenge during login (public — uses the twoFAToken from login/google)
-    async verify2FA(twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = true) {
+    // 2FA challenge during login (public — uses the twoFAToken from login/google).
+    // trustDevice=true → backend registers this device and returns a deviceTrustToken.
+    async verify2FA(twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = true, trustDevice = false) {
         const res = await fetch(`${API_URL}/auth/2fa/verify`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ twoFAToken, code, method, rememberMe }),
+            body: JSON.stringify({ twoFAToken, code, method, rememberMe, trustDevice }),
         });
         return res.json();
     },

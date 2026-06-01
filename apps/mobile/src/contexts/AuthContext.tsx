@@ -28,7 +28,7 @@ interface AuthState {
     unlock: () => Promise<void>;
     login: (email: string, password: string) => Promise<LoginResult>;
     loginWithGoogle: (idToken: string) => Promise<LoginResult>;
-    verifyTwoFactor: (twoFAToken: string, code: string, method: TwoFAMethod) => Promise<LoginResult>;
+    verifyTwoFactor: (twoFAToken: string, code: string, method: TwoFAMethod, trustDevice?: boolean) => Promise<LoginResult>;
     sendTwoFactorEmail: (twoFAToken: string) => Promise<boolean>;
     logout: () => Promise<void>;
 }
@@ -78,6 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const applyAuth = useCallback(async (res: any, fallbackError: string): Promise<LoginResult> => {
         if (res?.success && res.data?.accessToken) {
             await tokens.set(res.data.accessToken, res.data.refreshToken);
+            // Persist the device-trust token so future logins skip 2FA on this device.
+            if (res.data.deviceTrustToken) await tokens.setDeviceTrust(res.data.deviceTrustToken);
             const u: AuthUser = res.data.user;
             await tokens.setUser(u);
             setUser(u);
@@ -98,16 +100,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [loadVertical]);
 
     const login = useCallback(async (email: string, password: string) => {
-        return applyAuth(await api.login(email, password), 'Credenciales inválidas');
+        const dt = await tokens.getDeviceTrust();
+        return applyAuth(await api.login(email, password, dt || undefined), 'Credenciales inválidas');
     }, [applyAuth]);
 
     const loginWithGoogle = useCallback(async (idToken: string) => {
-        return applyAuth(await api.googleLogin(idToken), 'No se pudo iniciar sesión con Google');
+        const dt = await tokens.getDeviceTrust();
+        return applyAuth(await api.googleLogin(idToken, dt || undefined), 'No se pudo iniciar sesión con Google');
     }, [applyAuth]);
 
-    const verifyTwoFactor = useCallback(async (twoFAToken: string, code: string, method: TwoFAMethod) => {
+    const verifyTwoFactor = useCallback(async (twoFAToken: string, code: string, method: TwoFAMethod, trustDevice = true) => {
         try {
-            return await applyAuth(await api.verify2FA(twoFAToken, code, method), 'Código incorrecto');
+            return await applyAuth(await api.verify2FA(twoFAToken, code, method, true, trustDevice), 'Código incorrecto');
         } catch (e: any) {
             return { ok: false, error: e?.message || 'No se pudo verificar el código' };
         }

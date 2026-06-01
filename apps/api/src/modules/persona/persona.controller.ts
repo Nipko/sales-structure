@@ -236,6 +236,7 @@ export class PersonaController {
         let hasTeam = false;
         let hasAutomation = false;
         let hasTemplates = false;
+        let hasAnyChannel = false;
 
         if (schema) {
             try {
@@ -248,6 +249,7 @@ export class PersonaController {
                     this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM users WHERE tenant_id = $1::uuid AND is_active = true`, tenantId).catch(() => [{ c: 0 }]),
                     this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".automation_rules WHERE active = true LIMIT 1`).catch(() => [{ c: 0 }]),
                     this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".email_templates LIMIT 1`).catch(() => [{ c: 0 }]),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`, tenantId).catch(() => [{ c: 0 }]),
                 ]);
 
                 const val = (r: PromiseSettledResult<any>) => r.status === 'fulfilled' ? Number((r.value as any[])?.[0]?.c || 0) : 0;
@@ -257,6 +259,7 @@ export class PersonaController {
                 hasTeam = val(checks[3]) > 1;
                 hasAutomation = val(checks[4]) > 0;
                 hasTemplates = val(checks[5]) > 0;
+                hasAnyChannel = val(checks[6]) > 0;
             } catch {
                 // If schema doesn't exist yet, all default to false
             }
@@ -274,6 +277,7 @@ export class PersonaController {
                 hasTeam,
                 hasAutomation,
                 hasTemplates,
+                hasAnyChannel,
             },
         };
     }

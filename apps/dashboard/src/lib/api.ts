@@ -296,6 +296,10 @@ export const api = {
     savePersonaConfig: (tenantId: string, config: any) =>
         apiPut(`/persona/${tenantId}`, config),
 
+    // --- Onboarding helpers ---
+    getWhatsappStatus: () => apiGet(`/channels/whatsapp/status`),
+    crawlUrl: (url: string, title?: string, category?: string) => apiPost(`/knowledge/documents/crawl`, { url, title, category }),
+
     // --- Multi-Agent ---
     listAgents: (tenantId: string) => apiGet(`/persona/${tenantId}/agents`),
     getAgent: (tenantId: string, agentId: string) => apiGet(`/persona/${tenantId}/agents/${agentId}`),

@@ -51,6 +51,20 @@ export function HelpAssistant() {
   const { user } = useAuth();
 
   const [open, setOpen] = useState(false);
+
+  // Allow other parts of the app (e.g. the onboarding tour) to open the copilot.
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined" && localStorage.getItem("parallly:openCopilot")) {
+        localStorage.removeItem("parallly:openCopilot");
+        setOpen(true);
+      }
+    } catch { /* ignore */ }
+    const handler = () => setOpen(true);
+    window.addEventListener("parallly:open-copilot", handler);
+    return () => window.removeEventListener("parallly:open-copilot", handler);
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeGuideId, setActiveGuideId] = useState<string | null>(null);

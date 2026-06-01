@@ -9,9 +9,13 @@ import {
     Target, Headphones, Calendar, ShoppingCart, Building, UtensilsCrossed,
     ChevronRight, ChevronLeft, Check, Sparkles, MessageSquare, Loader2,
     Zap, Clock, Plane, MapPin, Car, Wrench, Heart, BookOpen, GraduationCap,
-    Scale, Cpu, Briefcase, Home, Globe, Stethoscope, PawPrint,
+    Scale, Cpu, Briefcase, Home, Globe, Stethoscope, PawPrint, Plug, Compass,
 } from "lucide-react";
 import AnimatedLogo from "@/components/AnimatedLogo";
+import WhatsAppConnectPanel from "../channels/whatsapp/WhatsAppConnectPanel";
+import SecondaryChannels from "./_components/SecondaryChannels";
+import AgentTestChat from "./_components/AgentTestChat";
+import ToolsTour from "./_components/ToolsTour";
 
 const ICON_MAP: Record<string, any> = {
     target: Target, headphones: Headphones, calendar: Calendar,
@@ -22,22 +26,6 @@ const ICON_MAP: Record<string, any> = {
     globe: Globe, sparkles: Sparkles, stethoscope: Stethoscope,
     "paw-print": PawPrint,
 };
-
-const CHANNELS = [
-    { id: "whatsapp", key: "whatsapp", color: "#25D366" },
-    { id: "instagram", key: "instagram", color: "#E4405F" },
-    { id: "messenger", key: "messenger", color: "#0084FF" },
-    { id: "telegram", key: "telegram", color: "#0088CC" },
-];
-
-const CAPABILITIES = [
-    { id: "appointments", icon: Calendar, toolKey: "appointments" },
-    { id: "catalog", icon: ShoppingCart, toolKey: "catalog" },
-    { id: "crm", icon: Target, toolKey: "crm" },
-    { id: "knowledge", icon: BookOpen, toolKey: "knowledge" },
-    { id: "faqs", icon: Headphones, toolKey: "faqs" },
-    { id: "offers", icon: Zap, toolKey: "offers" },
-];
 
 function getToolBadges(tmpl: any): string[] {
     const cfg = tmpl.config || tmpl.config_json || {};
@@ -63,8 +51,7 @@ export default function SetupWizardPage() {
     const [greeting, setGreeting] = useState("");
     const [tone, setTone] = useState("amigable");
     const [is247, setIs247] = useState(true);
-    const [selectedChannels, setSelectedChannels] = useState<string[]>(["whatsapp"]);
-    const [enabledCapabilities, setEnabledCapabilities] = useState<string[]>([]);
+    const [channelConnected, setChannelConnected] = useState(false);
 
     useEffect(() => {
         if (!tenantId) return;
@@ -73,6 +60,22 @@ export default function SetupWizardPage() {
             setLoading(false);
         });
     }, [tenantId]);
+
+    // While on the "Conéctalo" step, poll for any connected channel (covers
+    // WhatsApp AND channels connected via their own OAuth pages).
+    useEffect(() => {
+        if (step !== 3 || channelConnected || !tenantId) return;
+        let active = true;
+        const check = async () => {
+            try {
+                const res: any = await api.getSetupStatus(tenantId);
+                if (active && res?.success && res?.data?.hasAnyChannel) setChannelConnected(true);
+            } catch { /* ignore */ }
+        };
+        check();
+        const iv = setInterval(check, 4000);
+        return () => { active = false; clearInterval(iv); };
+    }, [step, channelConnected, tenantId]);
 
     const verticalTemplates = templates.filter(tmpl => tmpl.name && !tmpl.nameKey);
     const builtinTemplates = templates.filter(tmpl => tmpl.nameKey);
@@ -86,18 +89,6 @@ export default function SetupWizardPage() {
         setTone(cfg.persona.personality?.tone || "amigable");
     };
 
-    const toggleChannel = (id: string) => {
-        setSelectedChannels(prev =>
-            prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
-        );
-    };
-
-    const toggleCapability = (id: string) => {
-        setEnabledCapabilities(prev =>
-            prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
-        );
-    };
-
     const handleFinish = async () => {
         if (!tenantId || !selectedTemplate) {
             await handleSkip();
@@ -108,8 +99,7 @@ export default function SetupWizardPage() {
         try {
             const result = await api.applySetupTemplate(tenantId, {
                 templateId: selectedTemplate.id,
-                customizations: { agentName, greeting, tone, enabledCapabilities, is247 },
-                selectedChannels,
+                customizations: { agentName, greeting, tone, is247 },
             });
             templateApplied = !!(result as any)?.success;
             if (!templateApplied) {
@@ -139,8 +129,11 @@ export default function SetupWizardPage() {
     const STEPS = [
         { key: "step1Title", icon: Sparkles },
         { key: "step2Title", icon: Zap },
-        { key: "step3Title", icon: MessageSquare },
+        { key: "testTitle", icon: MessageSquare },
+        { key: "connectTitle", icon: Plug },
+        { key: "discoverTitle", icon: Compass },
     ];
+    const LAST_STEP = STEPS.length - 1;
 
     if (loading) {
         return (
@@ -332,63 +325,37 @@ export default function SetupWizardPage() {
                     </div>
                 )}
 
-                {/* Step 2: Channels */}
-                {step === 2 && (
-                    <div>
-                        <h2 className="text-2xl font-semibold text-foreground mb-1">{t("channels.title")}</h2>
-                        <p className="text-muted-foreground text-sm mb-8">{t("channels.subtitle")}</p>
-                        <div className="space-y-3 max-w-lg">
-                            {CHANNELS.map(ch => (
-                                <button
-                                    key={ch.id}
-                                    onClick={() => toggleChannel(ch.id)}
-                                    className={`w-full flex items-center gap-4 p-4 rounded-xl border text-left transition-all ${
-                                        selectedChannels.includes(ch.id)
-                                            ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10"
-                                            : "border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04]"
-                                    }`}
-                                >
-                                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-sm font-semibold" style={{ background: ch.color }}>
-                                        {ch.id[0].toUpperCase()}
-                                    </div>
-                                    <span className="text-sm text-foreground flex-1">{t(`channels.${ch.key}`)}</span>
-                                    {selectedChannels.includes(ch.id) && <Check size={18} className="text-indigo-500" />}
-                                </button>
-                            ))}
-                        </div>
+                {/* Step 2: Pruébalo (test chat) */}
+                {step === 2 && tenantId && (
+                    <div className="max-w-2xl mx-auto">
+                        <h2 className="text-2xl font-semibold text-foreground mb-1">{t("test.title")}</h2>
+                        <p className="text-muted-foreground text-sm mb-6">{t("test.subtitle")}</p>
+                        <AgentTestChat tenantId={tenantId} />
+                    </div>
+                )}
 
-                        <div className="mt-8 max-w-lg">
-                            <p className="text-[13px] text-foreground font-semibold mb-1">{t("channels.capabilitiesTitle")}</p>
-                            <p className="text-[12px] text-muted-foreground mb-4">{t("channels.capabilitiesSubtitle")}</p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {CAPABILITIES.map(cap => {
-                                    const Icon = cap.icon;
-                                    const isEnabled = enabledCapabilities.includes(cap.id);
-                                    return (
-                                        <button
-                                            key={cap.id}
-                                            onClick={() => toggleCapability(cap.id)}
-                                            className={`flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all ${
-                                                isEnabled
-                                                    ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10"
-                                                    : "border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30"
-                                            }`}
-                                        >
-                                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                                                isEnabled ? "bg-indigo-500/15 text-indigo-500" : "bg-neutral-100 dark:bg-white/10 text-muted-foreground"
-                                            }`}>
-                                                <Icon size={18} />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-foreground">{t(`channels.cap_${cap.id}`)}</p>
-                                                <p className="text-[11px] text-muted-foreground leading-snug">{t(`channels.cap_${cap.id}_desc`)}</p>
-                                            </div>
-                                            {isEnabled && <Check size={16} className="text-indigo-500 shrink-0" />}
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                {/* Step 3: Conéctalo (connect ≥1 channel) */}
+                {step === 3 && tenantId && (
+                    <div className="max-w-lg mx-auto">
+                        <h2 className="text-2xl font-semibold text-foreground mb-1">{t("connect.title")}</h2>
+                        <p className="text-muted-foreground text-sm mb-5">{t("connect.subtitle")}</p>
+
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{t("connect.recommendedWhatsapp")}</p>
+                        <WhatsAppConnectPanel tenantId={tenantId} variant="onboarding" onConnected={() => setChannelConnected(true)} />
+
+                        <div className="mt-7">
+                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{t("connect.otherChannels")}</p>
+                            <SecondaryChannels />
                         </div>
+                    </div>
+                )}
+
+                {/* Step 4: Descúbrelo (tools tour) */}
+                {step === 4 && (
+                    <div className="max-w-2xl mx-auto">
+                        <h2 className="text-2xl font-semibold text-foreground mb-1">{t("discover.title")}</h2>
+                        <p className="text-muted-foreground text-sm mb-6">{t("discover.subtitle")}</p>
+                        <ToolsTour />
                     </div>
                 )}
             </div>
@@ -404,14 +371,27 @@ export default function SetupWizardPage() {
                         <ChevronLeft size={16} /> {t("navigation.previous")}
                     </button>
 
-                    {step < 2 ? (
-                        <button
-                            onClick={() => setStep(step + 1)}
-                            disabled={step === 0 && !selectedTemplate}
-                            className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-sm font-medium bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-40 transition-colors"
-                        >
-                            {t("navigation.next")} <ChevronRight size={16} />
-                        </button>
+                    {step < LAST_STEP ? (
+                        step === 3 ? (
+                            <button
+                                onClick={() => setStep(step + 1)}
+                                className={`inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                                    channelConnected
+                                        ? "bg-indigo-500 text-white hover:bg-indigo-600"
+                                        : "text-muted-foreground hover:text-foreground"
+                                }`}
+                            >
+                                {channelConnected ? t("connect.continue") : t("connect.connectLater")} <ChevronRight size={16} />
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => setStep(step + 1)}
+                                disabled={step === 0 && !selectedTemplate}
+                                className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-sm font-medium bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-40 transition-colors"
+                            >
+                                {t("navigation.next")} <ChevronRight size={16} />
+                            </button>
+                        )
                     ) : (
                         <button
                             onClick={handleFinish}

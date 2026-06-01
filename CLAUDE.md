@@ -138,3 +138,5 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **User manual** | `docs/user-manual.md` |
 | **Competitive analysis (May 2026 Q2 — DEFINITIVO): ~40 competidores en 6 clusters (AI-native, incumbentes, messaging, LatAm, booking/vertical/all-in-one), 31 dimensiones code-grounded, joya de la corona + UX + blueprint por competidor, 8 macro-tendencias, pricing WhatsApp/Meta, plan priorizado** | `docs/competitive-analysis-2026-q2.md` (supersede `competitive-analysis-2026-05.md` y `-enhanced.md`) |
 | **Platform test plan (May 2026): ~450 test items, 27 sections, 68 modules** | `docs/test-plan-2026-05.md` |
+| **Onboarding redesign (Q2 2026): research + proposal — guided/mandatory first-channel flow, 13-competitor teardown, WhatsApp Embedded Signup deep-dive, feature normalization into 5 levels, cohesive with `/onboarding`** | `docs/onboarding-redesign-2026-q2.md` |
+| **Onboarding redesign — technical implementation plan (file-by-file, endpoints, i18n, phases). Reuses existing `WhatsAppEmbeddedSignup` + route cards + ESU/coexistence backend; mostly wiring not building** | `docs/onboarding-redesign-implementation-plan.md` |

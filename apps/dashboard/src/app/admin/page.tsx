@@ -54,6 +54,7 @@ const modelBarColors = [
 export default function AdminDashboard() {
     const { user, verticalConfig } = useAuth();
     const t = useTranslations("dashboard");
+    const tSetup = useTranslations("setupWizard");
     const tVw = useTranslations("verticalWelcome");
     const tHelp = useTranslations("help");
     const vt = useVerticalTerms();
@@ -91,6 +92,7 @@ export default function AdminDashboard() {
     const [verticalLeads, setVerticalLeads] = useState<any[]>([]);
     const [verticalLoading, setVerticalLoading] = useState(false);
     const [isLive, setIsLive] = useState(false);
+    const [needsChannel, setNeedsChannel] = useState(false);
     const [platformStats, setPlatformStats] = useState({
         totalTenants: 0,
         totalUsers: 0,
@@ -118,6 +120,8 @@ export default function AdminDashboard() {
                 if (res.success && !res.data?.setupWizardCompleted) {
                     sessionStorage.setItem(justBouncedKey, String(Date.now()));
                     window.location.href = "/admin/setup-wizard";
+                } else if (res.success && res.data?.setupWizardCompleted && !res.data?.hasAnyChannel) {
+                    setNeedsChannel(true);
                 }
             } catch { /* proceed to dashboard */ }
         }
@@ -289,6 +293,20 @@ export default function AdminDashboard() {
 
     return (
         <div className="animate-in">
+            {needsChannel && user?.role !== "super_admin" && (
+                <div className="mb-6 rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center shrink-0">
+                        <MessageSquare size={18} className="text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">{tSetup("connectBannerTitle")}</p>
+                        <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-0.5">{tSetup("connectBannerDesc")}</p>
+                    </div>
+                    <Link href="/admin/channels" className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:text-neutral-900 transition-colors">
+                        {tSetup("connectBannerCta")} <ArrowUpRight size={14} />
+                    </Link>
+                </div>
+            )}
             {/* Header */}
             <div className="mb-8 flex items-center justify-between">
                 <div>

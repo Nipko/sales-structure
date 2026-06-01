@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Image, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Image, ScrollView, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,6 +56,7 @@ export function InboxScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [filter, setFilter] = useState<string>('all');
+    const [search, setSearch] = useState('');
 
     const load = useCallback(async () => {
         if (!tenantId) return;
@@ -79,8 +80,20 @@ export function InboxScreen() {
         return () => { active = false; };
     }, [load]);
 
+    const q = search.trim().toLowerCase();
+    const visible = q
+        ? items.filter((c) => (c.contactName || '').toLowerCase().includes(q) || (c.lastMessage || '').toLowerCase().includes(q))
+        : items;
+
     return (
         <View style={{ flex: 1, backgroundColor: theme.bg }}>
+            {/* Search */}
+            <View style={styles.searchWrap}>
+                <Ionicons name="search" size={16} color={theme.textSecondary} />
+                <TextInput style={styles.search} placeholder="Buscar conversación…" placeholderTextColor={theme.textSecondary} value={search} onChangeText={setSearch} />
+                {!!search && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={16} color={theme.textSecondary} /></TouchableOpacity>}
+            </View>
+
             {/* Filters */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={{ paddingHorizontal: 12, gap: 8, alignItems: 'center' }}>
                 {FILTERS.map((f) => (
@@ -95,7 +108,7 @@ export function InboxScreen() {
                 <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>
             ) : (
                 <FlatList
-                    data={items}
+                    data={visible}
                     keyExtractor={(c) => c.id}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={theme.accent} />}
                     ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>No hay conversaciones.</Text></View>}
@@ -146,6 +159,8 @@ export function InboxScreen() {
 const styles = StyleSheet.create({
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, backgroundColor: theme.bg },
     empty: { color: theme.textSecondary, fontSize: 14 },
+    searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginTop: 10, marginBottom: 4, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1 },
+    search: { flex: 1, color: theme.text, fontSize: 15 },
     filters: { maxHeight: 52, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     filterChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgCard },
     filterChipOn: { backgroundColor: theme.accent, borderColor: theme.accent },

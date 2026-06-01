@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
     View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
-    KeyboardAvoidingView, Platform, Modal, Alert, Image, ScrollView,
+    KeyboardAvoidingView, Platform, Modal, Alert, Image, ScrollView, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -56,6 +56,8 @@ export function ConversationScreen() {
     const [noteText, setNoteText] = useState('');
     const [summary, setSummary] = useState<string | null>(null);
     const [acting, setActing] = useState(false);
+    const [viewers, setViewers] = useState<{ agentId: string; agentName: string }[]>([]);
+    const [contactOpen, setContactOpen] = useState(false);
     const listRef = useRef<FlatList>(null);
 
     const load = useCallback(async () => {
@@ -79,16 +81,32 @@ export function ConversationScreen() {
 
     useEffect(() => {
         let active = true;
+        let hb: ReturnType<typeof setInterval> | null = null;
+        let sk: any = null;
+        const agentName = user?.name || user?.email || 'Agente';
         (async () => {
             const socket = await connectSocket();
+            sk = socket;
             socket.on('newMessage', (payload: any) => {
                 if (!active) return;
                 const cid = payload?.conversationId || payload?.conversation_id;
                 if (!cid || cid === conversationId) load();
             });
+            // Collision detection: announce presence + watch other viewers.
+            socket.on('conversation:viewers_update', (p: any) => {
+                if (!active || p?.conversationId !== conversationId) return;
+                const others = (p.viewers || []).filter((v: any) => v.agentId !== user?.id);
+                setViewers(others);
+            });
+            socket.emit('conversation:viewing_start', { conversationId, agentId: user?.id, agentName });
+            hb = setInterval(() => socket.emit('conversation:heartbeat', { conversationId, agentId: user?.id, agentName }), 15000);
         })();
-        return () => { active = false; };
-    }, [conversationId, load]);
+        return () => {
+            active = false;
+            if (hb) clearInterval(hb);
+            sk?.emit?.('conversation:viewing_stop', { conversationId, agentId: user?.id });
+        };
+    }, [conversationId, load, user?.id]);
 
     const timeline = useMemo<TimelineItem[]>(() => {
         const msgs: TimelineItem[] = messages.map((m) => ({ ...m, kind: 'msg' }));
@@ -173,7 +191,17 @@ export function ConversationScreen() {
                 </View>
             )}
 
+            {viewers.length > 0 && (
+                <View style={styles.viewersBar}>
+                    <Ionicons name="eye-outline" size={14} color={theme.warning} />
+                    <Text style={styles.viewersText} numberOfLines={1}>
+                        {viewers.map((v) => v.agentName).join(', ')} también {viewers.length > 1 ? 'están viendo' : 'está viendo'} esta conversación
+                    </Text>
+                </View>
+            )}
+
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.actionBar} contentContainerStyle={{ gap: 8, paddingHorizontal: 12, alignItems: 'center' }}>
+                <Action icon="information-circle-outline" label="Contacto" color={theme.textSecondary} onPress={() => setContactOpen(true)} />
                 <Action icon="person-add-outline" label="Asignarme" color={theme.accent} onPress={assignToMe} disabled={acting} />
                 {waiting && <Action icon="sparkles-outline" label="Devolver IA" color={theme.accent} onPress={returnToAI} disabled={acting} />}
                 <Action icon="document-text-outline" label="Resumir" color={theme.textSecondary} onPress={doSummary} disabled={aiBusy} />
@@ -275,7 +303,57 @@ export function ConversationScreen() {
             <Sheet visible={summary !== null} title="Resumen del hilo" onClose={() => setSummary(null)}>
                 {summary === '...' ? <ActivityIndicator color={theme.accent} /> : <Text style={styles.summaryText}>{summary}</Text>}
             </Sheet>
+
+            {/* Contact 360° */}
+            <Sheet visible={contactOpen} title={conv?.contact?.name || 'Contacto'} onClose={() => setContactOpen(false)}>
+                {conv?.contact && (
+                    <View>
+                        <View style={styles.contactActions}>
+                            {!!conv.contact.phone && (
+                                <TouchableOpacity style={styles.cAction} onPress={() => Linking.openURL(`tel:${conv.contact.phone}`)}>
+                                    <Ionicons name="call-outline" size={18} color={theme.accent} /><Text style={styles.cActionText}>Llamar</Text>
+                                </TouchableOpacity>
+                            )}
+                            {!!conv.contact.phone && (
+                                <TouchableOpacity style={styles.cAction} onPress={() => Linking.openURL(`https://wa.me/${String(conv.contact.phone).replace(/[^0-9]/g, '')}`)}>
+                                    <Ionicons name="logo-whatsapp" size={18} color={theme.success} /><Text style={[styles.cActionText, { color: theme.success }]}>WhatsApp</Text>
+                                </TouchableOpacity>
+                            )}
+                            {!!conv.contact.email && (
+                                <TouchableOpacity style={styles.cAction} onPress={() => Linking.openURL(`mailto:${conv.contact.email}`)}>
+                                    <Ionicons name="mail-outline" size={18} color={theme.accent} /><Text style={styles.cActionText}>Email</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                        <CRow label="Teléfono" value={conv.contact.phone} />
+                        <CRow label="Email" value={conv.contact.email} />
+                        <CRow label="Segmento" value={conv.contact.segment} />
+                        <CRow label="Valor (LTV)" value={conv.contact.lifetimeValue ? `$${Number(conv.contact.lifetimeValue).toLocaleString()}` : undefined} />
+                        <CRow label="Conversaciones" value={conv.contact.conversationCount != null ? String(conv.contact.conversationCount) : undefined} />
+                        {Array.isArray(conv.contact.tags) && conv.contact.tags.length > 0 && (
+                            <View style={{ marginTop: 8 }}>
+                                <Text style={styles.cLabel}>Etiquetas</Text>
+                                <View style={styles.tagWrap}>
+                                    {conv.contact.tags.map((t: any, i: number) => (
+                                        <View key={i} style={styles.tag}><Text style={styles.tagText}>{typeof t === 'string' ? t : t.name}</Text></View>
+                                    ))}
+                                </View>
+                            </View>
+                        )}
+                    </View>
+                )}
+            </Sheet>
         </KeyboardAvoidingView>
+    );
+}
+
+function CRow({ label, value }: { label: string; value?: string }) {
+    if (!value) return null;
+    return (
+        <View style={styles.cRow}>
+            <Text style={styles.cLabel}>{label}</Text>
+            <Text style={styles.cValue}>{value}</Text>
+        </View>
     );
 }
 
@@ -336,4 +414,15 @@ const styles = StyleSheet.create({
     saveBtn: { backgroundColor: theme.accent, borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 12 },
     saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
     summaryText: { color: theme.text, fontSize: 15, lineHeight: 22 },
+    viewersBar: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.warning + '14', paddingHorizontal: 14, paddingVertical: 6 },
+    viewersText: { color: theme.warning, fontSize: 12, flex: 1 },
+    contactActions: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+    cAction: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.bg, borderColor: theme.border, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10 },
+    cActionText: { color: theme.accent, fontWeight: '600', fontSize: 13 },
+    cRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
+    cLabel: { color: theme.textSecondary, fontSize: 14 },
+    cValue: { color: theme.text, fontSize: 14, fontWeight: '500', maxWidth: '60%', textAlign: 'right' },
+    tagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+    tag: { backgroundColor: theme.accent + '22', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+    tagText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
 });

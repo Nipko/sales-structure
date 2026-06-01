@@ -12,8 +12,8 @@ Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../pack
 - ✅ Tipos compartidos conectados (`@parallext/shared`) — contrato enforced
 - ✅ Auth (email/contraseña → JWT en SecureStore) + **desbloqueo biométrico**
 - ✅ Navegación (tabs: Inbox · CRM · Citas · Más)
-- ✅ **Inbox en tiempo real** (lista rica: avatar+canal, hora, badges handoff/IA, filtros) vía Socket.io
-- ✅ **Chat profesional**: burbujas con hora, notas internas intercaladas, banner de handoff, **imágenes + nota de voz** (entrantes); acciones: **asignarme · devolver a IA · resolver · resumir (IA) · nota interna**; composer con **canned · macros · IA contextual** (vacío→sugiere, con texto→**reescribe por tono**)
+- ✅ **Inbox en tiempo real** (lista rica: avatar+canal, hora, badges handoff/IA, filtros, **búsqueda**) vía Socket.io
+- ✅ **Chat profesional**: burbujas con hora, notas internas intercaladas, banner de handoff, **imágenes + nota de voz** (entrantes); acciones: **contacto 360° · asignarme · devolver a IA · resolver · resumir (IA) · nota interna**; composer con **canned · macros · IA contextual** (vacío→sugiere, con texto→**reescribe por tono**); **indicador de colisión** (quién más está viendo, en tiempo real)
 - ✅ **CRM**: lista de leads (búsqueda) + detalle 360° (datos, etiquetas, oportunidades, llamar/email)
 - ✅ **Embudo**: etapas del pipeline + **mover deals** entre etapas (desde el header de CRM)
 - ✅ **Citas**: agenda próxima + **confirmar / cancelar**

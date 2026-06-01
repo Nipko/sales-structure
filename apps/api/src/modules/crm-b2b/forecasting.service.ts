@@ -105,7 +105,7 @@ export class ForecastingService {
              FROM opportunities o
              JOIN leads l ON l.id = o.lead_id
              LEFT JOIN companies co ON co.id = l.company_id
-             WHERE o.${OPEN}
+             WHERE ${OPEN}
                AND o.updated_at < NOW() - ($1 || ' days')::interval
              ORDER BY o.updated_at ASC
              LIMIT 100`,

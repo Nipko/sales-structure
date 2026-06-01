@@ -210,6 +210,80 @@ export class FinancialsService {
     }
 
     /**
+     * GET /financials/activation
+     *
+     * Onboarding activation & time-to-first-value (TTFV), derived from existing
+     * data (no event instrumentation needed, backfills history): a tenant is
+     * "activated" once it has >=1 active channel. TTFV = first active channel
+     * created_at minus the onboarding baseline (onboarding_completed_at, falling
+     * back to created_at). This is the metric the guided onboarding optimizes.
+     */
+    async getActivationMetrics() {
+        const agg: any[] = await this.prisma.$queryRawUnsafe(`
+            WITH first_channel AS (
+                SELECT tenant_id, MIN(created_at) AS first_at
+                FROM channel_accounts
+                WHERE is_active = true
+                GROUP BY tenant_id
+            ),
+            ttfv AS (
+                SELECT EXTRACT(EPOCH FROM (fc.first_at - COALESCE(t.onboarding_completed_at, t.created_at))) AS secs
+                FROM tenants t
+                JOIN first_channel fc ON fc.tenant_id = t.id
+                WHERE fc.first_at >= COALESCE(t.onboarding_completed_at, t.created_at)
+            )
+            SELECT
+                (SELECT COUNT(*)::int FROM tenants) AS total_tenants,
+                (SELECT COUNT(*)::int FROM first_channel) AS activated_tenants,
+                (SELECT COUNT(*)::int FROM ttfv) AS ttfv_count,
+                (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY secs) FROM ttfv) AS median_secs,
+                (SELECT AVG(secs) FROM ttfv) AS avg_secs,
+                (SELECT percentile_cont(0.9) WITHIN GROUP (ORDER BY secs) FROM ttfv) AS p90_secs,
+                (SELECT COUNT(*)::int FROM ttfv WHERE secs <= 900) AS under_15min,
+                (SELECT COUNT(*)::int FROM ttfv WHERE secs <= 3600) AS under_1h,
+                (SELECT COUNT(*)::int FROM ttfv WHERE secs <= 86400) AS under_24h
+        `);
+        const a: any = agg?.[0] || {};
+
+        const breakdown: any[] = await this.prisma.$queryRawUnsafe(`
+            SELECT channel_type, COUNT(*)::int AS count
+            FROM (
+                SELECT DISTINCT ON (tenant_id) tenant_id, channel_type
+                FROM channel_accounts
+                WHERE is_active = true
+                ORDER BY tenant_id, created_at ASC
+            ) firsts
+            GROUP BY channel_type
+            ORDER BY count DESC
+        `);
+
+        const total = Number(a.total_tenants || 0);
+        const activated = Number(a.activated_tenants || 0);
+        const sample = Number(a.ttfv_count || 0);
+        const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
+
+        return {
+            totalTenants: total,
+            activatedTenants: activated,
+            notActivated: total - activated,
+            activationRate: pct(activated, total),
+            ttfv: {
+                sampleSize: sample,
+                medianSeconds: a.median_secs != null ? Math.round(Number(a.median_secs)) : null,
+                avgSeconds: a.avg_secs != null ? Math.round(Number(a.avg_secs)) : null,
+                p90Seconds: a.p90_secs != null ? Math.round(Number(a.p90_secs)) : null,
+                under15minRate: pct(Number(a.under_15min || 0), sample),
+                under1hRate: pct(Number(a.under_1h || 0), sample),
+                under24hRate: pct(Number(a.under_24h || 0), sample),
+            },
+            firstChannelBreakdown: (breakdown || []).map((r: any) => ({
+                channelType: r.channel_type,
+                count: Number(r.count || 0),
+            })),
+        };
+    }
+
+    /**
      * GET /financials/forecast?monthsAhead=6&monthsHistory=6
      *
      * Linear-regression forecast on FinancialSnapshot history.

@@ -3735,6 +3735,16 @@
     "cohortSize": "Tamanho",
     "month": "Mês"
   },
+  "onboardingMetrics": {
+    "title": "Ativação do onboarding",
+    "subtitle": "primeiro canal conectado e tempo até consegui-lo",
+    "activationRate": "Taxa de ativação",
+    "activatedOf": "{activated} de {total} conectaram canal",
+    "ttfvMedian": "TTFV mediano",
+    "under15": "{rate}% em menos de 15 min",
+    "firstChannel": "Primeiro canal conectado",
+    "noData": "Sem dados ainda"
+  },
   "setupWizard": {
     "title": "Configure seu agente IA",
     "subtitle": "Em menos de 5 minutos seu agente estará pronto para atender clientes",

@@ -53,6 +53,11 @@ export class FinancialsController {
         return this.financialsService.getTrialMetrics();
     }
 
+    @Get('activation')
+    async getActivation() {
+        return this.financialsService.getActivationMetrics();
+    }
+
     @Get('infra-costs')
     async getInfraCosts(@Query('year') year?: string) {
         return this.financialsService.getInfraCosts(

@@ -30,6 +30,7 @@ import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HelpPanel } from "@/components/ui/help-panel";
+import OnboardingMetricsCard from "./_components/OnboardingMetricsCard";
 
 const ICON_MAP: Record<string, any> = {
     Calendar, UserPlus, UserX, MessageSquare, Flame, MapPin, Car,
@@ -325,6 +326,8 @@ export default function AdminDashboard() {
                 description={tHelp("dashboard.description")}
                 tips={tHelp.raw("dashboard.tips") as string[]}
             />
+
+            {user?.role === "super_admin" && <OnboardingMetricsCard />}
 
             {/* Platform Section — super_admin only */}
             {user?.role === "super_admin" && (

@@ -299,6 +299,7 @@ export const api = {
     // --- Onboarding helpers ---
     getWhatsappStatus: () => apiGet(`/channels/whatsapp/status`),
     crawlUrl: (url: string, title?: string, category?: string) => apiPost(`/knowledge/documents/crawl`, { url, title, category }),
+    getActivationMetrics: () => apiGet(`/financials/activation`),
 
     // --- Multi-Agent ---
     listAgents: (tenantId: string) => apiGet(`/persona/${tenantId}/agents`),

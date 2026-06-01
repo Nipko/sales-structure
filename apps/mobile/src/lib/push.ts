@@ -21,6 +21,12 @@ Notifications.setNotificationHandler({
  * simulator — push simply stays off until those are set up.
  */
 export async function registerForPush(): Promise<void> {
+    // Expo Go (storeClient) dropped remote push in SDK 53 — skip cleanly to avoid
+    // noisy errors. Push activates in a development/production build (eas build).
+    if (Constants.executionEnvironment === 'storeClient') {
+        console.log('[push] Expo Go detected — remote push needs a development build (eas build).');
+        return;
+    }
     try {
         if (Platform.OS === 'android') {
             await Notifications.setNotificationChannelAsync('default', {

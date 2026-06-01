@@ -8,6 +8,8 @@ import {
     Calendar, ShoppingCart, UtensilsCrossed, Home, Car,
     Users, BarChart3, Megaphone, Workflow, Inbox, UserPlus,
     Sparkles, ArrowRight, MessageCircle,
+    Stethoscope, Dumbbell, CreditCard, PawPrint, Plane,
+    ShoppingBag, GraduationCap, Shield, Wrench, Camera, Package,
 } from "lucide-react";
 
 type Tool = { key: string; icon: typeof BookOpen; href: string };
@@ -22,15 +24,70 @@ const A_TRANSVERSAL: Tool[] = [
 ];
 
 const A_BY_VERTICAL: Record<string, Tool[]> = {
-    salud: [{ key: "appointments", icon: Calendar, href: "/admin/appointments" }],
-    moda_belleza: [{ key: "appointments", icon: Calendar, href: "/admin/appointments" }],
-    gimnasios: [{ key: "appointments", icon: Calendar, href: "/admin/appointments" }],
-    veterinaria: [{ key: "appointments", icon: Calendar, href: "/admin/appointments" }],
-    turismo: [{ key: "appointments", icon: Calendar, href: "/admin/appointments" }],
-    retail: [{ key: "catalog", icon: ShoppingCart, href: "/admin/catalog" }],
-    restaurantes: [{ key: "menu", icon: UtensilsCrossed, href: "/admin/menu" }],
-    inmobiliaria: [{ key: "listings", icon: Home, href: "/admin/listings" }],
-    automotriz: [{ key: "inventory", icon: Car, href: "/admin/inventory" }],
+    salud: [
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+        { key: "treatments", icon: Stethoscope, href: "/admin/treatment-plans" },
+    ],
+    moda_belleza: [
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+    ],
+    gimnasios: [
+        { key: "classes", icon: Dumbbell, href: "/admin/classes" },
+        { key: "memberships", icon: CreditCard, href: "/admin/memberships" },
+    ],
+    veterinaria: [
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+        { key: "pets", icon: PawPrint, href: "/admin/pets" },
+    ],
+    pet_services: [
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+        { key: "pets", icon: PawPrint, href: "/admin/pets" },
+    ],
+    turismo: [
+        { key: "tours", icon: Plane, href: "/admin/tours" },
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+    ],
+    restaurantes: [
+        { key: "menu", icon: UtensilsCrossed, href: "/admin/menu" },
+        { key: "orders", icon: ShoppingBag, href: "/admin/food-orders" },
+    ],
+    inmobiliaria: [
+        { key: "properties", icon: Home, href: "/admin/properties" },
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+    ],
+    automotriz: [
+        { key: "inventory", icon: Car, href: "/admin/inventory" },
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+    ],
+    retail: [
+        { key: "catalog", icon: ShoppingCart, href: "/admin/catalog" },
+        { key: "inventory", icon: Package, href: "/admin/inventory" },
+        { key: "orders", icon: ShoppingBag, href: "/admin/orders" },
+    ],
+    education: [
+        { key: "courses", icon: GraduationCap, href: "/admin/courses" },
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+    ],
+    seguros: [
+        { key: "insurance", icon: Shield, href: "/admin/insurance" },
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+    ],
+    servicios_hogar: [
+        { key: "serviceRequests", icon: Wrench, href: "/admin/service-requests" },
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+    ],
+    servicios_profesionales: [
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+    ],
+    finanzas: [
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+    ],
+    fotografia: [
+        { key: "photoSessions", icon: Camera, href: "/admin/photo-sessions" },
+        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+    ],
+    technology: [],
+    otro: [],
 };
 
 const B_TRANSVERSAL: Tool[] = [

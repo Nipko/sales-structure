@@ -120,6 +120,13 @@ export const api = {
         }),
     getAiSuggestion: (tenantId: string, id: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/suggest`),
+    returnToAI: (tenantId: string, id: string) =>
+        json(`/agent-console/conversation/${tenantId}/${id}/return-to-ai`, { method: 'PUT', body: '{}' }),
+    addNote: (tenantId: string, id: string, content: string, agentId?: string) =>
+        json(`/agent-console/conversation/${tenantId}/${id}/note`, { method: 'POST', body: JSON.stringify({ content, agentId }) }),
+    copilotRewrite: (conversationId: string, draft: string, tone: string) =>
+        json(`/copilot/${conversationId}/rewrite`, { method: 'POST', body: JSON.stringify({ draft, tone }) }),
+    copilotSummary: (conversationId: string) => json(`/copilot/${conversationId}/summary`),
     setAvailability: (userId: string, status: string) =>
         json(`/agent-console/status/${userId}`, { method: 'PUT', body: JSON.stringify({ status }) }),
     getCannedResponses: (tenantId: string) => json(`/agent-console/canned/${tenantId}`),

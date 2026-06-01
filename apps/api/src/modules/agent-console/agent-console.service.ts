@@ -370,6 +370,27 @@ export class AgentConsoleService {
     /**
      * Resolve a conversation (return to AI)
      */
+    /**
+     * Return a conversation to the AI: unassign + set status 'active' so the bot
+     * handles the next inbound message again. Closes the active human assignment.
+     */
+    async returnToAI(tenantId: string, conversationId: string): Promise<void> {
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) return;
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE conversations SET status = 'active', assigned_to = NULL WHERE id = $1::uuid`,
+            [conversationId],
+        );
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `UPDATE conversation_assignments SET resolved_at = NOW()
+             WHERE conversation_id = $1::uuid AND resolved_at IS NULL`,
+            [conversationId],
+        ).catch(() => {});
+    }
+
     async resolveConversation(tenantId: string, conversationId: string, agentId: string): Promise<void> {
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) return;

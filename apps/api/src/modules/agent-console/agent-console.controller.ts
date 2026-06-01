@@ -99,6 +99,15 @@ export class AgentConsoleController {
         return { success: true, message: 'Conversation resolved' };
     }
 
+    @Put('conversation/:tenantId/:conversationId/return-to-ai')
+    async returnToAI(
+        @Param('tenantId') tenantId: string,
+        @Param('conversationId') conversationId: string,
+    ) {
+        await this.agentConsoleService.returnToAI(tenantId, conversationId);
+        return { success: true, message: 'Conversation returned to AI' };
+    }
+
     @Post('conversation/:tenantId/:conversationId/note')
     async addNote(
         @Param('tenantId') tenantId: string,

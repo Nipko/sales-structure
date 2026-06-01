@@ -86,3 +86,35 @@ npx expo start          # QR → Expo Go (dev) ; o development build
 ```
 
 > Nota: este codebase es **separado** del pipeline web (no se despliega con `git push`). Se prueba con Expo Go / development build y se publica vía EAS.
+
+---
+
+# v2 — Diseño profundo (dejar de ser "lector", operar como herramienta de agente)
+
+## Los 4 trabajos del agente (cómo debe operar)
+1. **Triage** — ver *qué necesita atención YA*: handoffs sin asignar, mis SLA por vencer, escalaciones. Filtros + orden por urgencia.
+2. **Responder rápido y rico** — texto + **imagen + nota de voz**, plantillas, macros, **reescribir/resumir con IA**, estado de mensaje.
+3. **Contexto sin salir del chat** — panel 360° (pedidos, citas, historial, tags, lead score), banner de handoff, notas internas.
+4. **Actuar inline** — **tomar control / devolver a la IA**, asignar/resolver, agendar, mover deal, nota interna.
+
+## Matriz de brechas → endpoint/backend que ya existe
+| Brecha | Cómo se resuelve |
+|--------|------------------|
+| Inbox renderizaba campos adivinados | ✅ corregido (contactName/lastMessage/channel/status/isAiHandled) |
+| Chat con campos adivinados | ✅ corregido (sender/content/timestamp + notas + banner) |
+| **Tomar control / devolver a IA** | `assign` (tomar) + **NUEVO** `PUT /agent-console/.../return-to-ai` (status='active', assigned_to=NULL) |
+| **Crear nota interna** | `POST /agent-console/conversation/:t/:id/note` |
+| **Reescribir borrador / resumir hilo (IA)** | `POST /copilot/:conversationId/rewrite` `{draft,tone}` · `GET /copilot/:conversationId/summary` |
+| **Ver imágenes / notas de voz** | `message.type` + `message.metadata` (URL); voz ya llega transcrita en `content` |
+| **Snooze / archivar** | `PUT .../snooze` · `PUT .../archive` |
+| Panel de contacto 360° | `getConversation.contact` (tags, LTV, #convs) + `/crm/leads/:t/:leadId` |
+| Búsqueda | `/crm/leads?search=` (contactos) |
+| Colisión (quién mira) | `collision-detection` (WebSocket viewers) |
+| Deep-link push→chat | el push ya manda `data.url`; falta resolver conversationId y navegar |
+
+## Sprints de ejecución
+- **Sprint A — Chat profesional (en curso):** tomar control / devolver a IA (+ endpoint backend), crear nota interna, **reescribir (tonos) + resumir con copilot**, mostrar imágenes y marca de nota de voz, snooze/archivar.
+- **Sprint B — Contexto + triage:** panel 360° en el chat, búsqueda, vista "Para mí ahora" (handoff+SLA), colisión.
+- **Sprint C — Pulido/sistema:** deep-link push→conversación, centro de notificaciones, tema claro/oscuro, switch de empresa, re-lock biométrico.
+
+> Enviar media saliente (subir imagen/audio desde el móvil) requiere endpoint de upload + envío por canal → se evalúa en Sprint B (hoy se muestran entrantes y se transcriben las de voz).

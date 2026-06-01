@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
@@ -54,7 +54,11 @@ export function LoginScreen() {
     return (
         <SafeAreaView style={styles.container}>
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.inner}>
-                <Text style={styles.logo}>Parallly</Text>
+                <Image
+                    source={require('../../assets/logo-wordmark.png')}
+                    style={styles.logo}
+                    resizeMode="contain"
+                />
                 <Text style={styles.subtitle}>Consola de agentes</Text>
 
                 <TextInput
@@ -105,8 +109,8 @@ export function LoginScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.bg },
     inner: { flex: 1, justifyContent: 'center', paddingHorizontal: 28 },
-    logo: { color: theme.text, fontSize: 34, fontWeight: '700', textAlign: 'center' },
-    subtitle: { color: theme.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 36 },
+    logo: { width: 244, height: 40, alignSelf: 'center' },
+    subtitle: { color: theme.textSecondary, fontSize: 14, textAlign: 'center', marginTop: 10, marginBottom: 36 },
     input: {
         backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1, borderRadius: 12,
         paddingHorizontal: 16, paddingVertical: 14, color: theme.text, fontSize: 15, marginBottom: 12,

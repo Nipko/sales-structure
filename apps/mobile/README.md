@@ -69,10 +69,18 @@ src/theme.ts
 ```
 
 ## Assets (icono / splash)
-Incluidos en `assets/` (burbuja de chat de marca, morado `#6c5ce7`):
-- `icon.png` 1024×1024 · `adaptive-icon.png` 1024×1024 · `splash.png` 1242×2436
+Generados desde el **logo real de Parallly** (`apps/dashboard/public/parallly-logo-white.svg`).
+El "loguito" = la marca azul `#3897f0` que forma la doble-l de "Parallly"; se usa sola como
+símbolo del ícono (sin texto: las máscaras de Android recortan el texto). Fondo de marca `#0a0a12`
+con glow morado sutil.
 
-Para **regenerarlos** o personalizarlos (edita el SVG en el script):
+- `icon.png` 1024×1024 — loguito sobre fondo de marca (iOS / launcher legacy)
+- `adaptive-icon.png` 1024×1024 — loguito en zona segura (foreground del adaptive icon de Android)
+- `adaptive-bg.png` 1024×1024 — fondo de marca + glow (background del adaptive icon)
+- `splash.png` 1242×2436 — lockup completo "Parallly" centrado sobre oscuro
+- `logo-wordmark.png` 720×118 — lockup transparente para uso in-app (cabecera del login)
+
+Para **regenerarlos** tras cambiar el logo de marca:
 ```bash
 node apps/mobile/scripts/generate-assets.cjs   # usa sharp del root del monorepo
 ```

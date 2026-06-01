@@ -30,6 +30,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         package: 'cloud.parallly.mobile',
         adaptiveIcon: {
             foregroundImage: './assets/adaptive-icon.png',
+            backgroundImage: './assets/adaptive-bg.png',
             backgroundColor: '#0a0a12',
         },
     },

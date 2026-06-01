@@ -4,20 +4,30 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, TwoFAMethod } from '../contexts/AuthContext';
 import { theme } from '../theme';
 
 const WEB_CLIENT_ID = (Constants.expoConfig?.extra as any)?.googleWebClientId || '';
 // Google Sign-In is a native module → unavailable in Expo Go, only in a dev/prod build.
 const googleAvailable = !!WEB_CLIENT_ID && Constants.executionEnvironment !== 'storeClient';
 
+interface TwoFAState { token: string; method: TwoFAMethod; email?: string }
+
 export function LoginScreen() {
-    const { login, loginWithGoogle } = useAuth();
+    const { login, loginWithGoogle, verifyTwoFactor, sendTwoFactorEmail } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [googleLoading, setGoogleLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // 2FA challenge state (set when login/google returns requires2FA)
+    const [twoFA, setTwoFA] = useState<TwoFAState | null>(null);
+    const [code, setCode] = useState('');
+    const [useBackup, setUseBackup] = useState(false);
+    const [verifying, setVerifying] = useState(false);
+    const [emailSending, setEmailSending] = useState(false);
+    const [emailSent, setEmailSent] = useState(false);
 
     useEffect(() => {
         if (googleAvailable) {
@@ -25,11 +35,21 @@ export function LoginScreen() {
         }
     }, []);
 
+    // Common handler: a login attempt either signs in, needs 2FA, or errors.
+    const handleResult = (res: { ok: boolean; error?: string; requires2FA?: boolean; twoFAToken?: string; method?: TwoFAMethod; email?: string }, fallback: string) => {
+        if (res.ok) return;
+        if (res.requires2FA && res.twoFAToken) {
+            setTwoFA({ token: res.twoFAToken, method: res.method || 'totp', email: res.email });
+            setCode(''); setUseBackup(false); setEmailSent(false); setError(null);
+            return;
+        }
+        setError(res.error || fallback);
+    };
+
     const submit = async () => {
         if (!email.trim() || !password) return;
         setLoading(true); setError(null);
-        const res = await login(email.trim(), password);
-        if (!res.ok) setError(res.error || 'No se pudo iniciar sesión');
+        handleResult(await login(email.trim(), password), 'No se pudo iniciar sesión');
         setLoading(false);
     };
 
@@ -41,8 +61,7 @@ export function LoginScreen() {
             // Library v13+ returns { data: { idToken } }; older returns { idToken }.
             const idToken = result?.data?.idToken || result?.idToken;
             if (!idToken) { setError('Google no devolvió el token'); setGoogleLoading(false); return; }
-            const res = await loginWithGoogle(idToken);
-            if (!res.ok) setError(res.error || 'No se pudo iniciar con Google');
+            handleResult(await loginWithGoogle(idToken), 'No se pudo iniciar con Google');
         } catch (e: any) {
             if (e?.code !== statusCodes.SIGN_IN_CANCELLED) {
                 setError(e?.message || 'Error con Google Sign-In');
@@ -50,6 +69,41 @@ export function LoginScreen() {
         }
         setGoogleLoading(false);
     };
+
+    // ── 2FA step ──────────────────────────────────────────────
+    const effectiveMethod: TwoFAMethod = useBackup ? 'backup' : (twoFA?.method || 'totp');
+
+    const verify = async () => {
+        if (!twoFA || !code.trim()) return;
+        setVerifying(true); setError(null);
+        const res = await verifyTwoFactor(twoFA.token, code.trim(), effectiveMethod);
+        if (!res.ok) setError(res.error || 'Código incorrecto');
+        // On success the AuthProvider sets `user` and this screen unmounts.
+        setVerifying(false);
+    };
+
+    const sendEmailCode = async () => {
+        if (!twoFA) return;
+        setEmailSending(true); setError(null);
+        const ok = await sendTwoFactorEmail(twoFA.token);
+        setEmailSending(false);
+        if (ok) {
+            setTwoFA({ ...twoFA, method: 'email' });
+            setUseBackup(false); setCode(''); setEmailSent(true);
+        } else {
+            setError('No se pudo enviar el código por correo');
+        }
+    };
+
+    const backToLogin = () => {
+        setTwoFA(null); setCode(''); setUseBackup(false); setEmailSent(false); setError(null);
+    };
+
+    const codeDescription = useBackup
+        ? 'Ingresa uno de tus códigos de respaldo.'
+        : effectiveMethod === 'email'
+            ? `Ingresa el código que enviamos a ${twoFA?.email || 'tu correo'}.`
+            : 'Ingresa el código de 6 dígitos de tu app de autenticación.';
 
     return (
         <SafeAreaView style={styles.container}>
@@ -61,43 +115,84 @@ export function LoginScreen() {
                 />
                 <Text style={styles.subtitle}>Consola de agentes</Text>
 
-                <TextInput
-                    style={styles.input}
-                    placeholder="Email"
-                    placeholderTextColor={theme.textSecondary}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    value={email}
-                    onChangeText={setEmail}
-                />
-                <TextInput
-                    style={styles.input}
-                    placeholder="Contraseña"
-                    placeholderTextColor={theme.textSecondary}
-                    secureTextEntry
-                    value={password}
-                    onChangeText={setPassword}
-                    onSubmitEditing={submit}
-                />
-
-                {error && <Text style={styles.error}>{error}</Text>}
-
-                <TouchableOpacity style={styles.button} onPress={submit} disabled={loading}>
-                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Iniciar sesión</Text>}
-                </TouchableOpacity>
-
-                {googleAvailable && (
+                {!twoFA ? (
                     <>
-                        <View style={styles.divider}>
-                            <View style={styles.line} /><Text style={styles.or}>o</Text><View style={styles.line} />
-                        </View>
-                        <TouchableOpacity style={styles.googleBtn} onPress={google} disabled={googleLoading}>
-                            {googleLoading ? <ActivityIndicator color={theme.text} /> : (
-                                <>
-                                    <Ionicons name="logo-google" size={18} color="#EA4335" />
-                                    <Text style={styles.googleText}>Continuar con Google</Text>
-                                </>
-                            )}
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Email"
+                            placeholderTextColor={theme.textSecondary}
+                            autoCapitalize="none"
+                            keyboardType="email-address"
+                            value={email}
+                            onChangeText={setEmail}
+                        />
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Contraseña"
+                            placeholderTextColor={theme.textSecondary}
+                            secureTextEntry
+                            value={password}
+                            onChangeText={setPassword}
+                            onSubmitEditing={submit}
+                        />
+
+                        {error && <Text style={styles.error}>{error}</Text>}
+
+                        <TouchableOpacity style={styles.button} onPress={submit} disabled={loading}>
+                            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Iniciar sesión</Text>}
+                        </TouchableOpacity>
+
+                        {googleAvailable && (
+                            <>
+                                <View style={styles.divider}>
+                                    <View style={styles.line} /><Text style={styles.or}>o</Text><View style={styles.line} />
+                                </View>
+                                <TouchableOpacity style={styles.googleBtn} onPress={google} disabled={googleLoading}>
+                                    {googleLoading ? <ActivityIndicator color={theme.text} /> : (
+                                        <>
+                                            <Ionicons name="logo-google" size={18} color="#EA4335" />
+                                            <Text style={styles.googleText}>Continuar con Google</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            </>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        <Text style={styles.twoFaTitle}>Verificación en dos pasos</Text>
+                        <Text style={styles.twoFaDesc}>{codeDescription}</Text>
+
+                        <TextInput
+                            style={[styles.input, styles.codeInput]}
+                            placeholder={useBackup ? 'Código de respaldo' : '000000'}
+                            placeholderTextColor={theme.textSecondary}
+                            keyboardType={useBackup ? 'default' : 'number-pad'}
+                            autoCapitalize={useBackup ? 'characters' : 'none'}
+                            maxLength={useBackup ? 8 : 6}
+                            value={code}
+                            onChangeText={setCode}
+                            autoFocus
+                            onSubmitEditing={verify}
+                        />
+
+                        {emailSent && <Text style={styles.info}>Código enviado a tu correo.</Text>}
+                        {error && <Text style={styles.error}>{error}</Text>}
+
+                        <TouchableOpacity style={styles.button} onPress={verify} disabled={verifying || !code.trim()}>
+                            {verifying ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verificar</Text>}
+                        </TouchableOpacity>
+
+                        {!useBackup && effectiveMethod !== 'email' && (
+                            <TouchableOpacity onPress={sendEmailCode} disabled={emailSending} style={styles.linkBtn}>
+                                <Text style={styles.link}>{emailSending ? 'Enviando…' : 'Recibir código por correo'}</Text>
+                            </TouchableOpacity>
+                        )}
+                        <TouchableOpacity onPress={() => { setUseBackup(!useBackup); setCode(''); setError(null); }} style={styles.linkBtn}>
+                            <Text style={styles.link}>{useBackup ? 'Usar código normal' : 'Usar código de respaldo'}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={backToLogin} style={styles.linkBtn}>
+                            <Text style={styles.linkMuted}>Volver</Text>
                         </TouchableOpacity>
                     </>
                 )}
@@ -116,6 +211,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16, paddingVertical: 14, color: theme.text, fontSize: 15, marginBottom: 12,
     },
     error: { color: theme.danger, fontSize: 13, marginBottom: 8, textAlign: 'center' },
+    info: { color: theme.textSecondary, fontSize: 13, marginBottom: 8, textAlign: 'center' },
     button: { backgroundColor: theme.accent, borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 8 },
     buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
     divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 18, gap: 10 },
@@ -123,4 +219,10 @@ const styles = StyleSheet.create({
     or: { color: theme.textSecondary, fontSize: 13 },
     googleBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1, borderRadius: 12, paddingVertical: 14 },
     googleText: { color: theme.text, fontSize: 15, fontWeight: '600' },
+    twoFaTitle: { color: theme.text, fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 8 },
+    twoFaDesc: { color: theme.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
+    codeInput: { textAlign: 'center', fontSize: 22, letterSpacing: 6, fontWeight: '600' },
+    linkBtn: { alignItems: 'center', paddingVertical: 12 },
+    link: { color: theme.accent, fontSize: 14, fontWeight: '600' },
+    linkMuted: { color: theme.textSecondary, fontSize: 14 },
 });

@@ -6,6 +6,19 @@ import { disconnectSocket } from '../lib/socket';
 
 const RELOCK_AFTER_MS = 90_000; // re-prompt biometrics if backgrounded > 90s
 
+export type TwoFAMethod = 'totp' | 'email' | 'backup';
+
+// Result of any auth attempt. `requires2FA` means the credentials were valid but
+// the account has two-factor enabled → caller must collect a code and call verifyTwoFactor.
+export interface LoginResult {
+    ok: boolean;
+    error?: string;
+    requires2FA?: boolean;
+    twoFAToken?: string;
+    method?: TwoFAMethod;
+    email?: string;
+}
+
 interface AuthState {
     user: AuthUser | null;
     tenantId: string | null;
@@ -13,8 +26,10 @@ interface AuthState {
     loading: boolean;
     locked: boolean;
     unlock: () => Promise<void>;
-    login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-    loginWithGoogle: (idToken: string) => Promise<{ ok: boolean; error?: string }>;
+    login: (email: string, password: string) => Promise<LoginResult>;
+    loginWithGoogle: (idToken: string) => Promise<LoginResult>;
+    verifyTwoFactor: (twoFAToken: string, code: string, method: TwoFAMethod) => Promise<LoginResult>;
+    sendTwoFactorEmail: (twoFAToken: string) => Promise<boolean>;
     logout: () => Promise<void>;
 }
 
@@ -60,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })();
     }, [loadVertical]);
 
-    const applyAuth = useCallback(async (res: any, fallbackError: string) => {
+    const applyAuth = useCallback(async (res: any, fallbackError: string): Promise<LoginResult> => {
         if (res?.success && res.data?.accessToken) {
             await tokens.set(res.data.accessToken, res.data.refreshToken);
             const u: AuthUser = res.data.user;
@@ -68,6 +83,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(u);
             loadVertical(u.tenantId);
             return { ok: true };
+        }
+        // Valid credentials, but the account has 2FA — caller must collect a code.
+        if (res?.success && res.data?.requires2FA && res.data?.twoFAToken) {
+            return {
+                ok: false,
+                requires2FA: true,
+                twoFAToken: res.data.twoFAToken,
+                method: (res.data.twoFactorMethod as TwoFAMethod) || 'totp',
+                email: res.data.user?.email,
+            };
         }
         return { ok: false, error: res?.error?.message || res?.message || fallbackError };
     }, [loadVertical]);
@@ -79,6 +104,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const loginWithGoogle = useCallback(async (idToken: string) => {
         return applyAuth(await api.googleLogin(idToken), 'No se pudo iniciar sesión con Google');
     }, [applyAuth]);
+
+    const verifyTwoFactor = useCallback(async (twoFAToken: string, code: string, method: TwoFAMethod) => {
+        try {
+            return await applyAuth(await api.verify2FA(twoFAToken, code, method), 'Código incorrecto');
+        } catch (e: any) {
+            return { ok: false, error: e?.message || 'No se pudo verificar el código' };
+        }
+    }, [applyAuth]);
+
+    const sendTwoFactorEmail = useCallback(async (twoFAToken: string) => {
+        try {
+            const r = await api.send2FAEmail(twoFAToken);
+            return !!r?.success;
+        } catch {
+            return false;
+        }
+    }, []);
 
     const logout = useCallback(async () => {
         disconnectSocket();
@@ -116,7 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [user]);
 
     return (
-        <AuthContext.Provider value={{ user, tenantId: user?.tenantId || null, verticalConfig, loading, locked, unlock, login, loginWithGoogle, logout }}>
+        <AuthContext.Provider value={{ user, tenantId: user?.tenantId || null, verticalConfig, loading, locked, unlock, login, loginWithGoogle, verifyTwoFactor, sendTwoFactorEmail, logout }}>
             {children}
         </AuthContext.Provider>
     );

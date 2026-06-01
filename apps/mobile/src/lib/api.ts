@@ -110,6 +110,25 @@ export const api = {
         return res.json();
     },
 
+    // 2FA challenge during login (public — uses the twoFAToken from login/google)
+    async verify2FA(twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = true) {
+        const res = await fetch(`${API_URL}/auth/2fa/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ twoFAToken, code, method, rememberMe }),
+        });
+        return res.json();
+    },
+
+    async send2FAEmail(twoFAToken: string) {
+        const res = await fetch(`${API_URL}/auth/2fa/send-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ twoFAToken }),
+        });
+        return res.json();
+    },
+
     // Agent console (inbox)
     getInbox: (tenantId: string, filter?: string) =>
         json(`/agent-console/inbox/${tenantId}${filter ? `?filter=${filter}` : ''}`),

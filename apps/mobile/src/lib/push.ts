@@ -60,6 +60,23 @@ export async function registerForPush(): Promise<void> {
     }
 }
 
+/**
+ * Show a LOCAL notification immediately. Works without EAS/FCM as long as the app
+ * process is alive (foreground or backgrounded with the socket still connected) —
+ * used for real-time handoff alerts. True push when the app is CLOSED still needs
+ * an Expo push token (eas init + Android FCM); see registerForPush.
+ */
+export async function presentLocalNotification(title: string, body: string, data?: any) {
+    try {
+        await Notifications.scheduleNotificationAsync({
+            content: { title, body, data: data || {}, sound: true },
+            trigger: null, // deliver now
+        });
+    } catch (e: any) {
+        console.log('[push] local notification failed:', e?.message);
+    }
+}
+
 /** Subscribe to notification taps → returns the subscription to clean up. */
 export function onNotificationTap(handler: (data: any) => void) {
     return Notifications.addNotificationResponseReceivedListener((response) => {

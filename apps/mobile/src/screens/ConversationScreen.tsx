@@ -6,7 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { api } from '../lib/api';
-import { connectSocket } from '../lib/socket';
+import { getInboxSocket, getAgentSocket } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
 import { theme } from '../theme';
 import { SOCKET_URL } from '../lib/config';
@@ -80,31 +80,35 @@ export function ConversationScreen() {
     }, [tenantId]);
 
     useEffect(() => {
-        let active = true;
-        let hb: ReturnType<typeof setInterval> | null = null;
-        let sk: any = null;
+        const inbox = getInboxSocket();
+        const agent = getAgentSocket();
         const agentName = user?.name || user?.email || 'Agente';
-        (async () => {
-            const socket = await connectSocket();
-            sk = socket;
-            socket.on('newMessage', (payload: any) => {
-                if (!active) return;
-                const cid = payload?.conversationId || payload?.conversation_id;
-                if (!cid || cid === conversationId) load();
-            });
-            // Collision detection: announce presence + watch other viewers.
-            socket.on('conversation:viewers_update', (p: any) => {
-                if (!active || p?.conversationId !== conversationId) return;
-                const others = (p.viewers || []).filter((v: any) => v.agentId !== user?.id);
-                setViewers(others);
-            });
-            socket.emit('conversation:viewing_start', { conversationId, agentId: user?.id, agentName });
-            hb = setInterval(() => socket.emit('conversation:heartbeat', { conversationId, agentId: user?.id, agentName }), 15000);
-        })();
+
+        // Live messages arrive tenant-wide on /inbox → filter to this conversation.
+        const onNewMessage = (payload: any) => {
+            const cid = payload?.conversationId || payload?.conversation_id;
+            if (!cid || cid === conversationId) load();
+        };
+        // Collision detection (other agents viewing) lives on /agent.
+        const onViewers = (p: any) => {
+            if (p?.conversationId !== conversationId) return;
+            setViewers((p.viewers || []).filter((v: any) => v.agentId !== user?.id));
+        };
+
+        inbox.on('newMessage', onNewMessage);
+        agent.on('conversation:viewers_update', onViewers);
+        agent.emit('conversation:open', { conversationId }); // joins the conversation room
+        agent.emit('conversation:viewing_start', { conversationId, agentId: user?.id, agentName });
+        const hb = setInterval(
+            () => agent.emit('conversation:heartbeat', { conversationId, agentId: user?.id, agentName }),
+            15000,
+        );
+
         return () => {
-            active = false;
-            if (hb) clearInterval(hb);
-            sk?.emit?.('conversation:viewing_stop', { conversationId, agentId: user?.id });
+            clearInterval(hb);
+            agent.emit('conversation:viewing_stop', { conversationId, agentId: user?.id });
+            inbox.off('newMessage', onNewMessage);
+            agent.off('conversation:viewers_update', onViewers);
         };
     }, [conversationId, load, user?.id]);
 

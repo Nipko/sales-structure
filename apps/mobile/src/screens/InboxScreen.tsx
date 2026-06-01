@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
-import { connectSocket } from '../lib/socket';
+import { getInboxSocket, getAgentSocket } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
 import { theme, channelColor } from '../theme';
 import type { InboxStackParams } from '../navigation/RootNavigator';
@@ -69,15 +69,20 @@ export function InboxScreen() {
     useEffect(() => { load(); }, [load]);
 
     useEffect(() => {
-        let active = true;
-        (async () => {
-            const socket = await connectSocket();
-            const reload = () => { if (active) load(); };
-            socket.on('newMessage', reload);
-            socket.on('inbox:refresh', reload);
-            socket.on('inbox:handoff', reload);
-        })();
-        return () => { active = false; };
+        const reload = () => load();
+        // /inbox → live customer/AI messages; /agent → handoff, assign, resolve.
+        const inbox = getInboxSocket();
+        const agent = getAgentSocket();
+        inbox.on('newMessage', reload);
+        inbox.on('conversationUpdated', reload);
+        agent.on('inbox:refresh', reload);
+        agent.on('inbox:handoff', reload);
+        return () => {
+            inbox.off('newMessage', reload);
+            inbox.off('conversationUpdated', reload);
+            agent.off('inbox:refresh', reload);
+            agent.off('inbox:handoff', reload);
+        };
     }, [load]);
 
     const q = search.trim().toLowerCase();

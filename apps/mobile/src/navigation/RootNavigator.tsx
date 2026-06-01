@@ -5,7 +5,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNavigationContainerRef } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { registerForPush, onNotificationTap, getColdStartData } from '../lib/push';
+import { registerForPush, onNotificationTap, getColdStartData, presentLocalNotification } from '../lib/push';
+import { getAgentSocket } from '../lib/socket';
 import { theme } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
 import { InboxScreen } from '../screens/InboxScreen';
@@ -124,6 +125,36 @@ export function RootNavigator() {
         // Cold start: app opened by tapping a notification while closed.
         getColdStartData().then((data) => { if (data) setTimeout(() => goTo(data), 600); });
         return () => sub.remove();
+    }, [user]);
+
+    // Real-time handoff alerts (works while the app is running, no EAS/FCM needed).
+    // The /agent gateway broadcasts these to the tenant after agent:join.
+    useEffect(() => {
+        if (!user) return;
+        const agent = getAgentSocket();
+        const onHandoff = (p: any) => presentLocalNotification(
+            'Conversación escalada',
+            `${p?.contactName || 'Un cliente'} necesita atención${p?.reason ? ' — ' + p.reason : ''}`,
+            { conversationId: p?.conversationId },
+        );
+        const onAssigned = (p: any) => presentLocalNotification(
+            'Asignada a ti',
+            p?.message || `${p?.contactName || 'Un cliente'} fue asignado a ti`,
+            { conversationId: p?.conversationId },
+        );
+        const onEscalation = (p: any) => presentLocalNotification(
+            'Escalación SLA',
+            `${p?.contactName || 'Conversación'} sin respuesta hace ${p?.waitMinutes || 5} min`,
+            { conversationId: p?.conversationId },
+        );
+        agent.on('inbox:handoff', onHandoff);
+        agent.on('inbox:assigned_to_you', onAssigned);
+        agent.on('inbox:escalation', onEscalation);
+        return () => {
+            agent.off('inbox:handoff', onHandoff);
+            agent.off('inbox:assigned_to_you', onAssigned);
+            agent.off('inbox:escalation', onEscalation);
+        };
     }, [user]);
 
     if (loading) {

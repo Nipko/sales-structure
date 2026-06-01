@@ -40,8 +40,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
             'expo-notifications',
             { color: '#6c5ce7' },
         ],
+        '@react-native-google-signin/google-signin',
     ],
     extra: {
         apiUrl: process.env.EXPO_PUBLIC_API_URL || 'https://api.parallly-chat.cloud/api/v1',
+        // Web OAuth client ID (= backend GOOGLE_OAUTH_CLIENT_ID). The mobile id_token
+        // is audienced to this so /auth/google verifies it unchanged.
+        googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '',
     },
 });

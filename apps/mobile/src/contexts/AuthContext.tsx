@@ -14,6 +14,7 @@ interface AuthState {
     locked: boolean;
     unlock: () => Promise<void>;
     login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+    loginWithGoogle: (idToken: string) => Promise<{ ok: boolean; error?: string }>;
     logout: () => Promise<void>;
 }
 
@@ -59,8 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })();
     }, [loadVertical]);
 
-    const login = useCallback(async (email: string, password: string) => {
-        const res = await api.login(email, password);
+    const applyAuth = useCallback(async (res: any, fallbackError: string) => {
         if (res?.success && res.data?.accessToken) {
             await tokens.set(res.data.accessToken, res.data.refreshToken);
             const u: AuthUser = res.data.user;
@@ -69,8 +69,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             loadVertical(u.tenantId);
             return { ok: true };
         }
-        return { ok: false, error: res?.error?.message || res?.message || 'Credenciales inválidas' };
-    }, []);
+        return { ok: false, error: res?.error?.message || res?.message || fallbackError };
+    }, [loadVertical]);
+
+    const login = useCallback(async (email: string, password: string) => {
+        return applyAuth(await api.login(email, password), 'Credenciales inválidas');
+    }, [applyAuth]);
+
+    const loginWithGoogle = useCallback(async (idToken: string) => {
+        return applyAuth(await api.googleLogin(idToken), 'No se pudo iniciar sesión con Google');
+    }, [applyAuth]);
 
     const logout = useCallback(async () => {
         disconnectSocket();
@@ -108,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [user]);
 
     return (
-        <AuthContext.Provider value={{ user, tenantId: user?.tenantId || null, verticalConfig, loading, locked, unlock, login, logout }}>
+        <AuthContext.Provider value={{ user, tenantId: user?.tenantId || null, verticalConfig, loading, locked, unlock, login, loginWithGoogle, logout }}>
             {children}
         </AuthContext.Provider>
     );

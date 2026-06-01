@@ -101,6 +101,15 @@ export const api = {
         return res.json();
     },
 
+    async googleLogin(idToken: string) {
+        const res = await fetch(`${API_URL}/auth/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken }),
+        });
+        return res.json();
+    },
+
     // Agent console (inbox)
     getInbox: (tenantId: string, filter?: string) =>
         json(`/agent-console/inbox/${tenantId}${filter ? `?filter=${filter}` : ''}`),

@@ -6,7 +6,7 @@ import { createNavigationContainerRef } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { registerForPush, onNotificationTap, getColdStartData, presentLocalNotification } from '../lib/push';
-import { getAgentSocket } from '../lib/socket';
+import { getAgentSocket, connectRealtime } from '../lib/socket';
 import { theme } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
 import { InboxScreen } from '../screens/InboxScreen';
@@ -131,6 +131,7 @@ export function RootNavigator() {
     // The /agent gateway broadcasts these to the tenant after agent:join.
     useEffect(() => {
         if (!user) return;
+        connectRealtime(); // open /inbox + /agent eagerly right after login
         const agent = getAgentSocket();
         const onHandoff = (p: any) => presentLocalNotification(
             'Conversación escalada',

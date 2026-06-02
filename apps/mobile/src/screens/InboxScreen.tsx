@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
-import { getInboxSocket, getAgentSocket } from '../lib/socket';
+import { getInboxSocket, getAgentSocket, onInboxStatus, getInboxStatus, type SocketStatus } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
 import { theme, channelColor } from '../theme';
 import type { InboxStackParams } from '../navigation/RootNavigator';
@@ -57,6 +57,9 @@ export function InboxScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [filter, setFilter] = useState<string>('all');
     const [search, setSearch] = useState('');
+    const [live, setLive] = useState<SocketStatus>(getInboxStatus());
+
+    useEffect(() => onInboxStatus(setLive), []);
 
     const load = useCallback(async () => {
         if (!tenantId) return;
@@ -92,6 +95,14 @@ export function InboxScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.bg }}>
+            {/* Live connection status */}
+            <View style={styles.statusBar}>
+                <View style={[styles.dot, { backgroundColor: live === 'connected' ? theme.success : live === 'connecting' ? theme.warning : theme.danger }]} />
+                <Text style={styles.statusText}>
+                    {live === 'connected' ? 'EN VIVO' : live === 'connecting' ? 'CONECTANDO…' : 'SIN CONEXIÓN'}
+                </Text>
+            </View>
+
             {/* Search */}
             <View style={styles.searchWrap}>
                 <Ionicons name="search" size={16} color={theme.textSecondary} />
@@ -162,6 +173,9 @@ export function InboxScreen() {
 }
 
 const styles = StyleSheet.create({
+    statusBar: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 8 },
+    dot: { width: 8, height: 8, borderRadius: 4 },
+    statusText: { color: theme.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, backgroundColor: theme.bg },
     empty: { color: theme.textSecondary, fontSize: 14 },
     searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginTop: 10, marginBottom: 4, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1 },

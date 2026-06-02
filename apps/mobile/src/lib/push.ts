@@ -53,7 +53,10 @@ export async function registerForPush(): Promise<void> {
             projectId ? { projectId } : undefined,
         );
         const token = tokenResp.data;
-        if (token) await api.subscribeExpoPush(token);
+        if (token) {
+            console.log('[push] Expo token:', token); // temp: pega esto en expo.dev/notifications para probar
+            await api.subscribeExpoPush(token);
+        }
     } catch (e: any) {
         // Most common in Expo Go without EAS init, or on emulators.
         console.log('[push] registration skipped:', e?.message);

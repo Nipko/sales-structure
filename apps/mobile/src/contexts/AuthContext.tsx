@@ -1,10 +1,16 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { api, tokens, AuthUser } from '../lib/api';
+import { api, tokens, setOnAuthFailure, AuthUser } from '../lib/api';
 import { disconnectSocket } from '../lib/socket';
 
 const RELOCK_AFTER_MS = 90_000; // re-prompt biometrics if backgrounded > 90s
+
+// Backend rejects a 2nd concurrent session unless force=true. On a personal phone
+// we always take over our own prior session (e.g. after an unclean exit / crash).
+const isSessionConflict = (res: any) =>
+    res?.error === 'session_conflict' ||
+    (typeof res?.message === 'string' && res.message.toLowerCase().includes('sesión activa'));
 
 export type TwoFAMethod = 'totp' | 'email' | 'backup';
 
@@ -100,13 +106,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [loadVertical]);
 
     const login = useCallback(async (email: string, password: string) => {
-        const dt = await tokens.getDeviceTrust();
-        return applyAuth(await api.login(email, password, dt || undefined), 'Credenciales inválidas');
+        const dt = (await tokens.getDeviceTrust()) || undefined;
+        let res = await api.login(email, password, dt, false);
+        if (isSessionConflict(res)) res = await api.login(email, password, dt, true);
+        return applyAuth(res, 'Credenciales inválidas');
     }, [applyAuth]);
 
     const loginWithGoogle = useCallback(async (idToken: string) => {
-        const dt = await tokens.getDeviceTrust();
-        return applyAuth(await api.googleLogin(idToken, dt || undefined), 'No se pudo iniciar sesión con Google');
+        const dt = (await tokens.getDeviceTrust()) || undefined;
+        let res = await api.googleLogin(idToken, dt, false);
+        if (isSessionConflict(res)) res = await api.googleLogin(idToken, dt, true);
+        return applyAuth(res, 'No se pudo iniciar sesión con Google');
     }, [applyAuth]);
 
     const verifyTwoFactor = useCallback(async (twoFAToken: string, code: string, method: TwoFAMethod, trustDevice = true) => {
@@ -128,10 +138,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const logout = useCallback(async () => {
         disconnectSocket();
+        // Kill the server session first, so the next login doesn't hit "session already open".
+        try { const { refresh } = await tokens.get(); if (refresh) await api.logout(refresh); } catch { /* noop */ }
         await tokens.clear();
         setUser(null);
         setVerticalConfig(null);
         setLocked(false);
+    }, []);
+
+    // If a token refresh fails mid-session, the session is dead → return to login
+    // instead of leaving the user "inside" the app with everything failing silently.
+    useEffect(() => {
+        setOnAuthFailure(() => {
+            disconnectSocket();
+            tokens.clear().catch(() => { /* noop */ });
+            setVerticalConfig(null);
+            setUser(null);
+            setLocked(false);
+        });
+        return () => setOnAuthFailure(null);
     }, []);
 
     const unlock = useCallback(async () => {

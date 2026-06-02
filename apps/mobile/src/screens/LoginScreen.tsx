@@ -58,6 +58,9 @@ export function LoginScreen() {
         setGoogleLoading(true); setError(null);
         try {
             await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+            // Clear any cached Google account so the chooser always appears
+            // (otherwise it silently reuses the last account).
+            try { await GoogleSignin.signOut(); } catch { /* no prior google session */ }
             const result: any = await GoogleSignin.signIn();
             // Library v13+ returns { data: { idToken } }; older returns { idToken }.
             const idToken = result?.data?.idToken || result?.idToken;

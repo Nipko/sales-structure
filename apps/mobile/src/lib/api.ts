@@ -46,6 +46,10 @@ export const tokens = {
 // ── Core fetch with auth + single refresh retry ──────────────
 let refreshing: Promise<string | null> | null = null;
 
+// Called when a refresh fails (session is dead) → AuthContext kicks back to login.
+let authFailureHandler: (() => void) | null = null;
+export function setOnAuthFailure(cb: (() => void) | null) { authFailureHandler = cb; }
+
 async function doRefresh(): Promise<string | null> {
     const { refresh } = await tokens.get();
     if (!refresh) return null;
@@ -83,6 +87,10 @@ async function authFetch(path: string, options: RequestInit = {}): Promise<Respo
         if (newToken) {
             headers.Authorization = `Bearer ${newToken}`;
             res = await fetch(`${API_URL}${path}`, { ...options, headers });
+        } else {
+            // Refresh failed → the session is dead. Kick to login instead of
+            // leaving the user stuck inside the app with everything failing.
+            authFailureHandler?.();
         }
     }
     return res;
@@ -101,22 +109,33 @@ async function json<T = any>(path: string, options?: RequestInit): Promise<{ suc
 export const api = {
     // rememberMe=true → long-lived session (mobile standard). deviceTrustToken (if
     // present) lets the backend skip the 2FA challenge on a previously trusted device.
-    async login(email: string, password: string, deviceTrustToken?: string) {
+    async login(email: string, password: string, deviceTrustToken?: string, force = false) {
         const res = await fetch(`${API_URL}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, rememberMe: true, deviceTrustToken }),
+            body: JSON.stringify({ email, password, rememberMe: true, deviceTrustToken, force }),
         });
         return res.json();
     },
 
-    async googleLogin(idToken: string, deviceTrustToken?: string) {
+    async googleLogin(idToken: string, deviceTrustToken?: string, force = false) {
         const res = await fetch(`${API_URL}/auth/google`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken, rememberMe: true, deviceTrustToken }),
+            body: JSON.stringify({ idToken, rememberMe: true, deviceTrustToken, force }),
         });
         return res.json();
+    },
+
+    // Kill the server-side session so a later login doesn't hit "session already open".
+    async logout(refreshToken?: string) {
+        try {
+            await fetch(`${API_URL}/auth/logout`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken }),
+            });
+        } catch { /* best effort */ }
     },
 
     // 2FA challenge during login (public — uses the twoFAToken from login/google).

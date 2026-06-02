@@ -1,3 +1,8 @@
+# Firebase / FCM credentials — secrets, never commit
+google-services.json
+GoogleService-Info.plist
+*-firebase-adminsdk-*.json
+
 # Expo / React Native
 node_modules/
 .expo/

@@ -1,4 +1,12 @@
 import { ExpoConfig, ConfigContext } from 'expo/config';
+import * as fs from 'fs';
+
+/**
+ * FCM credentials for Android push. Referenced only once you've downloaded
+ * google-services.json from Firebase into apps/mobile/ — until then it's omitted
+ * so `expo run:android` / prebuild don't fail looking for a missing file.
+ */
+const hasFcm = fs.existsSync('./google-services.json');
 
 /**
  * Parallly Mobile (agents) — Expo config.
@@ -8,6 +16,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ...config,
     name: 'Parallly',
     slug: 'parallly-mobile',
+    owner: 'nirlevin',
     scheme: 'parallly',
     version: '1.0.0',
     orientation: 'portrait',
@@ -28,6 +37,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
     android: {
         package: 'cloud.parallly.mobile',
+        ...(hasFcm ? { googleServicesFile: './google-services.json' } : {}),
         adaptiveIcon: {
             foregroundImage: './assets/adaptive-icon.png',
             backgroundImage: './assets/adaptive-bg.png',
@@ -44,6 +54,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         '@react-native-google-signin/google-signin',
     ],
     extra: {
+        eas: { projectId: '5a6f6dab-dec2-44e0-b00a-58e77c909501' },
         apiUrl: process.env.EXPO_PUBLIC_API_URL || 'https://api.parallly-chat.cloud/api/v1',
         // WEB OAuth client ID (= backend GOOGLE_OAUTH_CLIENT_ID / dashboard
         // NEXT_PUBLIC_GOOGLE_CLIENT_ID). NOT the Android client. The mobile id_token

@@ -2,6 +2,7 @@
 import './instrument';
 
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
@@ -14,10 +15,17 @@ import { PublicApiModule } from './modules/public-api/public-api.module';
 (BigInt.prototype as any).toJSON = function () { return Number(this); };
 
 async function bootstrap() {
-    const app = await NestFactory.create(AppModule, {
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
         bufferLogs: true,
         rawBody: true,
     });
+
+    // Raise body size limits (default is 100kb) — large payloads like media
+    // base64, KB documents, broadcast recipient lists, etc. would 413 otherwise.
+    // useBodyParser preserves rawBody (needed for Meta/MercadoPago signature checks).
+    const BODY_LIMIT = process.env.BODY_SIZE_LIMIT || '10mb';
+    app.useBodyParser('json', { limit: BODY_LIMIT });
+    app.useBodyParser('urlencoded', { limit: BODY_LIMIT, extended: true });
 
     // Use Pino structured logger globally
     app.useLogger(app.get(Logger));

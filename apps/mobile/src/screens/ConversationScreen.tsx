@@ -8,6 +8,8 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { api } from '../lib/api';
 import { getInboxSocket, getAgentSocket } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../components/Toast';
+import { useI18n } from '../i18n';
 import { theme } from '../theme';
 import { SOCKET_URL } from '../lib/config';
 
@@ -15,14 +17,7 @@ interface Msg { id: string; content: string; sender: string; senderName?: string
 interface Note { id: string; content: string; agentName?: string; createdAt?: string }
 type TimelineItem = (Msg & { kind: 'msg' }) | (Note & { kind: 'note'; timestamp?: string });
 
-const TONES = [
-    { key: 'professional', label: 'Profesional' },
-    { key: 'friendly', label: 'Amigable' },
-    { key: 'empathetic', label: 'Empático' },
-    { key: 'shorter', label: 'Más corto' },
-    { key: 'expand', label: 'Ampliar' },
-    { key: 'fix_grammar', label: 'Corregir' },
-];
+const TONES = ['professional', 'friendly', 'empathetic', 'shorter', 'expand', 'fix_grammar'] as const;
 
 function fmtTime(iso?: string): string {
     if (!iso) return '';
@@ -37,6 +32,8 @@ function mediaUrl(m: any): string | null {
 export function ConversationScreen() {
     const route = useRoute<any>();
     const nav = useNavigation<any>();
+    const toast = useToast();
+    const { t } = useI18n();
     const { conversationId } = route.params;
     const { tenantId, user } = useAuth();
 
@@ -122,66 +119,106 @@ export function ConversationScreen() {
 
     const assignToMe = async () => {
         if (!tenantId || !user?.id) return;
-        setActing(true); await api.assignConversation(tenantId, conversationId, user.id); setActing(false);
-        Alert.alert('Asignada', 'La conversación te fue asignada.'); load();
+        setActing(true);
+        try {
+            await api.assignConversation(tenantId, conversationId, user.id);
+            toast.success(t('conv.assigned'));
+            load();
+        } catch {
+            toast.error(t('conv.assignError'));
+        } finally { setActing(false); }
     };
     const returnToAI = () => {
-        Alert.alert('Devolver a la IA', 'La IA volverá a responder esta conversación.', [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Devolver', onPress: async () => { if (!tenantId) return; setActing(true); await api.returnToAI(tenantId, conversationId); setActing(false); load(); } },
+        Alert.alert(t('conv.returnTitle'), t('conv.returnMsg'), [
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('conv.returnConfirm'), onPress: async () => {
+                if (!tenantId) return;
+                setActing(true);
+                try { await api.returnToAI(tenantId, conversationId); toast.success(t('conv.returned')); load(); }
+                catch { toast.error(t('conv.returnError')); }
+                finally { setActing(false); }
+            } },
         ]);
     };
     const resolve = () => {
-        Alert.alert('Resolver', '¿Marcar como resuelta?', [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Resolver', onPress: async () => { if (!tenantId) return; setActing(true); await api.resolveConversation(tenantId, conversationId, user?.id); setActing(false); nav.goBack(); } },
+        Alert.alert(t('conv.resolveTitle'), t('conv.resolveMsg'), [
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('conv.resolveConfirm'), onPress: async () => {
+                if (!tenantId) return;
+                setActing(true);
+                try { await api.resolveConversation(tenantId, conversationId, user?.id); toast.success(t('conv.resolved')); nav.goBack(); }
+                catch { toast.error(t('conv.resolveError')); }
+                finally { setActing(false); }
+            } },
         ]);
     };
     const runMacro = async (macroId: string) => {
         if (!tenantId || !user?.id) return;
         setMacrosOpen(false); setActing(true);
-        await api.executeMacro(tenantId, macroId, conversationId, user.id);
-        setActing(false); load();
+        try { await api.executeMacro(tenantId, macroId, conversationId, user.id); toast.success(t('conv.macroDone')); load(); }
+        catch { toast.error(t('conv.macroError')); }
+        finally { setActing(false); }
     };
     const saveNote = async () => {
         if (!tenantId || !noteText.trim()) return;
         setActing(true);
-        await api.addNote(tenantId, conversationId, noteText.trim(), user?.id);
-        setNoteText(''); setNoteOpen(false); setActing(false); load();
+        try { await api.addNote(tenantId, conversationId, noteText.trim(), user?.id); setNoteText(''); setNoteOpen(false); toast.success(t('conv.noteSaved')); load(); }
+        catch { toast.error(t('conv.noteSaveError')); }
+        finally { setActing(false); }
     };
     const doSummary = async () => {
         setSummary('...'); setAiBusy(true);
-        const res: any = await api.copilotSummary(conversationId);
-        const d = res?.data;
-        setSummary(typeof d === 'string' ? d : (d?.summary || d?.text || 'Sin resumen disponible.'));
-        setAiBusy(false);
+        try {
+            const res: any = await api.copilotSummary(conversationId);
+            const d = res?.data;
+            setSummary(typeof d === 'string' ? d : (d?.summary || d?.text || 'Sin resumen disponible.'));
+        } catch {
+            setSummary('');
+            toast.error(t('conv.summaryError'));
+        } finally { setAiBusy(false); }
     };
     const send = async () => {
         if (!text.trim() || !tenantId || sending) return;
         const body = text.trim(); setText(''); setSending(true);
-        setMessages((prev) => [...prev, { id: `tmp-${Date.now()}`, sender: 'outbound', content: body, timestamp: new Date().toISOString() }]);
-        await api.sendMessage(tenantId, conversationId, body, user?.id);
-        setSending(false); load();
+        const tmpId = `tmp-${Date.now()}`;
+        setMessages((prev) => [...prev, { id: tmpId, sender: 'outbound', content: body, timestamp: new Date().toISOString() }]);
+        try {
+            await api.sendMessage(tenantId, conversationId, body, user?.id);
+            load();
+        } catch {
+            // roll back the optimistic bubble and restore the draft so nothing is lost
+            setMessages((prev) => prev.filter((m) => m.id !== tmpId));
+            setText(body);
+            toast.error(t('conv.sendError'));
+        } finally { setSending(false); }
     };
     // ✨ context-aware: empty draft → suggest; with draft → rewrite tones.
     const aiButton = async () => {
         if (text.trim()) { setToneOpen(true); return; }
         if (!tenantId) return;
         setAiBusy(true);
-        const res: any = await api.getAiSuggestion(tenantId, conversationId);
-        const s = res?.data?.suggestion || res?.data?.suggestions?.[0] || res?.data;
-        if (typeof s === 'string') setText(s);
-        setAiBusy(false);
+        try {
+            const res: any = await api.getAiSuggestion(tenantId, conversationId);
+            const s = res?.data?.suggestion || res?.data?.suggestions?.[0] || res?.data;
+            if (typeof s === 'string' && s.trim()) setText(s);
+            else toast.info(t('conv.noSuggestion'));
+        } catch {
+            toast.error(t('conv.suggestError'));
+        } finally { setAiBusy(false); }
     };
     const rewrite = async (tone: string) => {
         setToneOpen(false);
         if (!text.trim()) return;
         setAiBusy(true);
-        const res: any = await api.copilotRewrite(conversationId, text.trim(), tone);
-        const d = res?.data;
-        const txt = typeof d === 'string' ? d : (d?.rewritten || d?.text || d?.reply || '');
-        if (txt) setText(txt);
-        setAiBusy(false);
+        try {
+            const res: any = await api.copilotRewrite(conversationId, text.trim(), tone);
+            const d = res?.data;
+            const txt = typeof d === 'string' ? d : (d?.rewritten || d?.text || d?.reply || '');
+            if (txt) setText(txt);
+            else toast.info(t('conv.rewriteNone'));
+        } catch {
+            toast.error(t('conv.rewriteError'));
+        } finally { setAiBusy(false); }
     };
 
     if (loading) return <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>;
@@ -199,18 +236,18 @@ export function ConversationScreen() {
                 <View style={styles.viewersBar}>
                     <Ionicons name="eye-outline" size={14} color={theme.warning} />
                     <Text style={styles.viewersText} numberOfLines={1}>
-                        {viewers.map((v) => v.agentName).join(', ')} también {viewers.length > 1 ? 'están viendo' : 'está viendo'} esta conversación
+                        {t(viewers.length > 1 ? 'conv.viewersMany' : 'conv.viewersOne', { names: viewers.map((v) => v.agentName).join(', ') })}
                     </Text>
                 </View>
             )}
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.actionBar} contentContainerStyle={{ gap: 8, paddingHorizontal: 12, alignItems: 'center' }}>
-                <Action icon="information-circle-outline" label="Contacto" color={theme.textSecondary} onPress={() => setContactOpen(true)} />
-                <Action icon="person-add-outline" label="Asignarme" color={theme.accent} onPress={assignToMe} disabled={acting} />
-                {waiting && <Action icon="sparkles-outline" label="Devolver IA" color={theme.accent} onPress={returnToAI} disabled={acting} />}
-                <Action icon="document-text-outline" label="Resumir" color={theme.textSecondary} onPress={doSummary} disabled={aiBusy} />
-                <Action icon="create-outline" label="Nota" color={theme.warning} onPress={() => setNoteOpen(true)} disabled={acting} />
-                <Action icon="checkmark-done-outline" label="Resolver" color={theme.success} onPress={resolve} disabled={acting} />
+                <Action icon="information-circle-outline" label={t('conv.action.contact')} color={theme.textSecondary} onPress={() => setContactOpen(true)} />
+                <Action icon="person-add-outline" label={t('conv.action.assign')} color={theme.accent} onPress={assignToMe} disabled={acting} />
+                {waiting && <Action icon="sparkles-outline" label={t('conv.action.returnAi')} color={theme.accent} onPress={returnToAI} disabled={acting} />}
+                <Action icon="document-text-outline" label={t('conv.action.summarize')} color={theme.textSecondary} onPress={doSummary} disabled={aiBusy} />
+                <Action icon="create-outline" label={t('conv.action.note')} color={theme.warning} onPress={() => setNoteOpen(true)} disabled={acting} />
+                <Action icon="checkmark-done-outline" label={t('conv.action.resolve')} color={theme.success} onPress={resolve} disabled={acting} />
                 {(acting || aiBusy) && <ActivityIndicator color={theme.accent} size="small" />}
             </ScrollView>
 
@@ -225,7 +262,7 @@ export function ConversationScreen() {
                         return (
                             <View style={styles.noteWrap}>
                                 <View style={styles.note}>
-                                    <Text style={styles.noteLabel}>📝 Nota{item.agentName ? ` · ${item.agentName}` : ''}</Text>
+                                    <Text style={styles.noteLabel}>📝 {t('conv.noteLabel')}{item.agentName ? ` · ${item.agentName}` : ''}</Text>
                                     <Text style={styles.noteText}>{item.content}</Text>
                                 </View>
                             </View>
@@ -238,7 +275,7 @@ export function ConversationScreen() {
                         <View style={[styles.bubbleRow, { justifyContent: out ? 'flex-end' : 'flex-start' }]}>
                             <View style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn]}>
                                 {img && <Image source={{ uri: img }} style={styles.media} resizeMode="cover" />}
-                                {isAudio && <Text style={styles.mediaTag}>🎤 Nota de voz</Text>}
+                                {isAudio && <Text style={styles.mediaTag}>🎤 {t('conv.voiceNote')}</Text>}
                                 {!!item.content && <Text style={styles.bubbleText}>{item.content}</Text>}
                                 <Text style={styles.bubbleTime}>{fmtTime(item.timestamp)}</Text>
                             </View>
@@ -257,28 +294,28 @@ export function ConversationScreen() {
                 <TouchableOpacity onPress={aiButton} style={styles.iconBtn} disabled={aiBusy}>
                     {aiBusy ? <ActivityIndicator color={theme.accent} size="small" /> : <Ionicons name="sparkles-outline" size={22} color={theme.accent} />}
                 </TouchableOpacity>
-                <TextInput style={styles.input} placeholder="Escribe un mensaje…" placeholderTextColor={theme.textSecondary} value={text} onChangeText={setText} multiline />
+                <TextInput style={styles.input} placeholder={t('conv.composer')} placeholderTextColor={theme.textSecondary} value={text} onChangeText={setText} multiline />
                 <TouchableOpacity onPress={send} style={styles.sendBtn} disabled={sending || !text.trim()}><Ionicons name="send" size={20} color="#fff" /></TouchableOpacity>
             </View>
 
             {/* Tone sheet (rewrite) */}
-            <Sheet visible={toneOpen} title="Reescribir con IA" onClose={() => setToneOpen(false)}>
+            <Sheet visible={toneOpen} title={t('conv.rewriteTitle')} onClose={() => setToneOpen(false)}>
                 <View style={styles.toneGrid}>
-                    {TONES.map((t) => (
-                        <TouchableOpacity key={t.key} style={styles.toneChip} onPress={() => rewrite(t.key)}>
-                            <Text style={styles.toneText}>{t.label}</Text>
+                    {TONES.map((tone) => (
+                        <TouchableOpacity key={tone} style={styles.toneChip} onPress={() => rewrite(tone)}>
+                            <Text style={styles.toneText}>{t(`conv.tone.${tone}`)}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
             </Sheet>
 
             {/* Canned */}
-            <Sheet visible={cannedOpen} title="Respuestas rápidas" onClose={() => setCannedOpen(false)}>
+            <Sheet visible={cannedOpen} title={t('conv.cannedSheet')} onClose={() => setCannedOpen(false)}>
                 <FlatList data={canned} keyExtractor={(c, i) => c.id || String(i)} renderItem={({ item }) => {
                     const body = item.content || item.body || item.text || '';
                     return (
                         <TouchableOpacity style={styles.cannedRow} onPress={() => { setText(body); setCannedOpen(false); }}>
-                            <Text style={styles.cannedTitle}>{item.title || item.shortcut || 'Respuesta'}</Text>
+                            <Text style={styles.cannedTitle}>{item.title || item.shortcut || t('conv.cannedFallback')}</Text>
                             <Text style={styles.cannedBody} numberOfLines={2}>{body}</Text>
                         </TouchableOpacity>
                     );
@@ -286,36 +323,36 @@ export function ConversationScreen() {
             </Sheet>
 
             {/* Macros */}
-            <Sheet visible={macrosOpen} title="Macros" onClose={() => setMacrosOpen(false)}>
+            <Sheet visible={macrosOpen} title={t('conv.macrosSheet')} onClose={() => setMacrosOpen(false)}>
                 <FlatList data={macros} keyExtractor={(m, i) => m.id || String(i)} renderItem={({ item }) => (
                     <TouchableOpacity style={styles.cannedRow} onPress={() => runMacro(item.id)}>
-                        <Text style={styles.cannedTitle}>{item.name || item.title || 'Macro'}</Text>
-                        {!!(item.description || item.actions?.length) && <Text style={styles.cannedBody} numberOfLines={1}>{item.description || `${item.actions?.length || 0} acciones`}</Text>}
+                        <Text style={styles.cannedTitle}>{item.name || item.title || t('conv.macroFallback')}</Text>
+                        {!!(item.description || item.actions?.length) && <Text style={styles.cannedBody} numberOfLines={1}>{item.description || t('conv.macroActions', { n: item.actions?.length || 0 })}</Text>}
                     </TouchableOpacity>
                 )} />
             </Sheet>
 
             {/* Note */}
-            <Sheet visible={noteOpen} title="Nota interna" onClose={() => setNoteOpen(false)}>
-                <TextInput style={styles.noteInput} placeholder="Escribe una nota (solo para el equipo)…" placeholderTextColor={theme.textSecondary} value={noteText} onChangeText={setNoteText} multiline />
+            <Sheet visible={noteOpen} title={t('conv.noteSheet')} onClose={() => setNoteOpen(false)}>
+                <TextInput style={styles.noteInput} placeholder={t('conv.notePlaceholder')} placeholderTextColor={theme.textSecondary} value={noteText} onChangeText={setNoteText} multiline />
                 <TouchableOpacity style={styles.saveBtn} onPress={saveNote} disabled={acting || !noteText.trim()}>
-                    <Text style={styles.saveBtnText}>Guardar nota</Text>
+                    <Text style={styles.saveBtnText}>{t('conv.saveNote')}</Text>
                 </TouchableOpacity>
             </Sheet>
 
             {/* Summary */}
-            <Sheet visible={summary !== null} title="Resumen del hilo" onClose={() => setSummary(null)}>
+            <Sheet visible={summary !== null} title={t('conv.summarySheet')} onClose={() => setSummary(null)}>
                 {summary === '...' ? <ActivityIndicator color={theme.accent} /> : <Text style={styles.summaryText}>{summary}</Text>}
             </Sheet>
 
             {/* Contact 360° */}
-            <Sheet visible={contactOpen} title={conv?.contact?.name || 'Contacto'} onClose={() => setContactOpen(false)}>
+            <Sheet visible={contactOpen} title={conv?.contact?.name || t('conv.contactSheet')} onClose={() => setContactOpen(false)}>
                 {conv?.contact && (
                     <View>
                         <View style={styles.contactActions}>
                             {!!conv.contact.phone && (
                                 <TouchableOpacity style={styles.cAction} onPress={() => Linking.openURL(`tel:${conv.contact.phone}`)}>
-                                    <Ionicons name="call-outline" size={18} color={theme.accent} /><Text style={styles.cActionText}>Llamar</Text>
+                                    <Ionicons name="call-outline" size={18} color={theme.accent} /><Text style={styles.cActionText}>{t('crm.call')}</Text>
                                 </TouchableOpacity>
                             )}
                             {!!conv.contact.phone && (
@@ -325,18 +362,18 @@ export function ConversationScreen() {
                             )}
                             {!!conv.contact.email && (
                                 <TouchableOpacity style={styles.cAction} onPress={() => Linking.openURL(`mailto:${conv.contact.email}`)}>
-                                    <Ionicons name="mail-outline" size={18} color={theme.accent} /><Text style={styles.cActionText}>Email</Text>
+                                    <Ionicons name="mail-outline" size={18} color={theme.accent} /><Text style={styles.cActionText}>{t('crm.email')}</Text>
                                 </TouchableOpacity>
                             )}
                         </View>
-                        <CRow label="Teléfono" value={conv.contact.phone} />
-                        <CRow label="Email" value={conv.contact.email} />
-                        <CRow label="Segmento" value={conv.contact.segment} />
-                        <CRow label="Valor (LTV)" value={conv.contact.lifetimeValue ? `$${Number(conv.contact.lifetimeValue).toLocaleString()}` : undefined} />
-                        <CRow label="Conversaciones" value={conv.contact.conversationCount != null ? String(conv.contact.conversationCount) : undefined} />
+                        <CRow label={t('crm.field.phone')} value={conv.contact.phone} />
+                        <CRow label={t('crm.email')} value={conv.contact.email} />
+                        <CRow label={t('conv.segment')} value={conv.contact.segment} />
+                        <CRow label={t('conv.ltv')} value={conv.contact.lifetimeValue ? `$${Number(conv.contact.lifetimeValue).toLocaleString()}` : undefined} />
+                        <CRow label={t('conv.conversations')} value={conv.contact.conversationCount != null ? String(conv.contact.conversationCount) : undefined} />
                         {Array.isArray(conv.contact.tags) && conv.contact.tags.length > 0 && (
                             <View style={{ marginTop: 8 }}>
-                                <Text style={styles.cLabel}>Etiquetas</Text>
+                                <Text style={styles.cLabel}>{t('crm.section.tags')}</Text>
                                 <View style={styles.tagWrap}>
                                     {conv.contact.tags.map((t: any, i: number) => (
                                         <View key={i} style={styles.tag}><Text style={styles.tagText}>{typeof t === 'string' ? t : t.name}</Text></View>

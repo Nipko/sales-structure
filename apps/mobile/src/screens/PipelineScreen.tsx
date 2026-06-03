@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, Modal } from 'react-native';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../components/Toast';
+import { useI18n } from '../i18n';
 import { theme } from '../theme';
 
 interface Stage { id: string; name: string; slug?: string; color?: string; default_probability?: number }
@@ -13,6 +15,8 @@ const money = (n: number) => `$${(n || 0).toLocaleString(undefined, { maximumFra
 
 export function PipelineScreen() {
     const { tenantId } = useAuth();
+    const toast = useToast();
+    const { t } = useI18n();
     const [stages, setStages] = useState<Stage[]>([]);
     const [groups, setGroups] = useState<Record<string, Deal[]>>({});
     const [active, setActive] = useState<string>('');
@@ -54,9 +58,14 @@ export function PipelineScreen() {
     const move = async (stageId: string) => {
         if (!tenantId || !moving) return;
         setBusy(true);
-        await api.moveDeal(tenantId, moving.id, stageId);
-        setMoving(null); setBusy(false);
-        await load();
+        try {
+            await api.moveDeal(tenantId, moving.id, stageId);
+            setMoving(null);
+            toast.success(t('pipeline.moved'));
+            await load();
+        } catch {
+            toast.error(t('pipeline.moveError'));
+        } finally { setBusy(false); }
     };
 
     if (loading) return <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>;
@@ -81,7 +90,7 @@ export function PipelineScreen() {
                 keyExtractor={(d) => d.id}
                 contentContainerStyle={{ padding: 12 }}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={theme.accent} />}
-                ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>Sin deals en esta etapa.</Text></View>}
+                ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{t('pipeline.empty')}</Text></View>}
                 renderItem={({ item }) => (
                     <TouchableOpacity style={styles.card} onPress={() => setMoving(item)}>
                         <View style={{ flex: 1 }}>
@@ -97,7 +106,7 @@ export function PipelineScreen() {
             <Modal visible={!!moving} transparent animationType="slide" onRequestClose={() => setMoving(null)}>
                 <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setMoving(null)}>
                     <View style={styles.sheet}>
-                        <Text style={styles.sheetTitle}>Mover «{moving ? dealTitle(moving) : ''}» a…</Text>
+                        <Text style={styles.sheetTitle}>{t('pipeline.moveTo', { title: moving ? dealTitle(moving) : '' })}</Text>
                         {stages.map((st) => (
                             <TouchableOpacity key={st.id} style={styles.stageOpt} disabled={busy} onPress={() => move(st.id)}>
                                 <View style={[styles.dot, { backgroundColor: st.color || theme.accent }]} />

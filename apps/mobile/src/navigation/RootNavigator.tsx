@@ -5,6 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNavigationContainerRef } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import { useI18n } from '../i18n';
 import { registerForPush, onNotificationTap, getColdStartData, presentLocalNotification } from '../lib/push';
 import { getAgentSocket, connectRealtime } from '../lib/socket';
 import { theme } from '../theme';
@@ -73,10 +74,11 @@ function loc(v: any): string {
 
 function MainTabs() {
     const { verticalConfig } = useAuth();
+    const { t } = useI18n();
     const term = verticalConfig?.terminology || {};
     // Vertical-aware label only for the bookings tab (turismo → "Reservas",
-    // restaurantes → "Pedidos"). CRM stays "CRM" to avoid confusion.
-    const citasLabel = loc(term.transactionNoun) || 'Citas';
+    // restaurantes → "Pedidos"). Falls back to the i18n label. CRM stays "CRM".
+    const citasLabel = loc(term.transactionNoun) || t('nav.citas');
 
     return (
         <Tabs.Navigator
@@ -93,10 +95,10 @@ function MainTabs() {
                 },
             })}
         >
-            <Tabs.Screen name="Inbox" component={InboxStackNavigator} />
-            <Tabs.Screen name="CRM" component={CrmStackNavigator} />
+            <Tabs.Screen name="Inbox" component={InboxStackNavigator} options={{ tabBarLabel: t('nav.inbox') }} />
+            <Tabs.Screen name="CRM" component={CrmStackNavigator} options={{ tabBarLabel: t('nav.crm') }} />
             <Tabs.Screen name="Citas" component={AppointmentsScreen} options={{ tabBarLabel: citasLabel }} />
-            <Tabs.Screen name="Más" component={MoreScreen} />
+            <Tabs.Screen name="Más" component={MoreScreen} options={{ tabBarLabel: t('nav.mas') }} />
         </Tabs.Navigator>
     );
 }

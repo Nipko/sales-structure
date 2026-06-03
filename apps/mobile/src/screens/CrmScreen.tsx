@@ -5,6 +5,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../components/Toast';
+import { useI18n } from '../i18n';
 import { theme } from '../theme';
 import type { CrmStackParams } from '../navigation/RootNavigator';
 
@@ -31,6 +33,8 @@ function leadName(l: Lead): string {
 
 export function CrmScreen() {
     const { tenantId } = useAuth();
+    const toast = useToast();
+    const { t } = useI18n();
     const nav = useNavigation<NativeStackNavigationProp<CrmStackParams>>();
     const [leads, setLeads] = useState<Lead[]>([]);
     const [loading, setLoading] = useState(true);
@@ -39,11 +43,16 @@ export function CrmScreen() {
 
     const load = useCallback(async () => {
         if (!tenantId) return;
-        const res: any = await api.getLeads(tenantId, search ? `search=${encodeURIComponent(search)}&limit=50` : 'limit=50');
-        if (res?.success) setLeads(Array.isArray(res.data) ? res.data : []);
-        setLoading(false);
-        setRefreshing(false);
-    }, [tenantId, search]);
+        try {
+            const res: any = await api.getLeads(tenantId, search ? `search=${encodeURIComponent(search)}&limit=50` : 'limit=50');
+            if (res?.success) setLeads(Array.isArray(res.data) ? res.data : []);
+        } catch {
+            toast.error(t('common.loadError'));
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, [tenantId, search, toast, t]);
 
     useEffect(() => { const t = setTimeout(load, search ? 350 : 0); return () => clearTimeout(t); }, [load, search]);
 
@@ -53,13 +62,13 @@ export function CrmScreen() {
         <View style={{ flex: 1, backgroundColor: theme.bg }}>
             <View style={styles.searchWrap}>
                 <Ionicons name="search" size={16} color={theme.textSecondary} />
-                <TextInput style={styles.search} placeholder="Buscar lead…" placeholderTextColor={theme.textSecondary} value={search} onChangeText={setSearch} />
+                <TextInput style={styles.search} placeholder={t('crm.searchLead')} placeholderTextColor={theme.textSecondary} value={search} onChangeText={setSearch} />
             </View>
             <FlatList
                 data={leads}
                 keyExtractor={(l) => l.id}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={theme.accent} />}
-                ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>Sin leads.</Text></View>}
+                ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{t('crm.empty')}</Text></View>}
                 renderItem={({ item }) => (
                     <TouchableOpacity style={styles.row} onPress={() => nav.navigate('LeadDetail', { leadId: item.id, title: leadName(item) })}>
                         <View style={[styles.avatar]}><Text style={styles.avatarText}>{leadName(item).charAt(0).toUpperCase()}</Text></View>

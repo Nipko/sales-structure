@@ -6,6 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
 import { getInboxSocket, getAgentSocket, onInboxStatus, getInboxStatus, type SocketStatus } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../components/Toast';
+import { useI18n } from '../i18n';
 import { theme, channelColor } from '../theme';
 import type { InboxStackParams } from '../navigation/RootNavigator';
 
@@ -51,28 +53,43 @@ function relTime(iso?: string): string {
 
 export function InboxScreen() {
     const { tenantId } = useAuth();
+    const toast = useToast();
+    const { t } = useI18n();
     const nav = useNavigation<NativeStackNavigationProp<InboxStackParams>>();
     const [items, setItems] = useState<Conv[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [error, setError] = useState(false);
     const [filter, setFilter] = useState<string>('all');
     const [search, setSearch] = useState('');
     const [live, setLive] = useState<SocketStatus>(getInboxStatus());
 
     useEffect(() => onInboxStatus(setLive), []);
 
-    const load = useCallback(async () => {
+    // `silent` = background reload (socket event / pull-refresh): no spinner, no error view,
+    // just a toast if it fails so a stale list isn't mistaken for fresh.
+    const load = useCallback(async (silent = false) => {
         if (!tenantId) return;
-        const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter);
-        if (res?.success) setItems(Array.isArray(res.data) ? res.data : (res.data?.conversations || []));
-        setLoading(false);
-        setRefreshing(false);
-    }, [tenantId, filter]);
+        try {
+            const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter);
+            const list = Array.isArray(res?.data) ? res.data : (res?.data?.conversations || []);
+            if (res?.success) setItems(list);
+            setError(false);
+        } catch {
+            if (silent) toast.error(t('inbox.refreshError'));
+            else setError(true);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, [tenantId, filter, toast, t]);
+
+    const retry = useCallback(() => { setLoading(true); setError(false); load(); }, [load]);
 
     useEffect(() => { load(); }, [load]);
 
     useEffect(() => {
-        const reload = () => load();
+        const reload = () => load(true); // background: don't blank the list / show error view
         // /inbox → live customer/AI messages; /agent → handoff, assign, resolve.
         const inbox = getInboxSocket();
         const agent = getAgentSocket();
@@ -99,14 +116,14 @@ export function InboxScreen() {
             <View style={styles.statusBar}>
                 <View style={[styles.dot, { backgroundColor: live === 'connected' ? theme.success : live === 'connecting' ? theme.warning : theme.danger }]} />
                 <Text style={styles.statusText}>
-                    {live === 'connected' ? 'EN VIVO' : live === 'connecting' ? 'CONECTANDO…' : 'SIN CONEXIÓN'}
+                    {live === 'connected' ? t('inbox.live.connected') : live === 'connecting' ? t('inbox.live.connecting') : t('inbox.live.offline')}
                 </Text>
             </View>
 
             {/* Search */}
             <View style={styles.searchWrap}>
                 <Ionicons name="search" size={16} color={theme.textSecondary} />
-                <TextInput style={styles.search} placeholder="Buscar conversación…" placeholderTextColor={theme.textSecondary} value={search} onChangeText={setSearch} />
+                <TextInput style={styles.search} placeholder={t('inbox.search')} placeholderTextColor={theme.textSecondary} value={search} onChangeText={setSearch} />
                 {!!search && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={16} color={theme.textSecondary} /></TouchableOpacity>}
             </View>
 
@@ -115,19 +132,28 @@ export function InboxScreen() {
                 {FILTERS.map((f) => (
                     <TouchableOpacity key={f.key} onPress={() => setFilter(f.key)}
                         style={[styles.filterChip, filter === f.key && styles.filterChipOn]}>
-                        <Text style={[styles.filterText, filter === f.key && { color: '#fff' }]}>{f.label}</Text>
+                        <Text style={[styles.filterText, filter === f.key && { color: '#fff' }]}>{t(`inbox.filter.${f.key}`)}</Text>
                     </TouchableOpacity>
                 ))}
             </ScrollView>
 
             {loading ? (
                 <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>
+            ) : error && visible.length === 0 ? (
+                <View style={styles.center}>
+                    <Ionicons name="cloud-offline-outline" size={40} color={theme.textSecondary} />
+                    <Text style={[styles.empty, { marginTop: 10 }]}>{t('inbox.error')}</Text>
+                    <TouchableOpacity style={styles.retryBtn} onPress={retry} accessibilityRole="button" accessibilityLabel={t('common.retry')}>
+                        <Ionicons name="refresh" size={16} color="#fff" />
+                        <Text style={styles.retryText}>{t('common.retry')}</Text>
+                    </TouchableOpacity>
+                </View>
             ) : (
                 <FlatList
                     data={visible}
                     keyExtractor={(c) => c.id}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={theme.accent} />}
-                    ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>No hay conversaciones.</Text></View>}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={theme.accent} />}
+                    ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{t('inbox.empty')}</Text></View>}
                     renderItem={({ item }) => {
                         const ch = item.channel || 'whatsapp';
                         const color = channelColor[ch] || theme.accent;
@@ -151,7 +177,7 @@ export function InboxScreen() {
 
                                 <View style={{ flex: 1 }}>
                                     <View style={styles.rowTop}>
-                                        <Text style={styles.name} numberOfLines={1}>{item.contactName || 'Cliente'}</Text>
+                                        <Text style={styles.name} numberOfLines={1}>{item.contactName || t('inbox.customer')}</Text>
                                         <Text style={styles.time}>{relTime(item.lastMessageAt)}</Text>
                                     </View>
                                     <View style={styles.rowBottom}>
@@ -178,6 +204,8 @@ const styles = StyleSheet.create({
     statusText: { color: theme.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, backgroundColor: theme.bg },
     empty: { color: theme.textSecondary, fontSize: 14 },
+    retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, backgroundColor: theme.accent, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
+    retryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
     searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginTop: 10, marginBottom: 4, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1 },
     search: { flex: 1, color: theme.text, fontSize: 15 },
     filters: { maxHeight: 52, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },

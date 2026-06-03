@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { useAuth, TwoFAMethod } from '../contexts/AuthContext';
+import { useI18n } from '../i18n';
 import { theme } from '../theme';
 
 const WEB_CLIENT_ID = (Constants.expoConfig?.extra as any)?.googleWebClientId || '';
@@ -15,6 +16,7 @@ interface TwoFAState { token: string; method: TwoFAMethod; email?: string }
 
 export function LoginScreen() {
     const { login, loginWithGoogle, verifyTwoFactor, sendTwoFactorEmail } = useAuth();
+    const { t } = useI18n();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -50,7 +52,7 @@ export function LoginScreen() {
     const submit = async () => {
         if (!email.trim() || !password) return;
         setLoading(true); setError(null);
-        handleResult(await login(email.trim(), password), 'No se pudo iniciar sesión');
+        handleResult(await login(email.trim(), password), t('login.signInError'));
         setLoading(false);
     };
 
@@ -64,11 +66,11 @@ export function LoginScreen() {
             const result: any = await GoogleSignin.signIn();
             // Library v13+ returns { data: { idToken } }; older returns { idToken }.
             const idToken = result?.data?.idToken || result?.idToken;
-            if (!idToken) { setError('Google no devolvió el token'); setGoogleLoading(false); return; }
-            handleResult(await loginWithGoogle(idToken), 'No se pudo iniciar con Google');
+            if (!idToken) { setError(t('login.googleNoToken')); setGoogleLoading(false); return; }
+            handleResult(await loginWithGoogle(idToken), t('login.googleError'));
         } catch (e: any) {
             if (e?.code !== statusCodes.SIGN_IN_CANCELLED) {
-                setError(e?.message || 'Error con Google Sign-In');
+                setError(e?.message || t('login.googleGeneric'));
             }
         }
         setGoogleLoading(false);
@@ -81,7 +83,7 @@ export function LoginScreen() {
         if (!twoFA || !code.trim()) return;
         setVerifying(true); setError(null);
         const res = await verifyTwoFactor(twoFA.token, code.trim(), effectiveMethod, trustDevice);
-        if (!res.ok) setError(res.error || 'Código incorrecto');
+        if (!res.ok) setError(res.error || t('login.codeWrong'));
         // On success the AuthProvider sets `user` and this screen unmounts.
         setVerifying(false);
     };
@@ -95,7 +97,7 @@ export function LoginScreen() {
             setTwoFA({ ...twoFA, method: 'email' });
             setUseBackup(false); setCode(''); setEmailSent(true);
         } else {
-            setError('No se pudo enviar el código por correo');
+            setError(t('login.emailSendError'));
         }
     };
 
@@ -104,10 +106,10 @@ export function LoginScreen() {
     };
 
     const codeDescription = useBackup
-        ? 'Ingresa uno de tus códigos de respaldo.'
+        ? t('login.code.backup')
         : effectiveMethod === 'email'
-            ? `Ingresa el código que enviamos a ${twoFA?.email || 'tu correo'}.`
-            : 'Ingresa el código de 6 dígitos de tu app de autenticación.';
+            ? t('login.code.email', { email: twoFA?.email || t('login.yourEmail') })
+            : t('login.code.totp');
 
     return (
         <SafeAreaView style={styles.container}>
@@ -117,13 +119,13 @@ export function LoginScreen() {
                     style={styles.logo}
                     resizeMode="contain"
                 />
-                <Text style={styles.subtitle}>Consola de agentes</Text>
+                <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
 
                 {!twoFA ? (
                     <>
                         <TextInput
                             style={styles.input}
-                            placeholder="Email"
+                            placeholder={t('login.email')}
                             placeholderTextColor={theme.textSecondary}
                             autoCapitalize="none"
                             keyboardType="email-address"
@@ -132,7 +134,7 @@ export function LoginScreen() {
                         />
                         <TextInput
                             style={styles.input}
-                            placeholder="Contraseña"
+                            placeholder={t('login.password')}
                             placeholderTextColor={theme.textSecondary}
                             secureTextEntry
                             value={password}
@@ -143,19 +145,19 @@ export function LoginScreen() {
                         {error && <Text style={styles.error}>{error}</Text>}
 
                         <TouchableOpacity style={styles.button} onPress={submit} disabled={loading}>
-                            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Iniciar sesión</Text>}
+                            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{t('login.signIn')}</Text>}
                         </TouchableOpacity>
 
                         {googleAvailable && (
                             <>
                                 <View style={styles.divider}>
-                                    <View style={styles.line} /><Text style={styles.or}>o</Text><View style={styles.line} />
+                                    <View style={styles.line} /><Text style={styles.or}>{t('login.or')}</Text><View style={styles.line} />
                                 </View>
                                 <TouchableOpacity style={styles.googleBtn} onPress={google} disabled={googleLoading}>
                                     {googleLoading ? <ActivityIndicator color={theme.text} /> : (
                                         <>
                                             <Ionicons name="logo-google" size={18} color="#EA4335" />
-                                            <Text style={styles.googleText}>Continuar con Google</Text>
+                                            <Text style={styles.googleText}>{t('login.google')}</Text>
                                         </>
                                     )}
                                 </TouchableOpacity>
@@ -164,12 +166,12 @@ export function LoginScreen() {
                     </>
                 ) : (
                     <>
-                        <Text style={styles.twoFaTitle}>Verificación en dos pasos</Text>
+                        <Text style={styles.twoFaTitle}>{t('login.twoFaTitle')}</Text>
                         <Text style={styles.twoFaDesc}>{codeDescription}</Text>
 
                         <TextInput
                             style={[styles.input, styles.codeInput]}
-                            placeholder={useBackup ? 'Código de respaldo' : '000000'}
+                            placeholder={useBackup ? t('login.backupPlaceholder') : '000000'}
                             placeholderTextColor={theme.textSecondary}
                             keyboardType={useBackup ? 'default' : 'number-pad'}
                             autoCapitalize={useBackup ? 'characters' : 'none'}
@@ -180,28 +182,28 @@ export function LoginScreen() {
                             onSubmitEditing={verify}
                         />
 
-                        {emailSent && <Text style={styles.info}>Código enviado a tu correo.</Text>}
+                        {emailSent && <Text style={styles.info}>{t('login.emailSent')}</Text>}
                         {error && <Text style={styles.error}>{error}</Text>}
 
                         <TouchableOpacity style={styles.checkboxRow} onPress={() => setTrustDevice(!trustDevice)} activeOpacity={0.7}>
                             <Ionicons name={trustDevice ? 'checkbox' : 'square-outline'} size={20} color={trustDevice ? theme.accent : theme.textSecondary} />
-                            <Text style={styles.checkboxLabel}>Confiar en este dispositivo por 30 días</Text>
+                            <Text style={styles.checkboxLabel}>{t('login.trustDevice')}</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity style={styles.button} onPress={verify} disabled={verifying || !code.trim()}>
-                            {verifying ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verificar</Text>}
+                            {verifying ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{t('login.verify')}</Text>}
                         </TouchableOpacity>
 
                         {!useBackup && effectiveMethod !== 'email' && (
                             <TouchableOpacity onPress={sendEmailCode} disabled={emailSending} style={styles.linkBtn}>
-                                <Text style={styles.link}>{emailSending ? 'Enviando…' : 'Recibir código por correo'}</Text>
+                                <Text style={styles.link}>{emailSending ? t('login.sending') : t('login.getEmailCode')}</Text>
                             </TouchableOpacity>
                         )}
                         <TouchableOpacity onPress={() => { setUseBackup(!useBackup); setCode(''); setError(null); }} style={styles.linkBtn}>
-                            <Text style={styles.link}>{useBackup ? 'Usar código normal' : 'Usar código de respaldo'}</Text>
+                            <Text style={styles.link}>{useBackup ? t('login.useNormal') : t('login.useBackup')}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={backToLogin} style={styles.linkBtn}>
-                            <Text style={styles.linkMuted}>Volver</Text>
+                            <Text style={styles.linkMuted}>{t('login.back')}</Text>
                         </TouchableOpacity>
                     </>
                 )}

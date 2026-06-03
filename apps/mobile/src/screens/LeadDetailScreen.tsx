@@ -4,12 +4,14 @@ import { useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useI18n } from '../i18n';
 import { theme } from '../theme';
 
 export function LeadDetailScreen() {
     const route = useRoute<any>();
     const { leadId } = route.params;
     const { tenantId } = useAuth();
+    const { t } = useI18n();
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
@@ -23,7 +25,7 @@ export function LeadDetailScreen() {
     useEffect(() => { load(); }, [load]);
 
     if (loading) return <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>;
-    if (!data?.lead) return <View style={styles.center}><Text style={styles.muted}>No encontrado.</Text></View>;
+    if (!data?.lead) return <View style={styles.center}><Text style={styles.muted}>{t('crm.notFound')}</Text></View>;
 
     const l = data.lead;
     const name = `${l.first_name || ''} ${l.last_name || ''}`.trim() || l.contact_name || 'Lead';
@@ -35,32 +37,32 @@ export function LeadDetailScreen() {
             <View style={styles.header}>
                 <View style={styles.avatar}><Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text></View>
                 <Text style={styles.name}>{name}</Text>
-                {!!l.stage && <Text style={styles.stage}>{l.stage} · score {l.score ?? 0}</Text>}
+                {!!l.stage && <Text style={styles.stage}>{l.stage} · {t('crm.score', { n: l.score ?? 0 })}</Text>}
             </View>
 
             <View style={styles.actions}>
                 {!!l.phone && (
                     <TouchableOpacity style={styles.action} onPress={() => Linking.openURL(`tel:${l.phone}`)}>
-                        <Ionicons name="call-outline" size={18} color={theme.accent} /><Text style={styles.actionText}>Llamar</Text>
+                        <Ionicons name="call-outline" size={18} color={theme.accent} /><Text style={styles.actionText}>{t('crm.call')}</Text>
                     </TouchableOpacity>
                 )}
                 {!!(l.email || l.contact_email) && (
                     <TouchableOpacity style={styles.action} onPress={() => Linking.openURL(`mailto:${l.email || l.contact_email}`)}>
-                        <Ionicons name="mail-outline" size={18} color={theme.accent} /><Text style={styles.actionText}>Email</Text>
+                        <Ionicons name="mail-outline" size={18} color={theme.accent} /><Text style={styles.actionText}>{t('crm.email')}</Text>
                     </TouchableOpacity>
                 )}
             </View>
 
-            <Section title="Datos">
-                <Row label="Teléfono" value={l.phone} />
-                <Row label="Email" value={l.email || l.contact_email} />
-                <Row label="Empresa" value={l.company_name} />
-                <Row label="Etapa" value={l.stage} />
-                <Row label="Score" value={l.score != null ? String(l.score) : undefined} />
+            <Section title={t('crm.section.data')}>
+                <Row label={t('crm.field.phone')} value={l.phone} />
+                <Row label={t('crm.email')} value={l.email || l.contact_email} />
+                <Row label={t('crm.field.company')} value={l.company_name} />
+                <Row label={t('crm.field.stage')} value={l.stage} />
+                <Row label={t('crm.field.score')} value={l.score != null ? String(l.score) : undefined} />
             </Section>
 
             {tags.length > 0 && (
-                <Section title="Etiquetas">
+                <Section title={t('crm.section.tags')}>
                     <View style={styles.tags}>
                         {tags.map((t: any, i: number) => (
                             <View key={i} style={[styles.tag, { backgroundColor: (t.color || theme.accent) + '22' }]}>
@@ -72,10 +74,10 @@ export function LeadDetailScreen() {
             )}
 
             {opps.length > 0 && (
-                <Section title={`Oportunidades (${opps.length})`}>
+                <Section title={t('crm.section.opportunities', { n: opps.length })}>
                     {opps.map((o: any) => (
                         <View key={o.id} style={styles.opp}>
-                            <Text style={styles.oppName}>{o.course_name || o.name || 'Oportunidad'}</Text>
+                            <Text style={styles.oppName}>{o.course_name || o.name || t('crm.opportunity')}</Text>
                             <Text style={styles.oppMeta}>{o.stage} · {o.estimated_value ? `$${Number(o.estimated_value).toLocaleString()}` : '—'} {o.currency || ''}</Text>
                         </View>
                     ))}

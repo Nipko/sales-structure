@@ -52,10 +52,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
             { color: '#6c5ce7' },
         ],
         '@react-native-google-signin/google-signin',
+        '@sentry/react-native',
+        'expo-localization',
     ],
     extra: {
         eas: { projectId: '5a6f6dab-dec2-44e0-b00a-58e77c909501' },
         apiUrl: process.env.EXPO_PUBLIC_API_URL || 'https://api.parallly-chat.cloud/api/v1',
+        // Sentry DSN (client key — safe to embed). Mobile project, separate from the backend.
+        sentryDsn:
+            process.env.EXPO_PUBLIC_SENTRY_DSN ||
+            'https://c8801571c8e7c0b06692e6e1ae1e1afe@o4511502203748352.ingest.us.sentry.io/4511502208729088',
         // WEB OAuth client ID (= backend GOOGLE_OAUTH_CLIENT_ID / dashboard
         // NEXT_PUBLIC_GOOGLE_CLIENT_ID). NOT the Android client. The mobile id_token
         // is audienced to this so /auth/google verifies it unchanged.

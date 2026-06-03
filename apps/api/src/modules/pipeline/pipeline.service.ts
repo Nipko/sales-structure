@@ -526,6 +526,13 @@ export class PipelineService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant not found');
 
+        // Accept either a stage UUID or a stage slug (e.g. vertical stages like 'interesado')
+        const stageId = await this.resolveStageId(schema, tenantId, data.stageId, data.pipelineId);
+        if (!stageId) {
+            throw new BadRequestException(`Pipeline stage not found: ${data.stageId}`);
+        }
+        data = { ...data, stageId };
+
         // Get stage info for SLA deadline
         const stageRows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
@@ -769,6 +776,13 @@ export class PipelineService {
     async moveToStage(tenantId: string, dealId: string, newStageId: string, agentId?: string, reason?: string): Promise<void> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return;
+
+        // Accept either a stage UUID or a stage slug
+        const resolvedStageId = await this.resolveStageId(schema, tenantId, newStageId);
+        if (!resolvedStageId) {
+            throw new BadRequestException(`Target stage not found: ${newStageId}`);
+        }
+        newStageId = resolvedStageId;
 
         // Get current deal state
         const dealRows = await this.prisma.executeInTenantSchema<any[]>(
@@ -1192,6 +1206,38 @@ export class PipelineService {
 
     private hasAnyKeyword(text: string, keywords: string[]): boolean {
         return keywords.some(kw => text.includes(kw));
+    }
+
+    private static readonly UUID_RE =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    /**
+     * Resolve a stage reference (UUID or slug) to a stage UUID.
+     * Callers (dashboard, AI tools, automation) sometimes pass a slug like
+     * 'interesado' instead of the stage's UUID — casting that to ::uuid fails (22P02).
+     * Returns null if no matching stage exists.
+     */
+    private async resolveStageId(
+        schema: string, tenantId: string, stageRef: string, pipelineId?: string,
+    ): Promise<string | null> {
+        if (!stageRef) return null;
+        if (PipelineService.UUID_RE.test(stageRef)) return stageRef;
+
+        const params: any[] = [stageRef, tenantId];
+        let pipelineFilter = '';
+        if (pipelineId && PipelineService.UUID_RE.test(pipelineId)) {
+            pipelineFilter = ' AND pipeline_id = $3::uuid';
+            params.push(pipelineId);
+        }
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT id FROM pipeline_stages
+             WHERE slug = $1 AND tenant_id = $2::uuid${pipelineFilter}
+             ORDER BY position ASC LIMIT 1`,
+            params,
+        );
+        return rows?.[0]?.id || null;
     }
 
     private async recordStageTransition(

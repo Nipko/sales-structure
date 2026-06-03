@@ -11,6 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
 import { enqueue, pendingFor, subscribeOutbox } from '../lib/outbox';
+import { snoozeUntil, SNOOZE_PRESETS, type SnoozePreset } from '../lib/snooze';
 import { theme } from '../theme';
 import { SOCKET_URL } from '../lib/config';
 
@@ -40,6 +41,7 @@ export function ConversationScreen() {
 
     const [messages, setMessages] = useState<Msg[]>([]);
     const [outboxTick, setOutboxTick] = useState(0);
+    const [snoozeOpen, setSnoozeOpen] = useState(false);
     const [notes, setNotes] = useState<Note[]>([]);
     const [conv, setConv] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -126,6 +128,7 @@ export function ConversationScreen() {
     }, [messages, notes, conversationId, outboxTick]);
 
     const waiting = conv?.status === 'waiting_human' || conv?.status === 'with_human';
+    const resolved = conv?.status === 'resolved' || conv?.status === 'closed';
 
     const assignToMe = async () => {
         if (!tenantId || !user?.id) return;
@@ -161,6 +164,29 @@ export function ConversationScreen() {
                 finally { setActing(false); }
             } },
         ]);
+    };
+    const doReopen = async () => {
+        if (!tenantId) return;
+        setActing(true);
+        try {
+            await api.reopenConversation(tenantId, conversationId);
+            toast.success(t('conv.reopened'));
+            load();
+        } catch {
+            toast.error(t('conv.reopenError'));
+        } finally { setActing(false); }
+    };
+    const doSnooze = async (preset: SnoozePreset) => {
+        setSnoozeOpen(false);
+        if (!tenantId) return;
+        setActing(true);
+        try {
+            await api.snoozeConversation(tenantId, conversationId, snoozeUntil(preset).toISOString());
+            toast.success(t('conv.snoozed'));
+            nav.goBack();
+        } catch {
+            toast.error(t('conv.snoozeError'));
+        } finally { setActing(false); }
     };
     const runMacro = async (macroId: string) => {
         if (!tenantId || !user?.id) return;
@@ -258,7 +284,9 @@ export function ConversationScreen() {
                 {waiting && <Action icon="sparkles-outline" label={t('conv.action.returnAi')} color={theme.accent} onPress={returnToAI} disabled={acting} />}
                 <Action icon="document-text-outline" label={t('conv.action.summarize')} color={theme.textSecondary} onPress={doSummary} disabled={aiBusy} />
                 <Action icon="create-outline" label={t('conv.action.note')} color={theme.warning} onPress={() => setNoteOpen(true)} disabled={acting} />
-                <Action icon="checkmark-done-outline" label={t('conv.action.resolve')} color={theme.success} onPress={resolve} disabled={acting} />
+                <Action icon="moon-outline" label={t('conv.action.snooze')} color={theme.textSecondary} onPress={() => setSnoozeOpen(true)} disabled={acting} />
+                {!resolved && <Action icon="checkmark-done-outline" label={t('conv.action.resolve')} color={theme.success} onPress={resolve} disabled={acting} />}
+                {resolved && <Action icon="refresh-outline" label={t('conv.action.reopen')} color={theme.accent} onPress={doReopen} disabled={acting} />}
                 {(acting || aiBusy) && <ActivityIndicator color={theme.accent} size="small" />}
             </ScrollView>
 
@@ -319,6 +347,17 @@ export function ConversationScreen() {
                     {TONES.map((tone) => (
                         <TouchableOpacity key={tone} style={styles.toneChip} onPress={() => rewrite(tone)}>
                             <Text style={styles.toneText}>{t(`conv.tone.${tone}`)}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            </Sheet>
+
+            {/* Snooze */}
+            <Sheet visible={snoozeOpen} title={t('conv.snoozeTitle')} onClose={() => setSnoozeOpen(false)}>
+                <View style={styles.toneGrid}>
+                    {SNOOZE_PRESETS.map((p) => (
+                        <TouchableOpacity key={p.key} style={styles.toneChip} onPress={() => doSnooze(p.key)}>
+                            <Text style={styles.toneText}>{t(p.labelKey)}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>

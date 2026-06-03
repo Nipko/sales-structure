@@ -179,6 +179,12 @@ export const api = {
         json(`/agent-console/conversation/${tenantId}/${id}/suggest`),
     returnToAI: (tenantId: string, id: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/return-to-ai`, { method: 'PUT', body: '{}' }),
+    snoozeConversation: (tenantId: string, id: string, snoozeUntil: string) =>
+        json(`/agent-console/conversation/${tenantId}/${id}/snooze`, { method: 'PUT', body: JSON.stringify({ snoozeUntil }) }),
+    unsnoozeConversation: (tenantId: string, id: string) =>
+        json(`/agent-console/conversation/${tenantId}/${id}/unsnooze`, { method: 'PUT', body: '{}' }),
+    reopenConversation: (tenantId: string, id: string) =>
+        json(`/agent-console/conversation/${tenantId}/${id}/reopen`, { method: 'POST', body: '{}' }),
     addNote: (tenantId: string, id: string, content: string, agentId?: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/note`, { method: 'POST', body: JSON.stringify({ content, agentId }) }),
     copilotRewrite: (conversationId: string, draft: string, tone: string) =>

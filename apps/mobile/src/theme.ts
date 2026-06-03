@@ -23,3 +23,19 @@ export const channelColor: Record<string, string> = {
     email: '#EA4335',
     web_widget: '#6c5ce7',
 };
+
+/** Brand display names (proper nouns — not i18n-translated). */
+export const channelLabel: Record<string, string> = {
+    whatsapp: 'WhatsApp',
+    instagram: 'Instagram',
+    messenger: 'Messenger',
+    telegram: 'Telegram',
+    sms: 'SMS',
+    email: 'Email',
+    web_widget: 'Web',
+};
+
+export const channelIcon: Record<string, string> = {
+    whatsapp: 'logo-whatsapp', instagram: 'logo-instagram', messenger: 'logo-facebook',
+    telegram: 'paper-plane', sms: 'chatbox', email: 'mail', web_widget: 'globe',
+};

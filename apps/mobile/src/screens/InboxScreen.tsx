@@ -9,7 +9,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
 import { ListSkeleton } from '../components/Skeleton';
-import { theme, channelColor } from '../theme';
+import { haptic } from '../lib/haptics';
+import { setUnreadTotal } from '../lib/unread';
+import { theme, channelColor, channelLabel } from '../theme';
 import type { InboxStackParams } from '../navigation/RootNavigator';
 
 interface Conv {
@@ -63,10 +65,14 @@ export function InboxScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState(false);
     const [filter, setFilter] = useState<string>('all');
+    const [channelFilter, setChannelFilter] = useState<string>('all');
+    const [unreadOnly, setUnreadOnly] = useState(false);
     const [search, setSearch] = useState('');
     const [live, setLive] = useState<SocketStatus>(getInboxStatus());
 
     useEffect(() => onInboxStatus(setLive), []);
+
+    const pickFilter = useCallback((key: string) => { haptic.tap(); setFilter(key); }, []);
 
     // `silent` = background reload (socket event / pull-refresh): no spinner, no error view,
     // just a toast if it fails so a stale list isn't mistaken for fresh.
@@ -75,7 +81,11 @@ export function InboxScreen() {
         try {
             const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter);
             const list = Array.isArray(res?.data) ? res.data : (res?.data?.conversations || []);
-            if (res?.success) setItems(list);
+            if (res?.success) {
+                setItems(list);
+                // Publish total unread so the Inbox tab can show a badge (QW5).
+                setUnreadTotal(list.reduce((sum: number, c: Conv) => sum + (c.unreadCount || 0), 0));
+            }
             setError(false);
         } catch {
             if (silent) toast.error(t('inbox.refreshError'));
@@ -107,10 +117,23 @@ export function InboxScreen() {
         };
     }, [load]);
 
+    // Channels actually present in the loaded list → drive the channel filter chips.
+    const channelsPresent = Array.from(new Set(items.map((c) => c.channel || 'whatsapp')));
+
     const q = search.trim().toLowerCase();
-    const visible = q
-        ? items.filter((c) => (c.contactName || '').toLowerCase().includes(q) || (c.lastMessage || '').toLowerCase().includes(q))
-        : items;
+    const visible = items.filter((c) => {
+        if (channelFilter !== 'all' && (c.channel || 'whatsapp') !== channelFilter) return false;
+        if (unreadOnly && !(c.unreadCount && c.unreadCount > 0)) return false;
+        if (q && !((c.contactName || '').toLowerCase().includes(q) || (c.lastMessage || '').toLowerCase().includes(q))) return false;
+        return true;
+    });
+
+    // Contextual empty copy: distinguish "no search results" from "filter is empty".
+    const emptyText = q
+        ? t('inbox.emptySearch', { q: search.trim() })
+        : (channelFilter !== 'all' || unreadOnly || filter !== 'all')
+            ? t('inbox.emptyFilter')
+            : t('inbox.empty');
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -129,15 +152,44 @@ export function InboxScreen() {
                 {!!search && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={16} color={theme.textSecondary} /></TouchableOpacity>}
             </View>
 
-            {/* Filters */}
+            {/* Status filters */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={{ paddingHorizontal: 12, gap: 8, alignItems: 'center' }}>
                 {FILTERS.map((f) => (
-                    <TouchableOpacity key={f.key} onPress={() => setFilter(f.key)}
+                    <TouchableOpacity key={f.key} onPress={() => pickFilter(f.key)}
+                        accessibilityRole="button" accessibilityState={{ selected: filter === f.key }}
+                        accessibilityLabel={t(`inbox.filter.${f.key}`)}
                         style={[styles.filterChip, filter === f.key && styles.filterChipOn]}>
                         <Text style={[styles.filterText, filter === f.key && { color: '#fff' }]}>{t(`inbox.filter.${f.key}`)}</Text>
                     </TouchableOpacity>
                 ))}
             </ScrollView>
+
+            {/* Channel + unread sub-filters (QW4) — only when there's more than one channel in play */}
+            {(channelsPresent.length > 1 || unreadOnly) && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subFilters} contentContainerStyle={{ paddingHorizontal: 12, gap: 8, alignItems: 'center' }}>
+                    <TouchableOpacity onPress={() => { haptic.tap(); setUnreadOnly((v) => !v); }}
+                        accessibilityRole="button" accessibilityState={{ selected: unreadOnly }}
+                        accessibilityLabel={t('inbox.filter.unread')}
+                        style={[styles.miniChip, unreadOnly && styles.miniChipOn]}>
+                        <Ionicons name="ellipse" size={8} color={unreadOnly ? '#fff' : theme.accent} />
+                        <Text style={[styles.miniText, unreadOnly && { color: '#fff' }]}>{t('inbox.filter.unread')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => { haptic.tap(); setChannelFilter('all'); }}
+                        accessibilityRole="button" accessibilityState={{ selected: channelFilter === 'all' }}
+                        style={[styles.miniChip, channelFilter === 'all' && styles.miniChipOn]}>
+                        <Text style={[styles.miniText, channelFilter === 'all' && { color: '#fff' }]}>{t('inbox.allChannels')}</Text>
+                    </TouchableOpacity>
+                    {channelsPresent.map((ch) => (
+                        <TouchableOpacity key={ch} onPress={() => { haptic.tap(); setChannelFilter(ch); }}
+                            accessibilityRole="button" accessibilityState={{ selected: channelFilter === ch }}
+                            accessibilityLabel={channelLabel[ch] || ch}
+                            style={[styles.miniChip, channelFilter === ch && { backgroundColor: channelColor[ch] || theme.accent, borderColor: channelColor[ch] || theme.accent }]}>
+                            <Ionicons name={(CHANNEL_ICON[ch] || 'chatbox') as any} size={11} color={channelFilter === ch ? '#fff' : (channelColor[ch] || theme.textSecondary)} />
+                            <Text style={[styles.miniText, channelFilter === ch && { color: '#fff' }]}>{channelLabel[ch] || ch}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+            )}
 
             {loading ? (
                 <ListSkeleton />
@@ -155,15 +207,21 @@ export function InboxScreen() {
                     data={visible}
                     keyExtractor={(c) => c.id}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={theme.accent} />}
-                    ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{t('inbox.empty')}</Text></View>}
+                    ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{emptyText}</Text></View>}
                     renderItem={({ item }) => {
                         const ch = item.channel || 'whatsapp';
                         const color = channelColor[ch] || theme.accent;
                         const waiting = item.status === 'waiting_human' || item.status === 'with_human';
+                        // SLA-ish wait indicator for handoffs: minutes since last activity.
+                        const waitMin = waiting && item.lastMessageAt
+                            ? Math.floor((Date.now() - new Date(item.lastMessageAt).getTime()) / 60000) : 0;
+                        const slaColor = waitMin >= 15 ? theme.danger : waitMin >= 5 ? theme.warning : theme.success;
                         return (
                             <TouchableOpacity
                                 style={styles.row}
-                                onPress={() => nav.navigate('Conversation', { conversationId: item.id, title: item.contactName })}
+                                accessibilityRole="button"
+                                accessibilityLabel={t('inbox.rowA11y', { name: item.contactName || t('inbox.customer'), channel: channelLabel[ch] || ch })}
+                                onPress={() => { haptic.tap(); nav.navigate('Conversation', { conversationId: item.id, title: item.contactName }); }}
                             >
                                 {/* Avatar with channel badge */}
                                 <View>
@@ -184,7 +242,12 @@ export function InboxScreen() {
                                     </View>
                                     <View style={styles.rowBottom}>
                                         <Text style={styles.preview} numberOfLines={1}>{item.lastMessage || '—'}</Text>
-                                        {waiting && <View style={styles.handoffBadge}><Text style={styles.handoffText}>Handoff</Text></View>}
+                                        {waiting && (
+                                            <View style={[styles.handoffBadge, { backgroundColor: slaColor + '22' }]}>
+                                                <Ionicons name="time-outline" size={10} color={slaColor} />
+                                                <Text style={[styles.handoffText, { color: slaColor }]}>{waitMin > 0 ? relTime(item.lastMessageAt) : 'Handoff'}</Text>
+                                            </View>
+                                        )}
                                         {!waiting && item.isAiHandled && <Ionicons name="sparkles" size={12} color={theme.accent} style={{ marginLeft: 6 }} />}
                                         {!!item.unreadCount && item.unreadCount > 0 && (
                                             <View style={styles.unread}><Text style={styles.unreadText}>{item.unreadCount}</Text></View>
@@ -210,10 +273,14 @@ const styles = StyleSheet.create({
     retryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
     searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginTop: 10, marginBottom: 4, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1 },
     search: { flex: 1, color: theme.text, fontSize: 15 },
-    filters: { maxHeight: 52, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
+    filters: { maxHeight: 52 },
     filterChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgCard },
     filterChipOn: { backgroundColor: theme.accent, borderColor: theme.accent },
     filterText: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
+    subFilters: { maxHeight: 44, marginBottom: 2 },
+    miniChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgCard },
+    miniChipOn: { backgroundColor: theme.accent, borderColor: theme.accent },
+    miniText: { color: theme.textSecondary, fontSize: 12, fontWeight: '600' },
     row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: theme.accent + '33', alignItems: 'center', justifyContent: 'center' },
     avatarText: { color: theme.accent, fontWeight: '700', fontSize: 18 },
@@ -223,7 +290,7 @@ const styles = StyleSheet.create({
     time: { color: theme.textSecondary, fontSize: 12 },
     rowBottom: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
     preview: { color: theme.textSecondary, fontSize: 13, flex: 1 },
-    handoffBadge: { backgroundColor: theme.warning + '22', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, marginLeft: 6 },
+    handoffBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: theme.warning + '22', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, marginLeft: 6 },
     handoffText: { color: theme.warning, fontSize: 10, fontWeight: '700' },
     unread: { backgroundColor: theme.accent, borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', marginLeft: 8, paddingHorizontal: 6 },
     unreadText: { color: '#fff', fontSize: 11, fontWeight: '700' },

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useRef, useState, useCallback, useEff
 import { Animated, StyleSheet, Text, View, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
+import { haptic } from '../lib/haptics';
 
 type ToastType = 'success' | 'error' | 'info';
 interface ToastState { message: string; type: ToastType }
@@ -40,6 +41,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
     const show = useCallback((message: string, type: ToastType = 'info') => {
         if (hideTimer.current) clearTimeout(hideTimer.current);
+        // Tactile echo of the visual feedback — lets the field agent feel the
+        // result without looking (manos ocupadas / en movimiento).
+        if (type === 'success') haptic.success();
+        else if (type === 'error') haptic.error();
         setToast({ message, type });
         opacity.setValue(0); translateY.setValue(20);
         Animated.parallel([
@@ -68,7 +73,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         <ToastContext.Provider value={api}>
             {children}
             {toast && (
-                <Animated.View pointerEvents="none" style={[styles.wrap, { opacity, transform: [{ translateY }] }]}>
+                <Animated.View pointerEvents="none" accessibilityLiveRegion="polite" accessible
+                    style={[styles.wrap, { opacity, transform: [{ translateY }] }]}>
                     <View style={[styles.toast, { borderLeftColor: META[toast.type].color }]}>
                         <Ionicons name={META[toast.type].icon} size={20} color={META[toast.type].color} />
                         <Text style={styles.text} numberOfLines={3}>{toast.message}</Text>

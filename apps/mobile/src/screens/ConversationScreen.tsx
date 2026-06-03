@@ -12,7 +12,8 @@ import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
 import { enqueue, pendingFor, subscribeOutbox } from '../lib/outbox';
 import { snoozeUntil, SNOOZE_PRESETS, type SnoozePreset } from '../lib/snooze';
-import { theme } from '../theme';
+import { haptic } from '../lib/haptics';
+import { theme, channelColor, channelLabel, channelIcon } from '../theme';
 import { SOCKET_URL } from '../lib/config';
 
 interface Msg { id: string; content: string; sender: string; senderName?: string; timestamp?: string; type?: string; metadata?: any; pending?: boolean; failed?: boolean }
@@ -129,6 +130,18 @@ export function ConversationScreen() {
 
     const waiting = conv?.status === 'waiting_human' || conv?.status === 'with_human';
     const resolved = conv?.status === 'resolved' || conv?.status === 'closed';
+    const channel: string | undefined = conv?.channel || conv?.channelType || conv?.contact?.channel;
+    const assignedToMe = !!(conv?.assignedAgentId && user?.id && conv.assignedAgentId === user.id);
+    // Who is responding right now — surfaced as a persistent banner so the agent
+    // never wonders whether the bot is still in control (job #2: takeover ambiguity).
+    const mode: 'you' | 'ai' | 'waiting' | 'resolved' =
+        resolved ? 'resolved' : assignedToMe ? 'you' : waiting ? 'waiting' : 'ai';
+    const AUTHOR = {
+        you: { icon: 'person-circle', color: theme.success, key: 'conv.author.you' },
+        ai: { icon: 'sparkles', color: theme.accent, key: 'conv.author.ai' },
+        waiting: { icon: 'alert-circle', color: theme.warning, key: 'conv.author.waiting' },
+        resolved: { icon: 'checkmark-done', color: theme.textSecondary, key: 'conv.author.resolved' },
+    } as const;
 
     const assignToMe = async () => {
         if (!tenantId || !user?.id) return;
@@ -220,12 +233,14 @@ export function ConversationScreen() {
         setMessages((prev) => [...prev, { id: tmpId, sender: 'outbound', content: body, timestamp: new Date().toISOString() }]);
         try {
             await api.sendMessage(tenantId, conversationId, body, user?.id);
+            haptic.success();
             load();
         } catch {
             // Don't lose it: hand off to the outbox to auto-retry on reconnect.
             // It renders as a pending bubble (sourced from the queue, not `messages`).
             setMessages((prev) => prev.filter((m) => m.id !== tmpId));
             enqueue({ id: tmpId, tenantId, conversationId, body, agentId: user?.id });
+            haptic.warning();
             toast.info(t('conv.queued'));
         } finally { setSending(false); }
     };
@@ -262,6 +277,22 @@ export function ConversationScreen() {
 
     return (
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+            {/* Who's responding + which channel — always visible so control is never ambiguous */}
+            {conv && (
+                <View style={styles.statusBanner}>
+                    <View style={styles.authorChip} accessibilityLiveRegion="polite" accessible accessibilityLabel={t(AUTHOR[mode].key)}>
+                        <Ionicons name={AUTHOR[mode].icon as any} size={14} color={AUTHOR[mode].color} />
+                        <Text style={[styles.authorText, { color: AUTHOR[mode].color }]}>{t(AUTHOR[mode].key)}</Text>
+                    </View>
+                    {!!channel && (
+                        <View style={[styles.channelChip, { borderColor: (channelColor[channel] || theme.border) + '99' }]}>
+                            <Ionicons name={(channelIcon[channel] || 'chatbox') as any} size={12} color={channelColor[channel] || theme.textSecondary} />
+                            <Text style={[styles.channelText, { color: channelColor[channel] || theme.textSecondary }]}>{channelLabel[channel] || channel}</Text>
+                        </View>
+                    )}
+                </View>
+            )}
+
             {waiting && conv?.handoffReason && (
                 <View style={styles.handoffBanner}>
                     <Ionicons name="alert-circle-outline" size={15} color={theme.warning} />
@@ -280,8 +311,12 @@ export function ConversationScreen() {
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.actionBar} contentContainerStyle={{ gap: 8, paddingHorizontal: 12, alignItems: 'center' }}>
                 <Action icon="information-circle-outline" label={t('conv.action.contact')} color={theme.textSecondary} onPress={() => setContactOpen(true)} />
-                <Action icon="person-add-outline" label={t('conv.action.assign')} color={theme.accent} onPress={assignToMe} disabled={acting} />
-                {waiting && <Action icon="sparkles-outline" label={t('conv.action.returnAi')} color={theme.accent} onPress={returnToAI} disabled={acting} />}
+                {/* Take control = assign to me (pauses the bot via handoff). Hidden once it's already mine. */}
+                {!resolved && (mode === 'ai' || mode === 'waiting') &&
+                    <Action icon="hand-left-outline" label={t('conv.action.takeControl')} color={theme.success} onPress={assignToMe} disabled={acting} />}
+                {/* Return to AI = give the bot back control. Shown whenever a human currently holds it. */}
+                {!resolved && mode !== 'ai' &&
+                    <Action icon="sparkles-outline" label={t('conv.action.returnAi')} color={theme.accent} onPress={returnToAI} disabled={acting} />}
                 <Action icon="document-text-outline" label={t('conv.action.summarize')} color={theme.textSecondary} onPress={doSummary} disabled={aiBusy} />
                 <Action icon="create-outline" label={t('conv.action.note')} color={theme.warning} onPress={() => setNoteOpen(true)} disabled={acting} />
                 <Action icon="moon-outline" label={t('conv.action.snooze')} color={theme.textSecondary} onPress={() => setSnoozeOpen(true)} disabled={acting} />
@@ -475,6 +510,11 @@ function Sheet({ visible, title, onClose, children }: { visible: boolean; title:
 
 const styles = StyleSheet.create({
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.bg },
+    statusBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 7, backgroundColor: theme.bgCard, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
+    authorChip: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    authorText: { fontSize: 12, fontWeight: '700' },
+    channelChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, borderWidth: 1 },
+    channelText: { fontSize: 11, fontWeight: '700' },
     handoffBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.warning + '18', paddingHorizontal: 14, paddingVertical: 10 },
     handoffText: { color: theme.warning, fontSize: 13, flex: 1 },
     actionBar: { maxHeight: 52, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: theme.bgCard },

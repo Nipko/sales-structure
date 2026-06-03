@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Image, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { useAuth, TwoFAMethod } from '../contexts/AuthContext';
 import { useI18n } from '../i18n';
+import { DASHBOARD_URL } from '../lib/config';
 import { theme } from '../theme';
 
 const WEB_CLIENT_ID = (Constants.expoConfig?.extra as any)?.googleWebClientId || '';
@@ -146,6 +147,11 @@ export function LoginScreen() {
 
                         <TouchableOpacity style={styles.button} onPress={submit} disabled={loading}>
                             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{t('login.signIn')}</Text>}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity onPress={() => Linking.openURL(`${DASHBOARD_URL}/forgot-password`)} style={styles.linkBtn}
+                            accessibilityRole="link" accessibilityLabel={t('login.forgot')}>
+                            <Text style={styles.link}>{t('login.forgot')}</Text>
                         </TouchableOpacity>
 
                         {googleAvailable && (

@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, ActivityIndicator, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNavigationContainerRef } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../i18n';
 import { registerForPush, onNotificationTap, getColdStartData, presentLocalNotification } from '../lib/push';
 import { getAgentSocket, connectRealtime } from '../lib/socket';
+import { subscribeUnread, getUnreadTotal } from '../lib/unread';
 import { theme } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
 import { InboxScreen } from '../screens/InboxScreen';
@@ -48,20 +49,25 @@ function InboxStackNavigator() {
 }
 
 function CrmStackNavigator() {
+    const { t } = useI18n();
     return (
         <CrmStack.Navigator screenOptions={stackOptions}>
             <CrmStack.Screen name="CrmList" component={CrmScreen}
                 options={({ navigation }) => ({
                     title: 'CRM',
+                    // Labeled entry (not a bare icon) so the pipeline is discoverable (QW6).
                     headerRight: () => (
-                        <TouchableOpacity onPress={() => navigation.navigate('Pipeline')} style={{ paddingHorizontal: 4 }}>
-                            <Ionicons name="git-branch-outline" size={22} color={theme.accent} />
+                        <TouchableOpacity onPress={() => navigation.navigate('Pipeline')}
+                            accessibilityRole="button" accessibilityLabel={t('nav.pipeline')}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 6, paddingVertical: 4 }}>
+                            <Ionicons name="git-branch-outline" size={19} color={theme.accent} />
+                            <Text style={{ color: theme.accent, fontSize: 15, fontWeight: '600' }}>{t('nav.pipeline')}</Text>
                         </TouchableOpacity>
                     ),
                 })} />
             <CrmStack.Screen name="LeadDetail" component={LeadDetailScreen}
-                options={({ route }) => ({ title: route.params?.title || 'Lead' })} />
-            <CrmStack.Screen name="Pipeline" component={PipelineScreen} options={{ title: 'Embudo' }} />
+                options={({ route }) => ({ title: route.params?.title || t('nav.lead') })} />
+            <CrmStack.Screen name="Pipeline" component={PipelineScreen} options={{ title: t('nav.pipeline') }} />
         </CrmStack.Navigator>
     );
 }
@@ -80,6 +86,11 @@ function MainTabs() {
     // restaurantes → "Pedidos"). Falls back to the i18n label. CRM stays "CRM".
     const citasLabel = loc(term.transactionNoun) || t('nav.citas');
 
+    // Unread badge on the Inbox tab (QW5) — fed by the unread store from InboxScreen.
+    const [unread, setUnread] = useState(getUnreadTotal());
+    useEffect(() => subscribeUnread(setUnread), []);
+    const inboxBadge = unread > 0 ? (unread > 99 ? '99+' : unread) : undefined;
+
     return (
         <Tabs.Navigator
             screenOptions={({ route }) => ({
@@ -95,7 +106,7 @@ function MainTabs() {
                 },
             })}
         >
-            <Tabs.Screen name="Inbox" component={InboxStackNavigator} options={{ tabBarLabel: t('nav.inbox') }} />
+            <Tabs.Screen name="Inbox" component={InboxStackNavigator} options={{ tabBarLabel: t('nav.inbox'), tabBarBadge: inboxBadge, tabBarBadgeStyle: { backgroundColor: theme.danger, fontSize: 10 } }} />
             <Tabs.Screen name="CRM" component={CrmStackNavigator} options={{ tabBarLabel: t('nav.crm') }} />
             <Tabs.Screen name="Citas" component={AppointmentsScreen} options={{ tabBarLabel: citasLabel }} />
             <Tabs.Screen name="Más" component={MoreScreen} options={{ tabBarLabel: t('nav.mas') }} />

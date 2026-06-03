@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from '../i18n';
+import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
 
 const STATUSES = [
@@ -56,14 +57,23 @@ export function MoreScreen() {
 
     const setStatus = async (s: string) => {
         if (!user?.id) return;
+        haptic.tap();
         const prev = availability;
         setAvailability(s); // optimista
         try {
             await api.setAvailability(user.id, s);
         } catch {
             setAvailability(prev); // rollback si falla
-            toast.error('No se pudo cambiar tu disponibilidad.');
+            toast.error(t('more.availabilityError'));
         }
+    };
+
+    // Destructive: a stray tap shouldn't end the session (QW1).
+    const confirmLogout = () => {
+        Alert.alert(t('more.logoutConfirmTitle'), t('more.logoutConfirmMsg'), [
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('more.logout'), style: 'destructive', onPress: () => logout() },
+        ]);
     };
 
     const resolution = stats?.aiResolutionRate ?? stats?.resolutionRate ?? stats?.rate;
@@ -81,6 +91,8 @@ export function MoreScreen() {
                     <View style={styles.statusRow}>
                         {STATUSES.map((s) => (
                             <TouchableOpacity key={s.key} onPress={() => setStatus(s.key)}
+                                accessibilityRole="button" accessibilityState={{ selected: availability === s.key }}
+                                accessibilityLabel={t(`more.status.${s.key}`)}
                                 style={[styles.statusBtn, availability === s.key && { borderColor: s.color, backgroundColor: s.color + '1a' }]}>
                                 <View style={[styles.statusDot, { backgroundColor: s.color }]} />
                                 <Text style={[styles.statusText, availability === s.key && { color: theme.text }]}>{t(`more.status.${s.key}`)}</Text>
@@ -107,7 +119,9 @@ export function MoreScreen() {
                     <Text style={styles.cardTitle}>{t('more.language')}</Text>
                     <View style={styles.statusRow}>
                         {SUPPORTED_LOCALES.map((l) => (
-                            <TouchableOpacity key={l} onPress={() => setLocale(l)}
+                            <TouchableOpacity key={l} onPress={() => { haptic.tap(); setLocale(l); }}
+                                accessibilityRole="button" accessibilityState={{ selected: locale === l }}
+                                accessibilityLabel={LOCALE_LABELS[l]}
                                 style={[styles.statusBtn, locale === l && { borderColor: theme.accent, backgroundColor: theme.accent + '1a' }]}>
                                 <Text style={[styles.statusText, locale === l && { color: theme.text }]}>{LOCALE_LABELS[l]}</Text>
                             </TouchableOpacity>
@@ -119,7 +133,8 @@ export function MoreScreen() {
                 <View style={[styles.card, { marginTop: 20 }]}>
                     <Text style={styles.userName}>{user?.name || user?.email}</Text>
                     <Text style={styles.userMeta}>{user?.role}</Text>
-                    <TouchableOpacity style={styles.logout} onPress={logout}>
+                    <TouchableOpacity style={styles.logout} onPress={confirmLogout}
+                        accessibilityRole="button" accessibilityLabel={t('more.logout')}>
                         <Ionicons name="log-out-outline" size={18} color={theme.danger} />
                         <Text style={styles.logoutText}>{t('more.logout')}</Text>
                     </TouchableOpacity>

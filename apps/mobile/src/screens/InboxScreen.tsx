@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Image, ScrollView, TextInput } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Image, ScrollView, TextInput, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import { useI18n } from '../i18n';
 import { ListSkeleton } from '../components/Skeleton';
 import { haptic } from '../lib/haptics';
 import { setUnreadTotal } from '../lib/unread';
+import { snoozeUntil } from '../lib/snooze';
 import { theme, channelColor, channelLabel } from '../theme';
 import type { InboxStackParams } from '../navigation/RootNavigator';
 
@@ -56,7 +57,7 @@ function relTime(iso?: string): string {
 }
 
 export function InboxScreen() {
-    const { tenantId } = useAuth();
+    const { tenantId, user } = useAuth();
     const toast = useToast();
     const { t } = useI18n();
     const nav = useNavigation<NativeStackNavigationProp<InboxStackParams>>();
@@ -97,6 +98,43 @@ export function InboxScreen() {
     }, [tenantId, filter, toast, t]);
 
     const retry = useCallback(() => { setLoading(true); setError(false); load(); }, [load]);
+
+    // Quick triage from the list: long-press a row → assign / resolve / snooze,
+    // optimistic (row leaves immediately) + an Undo toast for the destructive ones.
+    const doQuick = useCallback(async (item: Conv, action: 'assign' | 'resolve' | 'snooze') => {
+        if (!tenantId) return;
+        if (action === 'assign') {
+            if (!user?.id) return;
+            try { await api.assignConversation(tenantId, item.id, user.id); toast.success(t('inbox.qa.assigned')); load(true); }
+            catch { toast.error(t('conv.assignError')); }
+            return;
+        }
+        const snapshot = items;
+        setItems((prev) => prev.filter((c) => c.id !== item.id)); // optimistic remove
+        if (action === 'resolve') {
+            try {
+                await api.resolveConversation(tenantId, item.id, user?.id);
+                toast.success(t('conv.resolved'), { label: t('common.undo'), onPress: () =>
+                    api.reopenConversation(tenantId, item.id).then(() => load(true)).catch(() => toast.error(t('common.undoError'))) });
+            } catch { setItems(snapshot); toast.error(t('conv.resolveError')); }
+        } else {
+            try {
+                await api.snoozeConversation(tenantId, item.id, snoozeUntil('tomorrow').toISOString());
+                toast.success(t('conv.snoozed'), { label: t('common.undo'), onPress: () =>
+                    api.unsnoozeConversation(tenantId, item.id).then(() => load(true)).catch(() => toast.error(t('common.undoError'))) });
+            } catch { setItems(snapshot); toast.error(t('conv.snoozeError')); }
+        }
+    }, [tenantId, user?.id, items, toast, t, load]);
+
+    const openQuickActions = useCallback((item: Conv) => {
+        haptic.tap();
+        Alert.alert(item.contactName || t('inbox.customer'), undefined, [
+            { text: t('inbox.qa.assign'), onPress: () => doQuick(item, 'assign') },
+            { text: t('inbox.qa.snooze'), onPress: () => doQuick(item, 'snooze') },
+            { text: t('inbox.qa.resolve'), style: 'destructive', onPress: () => doQuick(item, 'resolve') },
+            { text: t('common.cancel'), style: 'cancel' },
+        ]);
+    }, [doQuick, t]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -221,7 +259,9 @@ export function InboxScreen() {
                                 style={styles.row}
                                 accessibilityRole="button"
                                 accessibilityLabel={t('inbox.rowA11y', { name: item.contactName || t('inbox.customer'), channel: channelLabel[ch] || ch })}
+                                accessibilityHint={t('inbox.rowHint')}
                                 onPress={() => { haptic.tap(); nav.navigate('Conversation', { conversationId: item.id, title: item.contactName }); }}
+                                onLongPress={() => openQuickActions(item)}
                             >
                                 {/* Avatar with channel badge */}
                                 <View>

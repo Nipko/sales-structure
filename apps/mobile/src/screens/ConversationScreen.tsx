@@ -10,7 +10,7 @@ import { getInboxSocket, getAgentSocket } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
-import { enqueue, pendingFor, subscribeOutbox } from '../lib/outbox';
+import { enqueue, pendingFor, subscribeOutbox, retry as retryOutbox } from '../lib/outbox';
 import { snoozeUntil, SNOOZE_PRESETS, type SnoozePreset } from '../lib/snooze';
 import { haptic } from '../lib/haptics';
 import { theme, channelColor, channelLabel, channelIcon } from '../theme';
@@ -143,14 +143,22 @@ export function ConversationScreen() {
         resolved: { icon: 'checkmark-done', color: theme.textSecondary, key: 'conv.author.resolved' },
     } as const;
 
+    // Optimistic patch helper: apply local state instantly, reconcile/rollback after.
+    const patchConv = (patch: any) => setConv((c: any) => (c ? { ...c, ...patch } : c));
+    const undo = (label: string, fn: () => Promise<any>): { label: string; onPress: () => void } =>
+        ({ label, onPress: () => { fn().catch(() => toast.error(t('common.undoError'))); } });
+
     const assignToMe = async () => {
         if (!tenantId || !user?.id) return;
+        const prev = conv;
+        patchConv({ assignedAgentId: user.id, status: 'with_human' }); // optimista
         setActing(true);
         try {
             await api.assignConversation(tenantId, conversationId, user.id);
             toast.success(t('conv.assigned'));
             load();
         } catch {
+            setConv(prev); // rollback
             toast.error(t('conv.assignError'));
         } finally { setActing(false); }
     };
@@ -159,9 +167,11 @@ export function ConversationScreen() {
             { text: t('common.cancel'), style: 'cancel' },
             { text: t('conv.returnConfirm'), onPress: async () => {
                 if (!tenantId) return;
+                const prev = conv;
+                patchConv({ assignedAgentId: null, status: 'active', isAiHandled: true }); // optimista
                 setActing(true);
                 try { await api.returnToAI(tenantId, conversationId); toast.success(t('conv.returned')); load(); }
-                catch { toast.error(t('conv.returnError')); }
+                catch { setConv(prev); toast.error(t('conv.returnError')); }
                 finally { setActing(false); }
             } },
         ]);
@@ -172,7 +182,13 @@ export function ConversationScreen() {
             { text: t('conv.resolveConfirm'), onPress: async () => {
                 if (!tenantId) return;
                 setActing(true);
-                try { await api.resolveConversation(tenantId, conversationId, user?.id); toast.success(t('conv.resolved')); nav.goBack(); }
+                try {
+                    await api.resolveConversation(tenantId, conversationId, user?.id);
+                    // Undo → reopen. Toast is app-global so it survives goBack().
+                    toast.success(t('conv.resolved'), undo(t('common.undo'), () =>
+                        api.reopenConversation(tenantId, conversationId).then(() => toast.info(t('conv.reopened')))));
+                    nav.goBack();
+                }
                 catch { toast.error(t('conv.resolveError')); }
                 finally { setActing(false); }
             } },
@@ -180,12 +196,15 @@ export function ConversationScreen() {
     };
     const doReopen = async () => {
         if (!tenantId) return;
+        const prev = conv;
+        patchConv({ status: 'active' }); // optimista
         setActing(true);
         try {
             await api.reopenConversation(tenantId, conversationId);
             toast.success(t('conv.reopened'));
             load();
         } catch {
+            setConv(prev); // rollback
             toast.error(t('conv.reopenError'));
         } finally { setActing(false); }
     };
@@ -195,7 +214,8 @@ export function ConversationScreen() {
         setActing(true);
         try {
             await api.snoozeConversation(tenantId, conversationId, snoozeUntil(preset).toISOString());
-            toast.success(t('conv.snoozed'));
+            toast.success(t('conv.snoozed'), undo(t('common.undo'), () =>
+                api.unsnoozeConversation(tenantId, conversationId).then(() => toast.info(t('conv.unsnoozed')))));
             nav.goBack();
         } catch {
             toast.error(t('conv.snoozeError'));
@@ -347,16 +367,23 @@ export function ConversationScreen() {
                     const isAudio = item.type === 'audio' || item.type === 'voice';
                     return (
                         <View style={[styles.bubbleRow, { justifyContent: out ? 'flex-end' : 'flex-start' }]}>
-                            <View style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn]}>
+                            <TouchableOpacity activeOpacity={item.failed ? 0.6 : 1}
+                                disabled={!item.failed}
+                                onPress={item.failed ? () => { haptic.tap(); retryOutbox(item.id); } : undefined}
+                                accessibilityRole={item.failed ? 'button' : undefined}
+                                accessibilityLabel={item.failed ? t('conv.tapRetry') : undefined}
+                                style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn, item.failed && styles.bubbleFailed]}>
                                 {img && <Image source={{ uri: img }} style={styles.media} resizeMode="cover" />}
                                 {isAudio && <Text style={styles.mediaTag}>🎤 {t('conv.voiceNote')}</Text>}
                                 {!!item.content && <Text style={[styles.bubbleText, item.pending && { opacity: 0.7 }]}>{item.content}</Text>}
                                 <View style={styles.bubbleMeta}>
-                                    {item.pending
-                                        ? <Ionicons name={item.failed ? 'alert-circle' : 'time-outline'} size={11} color={item.failed ? theme.danger : 'rgba(255,255,255,0.7)'} />
-                                        : <Text style={styles.bubbleTime}>{fmtTime(item.timestamp)}</Text>}
+                                    {item.failed
+                                        ? <Text style={styles.retryHint}><Ionicons name="alert-circle" size={11} color={theme.danger} /> {t('conv.tapRetry')}</Text>
+                                        : item.pending
+                                            ? <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.7)" />
+                                            : <Text style={styles.bubbleTime}>{fmtTime(item.timestamp)}</Text>}
                                 </View>
-                            </View>
+                            </TouchableOpacity>
                         </View>
                     );
                 }}
@@ -524,6 +551,8 @@ const styles = StyleSheet.create({
     bubble: { maxWidth: '82%', borderRadius: 16, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 5 },
     bubbleIn: { backgroundColor: theme.bubbleIn, borderBottomLeftRadius: 4 },
     bubbleOut: { backgroundColor: theme.bubbleOut, borderBottomRightRadius: 4 },
+    bubbleFailed: { borderWidth: 1, borderColor: theme.danger },
+    retryHint: { color: theme.danger, fontSize: 10, fontWeight: '700' },
     bubbleText: { color: theme.text, fontSize: 15 },
     bubbleTime: { color: theme.textSecondary, fontSize: 10, alignSelf: 'flex-end', marginTop: 2, opacity: 0.8 },
     bubbleMeta: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 2 },

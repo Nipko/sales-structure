@@ -45,6 +45,13 @@ export function enqueue(item: OutboxItem): void {
     void flush();
 }
 
+/** Manually retry failed items (e.g. the agent taps a failed bubble). */
+export function retry(id?: string): void {
+    queue.forEach((q) => { if (!id || q.id === id) q.failed = false; });
+    notify();
+    void flush();
+}
+
 /** Attempt to send all queued messages in order. Stops at the first failure. */
 export async function flush(): Promise<void> {
     if (flushing) return;

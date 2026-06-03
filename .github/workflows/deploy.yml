@@ -5,6 +5,12 @@ on:
     branches:
       - main
       - feature/parallly-commercial-domain
+    # The mobile app (apps/mobile) ships via EAS, not this pipeline, and docs are
+    # not deployable. Skip the web deploy when a push touches ONLY those paths
+    # (a push that also changes web/api/infra still deploys normally).
+    paths-ignore:
+      - 'apps/mobile/**'
+      - 'docs/**'
   workflow_dispatch:
 
 env:

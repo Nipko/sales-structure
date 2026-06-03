@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_URL } from './config';
 import { tokens } from './api';
+import { log } from './log';
 
 // Two namespaces, mirroring the dashboard backend:
 //   /inbox  (ConversationsGateway)   → newMessage / conversationUpdated (auto-joins tenant room)
@@ -43,10 +44,10 @@ export function getInboxSocket(): Socket {
     if (!inboxSocket) {
         setInboxStatus('connecting');
         inboxSocket = io(`${SOCKET_URL}/inbox`, { auth: authCb, ...OPTS });
-        inboxSocket.on('connect', () => { console.log('[socket/inbox] connected', inboxSocket?.id); setInboxStatus('connected'); });
-        inboxSocket.on('disconnect', (r) => { console.log('[socket/inbox] disconnect:', r); setInboxStatus('disconnected'); });
-        inboxSocket.on('connect_error', (e) => { console.log('[socket/inbox] connect_error:', e?.message); setInboxStatus('disconnected'); });
-        inboxSocket.on('error', (e: any) => console.log('[socket/inbox] error:', e?.message || e));
+        inboxSocket.on('connect', () => { log('[socket/inbox] connected', inboxSocket?.id); setInboxStatus('connected'); });
+        inboxSocket.on('disconnect', (r) => { log('[socket/inbox] disconnect:', r); setInboxStatus('disconnected'); });
+        inboxSocket.on('connect_error', (e) => { log('[socket/inbox] connect_error:', e?.message); setInboxStatus('disconnected'); });
+        inboxSocket.on('error', (e: any) => log('[socket/inbox] error:', e?.message || e));
     }
     return inboxSocket;
 }
@@ -57,15 +58,15 @@ export function getAgentSocket(): Socket {
         agentSocket = io(`${SOCKET_URL}/agent`, { auth: authCb, ...OPTS });
         // Rooms are per-socket → re-join on every (re)connect, not just the first.
         agentSocket.on('connect', async () => {
-            console.log('[socket/agent] connected', agentSocket?.id);
+            log('[socket/agent] connected', agentSocket?.id);
             try {
                 const u = await tokens.getUser();
                 if (u?.tenantId) agentSocket!.emit('agent:join', { agentId: u.id, tenantId: u.tenantId });
             } catch { /* noop */ }
         });
-        agentSocket.on('disconnect', (r) => console.log('[socket/agent] disconnect:', r));
-        agentSocket.on('connect_error', (e) => console.log('[socket/agent] connect_error:', e?.message));
-        agentSocket.on('error', (e: any) => console.log('[socket/agent] error:', e?.message || e));
+        agentSocket.on('disconnect', (r) => log('[socket/agent] disconnect:', r));
+        agentSocket.on('connect_error', (e) => log('[socket/agent] connect_error:', e?.message));
+        agentSocket.on('error', (e: any) => log('[socket/agent] error:', e?.message || e));
     }
     return agentSocket;
 }

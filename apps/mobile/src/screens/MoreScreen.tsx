@@ -4,12 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../components/Toast';
+import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from '../i18n';
 import { theme } from '../theme';
 
 const STATUSES = [
-    { key: 'online', label: 'Disponible', color: theme.success },
-    { key: 'away', label: 'Ausente', color: theme.warning },
-    { key: 'offline', label: 'Desconectado', color: theme.textSecondary },
+    { key: 'online', color: theme.success },
+    { key: 'away', color: theme.warning },
+    { key: 'offline', color: theme.textSecondary },
 ];
 
 function pct(v: any): string {
@@ -19,6 +21,8 @@ function pct(v: any): string {
 
 export function MoreScreen() {
     const { user, tenantId, logout } = useAuth();
+    const toast = useToast();
+    const { t, locale, setLocale } = useI18n();
     const [stats, setStats] = useState<any>(null);
     const [kpis, setKpis] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -28,20 +32,32 @@ export function MoreScreen() {
         if (!tenantId) return;
         const end = new Date().toISOString();
         const start = new Date(Date.now() - 30 * 86400000).toISOString();
-        const [r, k]: any[] = await Promise.all([
-            api.getResolutionStats(tenantId, start, end),
-            api.getOverviewKpis(tenantId, start, end),
-        ]);
-        if (r?.success) setStats(r.data?.summary || r.data);
-        if (k?.success) setKpis(k.data);
-        setLoading(false);
-    }, [tenantId]);
+        try {
+            const [r, k]: any[] = await Promise.all([
+                api.getResolutionStats(tenantId, start, end),
+                api.getOverviewKpis(tenantId, start, end),
+            ]);
+            if (r?.success) setStats(r.data?.summary || r.data);
+            if (k?.success) setKpis(k.data);
+        } catch {
+            toast.error(t('common.loadError'));
+        } finally {
+            setLoading(false);
+        }
+    }, [tenantId, toast, t]);
 
     useEffect(() => { load(); }, [load]);
 
     const setStatus = async (s: string) => {
-        setAvailability(s);
-        if (user?.id) await api.setAvailability(user.id, s);
+        if (!user?.id) return;
+        const prev = availability;
+        setAvailability(s); // optimista
+        try {
+            await api.setAvailability(user.id, s);
+        } catch {
+            setAvailability(prev); // rollback si falla
+            toast.error('No se pudo cambiar tu disponibilidad.');
+        }
     };
 
     const resolution = stats?.aiResolutionRate ?? stats?.resolutionRate ?? stats?.rate;
@@ -51,34 +67,47 @@ export function MoreScreen() {
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
             <ScrollView contentContainerStyle={{ padding: 16 }}>
-                <Text style={styles.h1}>Más</Text>
+                <Text style={styles.h1}>{t('more.title')}</Text>
 
                 {/* Availability */}
                 <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Mi disponibilidad</Text>
+                    <Text style={styles.cardTitle}>{t('more.availability')}</Text>
                     <View style={styles.statusRow}>
                         {STATUSES.map((s) => (
                             <TouchableOpacity key={s.key} onPress={() => setStatus(s.key)}
                                 style={[styles.statusBtn, availability === s.key && { borderColor: s.color, backgroundColor: s.color + '1a' }]}>
                                 <View style={[styles.statusDot, { backgroundColor: s.color }]} />
-                                <Text style={[styles.statusText, availability === s.key && { color: theme.text }]}>{s.label}</Text>
+                                <Text style={[styles.statusText, availability === s.key && { color: theme.text }]}>{t(`more.status.${s.key}`)}</Text>
                             </TouchableOpacity>
                         ))}
                     </View>
                 </View>
 
                 {/* Analytics */}
-                <Text style={styles.section}>Rendimiento (30 días)</Text>
+                <Text style={styles.section}>{t('more.performance')}</Text>
                 {loading ? (
                     <ActivityIndicator color={theme.accent} style={{ marginTop: 20 }} />
                 ) : (
                     <View style={styles.kpiGrid}>
-                        <Kpi icon="sparkles-outline" color={theme.accent} label="Resolución IA" value={pct(resolution)} />
-                        <Kpi icon="shield-checkmark-outline" color={theme.success} label="Resolución verificada" value={pct(verified)} />
-                        <Kpi icon="chatbubbles-outline" color="#3498db" label="Conversaciones" value={totalConvs != null ? String(totalConvs) : '—'} />
-                        <Kpi icon="time-outline" color={theme.warning} label="Msgs IA / resolución" value={stats?.avgMessagesToResolution != null ? String(stats.avgMessagesToResolution) : '—'} />
+                        <Kpi icon="sparkles-outline" color={theme.accent} label={t('more.kpi.aiResolution')} value={pct(resolution)} />
+                        <Kpi icon="shield-checkmark-outline" color={theme.success} label={t('more.kpi.verified')} value={pct(verified)} />
+                        <Kpi icon="chatbubbles-outline" color="#3498db" label={t('more.kpi.conversations')} value={totalConvs != null ? String(totalConvs) : '—'} />
+                        <Kpi icon="time-outline" color={theme.warning} label={t('more.kpi.avgMsgs')} value={stats?.avgMessagesToResolution != null ? String(stats.avgMessagesToResolution) : '—'} />
                     </View>
                 )}
+
+                {/* Language selector */}
+                <View style={[styles.card, { marginTop: 20 }]}>
+                    <Text style={styles.cardTitle}>{t('more.language')}</Text>
+                    <View style={styles.statusRow}>
+                        {SUPPORTED_LOCALES.map((l) => (
+                            <TouchableOpacity key={l} onPress={() => setLocale(l)}
+                                style={[styles.statusBtn, locale === l && { borderColor: theme.accent, backgroundColor: theme.accent + '1a' }]}>
+                                <Text style={[styles.statusText, locale === l && { color: theme.text }]}>{LOCALE_LABELS[l]}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                </View>
 
                 {/* Account */}
                 <View style={[styles.card, { marginTop: 20 }]}>
@@ -86,7 +115,7 @@ export function MoreScreen() {
                     <Text style={styles.userMeta}>{user?.role}</Text>
                     <TouchableOpacity style={styles.logout} onPress={logout}>
                         <Ionicons name="log-out-outline" size={18} color={theme.danger} />
-                        <Text style={styles.logoutText}>Cerrar sesión</Text>
+                        <Text style={styles.logoutText}>{t('more.logout')}</Text>
                     </TouchableOpacity>
                 </View>
             </ScrollView>

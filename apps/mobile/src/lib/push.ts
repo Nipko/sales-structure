@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { api } from './api';
+import { log } from './log';
 
 // Show notifications while the app is foregrounded.
 Notifications.setNotificationHandler({
@@ -24,7 +25,7 @@ export async function registerForPush(): Promise<void> {
     // Expo Go (storeClient) dropped remote push in SDK 53 — skip cleanly to avoid
     // noisy errors. Push activates in a development/production build (eas build).
     if (Constants.executionEnvironment === 'storeClient') {
-        console.log('[push] Expo Go detected — remote push needs a development build (eas build).');
+        log('[push] Expo Go detected — remote push needs a development build (eas build).');
         return;
     }
     try {
@@ -54,12 +55,12 @@ export async function registerForPush(): Promise<void> {
         );
         const token = tokenResp.data;
         if (token) {
-            console.log('[push] Expo token:', token); // temp: pega esto en expo.dev/notifications para probar
+            log('[push] Expo token:', token); // temp: pega esto en expo.dev/notifications para probar
             await api.subscribeExpoPush(token);
         }
     } catch (e: any) {
         // Most common in Expo Go without EAS init, or on emulators.
-        console.log('[push] registration skipped:', e?.message);
+        log('[push] registration skipped:', e?.message);
     }
 }
 
@@ -76,7 +77,7 @@ export async function presentLocalNotification(title: string, body: string, data
             trigger: null, // deliver now
         });
     } catch (e: any) {
-        console.log('[push] local notification failed:', e?.message);
+        log('[push] local notification failed:', e?.message);
     }
 }
 

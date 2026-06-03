@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../components/Toast';
+import { useI18n } from '../i18n';
 import { theme } from '../theme';
 
 interface Appt {
@@ -32,6 +34,8 @@ function service(a: Appt): string { return a.service_name || a.serviceName || 'C
 
 export function AppointmentsScreen() {
     const { tenantId } = useAuth();
+    const toast = useToast();
+    const { t } = useI18n();
     const [items, setItems] = useState<Appt[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -57,18 +61,28 @@ export function AppointmentsScreen() {
     const confirm = async (a: Appt) => {
         if (!tenantId) return;
         setBusy(a.id);
-        await api.updateAppointment(tenantId, a.id, { status: 'confirmed' });
-        await load(); setBusy('');
+        try {
+            await api.updateAppointment(tenantId, a.id, { status: 'confirmed' });
+            toast.success(t('citas.confirmed'));
+            await load();
+        } catch {
+            toast.error(t('citas.confirmError'));
+        } finally { setBusy(''); }
     };
     const cancel = (a: Appt) => {
-        Alert.alert('Cancelar cita', `¿Cancelar la cita de ${customer(a)}?`, [
-            { text: 'No', style: 'cancel' },
+        Alert.alert(t('citas.cancelTitle'), t('citas.cancelConfirm', { name: customer(a) }), [
+            { text: t('citas.no'), style: 'cancel' },
             {
-                text: 'Sí, cancelar', style: 'destructive', onPress: async () => {
+                text: t('citas.yesCancel'), style: 'destructive', onPress: async () => {
                     if (!tenantId) return;
                     setBusy(a.id);
-                    await api.cancelAppointment(tenantId, a.id, 'Cancelada desde la app');
-                    await load(); setBusy('');
+                    try {
+                        await api.cancelAppointment(tenantId, a.id, 'Cancelada desde la app');
+                        toast.success(t('citas.cancelled'));
+                        await load();
+                    } catch {
+                        toast.error(t('citas.cancelError'));
+                    } finally { setBusy(''); }
                 },
             },
         ]);
@@ -80,18 +94,18 @@ export function AppointmentsScreen() {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
-            <Text style={styles.h1}>Agenda</Text>
+            <Text style={styles.h1}>{t('citas.title')}</Text>
             <FlatList
                 data={items}
                 keyExtractor={(a) => a.id}
                 contentContainerStyle={{ paddingBottom: 24 }}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={theme.accent} />}
-                ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>No hay citas próximas.</Text></View>}
+                ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{t('citas.empty')}</Text></View>}
                 renderItem={({ item }) => {
                     const s = start(item);
                     const isToday = s && s.toDateString() === todayStr;
                     const time = s ? s.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                    const day = s ? (isToday ? 'Hoy' : s.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })) : '';
+                    const day = s ? (isToday ? t('citas.today') : s.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })) : '';
                     return (
                         <View style={styles.card}>
                             <View style={styles.timeCol}>
@@ -109,11 +123,25 @@ export function AppointmentsScreen() {
                             </View>
                             <View style={styles.apptActions}>
                                 {item.status !== 'confirmed' && (
-                                    <TouchableOpacity onPress={() => confirm(item)} disabled={busy === item.id}>
+                                    <TouchableOpacity
+                                        onPress={() => confirm(item)}
+                                        disabled={busy === item.id}
+                                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                                        style={styles.apptBtn}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={t('citas.confirmA11y', { name: customer(item) })}
+                                    >
                                         <Ionicons name="checkmark-circle-outline" size={26} color={theme.success} />
                                     </TouchableOpacity>
                                 )}
-                                <TouchableOpacity onPress={() => cancel(item)} disabled={busy === item.id}>
+                                <TouchableOpacity
+                                    onPress={() => cancel(item)}
+                                    disabled={busy === item.id}
+                                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                                    style={styles.apptBtn}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={t('citas.cancelA11y', { name: customer(item) })}
+                                >
                                     <Ionicons name="close-circle-outline" size={26} color={theme.danger} />
                                 </TouchableOpacity>
                             </View>
@@ -139,4 +167,5 @@ const styles = StyleSheet.create({
     badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 7 },
     badgeText: { fontSize: 11, fontWeight: '600' },
     apptActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+    apptBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
 });

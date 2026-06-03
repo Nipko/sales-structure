@@ -329,16 +329,16 @@ export function ConversationScreen() {
 
             <View style={styles.composer}>
                 {canned.length > 0 && (
-                    <TouchableOpacity onPress={() => setCannedOpen(true)} style={styles.iconBtn}><Ionicons name="albums-outline" size={22} color={theme.textSecondary} /></TouchableOpacity>
+                    <TouchableOpacity onPress={() => setCannedOpen(true)} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={t('conv.cannedBtn')}><Ionicons name="albums-outline" size={22} color={theme.textSecondary} /></TouchableOpacity>
                 )}
                 {macros.length > 0 && (
-                    <TouchableOpacity onPress={() => setMacrosOpen(true)} style={styles.iconBtn} disabled={acting}><Ionicons name="flash-outline" size={22} color={theme.warning} /></TouchableOpacity>
+                    <TouchableOpacity onPress={() => setMacrosOpen(true)} style={styles.iconBtn} disabled={acting} accessibilityRole="button" accessibilityLabel={t('conv.macrosBtn')}><Ionicons name="flash-outline" size={22} color={theme.warning} /></TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={aiButton} style={styles.iconBtn} disabled={aiBusy}>
+                <TouchableOpacity onPress={aiButton} style={styles.iconBtn} disabled={aiBusy} accessibilityRole="button" accessibilityLabel={t('conv.aiAssist')}>
                     {aiBusy ? <ActivityIndicator color={theme.accent} size="small" /> : <Ionicons name="sparkles-outline" size={22} color={theme.accent} />}
                 </TouchableOpacity>
                 <TextInput style={styles.input} placeholder={t('conv.composer')} placeholderTextColor={theme.textSecondary} value={text} onChangeText={setText} multiline />
-                <TouchableOpacity onPress={send} style={styles.sendBtn} disabled={sending || !text.trim()}><Ionicons name="send" size={20} color="#fff" /></TouchableOpacity>
+                <TouchableOpacity onPress={send} style={styles.sendBtn} disabled={sending || !text.trim()} accessibilityRole="button" accessibilityLabel={t('conv.send')}><Ionicons name="send" size={20} color="#fff" /></TouchableOpacity>
             </View>
 
             {/* Tone sheet (rewrite) */}

@@ -192,6 +192,8 @@ export const api = {
     copilotSummary: (conversationId: string) => json(`/copilot/${conversationId}/summary`),
     setAvailability: (userId: string, status: string) =>
         json(`/agent-console/status/${userId}`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    getAgentsStatus: (tenantId: string) =>
+        json(`/agent-console/agents/${tenantId}/status`),
     getCannedResponses: (tenantId: string) => json(`/agent-console/canned/${tenantId}`),
     getMacros: (tenantId: string) => json(`/agent-console/macros/${tenantId}`),
     executeMacro: (tenantId: string, macroId: string, conversationId: string, agentId: string) =>

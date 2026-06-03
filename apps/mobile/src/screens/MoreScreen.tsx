@@ -33,18 +33,24 @@ export function MoreScreen() {
         const end = new Date().toISOString();
         const start = new Date(Date.now() - 30 * 86400000).toISOString();
         try {
-            const [r, k]: any[] = await Promise.all([
+            const [r, k, s]: any[] = await Promise.all([
                 api.getResolutionStats(tenantId, start, end),
                 api.getOverviewKpis(tenantId, start, end),
+                api.getAgentsStatus(tenantId),
             ]);
             if (r?.success) setStats(r.data?.summary || r.data);
             if (k?.success) setKpis(k.data);
+            // Reflect the agent's real current status instead of assuming "online".
+            if (s?.success && Array.isArray(s.data) && user?.id) {
+                const me = s.data.find((a: any) => (a.userId || a.user_id || a.id || a.agentId) === user.id);
+                if (me?.status) setAvailability(me.status);
+            }
         } catch {
             toast.error(t('common.loadError'));
         } finally {
             setLoading(false);
         }
-    }, [tenantId, toast, t]);
+    }, [tenantId, toast, t, user?.id]);
 
     useEffect(() => { load(); }, [load]);
 

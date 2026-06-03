@@ -10,10 +10,11 @@ import { getInboxSocket, getAgentSocket } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
+import { enqueue, pendingFor, subscribeOutbox } from '../lib/outbox';
 import { theme } from '../theme';
 import { SOCKET_URL } from '../lib/config';
 
-interface Msg { id: string; content: string; sender: string; senderName?: string; timestamp?: string; type?: string; metadata?: any }
+interface Msg { id: string; content: string; sender: string; senderName?: string; timestamp?: string; type?: string; metadata?: any; pending?: boolean; failed?: boolean }
 interface Note { id: string; content: string; agentName?: string; createdAt?: string }
 type TimelineItem = (Msg & { kind: 'msg' }) | (Note & { kind: 'note'; timestamp?: string });
 
@@ -38,6 +39,7 @@ export function ConversationScreen() {
     const { tenantId, user } = useAuth();
 
     const [messages, setMessages] = useState<Msg[]>([]);
+    const [outboxTick, setOutboxTick] = useState(0);
     const [notes, setNotes] = useState<Note[]>([]);
     const [conv, setConv] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -109,11 +111,19 @@ export function ConversationScreen() {
         };
     }, [conversationId, load, user?.id]);
 
+    // Re-render + reconcile when the outbox changes (message queued, sent or failed).
+    useEffect(() => subscribeOutbox(() => { setOutboxTick((x) => x + 1); load(); }), [load]);
+
     const timeline = useMemo<TimelineItem[]>(() => {
         const msgs: TimelineItem[] = messages.map((m) => ({ ...m, kind: 'msg' }));
         const nts: TimelineItem[] = notes.map((n) => ({ ...n, kind: 'note', timestamp: n.createdAt }));
-        return [...msgs, ...nts].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
-    }, [messages, notes]);
+        // Pending outbound messages waiting to be sent (offline queue).
+        const queued: TimelineItem[] = pendingFor(conversationId).map((q) => ({
+            id: q.id, kind: 'msg', sender: 'outbound', content: q.body,
+            timestamp: new Date().toISOString(), pending: true, failed: q.failed,
+        }));
+        return [...msgs, ...nts, ...queued].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+    }, [messages, notes, conversationId, outboxTick]);
 
     const waiting = conv?.status === 'waiting_human' || conv?.status === 'with_human';
 
@@ -186,10 +196,11 @@ export function ConversationScreen() {
             await api.sendMessage(tenantId, conversationId, body, user?.id);
             load();
         } catch {
-            // roll back the optimistic bubble and restore the draft so nothing is lost
+            // Don't lose it: hand off to the outbox to auto-retry on reconnect.
+            // It renders as a pending bubble (sourced from the queue, not `messages`).
             setMessages((prev) => prev.filter((m) => m.id !== tmpId));
-            setText(body);
-            toast.error(t('conv.sendError'));
+            enqueue({ id: tmpId, tenantId, conversationId, body, agentId: user?.id });
+            toast.info(t('conv.queued'));
         } finally { setSending(false); }
     };
     // ✨ context-aware: empty draft → suggest; with draft → rewrite tones.
@@ -276,8 +287,12 @@ export function ConversationScreen() {
                             <View style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn]}>
                                 {img && <Image source={{ uri: img }} style={styles.media} resizeMode="cover" />}
                                 {isAudio && <Text style={styles.mediaTag}>🎤 {t('conv.voiceNote')}</Text>}
-                                {!!item.content && <Text style={styles.bubbleText}>{item.content}</Text>}
-                                <Text style={styles.bubbleTime}>{fmtTime(item.timestamp)}</Text>
+                                {!!item.content && <Text style={[styles.bubbleText, item.pending && { opacity: 0.7 }]}>{item.content}</Text>}
+                                <View style={styles.bubbleMeta}>
+                                    {item.pending
+                                        ? <Ionicons name={item.failed ? 'alert-circle' : 'time-outline'} size={11} color={item.failed ? theme.danger : 'rgba(255,255,255,0.7)'} />
+                                        : <Text style={styles.bubbleTime}>{fmtTime(item.timestamp)}</Text>}
+                                </View>
                             </View>
                         </View>
                     );
@@ -432,6 +447,7 @@ const styles = StyleSheet.create({
     bubbleOut: { backgroundColor: theme.bubbleOut, borderBottomRightRadius: 4 },
     bubbleText: { color: theme.text, fontSize: 15 },
     bubbleTime: { color: theme.textSecondary, fontSize: 10, alignSelf: 'flex-end', marginTop: 2, opacity: 0.8 },
+    bubbleMeta: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 2 },
     media: { width: 200, height: 200, borderRadius: 10, marginBottom: 4 },
     mediaTag: { color: theme.text, fontSize: 14, fontWeight: '600', marginBottom: 2 },
     noteWrap: { alignItems: 'center', marginVertical: 6 },

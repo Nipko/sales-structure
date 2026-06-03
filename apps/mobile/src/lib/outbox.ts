@@ -1,5 +1,8 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from './api';
 import { onInboxStatus } from './socket';
+
+const STORAGE_KEY = 'parallly_outbox_v1';
 
 /**
  * Outbound message queue (GATE 0 — resiliencia offline).
@@ -21,7 +24,8 @@ let queue: OutboxItem[] = [];
 const subscribers = new Set<() => void>();
 let flushing = false;
 
-function notify() { subscribers.forEach((fn) => fn()); }
+function persist() { AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(queue)).catch(() => {}); }
+function notify() { subscribers.forEach((fn) => fn()); persist(); }
 
 /** Subscribe to queue changes (enqueue / sent / failed). Returns an unsubscribe fn. */
 export function subscribeOutbox(fn: () => void): () => void {
@@ -66,3 +70,17 @@ export async function flush(): Promise<void> {
 
 // Auto-retry the queue whenever the realtime connection comes back.
 onInboxStatus((status) => { if (status === 'connected') void flush(); });
+
+// Hydrate any queue persisted from a previous app run (survives app kill), then try to send.
+AsyncStorage.getItem(STORAGE_KEY)
+    .then((raw) => {
+        if (!raw) return;
+        const saved = JSON.parse(raw) as OutboxItem[];
+        if (Array.isArray(saved) && saved.length) {
+            // mark restored items as not-failed so the UI shows them as pending again
+            queue = saved.map((q) => ({ ...q, failed: false }));
+            subscribers.forEach((fn) => fn());
+            void flush();
+        }
+    })
+    .catch(() => {});

@@ -1,5 +1,9 @@
 jest.mock('../api', () => ({ api: { sendMessage: jest.fn() } }));
 jest.mock('../socket', () => ({ onInboxStatus: jest.fn() }));
+jest.mock('@react-native-async-storage/async-storage', () => ({
+    __esModule: true,
+    default: { getItem: jest.fn().mockResolvedValue(null), setItem: jest.fn().mockResolvedValue(undefined) },
+}));
 
 import { enqueue, pendingFor } from '../outbox';
 import { api } from '../api';

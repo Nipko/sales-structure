@@ -7,6 +7,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
+import { ListSkeleton } from '../components/Skeleton';
 import { theme } from '../theme';
 import type { CrmStackParams } from '../navigation/RootNavigator';
 
@@ -56,7 +57,7 @@ export function CrmScreen() {
 
     useEffect(() => { const t = setTimeout(load, search ? 350 : 0); return () => clearTimeout(t); }, [load, search]);
 
-    if (loading) return <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>;
+    if (loading) return <View style={{ flex: 1, backgroundColor: theme.bg }}><ListSkeleton /></View>;
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.bg }}>

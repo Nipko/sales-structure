@@ -8,6 +8,7 @@ import { getInboxSocket, getAgentSocket, onInboxStatus, getInboxStatus, type Soc
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
+import { ListSkeleton } from '../components/Skeleton';
 import { theme, channelColor } from '../theme';
 import type { InboxStackParams } from '../navigation/RootNavigator';
 
@@ -138,7 +139,7 @@ export function InboxScreen() {
             </ScrollView>
 
             {loading ? (
-                <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>
+                <ListSkeleton />
             ) : error && visible.length === 0 ? (
                 <View style={styles.center}>
                     <Ionicons name="cloud-offline-outline" size={40} color={theme.textSecondary} />

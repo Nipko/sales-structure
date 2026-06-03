@@ -31,6 +31,7 @@ const FILTERS = [
     { key: 'mine', label: 'Mías' },
     { key: 'unassigned', label: 'Sin asignar' },
     { key: 'handoff', label: 'Handoff' },
+    { key: 'resolved', label: 'Resueltas' },
 ] as const;
 
 const CHANNEL_ICON: Record<string, any> = {

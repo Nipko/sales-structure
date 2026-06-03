@@ -128,6 +128,7 @@ export function ConversationScreen() {
     }, [messages, notes, conversationId, outboxTick]);
 
     const waiting = conv?.status === 'waiting_human' || conv?.status === 'with_human';
+    const resolved = conv?.status === 'resolved' || conv?.status === 'closed';
 
     const assignToMe = async () => {
         if (!tenantId || !user?.id) return;
@@ -163,6 +164,17 @@ export function ConversationScreen() {
                 finally { setActing(false); }
             } },
         ]);
+    };
+    const doReopen = async () => {
+        if (!tenantId) return;
+        setActing(true);
+        try {
+            await api.reopenConversation(tenantId, conversationId);
+            toast.success(t('conv.reopened'));
+            load();
+        } catch {
+            toast.error(t('conv.reopenError'));
+        } finally { setActing(false); }
     };
     const doSnooze = async (preset: SnoozePreset) => {
         setSnoozeOpen(false);
@@ -273,7 +285,8 @@ export function ConversationScreen() {
                 <Action icon="document-text-outline" label={t('conv.action.summarize')} color={theme.textSecondary} onPress={doSummary} disabled={aiBusy} />
                 <Action icon="create-outline" label={t('conv.action.note')} color={theme.warning} onPress={() => setNoteOpen(true)} disabled={acting} />
                 <Action icon="moon-outline" label={t('conv.action.snooze')} color={theme.textSecondary} onPress={() => setSnoozeOpen(true)} disabled={acting} />
-                <Action icon="checkmark-done-outline" label={t('conv.action.resolve')} color={theme.success} onPress={resolve} disabled={acting} />
+                {!resolved && <Action icon="checkmark-done-outline" label={t('conv.action.resolve')} color={theme.success} onPress={resolve} disabled={acting} />}
+                {resolved && <Action icon="refresh-outline" label={t('conv.action.reopen')} color={theme.accent} onPress={doReopen} disabled={acting} />}
                 {(acting || aiBusy) && <ActivityIndicator color={theme.accent} size="small" />}
             </ScrollView>
 

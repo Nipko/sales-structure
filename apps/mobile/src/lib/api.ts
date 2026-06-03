@@ -206,6 +206,17 @@ export const api = {
     getLeads: (tenantId: string, params?: string) =>
         json(`/crm/leads/${tenantId}${params ? `?${params}` : ''}`),
     getLead: (tenantId: string, leadId: string) => json(`/crm/leads/${tenantId}/${leadId}`),
+    // Editable CRM (verified backend routes). updateLead takes a partial { tags?, ...fields }.
+    updateLead: (tenantId: string, leadId: string, data: Record<string, any>) =>
+        json(`/crm/leads/${tenantId}/${leadId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    archiveLead: (tenantId: string, leadId: string) =>
+        json(`/crm/leads/${tenantId}/${leadId}`, { method: 'DELETE' }),
+    restoreLead: (tenantId: string, leadId: string) =>
+        json(`/crm/leads/${tenantId}/${leadId}/restore`, { method: 'PUT', body: '{}' }),
+    getLeadNotes: (tenantId: string, leadId: string) => json(`/crm/notes/${tenantId}/${leadId}`),
+    addLeadNote: (tenantId: string, leadId: string, content: string, createdBy?: string) =>
+        json(`/crm/notes/${tenantId}`, { method: 'POST', body: JSON.stringify({ leadId, content, createdBy }) }),
+    getLeadTimeline: (tenantId: string, leadId: string) => json(`/crm/timeline/${tenantId}/${leadId}`),
 
     // Appointments
     getAppointments: (tenantId: string, params?: string) =>
@@ -224,8 +235,11 @@ export const api = {
     // Pipeline
     getPipelineStages: (tenantId: string) => json(`/pipeline/stages/${tenantId}`),
     getKanban: (tenantId: string) => json(`/pipeline/kanban/${tenantId}`),
-    moveDeal: (tenantId: string, dealId: string, stageId: string) =>
-        json(`/pipeline/deals/${tenantId}/${dealId}/move`, { method: 'PUT', body: JSON.stringify({ stageId }) }),
+    moveDeal: (tenantId: string, dealId: string, stageId: string, agentId?: string) =>
+        json(`/pipeline/deals/${tenantId}/${dealId}/move`, { method: 'PUT', body: JSON.stringify(agentId ? { stageId, agentId } : { stageId }) }),
+    getDeal: (tenantId: string, dealId: string) => json(`/pipeline/deals/${tenantId}/${dealId}`),
+    updateDeal: (tenantId: string, dealId: string, data: Record<string, any>) =>
+        json(`/pipeline/deals/${tenantId}/${dealId}`, { method: 'PUT', body: JSON.stringify(data) }),
 
     // Native push (Expo token)
     subscribeExpoPush: (token: string) =>

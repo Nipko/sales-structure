@@ -31,6 +31,9 @@ function mediaUrl(m: any): string | null {
     if (!u || typeof u !== 'string') return null;
     return u.startsWith('http') ? u : `${SOCKET_URL}${u.startsWith('/') ? '' : '/'}${u}`;
 }
+const agentIdOf = (a: any): string => a?.userId || a?.user_id || a?.id || a?.agentId || '';
+const agentNameOf = (a: any): string => a?.name || a?.agentName || a?.email || agentIdOf(a);
+const statusColor = (s?: string): string => s === 'online' ? theme.success : s === 'away' ? theme.warning : theme.textSecondary;
 
 export function ConversationScreen() {
     const route = useRoute<any>();
@@ -60,6 +63,8 @@ export function ConversationScreen() {
     const [acting, setActing] = useState(false);
     const [viewers, setViewers] = useState<{ agentId: string; agentName: string }[]>([]);
     const [contactOpen, setContactOpen] = useState(false);
+    const [agentsOpen, setAgentsOpen] = useState(false);
+    const [agents, setAgents] = useState<any[]>([]);
     const listRef = useRef<FlatList>(null);
 
     const load = useCallback(async () => {
@@ -221,6 +226,24 @@ export function ConversationScreen() {
             toast.error(t('conv.snoozeError'));
         } finally { setActing(false); }
     };
+    const openReassign = async () => {
+        if (!tenantId) return;
+        setAgentsOpen(true);
+        try {
+            const r: any = await api.getAgentsStatus(tenantId);
+            if (r?.success && Array.isArray(r.data)) setAgents(r.data);
+        } catch { /* sheet shows empty state */ }
+    };
+    const reassignTo = async (agentId: string) => {
+        setAgentsOpen(false);
+        if (!tenantId || !agentId) return;
+        const prev = conv;
+        patchConv({ assignedAgentId: agentId, status: 'with_human' }); // optimista
+        setActing(true);
+        try { await api.assignConversation(tenantId, conversationId, agentId); toast.success(t('conv.reassigned')); load(); }
+        catch { setConv(prev); toast.error(t('conv.reassignError')); }
+        finally { setActing(false); }
+    };
     const runMacro = async (macroId: string) => {
         if (!tenantId || !user?.id) return;
         setMacrosOpen(false); setActing(true);
@@ -337,6 +360,7 @@ export function ConversationScreen() {
                 {/* Return to AI = give the bot back control. Shown whenever a human currently holds it. */}
                 {!resolved && mode !== 'ai' &&
                     <Action icon="sparkles-outline" label={t('conv.action.returnAi')} color={theme.accent} onPress={returnToAI} disabled={acting} />}
+                {!resolved && <Action icon="people-outline" label={t('conv.action.reassign')} color={theme.textSecondary} onPress={openReassign} disabled={acting} />}
                 <Action icon="document-text-outline" label={t('conv.action.summarize')} color={theme.textSecondary} onPress={doSummary} disabled={aiBusy} />
                 <Action icon="create-outline" label={t('conv.action.note')} color={theme.warning} onPress={() => setNoteOpen(true)} disabled={acting} />
                 <Action icon="moon-outline" label={t('conv.action.snooze')} color={theme.textSecondary} onPress={() => setSnoozeOpen(true)} disabled={acting} />
@@ -500,6 +524,25 @@ export function ConversationScreen() {
                     </View>
                 )}
             </Sheet>
+
+            {/* Reassign to a colleague */}
+            <Sheet visible={agentsOpen} title={t('conv.reassignSheet')} onClose={() => setAgentsOpen(false)}>
+                {agents.filter((a) => agentIdOf(a) && agentIdOf(a) !== user?.id).length === 0 ? (
+                    <Text style={styles.summaryText}>{t('conv.noAgents')}</Text>
+                ) : (
+                    <FlatList
+                        data={agents.filter((a) => agentIdOf(a) && agentIdOf(a) !== user?.id)}
+                        keyExtractor={(a, i) => agentIdOf(a) || String(i)}
+                        renderItem={({ item }) => (
+                            <TouchableOpacity style={styles.agentRow} onPress={() => reassignTo(agentIdOf(item))}
+                                accessibilityRole="button" accessibilityLabel={agentNameOf(item)}>
+                                <View style={[styles.agentDot, { backgroundColor: statusColor(item.status) }]} />
+                                <Text style={styles.cannedTitle}>{agentNameOf(item)}</Text>
+                            </TouchableOpacity>
+                        )}
+                    />
+                )}
+            </Sheet>
         </KeyboardAvoidingView>
     );
 }
@@ -590,4 +633,6 @@ const styles = StyleSheet.create({
     tagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
     tag: { backgroundColor: theme.accent + '22', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
     tagText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
+    agentRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
+    agentDot: { width: 9, height: 9, borderRadius: 5 },
 });

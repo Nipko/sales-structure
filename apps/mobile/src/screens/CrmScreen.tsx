@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, RefreshControl, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, RefreshControl, ActivityIndicator, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -127,7 +127,8 @@ export function CrmScreen() {
             </TouchableOpacity>
 
             {/* Create-lead sheet */}
-            <Modal visible={createOpen} transparent animationType="slide" onRequestClose={() => setCreateOpen(false)}>
+            <Modal visible={createOpen} transparent animationType="slide" onRequestClose={() => setCreateOpen(false)} statusBarTranslucent>
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
                 <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setCreateOpen(false)}>
                     <View style={styles.sheet} onStartShouldSetResponder={() => true}>
                         <Text style={styles.sheetTitle}>{t('crm.newLead')}</Text>
@@ -146,6 +147,7 @@ export function CrmScreen() {
                         </TouchableOpacity>
                     </View>
                 </TouchableOpacity>
+                </KeyboardAvoidingView>
             </Modal>
         </View>
     );

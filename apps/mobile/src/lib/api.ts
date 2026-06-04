@@ -235,7 +235,9 @@ export const api = {
         json(`/appointments/${tenantId}/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     cancelAppointment: (tenantId: string, id: string, reason?: string) =>
         json(`/appointments/${tenantId}/${id}/cancel`, { method: 'PUT', body: JSON.stringify({ reason }) }),
-    // Booking: services + available slots (for rescheduling).
+    // Booking: services + available slots (for rescheduling / creating).
+    createAppointment: (tenantId: string, data: Record<string, any>) =>
+        json(`/appointments/${tenantId}`, { method: 'POST', body: JSON.stringify(data) }),
     getBookableServices: (tenantId: string) => json(`/appointments/${tenantId}/services`),
     getBookableSlots: (tenantId: string, date: string, serviceId: string, userId?: string) =>
         json(`/appointments/${tenantId}/bookable-slots?date=${date}&serviceId=${serviceId}${userId ? `&userId=${userId}` : ''}`),

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Alert, Modal, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Alert, Modal, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
@@ -50,6 +50,19 @@ export function AppointmentsScreen() {
     const [slotsLoading, setSlotsLoading] = useState(false);
     const [rescheduling, setRescheduling] = useState(false);
 
+    // Create-appointment sheet
+    const [createOpen, setCreateOpen] = useState(false);
+    const [cServiceId, setCServiceId] = useState('');
+    const [cDate, setCDate] = useState('');
+    const [cSlots, setCSlots] = useState<Slot[]>([]);
+    const [cSlotsLoading, setCSlotsLoading] = useState(false);
+    const [cSlot, setCSlot] = useState<Slot | null>(null);
+    const [cNotes, setCNotes] = useState('');
+    const [cContactSearch, setCContactSearch] = useState('');
+    const [cContactResults, setCContactResults] = useState<any[]>([]);
+    const [cContact, setCContact] = useState<{ id: string; name: string } | null>(null);
+    const [creating, setCreating] = useState(false);
+
     const load = useCallback(async () => {
         if (!tenantId) return;
         const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -69,6 +82,20 @@ export function AppointmentsScreen() {
         if (!tenantId) return;
         api.getBookableServices(tenantId).then((r: any) => { if (r?.success && Array.isArray(r.data)) setServices(r.data); }).catch(() => {});
     }, [tenantId]);
+
+    // Debounced lead search for the (optional) contact picker when creating.
+    useEffect(() => {
+        if (!tenantId || !createOpen) return;
+        const q = cContactSearch.trim();
+        if (q.length < 2) { setCContactResults([]); return; }
+        const tm = setTimeout(async () => {
+            try {
+                const r: any = await api.getLeads(tenantId, `search=${encodeURIComponent(q)}&limit=8`);
+                if (r?.success) setCContactResults(Array.isArray(r.data) ? r.data : []);
+            } catch { /* ignore */ }
+        }, 350);
+        return () => clearTimeout(tm);
+    }, [cContactSearch, tenantId, createOpen]);
 
     const confirm = async (a: Appt) => {
         if (!tenantId) return;
@@ -129,6 +156,43 @@ export function AppointmentsScreen() {
         finally { setRescheduling(false); }
     };
 
+    const openCreate = () => {
+        haptic.tap();
+        setCServiceId(services[0]?.id || ''); setCDate(''); setCSlots([]); setCSlot(null);
+        setCNotes(''); setCContactSearch(''); setCContactResults([]); setCContact(null);
+        setCreateOpen(true);
+    };
+    const cPickDate = async (dateStr: string) => {
+        if (!tenantId || !cServiceId) return;
+        setCDate(dateStr); setCSlots([]); setCSlot(null);
+        setCSlotsLoading(true);
+        try {
+            const r: any = await api.getBookableSlots(tenantId, dateStr, cServiceId);
+            const list = r?.data?.slots || r?.data || [];
+            setCSlots(Array.isArray(list) ? list : []);
+        } catch { toast.error(t('citas.slotsError')); }
+        finally { setCSlotsLoading(false); }
+    };
+    const createAppt = async () => {
+        if (!tenantId || !cServiceId || !cDate || !cSlot) return;
+        const svc = services.find((s) => s.id === cServiceId);
+        const startAt = new Date(`${cDate}T${cSlot.time}:00`).toISOString();
+        const endAt = new Date(`${cDate}T${(cSlot.endTime || cSlot.time)}:00`).toISOString();
+        setCreating(true);
+        try {
+            const payload: Record<string, any> = { serviceName: svc?.name, serviceId: cServiceId, startAt, endAt };
+            if (cSlot.agentId) payload.assignedTo = cSlot.agentId;
+            if (cContact) payload.contactId = cContact.id;
+            if (cNotes.trim()) payload.notes = cNotes.trim();
+            const r: any = await api.createAppointment(tenantId, payload);
+            if (!r?.success) throw new Error('fail');
+            toast.success(t('citas.created'));
+            setCreateOpen(false);
+            await load();
+        } catch { toast.error(t('citas.createError')); }
+        finally { setCreating(false); }
+    };
+
     if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></SafeAreaView>;
 
     const todayStr = new Date().toDateString();
@@ -182,6 +246,11 @@ export function AppointmentsScreen() {
                     );
                 }}
             />
+
+            {/* Create-appointment FAB */}
+            <TouchableOpacity style={styles.fab} onPress={openCreate} accessibilityRole="button" accessibilityLabel={t('citas.new')}>
+                <Ionicons name="add" size={28} color="#fff" />
+            </TouchableOpacity>
 
             {/* Detail + reschedule sheet */}
             <Modal visible={!!selected} transparent animationType="slide" onRequestClose={() => setSelected(null)}>
@@ -252,6 +321,94 @@ export function AppointmentsScreen() {
                     </View>
                 </TouchableOpacity>
             </Modal>
+
+            {/* Create-appointment sheet */}
+            <Modal visible={createOpen} transparent animationType="slide" onRequestClose={() => setCreateOpen(false)} statusBarTranslucent>
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
+                    <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setCreateOpen(false)}>
+                        <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+                            <ScrollView keyboardShouldPersistTaps="handled">
+                                <Text style={styles.sheetTitle}>{t('citas.new')}</Text>
+
+                                <Text style={styles.sectionLabel}>{t('citas.pickService')}</Text>
+                                {services.length === 0 ? (
+                                    <Text style={styles.empty}>{t('citas.noServices')}</Text>
+                                ) : (
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                                        {services.map((s) => {
+                                            const on = s.id === cServiceId;
+                                            return (
+                                                <TouchableOpacity key={s.id} onPress={() => { setCServiceId(s.id); setCDate(''); setCSlots([]); setCSlot(null); }}
+                                                    style={[styles.svcChip, on && { backgroundColor: (s.color || theme.accent) + '22', borderColor: s.color || theme.accent }]}>
+                                                    <Text style={[styles.svcChipText, on && { color: theme.text }]}>{s.name}</Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                    </ScrollView>
+                                )}
+
+                                <Text style={styles.sectionLabel}>{t('citas.contactOptional')}</Text>
+                                {cContact ? (
+                                    <View style={styles.selectedContact}>
+                                        <Text style={styles.selectedContactText}>{cContact.name}</Text>
+                                        <TouchableOpacity onPress={() => { setCContact(null); setCContactSearch(''); }}><Ionicons name="close-circle" size={18} color={theme.textSecondary} /></TouchableOpacity>
+                                    </View>
+                                ) : (
+                                    <>
+                                        <TextInput style={styles.input} placeholder={t('citas.searchContact')} placeholderTextColor={theme.textSecondary} value={cContactSearch} onChangeText={setCContactSearch} />
+                                        {cContactResults.map((l) => {
+                                            const nm = `${l.first_name || ''} ${l.last_name || ''}`.trim() || l.name || l.phone || 'Lead';
+                                            return (
+                                                <TouchableOpacity key={l.id} style={styles.contactRow} onPress={() => { setCContact({ id: l.contact_id || l.customer_profile_id || l.id, name: nm }); setCContactResults([]); }}>
+                                                    <Text style={styles.contactName}>{nm}</Text>
+                                                    {!!l.phone && <Text style={styles.contactSub}>{l.phone}</Text>}
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                    </>
+                                )}
+
+                                <Text style={styles.sectionLabel}>{t('citas.pickDate')}</Text>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }} contentContainerStyle={{ gap: 8 }}>
+                                    {dateChips.map((d) => {
+                                        const ds = localDate(d); const on = ds === cDate;
+                                        return (
+                                            <TouchableOpacity key={ds} onPress={() => cPickDate(ds)} disabled={!cServiceId}
+                                                style={[styles.dateChip, on && { backgroundColor: theme.accent, borderColor: theme.accent }, !cServiceId && { opacity: 0.4 }]}>
+                                                <Text style={[styles.dateChipTop, on && { color: '#fff' }]}>{d.toLocaleDateString([], { weekday: 'short' })}</Text>
+                                                <Text style={[styles.dateChipDay, on && { color: '#fff' }]}>{d.getDate()}</Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </ScrollView>
+
+                                {!!cDate && (cSlotsLoading ? (
+                                    <ActivityIndicator color={theme.accent} style={{ marginTop: 8 }} />
+                                ) : cSlots.length === 0 ? (
+                                    <Text style={[styles.empty, { marginTop: 8 }]}>{t('citas.noSlots')}</Text>
+                                ) : (
+                                    <View style={styles.slotGrid}>
+                                        {cSlots.map((sl, i) => {
+                                            const on = cSlot?.time === sl.time;
+                                            return (
+                                                <TouchableOpacity key={i} onPress={() => setCSlot(sl)} style={[styles.slotChip, on && { backgroundColor: theme.accent }]}>
+                                                    <Text style={[styles.slotText, on && { color: '#fff' }]}>{sl.time}</Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                    </View>
+                                ))}
+
+                                <TextInput style={[styles.input, { minHeight: 60, marginTop: 14, textAlignVertical: 'top' }]} placeholder={t('citas.notesOptional')} placeholderTextColor={theme.textSecondary} value={cNotes} onChangeText={setCNotes} multiline />
+
+                                <TouchableOpacity style={[styles.primaryBtn, (creating || !cSlot) && { opacity: 0.5 }]} onPress={createAppt} disabled={creating || !cSlot}>
+                                    {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{t('citas.create')}</Text>}
+                                </TouchableOpacity>
+                            </ScrollView>
+                        </View>
+                    </TouchableOpacity>
+                </KeyboardAvoidingView>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -298,4 +455,15 @@ const styles = StyleSheet.create({
     sheetActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
     sheetBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 10, borderWidth: 1 },
     sheetBtnText: { fontSize: 14, fontWeight: '600' },
+    fab: { position: 'absolute', right: 18, bottom: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 6 },
+    input: { backgroundColor: theme.bg, borderColor: theme.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, color: theme.text, fontSize: 15 },
+    svcChip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 18, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bg },
+    svcChipText: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
+    selectedContact: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.accent + '1a', borderColor: theme.accent, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
+    selectedContactText: { color: theme.text, fontSize: 14, fontWeight: '600' },
+    contactRow: { paddingVertical: 10, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
+    contactName: { color: theme.text, fontSize: 14, fontWeight: '500' },
+    contactSub: { color: theme.textSecondary, fontSize: 12, marginTop: 2 },
+    primaryBtn: { backgroundColor: theme.accent, borderRadius: 10, paddingVertical: 13, alignItems: 'center', marginTop: 18 },
+    primaryText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

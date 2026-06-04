@@ -1,17 +1,28 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, Modal, TextInput, Linking } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
+import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
 
 interface Stage { id: string; name: string; slug?: string; color?: string; default_probability?: number }
-interface Deal { id: string; title?: string; name?: string; contact_name?: string; value?: number; estimated_value?: number; stage_id?: string; stage?: string }
+interface Deal {
+    id: string; title?: string; name?: string; contact_name?: string; contact_phone?: string;
+    value?: number; estimated_value?: number; stage_id?: string; stage?: string;
+    probability?: number; score?: number; notes?: string; expected_close_date?: string;
+    assigned_agent_id?: string; assignedAgentId?: string;
+}
 
 function dealTitle(d: Deal): string { return d.title || d.name || d.contact_name || 'Deal'; }
 function dealValue(d: Deal): number { return Number(d.value ?? d.estimated_value ?? 0); }
 const money = (n: number) => `$${(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const agentIdOf = (a: any): string => a?.userId || a?.user_id || a?.id || a?.agentId || '';
+const agentNameOf = (a: any): string => a?.name || a?.agentName || a?.email || agentIdOf(a);
+const statusColor = (s?: string): string => s === 'online' ? theme.success : s === 'away' ? theme.warning : theme.textSecondary;
+function fmtDate(iso?: string): string { return iso ? new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
 
 export function PipelineScreen() {
     const { tenantId } = useAuth();
@@ -22,8 +33,14 @@ export function PipelineScreen() {
     const [active, setActive] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [moving, setMoving] = useState<Deal | null>(null);
+
+    // Deal detail sheet state
+    const [detail, setDetail] = useState<Deal | null>(null);
+    const [detailStageId, setDetailStageId] = useState<string>('');
+    const [notes, setNotes] = useState('');
     const [busy, setBusy] = useState(false);
+    const [agentsOpen, setAgentsOpen] = useState(false);
+    const [agents, setAgents] = useState<any[]>([]);
 
     const load = useCallback(async () => {
         if (!tenantId) return;
@@ -31,7 +48,6 @@ export function PipelineScreen() {
         const stageList: Stage[] = s?.success ? (Array.isArray(s.data) ? s.data : s.data?.stages || []) : [];
         setStages(stageList);
 
-        // Normalize kanban into { stageId/slug: Deal[] }
         const g: Record<string, Deal[]> = {};
         const kd = k?.data ?? k;
         const cols = Array.isArray(kd) ? kd : (kd?.stages || kd?.columns || []);
@@ -51,21 +67,67 @@ export function PipelineScreen() {
     useEffect(() => { load(); }, [load]);
 
     const dealsFor = (st: Stage): Deal[] => groups[st.id] || groups[st.slug || ''] || [];
-
     const activeStage = useMemo(() => stages.find((s) => s.id === active), [stages, active]);
     const activeDeals = activeStage ? dealsFor(activeStage) : [];
 
+    // Open the detail sheet for a deal and enrich it from the backend.
+    const openDetail = useCallback(async (d: Deal, stageId: string) => {
+        haptic.tap();
+        setDetail(d); setDetailStageId(stageId); setNotes(d.notes || '');
+        if (!tenantId) return;
+        try {
+            const r: any = await api.getDeal(tenantId, d.id);
+            if (r?.success && r.data) {
+                const full = { ...d, ...r.data };
+                setDetail(full); setNotes(full.notes || '');
+            }
+        } catch { /* keep card-level data */ }
+    }, [tenantId]);
+
+    const closeDetail = () => { setDetail(null); setAgentsOpen(false); };
+
     const move = async (stageId: string) => {
-        if (!tenantId || !moving) return;
+        if (!tenantId || !detail) return;
         setBusy(true);
         try {
-            await api.moveDeal(tenantId, moving.id, stageId);
-            setMoving(null);
+            await api.moveDeal(tenantId, detail.id, stageId);
             toast.success(t('pipeline.moved'));
+            closeDetail();
             await load();
-        } catch {
-            toast.error(t('pipeline.moveError'));
-        } finally { setBusy(false); }
+        } catch { toast.error(t('pipeline.moveError')); }
+        finally { setBusy(false); }
+    };
+
+    const saveNotes = async () => {
+        if (!tenantId || !detail) return;
+        setBusy(true);
+        try {
+            const r: any = await api.updateDeal(tenantId, detail.id, { notes });
+            if (!r?.success) throw new Error('fail');
+            setDetail({ ...detail, notes });
+            toast.success(t('pipeline.notesSaved'));
+        } catch { toast.error(t('pipeline.notesError')); }
+        finally { setBusy(false); }
+    };
+
+    const openAssign = async () => {
+        if (!tenantId) return;
+        setAgentsOpen(true);
+        try { const r: any = await api.getAgentsStatus(tenantId); if (r?.success && Array.isArray(r.data)) setAgents(r.data); }
+        catch { /* empty state */ }
+    };
+    const assignTo = async (agentId: string) => {
+        setAgentsOpen(false);
+        if (!tenantId || !detail || !agentId) return;
+        setBusy(true);
+        try {
+            // moveDeal to the same stage with agentId is the documented assignment path.
+            await api.moveDeal(tenantId, detail.id, detailStageId || detail.stage_id || '', agentId);
+            toast.success(t('pipeline.assigned'));
+            closeDetail();
+            await load();
+        } catch { toast.error(t('pipeline.assignError')); }
+        finally { setBusy(false); }
     };
 
     if (loading) return <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>;
@@ -77,7 +139,8 @@ export function PipelineScreen() {
                     const count = dealsFor(st).length;
                     const on = st.id === active;
                     return (
-                        <TouchableOpacity key={st.id} onPress={() => setActive(st.id)}
+                        <TouchableOpacity key={st.id} onPress={() => { haptic.tap(); setActive(st.id); }}
+                            accessibilityRole="button" accessibilityState={{ selected: on }}
                             style={[styles.chip, on && { backgroundColor: (st.color || theme.accent) + '22', borderColor: st.color || theme.accent }]}>
                             <Text style={[styles.chipText, on && { color: theme.text }]}>{st.name} · {count}</Text>
                         </TouchableOpacity>
@@ -92,30 +155,102 @@ export function PipelineScreen() {
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={theme.accent} />}
                 ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{t('pipeline.empty')}</Text></View>}
                 renderItem={({ item }) => (
-                    <TouchableOpacity style={styles.card} onPress={() => setMoving(item)}>
+                    <TouchableOpacity style={styles.card} onPress={() => openDetail(item, active)}
+                        accessibilityRole="button" accessibilityLabel={dealTitle(item)}>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.dealTitle} numberOfLines={1}>{dealTitle(item)}</Text>
                             {!!item.contact_name && <Text style={styles.dealSub} numberOfLines={1}>{item.contact_name}</Text>}
                         </View>
                         {dealValue(item) > 0 && <Text style={styles.value}>{money(dealValue(item))}</Text>}
+                        <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} style={{ marginLeft: 6 }} />
                     </TouchableOpacity>
                 )}
             />
 
-            {/* Move modal */}
-            <Modal visible={!!moving} transparent animationType="slide" onRequestClose={() => setMoving(null)}>
-                <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setMoving(null)}>
-                    <View style={styles.sheet}>
-                        <Text style={styles.sheetTitle}>{t('pipeline.moveTo', { title: moving ? dealTitle(moving) : '' })}</Text>
-                        {stages.map((st) => (
-                            <TouchableOpacity key={st.id} style={styles.stageOpt} disabled={busy} onPress={() => move(st.id)}>
-                                <View style={[styles.dot, { backgroundColor: st.color || theme.accent }]} />
-                                <Text style={styles.stageOptText}>{st.name}</Text>
+            {/* Deal detail sheet */}
+            <Modal visible={!!detail} transparent animationType="slide" onRequestClose={closeDetail}>
+                <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={closeDetail}>
+                    <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+                        {detail && (
+                            <ScrollView keyboardShouldPersistTaps="handled">
+                                <View style={styles.sheetHead}>
+                                    <Text style={styles.sheetTitle} numberOfLines={2}>{dealTitle(detail)}</Text>
+                                    {dealValue(detail) > 0 && <Text style={styles.sheetValue}>{money(dealValue(detail))}</Text>}
+                                </View>
+
+                                <Row label={t('pipeline.field.contact')} value={detail.contact_name} />
+                                <Row label={t('pipeline.field.stage')} value={detail.stage || activeStage?.name} />
+                                <Row label={t('pipeline.field.probability')} value={detail.probability != null ? `${detail.probability}%` : undefined} />
+                                <Row label={t('pipeline.field.score')} value={detail.score != null ? String(detail.score) : undefined} />
+                                <Row label={t('pipeline.field.closeDate')} value={fmtDate(detail.expected_close_date)} />
+
+                                {!!detail.contact_phone && (
+                                    <View style={styles.quickRow}>
+                                        <TouchableOpacity style={styles.quickBtn} onPress={() => Linking.openURL(`tel:${detail.contact_phone}`)}>
+                                            <Ionicons name="call-outline" size={16} color={theme.accent} /><Text style={styles.quickText}>{t('crm.call')}</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={styles.quickBtn} onPress={() => Linking.openURL(`https://wa.me/${String(detail.contact_phone).replace(/[^0-9]/g, '')}`)}>
+                                            <Ionicons name="logo-whatsapp" size={16} color={theme.success} /><Text style={[styles.quickText, { color: theme.success }]}>WhatsApp</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
+
+                                {/* Editable notes */}
+                                <Text style={styles.sectionLabel}>{t('pipeline.field.notes')}</Text>
+                                <TextInput style={styles.notesInput} placeholder={t('pipeline.notesPlaceholder')} placeholderTextColor={theme.textSecondary}
+                                    value={notes} onChangeText={setNotes} multiline />
+                                <TouchableOpacity style={[styles.primaryBtn, (busy || notes === (detail.notes || '')) && { opacity: 0.5 }]} onPress={saveNotes} disabled={busy || notes === (detail.notes || '')}>
+                                    <Text style={styles.primaryText}>{t('pipeline.saveNotes')}</Text>
+                                </TouchableOpacity>
+
+                                {/* Assign agent */}
+                                <Text style={styles.sectionLabel}>{t('pipeline.assign')}</Text>
+                                <TouchableOpacity style={styles.outlineBtn} onPress={openAssign} disabled={busy}>
+                                    <Ionicons name="people-outline" size={16} color={theme.accent} />
+                                    <Text style={styles.outlineText}>{t('pipeline.assignBtn')}</Text>
+                                </TouchableOpacity>
+
+                                {/* Move to stage */}
+                                <Text style={styles.sectionLabel}>{t('pipeline.moveSection')}</Text>
+                                {stages.filter((st) => st.id !== (detailStageId || detail.stage_id)).map((st) => (
+                                    <TouchableOpacity key={st.id} style={styles.stageOpt} disabled={busy} onPress={() => move(st.id)}>
+                                        <View style={[styles.dot, { backgroundColor: st.color || theme.accent }]} />
+                                        <Text style={styles.stageOptText}>{st.name}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                                {busy && <ActivityIndicator color={theme.accent} style={{ marginTop: 10 }} />}
+                            </ScrollView>
+                        )}
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
+            {/* Agent picker */}
+            <Modal visible={agentsOpen} transparent animationType="slide" onRequestClose={() => setAgentsOpen(false)}>
+                <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setAgentsOpen(false)}>
+                    <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+                        <Text style={styles.sheetTitle}>{t('pipeline.assignBtn')}</Text>
+                        {agents.length === 0 ? (
+                            <Text style={styles.empty}>{t('pipeline.noAgents')}</Text>
+                        ) : agents.map((a, i) => (
+                            <TouchableOpacity key={agentIdOf(a) || i} style={styles.stageOpt} onPress={() => assignTo(agentIdOf(a))}>
+                                <View style={[styles.dot, { backgroundColor: statusColor(a.status) }]} />
+                                <Text style={styles.stageOptText}>{agentNameOf(a)}</Text>
                             </TouchableOpacity>
                         ))}
                     </View>
                 </TouchableOpacity>
             </Modal>
+        </View>
+    );
+}
+
+function Row({ label, value }: { label: string; value?: string }) {
+    if (!value) return null;
+    return (
+        <View style={styles.kv}>
+            <Text style={styles.k}>{label}</Text>
+            <Text style={styles.v}>{value}</Text>
         </View>
     );
 }
@@ -131,8 +266,22 @@ const styles = StyleSheet.create({
     dealSub: { color: theme.textSecondary, fontSize: 13, marginTop: 2 },
     value: { color: theme.success, fontSize: 15, fontWeight: '700' },
     backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    sheet: { backgroundColor: theme.bgCard, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, maxHeight: '70%' },
-    sheetTitle: { color: theme.text, fontSize: 16, fontWeight: '700', marginBottom: 12 },
+    sheet: { backgroundColor: theme.bgCard, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, maxHeight: '85%' },
+    sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10 },
+    sheetTitle: { color: theme.text, fontSize: 17, fontWeight: '700', flex: 1 },
+    sheetValue: { color: theme.success, fontSize: 17, fontWeight: '700' },
+    kv: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
+    k: { color: theme.textSecondary, fontSize: 14 },
+    v: { color: theme.text, fontSize: 14, fontWeight: '500', maxWidth: '60%', textAlign: 'right' },
+    quickRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+    quickBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.bg, borderColor: theme.border, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+    quickText: { color: theme.accent, fontWeight: '600', fontSize: 13 },
+    sectionLabel: { color: theme.textSecondary, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 18, marginBottom: 8 },
+    notesInput: { backgroundColor: theme.bg, borderColor: theme.border, borderWidth: 1, borderRadius: 10, padding: 12, color: theme.text, fontSize: 14, minHeight: 70, textAlignVertical: 'top' },
+    primaryBtn: { backgroundColor: theme.accent, borderRadius: 10, paddingVertical: 11, alignItems: 'center', marginTop: 10 },
+    primaryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+    outlineBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderColor: theme.border, borderWidth: 1, borderRadius: 10, paddingVertical: 11 },
+    outlineText: { color: theme.accent, fontSize: 14, fontWeight: '600' },
     stageOpt: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     dot: { width: 10, height: 10, borderRadius: 5 },
     stageOptText: { color: theme.text, fontSize: 15 },

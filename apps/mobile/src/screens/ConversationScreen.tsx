@@ -505,6 +505,15 @@ export function ConversationScreen() {
                                     <Ionicons name="mail-outline" size={18} color={theme.accent} /><Text style={styles.cActionText}>{t('crm.email')}</Text>
                                 </TouchableOpacity>
                             )}
+                            {!!(conv.contact.name || conv.contact.phone) && (
+                                <TouchableOpacity style={styles.cAction} onPress={() => {
+                                    setContactOpen(false);
+                                    // Jump to the CRM tab with the contact prefilled in search (cross-navigation).
+                                    nav.getParent()?.navigate('CRM', { screen: 'CrmList', params: { search: conv.contact.name || conv.contact.phone } });
+                                }}>
+                                    <Ionicons name="person-outline" size={18} color={theme.accent} /><Text style={styles.cActionText}>{t('conv.viewInCrm')}</Text>
+                                </TouchableOpacity>
+                            )}
                         </View>
                         <CRow label={t('crm.field.phone')} value={conv.contact.phone} />
                         <CRow label={t('crm.email')} value={conv.contact.email} />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, RefreshControl, ActivityIndicator, Modal } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
 import { ListSkeleton } from '../components/Skeleton';
+import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
 import type { CrmStackParams } from '../navigation/RootNavigator';
 
@@ -33,14 +34,23 @@ function leadName(l: Lead): string {
 }
 
 export function CrmScreen() {
-    const { tenantId } = useAuth();
+    const { tenantId, user } = useAuth();
     const toast = useToast();
     const { t } = useI18n();
     const nav = useNavigation<NativeStackNavigationProp<CrmStackParams>>();
+    const route = useRoute<any>();
     const [leads, setLeads] = useState<Lead[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [search, setSearch] = useState('');
+    const [search, setSearch] = useState(route.params?.search || '');
+
+    // Create-lead form
+    const [createOpen, setCreateOpen] = useState(false);
+    const [form, setForm] = useState({ first_name: '', last_name: '', phone: '', email: '' });
+    const [saving, setSaving] = useState(false);
+
+    // Cross-navigation: another screen can jump here with a prefilled search term.
+    useEffect(() => { if (route.params?.search) setSearch(route.params.search); }, [route.params?.search]);
 
     const load = useCallback(async () => {
         if (!tenantId) return;
@@ -55,7 +65,28 @@ export function CrmScreen() {
         }
     }, [tenantId, search, toast, t]);
 
-    useEffect(() => { const t = setTimeout(load, search ? 350 : 0); return () => clearTimeout(t); }, [load, search]);
+    useEffect(() => { const tm = setTimeout(load, search ? 350 : 0); return () => clearTimeout(tm); }, [load, search]);
+
+    const createLead = async () => {
+        if (!tenantId || !(form.first_name.trim() || form.phone.trim())) return;
+        setSaving(true);
+        try {
+            const payload: Record<string, any> = { source: 'mobile' };
+            if (form.first_name.trim()) payload.first_name = form.first_name.trim();
+            if (form.last_name.trim()) payload.last_name = form.last_name.trim();
+            if (form.phone.trim()) payload.phone = form.phone.trim();
+            if (form.email.trim()) payload.email = form.email.trim();
+            const r: any = await api.createLead(tenantId, payload);
+            if (!r?.success) throw new Error('fail');
+            toast.success(t('crm.leadCreated'));
+            setCreateOpen(false);
+            setForm({ first_name: '', last_name: '', phone: '', email: '' });
+            if (r.data?.id) nav.navigate('LeadDetail', { leadId: r.data.id, title: leadName(r.data) });
+            else load();
+        } catch {
+            toast.error(t('crm.leadCreateError'));
+        } finally { setSaving(false); }
+    };
 
     if (loading) return <View style={{ flex: 1, backgroundColor: theme.bg }}><ListSkeleton /></View>;
 
@@ -64,14 +95,17 @@ export function CrmScreen() {
             <View style={styles.searchWrap}>
                 <Ionicons name="search" size={16} color={theme.textSecondary} />
                 <TextInput style={styles.search} placeholder={t('crm.searchLead')} placeholderTextColor={theme.textSecondary} value={search} onChangeText={setSearch} />
+                {!!search && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={16} color={theme.textSecondary} /></TouchableOpacity>}
             </View>
             <FlatList
                 data={leads}
                 keyExtractor={(l) => l.id}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={theme.accent} />}
-                ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{t('crm.empty')}</Text></View>}
+                ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{search ? t('inbox.emptySearch', { q: search }) : t('crm.empty')}</Text></View>}
+                contentContainerStyle={{ paddingBottom: 90 }}
                 renderItem={({ item }) => (
-                    <TouchableOpacity style={styles.row} onPress={() => nav.navigate('LeadDetail', { leadId: item.id, title: leadName(item) })}>
+                    <TouchableOpacity style={styles.row} onPress={() => nav.navigate('LeadDetail', { leadId: item.id, title: leadName(item) })}
+                        accessibilityRole="button" accessibilityLabel={leadName(item)}>
                         <View style={[styles.avatar]}><Text style={styles.avatarText}>{leadName(item).charAt(0).toUpperCase()}</Text></View>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.name} numberOfLines={1}>{leadName(item)}</Text>
@@ -85,6 +119,34 @@ export function CrmScreen() {
                     </TouchableOpacity>
                 )}
             />
+
+            {/* Create-lead FAB */}
+            <TouchableOpacity style={styles.fab} onPress={() => { haptic.tap(); setCreateOpen(true); }}
+                accessibilityRole="button" accessibilityLabel={t('crm.newLead')}>
+                <Ionicons name="add" size={28} color="#fff" />
+            </TouchableOpacity>
+
+            {/* Create-lead sheet */}
+            <Modal visible={createOpen} transparent animationType="slide" onRequestClose={() => setCreateOpen(false)}>
+                <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setCreateOpen(false)}>
+                    <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+                        <Text style={styles.sheetTitle}>{t('crm.newLead')}</Text>
+                        <TextInput style={styles.input} placeholder={t('crm.firstName')} placeholderTextColor={theme.textSecondary}
+                            value={form.first_name} onChangeText={(v) => setForm((f) => ({ ...f, first_name: v }))} />
+                        <TextInput style={styles.input} placeholder={t('crm.lastName')} placeholderTextColor={theme.textSecondary}
+                            value={form.last_name} onChangeText={(v) => setForm((f) => ({ ...f, last_name: v }))} />
+                        <TextInput style={styles.input} placeholder={t('crm.field.phone')} placeholderTextColor={theme.textSecondary}
+                            keyboardType="phone-pad" value={form.phone} onChangeText={(v) => setForm((f) => ({ ...f, phone: v }))} />
+                        <TextInput style={styles.input} placeholder={t('crm.email')} placeholderTextColor={theme.textSecondary}
+                            keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={(v) => setForm((f) => ({ ...f, email: v }))} />
+                        <Text style={styles.hint}>{t('crm.leadHint')}</Text>
+                        <TouchableOpacity style={[styles.primaryBtn, (saving || !(form.first_name.trim() || form.phone.trim())) && { opacity: 0.5 }]}
+                            onPress={createLead} disabled={saving || !(form.first_name.trim() || form.phone.trim())}>
+                            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{t('crm.createLead')}</Text>}
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
         </View>
     );
 }
@@ -101,4 +163,12 @@ const styles = StyleSheet.create({
     sub: { color: theme.textSecondary, fontSize: 13, marginTop: 2 },
     stage: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
     stageText: { fontSize: 11, fontWeight: '600' },
+    fab: { position: 'absolute', right: 18, bottom: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 6 },
+    backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    sheet: { backgroundColor: theme.bgCard, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, maxHeight: '85%' },
+    sheetTitle: { color: theme.text, fontSize: 17, fontWeight: '700', marginBottom: 12 },
+    input: { backgroundColor: theme.bg, borderColor: theme.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, color: theme.text, fontSize: 15, marginBottom: 10 },
+    hint: { color: theme.textSecondary, fontSize: 12, marginBottom: 8 },
+    primaryBtn: { backgroundColor: theme.accent, borderRadius: 10, paddingVertical: 13, alignItems: 'center', marginTop: 4 },
+    primaryText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

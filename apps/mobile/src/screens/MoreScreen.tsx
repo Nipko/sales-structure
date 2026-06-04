@@ -26,6 +26,7 @@ export function MoreScreen() {
     const { t, locale, setLocale } = useI18n();
     const [stats, setStats] = useState<any>(null);
     const [kpis, setKpis] = useState<any>(null);
+    const [tasks, setTasks] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [availability, setAvailability] = useState('online');
 
@@ -34,10 +35,11 @@ export function MoreScreen() {
         const end = new Date().toISOString();
         const start = new Date(Date.now() - 30 * 86400000).toISOString();
         try {
-            const [r, k, s]: any[] = await Promise.all([
+            const [r, k, s, tk]: any[] = await Promise.all([
                 api.getResolutionStats(tenantId, start, end),
                 api.getOverviewKpis(tenantId, start, end),
                 api.getAgentsStatus(tenantId),
+                api.getTasks(tenantId, user?.id ? `assignedTo=${user.id}&status=pending` : 'status=pending'),
             ]);
             if (r?.success) setStats(r.data?.summary || r.data);
             if (k?.success) setKpis(k.data);
@@ -46,12 +48,27 @@ export function MoreScreen() {
                 const me = s.data.find((a: any) => (a.userId || a.user_id || a.id || a.agentId) === user.id);
                 if (me?.status) setAvailability(me.status);
             }
+            if (tk?.success) setTasks((Array.isArray(tk.data) ? tk.data : (tk.data?.tasks || [])).filter((x: any) => !['completed', 'done', 'closed'].includes(String(x.status || '').toLowerCase())));
         } catch {
             toast.error(t('common.loadError'));
         } finally {
             setLoading(false);
         }
     }, [tenantId, toast, t, user?.id]);
+
+    const completeTask = async (tk: any) => {
+        if (!tenantId) return;
+        haptic.tap();
+        setTasks((prev) => prev.filter((x) => x.id !== tk.id)); // optimistic remove from pending
+        try {
+            const r: any = await api.updateTaskStatus(tenantId, tk.id, 'completed');
+            if (!r?.success) throw new Error('fail');
+            toast.success(t('crm.taskDone'));
+        } catch {
+            setTasks((prev) => [tk, ...prev]); // rollback
+            toast.error(t('crm.taskStatusError'));
+        }
+    };
 
     useEffect(() => { load(); }, [load]);
 
@@ -99,6 +116,20 @@ export function MoreScreen() {
                             </TouchableOpacity>
                         ))}
                     </View>
+                </View>
+
+                {/* My tasks */}
+                <View style={[styles.card, { marginTop: 20 }]}>
+                    <Text style={styles.cardTitle}>{t('more.tasks')}{tasks.length > 0 ? ` (${tasks.length})` : ''}</Text>
+                    {tasks.length === 0 ? (
+                        <Text style={styles.muted}>{t('more.noTasks')}</Text>
+                    ) : tasks.slice(0, 8).map((tk: any, i: number) => (
+                        <TouchableOpacity key={tk.id || i} style={styles.taskRow} onPress={() => completeTask(tk)}
+                            accessibilityRole="checkbox" accessibilityState={{ checked: false }} accessibilityLabel={tk.title}>
+                            <Ionicons name="ellipse-outline" size={20} color={theme.textSecondary} />
+                            <Text style={styles.taskText} numberOfLines={1}>{tk.title}</Text>
+                        </TouchableOpacity>
+                    ))}
                 </View>
 
                 {/* Analytics */}
@@ -159,6 +190,9 @@ const styles = StyleSheet.create({
     section: { color: theme.textSecondary, fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 20, marginBottom: 10 },
     card: { backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1, borderRadius: 12, padding: 14 },
     cardTitle: { color: theme.text, fontWeight: '700', fontSize: 14, marginBottom: 12 },
+    muted: { color: theme.textSecondary, fontSize: 13 },
+    taskRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth },
+    taskText: { color: theme.text, fontSize: 14, flex: 1 },
     statusRow: { flexDirection: 'row', gap: 8 },
     statusBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: theme.border },
     statusDot: { width: 8, height: 8, borderRadius: 4 },

@@ -206,6 +206,9 @@ export const api = {
     getLeads: (tenantId: string, params?: string) =>
         json(`/crm/leads/${tenantId}${params ? `?${params}` : ''}`),
     getLead: (tenantId: string, leadId: string) => json(`/crm/leads/${tenantId}/${leadId}`),
+    // Create a lead. Accepts snake_case fields: first_name, last_name, phone, email, source, notes…
+    createLead: (tenantId: string, data: Record<string, any>) =>
+        json(`/crm/leads/${tenantId}`, { method: 'POST', body: JSON.stringify(data) }),
     // Editable CRM (verified backend routes). updateLead takes a partial { tags?, ...fields }.
     updateLead: (tenantId: string, leadId: string, data: Record<string, any>) =>
         json(`/crm/leads/${tenantId}/${leadId}`, { method: 'PUT', body: JSON.stringify(data) }),

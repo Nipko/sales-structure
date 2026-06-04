@@ -264,7 +264,7 @@ export function ConversationScreen() {
         try {
             const res: any = await api.copilotSummary(conversationId);
             const d = res?.data;
-            setSummary(typeof d === 'string' ? d : (d?.summary || d?.text || 'Sin resumen disponible.'));
+            setSummary(typeof d === 'string' ? d : (d?.summary || d?.text || t('conv.summaryUnavailable')));
         } catch {
             setSummary('');
             toast.error(t('conv.summaryError'));

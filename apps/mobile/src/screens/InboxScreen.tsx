@@ -42,12 +42,12 @@ const CHANNEL_ICON: Record<string, any> = {
     telegram: 'paper-plane', sms: 'chatbox', email: 'mail', web_widget: 'globe',
 };
 
-function relTime(iso?: string): string {
+function relTime(iso?: string, nowLabel = ''): string {
     if (!iso) return '';
     const d = new Date(iso).getTime();
     const diff = Date.now() - d;
     const m = Math.floor(diff / 60000);
-    if (m < 1) return 'ahora';
+    if (m < 1) return nowLabel;
     if (m < 60) return `${m}m`;
     const h = Math.floor(m / 60);
     if (h < 24) return `${h}h`;
@@ -278,14 +278,14 @@ export function InboxScreen() {
                                 <View style={{ flex: 1 }}>
                                     <View style={styles.rowTop}>
                                         <Text style={styles.name} numberOfLines={1}>{item.contactName || t('inbox.customer')}</Text>
-                                        <Text style={styles.time}>{relTime(item.lastMessageAt)}</Text>
+                                        <Text style={styles.time}>{relTime(item.lastMessageAt, t('common.justNow'))}</Text>
                                     </View>
                                     <View style={styles.rowBottom}>
                                         <Text style={styles.preview} numberOfLines={1}>{item.lastMessage || '—'}</Text>
                                         {waiting && (
                                             <View style={[styles.handoffBadge, { backgroundColor: slaColor + '22' }]}>
                                                 <Ionicons name="time-outline" size={10} color={slaColor} />
-                                                <Text style={[styles.handoffText, { color: slaColor }]}>{waitMin > 0 ? relTime(item.lastMessageAt) : 'Handoff'}</Text>
+                                                <Text style={[styles.handoffText, { color: slaColor }]}>{waitMin > 0 ? relTime(item.lastMessageAt, t('common.justNow')) : t('inbox.filter.handoff')}</Text>
                                             </View>
                                         )}
                                         {!waiting && item.isAiHandled && <Ionicons name="sparkles" size={12} color={theme.accent} style={{ marginLeft: 6 }} />}

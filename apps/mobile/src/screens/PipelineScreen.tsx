@@ -216,7 +216,8 @@ export function PipelineScreen() {
                                 {/* Move to stage */}
                                 <Text style={styles.sectionLabel}>{t('pipeline.moveSection')}</Text>
                                 {stages.filter((st) => st.id !== (detailStageId || detail.stage_id)).map((st) => (
-                                    <TouchableOpacity key={st.id} style={styles.stageOpt} disabled={busy} onPress={() => move(st.id)}>
+                                    <TouchableOpacity key={st.id} style={styles.stageOpt} disabled={busy} onPress={() => move(st.id)}
+                                        accessibilityRole="button" accessibilityLabel={st.name}>
                                         <View style={[styles.dot, { backgroundColor: st.color || theme.accent }]} />
                                         <Text style={styles.stageOptText}>{st.name}</Text>
                                     </TouchableOpacity>

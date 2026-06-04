@@ -32,6 +32,11 @@ function customer(a: Appt): string { return a.customer_name || a.contact_name ||
 function service(a: Appt): string { return a.service_name || a.serviceName || 'Cita'; }
 const pad = (n: number) => String(n).padStart(2, '0');
 const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+// Build an ISO timestamp from a YYYY-MM-DD date + "H:MM"/"HH:MM" slot time (zero-pads defensively).
+function toIsoAt(dateStr: string, hhmm: string): string {
+    const [h, m] = String(hhmm || '0:0').split(':');
+    return new Date(`${dateStr}T${pad(Number(h))}:${pad(Number(m || 0))}:00`).toISOString();
+}
 
 export function AppointmentsScreen() {
     const { tenantId } = useAuth();
@@ -111,7 +116,7 @@ export function AppointmentsScreen() {
             { text: t('citas.yesCancel'), style: 'destructive', onPress: async () => {
                 if (!tenantId) return;
                 setBusy(a.id);
-                try { await api.cancelAppointment(tenantId, a.id, 'Cancelada desde la app'); toast.success(t('citas.cancelled')); setSelected(null); await load(); }
+                try { await api.cancelAppointment(tenantId, a.id, t('citas.cancelReason')); toast.success(t('citas.cancelled')); setSelected(null); await load(); }
                 catch { toast.error(t('citas.cancelError')); }
                 finally { setBusy(''); }
             } },
@@ -144,8 +149,8 @@ export function AppointmentsScreen() {
 
     const chooseSlot = async (slot: Slot) => {
         if (!tenantId || !selected || !rDate) return;
-        const startAt = new Date(`${rDate}T${slot.time}:00`).toISOString();
-        const endAt = new Date(`${rDate}T${(slot.endTime || slot.time)}:00`).toISOString();
+        const startAt = toIsoAt(rDate, slot.time);
+        const endAt = toIsoAt(rDate, slot.endTime || slot.time);
         setRescheduling(true);
         try {
             const r: any = await api.updateAppointment(tenantId, selected.id, { startAt, endAt });
@@ -177,8 +182,8 @@ export function AppointmentsScreen() {
     const createAppt = async () => {
         if (!tenantId || !cServiceId || !cDate || !cSlot) return;
         const svc = services.find((s) => s.id === cServiceId);
-        const startAt = new Date(`${cDate}T${cSlot.time}:00`).toISOString();
-        const endAt = new Date(`${cDate}T${(cSlot.endTime || cSlot.time)}:00`).toISOString();
+        const startAt = toIsoAt(cDate, cSlot.time);
+        const endAt = toIsoAt(cDate, cSlot.endTime || cSlot.time);
         setCreating(true);
         try {
             const payload: Record<string, any> = { serviceName: svc?.name, serviceId: cServiceId, startAt, endAt };
@@ -249,7 +254,7 @@ export function AppointmentsScreen() {
             />
 
             {/* Create-appointment FAB */}
-            <TouchableOpacity style={styles.fab} onPress={openCreate} accessibilityRole="button" accessibilityLabel={t('citas.new')}>
+            <TouchableOpacity style={[styles.fab, { bottom: 24 + insets.bottom }]} onPress={openCreate} accessibilityRole="button" accessibilityLabel={t('citas.new')}>
                 <Ionicons name="add" size={28} color="#fff" />
             </TouchableOpacity>
 

@@ -97,7 +97,7 @@ export function CrmScreen() {
             <View style={styles.searchWrap}>
                 <Ionicons name="search" size={16} color={theme.textSecondary} />
                 <TextInput style={styles.search} placeholder={t('crm.searchLead')} placeholderTextColor={theme.textSecondary} value={search} onChangeText={setSearch} />
-                {!!search && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={16} color={theme.textSecondary} /></TouchableOpacity>}
+                {!!search && <TouchableOpacity onPress={() => setSearch('')} accessibilityRole="button" accessibilityLabel={t('common.clearSearch')} hitSlop={8}><Ionicons name="close-circle" size={16} color={theme.textSecondary} /></TouchableOpacity>}
             </View>
             <FlatList
                 data={leads}
@@ -123,7 +123,7 @@ export function CrmScreen() {
             />
 
             {/* Create-lead FAB */}
-            <TouchableOpacity style={styles.fab} onPress={() => { haptic.tap(); setCreateOpen(true); }}
+            <TouchableOpacity style={[styles.fab, { bottom: 24 + insets.bottom }]} onPress={() => { haptic.tap(); setCreateOpen(true); }}
                 accessibilityRole="button" accessibilityLabel={t('crm.newLead')}>
                 <Ionicons name="add" size={28} color="#fff" />
             </TouchableOpacity>

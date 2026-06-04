@@ -37,29 +37,38 @@ export function LeadDetailScreen() {
 
     const loadNotes = useCallback(async () => {
         if (!tenantId) return;
-        const r: any = await api.getLeadNotes(tenantId, leadId);
-        if (r?.success) setNotes(Array.isArray(r.data) ? r.data : (r.data?.notes || []));
+        try {
+            const r: any = await api.getLeadNotes(tenantId, leadId);
+            if (r?.success) setNotes(Array.isArray(r.data) ? r.data : (r.data?.notes || []));
+        } catch { /* non-critical: notes just stay empty */ }
     }, [tenantId, leadId]);
 
     const loadTasks = useCallback(async () => {
         if (!tenantId) return;
-        const r: any = await api.getTasks(tenantId, `leadId=${leadId}`);
-        if (r?.success) setTasks(Array.isArray(r.data) ? r.data : (r.data?.tasks || []));
+        try {
+            const r: any = await api.getTasks(tenantId, `leadId=${leadId}`);
+            if (r?.success) setTasks(Array.isArray(r.data) ? r.data : (r.data?.tasks || []));
+        } catch { /* non-critical: tasks just stay empty */ }
     }, [tenantId, leadId]);
 
     const load = useCallback(async () => {
         if (!tenantId) return;
-        const res: any = await api.getLead(tenantId, leadId);
-        if (res?.success) setData(res.data);
-        setLoading(false);
-    }, [tenantId, leadId]);
+        try {
+            const res: any = await api.getLead(tenantId, leadId);
+            if (res?.success) setData(res.data);
+        } catch {
+            toast.error(t('common.loadError'));
+        } finally {
+            setLoading(false);
+        }
+    }, [tenantId, leadId, toast, t]);
 
     useEffect(() => { load(); loadNotes(); loadTasks(); }, [load, loadNotes, loadTasks]);
 
     // Persist a new tag set (the backend takes the full array on PUT /crm/leads).
     const saveTags = useCallback(async (names: string[]) => {
         if (!tenantId) return;
-        const prev = data;
+        const prevTags = tagNamesOf(data?.tags); // capture only tags, not the whole record
         setData((d: any) => (d ? { ...d, tags: names.map((n) => ({ name: n })) } : d)); // optimistic
         setSavingTag(true);
         try {
@@ -67,7 +76,7 @@ export function LeadDetailScreen() {
             if (!r?.success) throw new Error('fail');
             toast.success(t('crm.tagsUpdated'));
         } catch {
-            setData(prev); // rollback
+            setData((d: any) => (d ? { ...d, tags: prevTags.map((n) => ({ name: n })) } : d)); // rollback tags only
             toast.error(t('crm.tagUpdateError'));
         } finally { setSavingTag(false); }
     }, [tenantId, leadId, data, toast, t]);

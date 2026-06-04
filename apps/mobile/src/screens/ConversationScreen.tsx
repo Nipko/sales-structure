@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../lib/api';
 import { getInboxSocket, getAgentSocket } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
@@ -575,11 +576,12 @@ function Action({ icon, label, color, onPress, disabled }: { icon: any; label: s
     );
 }
 function Sheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
+    const insets = useSafeAreaInsets();
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
             <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
                 <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose}>
-                    <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+                    <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} onStartShouldSetResponder={() => true}>
                         <Text style={styles.sheetTitle}>{title}</Text>
                         {children}
                     </View>

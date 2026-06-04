@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, Modal, TextInput, Linking, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
@@ -28,6 +29,7 @@ export function PipelineScreen() {
     const { tenantId } = useAuth();
     const toast = useToast();
     const { t } = useI18n();
+    const insets = useSafeAreaInsets();
     const [stages, setStages] = useState<Stage[]>([]);
     const [groups, setGroups] = useState<Record<string, Deal[]>>({});
     const [active, setActive] = useState<string>('');
@@ -171,7 +173,7 @@ export function PipelineScreen() {
             <Modal visible={!!detail} transparent animationType="slide" onRequestClose={closeDetail} statusBarTranslucent>
                 <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
                 <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={closeDetail}>
-                    <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+                    <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} onStartShouldSetResponder={() => true}>
                         {detail && (
                             <ScrollView keyboardShouldPersistTaps="handled">
                                 <View style={styles.sheetHead}>
@@ -230,7 +232,7 @@ export function PipelineScreen() {
             {/* Agent picker */}
             <Modal visible={agentsOpen} transparent animationType="slide" onRequestClose={() => setAgentsOpen(false)}>
                 <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setAgentsOpen(false)}>
-                    <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+                    <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} onStartShouldSetResponder={() => true}>
                         <Text style={styles.sheetTitle}>{t('pipeline.assignBtn')}</Text>
                         {agents.length === 0 ? (
                             <Text style={styles.empty}>{t('pipeline.noAgents')}</Text>

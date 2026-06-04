@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Alert, Modal, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -37,6 +37,7 @@ export function AppointmentsScreen() {
     const { tenantId } = useAuth();
     const toast = useToast();
     const { t } = useI18n();
+    const insets = useSafeAreaInsets();
     const [items, setItems] = useState<Appt[]>([]);
     const [services, setServices] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -326,7 +327,7 @@ export function AppointmentsScreen() {
             <Modal visible={createOpen} transparent animationType="slide" onRequestClose={() => setCreateOpen(false)} statusBarTranslucent>
                 <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
                     <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setCreateOpen(false)}>
-                        <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+                        <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} onStartShouldSetResponder={() => true}>
                             <ScrollView keyboardShouldPersistTaps="handled">
                                 <Text style={styles.sheetTitle}>{t('citas.new')}</Text>
 

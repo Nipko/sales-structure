@@ -39,7 +39,8 @@ export class TasksService {
             params.push(leadId);
         }
         if (assignedTo) {
-            query += ` AND assigned_to = $${paramCount++}::uuid`;
+            // assigned_to is VARCHAR(255), not a UUID column — compare as text
+            query += ` AND assigned_to = $${paramCount++}`;
             params.push(assignedTo);
         }
         if (status) {

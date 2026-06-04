@@ -299,7 +299,7 @@ export class LeadsRepository {
       }
       case 'assign': {
         const result = await this.prisma.executeInTenantSchema<any[]>(schema,
-          `UPDATE leads SET assigned_to = $1::uuid, updated_at = NOW() WHERE id = ANY($2::uuid[]) RETURNING id`,
+          `UPDATE leads SET assigned_to = $1, updated_at = NOW() WHERE id = ANY($2::uuid[]) RETURNING id`,
           [payload.assignedTo, idsParam],
         );
         return { updated: result?.length || 0 };

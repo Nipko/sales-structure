@@ -217,6 +217,13 @@ export const api = {
     addLeadNote: (tenantId: string, leadId: string, content: string, createdBy?: string) =>
         json(`/crm/notes/${tenantId}`, { method: 'POST', body: JSON.stringify({ leadId, content, createdBy }) }),
     getLeadTimeline: (tenantId: string, leadId: string) => json(`/crm/timeline/${tenantId}/${leadId}`),
+    // Tasks / follow-ups (lead-scoped; create requires leadId).
+    getTasks: (tenantId: string, params?: string) =>
+        json(`/crm/tasks/${tenantId}${params ? `?${params}` : ''}`),
+    createTask: (tenantId: string, data: { leadId: string; title: string; dueAt?: string; assignedTo?: string; createdBy?: string; type?: string; description?: string }) =>
+        json(`/crm/tasks/${tenantId}`, { method: 'POST', body: JSON.stringify(data) }),
+    updateTaskStatus: (tenantId: string, taskId: string, status: string) =>
+        json(`/crm/tasks/${tenantId}/${taskId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
 
     // Appointments
     getAppointments: (tenantId: string, params?: string) =>

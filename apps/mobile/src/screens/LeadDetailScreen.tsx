@@ -27,15 +27,24 @@ export function LeadDetailScreen() {
     const [data, setData] = useState<any>(null);
     const [notes, setNotes] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [tasks, setTasks] = useState<any[]>([]);
     const [tagInput, setTagInput] = useState('');
     const [noteText, setNoteText] = useState('');
+    const [taskTitle, setTaskTitle] = useState('');
     const [savingTag, setSavingTag] = useState(false);
     const [savingNote, setSavingNote] = useState(false);
+    const [savingTask, setSavingTask] = useState(false);
 
     const loadNotes = useCallback(async () => {
         if (!tenantId) return;
         const r: any = await api.getLeadNotes(tenantId, leadId);
         if (r?.success) setNotes(Array.isArray(r.data) ? r.data : (r.data?.notes || []));
+    }, [tenantId, leadId]);
+
+    const loadTasks = useCallback(async () => {
+        if (!tenantId) return;
+        const r: any = await api.getTasks(tenantId, `leadId=${leadId}`);
+        if (r?.success) setTasks(Array.isArray(r.data) ? r.data : (r.data?.tasks || []));
     }, [tenantId, leadId]);
 
     const load = useCallback(async () => {
@@ -45,7 +54,7 @@ export function LeadDetailScreen() {
         setLoading(false);
     }, [tenantId, leadId]);
 
-    useEffect(() => { load(); loadNotes(); }, [load, loadNotes]);
+    useEffect(() => { load(); loadNotes(); loadTasks(); }, [load, loadNotes, loadTasks]);
 
     // Persist a new tag set (the backend takes the full array on PUT /crm/leads).
     const saveTags = useCallback(async (names: string[]) => {
@@ -89,6 +98,36 @@ export function LeadDetailScreen() {
         } catch {
             toast.error(t('crm.noteError'));
         } finally { setSavingNote(false); }
+    };
+
+    const isTaskDone = (tk: any) => ['completed', 'done', 'closed'].includes(String(tk.status || '').toLowerCase());
+    const addTask = async () => {
+        if (!tenantId || !taskTitle.trim()) return;
+        setSavingTask(true);
+        try {
+            const r: any = await api.createTask(tenantId, { leadId, title: taskTitle.trim(), assignedTo: user?.id, createdBy: user?.id });
+            if (!r?.success) throw new Error('fail');
+            setTaskTitle('');
+            toast.success(t('crm.taskAdded'));
+            loadTasks();
+        } catch {
+            toast.error(t('crm.taskError'));
+        } finally { setSavingTask(false); }
+    };
+    const toggleTask = async (tk: any) => {
+        if (!tenantId) return;
+        const done = isTaskDone(tk);
+        const next = done ? 'pending' : 'completed';
+        haptic.tap();
+        setTasks((prev) => prev.map((x) => (x.id === tk.id ? { ...x, status: next } : x))); // optimistic
+        try {
+            const r: any = await api.updateTaskStatus(tenantId, tk.id, next);
+            if (!r?.success) throw new Error('fail');
+            toast.success(done ? t('crm.taskReopened') : t('crm.taskDone'));
+        } catch {
+            setTasks((prev) => prev.map((x) => (x.id === tk.id ? { ...x, status: tk.status } : x))); // rollback
+            toast.error(t('crm.taskStatusError'));
+        }
     };
 
     if (loading) return <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>;
@@ -207,6 +246,33 @@ export function LeadDetailScreen() {
                 ))}
             </Section>
 
+            {/* Tasks / follow-ups */}
+            <Section title={t('crm.section.tasks')}>
+                <View style={styles.inlineInput}>
+                    <TextInput style={styles.tagInput} placeholder={t('crm.taskPlaceholder')} placeholderTextColor={theme.textSecondary}
+                        value={taskTitle} onChangeText={setTaskTitle} onSubmitEditing={addTask} returnKeyType="done" />
+                    <TouchableOpacity style={styles.addBtn} onPress={addTask} disabled={savingTask || !taskTitle.trim()}
+                        accessibilityRole="button" accessibilityLabel={t('crm.addTask')}>
+                        {savingTask ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="add" size={20} color="#fff" />}
+                    </TouchableOpacity>
+                </View>
+                {tasks.length === 0 ? (
+                    <Text style={[styles.muted, { marginTop: 8 }]}>{t('crm.noTasks')}</Text>
+                ) : tasks.map((tk: any, i: number) => {
+                    const done = isTaskDone(tk);
+                    return (
+                        <TouchableOpacity key={tk.id || i} style={styles.taskRow} onPress={() => toggleTask(tk)}
+                            accessibilityRole="checkbox" accessibilityState={{ checked: done }} accessibilityLabel={tk.title}>
+                            <Ionicons name={done ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={done ? theme.success : theme.textSecondary} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.taskTitle, done && styles.taskDoneText]}>{tk.title}</Text>
+                                {!!(tk.due_at || tk.dueAt) && <Text style={styles.taskDue}>{t('crm.taskDue', { date: fmtDate(tk.due_at || tk.dueAt) })}</Text>}
+                            </View>
+                        </TouchableOpacity>
+                    );
+                })}
+            </Section>
+
             {opps.length > 0 && (
                 <Section title={t('crm.section.opportunities', { n: opps.length })}>
                     {opps.map((o: any) => (
@@ -272,6 +338,10 @@ const styles = StyleSheet.create({
     note: { paddingVertical: 8, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 8 },
     noteContent: { color: theme.text, fontSize: 14 },
     noteMeta: { color: theme.textSecondary, fontSize: 11, marginTop: 3 },
+    taskRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 8 },
+    taskTitle: { color: theme.text, fontSize: 14 },
+    taskDoneText: { color: theme.textSecondary, textDecorationLine: 'line-through' },
+    taskDue: { color: theme.textSecondary, fontSize: 11, marginTop: 2 },
     opp: { paddingVertical: 8, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth },
     oppName: { color: theme.text, fontSize: 14, fontWeight: '600' },
     oppMeta: { color: theme.textSecondary, fontSize: 13, marginTop: 2 },

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, Modal, TextInput, Linking, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, Modal, TextInput, Linking, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -169,7 +169,7 @@ export function PipelineScreen() {
 
             {/* Deal detail sheet */}
             <Modal visible={!!detail} transparent animationType="slide" onRequestClose={closeDetail} statusBarTranslucent>
-                <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
                 <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={closeDetail}>
                     <View style={styles.sheet} onStartShouldSetResponder={() => true}>
                         {detail && (

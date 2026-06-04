@@ -577,7 +577,7 @@ function Action({ icon, label, color, onPress, disabled }: { icon: any; label: s
 function Sheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
                 <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose}>
                     <View style={styles.sheet} onStartShouldSetResponder={() => true}>
                         <Text style={styles.sheetTitle}>{title}</Text>

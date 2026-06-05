@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Linking, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Linking, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { Ionicons } from '@expo/vector-icons';

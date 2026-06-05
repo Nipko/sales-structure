@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView as KCKeyboardAvoidingView } from 'react-native-keyboard-controller';
 import * as ImagePicker from 'expo-image-picker';
 import { api } from '../lib/api';
 import { getInboxSocket, getAgentSocket } from '../lib/socket';
@@ -362,7 +363,7 @@ export function ConversationScreen() {
     if (loading) return <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>;
 
     return (
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior="padding" keyboardVerticalOffset={headerHeight}>
+        <KCKeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior="padding" keyboardVerticalOffset={headerHeight}>
             {/* Who's responding + which channel — always visible so control is never ambiguous */}
             {conv && (
                 <View style={styles.statusBanner}>
@@ -598,7 +599,7 @@ export function ConversationScreen() {
                     />
                 )}
             </Sheet>
-        </KeyboardAvoidingView>
+        </KCKeyboardAvoidingView>
     );
 }
 

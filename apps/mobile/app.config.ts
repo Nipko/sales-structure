@@ -61,6 +61,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
                 cameraPermission: 'Permite tomar fotos para enviarlas en las conversaciones.',
             },
         ],
+        // Keyboard fix for EAS/store builds (edge-to-edge SDK 54): force adjustNothing
+        // so lib/useKeyboardSpace owns the inset math. Mirrors the local manual setting.
+        './plugins/withSoftInputAdjustNothing',
     ],
     extra: {
         eas: { projectId: '5a6f6dab-dec2-44e0-b00a-58e77c909501' },

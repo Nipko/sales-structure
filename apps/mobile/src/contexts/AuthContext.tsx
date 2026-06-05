@@ -141,6 +141,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Kill the server session first, so the next login doesn't hit "session already open".
         try { const { refresh } = await tokens.get(); if (refresh) await api.logout(refresh); } catch { /* noop */ }
         await tokens.clear();
+        // Seguridad (GATE 0): un logout EXPLÍCITO también olvida este dispositivo,
+        // de modo que el próximo inicio de sesión vuelve a exigir 2FA (no queremos
+        // que el 30-day device-trust sobreviva a un "cerrar sesión" intencional).
+        await tokens.clearDeviceTrust().catch(() => { /* noop */ });
         setUser(null);
         setVerticalConfig(null);
         setLocked(false);

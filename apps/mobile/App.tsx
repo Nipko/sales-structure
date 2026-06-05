@@ -9,6 +9,7 @@ import * as Sentry from '@sentry/react-native';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { RootNavigator, navigationRef } from './src/navigation/RootNavigator';
 import { ToastProvider } from './src/components/Toast';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { I18nProvider } from './src/i18n';
 import { theme } from './src/theme';
 
@@ -92,11 +93,13 @@ function App() {
             <AuthProvider>
                 <I18nProvider>
                     <ToastProvider>
-                        <NavigationContainer theme={navTheme} ref={navigationRef} linking={linking}>
-                            <RootNavigator />
-                        </NavigationContainer>
-                        <LockGate />
-                        <StatusBar style="light" />
+                        <ErrorBoundary>
+                            <NavigationContainer theme={navTheme} ref={navigationRef} linking={linking}>
+                                <RootNavigator />
+                            </NavigationContainer>
+                            <LockGate />
+                            <StatusBar style="light" />
+                        </ErrorBoundary>
                     </ToastProvider>
                 </I18nProvider>
             </AuthProvider>

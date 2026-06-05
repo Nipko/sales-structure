@@ -64,6 +64,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         // Keyboard fix for EAS/store builds (edge-to-edge SDK 54): force adjustNothing
         // so lib/useKeyboardSpace owns the inset math. Mirrors the local manual setting.
         './plugins/withSoftInputAdjustNothing',
+        // GATE 0 (seguridad): network_security_config Android → solo HTTPS (sin
+        // cleartext) + plantilla de cert pinning opt-in. Mirrors the local setting.
+        './plugins/withAndroidNetworkSecurity',
     ],
     extra: {
         eas: { projectId: '5a6f6dab-dec2-44e0-b00a-58e77c909501' },

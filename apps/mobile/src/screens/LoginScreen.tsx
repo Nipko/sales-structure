@@ -49,7 +49,9 @@ export function LoginScreen() {
             setCode(''); setUseBackup(false); setEmailSent(false); setError(null);
             return;
         }
-        setError(res.error || fallback);
+        // Seguridad (GATE 0): NO mostramos el mensaje crudo del backend (evita
+        // enumeración de usuarios / info-disclosure). Mensaje genérico i18n.
+        setError(fallback);
     };
 
     const submit = async () => {
@@ -86,7 +88,8 @@ export function LoginScreen() {
         if (!twoFA || !code.trim()) return;
         setVerifying(true); setError(null);
         const res = await verifyTwoFactor(twoFA.token, code.trim(), effectiveMethod, trustDevice);
-        if (!res.ok) setError(res.error || t('login.codeWrong'));
+        // Genérico (no propagar texto del backend).
+        if (!res.ok) setError(t('login.codeWrong'));
         // On success the AuthProvider sets `user` and this screen unmounts.
         setVerifying(false);
     };

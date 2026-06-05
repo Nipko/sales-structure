@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Image, Linking, KeyboardAvoidingView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Image, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { useAuth, TwoFAMethod } from '../contexts/AuthContext';
 import { useI18n } from '../i18n';
+import { useKeyboardSpace } from '../lib/useKeyboardSpace';
 import { DASHBOARD_URL } from '../lib/config';
 import { theme } from '../theme';
 
@@ -18,6 +19,7 @@ interface TwoFAState { token: string; method: TwoFAMethod; email?: string }
 export function LoginScreen() {
     const { login, loginWithGoogle, verifyTwoFactor, sendTwoFactorEmail } = useAuth();
     const { t } = useI18n();
+    const kbSpace = useKeyboardSpace();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -114,7 +116,7 @@ export function LoginScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <KeyboardAvoidingView behavior="padding" style={styles.inner}>
+            <View style={[styles.inner, { paddingBottom: kbSpace }]}>
                 <Image
                     source={require('../../assets/logo-wordmark.png')}
                     style={styles.logo}
@@ -213,7 +215,7 @@ export function LoginScreen() {
                         </TouchableOpacity>
                     </>
                 )}
-            </KeyboardAvoidingView>
+            </View>
         </SafeAreaView>
     );
 }

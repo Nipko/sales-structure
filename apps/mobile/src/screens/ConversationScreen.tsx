@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { api } from '../lib/api';
@@ -13,6 +12,7 @@ import { getInboxSocket, getAgentSocket } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
+import { useKeyboardSpace } from '../lib/useKeyboardSpace';
 import { enqueue, pendingFor, subscribeOutbox, retry as retryOutbox } from '../lib/outbox';
 import { snoozeUntil, SNOOZE_PRESETS, type SnoozePreset } from '../lib/snooze';
 import { haptic } from '../lib/haptics';
@@ -41,7 +41,6 @@ const statusColor = (s?: string): string => s === 'online' ? theme.success : s =
 export function ConversationScreen() {
     const route = useRoute<any>();
     const nav = useNavigation<any>();
-    const headerHeight = useHeaderHeight();
     const toast = useToast();
     const { t } = useI18n();
     const { conversationId } = route.params;
@@ -69,6 +68,7 @@ export function ConversationScreen() {
     const [contactOpen, setContactOpen] = useState(false);
     const [agentsOpen, setAgentsOpen] = useState(false);
     const [agents, setAgents] = useState<any[]>([]);
+    const kbSpace = useKeyboardSpace();
     const listRef = useRef<FlatList>(null);
 
     const load = useCallback(async () => {
@@ -362,7 +362,7 @@ export function ConversationScreen() {
     if (loading) return <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>;
 
     return (
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior="height" keyboardVerticalOffset={headerHeight}>
+        <View style={{ flex: 1, backgroundColor: theme.bg, paddingBottom: kbSpace }}>
             {/* Who's responding + which channel — always visible so control is never ambiguous */}
             {conv && (
                 <View style={styles.statusBanner}>
@@ -417,7 +417,10 @@ export function ConversationScreen() {
                 data={timeline}
                 keyExtractor={(it, i) => it.id || String(i)}
                 contentContainerStyle={{ padding: 12 }}
-                onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+                // Chat standard: open at the latest message. Instant jump (no visible
+                // scroll-from-top) on open/content change; also re-anchor on layout.
+                onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+                onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
                 renderItem={({ item }) => {
                     if (item.kind === 'note') {
                         return (
@@ -598,7 +601,7 @@ export function ConversationScreen() {
                     />
                 )}
             </Sheet>
-        </KeyboardAvoidingView>
+        </View>
     );
 }
 
@@ -645,7 +648,7 @@ const styles = StyleSheet.create({
     channelText: { fontSize: 11, fontWeight: '700' },
     handoffBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.warning + '18', paddingHorizontal: 14, paddingVertical: 10 },
     handoffText: { color: theme.warning, fontSize: 13, flex: 1 },
-    actionBar: { maxHeight: 52, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: theme.bgCard },
+    actionBar: { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: theme.bgCard, paddingVertical: 8 },
     actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderColor: theme.border, borderWidth: 1 },
     actionBtnText: { fontSize: 13, fontWeight: '600' },
     bubbleRow: { flexDirection: 'row', marginVertical: 3 },

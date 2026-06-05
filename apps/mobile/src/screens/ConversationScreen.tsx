@@ -35,6 +35,20 @@ function mediaUrl(m: any): string | null {
     if (!u || typeof u !== 'string') return null;
     return u.startsWith('http') ? u : `${SOCKET_URL}${u.startsWith('/') ? '' : '/'}${u}`;
 }
+// Infer a document MIME from its filename when the picker doesn't provide one
+// (avoids defaulting to image/jpeg, which the upload would reject/mishandle).
+const DOC_MIME: Record<string, string> = {
+    '.pdf': 'application/pdf', '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.txt': 'text/plain', '.csv': 'text/csv', '.zip': 'application/zip',
+};
+function guessMime(name?: string): string {
+    const n = name || '';
+    const ext = n.slice(n.lastIndexOf('.')).toLowerCase();
+    return DOC_MIME[ext] || 'application/octet-stream';
+}
 const agentIdOf = (a: any): string => a?.userId || a?.user_id || a?.id || a?.agentId || '';
 const agentNameOf = (a: any): string => a?.name || a?.agentName || a?.email || agentIdOf(a);
 const statusColor = (s?: string): string => s === 'online' ? theme.success : s === 'away' ? theme.warning : theme.textSecondary;
@@ -334,7 +348,7 @@ export function ConversationScreen() {
             if (res.canceled || !res.assets?.[0]) return;
             const f = res.assets[0];
             setSending(true);
-            const up: any = await api.uploadMedia(tenantId, { uri: f.uri, fileName: f.name, mimeType: f.mimeType });
+            const up: any = await api.uploadMedia(tenantId, { uri: f.uri, fileName: f.name, mimeType: f.mimeType || guessMime(f.name) });
             const url = up?.data?.url;
             if (!up?.success || !url) { toast.error(up?.error ? t('conv.mediaTypeError') : t('conv.mediaError')); return; }
             const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;

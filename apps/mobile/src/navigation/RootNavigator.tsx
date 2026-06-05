@@ -117,6 +117,7 @@ function MainTabs() {
 
 export function RootNavigator() {
     const { user, tenantId, loading } = useAuth();
+    const { t } = useI18n();
 
     // Register native push + notification quick actions + deep-link taps.
     useEffect(() => {
@@ -159,18 +160,18 @@ export function RootNavigator() {
         connectRealtime(); // open /inbox + /agent eagerly right after login
         const agent = getAgentSocket();
         const onHandoff = (p: any) => presentLocalNotification(
-            'Conversación escalada',
-            `${p?.contactName || 'Un cliente'} necesita atención${p?.reason ? ' — ' + p.reason : ''}`,
+            t('notif.escalatedTitle'),
+            t('notif.escalatedBody', { name: p?.contactName || t('notif.someone') }) + (p?.reason ? ` — ${p.reason}` : ''),
             { conversationId: p?.conversationId },
         );
         const onAssigned = (p: any) => presentLocalNotification(
-            'Asignada a ti',
-            p?.message || `${p?.contactName || 'Un cliente'} fue asignado a ti`,
+            t('notif.assignedTitle'),
+            t('notif.assignedBody', { name: p?.contactName || t('notif.someone') }),
             { conversationId: p?.conversationId },
         );
         const onEscalation = (p: any) => presentLocalNotification(
-            'Escalación SLA',
-            `${p?.contactName || 'Conversación'} sin respuesta hace ${p?.waitMinutes || 5} min`,
+            t('notif.slaTitle'),
+            t('notif.slaBody', { name: p?.contactName || t('notif.conversation'), min: p?.waitMinutes || 5 }),
             { conversationId: p?.conversationId },
         );
         agent.on('inbox:handoff', onHandoff);

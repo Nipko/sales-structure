@@ -110,5 +110,6 @@ export function disconnectSocket() {
     inboxSocket = null;
     agentSocket?.disconnect();
     agentSocket = null;
+    refreshingSocketAuth = false; // clear so the next session can refresh auth
     setInboxStatus('disconnected');
 }

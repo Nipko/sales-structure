@@ -10,7 +10,7 @@ export interface IChannelAdapter {
     readonly channelType: ChannelType;
     handleWebhook(payload: any, accountId: string): Promise<NormalizedMessage | null>;
     sendTextMessage(to: string, text: string, accountId: string, accessToken: string): Promise<string>;
-    sendMediaMessage(to: string, mediaUrl: string, caption: string | undefined, accountId: string, accessToken: string): Promise<string>;
+    sendMediaMessage(to: string, mediaUrl: string, caption: string | undefined, accountId: string, accessToken: string, mediaType?: 'image' | 'document' | 'audio' | 'video', filename?: string): Promise<string>;
     verifyWebhook(query: any): string | null;
 }
 
@@ -93,12 +93,16 @@ export class ChannelGatewayService {
             }
 
             if (outbound.content.mediaUrl) {
+                const mt = outbound.content.type;
+                const mediaType = (mt === 'document' || mt === 'audio' || mt === 'video') ? mt : 'image';
                 return await adapter.sendMediaMessage(
                     outbound.to,
                     outbound.content.mediaUrl,
                     outbound.content.caption,
                     outbound.channelAccountId,
                     accessToken,
+                    mediaType,
+                    (outbound.content as any).filename,
                 );
             }
 

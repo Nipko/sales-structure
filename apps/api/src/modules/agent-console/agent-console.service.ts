@@ -271,6 +271,7 @@ export class AgentConsoleService {
         type: string = 'text',
         mediaUrl?: string,
         caption?: string,
+        filename?: string,
     ): Promise<ConversationMessage> {
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) throw new Error('Tenant not found');
@@ -280,7 +281,7 @@ export class AgentConsoleService {
         const isMedia = !!mediaUrl;
         const contentType = isMedia ? (type && type !== 'text' ? type : 'image') : (type || 'text');
         const contentText = isMedia ? (caption || content || '') : content;
-        const metadataJson = isMedia ? JSON.stringify({ mediaUrl, ...(caption || content ? { caption: caption || content } : {}) }) : null;
+        const metadataJson = isMedia ? JSON.stringify({ mediaUrl, ...(caption || content ? { caption: caption || content } : {}), ...(filename ? { filename } : {}) }) : null;
 
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -321,7 +322,7 @@ export class AgentConsoleService {
                 const conv = convRows[0];
                 const creds = await this.whatsappConnection.getValidAccessToken(schemaName);
                 const outContent: any = isMedia
-                    ? { type: contentType, mediaUrl, caption: caption || content || undefined }
+                    ? { type: contentType, mediaUrl, caption: caption || content || undefined, ...(filename ? { filename } : {}) }
                     : { type: 'text', text: content };
                 await this.channelGateway.sendMessage(
                     {

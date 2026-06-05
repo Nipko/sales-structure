@@ -182,8 +182,22 @@ export class WhatsAppAdapter implements IChannelAdapter {
     /**
      * Send a media message via WhatsApp Cloud API
      */
-    async sendMediaMessage(to: string, mediaUrl: string, caption: string | undefined, phoneNumberId: string, accessToken: string): Promise<string> {
+    async sendMediaMessage(
+        to: string,
+        mediaUrl: string,
+        caption: string | undefined,
+        phoneNumberId: string,
+        accessToken: string,
+        mediaType: 'image' | 'document' | 'audio' | 'video' = 'image',
+        filename?: string,
+    ): Promise<string> {
         const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+
+        // Build the per-type media object. Documents carry a filename; audio has no caption.
+        const type = ['image', 'document', 'audio', 'video'].includes(mediaType) ? mediaType : 'image';
+        const mediaObj: any = { link: mediaUrl };
+        if (type !== 'audio' && caption) mediaObj.caption = caption;
+        if (type === 'document' && filename) mediaObj.filename = filename;
 
         const response = await fetch(url, {
             method: 'POST',
@@ -195,11 +209,8 @@ export class WhatsAppAdapter implements IChannelAdapter {
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
                 to,
-                type: 'image',
-                image: {
-                    link: mediaUrl,
-                    caption: caption || '',
-                },
+                type,
+                [type]: mediaObj,
             }),
         });
 

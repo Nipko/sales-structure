@@ -117,6 +117,9 @@ export class PushService implements OnModuleInit {
                 body: payload.body,
                 sound: 'default',
                 channelId: 'default',
+                // Surfaces the "Responder / Abrir" quick actions on the notification
+                // (the mobile app registers the 'message' category).
+                ...(conversationId ? { categoryId: 'message' } : {}),
                 data: { url: payload.url, tag: payload.tag, conversationId },
             }));
             const res = await fetch('https://exp.host/--/api/v2/push/send', {

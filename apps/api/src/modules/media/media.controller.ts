@@ -136,10 +136,23 @@ export class MediaController {
             return res.status(404).json({ message: 'Archivo no encontrado' });
         }
 
+        // Content-Type by extension so non-image files (PDF/doc) are served correctly
+        // (Meta fetches the link and validates the type for WhatsApp document messages).
+        const EXT_MIME: Record<string, string> = {
+            '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.svg': 'image/svg+xml',
+            '.pdf': 'application/pdf', '.doc': 'application/msword',
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            '.txt': 'text/plain', '.csv': 'text/csv', '.zip': 'application/zip',
+        };
+        const ext = fileName.slice(fileName.lastIndexOf('.')).toLowerCase();
+        const contentType = EXT_MIME[ext] || 'application/octet-stream';
+
         // Allow cross-origin embedding (dashboard is on a different subdomain)
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        res.setHeader('Content-Type', 'image/webp');
+        res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Length', buffer.length);
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         res.end(buffer);

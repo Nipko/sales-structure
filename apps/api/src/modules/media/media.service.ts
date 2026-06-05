@@ -27,7 +27,28 @@ export interface MediaFile {
 const ALLOWED_MIME_TYPES = [
     'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
 ];
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+// Documents/files are stored as-is (no image processing). Sent outbound as WhatsApp documents.
+const DOCUMENT_MIME_TYPES = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/plain', 'text/csv', 'application/zip',
+];
+const DOC_EXT: Record<string, string> = {
+    'application/pdf': '.pdf', 'application/msword': '.doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+    'application/vnd.ms-excel': '.xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+    'application/vnd.ms-powerpoint': '.ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+    'text/plain': '.txt', 'text/csv': '.csv', 'application/zip': '.zip',
+};
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB (images)
+const MAX_DOC_SIZE = 25 * 1024 * 1024; // 25MB (documents)
 const THUMB_WIDTH = 200;
 const MAX_WIDTH = 1200;
 
@@ -71,22 +92,53 @@ export class MediaService {
         if (!file || !file.buffer) {
             throw new BadRequestException('No se recibio el archivo');
         }
-        if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+        const isImage = ALLOWED_MIME_TYPES.includes(file.mimetype);
+        const isDoc = DOCUMENT_MIME_TYPES.includes(file.mimetype);
+        if (!isImage && !isDoc) {
+            throw new BadRequestException(`Tipo de archivo no permitido: ${file.mimetype}.`);
+        }
+        if (isImage && file.size > MAX_FILE_SIZE) {
             throw new BadRequestException(
-                `Tipo de archivo no permitido: ${file.mimetype}. Solo se aceptan: JPG, PNG, WebP, GIF, SVG`,
+                `La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El maximo permitido es 5 MB.`,
             );
         }
-        if (file.size > MAX_FILE_SIZE) {
+        if (isDoc && file.size > MAX_DOC_SIZE) {
             throw new BadRequestException(
-                `La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El maximo permitido es 5 MB. Comprime la imagen antes de subirla.`,
+                `El archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El maximo permitido es 25 MB.`,
             );
         }
 
         const id = randomUUID();
-        const fileName = `${id}.webp`;
-        const thumbName = `${id}_thumb.webp`;
         const tenantDir = path.join(this.storagePath, tenantId);
         fs.mkdirSync(tenantDir, { recursive: true });
+
+        // Documents/files: store as-is (no image processing), keep original mime + name.
+        if (isDoc) {
+            const ext = DOC_EXT[file.mimetype] || path.extname(file.originalname || '') || '';
+            const docName = `${id}${ext}`;
+            fs.writeFileSync(path.join(tenantDir, docName), file.buffer);
+            const size = file.buffer.length;
+            await this.prisma.executeInTenantSchema(schemaName,
+                `INSERT INTO media_files (id, entity_type, entity_id, original_name, file_name, mime_type, size_bytes, width, height, thumbnail_name, label, description, tags, created_at)
+                 VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())`,
+                [id, entityType, entityId || null, file.originalname, docName, file.mimetype, size, null, null, null, label || null, description || null, tags || []],
+            );
+            this.logger.log(`Saved document: ${docName} (${(size / 1024).toFixed(0)}KB, ${file.mimetype})`);
+            return {
+                id, entityType, entityId: entityId || null,
+                originalName: file.originalname, fileName: docName,
+                mimeType: file.mimetype, sizeBytes: size,
+                width: null, height: null,
+                url: this.fileUrl(tenantId, docName),
+                thumbnailUrl: null,
+                label: label || null, description: description || null,
+                tags: tags || [],
+                createdAt: new Date().toISOString(),
+            };
+        }
+
+        const fileName = `${id}.webp`;
+        const thumbName = `${id}_thumb.webp`;
 
         try {
             const sharpInstance = (sharp as any).default || sharp;

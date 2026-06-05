@@ -1,7 +1,19 @@
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_URL } from './config';
-import { tokens } from './api';
+import { tokens, refreshAccessToken } from './api';
 import { log } from './log';
+
+// When a socket's auth is rejected (expired access token), refresh it once so the
+// auto-reconnect picks up a fresh token. Debounced — connect_error fires on every
+// retry. Without this, live updates silently stop until the next HTTP 401 refresh.
+let refreshingSocketAuth = false;
+function refreshSocketAuth() {
+    if (refreshingSocketAuth) return;
+    refreshingSocketAuth = true;
+    refreshAccessToken().finally(() => {
+        setTimeout(() => { refreshingSocketAuth = false; }, 4000);
+    });
+}
 
 // Two namespaces, mirroring the dashboard backend:
 //   /inbox  (ConversationsGateway)   → newMessage / conversationUpdated (auto-joins tenant room)
@@ -45,8 +57,14 @@ export function getInboxSocket(): Socket {
         setInboxStatus('connecting');
         inboxSocket = io(`${SOCKET_URL}/inbox`, { auth: authCb, ...OPTS });
         inboxSocket.on('connect', () => { log('[socket/inbox] connected', inboxSocket?.id); setInboxStatus('connected'); });
-        inboxSocket.on('disconnect', (r) => { log('[socket/inbox] disconnect:', r); setInboxStatus('disconnected'); });
-        inboxSocket.on('connect_error', (e) => { log('[socket/inbox] connect_error:', e?.message); setInboxStatus('disconnected'); });
+        inboxSocket.on('disconnect', (r) => {
+            log('[socket/inbox] disconnect:', r);
+            setInboxStatus('disconnected');
+            // Server forced the disconnect (e.g. expired token) → socket.io won't
+            // auto-reconnect. Refresh the token and reconnect manually.
+            if (r === 'io server disconnect') { refreshSocketAuth(); setTimeout(() => inboxSocket?.connect(), 1500); }
+        });
+        inboxSocket.on('connect_error', (e) => { log('[socket/inbox] connect_error:', e?.message); setInboxStatus('disconnected'); refreshSocketAuth(); });
         inboxSocket.on('error', (e: any) => log('[socket/inbox] error:', e?.message || e));
     }
     return inboxSocket;
@@ -64,17 +82,22 @@ export function getAgentSocket(): Socket {
                 if (u?.tenantId) agentSocket!.emit('agent:join', { agentId: u.id, tenantId: u.tenantId });
             } catch { /* noop */ }
         });
-        agentSocket.on('disconnect', (r) => log('[socket/agent] disconnect:', r));
-        agentSocket.on('connect_error', (e) => log('[socket/agent] connect_error:', e?.message));
+        agentSocket.on('disconnect', (r) => {
+            log('[socket/agent] disconnect:', r);
+            if (r === 'io server disconnect') { refreshSocketAuth(); setTimeout(() => agentSocket?.connect(), 1500); }
+        });
+        agentSocket.on('connect_error', (e) => { log('[socket/agent] connect_error:', e?.message); refreshSocketAuth(); });
         agentSocket.on('error', (e: any) => log('[socket/agent] error:', e?.message || e));
     }
     return agentSocket;
 }
 
-/** Open both sockets eagerly (call right after login). */
+/** Open both sockets eagerly (call right after login). Reconnects any that dropped. */
 export function connectRealtime() {
-    getInboxSocket();
-    getAgentSocket();
+    const i = getInboxSocket();
+    const a = getAgentSocket();
+    if (i.disconnected) i.connect();
+    if (a.disconnected) a.connect();
 }
 
 /** Back-compat: existing screens await connectSocket() for the inbox namespace. */

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, ActivityIndicator, TouchableOpacity, AppState } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNavigationContainerRef } from '@react-navigation/native';
@@ -176,10 +176,16 @@ export function RootNavigator() {
         agent.on('inbox:handoff', onHandoff);
         agent.on('inbox:assigned_to_you', onAssigned);
         agent.on('inbox:escalation', onEscalation);
+
+        // Reconnect realtime whenever the app returns to the foreground (the socket
+        // may have dropped while backgrounded → live updates would stay stale).
+        const appSub = AppState.addEventListener('change', (s) => { if (s === 'active') connectRealtime(); });
+
         return () => {
             agent.off('inbox:handoff', onHandoff);
             agent.off('inbox:assigned_to_you', onAssigned);
             agent.off('inbox:escalation', onEscalation);
+            appSub.remove();
         };
     }, [user]);
 

@@ -71,6 +71,18 @@ async function doRefresh(): Promise<string | null> {
     }
 }
 
+/**
+ * Force-refresh the access token (single-flight). Used by the realtime socket
+ * layer: when the socket's auth is rejected (token expired), it refreshes and
+ * reconnects — otherwise live updates silently stop until the next HTTP 401.
+ */
+export async function refreshAccessToken(): Promise<string | null> {
+    if (!refreshing) refreshing = doRefresh();
+    const tok = await refreshing;
+    refreshing = null;
+    return tok;
+}
+
 async function authFetch(path: string, options: RequestInit = {}): Promise<Response> {
     const { access } = await tokens.get();
     const headers: Record<string, string> = {

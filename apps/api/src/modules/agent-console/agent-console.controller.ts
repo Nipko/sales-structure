@@ -49,8 +49,14 @@ export class AgentConsoleController {
     async getConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
+        @Query('limit') limit?: string,
+        @Query('before') before?: string,
     ) {
-        const conversation = await this.agentConsoleService.getConversation(tenantId, conversationId);
+        const conversation = await this.agentConsoleService.getConversation(
+            tenantId, conversationId,
+            limit ? Math.min(parseInt(limit, 10) || 50, 200) : 50,
+            before || undefined,
+        );
         return { success: true, data: conversation };
     }
 

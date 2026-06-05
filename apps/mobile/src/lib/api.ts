@@ -194,8 +194,13 @@ export const api = {
     // Agent console (inbox)
     getInbox: (tenantId: string, filter?: string) =>
         json(`/agent-console/inbox/${tenantId}${filter ? `?filter=${filter}` : ''}`),
-    getConversation: (tenantId: string, id: string) =>
-        json(`/agent-console/conversation/${tenantId}/${id}`),
+    getConversation: (tenantId: string, id: string, opts?: { limit?: number; before?: string }) => {
+        const params = new URLSearchParams();
+        if (opts?.limit) params.set('limit', String(opts.limit));
+        if (opts?.before) params.set('before', opts.before);
+        const qs = params.toString();
+        return json(`/agent-console/conversation/${tenantId}/${id}${qs ? `?${qs}` : ''}`);
+    },
     sendMessage: (tenantId: string, id: string, content: string, agentId?: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/message`, {
             method: 'POST', body: JSON.stringify({ content, agentId }),
@@ -308,5 +313,23 @@ export const api = {
     // Native push (Expo token)
     subscribeExpoPush: (token: string) =>
         json('/push/expo-subscribe', { method: 'POST', body: JSON.stringify({ token }) }),
+
+    // WhatsApp Templates (outbound HSM)
+    getWhatsappTemplates: () =>
+        json('/channels/whatsapp/templates'),
+    sendWhatsappTemplate: (toPhone: string, templateName: string, language: string, components?: any[]) =>
+        json('/channels/whatsapp/send/template', {
+            method: 'POST',
+            body: JSON.stringify({ toPhone, templateName, language, components: components || [] }),
+        }),
+    sendWhatsappText: (toPhone: string, text: string, conversationId?: string) =>
+        json('/channels/whatsapp/send/text', {
+            method: 'POST',
+            body: JSON.stringify({ toPhone, text, conversationId }),
+        }),
+
+    // Contacts search (for outbound contact picker)
+    searchContacts: (tenantId: string, query: string) =>
+        json(`/crm/leads/${tenantId}?search=${encodeURIComponent(query)}&limit=20`),
 };
 

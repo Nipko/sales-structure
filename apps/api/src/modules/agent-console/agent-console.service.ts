@@ -176,9 +176,17 @@ export class AgentConsoleService {
     }
 
     /**
-     * Get full conversation detail with messages
+     * Get full conversation detail with messages.
+     * Supports cursor-based pagination: `limit` (default 50, max 200) and `before`
+     * (ISO timestamp of the oldest message already loaded → loads the page *before* it).
+     * Returns `hasMore: true` when there are older messages not included in this page.
      */
-    async getConversation(tenantId: string, conversationId: string): Promise<ConversationDetail | null> {
+    async getConversation(
+        tenantId: string,
+        conversationId: string,
+        limit = 50,
+        before?: string,
+    ): Promise<ConversationDetail | null> {
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) return null;
 
@@ -197,12 +205,27 @@ export class AgentConsoleService {
         if (!convRows || convRows.length === 0) return null;
         const conv = convRows[0];
 
+        // Cursor-based pagination: load `limit` messages, optionally only those
+        // created before `before` (the oldest timestamp the client already has).
+        // Fetch limit+1 to detect whether there are more pages.
+        const msgParams: any[] = [conversationId];
+        let beforeClause = '';
+        if (before) {
+            msgParams.push(before);
+            beforeClause = `AND created_at < $${msgParams.length}::timestamptz`;
+        }
+        msgParams.push(limit + 1);
         const messages = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT id, content_text as content, content_type as type, direction as sender, created_at, metadata
-       FROM messages WHERE conversation_id = $1::uuid ORDER BY created_at ASC`,
-            [conversationId],
+       FROM messages
+       WHERE conversation_id = $1::uuid ${beforeClause}
+       ORDER BY created_at DESC
+       LIMIT $${msgParams.length}`,
+            msgParams,
         );
+        const hasMore = (messages || []).length > limit;
+        const page = (messages || []).slice(0, limit).reverse(); // back to chronological ASC
 
         const notes = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -234,7 +257,8 @@ export class AgentConsoleService {
                 lastInteraction: conv.last_interaction,
                 conversationCount: Number(countRows?.[0]?.total) || 0,
             },
-            messages: (messages || []).map((m: any) => ({
+            hasMore,
+            messages: page.map((m: any) => ({
                 id: m.id,
                 content: m.content,
                 type: m.type || 'text',

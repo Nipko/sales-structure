@@ -67,6 +67,8 @@ export function ConversationScreen() {
     const [notes, setNotes] = useState<Note[]>([]);
     const [conv, setConv] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [hasMore, setHasMore] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
     const [aiBusy, setAiBusy] = useState(false);
@@ -88,14 +90,32 @@ export function ConversationScreen() {
 
     const load = useCallback(async () => {
         if (!tenantId) return;
-        const res: any = await api.getConversation(tenantId, conversationId);
+        const res: any = await api.getConversation(tenantId, conversationId, { limit: 50 });
         if (res?.success && res.data) {
             setConv(res.data);
             setMessages(Array.isArray(res.data.messages) ? res.data.messages : []);
             setNotes(Array.isArray(res.data.notes) ? res.data.notes : []);
+            setHasMore(!!res.data.hasMore);
         }
         setLoading(false);
     }, [tenantId, conversationId]);
+
+    // Load older messages (cursor = timestamp of oldest message already loaded).
+    const loadMore = useCallback(async () => {
+        if (!tenantId || loadingMore || !hasMore || messages.length === 0) return;
+        setLoadingMore(true);
+        const oldest = messages[0]?.timestamp;
+        const res: any = await api.getConversation(tenantId, conversationId, { limit: 50, before: oldest });
+        if (res?.success && res.data?.messages) {
+            setMessages((prev) => {
+                const existingIds = new Set(prev.map((m) => m.id));
+                const fresh = (res.data.messages as Msg[]).filter((m) => !existingIds.has(m.id));
+                return [...fresh, ...prev];
+            });
+            setHasMore(!!res.data.hasMore);
+        }
+        setLoadingMore(false);
+    }, [tenantId, conversationId, loadingMore, hasMore, messages]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -459,6 +479,19 @@ export function ConversationScreen() {
                 inverted
                 keyExtractor={(it, i) => it.id || String(i)}
                 contentContainerStyle={{ padding: 12 }}
+                // Inverted list: "end" is visually the top (oldest messages).
+                // onEndReached triggers when the user scrolls up near the oldest loaded message.
+                onEndReached={() => { if (hasMore && !loadingMore) loadMore(); }}
+                onEndReachedThreshold={0.3}
+                ListFooterComponent={
+                    loadingMore
+                        ? <ActivityIndicator color={theme.accent} style={{ marginVertical: 10 }} />
+                        : hasMore
+                            ? <TouchableOpacity onPress={loadMore} style={{ alignItems: 'center', paddingVertical: 10 }} accessibilityRole="button">
+                                <Text style={{ color: theme.accent, fontSize: 13 }}>{t('conv.loadMore')}</Text>
+                              </TouchableOpacity>
+                            : null
+                }
                 renderItem={({ item }) => {
                     if (item.kind === 'note') {
                         return (

@@ -20,6 +20,7 @@ import { PipelineScreen } from '../screens/PipelineScreen';
 import { AppointmentsScreen } from '../screens/AppointmentsScreen';
 import { MoreScreen } from '../screens/MoreScreen';
 import { NotificationPrefsScreen } from '../screens/NotificationPrefsScreen';
+import { OutboundScreen } from '../screens/OutboundScreen';
 
 export const navigationRef = createNavigationContainerRef<any>();
 
@@ -43,7 +44,21 @@ const stackOptions = { headerStyle: { backgroundColor: theme.bgCard }, headerTin
 function InboxStackNavigator() {
     return (
         <InboxStack.Navigator screenOptions={stackOptions}>
-            <InboxStack.Screen name="InboxList" component={InboxScreen} options={{ title: 'Inbox' }} />
+            <InboxStack.Screen name="InboxList" component={InboxScreen}
+                options={({ navigation }) => ({
+                    title: 'Inbox',
+                    headerRight: () => (
+                        <TouchableOpacity
+                            onPress={() => navigation.getParent()?.navigate('Outbound')}
+                            style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Nueva conversación"
+                        >
+                            <Ionicons name="create-outline" size={22} color={theme.accent} />
+                        </TouchableOpacity>
+                    ),
+                })}
+            />
             <InboxStack.Screen name="Conversation" component={ConversationScreen}
                 options={({ route }) => ({ title: route.params?.title || 'Conversación' })} />
         </InboxStack.Navigator>
@@ -215,6 +230,17 @@ export function RootNavigator() {
                             headerStyle: { backgroundColor: theme.bgCard },
                             headerTintColor: theme.text,
                             title: 'Notificaciones',
+                        })}
+                    />
+                    <Stack.Screen
+                        name="Outbound"
+                        component={OutboundScreen}
+                        options={() => ({
+                            headerShown: true,
+                            headerStyle: { backgroundColor: theme.bgCard },
+                            headerTintColor: theme.text,
+                            title: 'Nueva conversación',
+                            presentation: 'modal',
                         })}
                     />
                 </>

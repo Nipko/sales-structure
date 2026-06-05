@@ -137,6 +137,10 @@ export function ConversationScreen() {
         return [...msgs, ...nts, ...queued].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
     }, [messages, notes, conversationId, outboxTick]);
 
+    // Inverted list (newest first) → the conversation always opens at the latest
+    // message, the chat standard. No fragile scrollToEnd needed.
+    const reversedTimeline = useMemo(() => [...timeline].reverse(), [timeline]);
+
     const waiting = conv?.status === 'waiting_human' || conv?.status === 'with_human';
     const resolved = conv?.status === 'resolved' || conv?.status === 'closed';
     const channel: string | undefined = conv?.channel || conv?.channelType || conv?.contact?.channel;
@@ -414,13 +418,10 @@ export function ConversationScreen() {
 
             <FlatList
                 ref={listRef}
-                data={timeline}
+                data={reversedTimeline}
+                inverted
                 keyExtractor={(it, i) => it.id || String(i)}
                 contentContainerStyle={{ padding: 12 }}
-                // Chat standard: open at the latest message. Instant jump (no visible
-                // scroll-from-top) on open/content change; also re-anchor on layout.
-                onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
-                onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
                 renderItem={({ item }) => {
                     if (item.kind === 'note') {
                         return (
@@ -648,7 +649,7 @@ const styles = StyleSheet.create({
     channelText: { fontSize: 11, fontWeight: '700' },
     handoffBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.warning + '18', paddingHorizontal: 14, paddingVertical: 10 },
     handoffText: { color: theme.warning, fontSize: 13, flex: 1 },
-    actionBar: { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: theme.bgCard, paddingVertical: 8 },
+    actionBar: { maxHeight: 52, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: theme.bgCard },
     actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderColor: theme.border, borderWidth: 1 },
     actionBtnText: { fontSize: 13, fontWeight: '600' },
     bubbleRow: { flexDirection: 'row', marginVertical: 3 },

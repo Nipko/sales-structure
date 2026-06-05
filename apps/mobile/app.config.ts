@@ -67,6 +67,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         // GATE 0 (seguridad): network_security_config Android → solo HTTPS (sin
         // cleartext) + plantilla de cert pinning opt-in. Mirrors the local setting.
         './plugins/withAndroidNetworkSecurity',
+        // Permiso de micrófono para notas de voz salientes (expo-av no lo inyecta solo).
+        './plugins/withAudioPermission',
     ],
     extra: {
         eas: { projectId: '5a6f6dab-dec2-44e0-b00a-58e77c909501' },

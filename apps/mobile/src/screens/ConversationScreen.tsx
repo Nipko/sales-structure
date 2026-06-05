@@ -15,6 +15,7 @@ import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
 import { useKeyboardSpace } from '../lib/useKeyboardSpace';
 import { enqueue, pendingFor, subscribeOutbox, retry as retryOutbox } from '../lib/outbox';
+import { useAudioRecorder, fmtDuration } from '../lib/useAudioRecorder';
 import { snoozeUntil, SNOOZE_PRESETS, type SnoozePreset } from '../lib/snooze';
 import { haptic } from '../lib/haptics';
 import { theme, channelColor, channelLabel, channelIcon } from '../theme';
@@ -92,6 +93,7 @@ export function ConversationScreen() {
     const [agents, setAgents] = useState<any[]>([]);
     const kbSpace = useKeyboardSpace();
     const listRef = useRef<FlatList>(null);
+    const { state: recState, durationMs: recMs, startRecording, stopRecording, cancelRecording } = useAudioRecorder();
 
     const load = useCallback(async () => {
         if (!tenantId) return;
@@ -371,6 +373,37 @@ export function ConversationScreen() {
             toast.info(t('conv.queued'));
         } finally { setSending(false); }
     };
+    // ── Audio recording ───────────────────────────────────────────────────────
+    const handleMicPress = async () => {
+        if (!tenantId) return;
+        if (recState === 'recording') {
+            // Stop → upload → send
+            const result = await stopRecording();
+            if (!result) return;
+            haptic.success();
+            setSending(true);
+            try {
+                const mimeType = 'audio/m4a';
+                const uploadRes: any = await api.uploadMedia(tenantId, {
+                    uri: result.uri,
+                    fileName: `voice_${Date.now()}.m4a`,
+                    mimeType,
+                });
+                if (!uploadRes?.success || !uploadRes.data?.url) throw new Error('upload_failed');
+                await api.sendMediaMessage(tenantId, conversationId, uploadRes.data.url, '', user?.id, 'audio', `voice_${Date.now()}.m4a`);
+                load();
+            } catch {
+                toast.error(t('conv.audioError'));
+            } finally {
+                setSending(false);
+            }
+        } else if (recState === 'idle') {
+            haptic.tap();
+            const ok = await startRecording();
+            if (!ok) toast.error(t('conv.micPerm'));
+        }
+    };
+
     // Outbound media: pick from camera/gallery → upload → send as image message.
     const pickFrom = async (source: 'camera' | 'gallery') => {
         if (!tenantId) return;
@@ -603,22 +636,54 @@ export function ConversationScreen() {
                 </View>
             )}
 
-            <View style={styles.composer}>
-                {canned.length > 0 && (
-                    <TouchableOpacity onPress={() => setCannedOpen(true)} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={t('conv.cannedBtn')}><Ionicons name="albums-outline" size={22} color={theme.textSecondary} /></TouchableOpacity>
-                )}
-                {macros.length > 0 && (
-                    <TouchableOpacity onPress={() => setMacrosOpen(true)} style={styles.iconBtn} disabled={acting} accessibilityRole="button" accessibilityLabel={t('conv.macrosBtn')}><Ionicons name="flash-outline" size={22} color={theme.warning} /></TouchableOpacity>
-                )}
-                <TouchableOpacity onPress={attachImage} style={styles.iconBtn} disabled={sending} accessibilityRole="button" accessibilityLabel={t('conv.attach')}>
-                    <Ionicons name="image-outline" size={22} color={theme.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={aiButton} style={styles.iconBtn} disabled={aiBusy} accessibilityRole="button" accessibilityLabel={t('conv.aiAssist')}>
-                    {aiBusy ? <ActivityIndicator color={theme.accent} size="small" /> : <Ionicons name="sparkles-outline" size={22} color={theme.accent} />}
-                </TouchableOpacity>
-                <TextInput style={styles.input} placeholder={t('conv.composer')} placeholderTextColor={theme.textSecondary} value={text} onChangeText={setText} multiline />
-                <TouchableOpacity onPress={send} style={styles.sendBtn} disabled={sending || !text.trim()} accessibilityRole="button" accessibilityLabel={t('conv.send')}><Ionicons name="send" size={20} color="#fff" /></TouchableOpacity>
-            </View>
+            {/* Recording bar (replaces the composer while recording) */}
+            {recState === 'recording' || recState === 'stopping' ? (
+                <View style={styles.recBar}>
+                    <View style={styles.recDot} />
+                    <Text style={styles.recTimer}>{fmtDuration(recMs)}</Text>
+                    <Text style={styles.recHint}>{t('conv.recHint')}</Text>
+                    <TouchableOpacity onPress={cancelRecording} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+                        <Ionicons name="close-circle" size={24} color={theme.danger} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleMicPress} style={[styles.sendBtn, { backgroundColor: theme.danger }]}
+                        disabled={recState === 'stopping'}
+                        accessibilityRole="button" accessibilityLabel={t('conv.sendAudio')}>
+                        {recState === 'stopping'
+                            ? <ActivityIndicator color="#fff" size="small" />
+                            : <Ionicons name="stop" size={20} color="#fff" />}
+                    </TouchableOpacity>
+                </View>
+            ) : (
+                <View style={styles.composer}>
+                    {canned.length > 0 && (
+                        <TouchableOpacity onPress={() => setCannedOpen(true)} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={t('conv.cannedBtn')}><Ionicons name="albums-outline" size={22} color={theme.textSecondary} /></TouchableOpacity>
+                    )}
+                    {macros.length > 0 && (
+                        <TouchableOpacity onPress={() => setMacrosOpen(true)} style={styles.iconBtn} disabled={acting} accessibilityRole="button" accessibilityLabel={t('conv.macrosBtn')}><Ionicons name="flash-outline" size={22} color={theme.warning} /></TouchableOpacity>
+                    )}
+                    <TouchableOpacity onPress={attachImage} style={styles.iconBtn} disabled={sending} accessibilityRole="button" accessibilityLabel={t('conv.attach')}>
+                        <Ionicons name="image-outline" size={22} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={aiButton} style={styles.iconBtn} disabled={aiBusy} accessibilityRole="button" accessibilityLabel={t('conv.aiAssist')}>
+                        {aiBusy ? <ActivityIndicator color={theme.accent} size="small" /> : <Ionicons name="sparkles-outline" size={22} color={theme.accent} />}
+                    </TouchableOpacity>
+                    <TextInput style={styles.input} placeholder={t('conv.composer')} placeholderTextColor={theme.textSecondary} value={text} onChangeText={setText} multiline />
+                    {/* Mic button (visible only when input is empty) */}
+                    {!text.trim() ? (
+                        <TouchableOpacity onPress={handleMicPress} style={[styles.sendBtn, { backgroundColor: theme.bgCard, borderWidth: 1, borderColor: theme.border }]}
+                            disabled={sending || recState === 'requesting'}
+                            accessibilityRole="button" accessibilityLabel={t('conv.record')}>
+                            {recState === 'requesting'
+                                ? <ActivityIndicator color={theme.accent} size="small" />
+                                : <Ionicons name="mic-outline" size={20} color={theme.accent} />}
+                        </TouchableOpacity>
+                    ) : (
+                        <TouchableOpacity onPress={send} style={styles.sendBtn} disabled={sending} accessibilityRole="button" accessibilityLabel={t('conv.send')}>
+                            {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="send" size={20} color="#fff" />}
+                        </TouchableOpacity>
+                    )}
+                </View>
+            )}
 
             {/* Tone sheet (rewrite) */}
             <Sheet visible={toneOpen} title={t('conv.rewriteTitle')} onClose={() => setToneOpen(false)}>
@@ -842,6 +907,11 @@ const styles = StyleSheet.create({
     tagText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
     agentRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     agentDot: { width: 9, height: 9, borderRadius: 5 },
+    // Recording bar
+    recBar: { flexDirection: 'row', alignItems: 'center', padding: 8, gap: 8, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth, backgroundColor: theme.bgCard },
+    recDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: theme.danger },
+    recTimer: { color: theme.danger, fontSize: 15, fontWeight: '700', minWidth: 40 },
+    recHint: { color: theme.textSecondary, fontSize: 12, flex: 1 },
     // Reply strip
     replyStrip: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.bgCard, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 8 },
     replyBar: { width: 3, height: '100%', backgroundColor: theme.accent, borderRadius: 2, marginRight: 8 },

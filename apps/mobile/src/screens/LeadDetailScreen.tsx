@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Linking, TouchableOpacity, TextInput, Alert } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Linking, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { Ionicons } from '@expo/vector-icons';
@@ -177,7 +176,7 @@ export function LeadDetailScreen() {
     };
 
     return (
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior="padding" keyboardVerticalOffset={headerHeight}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior="height" keyboardVerticalOffset={headerHeight}>
         <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
             <View style={styles.header}>
                 <View style={styles.avatar}><Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text></View>

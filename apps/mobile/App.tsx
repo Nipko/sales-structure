@@ -3,7 +3,6 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { NavigationContainer, DarkTheme, LinkingOptions } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
@@ -90,19 +89,17 @@ function LockGate() {
 function App() {
     return (
         <SafeAreaProvider>
-            <KeyboardProvider>
-                <AuthProvider>
-                    <I18nProvider>
-                        <ToastProvider>
-                            <NavigationContainer theme={navTheme} ref={navigationRef} linking={linking}>
-                                <RootNavigator />
-                            </NavigationContainer>
-                            <LockGate />
-                            <StatusBar style="light" />
-                        </ToastProvider>
-                    </I18nProvider>
-                </AuthProvider>
-            </KeyboardProvider>
+            <AuthProvider>
+                <I18nProvider>
+                    <ToastProvider>
+                        <NavigationContainer theme={navTheme} ref={navigationRef} linking={linking}>
+                            <RootNavigator />
+                        </NavigationContainer>
+                        <LockGate />
+                        <StatusBar style="light" />
+                    </ToastProvider>
+                </I18nProvider>
+            </AuthProvider>
         </SafeAreaProvider>
     );
 }

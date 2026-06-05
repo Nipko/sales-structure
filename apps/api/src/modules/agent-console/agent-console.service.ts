@@ -43,6 +43,7 @@ export interface ConversationDetail {
         conversationCount: number;
     };
     messages: ConversationMessage[];
+    hasMore?: boolean;
     notes: InternalNote[];
     assignedAgent?: { id: string; name: string };
     status: string;

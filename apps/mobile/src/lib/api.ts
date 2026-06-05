@@ -199,9 +199,9 @@ export const api = {
             return { success: false, error: e?.message || 'upload_error' };
         }
     },
-    sendMediaMessage: (tenantId: string, id: string, mediaUrl: string, caption: string, agentId?: string) =>
+    sendMediaMessage: (tenantId: string, id: string, mediaUrl: string, caption: string, agentId?: string, type: string = 'image', filename?: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/message`, {
-            method: 'POST', body: JSON.stringify({ agentId, content: caption || '', type: 'image', mediaUrl, caption }),
+            method: 'POST', body: JSON.stringify({ agentId, content: caption || '', type, mediaUrl, caption, filename }),
         }),
     assignConversation: (tenantId: string, id: string, agentId: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/assign`, {

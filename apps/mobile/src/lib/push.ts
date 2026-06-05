@@ -81,10 +81,36 @@ export async function presentLocalNotification(title: string, body: string, data
     }
 }
 
-/** Subscribe to notification taps → returns the subscription to clean up. */
-export function onNotificationTap(handler: (data: any) => void) {
+/**
+ * Register the 'message' notification category so handoff/message notifications
+ * show "Responder" (inline text) + "Abrir" quick actions. The backend stamps
+ * categoryId='message' on those pushes (push.service).
+ */
+export async function registerNotificationCategories() {
+    try {
+        await Notifications.setNotificationCategoryAsync('message', [
+            {
+                identifier: 'reply',
+                buttonTitle: 'Responder',
+                textInput: { submitButtonTitle: 'Enviar', placeholder: 'Escribe una respuesta…' },
+            },
+            { identifier: 'open', buttonTitle: 'Abrir' },
+        ]);
+    } catch (e: any) {
+        log('[push] category registration skipped:', e?.message);
+    }
+}
+
+export interface NotificationResponseInfo { data: any; actionIdentifier: string; userText?: string }
+
+/** Subscribe to notification taps/actions → returns the subscription to clean up. */
+export function onNotificationTap(handler: (info: NotificationResponseInfo) => void) {
     return Notifications.addNotificationResponseReceivedListener((response) => {
-        handler(response?.notification?.request?.content?.data || {});
+        handler({
+            data: response?.notification?.request?.content?.data || {},
+            actionIdentifier: response?.actionIdentifier || '',
+            userText: (response as any)?.userText,
+        });
     });
 }
 

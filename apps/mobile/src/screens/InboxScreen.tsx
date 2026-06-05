@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Image, ScrollView, TextInput, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Image, ScrollView, TextInput, Alert, Animated, PanResponder } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -54,6 +54,43 @@ function relTime(iso?: string, nowLabel = ''): string {
     const days = Math.floor(h / 24);
     if (days < 7) return `${days}d`;
     return new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short' });
+}
+
+/** Pure-JS swipe-to-reveal (no native gesture-handler): swipe a row left to
+ *  expose Posponer + Resolver. Coexists with tap (open) and long-press (menu). */
+function SwipeableRow({ children, onResolve, onSnooze }: { children: React.ReactNode; onResolve: () => void; onSnooze: () => void }) {
+    const tx = useRef(new Animated.Value(0)).current;
+    const openRef = useRef(false);
+    const REVEAL = 140;
+    const pan = useRef(PanResponder.create({
+        onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+        onPanResponderMove: (_e, g) => {
+            let v = (openRef.current ? -REVEAL : 0) + g.dx;
+            if (v > 0) v = 0; if (v < -REVEAL - 30) v = -REVEAL - 30;
+            tx.setValue(v);
+        },
+        onPanResponderRelease: (_e, g) => {
+            const shouldOpen = openRef.current ? g.dx < 40 : g.dx < -50;
+            openRef.current = shouldOpen;
+            Animated.spring(tx, { toValue: shouldOpen ? -REVEAL : 0, useNativeDriver: true, bounciness: 0 }).start();
+        },
+    })).current;
+    const close = () => { openRef.current = false; Animated.spring(tx, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start(); };
+    return (
+        <View style={styles.swipeWrap}>
+            <View style={styles.swipeActions}>
+                <TouchableOpacity style={[styles.swipeBtn, { backgroundColor: theme.warning }]} onPress={() => { close(); onSnooze(); }} accessibilityRole="button">
+                    <Ionicons name="moon-outline" size={20} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.swipeBtn, { backgroundColor: theme.success }]} onPress={() => { close(); onResolve(); }} accessibilityRole="button">
+                    <Ionicons name="checkmark-done-outline" size={20} color="#fff" />
+                </TouchableOpacity>
+            </View>
+            <Animated.View style={{ transform: [{ translateX: tx }], backgroundColor: theme.bg }} {...pan.panHandlers}>
+                {children}
+            </Animated.View>
+        </View>
+    );
 }
 
 export function InboxScreen() {
@@ -255,6 +292,7 @@ export function InboxScreen() {
                             ? Math.floor((Date.now() - new Date(item.lastMessageAt).getTime()) / 60000) : 0;
                         const slaColor = waitMin >= 15 ? theme.danger : waitMin >= 5 ? theme.warning : theme.success;
                         return (
+                            <SwipeableRow onResolve={() => doQuick(item, 'resolve')} onSnooze={() => doQuick(item, 'snooze')}>
                             <TouchableOpacity
                                 style={styles.row}
                                 accessibilityRole="button"
@@ -295,6 +333,7 @@ export function InboxScreen() {
                                     </View>
                                 </View>
                             </TouchableOpacity>
+                            </SwipeableRow>
                         );
                     }}
                 />
@@ -321,6 +360,9 @@ const styles = StyleSheet.create({
     miniChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgCard },
     miniChipOn: { backgroundColor: theme.accent, borderColor: theme.accent },
     miniText: { color: theme.textSecondary, fontSize: 12, fontWeight: '600' },
+    swipeWrap: { position: 'relative', overflow: 'hidden', backgroundColor: theme.bg },
+    swipeActions: { position: 'absolute', right: 0, top: 0, bottom: 0, flexDirection: 'row', alignItems: 'stretch' },
+    swipeBtn: { width: 70, alignItems: 'center', justifyContent: 'center' },
     row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: theme.accent + '33', alignItems: 'center', justifyContent: 'center' },
     avatarText: { color: theme.accent, fontWeight: '700', fontSize: 18 },

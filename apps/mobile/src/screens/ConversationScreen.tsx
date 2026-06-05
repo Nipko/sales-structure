@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { api } from '../lib/api';
 import { getInboxSocket, getAgentSocket } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
@@ -326,10 +327,32 @@ export function ConversationScreen() {
             setSending(false);
         }
     };
+    const pickDocument = async () => {
+        if (!tenantId) return;
+        try {
+            const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+            if (res.canceled || !res.assets?.[0]) return;
+            const f = res.assets[0];
+            setSending(true);
+            const up: any = await api.uploadMedia(tenantId, { uri: f.uri, fileName: f.name, mimeType: f.mimeType });
+            const url = up?.data?.url;
+            if (!up?.success || !url) { toast.error(up?.error ? t('conv.mediaTypeError') : t('conv.mediaError')); return; }
+            const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;
+            const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', user?.id, 'document', f.name);
+            if (!r?.success) throw new Error('fail');
+            haptic.success();
+            load();
+        } catch {
+            toast.error(t('conv.mediaError'));
+        } finally {
+            setSending(false);
+        }
+    };
     const attachImage = () => {
         Alert.alert(t('conv.attachTitle'), undefined, [
             { text: t('conv.fromCamera'), onPress: () => pickFrom('camera') },
             { text: t('conv.fromGallery'), onPress: () => pickFrom('gallery') },
+            { text: t('conv.fromDocument'), onPress: () => pickDocument() },
             { text: t('common.cancel'), style: 'cancel' },
         ]);
     };
@@ -435,6 +458,8 @@ export function ConversationScreen() {
                     }
                     const out = item.sender === 'outbound';
                     const img = item.type === 'image' ? mediaUrl(item.metadata) : null;
+                    const docUrl = item.type === 'document' ? mediaUrl(item.metadata) : null;
+                    const docName = item.metadata?.filename || item.metadata?.fileName;
                     const isAudio = item.type === 'audio' || item.type === 'voice';
                     return (
                         <View style={[styles.bubbleRow, { justifyContent: out ? 'flex-end' : 'flex-start' }]}>
@@ -445,6 +470,12 @@ export function ConversationScreen() {
                                 accessibilityLabel={item.failed ? t('conv.tapRetry') : undefined}
                                 style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn, item.failed && styles.bubbleFailed]}>
                                 {img && <Image source={{ uri: img }} style={styles.media} resizeMode="cover" />}
+                                {docUrl && (
+                                    <TouchableOpacity style={styles.docChip} onPress={() => Linking.openURL(docUrl)} accessibilityRole="button" accessibilityLabel={docName || t('conv.document')}>
+                                        <Ionicons name="document-text-outline" size={22} color={out ? '#fff' : theme.accent} />
+                                        <Text style={[styles.docName, { color: out ? '#fff' : theme.text }]} numberOfLines={1}>{docName || t('conv.document')}</Text>
+                                    </TouchableOpacity>
+                                )}
                                 {isAudio && <Text style={styles.mediaTag}>🎤 {t('conv.voiceNote')}</Text>}
                                 {!!item.content && <Text style={[styles.bubbleText, item.pending && { opacity: 0.7 }]}>{item.content}</Text>}
                                 <View style={styles.bubbleMeta}>
@@ -663,6 +694,8 @@ const styles = StyleSheet.create({
     bubbleMeta: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 2 },
     media: { width: 200, height: 200, borderRadius: 10, marginBottom: 4 },
     mediaTag: { color: theme.text, fontSize: 14, fontWeight: '600', marginBottom: 2 },
+    docChip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, paddingRight: 8, maxWidth: 240 },
+    docName: { fontSize: 14, fontWeight: '600', flex: 1, textDecorationLine: 'underline' },
     noteWrap: { alignItems: 'center', marginVertical: 6 },
     note: { backgroundColor: theme.warning + '14', borderColor: theme.warning + '40', borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, maxWidth: '88%' },
     noteLabel: { color: theme.warning, fontSize: 11, fontWeight: '700', marginBottom: 2 },

@@ -6,7 +6,8 @@ import { createNavigationContainerRef } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useI18n } from '../i18n';
-import { registerForPush, onNotificationTap, getColdStartData, presentLocalNotification } from '../lib/push';
+import { registerForPush, registerNotificationCategories, onNotificationTap, getColdStartData, presentLocalNotification } from '../lib/push';
+import { api } from '../lib/api';
 import { getAgentSocket, connectRealtime } from '../lib/socket';
 import { subscribeUnread, getUnreadTotal } from '../lib/unread';
 import { theme } from '../theme';
@@ -115,14 +116,15 @@ function MainTabs() {
 }
 
 export function RootNavigator() {
-    const { user, loading } = useAuth();
+    const { user, tenantId, loading } = useAuth();
 
-    // Register native push + deep-link taps to the exact conversation.
+    // Register native push + notification quick actions + deep-link taps.
     useEffect(() => {
         if (!user) return;
         registerForPush();
+        registerNotificationCategories();
 
-        const goTo = (data: any) => {
+        const navigateTo = (data: any) => {
             if (!navigationRef.isReady()) return;
             if (data?.conversationId) {
                 navigationRef.navigate('Main', {
@@ -134,11 +136,21 @@ export function RootNavigator() {
             }
         };
 
-        const sub = onNotificationTap(goTo);
+        const handleResponse = (info: { data: any; actionIdentifier: string; userText?: string }) => {
+            const data = info?.data || {};
+            // Inline "Responder" from the notification → send the reply directly.
+            if (info.actionIdentifier === 'reply' && info.userText?.trim() && data.conversationId && tenantId) {
+                api.sendMessage(tenantId, data.conversationId, info.userText.trim(), user?.id).catch(() => {});
+                return;
+            }
+            navigateTo(data);
+        };
+
+        const sub = onNotificationTap(handleResponse);
         // Cold start: app opened by tapping a notification while closed.
-        getColdStartData().then((data) => { if (data) setTimeout(() => goTo(data), 600); });
+        getColdStartData().then((data) => { if (data) setTimeout(() => navigateTo(data), 600); });
         return () => sub.remove();
-    }, [user]);
+    }, [user, tenantId]);
 
     // Real-time handoff alerts (works while the app is running, no EAS/FCM needed).
     // The /agent gateway broadcasts these to the tenant after agent:join.

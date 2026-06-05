@@ -19,6 +19,7 @@ import { LeadDetailScreen } from '../screens/LeadDetailScreen';
 import { PipelineScreen } from '../screens/PipelineScreen';
 import { AppointmentsScreen } from '../screens/AppointmentsScreen';
 import { MoreScreen } from '../screens/MoreScreen';
+import { NotificationPrefsScreen } from '../screens/NotificationPrefsScreen';
 
 export const navigationRef = createNavigationContainerRef<any>();
 
@@ -163,16 +164,19 @@ export function RootNavigator() {
             t('notif.escalatedTitle'),
             t('notif.escalatedBody', { name: p?.contactName || t('notif.someone') }) + (p?.reason ? ` — ${p.reason}` : ''),
             { conversationId: p?.conversationId },
+            'handoff',
         );
         const onAssigned = (p: any) => presentLocalNotification(
             t('notif.assignedTitle'),
             t('notif.assignedBody', { name: p?.contactName || t('notif.someone') }),
             { conversationId: p?.conversationId },
+            'handoff',
         );
         const onEscalation = (p: any) => presentLocalNotification(
             t('notif.slaTitle'),
             t('notif.slaBody', { name: p?.contactName || t('notif.conversation'), min: p?.waitMinutes || 5 }),
             { conversationId: p?.conversationId },
+            'sla',
         );
         agent.on('inbox:handoff', onHandoff);
         agent.on('inbox:assigned_to_you', onAssigned);
@@ -201,7 +205,19 @@ export function RootNavigator() {
     return (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
             {user ? (
-                <Stack.Screen name="Main" component={MainTabs} />
+                <>
+                    <Stack.Screen name="Main" component={MainTabs} />
+                    <Stack.Screen
+                        name="NotificationPrefs"
+                        component={NotificationPrefsScreen}
+                        options={() => ({
+                            headerShown: true,
+                            headerStyle: { backgroundColor: theme.bgCard },
+                            headerTintColor: theme.text,
+                            title: 'Notificaciones',
+                        })}
+                    />
+                </>
             ) : (
                 <Stack.Screen name="Login" component={LoginScreen} />
             )}

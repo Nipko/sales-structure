@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
@@ -23,54 +25,63 @@ function pct(v: any): string {
 export function MoreScreen() {
     const { user, tenantId, logout } = useAuth();
     const toast = useToast();
+    const navigation = useNavigation<any>();
     const { t, locale, setLocale } = useI18n();
-    const [stats, setStats] = useState<any>(null);
-    const [kpis, setKpis] = useState<any>(null);
-    const [tasks, setTasks] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const [availability, setAvailability] = useState('online');
+    const [localTasks, setLocalTasks] = useState<any[]>([]);
 
-    const load = useCallback(async () => {
-        if (!tenantId) return;
-        const end = new Date().toISOString();
-        const start = new Date(Date.now() - 30 * 86400000).toISOString();
-        try {
+    // React Query: datos del agente (cache 2 min, refetch automático al volver).
+    const { data: moreData, isLoading: loading } = useQuery({
+        queryKey: ['more-stats', tenantId, user?.id],
+        queryFn: async () => {
+            if (!tenantId) return null;
+            const end = new Date().toISOString();
+            const start = new Date(Date.now() - 30 * 86400000).toISOString();
             const [r, k, s, tk]: any[] = await Promise.all([
                 api.getResolutionStats(tenantId, start, end),
                 api.getOverviewKpis(tenantId, start, end),
                 api.getAgentsStatus(tenantId),
                 api.getTasks(tenantId, user?.id ? `assignedTo=${user.id}&status=pending` : 'status=pending'),
             ]);
-            if (r?.success) setStats(r.data?.summary || r.data);
-            if (k?.success) setKpis(k.data);
-            // Reflect the agent's real current status instead of assuming "online".
             if (s?.success && Array.isArray(s.data) && user?.id) {
                 const me = s.data.find((a: any) => (a.userId || a.user_id || a.id || a.agentId) === user.id);
                 if (me?.status) setAvailability(me.status);
             }
-            if (tk?.success) setTasks((Array.isArray(tk.data) ? tk.data : (tk.data?.tasks || [])).filter((x: any) => !['completed', 'done', 'closed'].includes(String(x.status || '').toLowerCase())));
-        } catch {
-            toast.error(t('common.loadError'));
-        } finally {
-            setLoading(false);
-        }
-    }, [tenantId, toast, t, user?.id]);
+            return {
+                stats: r?.success ? (r.data?.summary || r.data) : null,
+                kpis: k?.success ? k.data : null,
+                tasks: tk?.success
+                    ? (Array.isArray(tk.data) ? tk.data : (tk.data?.tasks || []))
+                        .filter((x: any) => !['completed', 'done', 'closed'].includes(String(x.status || '').toLowerCase()))
+                    : [],
+            };
+        },
+        staleTime: 2 * 60 * 1000,
+        enabled: !!tenantId,
+        throwOnError: false,
+    });
+
+    const stats = moreData?.stats ?? null;
+    const kpis = moreData?.kpis ?? null;
+
+    // Sync query tasks → local state for optimistic mutations
+    React.useEffect(() => {
+        if (moreData?.tasks) setLocalTasks(moreData.tasks);
+    }, [moreData?.tasks]);
 
     const completeTask = async (tk: any) => {
         if (!tenantId) return;
         haptic.tap();
-        setTasks((prev) => prev.filter((x) => x.id !== tk.id)); // optimistic remove from pending
+        setLocalTasks((prev) => prev.filter((x) => x.id !== tk.id)); // optimistic
         try {
             const r: any = await api.updateTaskStatus(tenantId, tk.id, 'completed');
             if (!r?.success) throw new Error('fail');
             toast.success(t('crm.taskDone'));
         } catch {
-            setTasks((prev) => [tk, ...prev]); // rollback
+            setLocalTasks((prev) => [tk, ...prev]); // rollback
             toast.error(t('crm.taskStatusError'));
         }
     };
-
-    useEffect(() => { load(); }, [load]);
 
     const setStatus = async (s: string) => {
         if (!user?.id) return;
@@ -120,10 +131,10 @@ export function MoreScreen() {
 
                 {/* My tasks */}
                 <View style={[styles.card, { marginTop: 20 }]}>
-                    <Text style={styles.cardTitle}>{t('more.tasks')}{tasks.length > 0 ? ` (${tasks.length})` : ''}</Text>
-                    {tasks.length === 0 ? (
+                    <Text style={styles.cardTitle}>{t('more.tasks')}{localTasks.length > 0 ? ` (${localTasks.length})` : ''}</Text>
+                    {localTasks.length === 0 ? (
                         <Text style={styles.muted}>{t('more.noTasks')}</Text>
-                    ) : tasks.slice(0, 8).map((tk: any, i: number) => (
+                    ) : localTasks.slice(0, 8).map((tk: any, i: number) => (
                         <TouchableOpacity key={tk.id || i} style={styles.taskRow} onPress={() => completeTask(tk)}
                             accessibilityRole="checkbox" accessibilityState={{ checked: false }} accessibilityLabel={tk.title}>
                             <Ionicons name="ellipse-outline" size={20} color={theme.textSecondary} />
@@ -160,8 +171,23 @@ export function MoreScreen() {
                     </View>
                 </View>
 
+                {/* Settings */}
+                <Text style={[styles.section, { marginTop: 20 }]}>{t('more.settings')}</Text>
+                <View style={styles.card}>
+                    <TouchableOpacity
+                        style={styles.settingsRow}
+                        onPress={() => { haptic.tap(); navigation.navigate('NotificationPrefs'); }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('more.notifPrefs')}
+                    >
+                        <Ionicons name="notifications-outline" size={20} color={theme.accent} />
+                        <Text style={[styles.rowLabel, { flex: 1, marginLeft: 12 }]}>{t('more.notifPrefs')}</Text>
+                        <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                </View>
+
                 {/* Account */}
-                <View style={[styles.card, { marginTop: 20 }]}>
+                <View style={[styles.card, { marginTop: 16 }]}>
                     <Text style={styles.userName}>{user?.name || user?.email}</Text>
                     <Text style={styles.userMeta}>{user?.role}</Text>
                     <TouchableOpacity style={styles.logout} onPress={confirmLogout}
@@ -201,6 +227,8 @@ const styles = StyleSheet.create({
     kpi: { width: '47%', backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1, borderRadius: 12, padding: 14 },
     kpiValue: { color: theme.text, fontSize: 22, fontWeight: '700', marginTop: 8 },
     kpiLabel: { color: theme.textSecondary, fontSize: 12, marginTop: 2 },
+    settingsRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
+    rowLabel: { color: theme.text, fontSize: 14, fontWeight: '600' },
     userName: { color: theme.text, fontSize: 16, fontWeight: '600' },
     userMeta: { color: theme.textSecondary, fontSize: 13, marginTop: 2 },
     logout: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, paddingTop: 14, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth },

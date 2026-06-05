@@ -3,6 +3,8 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { api } from './api';
 import { log } from './log';
+import { isDndActive } from './notifPrefs';
+import type { NotifPrefs } from './notifPrefs';
 
 // Show notifications while the app is foregrounded.
 Notifications.setNotificationHandler({
@@ -69,9 +71,22 @@ export async function registerForPush(): Promise<void> {
  * process is alive (foreground or backgrounded with the socket still connected) —
  * used for real-time handoff alerts. True push when the app is CLOSED still needs
  * an Expo push token (eas init + Android FCM); see registerForPush.
+ *
+ * category: optional key for DND / category preference check (handoff/messages/sla/appointments).
+ * If DND is active or the category is disabled, the notification is silently suppressed.
  */
-export async function presentLocalNotification(title: string, body: string, data?: any) {
+export async function presentLocalNotification(
+    title: string,
+    body: string,
+    data?: any,
+    category?: keyof NotifPrefs['categories'],
+) {
     try {
+        // Respect Do-Not-Disturb and per-category prefs (GATE 0 — UX).
+        if (await isDndActive(category)) {
+            log('[push] local notification suppressed by DND/category prefs');
+            return;
+        }
         await Notifications.scheduleNotificationAsync({
             content: { title, body, data: data || {}, sound: true },
             trigger: null, // deliver now

@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme, LinkingOptions } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { RootNavigator, navigationRef } from './src/navigation/RootNavigator';
 import { ToastProvider } from './src/components/Toast';
@@ -22,6 +23,18 @@ Sentry.init({
     sendDefaultPii: false,
     tracesSampleRate: 0.2,
     attachStacktrace: true,
+});
+
+// React Query client — cache global compartido entre pantallas.
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            staleTime: 60 * 1000,      // 1 min stale-while-revalidate
+            gcTime: 5 * 60 * 1000,     // 5 min en caché tras desmontarse
+            retry: 2,
+            refetchOnWindowFocus: true,
+        },
+    },
 });
 
 const navTheme = {
@@ -90,6 +103,7 @@ function LockGate() {
 function App() {
     return (
         <SafeAreaProvider>
+            <QueryClientProvider client={queryClient}>
             <AuthProvider>
                 <I18nProvider>
                     <ToastProvider>
@@ -103,6 +117,7 @@ function App() {
                     </ToastProvider>
                 </I18nProvider>
             </AuthProvider>
+            </QueryClientProvider>
         </SafeAreaProvider>
     );
 }

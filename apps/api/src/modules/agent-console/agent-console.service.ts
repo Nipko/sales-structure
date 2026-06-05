@@ -269,16 +269,25 @@ export class AgentConsoleService {
         agentId: string,
         content: string,
         type: string = 'text',
+        mediaUrl?: string,
+        caption?: string,
     ): Promise<ConversationMessage> {
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) throw new Error('Tenant not found');
 
+        // Media messages (image/document/audio) carry their URL in metadata so the
+        // timeline can render it; content_text holds the optional caption.
+        const isMedia = !!mediaUrl;
+        const contentType = isMedia ? (type && type !== 'text' ? type : 'image') : (type || 'text');
+        const contentText = isMedia ? (caption || content || '') : content;
+        const metadataJson = isMedia ? JSON.stringify({ mediaUrl, ...(caption || content ? { caption: caption || content } : {}) }) : null;
+
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `INSERT INTO messages (conversation_id, content_text, content_type, direction, status, created_at)
-       VALUES ($1::uuid, $2, $3, 'outbound', 'delivered', NOW())
-       RETURNING id, content_text, content_type, direction, created_at`,
-            [conversationId, content, type],
+            `INSERT INTO messages (conversation_id, content_text, content_type, direction, status, metadata, created_at)
+       VALUES ($1::uuid, $2, $3, 'outbound', 'delivered', $4::jsonb, NOW())
+       RETURNING id, content_text, content_type, direction, created_at, metadata`,
+            [conversationId, contentText, contentType, metadataJson],
         );
 
         const msg = result[0];
@@ -311,13 +320,16 @@ export class AgentConsoleService {
             if (convRows?.[0]) {
                 const conv = convRows[0];
                 const creds = await this.whatsappConnection.getValidAccessToken(schemaName);
+                const outContent: any = isMedia
+                    ? { type: contentType, mediaUrl, caption: caption || content || undefined }
+                    : { type: 'text', text: content };
                 await this.channelGateway.sendMessage(
                     {
                         tenantId,
                         channelType: conv.channel_type || 'whatsapp',
                         channelAccountId: conv.channel_account_id || creds.phoneNumberId,
                         to: conv.phone,
-                        content: { type: 'text', text: content },
+                        content: outContent,
                     },
                     creds.accessToken,
                 );

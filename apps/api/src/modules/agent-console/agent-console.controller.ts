@@ -67,7 +67,7 @@ export class AgentConsoleController {
     async sendMessage(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
-        @Body() body: { agentId: string; content: string; type?: string },
+        @Body() body: { agentId: string; content: string; type?: string; mediaUrl?: string; caption?: string },
     ) {
         const message = await this.agentConsoleService.sendAgentMessage(
             tenantId,
@@ -75,6 +75,8 @@ export class AgentConsoleController {
             body.agentId,
             body.content,
             body.type,
+            body.mediaUrl,
+            body.caption,
         );
         return { success: true, data: message };
     }

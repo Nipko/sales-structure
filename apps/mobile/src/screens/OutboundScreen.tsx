@@ -36,6 +36,16 @@ interface Template {
     components?: any[];
 }
 
+/** components_json puede venir como string JSON o como array ya parseado. */
+function parseComponents(raw: any): any[] {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+        try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; }
+    }
+    return [];
+}
+
 // ── Step indicator ───────────────────────────────────────────────────────────
 function StepBar({ step }: { step: 1 | 2 | 3 }) {
     const { t } = useI18n();
@@ -127,9 +137,19 @@ export function OutboundScreen() {
         if (step !== 2) return;
         setLoadingTemplates(true);
         api.getWhatsappTemplates().then((res: any) => {
-            const list: Template[] = Array.isArray(res?.data) ? res.data : [];
-            // Only approved templates
-            setTemplates(list.filter((t: Template) => t.status?.toLowerCase() === 'approved' || !t.status));
+            // The endpoint returns a RAW array of DB rows (snake_case columns:
+            // approval_status, components_json). Normalize + map to the Template shape.
+            const raw: any[] = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+            const mapped: Template[] = raw.map((r) => ({
+                id: r.id || r.meta_template_id || r.name,
+                name: r.name,
+                language: r.language || r.language_code || 'es',
+                status: r.approval_status || r.status || '',
+                category: r.category || '',
+                components: parseComponents(r.components_json ?? r.components),
+            }));
+            // Only APPROVED templates can actually be sent (Meta rejects the rest).
+            setTemplates(mapped.filter((t) => String(t.status).toLowerCase() === 'approved'));
         }).catch(() => {}).finally(() => setLoadingTemplates(false));
     }, [step]);
 
@@ -153,11 +173,15 @@ export function OutboundScreen() {
         haptic.success();
         setSending(true);
         try {
+            // NOTE: el param `components` del envío son VALORES de variables en runtime,
+            // no la definición de la plantilla. Como la UI no captura variables aún,
+            // enviamos [] → funciona para plantillas SIN variables (Meta rechaza las
+            // que tienen variables sin llenar, y mostramos ese error).
             const res: any = await api.sendWhatsappTemplate(
                 phone.trim(),
                 selectedTemplate.name,
                 selectedTemplate.language,
-                selectedTemplate.components,
+                [],
             );
             if (res?.success || res?.messageId || res?.messages) {
                 toast.success(t('outbound.sent'));
@@ -282,6 +306,8 @@ export function OutboundScreen() {
         const body = selectedTemplate.components?.find((c: any) => c.type === 'BODY');
         const footer = selectedTemplate.components?.find((c: any) => c.type === 'FOOTER');
         const buttons = selectedTemplate.components?.find((c: any) => c.type === 'BUTTONS');
+        // Templates with {{n}} placeholders need variable values we don't capture yet.
+        const hasVars = /\{\{\d+\}\}/.test(body?.text || '');
 
         return (
             <ScrollView contentContainerStyle={{ padding: 16 }}>
@@ -301,11 +327,16 @@ export function OutboundScreen() {
                 </View>
 
                 <Text style={styles.previewNote}>{t('outbound.previewNote')}</Text>
+                {hasVars && (
+                    <Text style={[styles.previewNote, { color: theme.warning, marginTop: 6 }]}>
+                        {t('outbound.varsWarning')}
+                    </Text>
+                )}
 
                 <TouchableOpacity
-                    style={[styles.btn, sending && { opacity: 0.6 }, { marginTop: 24 }]}
+                    style={[styles.btn, (sending || hasVars) && { opacity: 0.6 }, { marginTop: 24 }]}
                     onPress={send}
-                    disabled={sending}
+                    disabled={sending || hasVars}
                     accessibilityRole="button"
                     accessibilityLabel={t('outbound.send')}
                 >

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
     View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
-    KeyboardAvoidingView, Modal, Alert, Image, ScrollView, Linking,
+    KeyboardAvoidingView, Modal, Alert, Image, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -399,7 +399,7 @@ export function ConversationScreen() {
                 </View>
             )}
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.actionBar} contentContainerStyle={{ gap: 8, paddingHorizontal: 12, alignItems: 'center' }}>
+            <View style={styles.actionBar}>
                 <Action icon="information-circle-outline" label={t('conv.action.contact')} color={theme.textSecondary} onPress={() => setContactOpen(true)} />
                 {/* Take control = assign to me (pauses the bot via handoff). Hidden once it's already mine. */}
                 {!resolved && (mode === 'ai' || mode === 'waiting') &&
@@ -414,7 +414,7 @@ export function ConversationScreen() {
                 {!resolved && <Action icon="checkmark-done-outline" label={t('conv.action.resolve')} color={theme.success} onPress={resolve} disabled={acting} />}
                 {resolved && <Action icon="refresh-outline" label={t('conv.action.reopen')} color={theme.accent} onPress={doReopen} disabled={acting} />}
                 {(acting || aiBusy) && <ActivityIndicator color={theme.accent} size="small" />}
-            </ScrollView>
+            </View>
 
             <FlatList
                 ref={listRef}
@@ -649,7 +649,7 @@ const styles = StyleSheet.create({
     channelText: { fontSize: 11, fontWeight: '700' },
     handoffBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.warning + '18', paddingHorizontal: 14, paddingVertical: 10 },
     handoffText: { color: theme.warning, fontSize: 13, flex: 1 },
-    actionBar: { maxHeight: 52, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: theme.bgCard },
+    actionBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, backgroundColor: theme.bgCard },
     actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderColor: theme.border, borderWidth: 1 },
     actionBtnText: { fontSize: 13, fontWeight: '600' },
     bubbleRow: { flexDirection: 'row', marginVertical: 3 },

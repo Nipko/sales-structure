@@ -94,6 +94,8 @@ export class AgentConsoleService {
         tenantId: string,
         agentId: string,
         filter: 'all' | 'mine' | 'unassigned' | 'handoff' | 'resolved' = 'all',
+        limit = 50,
+        offset = 0,
     ): Promise<InboxConversation[]> {
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) return [];
@@ -148,11 +150,13 @@ export class AgentConsoleService {
       WHERE ${baseStatusFilter}
       ${statusFilter}
       ORDER BY ${filter === 'resolved' ? 'c.resolved_at DESC NULLS LAST' : 'm.created_at DESC NULLS LAST'}
-      LIMIT ${filter === 'resolved' ? 200 : 100}`,
+      LIMIT ${limit + 1} OFFSET ${offset}`,
             params,
         );
 
-        return (conversations || []).map((c: any) => ({
+        const hasMore = (conversations || []).length > limit;
+        const page = (conversations || []).slice(0, limit);
+        const items = page.map((c: any) => ({
             id: c.id,
             contactName: c.contact_name || 'Unknown',
             contactPhone: c.contact_phone || '',
@@ -173,6 +177,10 @@ export class AgentConsoleService {
             handoffSummary: c.metadata?.handoff?.summary || null,
             handoffTriggeredAt: c.metadata?.handoff?.startedAt || null,
         }));
+        // Attach hasMore as a non-enumerable property so existing array consumers
+        // still see a plain array, but the controller can forward it.
+        (items as any).__hasMore = hasMore;
+        return items as InboxConversation[];
     }
 
     /**

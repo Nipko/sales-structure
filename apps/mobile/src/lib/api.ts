@@ -192,8 +192,14 @@ export const api = {
     },
 
     // Agent console (inbox)
-    getInbox: (tenantId: string, filter?: string) =>
-        json(`/agent-console/inbox/${tenantId}${filter ? `?filter=${filter}` : ''}`),
+    getInbox: (tenantId: string, filter?: string, opts?: { limit?: number; offset?: number }) => {
+        const params = new URLSearchParams();
+        if (filter) params.set('filter', filter);
+        if (opts?.limit) params.set('limit', String(opts.limit));
+        if (opts?.offset) params.set('offset', String(opts.offset));
+        const qs = params.toString();
+        return json(`/agent-console/inbox/${tenantId}${qs ? `?${qs}` : ''}`);
+    },
     getConversation: (tenantId: string, id: string, opts?: { limit?: number; before?: string }) => {
         const params = new URLSearchParams();
         if (opts?.limit) params.set('limit', String(opts.limit));

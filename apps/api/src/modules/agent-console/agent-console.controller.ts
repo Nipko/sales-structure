@@ -29,9 +29,15 @@ export class AgentConsoleController {
         @Param('tenantId') tenantId: string,
         @Query('agentId') agentId: string,
         @Query('filter') filter: 'all' | 'mine' | 'unassigned' | 'handoff' | 'resolved' = 'all',
+        @Query('limit') limit?: string,
+        @Query('offset') offset?: string,
     ) {
-        const inbox = await this.agentConsoleService.getInbox(tenantId, agentId, filter);
-        return { success: true, data: inbox };
+        const inbox = await this.agentConsoleService.getInbox(
+            tenantId, agentId, filter,
+            limit ? Math.min(parseInt(limit, 10) || 50, 200) : 50,
+            offset ? Math.max(parseInt(offset, 10) || 0, 0) : 0,
+        );
+        return { success: true, data: inbox, hasMore: (inbox as any).__hasMore ?? false };
     }
 
     @Post('conversation/:tenantId/:conversationId/reopen')

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Image, ScrollView, TextInput, Alert, Animated, PanResponder } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { getInboxSocket, getAgentSocket, onInboxStatus, getInboxStatus, type SocketStatus } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,6 +15,8 @@ import { setUnreadTotal } from '../lib/unread';
 import { snoozeUntil } from '../lib/snooze';
 import { theme, channelColor, channelLabel } from '../theme';
 import type { InboxStackParams } from '../navigation/RootNavigator';
+
+const PAGE_SIZE = 50;
 
 interface Conv {
     id: string;
@@ -98,70 +101,123 @@ export function InboxScreen() {
     const toast = useToast();
     const { t } = useI18n();
     const nav = useNavigation<NativeStackNavigationProp<InboxStackParams>>();
-    const [items, setItems] = useState<Conv[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [error, setError] = useState(false);
+    const queryClient = useQueryClient();
     const [filter, setFilter] = useState<string>('all');
     const [channelFilter, setChannelFilter] = useState<string>('all');
     const [unreadOnly, setUnreadOnly] = useState(false);
     const [search, setSearch] = useState('');
     const [live, setLive] = useState<SocketStatus>(getInboxStatus());
+    // Pagination
+    const [page, setPage] = useState(0);
+    const [allItems, setAllItems] = useState<Conv[]>([]);
+    const [hasMore, setHasMore] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
 
     useEffect(() => onInboxStatus(setLive), []);
 
-    const pickFilter = useCallback((key: string) => { haptic.tap(); setFilter(key); }, []);
+    const pickFilter = useCallback((key: string) => {
+        haptic.tap();
+        setFilter(key);
+        setPage(0);
+        setAllItems([]);
+    }, []);
 
-    // `silent` = background reload (socket event / pull-refresh): no spinner, no error view,
-    // just a toast if it fails so a stale list isn't mistaken for fresh.
-    const load = useCallback(async (silent = false) => {
-        if (!tenantId) return;
+    // React Query — page 0 (first 50). Socket events invalidate → background refetch.
+    const queryKey = ['inbox', tenantId, filter];
+    const { data: queryData, isLoading, isFetching, isError, refetch } = useQuery({
+        queryKey,
+        queryFn: async () => {
+            if (!tenantId) return { items: [], hasMore: false };
+            const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: 0 });
+            const list: Conv[] = Array.isArray(res?.data) ? res.data : (res?.data?.conversations || []);
+            return { items: list, hasMore: !!res?.hasMore };
+        },
+        staleTime: 30 * 1000,   // 30s — inbox is real-time via sockets anyway
+        enabled: !!tenantId,
+        throwOnError: false,
+    });
+
+    // Sync page-0 query results into allItems (reset on filter change)
+    useEffect(() => {
+        if (!queryData) return;
+        setPage(0);
+        setAllItems(queryData.items);
+        setHasMore(queryData.hasMore);
+        setUnreadTotal(queryData.items.reduce((s: number, c: Conv) => s + (c.unreadCount || 0), 0));
+    }, [queryData]);
+
+    // Load next page (appended)
+    const loadMore = useCallback(async () => {
+        if (!tenantId || loadingMore || !hasMore) return;
+        setLoadingMore(true);
         try {
-            const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter);
-            const list = Array.isArray(res?.data) ? res.data : (res?.data?.conversations || []);
-            if (res?.success) {
-                setItems(list);
-                // Publish total unread so the Inbox tab can show a badge (QW5).
-                setUnreadTotal(list.reduce((sum: number, c: Conv) => sum + (c.unreadCount || 0), 0));
-            }
-            setError(false);
+            const nextPage = page + 1;
+            const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: nextPage * PAGE_SIZE });
+            const more: Conv[] = Array.isArray(res?.data) ? res.data : [];
+            setAllItems((prev) => {
+                const ids = new Set(prev.map((c) => c.id));
+                return [...prev, ...more.filter((c) => !ids.has(c.id))];
+            });
+            setHasMore(!!res?.hasMore);
+            setPage(nextPage);
         } catch {
-            if (silent) toast.error(t('inbox.refreshError'));
-            else setError(true);
+            toast.error(t('inbox.refreshError'));
         } finally {
-            setLoading(false);
-            setRefreshing(false);
+            setLoadingMore(false);
         }
-    }, [tenantId, filter, toast, t]);
+    }, [tenantId, filter, loadingMore, hasMore, page, toast, t]);
 
-    const retry = useCallback(() => { setLoading(true); setError(false); load(); }, [load]);
+    // Socket events → invalidate React Query (triggers background refetch, page 0)
+    useEffect(() => {
+        const invalidate = () => queryClient.invalidateQueries({ queryKey });
+        const inbox = getInboxSocket();
+        const agent = getAgentSocket();
+        inbox.on('newMessage', invalidate);
+        inbox.on('conversationUpdated', invalidate);
+        agent.on('inbox:refresh', invalidate);
+        agent.on('inbox:handoff', invalidate);
+        return () => {
+            inbox.off('newMessage', invalidate);
+            inbox.off('conversationUpdated', invalidate);
+            agent.off('inbox:refresh', invalidate);
+            agent.off('inbox:handoff', invalidate);
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tenantId, filter]);
 
-    // Quick triage from the list: long-press a row → assign / resolve / snooze,
-    // optimistic (row leaves immediately) + an Undo toast for the destructive ones.
+    const loading = isLoading;
+    const refreshing = isFetching && !isLoading;
+    const error = isError;
+    const items = allItems;
+
+    const retry = useCallback(() => refetch(), [refetch]);
+
+    // Quick triage: long-press → assign / resolve / snooze (optimistic)
     const doQuick = useCallback(async (item: Conv, action: 'assign' | 'resolve' | 'snooze') => {
         if (!tenantId) return;
         if (action === 'assign') {
             if (!user?.id) return;
-            try { await api.assignConversation(tenantId, item.id, user.id); toast.success(t('inbox.qa.assigned')); load(true); }
+            try { await api.assignConversation(tenantId, item.id, user.id); toast.success(t('inbox.qa.assigned')); queryClient.invalidateQueries({ queryKey }); }
             catch { toast.error(t('conv.assignError')); }
             return;
         }
-        const snapshot = items;
-        setItems((prev) => prev.filter((c) => c.id !== item.id)); // optimistic remove
+        const snapshot = allItems;
+        setAllItems((prev) => prev.filter((c) => c.id !== item.id)); // optimistic
         if (action === 'resolve') {
             try {
                 await api.resolveConversation(tenantId, item.id, user?.id);
                 toast.success(t('conv.resolved'), { label: t('common.undo'), onPress: () =>
-                    api.reopenConversation(tenantId, item.id).then(() => load(true)).catch(() => toast.error(t('common.undoError'))) });
-            } catch { setItems(snapshot); toast.error(t('conv.resolveError')); }
+                    api.reopenConversation(tenantId, item.id).then(() => queryClient.invalidateQueries({ queryKey })).catch(() => toast.error(t('common.undoError'))) });
+            } catch { setAllItems(snapshot); toast.error(t('conv.resolveError')); }
         } else {
             try {
                 await api.snoozeConversation(tenantId, item.id, snoozeUntil('tomorrow').toISOString());
                 toast.success(t('conv.snoozed'), { label: t('common.undo'), onPress: () =>
-                    api.unsnoozeConversation(tenantId, item.id).then(() => load(true)).catch(() => toast.error(t('common.undoError'))) });
-            } catch { setItems(snapshot); toast.error(t('conv.snoozeError')); }
+                    api.unsnoozeConversation(tenantId, item.id).then(() => queryClient.invalidateQueries({ queryKey })).catch(() => toast.error(t('common.undoError'))) });
+            } catch { setAllItems(snapshot); toast.error(t('conv.snoozeError')); }
         }
-    }, [tenantId, user?.id, items, toast, t, load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tenantId, user?.id, allItems, toast, t]);
 
     const openQuickActions = useCallback((item: Conv) => {
         haptic.tap();
@@ -172,25 +228,6 @@ export function InboxScreen() {
             { text: t('common.cancel'), style: 'cancel' },
         ]);
     }, [doQuick, t]);
-
-    useEffect(() => { load(); }, [load]);
-
-    useEffect(() => {
-        const reload = () => load(true); // background: don't blank the list / show error view
-        // /inbox → live customer/AI messages; /agent → handoff, assign, resolve.
-        const inbox = getInboxSocket();
-        const agent = getAgentSocket();
-        inbox.on('newMessage', reload);
-        inbox.on('conversationUpdated', reload);
-        agent.on('inbox:refresh', reload);
-        agent.on('inbox:handoff', reload);
-        return () => {
-            inbox.off('newMessage', reload);
-            inbox.off('conversationUpdated', reload);
-            agent.off('inbox:refresh', reload);
-            agent.off('inbox:handoff', reload);
-        };
-    }, [load]);
 
     // Channels actually present in the loaded list → drive the channel filter chips.
     const channelsPresent = Array.from(new Set(items.map((c) => c.channel || 'whatsapp')));
@@ -281,8 +318,11 @@ export function InboxScreen() {
                 <FlatList
                     data={visible}
                     keyExtractor={(c) => c.id}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={theme.accent} />}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => refetch()} tintColor={theme.accent} />}
                     ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{emptyText}</Text></View>}
+                    onEndReached={() => { if (hasMore && !loadingMore && !search) loadMore(); }}
+                    onEndReachedThreshold={0.4}
+                    ListFooterComponent={loadingMore ? <ActivityIndicator color={theme.accent} style={{ marginVertical: 12 }} /> : null}
                     renderItem={({ item }) => {
                         const ch = item.channel || 'whatsapp';
                         const color = channelColor[ch] || theme.accent;

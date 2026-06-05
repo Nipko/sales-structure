@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Alert, Modal, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
@@ -43,10 +44,7 @@ export function AppointmentsScreen() {
     const toast = useToast();
     const { t } = useI18n();
     const insets = useSafeAreaInsets();
-    const [items, setItems] = useState<Appt[]>([]);
     const [services, setServices] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
     const [busy, setBusy] = useState('');
 
     // Detail / reschedule sheet
@@ -69,21 +67,28 @@ export function AppointmentsScreen() {
     const [cContact, setCContact] = useState<{ id: string; name: string } | null>(null);
     const [creating, setCreating] = useState(false);
 
-    const load = useCallback(async () => {
-        if (!tenantId) return;
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        const horizon = new Date(today.getTime() + 14 * 86400000);
-        const params = `start=${today.toISOString()}&end=${horizon.toISOString()}`;
-        const res: any = await api.getAppointments(tenantId, params);
-        const data = res?.success ? (Array.isArray(res.data) ? res.data : res.data?.appointments || []) : [];
-        const upcoming = data
-            .filter((a: Appt) => { const s = start(a); return s && s >= today && a.status !== 'cancelled'; })
-            .sort((a: Appt, b: Appt) => (start(a)!.getTime()) - (start(b)!.getTime()));
-        setItems(upcoming);
-        setLoading(false); setRefreshing(false);
-    }, [tenantId]);
+    // React Query — 14-day appointment window (5 min stale, refetch on focus).
+    const { data: apptData, isLoading: loading, isFetching, refetch } = useQuery({
+        queryKey: ['appointments', tenantId],
+        queryFn: async () => {
+            if (!tenantId) return [];
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const horizon = new Date(today.getTime() + 14 * 86400000);
+            const params = `start=${today.toISOString()}&end=${horizon.toISOString()}`;
+            const res: any = await api.getAppointments(tenantId, params);
+            const data = res?.success ? (Array.isArray(res.data) ? res.data : res.data?.appointments || []) : [];
+            return data
+                .filter((a: Appt) => { const s = start(a); return s && s >= today && a.status !== 'cancelled'; })
+                .sort((a: Appt, b: Appt) => (start(a)!.getTime()) - (start(b)!.getTime())) as Appt[];
+        },
+        staleTime: 5 * 60 * 1000,
+        enabled: !!tenantId,
+        throwOnError: false,
+    });
 
-    useEffect(() => { load(); }, [load]);
+    const items: Appt[] = apptData || [];
+    const refreshing = isFetching && !loading;
+
     useEffect(() => {
         if (!tenantId) return;
         api.getBookableServices(tenantId).then((r: any) => { if (r?.success && Array.isArray(r.data)) setServices(r.data); }).catch(() => {});
@@ -106,7 +111,7 @@ export function AppointmentsScreen() {
     const confirm = async (a: Appt) => {
         if (!tenantId) return;
         setBusy(a.id);
-        try { await api.updateAppointment(tenantId, a.id, { status: 'confirmed' }); toast.success(t('citas.confirmed')); await load(); }
+        try { await api.updateAppointment(tenantId, a.id, { status: 'confirmed' }); toast.success(t('citas.confirmed')); await refetch(); }
         catch { toast.error(t('citas.confirmError')); }
         finally { setBusy(''); }
     };
@@ -116,7 +121,7 @@ export function AppointmentsScreen() {
             { text: t('citas.yesCancel'), style: 'destructive', onPress: async () => {
                 if (!tenantId) return;
                 setBusy(a.id);
-                try { await api.cancelAppointment(tenantId, a.id, t('citas.cancelReason')); toast.success(t('citas.cancelled')); setSelected(null); await load(); }
+                try { await api.cancelAppointment(tenantId, a.id, t('citas.cancelReason')); toast.success(t('citas.cancelled')); setSelected(null); await refetch(); }
                 catch { toast.error(t('citas.cancelError')); }
                 finally { setBusy(''); }
             } },
@@ -157,7 +162,7 @@ export function AppointmentsScreen() {
             if (!r?.success) throw new Error('fail');
             toast.success(t('citas.rescheduled'));
             setSelected(null);
-            await load();
+            await refetch();
         } catch { toast.error(t('citas.rescheduleError')); }
         finally { setRescheduling(false); }
     };
@@ -194,7 +199,7 @@ export function AppointmentsScreen() {
             if (!r?.success) throw new Error('fail');
             toast.success(t('citas.created'));
             setCreateOpen(false);
-            await load();
+            await refetch();
         } catch { toast.error(t('citas.createError')); }
         finally { setCreating(false); }
     };
@@ -211,7 +216,7 @@ export function AppointmentsScreen() {
                 data={items}
                 keyExtractor={(a) => a.id}
                 contentContainerStyle={{ paddingBottom: 24 }}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={theme.accent} />}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => refetch()} tintColor={theme.accent} />}
                 ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{t('citas.empty')}</Text></View>}
                 renderItem={({ item }) => {
                     const s = start(item);

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, Modal, TextInput, Linking, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
@@ -30,11 +31,9 @@ export function PipelineScreen() {
     const toast = useToast();
     const { t } = useI18n();
     const insets = useSafeAreaInsets();
-    const [stages, setStages] = useState<Stage[]>([]);
-    const [groups, setGroups] = useState<Record<string, Deal[]>>({});
     const [active, setActive] = useState<string>('');
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
+    const queryClient = useQueryClient();
+    const pipelineQKey = ['pipeline', tenantId];
 
     // Deal detail sheet state
     const [detail, setDetail] = useState<Deal | null>(null);
@@ -44,29 +43,39 @@ export function PipelineScreen() {
     const [agentsOpen, setAgentsOpen] = useState(false);
     const [agents, setAgents] = useState<any[]>([]);
 
-    const load = useCallback(async () => {
-        if (!tenantId) return;
-        const [s, k]: any[] = await Promise.all([api.getPipelineStages(tenantId), api.getKanban(tenantId)]);
-        const stageList: Stage[] = s?.success ? (Array.isArray(s.data) ? s.data : s.data?.stages || []) : [];
-        setStages(stageList);
-
-        const g: Record<string, Deal[]> = {};
-        const kd = k?.data ?? k;
-        const cols = Array.isArray(kd) ? kd : (kd?.stages || kd?.columns || []);
-        if (Array.isArray(cols) && cols.length) {
-            for (const col of cols) {
-                const key = col.id || col.stageId || col.stage || col.slug;
-                g[key] = col.deals || col.items || [];
+    // React Query: stages + kanban in parallel (2min stale).
+    const { data: pipelineData, isLoading: loading, isFetching, refetch } = useQuery({
+        queryKey: pipelineQKey,
+        queryFn: async () => {
+            if (!tenantId) return { stages: [], groups: {} };
+            const [s, k]: any[] = await Promise.all([api.getPipelineStages(tenantId), api.getKanban(tenantId)]);
+            const stageList: Stage[] = s?.success ? (Array.isArray(s.data) ? s.data : s.data?.stages || []) : [];
+            const g: Record<string, Deal[]> = {};
+            const kd = k?.data ?? k;
+            const cols = Array.isArray(kd) ? kd : (kd?.stages || kd?.columns || []);
+            if (Array.isArray(cols) && cols.length) {
+                for (const col of cols) {
+                    const key = col.id || col.stageId || col.stage || col.slug;
+                    g[key] = col.deals || col.items || [];
+                }
+            } else if (kd && typeof kd === 'object') {
+                for (const key of Object.keys(kd)) if (Array.isArray(kd[key])) g[key] = kd[key];
             }
-        } else if (kd && typeof kd === 'object') {
-            for (const key of Object.keys(kd)) if (Array.isArray(kd[key])) g[key] = kd[key];
-        }
-        setGroups(g);
-        if (!active && stageList.length) setActive(stageList[0].id);
-        setLoading(false); setRefreshing(false);
-    }, [tenantId, active]);
+            return { stages: stageList, groups: g };
+        },
+        staleTime: 2 * 60 * 1000,
+        enabled: !!tenantId,
+        throwOnError: false,
+    });
 
-    useEffect(() => { load(); }, [load]);
+    const stages = pipelineData?.stages ?? [];
+    const groups = pipelineData?.groups ?? {};
+    const refreshing = isFetching && !loading;
+
+    // Set the first stage as active when stages load for the first time.
+    useEffect(() => {
+        if (!active && stages.length) setActive(stages[0].id);
+    }, [stages, active]);
 
     const dealsFor = (st: Stage): Deal[] => groups[st.id] || groups[st.slug || ''] || [];
     const activeStage = useMemo(() => stages.find((s) => s.id === active), [stages, active]);
@@ -95,7 +104,7 @@ export function PipelineScreen() {
             await api.moveDeal(tenantId, detail.id, stageId);
             toast.success(t('pipeline.moved'));
             closeDetail();
-            await load();
+            queryClient.invalidateQueries({ queryKey: pipelineQKey });
         } catch { toast.error(t('pipeline.moveError')); }
         finally { setBusy(false); }
     };
@@ -127,7 +136,7 @@ export function PipelineScreen() {
             await api.moveDeal(tenantId, detail.id, detailStageId || detail.stage_id || '', agentId);
             toast.success(t('pipeline.assigned'));
             closeDetail();
-            await load();
+            queryClient.invalidateQueries({ queryKey: pipelineQKey });
         } catch { toast.error(t('pipeline.assignError')); }
         finally { setBusy(false); }
     };
@@ -154,7 +163,7 @@ export function PipelineScreen() {
                 data={activeDeals}
                 keyExtractor={(d) => d.id}
                 contentContainerStyle={{ padding: 12 }}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={theme.accent} />}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => refetch()} tintColor={theme.accent} />}
                 ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{t('pipeline.empty')}</Text></View>}
                 renderItem={({ item }) => (
                     <TouchableOpacity style={styles.card} onPress={() => openDetail(item, active)}

@@ -3,6 +3,7 @@ import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Linking, Touchab
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useKeyboardSpace } from '../lib/useKeyboardSpace';
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
@@ -26,10 +27,7 @@ export function LeadDetailScreen() {
     const { t } = useI18n();
     const toast = useToast();
     const kbSpace = useKeyboardSpace();
-    const [data, setData] = useState<any>(null);
-    const [notes, setNotes] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [tasks, setTasks] = useState<any[]>([]);
+    const queryClient = useQueryClient();
     const [tagInput, setTagInput] = useState('');
     const [noteText, setNoteText] = useState('');
     const [taskTitle, setTaskTitle] = useState('');
@@ -37,50 +35,59 @@ export function LeadDetailScreen() {
     const [savingNote, setSavingNote] = useState(false);
     const [savingTask, setSavingTask] = useState(false);
 
-    const loadNotes = useCallback(async () => {
-        if (!tenantId) return;
-        try {
-            const r: any = await api.getLeadNotes(tenantId, leadId);
-            if (r?.success) setNotes(Array.isArray(r.data) ? r.data : (r.data?.notes || []));
-        } catch { /* non-critical: notes just stay empty */ }
-    }, [tenantId, leadId]);
+    const leadQKey = ['lead', tenantId, leadId];
 
-    const loadTasks = useCallback(async () => {
-        if (!tenantId) return;
-        try {
-            const r: any = await api.getTasks(tenantId, `leadId=${leadId}`);
-            if (r?.success) setTasks(Array.isArray(r.data) ? r.data : (r.data?.tasks || []));
-        } catch { /* non-critical: tasks just stay empty */ }
-    }, [tenantId, leadId]);
+    // React Query: lead detail + notes + tasks in parallel (3min stale).
+    const { data: leadResult, isLoading: loading } = useQuery({
+        queryKey: leadQKey,
+        queryFn: async () => {
+            if (!tenantId) return { lead: null, notes: [], tasks: [] };
+            const [res, rNotes, rTasks]: any[] = await Promise.all([
+                api.getLead(tenantId, leadId),
+                api.getLeadNotes(tenantId, leadId),
+                api.getTasks(tenantId, `leadId=${leadId}`),
+            ]);
+            return {
+                lead: res?.success ? res.data : null,
+                notes: rNotes?.success ? (Array.isArray(rNotes.data) ? rNotes.data : (rNotes.data?.notes || [])) : [],
+                tasks: rTasks?.success ? (Array.isArray(rTasks.data) ? rTasks.data : (rTasks.data?.tasks || [])) : [],
+            };
+        },
+        staleTime: 3 * 60 * 1000,
+        enabled: !!tenantId,
+        throwOnError: false,
+    });
 
-    const load = useCallback(async () => {
-        if (!tenantId) return;
-        try {
-            const res: any = await api.getLead(tenantId, leadId);
-            if (res?.success) setData(res.data);
-        } catch {
-            toast.error(t('common.loadError'));
-        } finally {
-            setLoading(false);
-        }
-    }, [tenantId, leadId, toast, t]);
+    const data = leadResult?.lead ?? null;
+    const notes = leadResult?.notes ?? [];
+    const tasks = leadResult?.tasks ?? [];
 
-    useEffect(() => { load(); loadNotes(); loadTasks(); }, [load, loadNotes, loadTasks]);
+    const invalidateLead = useCallback(() =>
+        queryClient.invalidateQueries({ queryKey: leadQKey }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tenantId, leadId]);
 
-    // Persist a new tag set (the backend takes the full array on PUT /crm/leads).
+    // Persist a new tag set — optimistic update in the query cache.
     const saveTags = useCallback(async (names: string[]) => {
         if (!tenantId) return;
-        const prevTags = tagNamesOf(data?.tags); // capture only tags, not the whole record
-        setData((d: any) => (d ? { ...d, tags: names.map((n) => ({ name: n })) } : d)); // optimistic
+        const prevTags = tagNamesOf(data?.tags);
+        // Optimistic
+        queryClient.setQueryData(leadQKey, (old: any) => old ? {
+            ...old, lead: old.lead ? { ...old.lead, tags: names.map((n) => ({ name: n })) } : old.lead,
+        } : old);
         setSavingTag(true);
         try {
             const r: any = await api.updateLead(tenantId, leadId, { tags: names });
             if (!r?.success) throw new Error('fail');
             toast.success(t('crm.tagsUpdated'));
         } catch {
-            setData((d: any) => (d ? { ...d, tags: prevTags.map((n) => ({ name: n })) } : d)); // rollback tags only
+            // Rollback
+            queryClient.setQueryData(leadQKey, (old: any) => old ? {
+                ...old, lead: old.lead ? { ...old.lead, tags: prevTags.map((n) => ({ name: n })) } : old.lead,
+            } : old);
             toast.error(t('crm.tagUpdateError'));
         } finally { setSavingTag(false); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tenantId, leadId, data, toast, t]);
 
     const addTag = () => {
@@ -105,7 +112,7 @@ export function LeadDetailScreen() {
             if (!r?.success) throw new Error('fail');
             setNoteText('');
             toast.success(t('crm.noteAdded'));
-            loadNotes();
+            invalidateLead();
         } catch {
             toast.error(t('crm.noteError'));
         } finally { setSavingNote(false); }
@@ -120,7 +127,7 @@ export function LeadDetailScreen() {
             if (!r?.success) throw new Error('fail');
             setTaskTitle('');
             toast.success(t('crm.taskAdded'));
-            loadTasks();
+            invalidateLead();
         } catch {
             toast.error(t('crm.taskError'));
         } finally { setSavingTask(false); }
@@ -130,13 +137,21 @@ export function LeadDetailScreen() {
         const done = isTaskDone(tk);
         const next = done ? 'pending' : 'completed';
         haptic.tap();
-        setTasks((prev) => prev.map((x) => (x.id === tk.id ? { ...x, status: next } : x))); // optimistic
+        // Optimistic update in query cache
+        queryClient.setQueryData(leadQKey, (old: any) => old ? {
+            ...old,
+            tasks: (old.tasks || []).map((x: any) => (x.id === tk.id ? { ...x, status: next } : x)),
+        } : old);
         try {
             const r: any = await api.updateTaskStatus(tenantId, tk.id, next);
             if (!r?.success) throw new Error('fail');
             toast.success(done ? t('crm.taskReopened') : t('crm.taskDone'));
         } catch {
-            setTasks((prev) => prev.map((x) => (x.id === tk.id ? { ...x, status: tk.status } : x))); // rollback
+            // Rollback
+            queryClient.setQueryData(leadQKey, (old: any) => old ? {
+                ...old,
+                tasks: (old.tasks || []).map((x: any) => (x.id === tk.id ? { ...x, status: tk.status } : x)),
+            } : old);
             toast.error(t('crm.taskStatusError'));
         }
     };
@@ -147,7 +162,7 @@ export function LeadDetailScreen() {
     const l = data.lead;
     const name = `${l.first_name || ''} ${l.last_name || ''}`.trim() || l.contact_name || 'Lead';
     const opps = data.opportunities || [];
-    const tags = tagNamesOf(data.tags);
+    const tags = tagNamesOf(data.lead?.tags ?? data.tags);
     const archived = !!(l.is_archived || l.archived_at);
 
     const toggleArchive = () => {
@@ -164,7 +179,7 @@ export function LeadDetailScreen() {
                         try {
                             const r: any = archived ? await api.restoreLead(tenantId, leadId) : await api.archiveLead(tenantId, leadId);
                             if (!r?.success) throw new Error('fail');
-                            if (archived) { toast.success(t('crm.restored')); load(); }
+                            if (archived) { toast.success(t('crm.restored')); invalidateLead(); }
                             else { toast.success(t('crm.archived')); nav.goBack(); }
                         } catch {
                             toast.error(archived ? t('crm.restoreError') : t('crm.archiveError'));

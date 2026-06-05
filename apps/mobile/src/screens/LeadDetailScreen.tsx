@@ -162,7 +162,9 @@ export function LeadDetailScreen() {
     const l = data.lead;
     const name = `${l.first_name || ''} ${l.last_name || ''}`.trim() || l.contact_name || 'Lead';
     const opps = data.opportunities || [];
-    const tags = tagNamesOf(data.lead?.tags ?? data.tags);
+    // tags live at the response top-level (data.tags); the optimistic saveTags
+    // update writes there, so read it directly (don't prefer the stale record copy).
+    const tags = tagNamesOf(data.tags);
     const archived = !!(l.is_archived || l.archived_at);
 
     const toggleArchive = () => {

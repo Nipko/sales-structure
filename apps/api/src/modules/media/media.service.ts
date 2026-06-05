@@ -47,8 +47,18 @@ const DOC_EXT: Record<string, string> = {
     'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
     'text/plain': '.txt', 'text/csv': '.csv', 'application/zip': '.zip',
 };
+// Audio (voice notes from the mobile app). Stored as-is, sent outbound as WhatsApp audio.
+const AUDIO_MIME_TYPES = [
+    'audio/mp4', 'audio/aac', 'audio/m4a', 'audio/x-m4a',
+    'audio/mpeg', 'audio/ogg', 'audio/amr', 'audio/wav', 'audio/webm',
+];
+const AUDIO_EXT: Record<string, string> = {
+    'audio/mp4': '.m4a', 'audio/aac': '.aac', 'audio/m4a': '.m4a', 'audio/x-m4a': '.m4a',
+    'audio/mpeg': '.mp3', 'audio/ogg': '.ogg', 'audio/amr': '.amr', 'audio/wav': '.wav', 'audio/webm': '.webm',
+};
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB (images)
 const MAX_DOC_SIZE = 25 * 1024 * 1024; // 25MB (documents)
+const MAX_AUDIO_SIZE = 16 * 1024 * 1024; // 16MB (WhatsApp audio limit)
 const THUMB_WIDTH = 200;
 const MAX_WIDTH = 1200;
 
@@ -94,7 +104,8 @@ export class MediaService {
         }
         const isImage = ALLOWED_MIME_TYPES.includes(file.mimetype);
         const isDoc = DOCUMENT_MIME_TYPES.includes(file.mimetype);
-        if (!isImage && !isDoc) {
+        const isAudio = AUDIO_MIME_TYPES.includes(file.mimetype);
+        if (!isImage && !isDoc && !isAudio) {
             throw new BadRequestException(`Tipo de archivo no permitido: ${file.mimetype}.`);
         }
         if (isImage && file.size > MAX_FILE_SIZE) {
@@ -107,14 +118,19 @@ export class MediaService {
                 `El archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El maximo permitido es 25 MB.`,
             );
         }
+        if (isAudio && file.size > MAX_AUDIO_SIZE) {
+            throw new BadRequestException(
+                `El audio pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El maximo permitido es 16 MB.`,
+            );
+        }
 
         const id = randomUUID();
         const tenantDir = path.join(this.storagePath, tenantId);
         fs.mkdirSync(tenantDir, { recursive: true });
 
-        // Documents/files: store as-is (no image processing), keep original mime + name.
-        if (isDoc) {
-            const ext = DOC_EXT[file.mimetype] || path.extname(file.originalname || '') || '';
+        // Documents + audio: store as-is (no image processing), keep original mime + name.
+        if (isDoc || isAudio) {
+            const ext = DOC_EXT[file.mimetype] || AUDIO_EXT[file.mimetype] || path.extname(file.originalname || '') || '';
             const docName = `${id}${ext}`;
             fs.writeFileSync(path.join(tenantDir, docName), file.buffer);
             const size = file.buffer.length;

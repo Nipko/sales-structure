@@ -145,6 +145,9 @@ export class MediaController {
             '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
             '.txt': 'text/plain', '.csv': 'text/csv', '.zip': 'application/zip',
+            // Audio (voice notes) — Meta validates the type when fetching the link.
+            '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.mp3': 'audio/mpeg',
+            '.ogg': 'audio/ogg', '.amr': 'audio/amr', '.wav': 'audio/wav', '.webm': 'audio/webm',
         };
         const ext = fileName.slice(fileName.lastIndexOf('.')).toLowerCase();
         const contentType = EXT_MIME[ext] || 'application/octet-stream';

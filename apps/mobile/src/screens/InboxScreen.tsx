@@ -137,13 +137,20 @@ export function InboxScreen() {
         throwOnError: false,
     });
 
-    // Sync page-0 query results into allItems (reset on filter change)
+    // Sync page-0 query results into allItems. On a background refetch (socket event)
+    // while the user has paginated, refresh the TOP page in place and keep the
+    // already-loaded older pages — otherwise the list would snap back to 50 items.
     useEffect(() => {
         if (!queryData) return;
-        setPage(0);
-        setAllItems(queryData.items);
-        setHasMore(queryData.hasMore);
+        setAllItems((prev) => {
+            if (page === 0) return queryData.items;
+            const freshIds = new Set(queryData.items.map((c) => c.id));
+            const tail = prev.filter((c) => !freshIds.has(c.id));
+            return [...queryData.items, ...tail];
+        });
+        if (page === 0) setHasMore(queryData.hasMore); // don't clobber the tail's hasMore
         setUnreadTotal(queryData.items.reduce((s: number, c: Conv) => s + (c.unreadCount || 0), 0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [queryData]);
 
     // Load next page (appended)

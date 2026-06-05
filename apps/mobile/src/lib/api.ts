@@ -96,6 +96,27 @@ async function authFetch(path: string, options: RequestInit = {}): Promise<Respo
     return res;
 }
 
+// Multipart upload (no JSON content-type so fetch sets the multipart boundary).
+// Mirrors authFetch's single 401-refresh-retry.
+async function authFetchForm(path: string, form: FormData): Promise<Response> {
+    const { access } = await tokens.get();
+    const headers: Record<string, string> = {};
+    if (access) headers.Authorization = `Bearer ${access}`;
+    let res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: form as any });
+    if (res.status === 401 && access) {
+        if (!refreshing) refreshing = doRefresh();
+        const newToken = await refreshing;
+        refreshing = null;
+        if (newToken) {
+            headers.Authorization = `Bearer ${newToken}`;
+            res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: form as any });
+        } else {
+            authFailureHandler?.();
+        }
+    }
+    return res;
+}
+
 async function json<T = any>(path: string, options?: RequestInit): Promise<{ success: boolean; data?: T; error?: string }> {
     try {
         const res = await authFetch(path, options);
@@ -166,6 +187,21 @@ export const api = {
     sendMessage: (tenantId: string, id: string, content: string, agentId?: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/message`, {
             method: 'POST', body: JSON.stringify({ content, agentId }),
+        }),
+    // Outbound media: upload the file, then send a message carrying its URL.
+    uploadMedia: async (tenantId: string, asset: { uri: string; fileName?: string; mimeType?: string }) => {
+        try {
+            const form = new FormData();
+            form.append('file', { uri: asset.uri, name: asset.fileName || `photo_${Date.now()}.jpg`, type: asset.mimeType || 'image/jpeg' } as any);
+            const res = await authFetchForm(`/media/upload/${tenantId}`, form);
+            return await res.json();
+        } catch (e: any) {
+            return { success: false, error: e?.message || 'upload_error' };
+        }
+    },
+    sendMediaMessage: (tenantId: string, id: string, mediaUrl: string, caption: string, agentId?: string) =>
+        json(`/agent-console/conversation/${tenantId}/${id}/message`, {
+            method: 'POST', body: JSON.stringify({ agentId, content: caption || '', type: 'image', mediaUrl, caption }),
         }),
     assignConversation: (tenantId: string, id: string, agentId: string) =>
         json(`/agent-console/conversation/${tenantId}/${id}/assign`, {

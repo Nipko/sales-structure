@@ -54,6 +54,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         '@react-native-google-signin/google-signin',
         '@sentry/react-native',
         'expo-localization',
+        [
+            'expo-image-picker',
+            {
+                photosPermission: 'Permite adjuntar imágenes de tu galería a las conversaciones.',
+                cameraPermission: 'Permite tomar fotos para enviarlas en las conversaciones.',
+            },
+        ],
     ],
     extra: {
         eas: { projectId: '5a6f6dab-dec2-44e0-b00a-58e77c909501' },

@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { api } from '../lib/api';
 import { getInboxSocket, getAgentSocket } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
@@ -288,6 +289,45 @@ export function ConversationScreen() {
             toast.info(t('conv.queued'));
         } finally { setSending(false); }
     };
+    // Outbound media: pick from camera/gallery → upload → send as image message.
+    const pickFrom = async (source: 'camera' | 'gallery') => {
+        if (!tenantId) return;
+        try {
+            let res: ImagePicker.ImagePickerResult;
+            if (source === 'camera') {
+                const p = await ImagePicker.requestCameraPermissionsAsync();
+                if (!p.granted) { toast.error(t('conv.cameraPerm')); return; }
+                res = await ImagePicker.launchCameraAsync({ quality: 0.6 });
+            } else {
+                const p = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                if (!p.granted) { toast.error(t('conv.galleryPerm')); return; }
+                res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.6 });
+            }
+            if (res.canceled || !res.assets?.[0]) return;
+            const asset = res.assets[0];
+            setSending(true);
+            const up: any = await api.uploadMedia(tenantId, { uri: asset.uri, fileName: asset.fileName || undefined, mimeType: asset.mimeType || undefined });
+            const url = up?.data?.url;
+            if (!up?.success || !url) { toast.error(t('conv.mediaError')); return; }
+            const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;
+            const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', user?.id);
+            if (!r?.success) throw new Error('fail');
+            haptic.success();
+            load();
+        } catch {
+            toast.error(t('conv.mediaError'));
+        } finally {
+            setSending(false);
+        }
+    };
+    const attachImage = () => {
+        Alert.alert(t('conv.attachTitle'), undefined, [
+            { text: t('conv.fromCamera'), onPress: () => pickFrom('camera') },
+            { text: t('conv.fromGallery'), onPress: () => pickFrom('gallery') },
+            { text: t('common.cancel'), style: 'cancel' },
+        ]);
+    };
+
     // ✨ context-aware: empty draft → suggest; with draft → rewrite tones.
     const aiButton = async () => {
         if (text.trim()) { setToneOpen(true); return; }
@@ -421,6 +461,9 @@ export function ConversationScreen() {
                 {macros.length > 0 && (
                     <TouchableOpacity onPress={() => setMacrosOpen(true)} style={styles.iconBtn} disabled={acting} accessibilityRole="button" accessibilityLabel={t('conv.macrosBtn')}><Ionicons name="flash-outline" size={22} color={theme.warning} /></TouchableOpacity>
                 )}
+                <TouchableOpacity onPress={attachImage} style={styles.iconBtn} disabled={sending} accessibilityRole="button" accessibilityLabel={t('conv.attach')}>
+                    <Ionicons name="image-outline" size={22} color={theme.textSecondary} />
+                </TouchableOpacity>
                 <TouchableOpacity onPress={aiButton} style={styles.iconBtn} disabled={aiBusy} accessibilityRole="button" accessibilityLabel={t('conv.aiAssist')}>
                     {aiBusy ? <ActivityIndicator color={theme.accent} size="small" /> : <Ionicons name="sparkles-outline" size={22} color={theme.accent} />}
                 </TouchableOpacity>

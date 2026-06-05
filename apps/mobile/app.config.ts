@@ -2,11 +2,16 @@ import { ExpoConfig, ConfigContext } from 'expo/config';
 import * as fs from 'fs';
 
 /**
- * FCM credentials for Android push. Referenced only once you've downloaded
- * google-services.json from Firebase into apps/mobile/ — until then it's omitted
- * so `expo run:android` / prebuild don't fail looking for a missing file.
+ * FCM credentials for Android push (google-services.json).
+ * - Local: el archivo vive en apps/mobile/google-services.json (gitignored).
+ * - EAS: se inyecta como file-secret → la env var GOOGLE_SERVICES_JSON apunta a
+ *   su ruta en el build. Crear con:
+ *     eas secret:create --scope project --type file \
+ *       --name GOOGLE_SERVICES_JSON --value ./google-services.json
+ * Si no existe (ni archivo ni env), se omite para no romper prebuild.
  */
-const hasFcm = fs.existsSync('./google-services.json');
+const googleServicesPath = process.env.GOOGLE_SERVICES_JSON || './google-services.json';
+const hasFcm = fs.existsSync(googleServicesPath);
 
 /**
  * Parallly Mobile (agents) — Expo config.
@@ -37,7 +42,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
     android: {
         package: 'cloud.parallly.mobile',
-        ...(hasFcm ? { googleServicesFile: './google-services.json' } : {}),
+        ...(hasFcm ? { googleServicesFile: googleServicesPath } : {}),
         adaptiveIcon: {
             foregroundImage: './assets/adaptive-icon.png',
             backgroundImage: './assets/adaptive-bg.png',

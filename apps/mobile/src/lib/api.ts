@@ -331,5 +331,17 @@ export const api = {
     // Contacts search (for outbound contact picker)
     searchContacts: (tenantId: string, query: string) =>
         json(`/crm/leads/${tenantId}?search=${encodeURIComponent(query)}&limit=20`),
+
+    // AI utilities
+    translateText: (tenantId: string, text: string, targetLanguage = 'es') =>
+        json(`/agent-console/translate/${tenantId}`, {
+            method: 'POST',
+            body: JSON.stringify({ text, targetLanguage }),
+        }),
+    scanBusinessCard: (tenantId: string, imageBase64: string, mimeType = 'image/jpeg') =>
+        json(`/agent-console/scan-card/${tenantId}`, {
+            method: 'POST',
+            body: JSON.stringify({ imageBase64, mimeType }),
+        }),
 };
 

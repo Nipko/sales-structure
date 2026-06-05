@@ -69,6 +69,11 @@ export function ConversationScreen() {
     const [loading, setLoading] = useState(true);
     const [hasMore, setHasMore] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
+    // Reply / quote
+    const [replyTo, setReplyTo] = useState<Msg | null>(null);
+    // Inline translations: msgId → translated text
+    const [translations, setTranslations] = useState<Record<string, string>>({});
+    const [translating, setTranslating] = useState<string | null>(null); // msgId being translated
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
     const [aiBusy, setAiBusy] = useState(false);
@@ -312,9 +317,45 @@ export function ConversationScreen() {
             toast.error(t('conv.summaryError'));
         } finally { setAiBusy(false); }
     };
+    // ── Long-press context actions ────────────────────────────────────────────
+    const translateMsg = async (msg: Msg) => {
+        if (!tenantId || translations[msg.id] || translating) return;
+        setTranslating(msg.id);
+        try {
+            const res: any = await api.translateText(tenantId, msg.content);
+            if (res?.success && res.data?.translation) {
+                setTranslations((prev) => ({ ...prev, [msg.id]: res.data.translation }));
+            } else {
+                toast.error(t('conv.translateError'));
+            }
+        } catch {
+            toast.error(t('conv.translateError'));
+        } finally {
+            setTranslating(null);
+        }
+    };
+
+    const onMsgLongPress = (msg: Msg) => {
+        haptic.tap();
+        const opts: { text: string; onPress: () => void }[] = [
+            { text: t('conv.reply'), onPress: () => setReplyTo(msg) },
+        ];
+        // Translation only for inbound messages (customer text, not audio/image)
+        if (msg.sender !== 'outbound' && msg.content && msg.type !== 'image' && msg.type !== 'audio' && msg.type !== 'voice') {
+            opts.push({ text: t('conv.translate'), onPress: () => translateMsg(msg) });
+        }
+        opts.push({ text: t('common.cancel'), onPress: () => {} });
+        Alert.alert('', '', opts.map((o) => ({ text: o.text, onPress: o.onPress })));
+    };
+
     const send = async () => {
         if (!text.trim() || !tenantId || sending) return;
-        const body = text.trim(); setText(''); setSending(true);
+        // Prepend quote if replying
+        const body = replyTo
+            ? `↩ "${replyTo.content.slice(0, 60)}${replyTo.content.length > 60 ? '…' : ''}"\n\n${text.trim()}`
+            : text.trim();
+        setReplyTo(null);
+        setText(''); setSending(true);
         const tmpId = `tmp-${Date.now()}`;
         setMessages((prev) => [...prev, { id: tmpId, sender: 'outbound', content: body, timestamp: new Date().toISOString() }]);
         try {
@@ -508,11 +549,14 @@ export function ConversationScreen() {
                     const docUrl = item.type === 'document' ? mediaUrl(item.metadata) : null;
                     const docName = item.metadata?.filename || item.metadata?.fileName;
                     const isAudio = item.type === 'audio' || item.type === 'voice';
+                    const xlat = translations[item.id];
+                    const isTranslating = translating === item.id;
                     return (
                         <View style={[styles.bubbleRow, { justifyContent: out ? 'flex-end' : 'flex-start' }]}>
-                            <TouchableOpacity activeOpacity={item.failed ? 0.6 : 1}
-                                disabled={!item.failed}
+                            <TouchableOpacity activeOpacity={0.8}
                                 onPress={item.failed ? () => { haptic.tap(); retryOutbox(item.id); } : undefined}
+                                onLongPress={() => onMsgLongPress(item as Msg)}
+                                delayLongPress={350}
                                 accessibilityRole={item.failed ? 'button' : undefined}
                                 accessibilityLabel={item.failed ? t('conv.tapRetry') : undefined}
                                 style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn, item.failed && styles.bubbleFailed]}>
@@ -525,6 +569,14 @@ export function ConversationScreen() {
                                 )}
                                 {isAudio && <Text style={styles.mediaTag}>🎤 {t('conv.voiceNote')}</Text>}
                                 {!!item.content && <Text style={[styles.bubbleText, item.pending && { opacity: 0.7 }]}>{item.content}</Text>}
+                                {/* Inline translation */}
+                                {isTranslating && <ActivityIndicator size="small" color={out ? '#fff' : theme.accent} style={{ marginTop: 4 }} />}
+                                {xlat && (
+                                    <View style={styles.xlat}>
+                                        <Text style={styles.xlatLabel}>🌐</Text>
+                                        <Text style={styles.xlatText}>{xlat}</Text>
+                                    </View>
+                                )}
                                 <View style={styles.bubbleMeta}>
                                     {item.failed
                                         ? <Text style={styles.retryHint}><Ionicons name="alert-circle" size={11} color={theme.danger} /> {t('conv.tapRetry')}</Text>
@@ -537,6 +589,19 @@ export function ConversationScreen() {
                     );
                 }}
             />
+
+            {/* Reply / Quote strip */}
+            {replyTo && (
+                <View style={styles.replyStrip}>
+                    <View style={styles.replyBar} />
+                    <Text style={styles.replyLabel} numberOfLines={1}>
+                        ↩ {replyTo.content.slice(0, 80)}{replyTo.content.length > 80 ? '…' : ''}
+                    </Text>
+                    <TouchableOpacity onPress={() => setReplyTo(null)} style={{ paddingLeft: 8 }} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+                        <Ionicons name="close" size={18} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                </View>
+            )}
 
             <View style={styles.composer}>
                 {canned.length > 0 && (
@@ -777,4 +842,12 @@ const styles = StyleSheet.create({
     tagText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
     agentRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     agentDot: { width: 9, height: 9, borderRadius: 5 },
+    // Reply strip
+    replyStrip: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.bgCard, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 8 },
+    replyBar: { width: 3, height: '100%', backgroundColor: theme.accent, borderRadius: 2, marginRight: 8 },
+    replyLabel: { flex: 1, color: theme.textSecondary, fontSize: 13 },
+    // Inline translation
+    xlat: { marginTop: 6, paddingTop: 6, borderTopColor: 'rgba(255,255,255,0.2)', borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: 4 },
+    xlatLabel: { fontSize: 12 },
+    xlatText: { color: theme.textSecondary, fontSize: 13, flex: 1, fontStyle: 'italic' },
 });

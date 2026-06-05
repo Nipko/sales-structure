@@ -540,6 +540,68 @@ Responde SOLO con el texto de la sugerencia, sin explicaciones adicionales.`,
         }
     }
 
+    /** Translate text to targetLanguage using the LLM router. */
+    async translateText(tenantId: string, text: string, targetLanguage = 'es'): Promise<string> {
+        if (!text?.trim()) return text;
+        const LANG: Record<string, string> = {
+            es: 'Spanish', en: 'English', pt: 'Portuguese', fr: 'French',
+            de: 'German', it: 'Italian', zh: 'Chinese', ja: 'Japanese', ar: 'Arabic',
+        };
+        const lang = LANG[targetLanguage] || targetLanguage;
+        try {
+            const res = await this.llmRouter.execute({
+                model: 'gpt-4o-mini',
+                messages: [{ role: 'user', content: text }],
+                systemPrompt: `You are a professional translator. Translate the following text to ${lang}.
+Rules: return ONLY the translated text, no explanations, no quotes, preserve formatting.`,
+                temperature: 0.2,
+                maxTokens: 600,
+                tenantId,
+            });
+            return (res.content || text).trim();
+        } catch (e: any) {
+            this.logger.warn(`translateText failed: ${e.message}`);
+            return text;
+        }
+    }
+
+    /** Extract contact information from a base64-encoded business card image. */
+    async scanBusinessCard(
+        tenantId: string,
+        imageBase64: string,
+        mimeType = 'image/jpeg',
+    ): Promise<{ name?: string; phone?: string; email?: string; company?: string; title?: string; website?: string; address?: string }> {
+        try {
+            // Resolve provider (reuse the same logic as ImageVisionService — call LLM directly
+            // with the image data URL, which works with OpenAI and xAI vision models).
+            const dataUrl = `data:${mimeType};base64,${imageBase64}`;
+            const res = await this.llmRouter.execute({
+                model: 'gpt-4o-mini',
+                messages: [
+                    {
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: 'Extract all contact information from this business card.' },
+                            { type: 'image_url', image_url: { url: dataUrl, detail: 'low' } },
+                        ] as any,
+                    },
+                ],
+                systemPrompt: `You are a business card OCR system. Extract contact information from the image.
+Return a JSON object (no markdown, no code fences) with these fields (omit fields not found):
+{ "name": "", "title": "", "company": "", "phone": "", "email": "", "website": "", "address": "" }
+Rules: only include fields that are clearly visible. Return valid JSON only.`,
+                temperature: 0,
+                maxTokens: 300,
+                tenantId,
+            });
+            const raw = (res.content || '').trim().replace(/```json|```/g, '');
+            return JSON.parse(raw);
+        } catch (e: any) {
+            this.logger.warn(`scanBusinessCard failed: ${e.message}`);
+            return {};
+        }
+    }
+
     /**
      * Get agent performance metrics
      */

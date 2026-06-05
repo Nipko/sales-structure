@@ -136,6 +136,32 @@ export class AgentConsoleController {
         return { success: true, data: { suggestion } };
     }
 
+    // ---- AI Utilities ----
+
+    /** Translate any text to the target language using the LLM router. */
+    @Post('translate/:tenantId')
+    async translateText(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { text: string; targetLanguage?: string },
+    ) {
+        const translation = await this.agentConsoleService.translateText(
+            tenantId, body.text, body.targetLanguage || 'es',
+        );
+        return { success: true, data: { translation } };
+    }
+
+    /** Scan a business card image (base64) and extract contact fields. */
+    @Post('scan-card/:tenantId')
+    async scanBusinessCard(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { imageBase64: string; mimeType?: string },
+    ) {
+        const contact = await this.agentConsoleService.scanBusinessCard(
+            tenantId, body.imageBase64, body.mimeType || 'image/jpeg',
+        );
+        return { success: true, data: contact };
+    }
+
     // ---- Agent Stats ----
 
     @Get('stats/:tenantId/:agentId')

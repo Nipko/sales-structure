@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, RefreshControl, ActivityIndicator, Modal, KeyboardAvoidingView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, RefreshControl, ActivityIndicator, Modal, KeyboardAvoidingView, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
@@ -50,6 +51,8 @@ export function CrmScreen() {
     const [createOpen, setCreateOpen] = useState(false);
     const [form, setForm] = useState({ first_name: '', last_name: '', phone: '', email: '' });
     const [saving, setSaving] = useState(false);
+    // Business card scanner
+    const [scanning, setScanning] = useState(false);
 
     // Cross-navigation: another screen can jump here with a prefilled search term.
     useEffect(() => { if (route.params?.search) setSearch(route.params.search); }, [route.params?.search]);
@@ -90,6 +93,42 @@ export function CrmScreen() {
         } finally { setSaving(false); }
     };
 
+    const scanCard = async () => {
+        if (!tenantId || scanning) return;
+        haptic.tap();
+        try {
+            const perm = await ImagePicker.requestCameraPermissionsAsync();
+            if (!perm.granted) { toast.error(t('conv.cameraPerm')); return; }
+            const result = await ImagePicker.launchCameraAsync({ quality: 0.7, base64: true });
+            if (result.canceled || !result.assets?.[0]) return;
+            const asset = result.assets[0];
+            const b64 = asset.base64;
+            if (!b64) { toast.error(t('crm.scanError')); return; }
+            setScanning(true);
+            const res: any = await api.scanBusinessCard(tenantId, b64, asset.mimeType || 'image/jpeg');
+            if (res?.success && res.data) {
+                const d = res.data;
+                const extracted: Record<string, string> = {};
+                if (d.name) {
+                    const parts = String(d.name).trim().split(' ');
+                    extracted.first_name = parts[0] || '';
+                    extracted.last_name = parts.slice(1).join(' ') || '';
+                }
+                if (d.phone) extracted.phone = String(d.phone).trim();
+                if (d.email) extracted.email = String(d.email).trim();
+                setForm((f) => ({ ...f, ...extracted }));
+                setCreateOpen(true);
+                toast.success(t('crm.scanSuccess'));
+            } else {
+                toast.error(t('crm.scanError'));
+            }
+        } catch {
+            toast.error(t('crm.scanError'));
+        } finally {
+            setScanning(false);
+        }
+    };
+
     if (loading) return <View style={{ flex: 1, backgroundColor: theme.bg }}><ListSkeleton /></View>;
 
     return (
@@ -121,6 +160,20 @@ export function CrmScreen() {
                     </TouchableOpacity>
                 )}
             />
+
+            {/* Scan card FAB (secondary) */}
+            <TouchableOpacity
+                style={[styles.fab, styles.fabSecondary, { bottom: 24 + insets.bottom + 72 }]}
+                onPress={scanCard}
+                disabled={scanning}
+                accessibilityRole="button"
+                accessibilityLabel={t('crm.scanCard')}
+            >
+                {scanning
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Ionicons name="card-outline" size={22} color="#fff" />
+                }
+            </TouchableOpacity>
 
             {/* Create-lead FAB */}
             <TouchableOpacity style={[styles.fab, { bottom: 24 + insets.bottom }]} onPress={() => { haptic.tap(); setCreateOpen(true); }}
@@ -168,6 +221,7 @@ const styles = StyleSheet.create({
     stage: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
     stageText: { fontSize: 11, fontWeight: '600' },
     fab: { position: 'absolute', right: 18, bottom: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 6 },
+    fabSecondary: { backgroundColor: theme.bgCard, borderWidth: 1, borderColor: theme.border, width: 48, height: 48, borderRadius: 24, right: 22 },
     backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
     sheet: { backgroundColor: theme.bgCard, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, maxHeight: '85%' },
     sheetTitle: { color: theme.text, fontSize: 17, fontWeight: '700', marginBottom: 12 },

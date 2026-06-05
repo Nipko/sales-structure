@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Linking, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Linking, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { useHeaderHeight } from '@react-navigation/elements';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,6 +25,7 @@ export function LeadDetailScreen() {
     const { tenantId, user } = useAuth();
     const { t } = useI18n();
     const toast = useToast();
+    const headerHeight = useHeaderHeight();
     const [data, setData] = useState<any>(null);
     const [notes, setNotes] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -174,6 +176,7 @@ export function LeadDetailScreen() {
     };
 
     return (
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior="padding" keyboardVerticalOffset={headerHeight}>
         <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
             <View style={styles.header}>
                 <View style={styles.avatar}><Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text></View>
@@ -300,6 +303,7 @@ export function LeadDetailScreen() {
                 <Text style={[styles.archiveText, { color: archived ? theme.accent : theme.danger }]}>{archived ? t('crm.restore') : t('crm.archive')}</Text>
             </TouchableOpacity>
         </ScrollView>
+        </KeyboardAvoidingView>
     );
 }
 

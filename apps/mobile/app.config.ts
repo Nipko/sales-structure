@@ -52,7 +52,18 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
             { color: '#6c5ce7' },
         ],
         '@react-native-google-signin/google-signin',
-        '@sentry/react-native',
+        // Sentry. Para EAS/store builds sube source maps automáticamente usando
+        // 3 secretos de EAS: SENTRY_ORG, SENTRY_PROJECT, SENTRY_AUTH_TOKEN.
+        // Si org/project no están en env, el plugin cae a esas env vars en build.
+        // (Los builds locales con gradlew NO corren config plugins → no afecta.)
+        [
+            '@sentry/react-native',
+            {
+                url: 'https://sentry.io/',
+                organization: process.env.SENTRY_ORG,
+                project: process.env.SENTRY_PROJECT,
+            },
+        ],
         'expo-localization',
         [
             'expo-image-picker',

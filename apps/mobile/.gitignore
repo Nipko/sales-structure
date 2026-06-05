@@ -3,6 +3,10 @@ google-services.json
 GoogleService-Info.plist
 *-firebase-adminsdk-*.json
 
+# Sentry auth token (source map upload) — secret, never commit
+sentry.properties
+.sentryclirc
+
 # Expo / React Native
 node_modules/
 .expo/

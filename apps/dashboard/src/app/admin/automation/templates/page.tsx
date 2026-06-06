@@ -3,7 +3,7 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect, useMemo } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -105,15 +105,8 @@ interface AutomationTemplate {
   createdAt: string;
 }
 
-function getLocale(): string {
-  if (typeof window !== "undefined") {
-    return document.cookie.match(/NEXT_LOCALE=(\w+)/)?.[1] || "es";
-  }
-  return "es";
-}
-
-function getLocalizedText(obj: Record<string, string>): string {
-  const locale = getLocale();
+function getLocalizedText(obj: Record<string, string>, locale: string): string {
+  if (!obj) return "";
   return obj[locale] || obj.es || obj.en || "";
 }
 
@@ -121,6 +114,7 @@ export default function AutomationTemplatesPage() {
   const t = useTranslations("automationTemplates");
   const tHelp = useTranslations("help");
   const tc = useTranslations("common");
+  const locale = useLocale();
   const { activeTenantId } = useTenant();
 
   const [templates, setTemplates] = useState<AutomationTemplate[]>([]);
@@ -166,11 +160,11 @@ export default function AutomationTemplatesPage() {
     if (!searchQuery.trim()) return templates;
     const q = searchQuery.toLowerCase();
     return templates.filter((tpl) => {
-      const name = getLocalizedText(tpl.name).toLowerCase();
-      const desc = getLocalizedText(tpl.description).toLowerCase();
+      const name = getLocalizedText(tpl.name, locale).toLowerCase();
+      const desc = getLocalizedText(tpl.description, locale).toLowerCase();
       return name.includes(q) || desc.includes(q);
     });
-  }, [templates, searchQuery]);
+  }, [templates, searchQuery, locale]);
 
   function openInstallModal(tpl: AutomationTemplate) {
     setSelectedTemplate(tpl);
@@ -350,10 +344,10 @@ export default function AutomationTemplatesPage() {
                   </div>
 
                   <h3 className="text-sm font-semibold text-foreground mb-1.5 line-clamp-1">
-                    {getLocalizedText(tpl.name)}
+                    {getLocalizedText(tpl.name, locale)}
                   </h3>
                   <p className="text-xs text-muted-foreground mb-4 line-clamp-2 flex-1">
-                    {getLocalizedText(tpl.description)}
+                    {getLocalizedText(tpl.description, locale)}
                   </p>
 
                   <div className="flex flex-wrap gap-1.5 mb-4">
@@ -413,7 +407,7 @@ export default function AutomationTemplatesPage() {
                       {t("modal.title")}
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      {getLocalizedText(selectedTemplate.name)}
+                      {getLocalizedText(selectedTemplate.name, locale)}
                     </p>
                   </div>
                 </div>
@@ -426,7 +420,7 @@ export default function AutomationTemplatesPage() {
               </div>
 
               <p className="text-sm text-muted-foreground mb-5">
-                {getLocalizedText(selectedTemplate.description)}
+                {getLocalizedText(selectedTemplate.description, locale)}
               </p>
 
               <div className="grid grid-cols-2 gap-3 mb-5">
@@ -459,7 +453,7 @@ export default function AutomationTemplatesPage() {
                       {selectedTemplate.variables.map((v) => (
                         <div key={v.key}>
                           <Label className="text-xs font-semibold text-muted-foreground mb-1">
-                            {getLocalizedText(v.label)}
+                            {getLocalizedText(v.label, locale)}
                           </Label>
                           {v.type === "textarea" ? (
                             <textarea

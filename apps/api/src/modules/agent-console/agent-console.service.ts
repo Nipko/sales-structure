@@ -94,7 +94,7 @@ export class AgentConsoleService {
     async getInbox(
         tenantId: string,
         agentId: string,
-        filter: 'all' | 'mine' | 'unassigned' | 'handoff' | 'resolved' = 'all',
+        filter: 'all' | 'mine' | 'unassigned' | 'handoff' | 'resolved' | 'ai' = 'all',
         limit = 50,
         offset = 0,
     ): Promise<InboxConversation[]> {
@@ -124,6 +124,11 @@ export class AgentConsoleService {
                 break;
             case 'handoff':
                 statusFilter = `AND c.status = 'waiting_human'`;
+                break;
+            case 'ai':
+                // Automated Inbox: conversations the AI is handling (active, unassigned,
+                // not escalated to a human) — the transparency counterpart to 'handoff'.
+                statusFilter = `AND c.assigned_to IS NULL AND c.status NOT IN ('waiting_human', 'with_human')`;
                 break;
             case 'resolved':
                 baseStatusFilter = `c.status = 'resolved'`;

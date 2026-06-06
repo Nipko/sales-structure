@@ -28,7 +28,7 @@ export class AgentConsoleController {
     async getInbox(
         @Param('tenantId') tenantId: string,
         @Query('agentId') agentId: string,
-        @Query('filter') filter: 'all' | 'mine' | 'unassigned' | 'handoff' | 'resolved' = 'all',
+        @Query('filter') filter: 'all' | 'mine' | 'unassigned' | 'handoff' | 'resolved' | 'ai' = 'all',
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
     ) {

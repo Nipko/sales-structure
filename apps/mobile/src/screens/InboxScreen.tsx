@@ -35,8 +35,9 @@ interface Conv {
 const FILTERS = [
     { key: 'all', label: 'Todas' },
     { key: 'mine', label: 'Mías' },
-    { key: 'unassigned', label: 'Sin asignar' },
+    { key: 'ai', label: 'IA' },
     { key: 'handoff', label: 'Handoff' },
+    { key: 'unassigned', label: 'Sin asignar' },
     { key: 'resolved', label: 'Resueltas' },
 ] as const;
 

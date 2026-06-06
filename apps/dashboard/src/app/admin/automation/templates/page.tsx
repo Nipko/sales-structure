@@ -58,6 +58,31 @@ const ICON_MAP: Record<string, LucideIcon> = {
   calendar: Calendar,
 };
 
+/**
+ * Renders a template icon. If `icon` is a known lucide key (e.g. "zap") it uses
+ * the mapped lucide icon; otherwise it renders the value as text (the seed data
+ * stores emojis like "🛒"), so we never silently fall back to a single icon.
+ */
+function TemplateIcon({
+  icon,
+  size = 20,
+  className,
+}: {
+  icon: string;
+  size?: number;
+  className?: string;
+}) {
+  const Mapped = icon ? ICON_MAP[icon] : undefined;
+  if (Mapped) return <Mapped size={size} className={className} />;
+  if (icon)
+    return (
+      <span style={{ fontSize: size }} className="leading-none" role="img">
+        {icon}
+      </span>
+    );
+  return <Zap size={size} className={className} />;
+}
+
 const CATEGORIES = [
   "lead_nurturing",
   "appointment_reminders",
@@ -207,10 +232,6 @@ export default function AutomationTemplatesPage() {
     }
   }
 
-  function getIcon(iconName: string): LucideIcon {
-    return ICON_MAP[iconName] || Zap;
-  }
-
   const CATEGORY_COLORS: Record<string, string> = {
     lead_nurturing: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
     appointment_reminders: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
@@ -326,7 +347,6 @@ export default function AutomationTemplatesPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map((tpl) => {
-            const Icon = getIcon(tpl.icon);
             return (
               <Card
                 key={tpl.id}
@@ -335,7 +355,7 @@ export default function AutomationTemplatesPage() {
                 <CardContent className="p-5 flex flex-col h-full">
                   <div className="flex items-start justify-between mb-3">
                     <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center shrink-0">
-                      <Icon size={20} className="text-indigo-500" />
+                      <TemplateIcon icon={tpl.icon} size={20} className="text-indigo-500" />
                     </div>
                     <div className="flex items-center gap-1 text-muted-foreground text-xs">
                       <TrendingUp size={12} />
@@ -397,10 +417,7 @@ export default function AutomationTemplatesPage() {
               <div className="flex items-start justify-between mb-5">
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-xl bg-indigo-500/10 flex items-center justify-center shrink-0">
-                    {(() => {
-                      const Icon = getIcon(selectedTemplate.icon);
-                      return <Icon size={22} className="text-indigo-500" />;
-                    })()}
+                    <TemplateIcon icon={selectedTemplate.icon} size={22} className="text-indigo-500" />
                   </div>
                   <div>
                     <h2 className="text-lg font-semibold text-foreground">

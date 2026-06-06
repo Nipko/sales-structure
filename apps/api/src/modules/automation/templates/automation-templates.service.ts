@@ -23,13 +23,15 @@ export class AutomationTemplatesService implements OnModuleInit {
 
     private async ensureSeeded(): Promise<void> {
         if (this.seeded) return;
-        const count = await this.prisma.automationTemplate.count();
-        if (count === 0) {
-            this.logger.log('No automation templates found — seeding defaults...');
-            await seedAutomationTemplates(this.prisma as any);
-            this.logger.log('Automation templates seeded successfully');
-        }
+        // Always run the idempotent upsert (once per process): seedAutomationTemplates
+        // updates existing rows (matched by name.en) and creates missing ones, so seed
+        // changes — new languages, icons, actions — propagate to tenants that were
+        // seeded before those fields existed. Previously this only ran when the table
+        // was empty, leaving stale rows frozen at their first-seeded version.
+        this.logger.log('Syncing automation templates (idempotent upsert)...');
+        await seedAutomationTemplates(this.prisma as any);
         this.seeded = true;
+        this.logger.log('Automation templates synced');
     }
 
     async listTemplates(filters?: { category?: string; industry?: string }) {

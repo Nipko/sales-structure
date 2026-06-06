@@ -355,7 +355,7 @@ export class AgentConsoleService {
                 const conv = convRows[0];
                 const creds = await this.whatsappConnection.getValidAccessToken(schemaName);
                 const outContent: any = isMedia
-                    ? { type: contentType, mediaUrl, caption: caption || content || undefined, ...(filename ? { filename } : {}) }
+                    ? { type: contentType, mediaUrl: this.absoluteMediaUrl(mediaUrl), caption: caption || content || undefined, ...(filename ? { filename } : {}) }
                     : { type: 'text', text: content };
                 await this.channelGateway.sendMessage(
                     {
@@ -379,6 +379,22 @@ export class AgentConsoleService {
             sender: 'agent',
             timestamp: msg.created_at,
         };
+    }
+
+    /**
+     * Media URLs are stored relative (/api/v1/media/file/...) so the timeline can
+     * render them, but Meta/WhatsApp requires an ABSOLUTE https URL for image/audio/
+     * document links. Prepend the public API origin for the outbound send.
+     */
+    private absoluteMediaUrl(url?: string): string | undefined {
+        if (!url) return url;
+        if (/^https?:\/\//i.test(url)) return url; // already absolute
+        const origin = (
+            process.env.API_PUBLIC_URL ||
+            process.env.NEXT_PUBLIC_API_URL ||
+            'https://api.parallly-chat.cloud/api/v1'
+        ).replace(/\/api\/v1\/?$/, '');
+        return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
     }
 
     /**

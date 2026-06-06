@@ -86,6 +86,7 @@ export function ConversationScreen() {
     const [noteOpen, setNoteOpen] = useState(false);
     const [noteText, setNoteText] = useState('');
     const [summary, setSummary] = useState<string | null>(null);
+    const [nextAction, setNextAction] = useState<string | null>(null);
     const [acting, setActing] = useState(false);
     const [viewers, setViewers] = useState<{ agentId: string; agentName: string }[]>([]);
     const [contactOpen, setContactOpen] = useState(false);
@@ -319,6 +320,20 @@ export function ConversationScreen() {
             toast.error(t('conv.summaryError'));
         } finally { setAiBusy(false); }
     };
+    const doNextAction = async () => {
+        if (!tenantId) return;
+        haptic.tap();
+        setNextAction('...'); setAiBusy(true);
+        try {
+            const res: any = await api.nextBestAction(tenantId, conversationId);
+            const d = res?.data;
+            const a = (d?.action || (typeof d === 'string' ? d : '') || '').trim();
+            setNextAction(a || t('conv.nbaUnavailable'));
+        } catch {
+            setNextAction('');
+            toast.error(t('conv.nbaError'));
+        } finally { setAiBusy(false); }
+    };
     // ── Long-press context actions ────────────────────────────────────────────
     const translateMsg = async (msg: Msg) => {
         if (!tenantId || translations[msg.id] || translating) return;
@@ -540,6 +555,7 @@ export function ConversationScreen() {
                     <Action icon="sparkles-outline" label={t('conv.action.returnAi')} color={theme.accent} onPress={returnToAI} disabled={acting} />}
                 {!resolved && <Action icon="people-outline" label={t('conv.action.reassign')} color={theme.textSecondary} onPress={openReassign} disabled={acting} />}
                 <Action icon="document-text-outline" label={t('conv.action.summarize')} color={theme.textSecondary} onPress={doSummary} disabled={aiBusy} />
+                <Action icon="bulb-outline" label={t('conv.action.nextAction')} color={theme.accent} onPress={doNextAction} disabled={aiBusy} />
                 <Action icon="create-outline" label={t('conv.action.note')} color={theme.warning} onPress={() => setNoteOpen(true)} disabled={acting} />
                 <Action icon="moon-outline" label={t('conv.action.snooze')} color={theme.textSecondary} onPress={() => setSnoozeOpen(true)} disabled={acting} />
                 {!resolved && <Action icon="checkmark-done-outline" label={t('conv.action.resolve')} color={theme.success} onPress={resolve} disabled={acting} />}
@@ -739,6 +755,15 @@ export function ConversationScreen() {
             </Sheet>
 
             {/* Summary */}
+            <Sheet visible={nextAction !== null} title={t('conv.nbaTitle')} onClose={() => setNextAction(null)}>
+                {nextAction === '...'
+                    ? <ActivityIndicator color={theme.accent} />
+                    : <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <Ionicons name="bulb" size={18} color={theme.warning} style={{ marginTop: 2 }} />
+                        <Text style={[styles.summaryText, { flex: 1 }]}>{nextAction}</Text>
+                      </View>}
+            </Sheet>
+
             <Sheet visible={summary !== null} title={t('conv.summarySheet')} onClose={() => setSummary(null)}>
                 {summary === '...' ? <ActivityIndicator color={theme.accent} /> : <Text style={styles.summaryText}>{summary}</Text>}
             </Sheet>

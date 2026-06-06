@@ -339,6 +339,8 @@ export const api = {
         json(`/crm/leads/${tenantId}?search=${encodeURIComponent(query)}&limit=20`),
 
     // AI utilities
+    nextBestAction: (tenantId: string, id: string) =>
+        json(`/agent-console/conversation/${tenantId}/${id}/next-action`),
     translateText: (tenantId: string, text: string, targetLanguage = 'es') =>
         json(`/agent-console/translate/${tenantId}`, {
             method: 'POST',

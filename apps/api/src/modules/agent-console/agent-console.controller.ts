@@ -168,6 +168,16 @@ export class AgentConsoleController {
         return { success: true, data: contact };
     }
 
+    /** Suggest the single next best sales action for a conversation (AI coach). */
+    @Get('conversation/:tenantId/:conversationId/next-action')
+    async nextBestAction(
+        @Param('tenantId') tenantId: string,
+        @Param('conversationId') conversationId: string,
+    ) {
+        const action = await this.agentConsoleService.nextBestAction(tenantId, conversationId);
+        return { success: true, data: { action } };
+    }
+
     // ---- Agent Stats ----
 
     @Get('stats/:tenantId/:agentId')

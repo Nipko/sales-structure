@@ -46,6 +46,26 @@ function parseComponents(raw: any): any[] {
     return [];
 }
 
+/** Texto del componente BODY de la plantilla. */
+function bodyTextOf(tmpl: Template | null): string {
+    return tmpl?.components?.find((c: any) => c.type === 'BODY')?.text || '';
+}
+
+/** Cuántas variables {{n}} tiene el texto (el mayor índice presente). */
+function varCount(text: string): number {
+    const matches = text.match(/\{\{\s*(\d+)\s*\}\}/g) || [];
+    if (!matches.length) return 0;
+    return Math.max(...matches.map((m) => parseInt(m.replace(/\D/g, ''), 10) || 0));
+}
+
+/** Sustituye {{1}}, {{2}}… por los valores ingresados (para el preview). */
+function fillVars(text: string, values: string[]): string {
+    return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_m, n) => {
+        const v = values[Number(n) - 1];
+        return v && v.trim() ? v : `{{${n}}}`;
+    });
+}
+
 // ── Step indicator ───────────────────────────────────────────────────────────
 function StepBar({ step }: { step: 1 | 2 | 3 }) {
     const { t } = useI18n();
@@ -104,8 +124,9 @@ export function OutboundScreen() {
     const [loadingTemplates, setLoadingTemplates] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
 
-    // Step 3: send
+    // Step 3: send + template variable values (indexed by {{n}} → vars[n-1])
     const [sending, setSending] = useState(false);
+    const [vars, setVars] = useState<string[]>([]);
 
     // ── Contact search ──────────────────────────────────────────────────────
     useEffect(() => {
@@ -164,6 +185,7 @@ export function OutboundScreen() {
     const goStep3 = (tmpl: Template) => {
         haptic.tap();
         setSelectedTemplate(tmpl);
+        setVars(new Array(varCount(bodyTextOf(tmpl))).fill(''));
         setStep(3);
     };
 
@@ -173,15 +195,16 @@ export function OutboundScreen() {
         haptic.success();
         setSending(true);
         try {
-            // NOTE: el param `components` del envío son VALORES de variables en runtime,
-            // no la definición de la plantilla. Como la UI no captura variables aún,
-            // enviamos [] → funciona para plantillas SIN variables (Meta rechaza las
-            // que tienen variables sin llenar, y mostramos ese error).
+            // Build runtime `components` from the captured variable values.
+            // Empty for templates without variables; one body component otherwise.
+            const components = vars.length > 0
+                ? [{ type: 'body', parameters: vars.map((v) => ({ type: 'text', text: v.trim() })) }]
+                : [];
             const res: any = await api.sendWhatsappTemplate(
                 phone.trim(),
                 selectedTemplate.name,
                 selectedTemplate.language,
-                [],
+                components,
             );
             if (res?.success || res?.messageId || res?.messages) {
                 toast.success(t('outbound.sent'));
@@ -306,18 +329,19 @@ export function OutboundScreen() {
         const body = selectedTemplate.components?.find((c: any) => c.type === 'BODY');
         const footer = selectedTemplate.components?.find((c: any) => c.type === 'FOOTER');
         const buttons = selectedTemplate.components?.find((c: any) => c.type === 'BUTTONS');
-        // Templates with {{n}} placeholders need variable values we don't capture yet.
-        const hasVars = /\{\{\d+\}\}/.test(body?.text || '');
+        // Live preview substitutes {{n}} with the captured values.
+        const previewBody = fillVars(body?.text || selectedTemplate.name, vars);
+        const allFilled = vars.every((v) => v.trim().length > 0);
 
         return (
-            <ScrollView contentContainerStyle={{ padding: 16 }}>
+            <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
                 <Text style={styles.sectionTitle}>{t('outbound.previewTitle')}</Text>
                 <Text style={styles.previewMeta}>{t('outbound.to')}: {phone}</Text>
 
-                {/* WhatsApp bubble preview */}
+                {/* WhatsApp bubble preview (with variables substituted live) */}
                 <View style={styles.bubble}>
                     {header && <Text style={styles.bubbleHeader}>{header.text || ''}</Text>}
-                    <Text style={styles.bubbleBody}>{body?.text || selectedTemplate.name}</Text>
+                    <Text style={styles.bubbleBody}>{previewBody}</Text>
                     {footer && <Text style={styles.bubbleFooter}>{footer.text}</Text>}
                     {buttons?.buttons?.map((b: any, i: number) => (
                         <View key={i} style={styles.bubbleBtn}>
@@ -326,17 +350,32 @@ export function OutboundScreen() {
                     ))}
                 </View>
 
-                <Text style={styles.previewNote}>{t('outbound.previewNote')}</Text>
-                {hasVars && (
-                    <Text style={[styles.previewNote, { color: theme.warning, marginTop: 6 }]}>
-                        {t('outbound.varsWarning')}
-                    </Text>
+                {/* Variable inputs — one per {{n}} in the body */}
+                {vars.length > 0 && (
+                    <View style={{ marginTop: 16 }}>
+                        <Text style={styles.sectionTitle}>{t('outbound.varsTitle')}</Text>
+                        {vars.map((val, i) => (
+                            <View key={i} style={{ marginBottom: 10 }}>
+                                <Text style={styles.varLabel}>{`{{${i + 1}}}`}</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    value={val}
+                                    onChangeText={(txt) => setVars((prev) => prev.map((v, j) => (j === i ? txt : v)))}
+                                    placeholder={t('outbound.varPlaceholder', { n: String(i + 1) })}
+                                    placeholderTextColor={theme.textSecondary}
+                                    accessibilityLabel={`Variable ${i + 1}`}
+                                />
+                            </View>
+                        ))}
+                    </View>
                 )}
 
+                <Text style={styles.previewNote}>{t('outbound.previewNote')}</Text>
+
                 <TouchableOpacity
-                    style={[styles.btn, (sending || hasVars) && { opacity: 0.6 }, { marginTop: 24 }]}
+                    style={[styles.btn, (sending || !allFilled) && { opacity: 0.6 }, { marginTop: 20 }]}
                     onPress={send}
-                    disabled={sending || hasVars}
+                    disabled={sending || !allFilled}
                     accessibilityRole="button"
                     accessibilityLabel={t('outbound.send')}
                 >
@@ -345,6 +384,11 @@ export function OutboundScreen() {
                         : <><Ionicons name="send" size={16} color="#fff" style={{ marginRight: 6 }} /><Text style={styles.btnText}>{t('outbound.send')}</Text></>
                     }
                 </TouchableOpacity>
+                {!allFilled && (
+                    <Text style={[styles.previewNote, { color: theme.warning, marginTop: 8 }]}>
+                        {t('outbound.fillAllVars')}
+                    </Text>
+                )}
             </ScrollView>
         );
     }
@@ -400,6 +444,7 @@ const styles = StyleSheet.create({
     templateBody: { color: theme.textSecondary, fontSize: 13, lineHeight: 18 },
     templateCategory: { color: theme.textSecondary, fontSize: 11, marginTop: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
     previewMeta: { color: theme.textSecondary, fontSize: 13, marginBottom: 14 },
+    varLabel: { color: theme.accent, fontSize: 12, fontWeight: '700', marginBottom: 4 },
     bubble: {
         backgroundColor: '#dcf8c6', borderRadius: 12, padding: 14,
         borderTopRightRadius: 2, alignSelf: 'flex-end', maxWidth: '85%',

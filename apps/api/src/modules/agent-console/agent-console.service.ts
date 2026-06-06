@@ -381,6 +381,37 @@ export class AgentConsoleService {
         };
     }
 
+    /** Suggest the single next best SALES action for a conversation (AI coach). */
+    async nextBestAction(tenantId: string, conversationId: string): Promise<string> {
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) return '';
+        const messages = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT content_text, direction FROM messages
+             WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 12`,
+            [conversationId],
+        );
+        if (!messages || messages.length === 0) return '';
+        const ordered = [...messages].reverse();
+        try {
+            const res = await this.llmRouter.execute({
+                model: 'gpt-4o-mini',
+                messages: ordered.map((m: any) => ({
+                    role: (m.direction === 'inbound' ? 'user' : 'assistant') as any,
+                    content: m.content_text || '',
+                })) as any,
+                systemPrompt: `Eres un coach de ventas para un agente humano. Analiza la conversación y sugiere LA ÚNICA próxima mejor acción concreta para avanzar la venta (ej: enviar cotización, agendar una demo, preguntar el presupuesto, hacer seguimiento, cerrar la venta). Responde en el MISMO idioma del cliente, en 1-2 frases accionables, sin preámbulo ni explicaciones.`,
+                temperature: 0.4,
+                maxTokens: 150,
+                tenantId,
+            });
+            return (res.content || '').trim();
+        } catch (e: any) {
+            this.logger.warn(`nextBestAction failed: ${e.message}`);
+            return '';
+        }
+    }
+
     /**
      * Media URLs are stored relative (/api/v1/media/file/...) so the timeline can
      * render them, but Meta/WhatsApp requires an ABSOLUTE https URL for image/audio/

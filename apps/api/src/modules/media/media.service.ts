@@ -113,7 +113,11 @@ export class MediaService {
         const isAudio = AUDIO_MIME_TYPES.includes(file.mimetype);
         const isVideo = VIDEO_MIME_TYPES.includes(file.mimetype);
         if (!isImage && !isDoc && !isAudio && !isVideo) {
-            throw new BadRequestException(`Tipo de archivo no permitido: ${file.mimetype}.`);
+            throw new BadRequestException(
+                `Tipo de archivo no permitido: ${file.mimetype || 'desconocido'}. ` +
+                `Permitidos: imágenes (jpg, png, webp, gif), documentos (pdf, word, excel, ppt, txt, csv, zip), ` +
+                `audio (m4a, mp3, ogg, aac, amr, wav) y video (mp4, 3gp, mov).`,
+            );
         }
         if (isImage && file.size > MAX_FILE_SIZE) {
             throw new BadRequestException(

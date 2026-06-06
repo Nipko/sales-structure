@@ -16,6 +16,7 @@ import { useI18n } from '../i18n';
 import { useKeyboardSpace } from '../lib/useKeyboardSpace';
 import { enqueue, pendingFor, subscribeOutbox, retry as retryOutbox } from '../lib/outbox';
 import { useAudioRecorder, fmtDuration } from '../lib/useAudioRecorder';
+import { AudioPlayer } from '../components/AudioPlayer';
 import { snoozeUntil, SNOOZE_PRESETS, type SnoozePreset } from '../lib/snooze';
 import { haptic } from '../lib/haptics';
 import { theme, channelColor, channelLabel, channelIcon } from '../theme';
@@ -77,6 +78,7 @@ export function ConversationScreen() {
     const [translating, setTranslating] = useState<string | null>(null); // msgId being translated
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
+    const [uploading, setUploading] = useState<string | null>(null); // media label while uploading
     const [aiBusy, setAiBusy] = useState(false);
     const [canned, setCanned] = useState<any[]>([]);
     const [cannedOpen, setCannedOpen] = useState(false);
@@ -396,21 +398,18 @@ export function ConversationScreen() {
             const result = await stopRecording();
             if (!result) return;
             haptic.success();
-            setSending(true);
+            setSending(true); setUploading('audio');
             try {
-                const mimeType = 'audio/m4a';
-                const uploadRes: any = await api.uploadMedia(tenantId, {
-                    uri: result.uri,
-                    fileName: `voice_${Date.now()}.m4a`,
-                    mimeType,
-                });
-                if (!uploadRes?.success || !uploadRes.data?.url) throw new Error('upload_failed');
-                await api.sendMediaMessage(tenantId, conversationId, uploadRes.data.url, '', user?.id, 'audio', `voice_${Date.now()}.m4a`);
+                const fname = `voice_${Date.now()}.m4a`;
+                const uploadRes: any = await api.uploadMedia(tenantId, { uri: result.uri, fileName: fname, mimeType: 'audio/m4a' });
+                if (!uploadRes?.success || !uploadRes.data?.url) { toast.error(uploadRes?.message || t('conv.audioError')); return; }
+                const r: any = await api.sendMediaMessage(tenantId, conversationId, uploadRes.data.url, '', user?.id, 'audio', fname);
+                if (!r?.success) throw new Error('fail');
                 load();
             } catch {
                 toast.error(t('conv.audioError'));
             } finally {
-                setSending(false);
+                setSending(false); setUploading(null);
             }
         } else if (recState === 'idle') {
             haptic.tap();
@@ -435,10 +434,10 @@ export function ConversationScreen() {
             }
             if (res.canceled || !res.assets?.[0]) return;
             const asset = res.assets[0];
-            setSending(true);
+            setSending(true); setUploading('image');
             const up: any = await api.uploadMedia(tenantId, { uri: asset.uri, fileName: asset.fileName || undefined, mimeType: asset.mimeType || undefined });
             const url = up?.data?.url;
-            if (!up?.success || !url) { toast.error(t('conv.mediaError')); return; }
+            if (!up?.success || !url) { toast.error(up?.message || t('conv.mediaError')); return; }
             const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;
             const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', user?.id);
             if (!r?.success) throw new Error('fail');
@@ -447,7 +446,7 @@ export function ConversationScreen() {
         } catch {
             toast.error(t('conv.mediaError'));
         } finally {
-            setSending(false);
+            setSending(false); setUploading(null);
         }
     };
     const pickDocument = async () => {
@@ -456,10 +455,10 @@ export function ConversationScreen() {
             const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
             if (res.canceled || !res.assets?.[0]) return;
             const f = res.assets[0];
-            setSending(true);
+            setSending(true); setUploading('document');
             const up: any = await api.uploadMedia(tenantId, { uri: f.uri, fileName: f.name, mimeType: f.mimeType || guessMime(f.name) });
             const url = up?.data?.url;
-            if (!up?.success || !url) { toast.error(up?.error ? t('conv.mediaTypeError') : t('conv.mediaError')); return; }
+            if (!up?.success || !url) { toast.error(up?.message || t('conv.mediaTypeError')); return; }
             const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;
             const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', user?.id, 'document', f.name);
             if (!r?.success) throw new Error('fail');
@@ -468,7 +467,7 @@ export function ConversationScreen() {
         } catch {
             toast.error(t('conv.mediaError'));
         } finally {
-            setSending(false);
+            setSending(false); setUploading(null);
         }
     };
     const pickVideo = async () => {
@@ -481,11 +480,11 @@ export function ConversationScreen() {
             const v = res.assets[0];
             // WhatsApp caps video at 16MB; guard client-side when the size is known.
             if (v.fileSize && v.fileSize > 16 * 1024 * 1024) { toast.error(t('conv.videoTooBig')); return; }
-            setSending(true);
+            setSending(true); setUploading('video');
             const name = v.fileName || `video_${Date.now()}.mp4`;
             const up: any = await api.uploadMedia(tenantId, { uri: v.uri, fileName: name, mimeType: v.mimeType || 'video/mp4' });
             const url = up?.data?.url;
-            if (!up?.success || !url) { toast.error(up?.error ? t('conv.mediaTypeError') : t('conv.mediaError')); return; }
+            if (!up?.success || !url) { toast.error(up?.message || t('conv.mediaTypeError')); return; }
             const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;
             const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', user?.id, 'video', name);
             if (!r?.success) throw new Error('fail');
@@ -494,7 +493,7 @@ export function ConversationScreen() {
         } catch {
             toast.error(t('conv.mediaError'));
         } finally {
-            setSending(false);
+            setSending(false); setUploading(null);
         }
     };
     const attachImage = () => {
@@ -626,6 +625,7 @@ export function ConversationScreen() {
                     const docName = item.metadata?.filename || item.metadata?.fileName;
                     const videoUrl = item.type === 'video' ? mediaUrl(item.metadata) : null;
                     const isAudio = item.type === 'audio' || item.type === 'voice';
+                    const audioUrl = isAudio ? mediaUrl(item.metadata) : null;
                     const xlat = translations[item.id];
                     const isTranslating = translating === item.id;
                     return (
@@ -650,7 +650,9 @@ export function ConversationScreen() {
                                         <Text style={[styles.docName, { color: out ? '#fff' : theme.text }]} numberOfLines={1}>🎥 {t('conv.video')}</Text>
                                     </TouchableOpacity>
                                 )}
-                                {isAudio && <Text style={styles.mediaTag}>🎤 {t('conv.voiceNote')}</Text>}
+                                {isAudio && (audioUrl
+                                    ? <AudioPlayer uri={audioUrl} tint={out ? '#fff' : theme.accent} />
+                                    : <Text style={styles.mediaTag}>🎤 {t('conv.voiceNote')}</Text>)}
                                 {!!item.content && <Text style={[styles.bubbleText, item.pending && { opacity: 0.7 }]}>{item.content}</Text>}
                                 {/* Inline translation */}
                                 {isTranslating && <ActivityIndicator size="small" color={out ? '#fff' : theme.accent} style={{ marginTop: 4 }} />}
@@ -672,6 +674,14 @@ export function ConversationScreen() {
                     );
                 }}
             />
+
+            {/* Upload progress banner — so a media send doesn't feel like "nothing happened" */}
+            {uploading && (
+                <View style={styles.uploadBar}>
+                    <ActivityIndicator size="small" color={theme.accent} />
+                    <Text style={styles.uploadText}>{t('conv.uploading', { type: t(`conv.mediaKind.${uploading}`) })}</Text>
+                </View>
+            )}
 
             {/* Reply / Quote strip */}
             {replyTo && (
@@ -966,6 +976,9 @@ const styles = StyleSheet.create({
     tagText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
     agentRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     agentDot: { width: 9, height: 9, borderRadius: 5 },
+    // Upload progress bar
+    uploadBar: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: theme.bgCard, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingVertical: 10 },
+    uploadText: { color: theme.text, fontSize: 13, fontWeight: '600' },
     // Recording bar
     recBar: { flexDirection: 'row', alignItems: 'center', padding: 8, gap: 8, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth, backgroundColor: theme.bgCard },
     recDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: theme.danger },

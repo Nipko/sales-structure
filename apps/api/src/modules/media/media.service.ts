@@ -56,9 +56,15 @@ const AUDIO_EXT: Record<string, string> = {
     'audio/mp4': '.m4a', 'audio/aac': '.aac', 'audio/m4a': '.m4a', 'audio/x-m4a': '.m4a',
     'audio/mpeg': '.mp3', 'audio/ogg': '.ogg', 'audio/amr': '.amr', 'audio/wav': '.wav', 'audio/webm': '.webm',
 };
+// Video (outbound from the mobile app). Stored as-is, sent as WhatsApp video.
+const VIDEO_MIME_TYPES = ['video/mp4', 'video/3gpp', 'video/quicktime'];
+const VIDEO_EXT: Record<string, string> = {
+    'video/mp4': '.mp4', 'video/3gpp': '.3gp', 'video/quicktime': '.mov',
+};
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB (images)
 const MAX_DOC_SIZE = 25 * 1024 * 1024; // 25MB (documents)
 const MAX_AUDIO_SIZE = 16 * 1024 * 1024; // 16MB (WhatsApp audio limit)
+const MAX_VIDEO_SIZE = 16 * 1024 * 1024; // 16MB (WhatsApp video limit)
 const THUMB_WIDTH = 200;
 const MAX_WIDTH = 1200;
 
@@ -105,7 +111,8 @@ export class MediaService {
         const isImage = ALLOWED_MIME_TYPES.includes(file.mimetype);
         const isDoc = DOCUMENT_MIME_TYPES.includes(file.mimetype);
         const isAudio = AUDIO_MIME_TYPES.includes(file.mimetype);
-        if (!isImage && !isDoc && !isAudio) {
+        const isVideo = VIDEO_MIME_TYPES.includes(file.mimetype);
+        if (!isImage && !isDoc && !isAudio && !isVideo) {
             throw new BadRequestException(`Tipo de archivo no permitido: ${file.mimetype}.`);
         }
         if (isImage && file.size > MAX_FILE_SIZE) {
@@ -123,14 +130,19 @@ export class MediaService {
                 `El audio pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El maximo permitido es 16 MB.`,
             );
         }
+        if (isVideo && file.size > MAX_VIDEO_SIZE) {
+            throw new BadRequestException(
+                `El video pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El maximo permitido es 16 MB.`,
+            );
+        }
 
         const id = randomUUID();
         const tenantDir = path.join(this.storagePath, tenantId);
         fs.mkdirSync(tenantDir, { recursive: true });
 
-        // Documents + audio: store as-is (no image processing), keep original mime + name.
-        if (isDoc || isAudio) {
-            const ext = DOC_EXT[file.mimetype] || AUDIO_EXT[file.mimetype] || path.extname(file.originalname || '') || '';
+        // Documents + audio + video: store as-is (no image processing), keep original mime + name.
+        if (isDoc || isAudio || isVideo) {
+            const ext = DOC_EXT[file.mimetype] || AUDIO_EXT[file.mimetype] || VIDEO_EXT[file.mimetype] || path.extname(file.originalname || '') || '';
             const docName = `${id}${ext}`;
             fs.writeFileSync(path.join(tenantDir, docName), file.buffer);
             const size = file.buffer.length;

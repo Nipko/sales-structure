@@ -471,10 +471,37 @@ export function ConversationScreen() {
             setSending(false);
         }
     };
+    const pickVideo = async () => {
+        if (!tenantId) return;
+        try {
+            const p = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (!p.granted) { toast.error(t('conv.galleryPerm')); return; }
+            const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], quality: 0.7 });
+            if (res.canceled || !res.assets?.[0]) return;
+            const v = res.assets[0];
+            // WhatsApp caps video at 16MB; guard client-side when the size is known.
+            if (v.fileSize && v.fileSize > 16 * 1024 * 1024) { toast.error(t('conv.videoTooBig')); return; }
+            setSending(true);
+            const name = v.fileName || `video_${Date.now()}.mp4`;
+            const up: any = await api.uploadMedia(tenantId, { uri: v.uri, fileName: name, mimeType: v.mimeType || 'video/mp4' });
+            const url = up?.data?.url;
+            if (!up?.success || !url) { toast.error(up?.error ? t('conv.mediaTypeError') : t('conv.mediaError')); return; }
+            const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;
+            const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', user?.id, 'video', name);
+            if (!r?.success) throw new Error('fail');
+            haptic.success();
+            load();
+        } catch {
+            toast.error(t('conv.mediaError'));
+        } finally {
+            setSending(false);
+        }
+    };
     const attachImage = () => {
         Alert.alert(t('conv.attachTitle'), undefined, [
             { text: t('conv.fromCamera'), onPress: () => pickFrom('camera') },
             { text: t('conv.fromGallery'), onPress: () => pickFrom('gallery') },
+            { text: t('conv.fromVideo'), onPress: () => pickVideo() },
             { text: t('conv.fromDocument'), onPress: () => pickDocument() },
             { text: t('common.cancel'), style: 'cancel' },
         ]);
@@ -597,6 +624,7 @@ export function ConversationScreen() {
                     const img = item.type === 'image' ? mediaUrl(item.metadata) : null;
                     const docUrl = item.type === 'document' ? mediaUrl(item.metadata) : null;
                     const docName = item.metadata?.filename || item.metadata?.fileName;
+                    const videoUrl = item.type === 'video' ? mediaUrl(item.metadata) : null;
                     const isAudio = item.type === 'audio' || item.type === 'voice';
                     const xlat = translations[item.id];
                     const isTranslating = translating === item.id;
@@ -614,6 +642,12 @@ export function ConversationScreen() {
                                     <TouchableOpacity style={styles.docChip} onPress={() => Linking.openURL(docUrl)} accessibilityRole="button" accessibilityLabel={docName || t('conv.document')}>
                                         <Ionicons name="document-text-outline" size={22} color={out ? '#fff' : theme.accent} />
                                         <Text style={[styles.docName, { color: out ? '#fff' : theme.text }]} numberOfLines={1}>{docName || t('conv.document')}</Text>
+                                    </TouchableOpacity>
+                                )}
+                                {videoUrl && (
+                                    <TouchableOpacity style={styles.docChip} onPress={() => Linking.openURL(videoUrl)} accessibilityRole="button" accessibilityLabel={t('conv.video')}>
+                                        <Ionicons name="videocam-outline" size={22} color={out ? '#fff' : theme.accent} />
+                                        <Text style={[styles.docName, { color: out ? '#fff' : theme.text }]} numberOfLines={1}>🎥 {t('conv.video')}</Text>
                                     </TouchableOpacity>
                                 )}
                                 {isAudio && <Text style={styles.mediaTag}>🎤 {t('conv.voiceNote')}</Text>}

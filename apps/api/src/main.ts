@@ -21,9 +21,12 @@ async function bootstrap() {
     });
 
     // Raise body size limits (default is 100kb) — large payloads like media
-    // base64, KB documents, broadcast recipient lists, etc. would 413 otherwise.
+    // base64, KB documents (PDF/DOCX uploaded as base64 → ~33% larger than the raw
+    // file), broadcast recipient lists, etc. would 413 otherwise. Kept in sync with
+    // nginx `client_max_body_size 50M` so uploads aren't rejected by a lower Express
+    // cap (a ~7MB PDF already exceeded the previous 10mb limit once base64-encoded).
     // useBodyParser preserves rawBody (needed for Meta/MercadoPago signature checks).
-    const BODY_LIMIT = process.env.BODY_SIZE_LIMIT || '10mb';
+    const BODY_LIMIT = process.env.BODY_SIZE_LIMIT || '50mb';
     app.useBodyParser('json', { limit: BODY_LIMIT });
     app.useBodyParser('urlencoded', { limit: BODY_LIMIT, extended: true });
 

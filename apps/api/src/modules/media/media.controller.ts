@@ -148,6 +148,8 @@ export class MediaController {
             // Audio (voice notes) — Meta validates the type when fetching the link.
             '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.mp3': 'audio/mpeg',
             '.ogg': 'audio/ogg', '.amr': 'audio/amr', '.wav': 'audio/wav', '.webm': 'audio/webm',
+            // Video
+            '.mp4': 'video/mp4', '.3gp': 'video/3gpp', '.mov': 'video/quicktime',
         };
         const ext = fileName.slice(fileName.lastIndexOf('.')).toLowerCase();
         const contentType = EXT_MIME[ext] || 'application/octet-stream';

@@ -180,8 +180,21 @@ export class AppointmentsService {
             }
         }
 
+        // Normalize times to naive wall-clock (tenant-local). Open-duration services
+        // book through the dashboard with an empty end time (payload "YYYY-MM-DDT:00"),
+        // which previously crashed the ::timestamp cast with a 500. Validate the start
+        // and fall back to a 60-minute block when the end is missing or not after start.
+        const startAt = this.normalizeNaive(data.startAt);
+        if (!startAt) {
+            throw new BadRequestException('La hora de inicio de la cita no es válida.');
+        }
+        let endAt = this.normalizeNaive(data.endAt);
+        if (!endAt || endAt <= startAt) {
+            endAt = this.addMinutesNaive(startAt, 60);
+        }
+
         if (assignedToUuid) {
-            const conflict = await this.checkConflict(schemaName, assignedToUuid, data.startAt, data.endAt);
+            const conflict = await this.checkConflict(schemaName, assignedToUuid, startAt, endAt);
             if (conflict) {
                 throw new BadRequestException('El agente ya tiene una cita en ese horario');
             }
@@ -192,11 +205,11 @@ export class AppointmentsService {
             `INSERT INTO appointments (id, contact_id, conversation_id, assigned_to, service_id, service_name, start_at, end_at, location, notes, metadata, created_at, updated_at)
              VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7::timestamp, $8::timestamp, $9, $10, $11::jsonb, NOW(), NOW())`,
             [id, contactIdUuid, conversationIdUuid, assignedToUuid, serviceIdUuid,
-             data.serviceName, data.startAt, data.endAt, data.location || null, data.notes || null,
+             data.serviceName, startAt, endAt, data.location || null, data.notes || null,
              JSON.stringify(data.metadata || {})],
         );
 
-        this.logger.log(`Appointment created: ${id} — ${data.serviceName} at ${data.startAt}`);
+        this.logger.log(`Appointment created: ${id} — ${data.serviceName} at ${startAt}`);
         const appointment = await this.getById(schemaName, id);
 
         // Emit event for WhatsApp confirmation
@@ -216,8 +229,21 @@ export class AppointmentsService {
 
         if (data.assignedTo !== undefined) { sets.push(`assigned_to = $${idx++}::uuid`); params.push(data.assignedTo); }
         if (data.serviceName !== undefined) { sets.push(`service_name = $${idx++}`); params.push(data.serviceName); }
-        if (data.startAt !== undefined) { sets.push(`start_at = $${idx++}::timestamp`); params.push(data.startAt); }
-        if (data.endAt !== undefined) { sets.push(`end_at = $${idx++}::timestamp`); params.push(data.endAt); }
+        if (data.startAt !== undefined) {
+            const s = this.normalizeNaive(data.startAt);
+            if (!s) throw new BadRequestException('La hora de inicio de la cita no es válida.');
+            sets.push(`start_at = $${idx++}::timestamp`); params.push(s);
+        }
+        if (data.endAt !== undefined) {
+            // Open-duration edits may send an empty end time — default to +60min from
+            // the (new) start when derivable, instead of crashing the ::timestamp cast.
+            let e = this.normalizeNaive(data.endAt);
+            if (!e) {
+                const baseStart = this.normalizeNaive(data.startAt);
+                e = baseStart ? this.addMinutesNaive(baseStart, 60) : null;
+            }
+            if (e) { sets.push(`end_at = $${idx++}::timestamp`); params.push(e); }
+        }
         if (data.status !== undefined) {
             sets.push(`status = $${idx++}`); params.push(data.status);
             if (data.status === 'completed') {
@@ -567,6 +593,32 @@ export class AppointmentsService {
             return `${y}-${mo}-${d}T${h}:${mi}:${s}`;
         }
         return String(val).replace(/\.000Z$/, '').replace(/Z$/, '');
+    }
+
+    /**
+     * Parse an incoming date-time into a canonical naive wall-clock string
+     * ("YYYY-MM-DDTHH:mm:ss"). Returns null when the value is missing or
+     * malformed — e.g. open-duration services book with an empty end time,
+     * producing "2026-06-10T:00", which would otherwise crash the ::timestamp
+     * cast with a 500. Stored values stay tenant-local (no timezone shift),
+     * consistent with toNaiveIso() on read.
+     */
+    private normalizeNaive(v?: string | null): string | null {
+        if (!v) return null;
+        const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+        if (!m) return null;
+        const [, y, mo, d, h, mi, s] = m;
+        return `${y}-${mo}-${d}T${h}:${mi}:${s ?? '00'}`;
+    }
+
+    /** Add minutes to a naive wall-clock string, rolling hours/days over without timezone drift. */
+    private addMinutesNaive(naive: string, minutes: number): string {
+        const m = naive.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+        if (!m) return naive;
+        const [, y, mo, d, h, mi, s] = m;
+        const dt = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +s));
+        dt.setUTCMinutes(dt.getUTCMinutes() + minutes);
+        return this.toNaiveIso(dt);
     }
 
     private mapRow(row: any): Appointment {

@@ -5011,29 +5011,35 @@
   "help": {
     "inbox": {
       "title": "How does the Inbox work?",
-      "description": "Here you see all your customer conversations in real time. Messages arrive from WhatsApp, Instagram, Messenger and Telegram in one place. You can reply, assign to an agent, or let AI handle it.",
+      "description": "The Inbox brings every WhatsApp, Instagram, Messenger, Telegram and SMS conversation into a single chat-style view in real time. Use it to reply yourself, let the AI handle it, or take over when a customer needs a human (handoff).",
       "tips": [
-        "Use filters to view only your conversations or unassigned ones",
-        "Conversations with handoff appear with an orange badge",
-        "Click the right panel to view the contact's data"
+        "Filter by 'Unassigned' or 'Mine' to focus; conversations handed to a human show an orange badge.",
+        "When you pick up a handoff, you'll see an AI-generated summary of the conversation at the top.",
+        "Open the right-hand panel to view and edit the contact's data without leaving the chat.",
+        "Use macros and canned responses to reply to common cases in one click (set them up in Settings → Macros).",
+        "If a conversation waits more than 5 minutes, it's automatically escalated to a supervisor."
       ]
     },
     "contacts": {
-      "title": "How to manage contacts?",
-      "description": "Your CRM centralizes all contacts that have interacted with your business. You can create leads, edit information, assign stages, and use advanced filters to segment.",
+      "title": "How to manage your contacts?",
+      "description": "The CRM brings together everyone who has messaged your business on any channel, unified into a single profile. Use it to store their information, classify them by stage or tags, and follow up without losing the history.",
       "tips": [
-        "Use the 'Advanced filters' button to search by score, date or tags",
-        "Click a contact to view the full detail with timeline",
-        "Bulk actions let you change stage or add tags to multiple contacts"
+        "Create a lead manually with the '+ Contact' button (phone is required), or let them be created automatically when a customer writes in.",
+        "Click a contact to open its 360° detail: timeline, conversations, score and custom fields.",
+        "Use 'Advanced filters' to segment by score, tags or date (e.g. leads with score > 80 from this week).",
+        "Select several with the checkboxes for bulk actions: change stage, add a tag, or archive.",
+        "The score is computed from 5 factors; click the number to see the breakdown."
       ]
     },
     "pipeline": {
-      "title": "How does the Pipeline work?",
-      "description": "The sales funnel visualizes which stage each opportunity is in. Drag cards between columns to move deals. Stages are configurable from Settings.",
+      "title": "How does the sales pipeline work?",
+      "description": "The pipeline is a Kanban board where each card is a sales opportunity and each column is a stage of your process (e.g. New → Contacted → Qualified → Won). It lets you see at a glance where every deal stands and decide who to follow up with first.",
       "tips": [
-        "Drag a card to a terminal stage to request approval",
-        "Cards with a yellow badge are pending approval",
-        "Customize stages in Settings → Tools → Pipeline stages"
+        "Drag a card between columns to change its stage; for example, move a lead from 'Contacted' to 'Qualified' once they confirm interest.",
+        "Dropping a card into a terminal stage (Won/Lost) can require approval; pending ones show a yellow badge.",
+        "Each stage's value and probability feed the sales forecast shown above the board.",
+        "Customize stage names, colors and probabilities in Settings → Tools → Pipeline stages.",
+        "Use the search and filters to focus on an agent, a channel, or deals with an SLA at risk."
       ]
     },
     "appointments": {

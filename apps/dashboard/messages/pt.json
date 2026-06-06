@@ -4981,30 +4981,36 @@
   },
   "help": {
     "inbox": {
-      "title": "Como funciona a Caixa de Entrada?",
-      "description": "Aqui você vê todas as conversas dos seus clientes em tempo real. As mensagens chegam do WhatsApp, Instagram, Messenger e Telegram em um só lugar. Você pode responder, atribuir a um agente ou deixar a IA cuidar.",
+      "title": "Como funciona o Inbox?",
+      "description": "O Inbox reúne em tempo real todas as conversas de WhatsApp, Instagram, Messenger, Telegram e SMS em uma única caixa estilo chat. Serve para você responder, deixar a IA atender ou assumir quando um cliente precisa de um humano (handoff).",
       "tips": [
-        "Use os filtros para ver apenas suas conversas ou as não atribuídas",
-        "Conversas com handoff aparecem com um badge laranja",
-        "Clique no painel direito para ver os dados do contato"
+        "Filtre por 'Não atribuídas' ou 'Minhas' para focar; as conversas transferidas para humano mostram um selo laranja.",
+        "Quando você assume um handoff, verá no topo um resumo da conversa gerado pela IA.",
+        "Abra o painel da direita para ver e editar os dados do contato sem sair do chat.",
+        "Use macros e respostas rápidas para responder o que é frequente em um clique (configure em Configurações → Macros).",
+        "Se uma conversa ficar esperando mais de 5 min, é escalada automaticamente para um supervisor."
       ]
     },
     "contacts": {
-      "title": "Como gerenciar contatos?",
-      "description": "Seu CRM centraliza todos os contatos que interagiram com o seu negócio. Você pode criar leads, editar informações, atribuir etapas e usar filtros avançados para segmentar.",
+      "title": "Como gerenciar seus contatos?",
+      "description": "O CRM reúne todas as pessoas que falaram com o seu negócio por qualquer canal, unificadas em um único perfil. Serve para guardar suas informações, classificá-las por etapa ou etiquetas e fazer acompanhamento sem perder o histórico.",
       "tips": [
-        "Use o botão 'Filtros avançados' para pesquisar por score, data ou tags",
-        "Clique em um contato para ver o detalhe completo com linha do tempo",
-        "As ações em massa permitem mudar de etapa ou adicionar tags a vários contatos"
+        "Crie um lead manualmente com o botão '+ Contato' (o telefone é obrigatório) ou deixe que sejam criados sozinhos quando um cliente escreve.",
+        "Clique em um contato para abrir o detalhe 360°: linha do tempo, conversas, score e campos personalizados.",
+        "Use os 'Filtros avançados' para segmentar por score, etiquetas ou data (ex.: leads com score > 80 desta semana).",
+        "Selecione vários com as caixas de seleção para ações em massa: mudar etapa, adicionar etiqueta ou arquivar.",
+        "O score é calculado com 5 fatores; clique no número para ver o detalhamento."
       ]
     },
     "pipeline": {
-      "title": "Como funciona o Funil?",
-      "description": "O funil de vendas visualiza em qual etapa cada oportunidade está. Arraste os cartões entre colunas para mover negócios. As etapas são configuráveis nas Configurações.",
+      "title": "Como funciona o funil de vendas?",
+      "description": "O funil (pipeline) é um quadro Kanban onde cada cartão é uma oportunidade de venda e cada coluna é uma etapa do processo (ex.: Novo → Contatado → Qualificado → Ganho). Serve para ver rapidamente em que ponto está cada negociação e priorizar quem acompanhar.",
       "tips": [
-        "Arraste um cartão para uma etapa terminal para solicitar aprovação",
-        "Cartões com badge amarelo estão aguardando aprovação",
-        "Personalize as etapas em Configurações → Ferramentas → Etapas do funil"
+        "Arraste um cartão entre colunas para mudar a etapa; por exemplo, mova um lead de 'Contatado' para 'Qualificado' quando ele confirmar interesse.",
+        "Ao soltar um cartão numa etapa terminal (Ganho/Perdido) pode ser necessária aprovação; os pendentes mostram um selo amarelo.",
+        "O valor e a probabilidade de cada etapa alimentam a previsão de vendas exibida acima do quadro.",
+        "Personalize nomes, cores e probabilidades das etapas em Configurações → Ferramentas → Etapas do funil.",
+        "Use a busca e os filtros para focar num agente, num canal ou em negócios com SLA em risco."
       ]
     },
     "appointments": {

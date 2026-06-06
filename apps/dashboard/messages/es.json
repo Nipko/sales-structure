@@ -5011,29 +5011,35 @@
   "help": {
     "inbox": {
       "title": "¿Cómo funciona el Inbox?",
-      "description": "Aquí ves todas las conversaciones de tus clientes en tiempo real. Los mensajes llegan de WhatsApp, Instagram, Messenger y Telegram en un solo lugar. Puedes responder, asignar a un agente, o dejar que la IA se encargue.",
+      "description": "El Inbox reúne en tiempo real todas las conversaciones de WhatsApp, Instagram, Messenger, Telegram y SMS en una sola bandeja estilo chat. Te sirve para responder tú mismo, dejar que la IA atienda, o tomar el control cuando un cliente necesita un humano (handoff).",
       "tips": [
-        "Usa los filtros para ver solo tus conversaciones o las sin asignar",
-        "Las conversaciones con handoff aparecen con un badge naranja",
-        "Haz clic en el panel derecho para ver los datos del contacto"
+        "Filtra por 'Sin asignar' o 'Mías' para enfocarte; las conversaciones derivadas a humano muestran un badge naranja.",
+        "Cuando tomas una conversación en handoff, verás arriba un resumen de la charla generado por la IA.",
+        "Abre el panel derecho para ver y editar los datos del contacto sin salir del chat.",
+        "Usa macros y respuestas rápidas para contestar lo frecuente en un clic (configúralas en Configuración → Macros).",
+        "Si una conversación queda esperando más de 5 min, se escala automáticamente a un supervisor."
       ]
     },
     "contacts": {
-      "title": "¿Cómo gestionar contactos?",
-      "description": "Tu CRM centraliza todos los contactos que han interactuado con tu negocio. Puedes crear leads, editar información, asignar etapas, y usar filtros avanzados para segmentar.",
+      "title": "¿Cómo gestionar tus contactos?",
+      "description": "El CRM centraliza a todas las personas que han escrito a tu negocio por cualquier canal, unificadas en un solo perfil. Te sirve para guardar su información, clasificarlas por etapa o etiquetas, y darles seguimiento sin perder el historial.",
       "tips": [
-        "Usa el botón 'Filtros avanzados' para buscar por score, fecha o etiquetas",
-        "Haz clic en un contacto para ver su detalle completo con timeline",
-        "Las acciones masivas permiten cambiar etapa o agregar tags a varios contactos"
+        "Crea un lead manualmente con el botón '+ Contacto' (el teléfono es obligatorio) o deja que se creen solos cuando un cliente escribe.",
+        "Haz clic en un contacto para abrir su detalle 360°: timeline, conversaciones, score y campos personalizados.",
+        "Usa 'Filtros avanzados' para segmentar por score, etiquetas o fecha (ej.: leads con score > 80 de esta semana).",
+        "Selecciona varios con las casillas para acciones masivas: cambiar etapa, agregar etiqueta o archivar.",
+        "El score se calcula con 5 factores; haz clic en el número para ver el desglose."
       ]
     },
     "pipeline": {
-      "title": "¿Cómo funciona el Embudo?",
-      "description": "El embudo de ventas visualiza en qué etapa está cada oportunidad. Arrastra las tarjetas entre columnas para mover deals. Las etapas son configurables desde Configuración.",
+      "title": "¿Cómo funciona el Embudo de ventas?",
+      "description": "El embudo (pipeline) es un tablero Kanban donde cada tarjeta es una oportunidad de venta y cada columna es una etapa del proceso (por ejemplo: Nuevo → Contactado → Calificado → Ganado). Te sirve para ver de un vistazo en qué punto está cada negociación y priorizar a quién dar seguimiento.",
       "tips": [
-        "Arrastra una tarjeta a una etapa terminal para solicitar aprobación",
-        "Las tarjetas con badge amarillo están pendientes de aprobación",
-        "Personaliza las etapas en Configuración → Herramientas → Etapas del pipeline"
+        "Arrastra una tarjeta entre columnas para cambiar su etapa; por ejemplo, mueve un lead de 'Contactado' a 'Calificado' cuando confirme interés.",
+        "Al soltar una tarjeta en una etapa terminal (Ganado/Perdido) se puede pedir aprobación; las pendientes muestran un badge amarillo.",
+        "El valor y la probabilidad de cada etapa alimentan el pronóstico de ventas que ves sobre el tablero.",
+        "Personaliza nombres, colores y probabilidades de las etapas en Configuración → Herramientas → Etapas del pipeline.",
+        "Usa el buscador y los filtros para enfocarte en un agente, un canal o deals con SLA en riesgo."
       ]
     },
     "appointments": {

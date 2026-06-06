@@ -4981,30 +4981,36 @@
   },
   "help": {
     "inbox": {
-      "title": "Comment fonctionne la Boîte de réception ?",
-      "description": "Ici, vous voyez toutes les conversations de vos clients en temps réel. Les messages arrivent de WhatsApp, Instagram, Messenger et Telegram au même endroit. Vous pouvez répondre, assigner à un agent ou laisser l'IA s'en charger.",
+      "title": "Comment fonctionne la boîte de réception ?",
+      "description": "La boîte de réception regroupe en temps réel toutes les conversations WhatsApp, Instagram, Messenger, Telegram et SMS dans une seule vue de type chat. Elle sert à répondre vous-même, laisser l'IA gérer, ou reprendre la main quand un client a besoin d'un humain (transfert).",
       "tips": [
-        "Utilisez les filtres pour voir uniquement vos conversations ou celles non assignées",
-        "Les conversations avec handoff apparaissent avec un badge orange",
-        "Cliquez sur le panneau droit pour voir les données du contact"
+        "Filtrez par « Non attribuées » ou « Les miennes » pour vous concentrer ; les conversations transférées à un humain affichent un badge orange.",
+        "Lorsque vous prenez un transfert, un résumé de la conversation généré par l'IA s'affiche en haut.",
+        "Ouvrez le panneau de droite pour voir et modifier les données du contact sans quitter le chat.",
+        "Utilisez les macros et réponses prédéfinies pour répondre aux cas fréquents en un clic (configurez-les dans Paramètres → Macros).",
+        "Si une conversation attend plus de 5 minutes, elle est automatiquement escaladée à un superviseur."
       ]
     },
     "contacts": {
-      "title": "Comment gérer les contacts ?",
-      "description": "Votre CRM centralise tous les contacts qui ont interagi avec votre entreprise. Vous pouvez créer des leads, modifier les informations, assigner des étapes et utiliser des filtres avancés pour segmenter.",
+      "title": "Comment gérer vos contacts ?",
+      "description": "Le CRM regroupe toutes les personnes qui ont écrit à votre entreprise sur n'importe quel canal, réunies dans un profil unique. Il sert à conserver leurs informations, les classer par étape ou par étiquettes, et assurer le suivi sans perdre l'historique.",
       "tips": [
-        "Utilisez le bouton 'Filtres avancés' pour rechercher par score, date ou tags",
-        "Cliquez sur un contact pour voir le détail complet avec chronologie",
-        "Les actions groupées permettent de changer d'étape ou d'ajouter des tags à plusieurs contacts"
+        "Créez un lead manuellement avec le bouton « + Contact » (le téléphone est obligatoire), ou laissez-les se créer automatiquement quand un client écrit.",
+        "Cliquez sur un contact pour ouvrir sa fiche 360° : historique, conversations, score et champs personnalisés.",
+        "Utilisez les « Filtres avancés » pour segmenter par score, étiquettes ou date (ex. : leads avec score > 80 cette semaine).",
+        "Sélectionnez-en plusieurs avec les cases à cocher pour les actions groupées : changer d'étape, ajouter une étiquette ou archiver.",
+        "Le score est calculé à partir de 5 facteurs ; cliquez sur le nombre pour voir le détail."
       ]
     },
     "pipeline": {
-      "title": "Comment fonctionne l'Entonnoir ?",
-      "description": "L'entonnoir de ventes visualise à quelle étape se trouve chaque opportunité. Faites glisser les cartes entre les colonnes pour déplacer les deals. Les étapes sont configurables dans les Paramètres.",
+      "title": "Comment fonctionne le pipeline de ventes ?",
+      "description": "Le pipeline est un tableau Kanban où chaque carte est une opportunité de vente et chaque colonne une étape de votre processus (ex. : Nouveau → Contacté → Qualifié → Gagné). Il permet de voir d'un coup d'œil où en est chaque affaire et de prioriser les relances.",
       "tips": [
-        "Faites glisser une carte vers une étape terminale pour demander une approbation",
-        "Les cartes avec un badge jaune sont en attente d'approbation",
-        "Personnalisez les étapes dans Paramètres → Outils → Étapes du pipeline"
+        "Faites glisser une carte d'une colonne à l'autre pour changer d'étape ; par exemple, déplacez un lead de « Contacté » à « Qualifié » dès qu'il confirme son intérêt.",
+        "Déposer une carte dans une étape terminale (Gagné/Perdu) peut exiger une approbation ; les cartes en attente affichent un badge jaune.",
+        "La valeur et la probabilité de chaque étape alimentent la prévision de ventes affichée au-dessus du tableau.",
+        "Personnalisez les noms, couleurs et probabilités des étapes dans Paramètres → Outils → Étapes du pipeline.",
+        "Utilisez la recherche et les filtres pour vous concentrer sur un agent, un canal ou des affaires dont le SLA est menacé."
       ]
     },
     "appointments": {

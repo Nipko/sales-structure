@@ -177,6 +177,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     environment: production
+    # The deploy job logs into GHCR on the VPS (GHCR_PAT = GITHUB_TOKEN) and pulls
+    # the images, so its token MUST have packages:read. Without this the docker pull
+    # returns "denied" and (script_stop:true) aborts "Deploy to VPS".
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Check if VPS secrets are configured

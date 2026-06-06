@@ -93,6 +93,31 @@ export class MediaService {
     }
 
     /**
+     * Persist a raw media buffer (e.g. an INBOUND voice note already downloaded for
+     * transcription) so the agent can play it back. No image processing, no DB row —
+     * the public serve endpoint reads it straight from disk by filename.
+     * Returns the relative served URL, or null on failure (best-effort).
+     */
+    async saveBuffer(tenantId: string, buffer: Buffer, mimeType: string): Promise<string | null> {
+        try {
+            if (!buffer?.length) return null;
+            const ext =
+                AUDIO_EXT[mimeType] || VIDEO_EXT[mimeType] || DOC_EXT[mimeType] ||
+                (mimeType?.startsWith('audio/') ? '.ogg' : mimeType?.startsWith('video/') ? '.mp4' : '.bin');
+            const id = randomUUID();
+            const fileName = `${id}${ext}`;
+            const tenantDir = path.join(this.storagePath, tenantId);
+            fs.mkdirSync(tenantDir, { recursive: true });
+            fs.writeFileSync(path.join(tenantDir, fileName), buffer);
+            this.logger.log(`Saved raw media: ${fileName} (${(buffer.length / 1024).toFixed(0)}KB, ${mimeType})`);
+            return this.fileUrl(tenantId, fileName);
+        } catch (e: any) {
+            this.logger.warn(`saveBuffer failed: ${e.message}`);
+            return null;
+        }
+    }
+
+    /**
      * Upload and process an image file
      */
     async upload(

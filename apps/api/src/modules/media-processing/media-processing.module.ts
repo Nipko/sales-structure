@@ -7,11 +7,13 @@ import { MediaThrottleService } from './media-throttle.service';
 import { MediaProcessingController } from './media-processing.controller';
 import { ChannelsModule } from '../channels/channels.module';
 import { SettingsModule } from '../settings/settings.module';
+import { MediaModule } from '../media/media.module';
 
 @Module({
     imports: [
         forwardRef(() => ChannelsModule),
         SettingsModule,
+        MediaModule,
     ],
     providers: [
         MediaProcessingService,

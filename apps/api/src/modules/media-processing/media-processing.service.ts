@@ -4,6 +4,8 @@ import { AudioTranscriptionService } from './audio-transcription.service';
 import { ImageVisionService } from './image-vision.service';
 import { MediaThrottleService } from './media-throttle.service';
 import { RedisService } from '../redis/redis.service';
+import { MediaService } from '../media/media.service';
+import { PrismaService } from '../prisma/prisma.service';
 import type { NormalizedMessage, MediaProcessingResult } from '@parallext/shared';
 
 @Injectable()
@@ -16,7 +18,43 @@ export class MediaProcessingService {
         private readonly vision: ImageVisionService,
         private readonly mediaThrottle: MediaThrottleService,
         private readonly redis: RedisService,
+        private readonly media: MediaService,
+        private readonly prisma: PrismaService,
     ) {}
+
+    /**
+     * Persist an inbound voice note (already downloaded for transcription) to media
+     * storage and stamp its URL on the message, so the agent can play it back.
+     * Best-effort: never throws (transcription/AI flow must not break).
+     */
+    private async persistInboundAudio(
+        tenantId: string,
+        conversationId: string,
+        buffer: Buffer,
+        mimeType: string,
+    ): Promise<void> {
+        try {
+            const url = await this.media.saveBuffer(tenantId, buffer, mimeType);
+            if (!url) return;
+            const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+            if (!schemaName) return;
+            // Stamp the URL on the most recent inbound audio message in this conversation
+            // (the one we just saved before the AI pipeline ran).
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE messages
+                 SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{mediaUrl}', to_jsonb($2::text))
+                 WHERE id = (
+                     SELECT id FROM messages
+                     WHERE conversation_id = $1::uuid AND direction = 'inbound' AND content_type = 'audio'
+                     ORDER BY created_at DESC LIMIT 1
+                 )`,
+                [conversationId, url],
+            );
+        } catch (e: any) {
+            this.logger.warn(`persistInboundAudio failed: ${e.message}`);
+        }
+    }
 
     /**
      * Process an inbound media message.
@@ -62,6 +100,8 @@ export class MediaProcessingService {
             let result: MediaProcessingResult;
 
             if (mediaType === 'audio') {
+                // Persist the voice note so the agent can play it back in the app (best-effort).
+                await this.persistInboundAudio(tenantId, conversationId, downloaded.buffer, downloaded.mimeType);
                 result = await this.processAudio(tenantId, downloaded.buffer, downloaded.mimeType, throttleResult.limits.maxAudioDurationSec);
             } else {
                 result = await this.processImage(tenantId, downloaded.buffer, downloaded.mimeType, conversationContext);

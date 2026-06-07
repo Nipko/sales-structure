@@ -10,6 +10,7 @@ import {
     MessageSquare, HelpCircle, Wrench, GitBranch, Headset,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 type StepType = "message" | "ask" | "tool" | "condition" | "handoff";
 
@@ -50,6 +51,7 @@ const CARD = "rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200
 
 export default function ProceduresPage() {
     const t = useTranslations("procedures");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [procedures, setProcedures] = useState<Procedure[]>([]);
@@ -144,6 +146,12 @@ export default function ProceduresPage() {
                         </button>
                     </div>
                 }
+            />
+            <HelpPanel
+                title={tHelp("procedures.title")}
+                description={tHelp("procedures.description")}
+                tips={tHelp.raw("procedures.tips") as string[]}
+                mediaKey="procedures"
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

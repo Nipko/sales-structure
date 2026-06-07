@@ -56,6 +56,20 @@ existing `images` / `videoUrl` props (they take precedence over `mediaKey`).
 | financials | /admin/financials | tabs (super admin) |
 | featureRequests | /admin/feature-requests | submit + vote |
 
+## Phase 1 — Wave A (added, drop a `{key}.gif` for each)
+| key | page | suggested GIF |
+|-----|------|----------------|
+| agentSimulation | /admin/agent/simulation | run a synthetic test + open transcript |
+| attribution | /admin/attribution | range selector + per-ad table + funnel |
+| organizations | /admin/contacts/organizations | new org + forecast KPIs |
+| coupons | /admin/coupons | create coupon (type/expiry/max) |
+| identity | /admin/identity | approve a merge suggestion |
+| inventory | /admin/inventory | adjust stock (in/out/adjust) |
+| managed | /admin/managed | enroll account + target % |
+| orders | /admin/orders | filter by status + change status |
+| procedures | /admin/procedures | write SOP → compile to steps |
+| verticalAnalytics | /admin/vertical-analytics | overview bar → drilldown |
+
 ## New pages to add help to (later phases — see docs/help-panel-audit-2026-06.md)
 When adding `HelpPanel` to a new page, also add `mediaKey="{newKey}"` and a
 matching `help.{newKey}` entry in all 4 `messages/*.json`.

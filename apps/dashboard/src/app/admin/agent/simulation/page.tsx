@@ -10,6 +10,7 @@ import {
     TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, ChevronRight, X,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 // ── Types ───────────────────────────────────────────────────
 interface Agent { id: string; name: string; is_default?: boolean; is_active?: boolean; }
@@ -63,6 +64,7 @@ const CARD = "p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral
 
 export default function AgentSimulationPage() {
     const t = useTranslations("simulation");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [agents, setAgents] = useState<Agent[]>([]);
@@ -145,6 +147,12 @@ export default function AgentSimulationPage() {
     return (
         <div className="space-y-6">
             <PageHeader icon={FlaskConical} title={t("title")} subtitle={t("subtitle")} />
+            <HelpPanel
+                title={tHelp("agentSimulation.title")}
+                description={tHelp("agentSimulation.description")}
+                tips={tHelp.raw("agentSimulation.tips") as string[]}
+                mediaKey="agentSimulation"
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Launch panel */}

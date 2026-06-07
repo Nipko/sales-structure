@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
@@ -36,6 +37,7 @@ function ChannelBadge({ channel }: { channel: string }) {
 
 export default function IdentityPage() {
     const t = useTranslations('identity');
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [activeTab, setActiveTab] = useState("suggestions");
@@ -136,6 +138,12 @@ export default function IdentityPage() {
     return (
         <div className="max-w-[1060px] mx-auto">
             <PageHeader title={t('title')} subtitle={t('subtitle')} icon={Users} iconColor="bg-primary" />
+            <HelpPanel
+                title={tHelp("identity.title")}
+                description={tHelp("identity.description")}
+                tips={tHelp.raw("identity.tips") as string[]}
+                mediaKey="identity"
+            />
             <TabNav tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
             {message.text && (

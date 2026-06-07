@@ -5232,6 +5232,116 @@
         "Passe à l'onglet 'Changelog' pour voir quelles demandes du tableau ont déjà été lancées, regroupées par mois de livraison.",
         "Ouvre n'importe quelle demande pour lire les commentaires de l'équipe ou laisser le tien — les réponses marquées 'Équipe' viennent directement de l'équipe produit de Parallly."
       ]
+    },
+    "agentSimulation": {
+      "title": "Comment fonctionne la simulation de l'agent ?",
+      "description": "La simulation lance des conversations de test automatiques contre votre agent IA en utilisant des scénarios synthétiques ou des replays de vrais chats, et un juge évalue chaque réponse selon cinq dimensions. Utilisez-la avant de déployer des changements importants pour détecter les régressions sans affecter de vrais clients.",
+      "tips": [
+        "Choisissez 'Scénarios synthétiques' pour générer automatiquement des cas de test variés ; choisissez 'Replay' pour rejouer des conversations réelles déjà survenues sur votre canal.",
+        "Réglez le champ 'Nombre de scénarios' entre 1 et 100 selon le temps disponible : 20 scénarios suffisent pour une vérification rapide, 50 ou plus pour une validation approfondie.",
+        "Sélectionnez un 'Baseline' dans la liste déroulante pour comparer le résultat actuel à une exécution précédente ; si le nouveau score baisse, vous verrez l'alerte 'Régression détectée' avec les scénarios concernés.",
+        "Cliquez sur n'importe quelle ligne du tableau de scénarios pour ouvrir le panneau latéral avec la transcription complète, les sous-scores (Résolution, Ton, Précision, Empathie) et les flags du juge.",
+        "Consultez la section 'Historique' pour suivre l'évolution du score moyen dans le temps et décider quand l'agent est prêt pour la production."
+      ]
+    },
+    "attribution": {
+      "title": "Comment fonctionne l'attribution des revenus ?",
+      "description": "L'attribution montre quelles publicités Meta (Click-to-WhatsApp) et quelles campagnes de diffusion ont généré des contacts, des leads et des ventes conclues, en mesurant le revenu réel produit par chaque action marketing. Utilisez-la pour décider où investir votre budget publicitaire en vous basant sur des résultats concrets, pas seulement des clics.",
+      "tips": [
+        "Changez la période avec les boutons '30', '90' ou '365' jours en haut pour ajuster la fenêtre d'analyse ; par exemple, utilisez 90 jours pour évaluer une campagne trimestrielle.",
+        "Consultez les KPIs supérieurs ('Clics sur l'annonce', 'Conversions', 'Revenus attribués', 'Leads générés') pour un résumé global avant de détailler par annonce.",
+        "Dans le tableau 'Par annonce', comparez la colonne 'Taux de conversion' : si une annonce a beaucoup de clics mais peu de ventes, ajustez son contenu ou son ciblage.",
+        "La section 'Revenus par diffusion' indique combien de ventes chaque campagne broadcast a générées ; identifiez celle au revenu le plus élevé pour dupliquer son message dans la prochaine.",
+        "L'entonnoir visuel (Clics → Contacts → Leads → Gagnés) vous aide à repérer le point de chute le plus important ; si l'écart entre 'Leads' et 'Gagnés' est grand, le problème vient peut-être du suivi de l'agent."
+      ]
+    },
+    "organizations": {
+      "title": "Comment gérer les entreprises et les opportunités B2B ?",
+      "description": "Organisations est le module CRM pour les ventes B2B : il regroupe vos contacts sous des entreprises, enregistre les opportunités ouvertes par compte et projette le revenu pondéré selon l'étape de l'entonnoir. Utilisez-le quand vous vendez à des entreprises (pas seulement à des particuliers) et que vous avez besoin de voir la valeur totale de chaque compte en un seul endroit.",
+      "tips": [
+        "Cliquez sur '+ Nouvelle organisation' pour créer une entreprise ; remplissez au moins le nom et le secteur pour que les filtres et les rapports fonctionnent correctement.",
+        "Utilisez la barre de recherche de la section 'Organisations' pour trouver une entreprise par nom ; par exemple, tapez 'Acme' et tous les comptes correspondants apparaîtront.",
+        "Consultez les KPIs supérieurs ('Pipeline pondéré', 'Engagé', 'Meilleur cas', 'Vélocité moyenne') pour une projection de revenus trimestrielle sans inspecter chaque opportunité manuellement.",
+        "La section 'Par étape' affiche la barre de valeur totale et la valeur pondérée par probabilité pour chaque étape ; si 'Proposition envoyée' concentre beaucoup de valeur sans progresser, c'est le signe qu'un suivi est nécessaire.",
+        "Quand un deal apparaît dans les 'Alertes de deals bloqués', il n'a eu aucune activité depuis plus de 14 jours ; priorisez ces opportunités dans votre agenda pour éviter de les perdre."
+      ]
+    },
+    "coupons": {
+      "title": "Comment créer et gérer des coupons de réduction ?",
+      "description": "Les coupons sont des codes de réduction que vous pouvez créer et distribuer à des clients ou partenaires pour réduire le prix des plans Parallly ; ils supportent trois types : pourcentage de réduction, montant fixe et mois gratuits. Cette section est réservée aux super administrateurs et vous permet de contrôler la validité, la limite d'utilisations et les plans auxquels chaque coupon s'applique.",
+      "tips": [
+        "Cliquez sur 'Créer un coupon' et saisissez un code en majuscules sans espaces (par exemple, 'LAUNCH50') pour le rendre facile à partager et à mémoriser.",
+        "Choisissez le type de coupon selon votre stratégie : 'Pourcentage de réduction' pour des remises relatives (par exemple, 20 % off), 'Montant fixe' pour soustraire un montant exact (par exemple, $10), ou 'Mois gratuits' pour offrir des périodes d'abonnement complètes.",
+        "Utilisez le champ 'Maximum d'utilisations' pour limiter la disponibilité ; par exemple, entrez 50 si c'est une promotion de lancement ne devant pas dépasser ce nombre de rachats.",
+        "Définissez une 'Date d'expiration' pour les coupons de campagne limités dans le temps ; le code cessera de fonctionner automatiquement à la date choisie sans désactivation manuelle.",
+        "Quand un coupon ne doit plus accepter de nouveaux usages, cliquez sur l'icône 'Désactiver' (bouton rouge dans la ligne) pour le marquer comme inactif sans le supprimer ; cela conserve l'historique des rachats dans la colonne 'Utilisations'."
+      ]
+    },
+    "identity": {
+      "title": "Comment fonctionne la fusion d'identités de contacts ?",
+      "description": "Identité détecte automatiquement quand le même client vous a contacté depuis différents canaux (par exemple, WhatsApp et Instagram) et suggère de fusionner ces profils en un seul, évitant les doublons dans votre CRM. Vous pouvez aussi fusionner deux contacts manuellement si le système ne les a pas détectés automatiquement.",
+      "tips": [
+        "Dans l'onglet 'Suggestions', passez en revue les cards en attente et vérifiez le motif de correspondance (par exemple, 'Correspondance téléphone' ou 'Correspondance e-mail') et le pourcentage de confiance avant d'approuver.",
+        "Cliquez sur 'Approuver' si les deux profils correspondent à la même personne ; le système unifiera leur historique de conversations et leurs données de contact en un seul enregistrement.",
+        "Cliquez sur 'Rejeter' si les contacts sont des personnes différentes même s'ils partagent un téléphone ou un e-mail ; cela empêche le système de les suggérer à nouveau ensemble.",
+        "Si le système n'a pas détecté la duplication automatiquement, utilisez l'onglet 'Fusion manuelle' : recherchez le premier contact dans la liste, sélectionnez-le comme 'A', puis recherchez le second et sélectionnez-le comme 'B', et confirmez la fusion.",
+        "Les compteurs 'En attente', 'Approuvés' et 'Rejetés' en haut indiquent l'état général de vos suggestions ; si 'En attente' continue de croître, envisagez de réserver du temps chaque semaine pour les examiner."
+      ]
+    },
+    "inventory": {
+      "title": "Comment gérer l'inventaire ?",
+      "description": "L'inventaire est le catalogue de produits de votre entreprise avec un contrôle des stocks en temps réel : voyez combien d'unités vous avez, leur valeur totale et lesquelles doivent être réapprovisionnées. Utilisez-le pour éviter de vendre des articles en rupture de stock et pour enregistrer chaque mouvement.",
+      "tips": [
+        "Vérifiez les indicateurs 'Stock faible' et 'Rupture de stock' en haut ; si l'un d'eux affiche un chiffre en orange ou rouge, cliquez sur 'Ajuster le stock' sur ce produit avant que l'agent IA ne le propose sans disponibilité.",
+        "Filtrez par catégorie grâce aux boutons colorés pour voir uniquement une gamme de produits ; par exemple, sélectionnez 'Électronique' pour comparer les prix et stocks de ce groupe.",
+        "Recherchez par nom de produit ou SKU dans le champ de recherche ; si vous gérez 200 références et devez mettre à jour 'CAM-001', tapez-le directement.",
+        "Lors d'un ajustement de stock, choisissez le bon type : 'Entrée' (+) pour les livraisons fournisseur, 'Sortie' (−) pour les ventes hors système, et 'Ajustement' pour corriger le total après un inventaire physique.",
+        "Ajoutez le coût à la création du produit ; le tableau de bord calculera alors automatiquement la marge bénéficiaire estimée affichée sous l'indicateur 'Valeur de l'inventaire'."
+      ]
+    },
+    "managed": {
+      "title": "Comment fonctionne le service géré ?",
+      "description": "La section 'Géré' est un panneau réservé aux super administrateurs pour suivre la garantie de résolution proposée à vos clients : vous définissez un pourcentage cible de conversations résolues par l'IA et le système indique si chaque compte l'atteint. Utilisez-la pour identifier les comptes à risque ou en violation de l'accord de service.",
+      "tips": [
+        "Pour intégrer un compte, sélectionnez le tenant dans le sélecteur 'Ajouter un compte', saisissez le pourcentage cible (ex. 80 %) dans le champ 'Objectif %' et cliquez sur 'Activer' ; le système compare alors les résultats réels à cet objectif.",
+        "Surveillez la colonne 'Statut' : 'Atteint' (vert) signifie que le taux vérifié dépasse l'objectif, 'À risque' (orange) qu'il est proche du seuil, et 'Violé' (rouge) que l'écart est déjà trop important.",
+        "La colonne 'Taux vérifié' affiche le pourcentage de conversations où l'IA a résolu le problème et où cela a été confirmé ; elle est plus conservatrice que le taux général, utilisez-la comme référence réelle du service.",
+        "Ajustez l'objectif directement dans le tableau en modifiant le champ numérique de la ligne ; la modification est enregistrée automatiquement en quittant le champ.",
+        "Si un compte n'a plus besoin du service géré, cliquez sur 'Désactiver' en fin de ligne ; le compte disparaît du suivi mais les données historiques sont conservées."
+      ]
+    },
+    "orders": {
+      "title": "Comment gérer les commandes ?",
+      "description": "Les commandes sont les ordres d'achat générés par vos clients ou créés manuellement par votre équipe : consultez l'historique complet, le montant total à encaisser et le statut de chaque transaction (en attente, confirmée, payée ou annulée). Utilisez-les pour suivre les flux de trésorerie et vous assurer qu'aucune vente ne reste sans traitement.",
+      "tips": [
+        "Filtrez les commandes par statut grâce aux boutons de la barre supérieure ; par exemple, cliquez sur 'En attente' pour ne voir que les commandes en attente de paiement et prioriser les encaissements du jour.",
+        "Changez le statut d'une commande directement depuis le sélecteur de la colonne 'Action rapide' ; quand vous confirmez un virement, passez-la de 'En attente' à 'Payée' sans ouvrir le détail.",
+        "Générez et ouvrez la facture de n'importe quelle commande avec le bouton 'Voir le reçu' ; elle s'ouvre dans un nouvel onglet en HTML prêt à imprimer ou à partager.",
+        "Recherchez une commande par nom de client ou par identifiant dans le champ de recherche ; si un client vous écrit sur WhatsApp pour connaître l'état de sa commande, retrouvez-la en quelques secondes.",
+        "Lors de la création manuelle d'une commande, sélectionnez les produits en stock dans le sélecteur 'Ajouter des produits' et ajustez les quantités ; le total est calculé en temps réel avant confirmation."
+      ]
+    },
+    "procedures": {
+      "title": "Comment créer et utiliser des procédures (SOP) ?",
+      "description": "Les procédures sont des flux de conversation pas-à-pas que l'agent IA exécute automatiquement lorsqu'il détecte certains mots-clés déclencheurs : vous définissez quel message envoyer, quelle question poser, quel outil appeler, quelle condition évaluer ou quand transférer à un agent humain. Utilisez-les pour standardiser les réponses complexes sans que l'agent improvise.",
+      "tips": [
+        "Utilisez le bouton 'Rédiger un SOP' pour décrire la procédure en langage naturel (comme si vous l'expliquiez à un nouvel employé) et laissez l'IA la compiler en étapes structurées automatiquement ; par exemple : 'D'abord demander le nom, puis vérifier la disponibilité, si en stock confirmer la commande'.",
+        "Dans l'éditeur, ajoutez une étape de type 'Demander' chaque fois que vous devez capturer une information du client, comme son e-mail ou son numéro de rendez-vous ; le champ 'Champ' définit le nom de la variable où la réponse est stockée.",
+        "Utilisez les étapes 'Condition' pour bifurquer le flux selon la réponse du client ; par exemple, si le champ 'budget' est supérieur à 500 000, continuez vers l'étape de clôture, sinon affichez les options économiques.",
+        "Définissez les 'Mots-clés déclencheurs' séparés par des virgules pour que la procédure s'active quand le client mentionne ces phrases ; par exemple : 'devis, prix, combien ça coûte' déclenche le flux tarifaire.",
+        "Changez l'état de la procédure avec le bouton 'Activer' ou 'Désactiver' selon vos besoins ; une procédure en état 'Brouillon' ne s'exécute pas même si le client tape les mots-clés, utilisez-la pour tester avant de publier."
+      ]
+    },
+    "verticalAnalytics": {
+      "title": "Comment analyser les performances par secteur ?",
+      "description": "L'analytique par vertical est un panneau réservé aux super administrateurs qui montre la répartition de tous les tenants par secteur (santé, restaurants, tourisme, immobilier, etc.) ainsi que leur niveau d'activation et de paiement. Utilisez-la pour identifier les verticales qui ont le plus de traction et les comptes dont la configuration est incomplète.",
+      "tips": [
+        "Dans l'onglet 'Résumé', cliquez sur la barre d'un secteur pour accéder directement au détail de cette verticale dans l'onglet 'Détail' ; par exemple, cliquez sur 'Tourisme' pour voir tous les tenants de ce secteur avec leurs métriques individuelles.",
+        "Consultez le tableau 'Lacunes d'activation' dans l'onglet 'Résumé' : il liste les tenants enregistrés sans canal connecté ni agent configuré ; cliquez sur le nom du tenant pour accéder à sa fiche et l'aider à finaliser la configuration.",
+        "Dans l'onglet 'Détail', sélectionnez un secteur parmi les boutons du haut pour voir le classement des tenants de ce secteur par niveau d'activation et activité récente.",
+        "Utilisez le bouton 'Actualiser' (en haut à droite) pour forcer un rechargement en temps réel si vous venez de créer ou d'activer des tenants et que les indicateurs ne le reflètent pas encore.",
+        "Dans le tableau de classement des tenants du 'Détail', la colonne 'Activé' avec un point vert indique que ce tenant a déjà envoyé son premier message ; les cercles vides signalent qu'il n'y a pas encore de vraies conversations et ces tenants peuvent avoir besoin d'un accompagnement à l'onboarding."
+      ]
     }
   },
   "helpAssistant": {

@@ -5232,6 +5232,116 @@
         "Mude para a aba 'Changelog' para ver quais solicitações do quadro já foram lançadas, agrupadas pelo mês de entrega.",
         "Abra qualquer solicitação para ler comentários da equipe ou deixar o seu — respostas marcadas como 'Equipe' vêm diretamente da equipe de produto da Parallly."
       ]
+    },
+    "agentSimulation": {
+      "title": "Como funciona a simulação do agente?",
+      "description": "A simulação executa conversas de teste automáticas contra o seu agente de IA usando cenários sintéticos ou replays de chats reais, e um juiz avalia cada resposta em cinco dimensões. Use-a antes de publicar mudanças importantes para detectar regressões sem afetar clientes reais.",
+      "tips": [
+        "Escolha 'Cenários sintéticos' para gerar casos de teste variados automaticamente; escolha 'Replay' para reproduzir conversas reais que já ocorreram no canal.",
+        "Ajuste o campo 'Quantidade de cenários' entre 1 e 100 conforme o tempo disponível: 20 cenários são suficientes para uma revisão rápida, 50 ou mais para uma validação completa.",
+        "Selecione um 'Baseline' no menu suspenso para comparar o resultado atual com uma execução anterior; se a nova pontuação cair, você verá o alerta 'Regressão detectada' com os cenários afetados.",
+        "Clique em qualquer linha da tabela de cenários para abrir o painel lateral com a transcrição completa, sub-pontuações (Resolução, Tom, Precisão, Empatia) e flags do juiz.",
+        "Revise o 'Histórico' de execuções para acompanhar a evolução da pontuação média ao longo do tempo e decidir quando o agente está pronto para produção."
+      ]
+    },
+    "attribution": {
+      "title": "Como funciona a atribuição de receita?",
+      "description": "A atribuição mostra quais anúncios da Meta (Click-to-WhatsApp) e campanhas de broadcast geraram contatos, leads e vendas fechadas, medindo a receita real que cada ação de marketing produziu. Use-a para decidir onde investir seu orçamento publicitário com base em resultados reais, não apenas cliques.",
+      "tips": [
+        "Altere o período usando os botões '30', '90' ou '365' dias no topo para ajustar o intervalo de análise; por exemplo, use 90 dias para avaliar uma campanha trimestral.",
+        "Revise os KPIs superiores ('Cliques em anúncio', 'Conversões', 'Receita atribuída', 'Leads gerados') para um resumo global antes de entrar no detalhe por anúncio.",
+        "Na tabela 'Por anúncio', compare a coluna 'Taxa de conversão' entre anúncios: se um anúncio tem muitos cliques mas poucas vendas, ajuste o texto ou a segmentação.",
+        "A seção 'Receita por broadcast' mostra quantas vendas cada campanha gerou; identifique qual teve maior receita para replicar sua mensagem na próxima.",
+        "O funil visual (Cliques → Contatos → Leads → Ganhos) ajuda a identificar o maior ponto de queda; se a diferença entre 'Leads' e 'Ganhos' for grande, o problema pode estar no acompanhamento do agente."
+      ]
+    },
+    "organizations": {
+      "title": "Como gerenciar empresas e oportunidades B2B?",
+      "description": "Organizações é o módulo de CRM para vendas B2B: agrupa seus contatos sob empresas, registra oportunidades abertas por conta e projeta a receita ponderada conforme a etapa do funil. Use-o quando você vende para empresas (não só para pessoas) e precisa ver o valor total de cada conta em um único lugar.",
+      "tips": [
+        "Clique em '+ Nova organização' para criar uma empresa; preencha pelo menos o nome e o setor para que os filtros e relatórios funcionem corretamente.",
+        "Use a barra de pesquisa da seção 'Organizações' para encontrar uma empresa pelo nome; por exemplo, digite 'Acme' e todas as contas correspondentes aparecerão.",
+        "Revise os KPIs superiores ('Pipeline ponderado', 'Comprometido', 'Melhor caso', 'Velocidade média') para ter uma projeção de receita trimestral sem verificar cada oportunidade manualmente.",
+        "A seção 'Por etapa' mostra a barra de valor total e o valor ponderado por probabilidade para cada etapa; se 'Proposta enviada' concentra muito valor sem avançar, é sinal de que é preciso fazer acompanhamento.",
+        "Quando um card aparece em 'Alertas de negócios parados', significa que ficou mais de 14 dias sem atividade; priorize essas oportunidades na sua agenda para não perdê-las."
+      ]
+    },
+    "coupons": {
+      "title": "Como criar e gerenciar cupons de desconto?",
+      "description": "Os cupons são códigos de desconto que você pode criar e distribuir para clientes ou parceiros para reduzir o preço dos planos do Parallly; eles suportam três tipos: porcentagem de desconto, valor fixo e meses grátis. Esta seção é exclusiva para super administradores e permite controlar validade, limite de usos e os planos aos quais cada cupom se aplica.",
+      "tips": [
+        "Clique em 'Criar cupom' e insira um código em maiúsculas sem espaços (por exemplo, 'LAUNCH50') para facilitar o compartilhamento e a memorização.",
+        "Escolha o tipo de cupom conforme a estratégia: 'Porcentagem de desconto' para descontos relativos (por exemplo, 20% off), 'Valor fixo' para subtrair um valor exato (por exemplo, $10), ou 'Meses grátis' para presentear períodos completos de assinatura.",
+        "Use o campo 'Máximo de usos' para limitar a disponibilidade; por exemplo, defina 50 se for uma promoção de lançamento que não deve ultrapassar esse número de resgates.",
+        "Configure uma 'Data de expiração' para cupons de campanha temporários; o código deixará de funcionar automaticamente na data escolhida sem precisar de desativação manual.",
+        "Quando um cupom não deve mais aceitar novos usos, clique no ícone 'Desativar' (botão vermelho na linha) para marcá-lo como inativo sem excluí-lo; isso preserva o histórico de resgates na coluna 'Usos'."
+      ]
+    },
+    "identity": {
+      "title": "Como funciona a fusão de identidades de contatos?",
+      "description": "Identidade detecta automaticamente quando o mesmo cliente entrou em contato por canais diferentes (por exemplo, WhatsApp e Instagram) e sugere unificar esses perfis em um único, evitando duplicatas no seu CRM. Você também pode fundir dois contatos manualmente se o sistema não os detectou sozinho.",
+      "tips": [
+        "Na aba 'Sugestões', revise as cards pendentes e verifique o motivo da correspondência (por exemplo, 'Correspondência de telefone' ou 'Correspondência de e-mail') e a porcentagem de confiança antes de aprovar.",
+        "Clique em 'Aprovar' se os dois perfis forem da mesma pessoa; o sistema unificará o histórico de conversas e os dados de contato em um único registro.",
+        "Clique em 'Rejeitar' se os contatos forem pessoas diferentes, mesmo que compartilhem telefone ou e-mail; isso impede que o sistema os sugira juntos novamente.",
+        "Se o sistema não detectou a duplicata automaticamente, use a aba 'Fusão manual': pesquise o primeiro contato na lista, selecione-o como 'A', depois pesquise o segundo e selecione-o como 'B', e confirme a fusão.",
+        "Os contadores 'Pendentes', 'Aprovados' e 'Rejeitados' no topo mostram o estado geral das sugestões; se 'Pendentes' continua crescendo, considere reservar um tempo semanal para revisá-los."
+      ]
+    },
+    "inventory": {
+      "title": "Como gerenciar o inventário?",
+      "description": "O inventário é o catálogo de produtos do seu negócio com controle de estoque em tempo real: veja quantas unidades você tem, o valor total e quais precisam de reposição. Use-o para evitar vender itens sem estoque e registrar cada movimentação.",
+      "tips": [
+        "Verifique os indicadores 'Estoque baixo' e 'Sem estoque' no topo; se algum exibir número em laranja ou vermelho, clique em 'Ajustar estoque' naquele produto antes que o agente IA o ofereça sem disponibilidade.",
+        "Filtre por categoria usando os botões coloridos para ver apenas uma linha de produtos; por exemplo, selecione 'Eletrônicos' para comparar preços e estoque desse grupo.",
+        "Busque por nome do produto ou SKU no campo de pesquisa; se você tem 200 referências e precisa atualizar 'CAM-001', basta digitá-lo.",
+        "Ao registrar um ajuste de estoque, escolha o tipo correto: 'Entrada' (+) para mercadoria recebida, 'Saída' (−) para vendas fora do sistema e 'Ajuste' para corrigir o total após contagem física.",
+        "Adicione o custo ao criar um produto; assim o painel calcula automaticamente a margem de lucro estimada que aparece abaixo do indicador 'Valor do inventário'."
+      ]
+    },
+    "managed": {
+      "title": "Como funciona o serviço gerenciado?",
+      "description": "A seção 'Gerenciado' é um painel exclusivo para super administradores para acompanhar a garantia de resolução oferecida aos seus clientes: você define um percentual alvo de conversas resolvidas pela IA e o sistema mostra se cada conta está cumprindo a meta. Use-o para identificar contas em risco ou que já violaram o acordo de serviço.",
+      "tips": [
+        "Para incluir uma conta, selecione o tenant no seletor 'Adicionar conta', insira o percentual alvo (ex.: 80%) no campo 'Meta %' e clique em 'Habilitar'; a partir daí o sistema compara o resultado real com essa meta.",
+        "Observe a coluna 'Status': 'Cumprido' (verde) significa que a taxa verificada supera o objetivo, 'Em risco' (âmbar) que está próximo do limite, e 'Violado' (vermelho) que a diferença já ultrapassou o tolerável.",
+        "A coluna 'Taxa verificada' mostra o percentual de conversas onde a IA resolveu o problema e isso foi confirmado; é mais conservadora que a taxa geral, use-a como referência real do serviço.",
+        "Ajuste o objetivo diretamente na tabela editando o campo numérico da linha; a alteração é salva automaticamente ao tirar o foco, sem precisar confirmar.",
+        "Se uma conta não precisar mais do serviço gerenciado, clique em 'Desabilitar' no final da linha; a conta sai do acompanhamento mas os dados históricos são preservados."
+      ]
+    },
+    "orders": {
+      "title": "Como gerenciar os pedidos?",
+      "description": "Os pedidos são as ordens de compra geradas pelos seus clientes ou criadas manualmente pela sua equipe: veja o histórico completo, o valor total a receber e o status de cada transação (pendente, confirmado, pago ou cancelado). Use-o para acompanhar o fluxo de caixa e garantir que nenhuma venda fique sem processar.",
+      "tips": [
+        "Filtre os pedidos por status usando os botões da barra superior; por exemplo, clique em 'Pendente' para ver apenas as ordens aguardando pagamento e priorizar a cobrança do dia.",
+        "Altere o status de um pedido diretamente no seletor da coluna 'Ação rápida'; quando confirmar o pagamento de uma transferência, mude de 'Pendente' para 'Pago' sem abrir nenhum detalhe.",
+        "Gere e abra a fatura de qualquer pedido com o botão 'Ver recibo'; ela abre em uma nova aba em HTML pronto para imprimir ou compartilhar com o cliente.",
+        "Busque um pedido pelo nome do cliente ou ID no campo de pesquisa; se um cliente escrever no WhatsApp pedindo informações sobre seu pedido, encontre-o em segundos.",
+        "Ao criar um pedido manualmente, selecione produtos com estoque disponível no seletor 'Adicionar produtos' e ajuste as quantidades; o total é calculado em tempo real antes de confirmar."
+      ]
+    },
+    "procedures": {
+      "title": "Como criar e usar procedimentos (SOP)?",
+      "description": "Os procedimentos são fluxos de conversa passo a passo que o agente IA executa automaticamente ao detectar certas palavras-chave: você define qual mensagem enviar, qual pergunta fazer, qual ferramenta chamar, qual condição avaliar ou quando transferir para um agente humano. Use-os para padronizar respostas complexas sem que o agente improvise.",
+      "tips": [
+        "Use o botão 'Redigir SOP' para descrever o procedimento em linguagem natural (como se explicasse a um novo funcionário) e deixe a IA compilar em passos estruturados automaticamente; por exemplo, escreva 'Primeiro pergunte o nome, depois verifique disponibilidade e se tiver estoque confirme o pedido'.",
+        "No editor, adicione um passo do tipo 'Perguntar' quando precisar capturar um dado do cliente, como e-mail ou número de agendamento; o campo 'Campo' define o nome da variável onde a resposta é salva.",
+        "Use passos do tipo 'Condição' para bifurcar o fluxo conforme a resposta do cliente; por exemplo, se o campo 'orçamento' for maior que 500.000, siga para o passo de fechamento, caso contrário exiba as opções econômicas.",
+        "Defina 'Palavras-chave do gatilho' separadas por vírgula para que o procedimento seja ativado quando o cliente mencionar essas frases; por exemplo: 'cotação, preço, quanto custa' ativa o fluxo de orçamento.",
+        "Altere o status do procedimento com o botão 'Ativar' ou 'Desativar' conforme necessário; um procedimento em status 'Rascunho' não é executado mesmo que o cliente escreva as palavras-chave, use-o para testar antes de publicar."
+      ]
+    },
+    "verticalAnalytics": {
+      "title": "Como analisar o desempenho por setor?",
+      "description": "A analítica por vertical é um painel exclusivo para super administradores que mostra como todos os tenants da plataforma estão distribuídos por setor (saúde, restaurantes, turismo, imobiliária, etc.) e qual é o status de ativação e pagamento de cada um. Use-o para identificar em quais verticais a plataforma tem mais tração e quais contas ainda não completaram a configuração.",
+      "tips": [
+        "Na aba 'Resumo', clique na barra de qualquer setor para ir diretamente ao detalhe dessa vertical na aba 'Detalhe'; por exemplo, clique em 'Turismo' para ver todos os tenants desse setor com suas métricas individuais.",
+        "Revise a tabela 'Lacunas de ativação' na aba 'Resumo': ela mostra tenants registrados sem canal conectado ou agente configurado; clique no nome do tenant para ir ao perfil e ajudá-lo a concluir a configuração.",
+        "Na aba 'Detalhe', selecione um setor nos botões do topo para ver o ranking de tenants desse setor ordenados por nível de ativação e atividade recente.",
+        "Use o botão 'Atualizar' (canto superior direito) para forçar um recarregamento em tempo real se você acabou de criar ou ativar tenants e os indicadores ainda não refletem isso.",
+        "Na tabela de ranking de tenants do 'Detalhe', a coluna 'Ativado' com um ponto verde indica que esse tenant já enviou sua primeira mensagem; círculos vazios indicam que ainda não há conversas reais e esses tenants podem precisar de suporte no onboarding."
+      ]
     }
   },
   "helpAssistant": {

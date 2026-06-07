@@ -7,6 +7,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { TabNav } from "@/components/ui/tab-nav";
 import {
     PieChart as PieIcon, RefreshCw, Loader2, AlertCircle, Building2,
@@ -80,6 +81,7 @@ const COLOR_FALLBACK = "bg-neutral-500";
 
 export default function VerticalAnalyticsPage() {
     const t = useTranslations("verticalAnalytics");
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const tInd = useTranslations("onboarding.industries");
     const { user } = useAuth();
@@ -142,6 +144,12 @@ export default function VerticalAnalyticsPage() {
                         {tc("refresh")}
                     </button>
                 }
+            />
+            <HelpPanel
+                title={tHelp("verticalAnalytics.title")}
+                description={tHelp("verticalAnalytics.description")}
+                tips={tHelp.raw("verticalAnalytics.tips") as string[]}
+                mediaKey="verticalAnalytics"
             />
 
             <TabNav

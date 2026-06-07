@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { SkeletonPage } from "@/components/ui/skeleton-loader";
 import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
@@ -29,6 +30,7 @@ const movementTypeColor = (t: string) => t === "in" ? "#2ecc71" : t === "out" ? 
 
 export default function InventoryPage() {
     const t = useTranslations('inventory');
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [data, setData] = useState<InventoryOverview | null>(null);
@@ -73,6 +75,12 @@ export default function InventoryPage() {
                         <Plus size={16} /> {tc("create")}
                     </button>
                 }
+            />
+            <HelpPanel
+                title={tHelp("inventory.title")}
+                description={tHelp("inventory.description")}
+                tips={tHelp.raw("inventory.tips") as string[]}
+                mediaKey="inventory"
             />
 
             <div className="grid grid-cols-5 gap-4 mb-6">

@@ -1,6 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { SkeletonPage } from "@/components/ui/skeleton-loader";
 import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
@@ -31,6 +32,7 @@ type OrderStatus = keyof typeof statusStyle;
 
 export default function OrdersPage() {
     const t = useTranslations('orders');
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [data, setData] = useState<OrdersOverview | null>(null);
@@ -98,6 +100,12 @@ export default function OrdersPage() {
                         <Plus size={16} /> {tc("create")}
                     </button>
                 }
+            />
+            <HelpPanel
+                title={tHelp("orders.title")}
+                description={tHelp("orders.description")}
+                tips={tHelp.raw("orders.tips") as string[]}
+                mediaKey="orders"
             />
 
             <div className="grid grid-cols-4 gap-4 mb-6">

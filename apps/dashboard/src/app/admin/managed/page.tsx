@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { ShieldCheck, Loader2, Plus, Target, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 
 interface ManagedRow {
@@ -23,6 +24,7 @@ const CARD = "rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200
 
 export default function ManagedPage() {
     const t = useTranslations("managed");
+    const tHelp = useTranslations("help");
     const [rows, setRows] = useState<ManagedRow[]>([]);
     const [tenants, setTenants] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -70,6 +72,12 @@ export default function ManagedPage() {
     return (
         <div className="space-y-6">
             <PageHeader icon={ShieldCheck} title={t("title")} subtitle={t("subtitle")} />
+            <HelpPanel
+                title={tHelp("managed.title")}
+                description={tHelp("managed.description")}
+                tips={tHelp.raw("managed.tips") as string[]}
+                mediaKey="managed"
+            />
 
             {loading ? (
                 <div className="flex justify-center py-20"><Loader2 className="animate-spin text-muted-foreground" /></div>

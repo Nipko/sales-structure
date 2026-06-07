@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { Tag, Plus, Loader2, X, Power, Percent, DollarSign, Gift } from "lucide-react";
 import { SkeletonTable } from "@/components/ui/skeleton-loader";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -35,6 +36,7 @@ const TYPE_META: Record<Coupon["type"], { icon: any; bg: string; text: string }>
 
 export default function CouponsPage() {
     const t = useTranslations("couponsPage");
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { user } = useAuth();
     const router = useRouter();
@@ -80,6 +82,12 @@ export default function CouponsPage() {
                         {t("create")}
                     </button>
                 }
+            />
+            <HelpPanel
+                title={tHelp("coupons.title")}
+                description={tHelp("coupons.description")}
+                tips={tHelp.raw("coupons.tips") as string[]}
+                mediaKey="coupons"
             />
 
             {loading && <SkeletonTable rows={5} cols={6} />}

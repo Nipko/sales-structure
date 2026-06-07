@@ -6,6 +6,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import {
     Building2, Loader2, Plus, Search, X, TrendingUp, AlertTriangle, Trash2,
     DollarSign, Target, Gauge, Users,
@@ -28,6 +29,7 @@ const fmtMoney = (n: number) => `$${(n || 0).toLocaleString(undefined, { maximum
 
 export default function OrganizationsPage() {
     const t = useTranslations("organizations");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [orgs, setOrgs] = useState<Org[]>([]);
@@ -85,6 +87,12 @@ export default function OrganizationsPage() {
         <div className="space-y-6">
             <PageHeader icon={Building2} title={t("title")} subtitle={t("subtitle")}
                 action={<button onClick={() => setEditing({ id: "", name: "" } as Org)} className="flex items-center gap-2 rounded-lg bg-accent text-white px-4 py-2 text-sm font-medium hover:opacity-90"><Plus size={16} /> {t("newOrg")}</button>}
+            />
+            <HelpPanel
+                title={tHelp("organizations.title")}
+                description={tHelp("organizations.description")}
+                tips={tHelp.raw("organizations.tips") as string[]}
+                mediaKey="organizations"
             />
 
             {loading && !forecast ? (

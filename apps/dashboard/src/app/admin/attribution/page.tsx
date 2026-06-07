@@ -6,6 +6,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { Megaphone, Loader2, MousePointerClick, Users, Target, Trophy, DollarSign, Radio } from "lucide-react";
 
 interface CtwaSummary { clicks: number; ads: number; contacts: number; leads: number; won: number; revenue: number; conversionRate: number }
@@ -23,6 +24,7 @@ const RANGES = [
 
 export default function AttributionPage() {
     const t = useTranslations("attribution");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [summary, setSummary] = useState<CtwaSummary | null>(null);
@@ -73,6 +75,12 @@ export default function AttributionPage() {
                         ))}
                     </div>
                 }
+            />
+            <HelpPanel
+                title={tHelp("attribution.title")}
+                description={tHelp("attribution.description")}
+                tips={tHelp.raw("attribution.tips") as string[]}
+                mediaKey="attribution"
             />
 
             {loading && !summary ? (

@@ -5261,6 +5261,116 @@
         "Switch to the 'Changelog' tab to see which requests from the board have already been shipped, grouped by the month they were released.",
         "Open any request to read team comments or leave your own — replies marked as 'Team' come directly from the Parallly product team."
       ]
+    },
+    "agentSimulation": {
+      "title": "How does agent simulation work?",
+      "description": "Simulation runs automated test conversations against your AI agent using synthetic scenarios or replays of real chats, and a judge evaluates each response across five dimensions. Use it before deploying major changes to catch regressions without affecting real customers.",
+      "tips": [
+        "Choose 'Synthetic scenarios' to generate varied test cases automatically; choose 'Replay' to re-run real conversations that already happened on your channel.",
+        "Set 'Scenario count' between 1 and 100 depending on your time budget: 20 scenarios are enough for a quick check, 50 or more for thorough validation.",
+        "Select a 'Baseline' from the dropdown to compare the current result against a previous run; if the new score drops, you will see the 'Regression detected' alert with the affected scenarios listed.",
+        "Click any row in the scenarios table to open the side panel with the full transcript, sub-scores (Resolution, Tone, Accuracy, Empathy) and judge flags.",
+        "Check the 'History' section to track average score evolution over time and decide when the agent is ready for production."
+      ]
+    },
+    "attribution": {
+      "title": "How does revenue attribution work?",
+      "description": "Attribution shows which Meta ads (Click-to-WhatsApp) and broadcast campaigns generated contacts, leads, and closed sales, measuring the real revenue each marketing action produced. Use it to decide where to invest your ad budget based on actual results, not just clicks.",
+      "tips": [
+        "Switch the time range using the '30', '90', or '365' day buttons at the top to adjust the analysis period; for example, use 90 days to evaluate a quarterly campaign.",
+        "Review the top KPIs ('Ad clicks', 'Conversions', 'Attributed revenue', 'Leads generated') for a global summary before drilling into the per-ad breakdown.",
+        "In the 'By ad' table, compare the 'Conversion rate' column across ads: if an ad has many clicks but few closes, adjust its copy or targeting.",
+        "The 'Broadcast revenue' section shows how many sales each broadcast campaign generated; identify the highest-revenue campaign to replicate its message in the next one.",
+        "The visual funnel (Clicks → Contacts → Leads → Won) helps you spot the biggest drop-off; if the gap between 'Leads' and 'Won' is large, the problem may be in agent follow-up."
+      ]
+    },
+    "organizations": {
+      "title": "How do I manage companies and B2B opportunities?",
+      "description": "Organizations is the CRM module for B2B sales: it groups your contacts under companies, records open opportunities per account, and projects weighted revenue based on funnel stage. Use it when you sell to businesses (not just individuals) and need to see the total value of each account in one place.",
+      "tips": [
+        "Click '+ New organization' to create a company; fill in at least the name and industry so filters and reports work correctly.",
+        "Use the search box in the 'Organizations' section to find a company by name; for example, type 'Acme' and all matching accounts will appear.",
+        "Review the top KPIs ('Weighted pipeline', 'Committed', 'Best case', 'Average velocity') for a quarterly revenue projection without manually checking each opportunity.",
+        "The 'By stage' section shows the total value bar and probability-weighted value for each stage; if 'Proposal sent' holds a lot of value without progressing, that is a signal to follow up.",
+        "When a card appears in the 'Stale deals alerts' section it has had no activity for over 14 days; prioritize those opportunities in your calendar to avoid losing them."
+      ]
+    },
+    "coupons": {
+      "title": "How do I create and manage discount coupons?",
+      "description": "Coupons are discount codes you can create and distribute to customers or partners to reduce the price of Parallly plans; they support three types: percentage off, fixed amount, and free months. This section is exclusive to super admins and lets you control expiry, usage limits, and which plans each coupon applies to.",
+      "tips": [
+        "Click 'Create coupon' and enter an uppercase code without spaces (for example, 'LAUNCH50') to make it easy to share and remember.",
+        "Choose the coupon type based on your strategy: 'Percentage off' for relative discounts (for example, 20% off), 'Fixed amount' to subtract an exact amount (for example, $10), or 'Free months' to gift full subscription periods.",
+        "Use the 'Max redemptions' field to cap availability; for example, set 50 if it is a launch promotion that should not exceed that number of uses.",
+        "Set an 'Expiry date' for time-limited campaign coupons; the code will stop working automatically on the chosen date without requiring manual deactivation.",
+        "When a coupon should no longer accept new uses, click the 'Deactivate' icon (red button in the row) to mark it as inactive without deleting it; this preserves the redemption history in the 'Uses' column."
+      ]
+    },
+    "identity": {
+      "title": "How does contact identity merging work?",
+      "description": "Identity automatically detects when the same customer contacted you from different channels (for example, WhatsApp and Instagram) and suggests merging those profiles into one, preventing duplicates in your CRM. You can also merge two contacts manually if the system did not detect them automatically.",
+      "tips": [
+        "In the 'Suggestions' tab, review pending cards and check the match reason (for example, 'Phone match' or 'Email match') and confidence percentage before approving.",
+        "Click 'Approve' if the two profiles are the same person; the system will unify their conversation history and contact data into a single record.",
+        "Click 'Reject' if the contacts are different people even though they share a phone or email; this prevents the system from suggesting them together again.",
+        "If the system did not detect the duplicate automatically, use the 'Manual merge' tab: search for the first contact in the list, select it as 'A', then search for the second and select it as 'B', and confirm the merge.",
+        "The 'Pending', 'Approved', and 'Rejected' counters at the top show the overall status of your suggestions; if 'Pending' keeps growing, consider scheduling weekly time to review them."
+      ]
+    },
+    "inventory": {
+      "title": "How do I manage inventory?",
+      "description": "Inventory is your product catalog with real-time stock control: see how many units you have, their total value, and which items need restocking. Use it to avoid selling out-of-stock items and to log every stock movement.",
+      "tips": [
+        "Check the 'Low stock' and 'Out of stock' KPI cards at the top; if either shows a number in orange or red, click 'Adjust stock' on that product before the AI agent offers it to customers.",
+        "Filter by category using the color-coded buttons to view only one product line at a time; for example, select 'Electronics' to compare prices and stock without scrolling through everything.",
+        "Search by product name or SKU in the search field; if you manage 200 SKUs and need to update 'CAM-001', just type it instead of browsing the full list.",
+        "When logging a stock adjustment, choose the right type: 'In' (+) for supplier deliveries, 'Out' (−) for off-system sales, and 'Adjustment' to correct the total after a physical count.",
+        "Add the cost when creating a product so the panel can automatically calculate the estimated profit margin shown below the 'Inventory value' KPI."
+      ]
+    },
+    "managed": {
+      "title": "How does the managed service work?",
+      "description": "The 'Managed' section is a super-admin-only panel for tracking the resolution guarantee you offer your clients: you set a target percentage of AI-resolved conversations and the system shows whether each account is meeting it. Use it to spot accounts that are at risk or have already breached their service agreement.",
+      "tips": [
+        "To enroll an account, select the tenant in the 'Add account' selector, enter the target percentage (e.g. 80%) in the 'Target %' field, and click 'Enable'; the system will then start comparing real results against that goal.",
+        "Watch the 'Status' column: 'Met' (green) means the verified rate exceeds the target, 'At risk' (amber) means it is close to the limit, and 'Breached' (red) means the gap is already over the threshold.",
+        "The 'Verified rate' column shows the percentage of conversations where the AI resolved the issue and that resolution was confirmed; it is stricter than the overall rate, so use it as the real service benchmark.",
+        "Adjust the target directly in the table by editing the numeric field in that row; the change saves automatically when you click away, no button needed.",
+        "If an account no longer needs managed service, click 'Disable' at the end of its row; the account disappears from tracking but historical data is preserved."
+      ]
+    },
+    "orders": {
+      "title": "How do I manage orders?",
+      "description": "Orders are purchase transactions created by your customers or manually by your team: you can see the full history, the total amount receivable, and each transaction's status (pending, confirmed, paid, or cancelled). Use it to track cash flow and ensure no sale goes unprocessed.",
+      "tips": [
+        "Filter orders by status using the buttons in the top bar; for example, click 'Pending' to see only orders awaiting payment and prioritize collections for the day.",
+        "Change an order's status directly from the selector in the 'Quick action' column; when you confirm a bank transfer, switch it from 'Pending' to 'Paid' without opening any detail view.",
+        "Generate and open any order's invoice with the 'View receipt' button; it opens in a new tab as printable HTML ready to share with the customer.",
+        "Search for an order by customer name or order ID in the search field; if a customer messages on WhatsApp asking about their order, find it in seconds.",
+        "When creating an order manually, select available-stock products from the 'Add products' dropdown and adjust quantities; the total is calculated in real time before you confirm."
+      ]
+    },
+    "procedures": {
+      "title": "How do I create and use procedures (SOPs)?",
+      "description": "Procedures are step-by-step conversation flows that the AI agent runs automatically when it detects certain trigger keywords: you define what message to send, what question to ask, what tool to call, what condition to evaluate, or when to hand off to a human agent. Use them to standardize complex responses without the agent improvising.",
+      "tips": [
+        "Use the 'Write SOP' button to describe the procedure in plain language (as if explaining to a new employee) and let the AI compile it into structured steps automatically; for example, write 'First ask for the name, then check availability, if in stock confirm the order'.",
+        "In the editor, add an 'Ask' step whenever you need to capture a data point from the customer, like their email or appointment number; the 'Field' input defines the variable name where the answer is stored.",
+        "Use 'Condition' steps to branch the flow based on the customer's response; for example, if the 'budget' field is greater than 500,000, continue to the closing step, otherwise show budget-friendly options.",
+        "Define 'Trigger keywords' separated by commas so the procedure activates when the customer mentions those phrases; for example: 'quote, price, how much' triggers the pricing flow.",
+        "Toggle the procedure status with the 'Activate' or 'Deactivate' button as needed; a procedure in 'Draft' status does not run even if the customer types the trigger keywords, so use it to test before publishing."
+      ]
+    },
+    "verticalAnalytics": {
+      "title": "How do I analyze performance by industry?",
+      "description": "Vertical analytics is a super-admin-only panel showing how all platform tenants are distributed by industry (health, restaurants, tourism, real estate, etc.) and their activation and payment status. Use it to identify which verticals have the most traction and which accounts still have incomplete setups.",
+      "tips": [
+        "In the 'Overview' tab, click any industry bar to jump directly to that vertical's detail in the 'Drilldown' tab; for example, click 'Tourism' to see all tenants in that sector with their individual metrics.",
+        "Review the 'Activation gaps' table in the 'Overview' tab: it shows registered tenants that have no connected channel or configured agent; click the tenant name to go to their profile and help them complete setup.",
+        "In the 'Drilldown' tab, select an industry from the buttons at the top to see that sector's tenant ranking ordered by activation level and recent activity.",
+        "Use the 'Refresh' button (top right) to force a real-time data reload if you just created or activated tenants and the KPIs do not yet reflect those changes.",
+        "In the 'Drilldown' tenant ranking table, the 'Activated' column with a green dot means that tenant already sent their first message; empty circles indicate no real conversations yet, and those tenants may need onboarding support."
+      ]
     }
   },
   "helpAssistant": {

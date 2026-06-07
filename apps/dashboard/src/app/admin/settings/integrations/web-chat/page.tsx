@@ -8,6 +8,7 @@ import {
     MessageCircle, Plus, Copy, Check, Trash2, Settings,
     Eye, Palette, Globe, Code, ToggleLeft, ToggleRight, Zap,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -30,6 +31,7 @@ interface WidgetConfig {
 
 export default function WebChatWidgetPage() {
     const t = useTranslations("webChat");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const [widgets, setWidgets] = useState<WidgetConfig[]>([]);
     const [loading, setLoading] = useState(true);
@@ -134,6 +136,7 @@ export default function WebChatWidgetPage() {
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
                 </div>
                 <div className="flex items-center gap-2">
+
                     <Link
                         href="/admin/settings/integrations/web-chat/triggers"
                         className="flex items-center gap-2 px-4 py-2 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-lg text-sm font-medium hover:bg-neutral-100 dark:hover:bg-neutral-800"
@@ -151,6 +154,13 @@ export default function WebChatWidgetPage() {
                     </button>
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsIntegrationsWebChat.title")}
+                description={tHelp("settingsIntegrationsWebChat.description")}
+                tips={tHelp.raw("settingsIntegrationsWebChat.tips") as string[]}
+                mediaKey="settingsIntegrationsWebChat"
+            />
 
             {widgets.length === 0 && (
                 <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-12 text-center">

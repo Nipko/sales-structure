@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import {
     RotateCcw, Save, Loader2, MessageSquare, CheckCircle, AlertCircle, Send,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const CHANNEL_OPTIONS = [
     { value: "whatsapp", label: "WhatsApp" },
@@ -21,6 +22,7 @@ const CHANNEL_OPTIONS = [
 export default function RecallSettingsPage() {
     const t = useTranslations("settings.recall");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const tenantId = activeTenantId || user?.tenantId;
@@ -126,6 +128,13 @@ export default function RecallSettingsPage() {
                 </h1>
                 <p className="text-sm text-muted-foreground mt-1">{t("description")}</p>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsRecall.title")}
+                description={tHelp("settingsRecall.description")}
+                tips={tHelp.raw("settingsRecall.tips") as string[]}
+                mediaKey="settingsRecall"
+            />
 
             {feedback && (
                 <div

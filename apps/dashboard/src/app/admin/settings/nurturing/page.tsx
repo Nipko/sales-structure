@@ -7,6 +7,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { RefreshCw, Save, CheckCircle, AlertTriangle, Info } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface NurturingConfig {
     enabled: boolean;
@@ -29,6 +30,7 @@ const CHANNEL_OPTIONS = [
 export default function NurturingSettingsPage() {
     const t = useTranslations("settings.nurturingPage");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [config, setConfig] = useState<NurturingConfig>({
@@ -122,6 +124,13 @@ export default function NurturingSettingsPage() {
                     {saving ? tc("saving") : saved ? tc("saved") : tc("save")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsNurturing.title")}
+                description={tHelp("settingsNurturing.description")}
+                tips={tHelp.raw("settingsNurturing.tips") as string[]}
+                mediaKey="settingsNurturing"
+            />
 
             {/* Warning banner */}
             <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">

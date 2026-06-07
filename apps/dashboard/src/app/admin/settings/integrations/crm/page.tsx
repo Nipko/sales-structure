@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plug, CheckCircle2, AlertCircle, Trash2, RefreshCw, ExternalLink, Download, X, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -28,6 +29,7 @@ const PROVIDER_META: Record<string, { name: string; logo: string; description: s
 
 export default function CrmIntegrationsPage() {
     const t = useTranslations("crmIntegrations");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const tenantId = user?.tenantId;
     const search = useSearchParams();
@@ -117,6 +119,13 @@ export default function CrmIntegrationsPage() {
                 </div>
             )}
             <PageHeader title={t("title")} subtitle={t("subtitle")} icon={Plug} />
+
+            <HelpPanel
+                title={tHelp("settingsIntegrationsCrm.title")}
+                description={tHelp("settingsIntegrationsCrm.description")}
+                tips={tHelp.raw("settingsIntegrationsCrm.tips") as string[]}
+                mediaKey="settingsIntegrationsCrm"
+            />
 
             {connections.length > 0 && (
                 <div className="mb-6">

@@ -5547,6 +5547,376 @@
         "Cada fila muestra el tiempo relativo (p. ej. '12s', '3m') en la columna derecha: eventos muy recientes con estado 'error' son prioritarios para investigar.",
         "El sistema almacena solo resúmenes (sin PII ni payloads completos): si necesitas el payload completo, usa los logs del contenedor de API con el accountId que aparece en la fila."
       ]
+    },
+    "settingsAiConfig": {
+      "title": "¿Cómo configurar el comportamiento global del modelo IA?",
+      "description": "Esta sección controla los parámetros que el router de IA usa cuando no puede decidir automáticamente qué modelo aplicar. Ajustar estos valores impacta el costo, la velocidad y la creatividad de todas las respuestas de tus agentes.",
+      "tips": [
+        "Elige el 'Modelo por defecto' según tu prioridad: 'gpt-4o-mini' es más económico y rápido; 'gpt-4o' o 'claude-sonnet-4-20250514' son más capaces para conversaciones complejas.",
+        "Ajusta la 'Temperatura' entre 0.3 y 0.5 para respuestas de ventas precisas. Si quieres que el agente sea más natural y variado, sube hasta 0.7.",
+        "Configura 'Max Tokens' en 400-600 para respuestas de WhatsApp concisas. Sube a 1200+ solo si tus agentes manejan contenido largo como cotizaciones o FAQs detalladas.",
+        "Después de cambiar cualquier valor, presiona 'Guardar' — el botón cambia a verde con un check cuando los cambios se aplicaron correctamente."
+      ]
+    },
+    "settingsAiProviders": {
+      "title": "¿Cómo conectar las claves de API de los proveedores de IA?",
+      "description": "Aquí configuras las claves secretas de cada proveedor de modelos (OpenAI, Anthropic, Google AI, xAI, DeepSeek) que la plataforma usa para generar respuestas. Sin al menos una clave válida, tus agentes no pueden funcionar.",
+      "tips": [
+        "Pega la clave en el campo del proveedor correspondiente — por ejemplo, una clave de OpenAI empieza con 'sk-'. El ícono de ojo te permite verificar que la copiaste completa antes de guardar.",
+        "Cuando una clave está guardada, aparece el badge verde 'Configurada' en la tarjeta del proveedor. Si no aparece, la clave aún no está registrada.",
+        "Puedes cargar claves de varios proveedores simultáneamente — el router de IA seleccionará el más adecuado según el plan y la tarea. Se recomienda tener al menos OpenAI + uno adicional.",
+        "Después de pegar todas las claves, presiona el botón 'Guardar' en la esquina superior derecha. Las claves se almacenan cifradas — nunca se muestran en texto completo después de guardar."
+      ]
+    },
+    "settingsAlerts": {
+      "title": "¿Cómo configurar alertas y reportes automáticos?",
+      "description": "Esta sección te permite crear reglas que envían emails automáticos cuando una métrica supera un umbral (ej: conversaciones activas > 50) y programar reportes periódicos con el resumen de actividad de tu cuenta.",
+      "tips": [
+        "Haz clic en '+ Nueva alerta', asigna un nombre descriptivo como 'Cola saturada', elige la métrica 'queue_depth', operador '>' y umbral '20' — así sabrás cuándo hay demasiadas conversaciones esperando.",
+        "En 'Emails de notificación', separa múltiples destinatarios con comas: ej. 'gerente@empresa.com, soporte@empresa.com'. El campo acepta hasta 5 direcciones.",
+        "Configura el 'Cooldown' en al menos 60 minutos para evitar spam de alertas si la métrica fluctúa. Para alertas críticas como costos de LLM, usa 30 minutos.",
+        "En la sección 'Reportes programados', activa el toggle 'Habilitado', selecciona frecuencia 'Semanal' o 'Mensual', ingresa los destinatarios y guarda — recibirás un resumen automático sin hacer nada más."
+      ]
+    },
+    "settingsApiKeys": {
+      "title": "¿Cómo crear y gestionar claves de API pública?",
+      "description": "Las API Keys te permiten conectar sistemas externos (CRM, ERP, integraciones propias) con Parallly sin exponer tus credenciales de usuario. Cada clave tiene permisos específicos (scopes) que limitan qué operaciones puede hacer.",
+      "tips": [
+        "Haz clic en 'Crear clave', escribe un nombre como 'CRM-Salesforce', selecciona solo los scopes que necesitas (ej: 'Leer contactos' + 'Escribir mensajes') y guarda — verás la clave completa solo una vez, cópiala de inmediato.",
+        "Usa 'Rotar' para reemplazar una clave comprometida sin eliminar sus permisos — el sistema genera una nueva y la clave vieja deja de funcionar al instante.",
+        "Cuando una clave ya no se necesita, usa 'Revocar' (botón rojo) para eliminarla definitivamente. Confirma en el modal — esta acción no se puede deshacer.",
+        "En el encabezado de cada request, usa el formato exacto: 'Authorization: Bearer pk_live_TU_CLAVE' contra el endpoint base 'https://api.parallly-chat.cloud/api/v1'."
+      ]
+    },
+    "settingsAppearance": {
+      "title": "¿Cómo cambiar el tema visual del dashboard?",
+      "description": "Aquí puedes ajustar el aspecto visual de la interfaz eligiendo entre modo claro, oscuro o automático según el sistema operativo. El cambio aplica de inmediato a toda la plataforma sin necesidad de recargar.",
+      "tips": [
+        "Haz clic en la tarjeta 'Oscuro' para activar el modo oscuro — ideal si trabajas muchas horas frente a la pantalla o en ambientes con poca luz. El check azul indica el tema activo.",
+        "Elige 'Sistema' para que el dashboard siga automáticamente el modo claro/oscuro de tu dispositivo — útil si usas la plataforma en computadora y celular indistintamente.",
+        "Usa la sección 'Vista previa de componentes' para ver cómo se ven los botones, tarjetas y badges con el tema que elegiste antes de confirmar tu preferencia.",
+        "Los temas 'Graphite' y 'Midnight' aparecen bloqueados con el badge 'Próximamente' — estarán disponibles en futuras versiones. Por ahora, los tres temas activos cubren todos los escenarios de uso."
+      ]
+    },
+    "settingsBilling": {
+      "title": "¿Cómo administro mi suscripción y pagos?",
+      "description": "Aquí controlas tu plan actual, el uso mensual de mensajes IA y el historial de pagos. Desde aquí puedes cambiar de plan, actualizar tu tarjeta o canjear un cupón.",
+      "tips": [
+        "Si tu barra de uso supera el 80%, haz clic en 'Actualizar ahora' para subir de plan antes de que se agoten tus mensajes.",
+        "Para cambiar la tarjeta de crédito, usa el botón 'Cambiar tarjeta' en la sección de tu plan activo.",
+        "Si tienes un código promocional, ingrésalo en el campo 'Canjear cupón' (ej. LAUNCH50) y presiona 'Canjear'.",
+        "Descarga facturas individuales desde la tabla 'Historial de pagos' haciendo clic en 'Descargar'."
+      ]
+    },
+    "settingsBusinessHours": {
+      "title": "¿Cómo configuro el horario de atención del bot?",
+      "description": "Define en qué días y horas tu agente IA responde mensajes. Fuera de ese horario, se enviará automáticamente un mensaje personalizado a tus clientes.",
+      "tips": [
+        "Activa el toggle '24/7' si quieres que el bot responda en cualquier momento sin restricción de horario.",
+        "Selecciona la zona horaria correcta (ej. 'America/Bogota') para que los horarios se apliquen con precisión a tu país.",
+        "Habilita o deshabilita días individuales con el interruptor de cada fila; ajusta la hora de apertura y cierre con los campos de tiempo.",
+        "Escribe un mensaje de fuera de horario en el campo inferior (ej. '¡Hola! Respondemos de lunes a viernes de 8 a 18h.') y guarda los cambios."
+      ]
+    },
+    "settingsBusinessInfo": {
+      "title": "¿Por qué es importante completar la información de mi empresa?",
+      "description": "La información de tu empresa es usada por el agente IA para responder preguntas sobre tu negocio. Un perfil completo mejora la precisión y credibilidad de las respuestas.",
+      "tips": [
+        "El campo 'Nombre de empresa' es obligatorio; usa el nombre con el que tus clientes te reconocen (ej. 'Clínica Dental Sonrisa').",
+        "Sube tu logo haciendo clic en la zona punteada o cambia al modo 'URL' para pegar un enlace externo como 'https://cdn.ejemplo.com/logo.png'.",
+        "Completa los campos de 'Teléfono' y 'Email' para que el bot pueda compartirlos cuando un cliente lo solicite.",
+        "Agrega tus redes sociales en la sección 'Redes sociales' (ej. Instagram, Facebook) para que el agente las mencione en sus respuestas."
+      ]
+    },
+    "settingsChangePassword": {
+      "title": "¿Cómo cambio mi contraseña de forma segura?",
+      "description": "Desde aquí puedes actualizar la contraseña de tu cuenta. Si iniciaste sesión con Google, también puedes establecer una contraseña adicional para ingresar con email y contraseña.",
+      "tips": [
+        "Ingresa tu contraseña actual en el primer campo; si no la recuerdas, cierra sesión y usa la opción '¿Olvidaste tu contraseña?'.",
+        "Tu nueva contraseña debe cumplir todos los requisitos que aparecen en la lista (mayúscula, número, carácter especial, mínimo 8 caracteres).",
+        "Usa el ícono del ojo a la derecha de cada campo para mostrar u ocultar lo que escribes y evitar errores de tipeo.",
+        "Si tu cuenta es solo de Google, puedes crear una contraseña adicional sin necesidad de ingresar una contraseña actual."
+      ]
+    },
+    "settingsChannels": {
+      "title": "¿Cómo configuro las credenciales de mis canales de mensajería?",
+      "description": "Aquí ingresas las claves de API y tokens para conectar WhatsApp, Instagram, Messenger y Telegram. Estas credenciales permiten que el bot envíe y reciba mensajes en cada canal.",
+      "tips": [
+        "Selecciona la pestaña del canal que quieres configurar (ej. 'WhatsApp') y completa el 'Phone Number ID' y el 'Access Token' que obtienes en Meta Business.",
+        "Los campos de tipo contraseña (marcados con candado) se ocultan por defecto; usa el ícono del ojo para revelarlos y verificar que pegaste el valor correcto.",
+        "Para Telegram, obtén el 'Bot Token' desde @BotFather en Telegram y pégalo en el campo correspondiente (ej. '1234567890:AAHfiqk...').",
+        "La 'Webhook URL' de cada canal ya está prellenada; cópiala y pégala en la configuración del desarrollador de Meta o de Telegram para que los mensajes lleguen correctamente."
+      ]
+    },
+    "settingsCompany": {
+      "title": "¿Cómo configuro la información de mi empresa?",
+      "description": "Aquí defines los datos generales de tu negocio: nombre, industria, tamaño, sitio web y contacto de soporte. Esta información se usa en plantillas de email y en la identidad de tus agentes de IA.",
+      "tips": [
+        "Completa el campo 'Industria' para que el sistema adapte sugerencias y respuestas al giro de tu negocio (ej. elige 'Salud' si atiendes clínicas).",
+        "El 'Email de soporte' aparece en emails automáticos que reciben tus clientes; usa una casilla real que tu equipo revise.",
+        "Para agregar o cambiar el logo de tu empresa, haz clic en el enlace 'Banco de medios' que aparece en la parte inferior del formulario.",
+        "Después de editar cualquier campo, presiona 'Guardar cambios' — el botón se pone verde con una palomita cuando la operación es exitosa."
+      ]
+    },
+    "settingsCustomAttributes": {
+      "title": "¿Para qué sirven los atributos personalizados?",
+      "description": "Los atributos personalizados son campos extra que tú defines para enriquecer la información de tus contactos, leads, empresas o conversaciones. Permiten guardar datos específicos de tu negocio que no existen por defecto.",
+      "tips": [
+        "Usa las pestañas 'Contact', 'Lead', 'Company' y 'Conversation' para ver y crear atributos por entidad; cada pestaña muestra solo los campos de ese tipo.",
+        "Al crear un atributo, el campo 'Key' se genera automáticamente desde el 'Label' (ej.: 'Fecha de nacimiento' → 'fecha_de_nacimiento'); puedes editarlo manualmente si necesitas otro nombre.",
+        "Elige el tipo 'List' si quieres un campo de opciones cerradas; escribe las opciones separadas por comas (ej.: 'Premium, Estándar, Básico').",
+        "Activa 'Required field' solo para datos verdaderamente obligatorios; los campos requeridos bloquean el guardado si están vacíos."
+      ]
+    },
+    "settingsEmailTemplates": {
+      "title": "¿Cómo creo y uso plantillas de email?",
+      "description": "Las plantillas de email son mensajes reutilizables con variables dinámicas que el sistema envía automáticamente (confirmaciones de cita, recordatorios, bienvenidas, etc.). Puedes crearlas desde cero o usar una plantilla base.",
+      "tips": [
+        "Haz clic en 'Crear desde plantilla' para escoger entre 6 modelos prediseñados (Confirmación de cita, Recordatorio, Reserva, Check-in, Bienvenida, Notificación al equipo) y empezar con el HTML ya listo.",
+        "Inserta variables como '{{customer_name}}' o '{{appointment_date}}' haciendo clic en los chips de 'Variables disponibles'; se insertan en el campo donde tenías el cursor.",
+        "Usa el panel de 'Vista previa' para ver el email renderizado con datos de ejemplo antes de guardar; cambia a la pestaña 'HTML' para revisar el código.",
+        "Cuando la plantilla esté guardada, usa el botón 'Enviar prueba' para recibir el email real en tu correo y validar el diseño."
+      ]
+    },
+    "settingsIntegrations": {
+      "title": "¿Cómo conecto integraciones externas?",
+      "description": "Las integraciones te permiten conectar Parallly con herramientas externas como CRMs, plataformas verticales y servidores MCP. Cada integración sincroniza datos automáticamente entre sistemas.",
+      "tips": [
+        "Accede a la sección 'CRM' para conectar HubSpot, Pipedrive o Kommo mediante OAuth; el proceso tarda menos de un minuto.",
+        "Usa el botón 'Probar' en una integración activa para verificar que la conexión sigue funcionando antes de lanzar una campaña.",
+        "Si una integración muestra estado de error, haz clic en 'Desconectar' y vuelve a conectar para renovar el token de acceso.",
+        "Las integraciones verticales (Toast, Mindbody, Cliniko) están disponibles en la subsección 'Vertical' para industrias específicas."
+      ]
+    },
+    "settingsIntegrationsCrm": {
+      "title": "¿Cómo sincronizo mi CRM externo con Parallly?",
+      "description": "Aquí conectas Parallly con tu CRM externo (HubSpot, Pipedrive o Kommo) para mantener contactos y conversaciones sincronizados entre ambos sistemas en tiempo real.",
+      "tips": [
+        "Haz clic en 'Conectar' en la tarjeta del proveedor que usas; se abre el flujo OAuth del CRM y en menos de un minuto la integración queda activa.",
+        "Una vez conectada, usa el botón 'Probar' para validar que la API responde correctamente — si aparece error, desconecta y vuelve a autorizarte.",
+        "Usa 'Importar' para traer tus contactos existentes del CRM a Parallly; el sistema muestra una previsualización con conteo de registros nuevos, coincidentes e inválidos antes de confirmar.",
+        "Si la columna 'Última sincronización' está vacía o muy antigua, desconecta y vuelve a conectar para forzar una sincronización fresca."
+      ]
+    },
+    "settingsIntegrationsMcp": {
+      "title": "¿Qué son los servidores MCP?",
+      "description": "MCP (Model Context Protocol) te permite conectar el agente de IA con herramientas externas mediante servidores compatibles. Úsalo para que tu agente pueda consultar APIs, bases de datos o servicios propios en tiempo real durante una conversación.",
+      "tips": [
+        "Copia la URL de tu endpoint MCP (el bloque 'Tu endpoint MCP') y pégala en el cliente externo que quieras conectar — incluye el header de autorización para protegerlo.",
+        "Para agregar un servidor externo, completa los campos 'Nombre', 'URL' y 'Auth header' y pulsa 'Agregar servidor'. Verás el indicador verde cuando esté activo.",
+        "Usa el botón 'Probar' en cada servidor para verificar la conexión antes de activarlo en producción — muestra el número de herramientas disponibles si todo está bien.",
+        "Puedes pausar un servidor con el ícono de encendido sin eliminarlo; el indicador cambia a gris y el agente deja de usarlo temporalmente."
+      ]
+    },
+    "settingsIntegrationsReviews": {
+      "title": "¿Cómo funciona la gestión de reseñas?",
+      "description": "Esta sección conecta tu cuenta de Google Business Profile para ver y responder reseñas directamente desde el panel. La IA puede sugerir respuestas personalizadas y publicarlas en Google automáticamente si activás la opción.",
+      "tips": [
+        "Haz clic en 'Conectar Google Business' para iniciar el flujo OAuth; necesitás tener acceso de administrador a la cuenta de Google My Business.",
+        "Activa 'Respuesta automática' (el checkbox al lado de 'Sincronizar') para que la IA responda reseñas nuevas sin intervención manual — ideal para volúmenes altos.",
+        "En cada reseña sin respuesta, usa 'Sugerencia IA' para generar un borrador basado en el contenido del cliente; podés editarlo antes de publicarlo con 'Publicar respuesta'.",
+        "Usa 'Sincronizar' para traer las reseñas más recientes de Google en cualquier momento; los contadores de 'Sin responder' y 'Negativas' te ayudan a priorizar."
+      ]
+    },
+    "settingsIntegrationsSlack": {
+      "title": "¿Para qué sirve la integración con Slack?",
+      "description": "Conecta Parallly con un canal de Slack para recibir notificaciones automáticas cuando ocurran eventos clave en el sistema. Así tu equipo se entera al instante sin tener que revisar el panel manualmente.",
+      "tips": [
+        "Crea un Incoming Webhook en tu workspace de Slack (Slack App Directory → 'Incoming WebHooks') y pega la URL que empieza con 'https://hooks.slack.com/services/...' en el campo 'Webhook URL'.",
+        "Marca 'Handoff a agente' para recibir un aviso en Slack cada vez que el bot transfiera una conversación a un agente humano — útil para responder rápido.",
+        "Activa 'Nueva cita' para que el equipo vea en Slack cada reserva confirmada por el agente de IA sin entrar al módulo de Citas.",
+        "Usa 'Enviar mensaje de prueba' después de guardar para verificar que el webhook funciona correctamente antes de activarlo en producción."
+      ]
+    },
+    "settingsIntegrationsVertical": {
+      "title": "¿Qué son las integraciones verticales?",
+      "description": "Conecta Parallly con software especializado de tu industria (Toast para restaurantes, Mindbody para gimnasios/wellness, Cliniko para clínicas) para que el agente consulte disponibilidad, reserve citas y sincronice datos en tiempo real.",
+      "tips": [
+        "Para conectar Toast, ingresá el 'Hostname', 'Client ID', 'Client Secret' y 'Restaurant GUID' de tu cuenta de desarrollador Toast (disponibles en developer.toasttab.com).",
+        "Para Cliniko, el campo 'Base URL (shard)' depende de tu región: Australia usa 'https://api.au1.cliniko.com/v1' y otras regiones tienen su propio subdominio.",
+        "Una vez conectado, usa 'Probar' para verificar que las credenciales funcionan — verás un mensaje de éxito si la API responde correctamente.",
+        "Usa 'Sincronizar' después de conectar para importar servicios, horarios o profesionales disponibles; el conteo de registros sincronizados aparece como confirmación."
+      ]
+    },
+    "settingsIntegrationsWebChat": {
+      "title": "¿Cómo instalar el widget de chat en tu web?",
+      "description": "El widget de chat embebe el agente de IA en cualquier sitio web con un snippet de JavaScript. Podés personalizar colores, posición, mensaje de bienvenida y formulario previo al chat, y luego copiar el código para pegarlo en tu HTML.",
+      "tips": [
+        "Haz clic en 'Crear widget' para generar un nuevo widget; luego usa el ícono de engranaje para configurar nombre, color (selector de color), posición ('Inferior derecha' / 'Inferior izquierda') y mensaje de bienvenida.",
+        "Activa el 'Formulario previo al chat' con el toggle en la sección de edición para pedirle nombre, email u otros datos al visitante antes de iniciar la conversación.",
+        "Copia el snippet de código con el ícono '</>' y pégalo antes del cierre de '</body>' en tu sitio — el widget aparecerá automáticamente en todos los visitantes.",
+        "Usa el botón 'Triggers' para definir reglas de aparición automática (por ejemplo, mostrar el chat tras 30 segundos o en páginas específicas) sin necesidad de código extra."
+      ]
+    },
+    "settingsIntegrationsWebChatTriggers": {
+      "title": "¿Cómo funcionan los disparadores del widget?",
+      "description": "Los disparadores son reglas automáticas que abren o muestran el widget de chat cuando un visitante cumple ciertas condiciones. Úsalos para iniciar conversaciones en el momento justo y aumentar la tasa de interacción.",
+      "tips": [
+        "Combina condiciones: usa 'Tiempo en página' (ej. 30 segundos) junto con 'URL de la página' (ej. '/precios') para disparar el widget solo cuando alguien lleva tiempo en tu página de precios.",
+        "Usa 'Intención de salida' para mostrar un mensaje de retención (ej. '¿Te vas? Tenemos una oferta especial') justo antes de que el visitante cierre la pestaña.",
+        "Configura 'Frecuencia' en 60 minutos o más para evitar mostrar el mismo mensaje repetidamente a un visitante que navega varias páginas.",
+        "Asigna prioridades más bajas (número menor) a los disparadores más importantes; el sistema ejecuta primero el de mayor prioridad."
+      ]
+    },
+    "settingsIntegrationsWebhooks": {
+      "title": "¿Para qué sirven los webhooks salientes?",
+      "description": "Los webhooks envían datos de eventos de tu cuenta (nuevos leads, citas, handoffs) a una URL externa en tiempo real. Úsalos para conectar Parallly con tu CRM, ERP u otras herramientas sin necesidad de polling.",
+      "tips": [
+        "Al crear un endpoint, selecciona solo los eventos que necesitas (ej. 'lead.created' y 'appointment.booked') para evitar tráfico innecesario a tu servidor.",
+        "Usa el botón 'Enviar prueba' (ícono de avión) para verificar que tu servidor recibe y procesa el payload correctamente antes de activar el webhook en producción.",
+        "Verifica la autenticidad de cada llamada usando la firma HMAC-SHA256 que viene en el header 'X-Webhook-Signature'; compárala con el secreto que ves en la sección 'Secret'.",
+        "Si el secreto se compromete, usa el botón de reciclar (ícono naranja) para regenerarlo sin necesidad de crear un nuevo endpoint."
+      ]
+    },
+    "settingsLocalization": {
+      "title": "¿Qué configuras en Localización?",
+      "description": "Localización define la zona horaria, moneda, formato de fecha/hora e idioma de trabajo de tu workspace. Estos ajustes afectan la forma en que se muestran los datos en el dashboard y en los reportes.",
+      "tips": [
+        "Selecciona la zona horaria donde opera tu equipo (ej. 'Colombia (GMT-5)') para que los horarios de citas y reportes coincidan con tu realidad local.",
+        "Elige el formato de fecha que usan tus clientes (ej. 'DD/MM/YYYY' para LatAm) y el formato de hora (24h o 12h) para evitar confusiones en las confirmaciones de cita.",
+        "El campo 'Moneda' define el símbolo que aparece en cotizaciones y reportes de ventas; cámbialo si operas en múltiples países.",
+        "Ajusta 'Primer día de la semana' a lunes o domingo según el calendario de tu país para que las vistas de calendario del módulo de citas se muestren correctamente."
+      ]
+    },
+    "settingsMacros": {
+      "title": "¿Qué son las macros?",
+      "description": "Las macros son secuencias de acciones predefinidas que un agente puede ejecutar con un clic en el inbox. Sirven para automatizar tareas repetitivas como asignar conversaciones, cambiar estados o agregar etiquetas.",
+      "tips": [
+        "Crea una macro de visibilidad 'Team' para que todos los agentes puedan usar acciones comunes, por ejemplo: 'Escalar a supervisor' (acción: cambiar estado a 'Esperando agente').",
+        "Combina varias acciones en una sola macro: primero 'Asignar agente', luego 'Agregar etiqueta' (ej. 'vip') y finalmente 'Cambiar estado' a 'Activo'.",
+        "Las macros de visibilidad 'Personal' son solo tuyas; úsalas para flujos de trabajo propios, como agregar una nota interna con tu plantilla de seguimiento.",
+        "Usa el campo 'Descripción' para dejar claro cuándo aplicar cada macro (ej. 'Usar cuando el cliente pide precio por segunda vez')."
+      ]
+    },
+    "settingsMedia": {
+      "title": "¿Para qué sirve el banco de medios?",
+      "description": "El banco de medios es tu galería centralizada de imágenes para usar en campañas, templates de WhatsApp y conversaciones. Sube, organiza y copia URLs de imágenes para reutilizarlas desde cualquier módulo.",
+      "tips": [
+        "Clasifica cada imagen con el selector 'Type' ('General', 'Producto', 'Curso') antes de subirla para que puedas filtrarlas fácilmente desde la galería.",
+        "Agrega etiquetas descriptivas (ej. 'promo-junio', 'banner-web') a cada imagen usando el botón 'Edit'; luego filtra por etiqueta con los pills de color en la galería.",
+        "Usa 'Copiar URL' (ícono de copiar en la tarjeta) para pegar el enlace directo de la imagen en un template de WhatsApp o en el constructor de campañas.",
+        "Arrastra y suelta imágenes directamente en la zona punteada para subirlas más rápido, sin necesidad de hacer clic en el área de carga."
+      ]
+    },
+    "settingsNotifications": {
+      "title": "¿Cómo configurar tus notificaciones?",
+      "description": "Aquí controlas qué alertas recibes y por qué canal. Ajusta las categorías para que solo te llegue lo que realmente importa y no pierdas señales clave de tus conversaciones.",
+      "tips": [
+        "Activa 'Notificaciones push' para recibir alertas en tiempo real aunque el dashboard esté en segundo plano.",
+        "Si recibes demasiados correos, cambia el 'Resumen de email' a 'Diario' para un solo digest consolidado en vez de uno por evento.",
+        "Desactiva la categoría 'Automatizaciones' si tus flujos ya están estables y no necesitas monitorear cada disparo.",
+        "Deja siempre activa la categoría 'Handoff' para que no se te escape ninguna conversación transferida a un agente humano."
+      ]
+    },
+    "settingsNurturing": {
+      "title": "¿Cómo funciona la nutrición automática de leads?",
+      "description": "Las secuencias de nutrición reenvían mensajes automáticos a leads que dejaron de responder. Configura los tiempos, los canales y la acción final para recuperar oportunidades sin intervención manual.",
+      "tips": [
+        "Activa el toggle 'Activar nutrición' solo cuando tengas al menos un canal seleccionado; de lo contrario la secuencia no enviará mensajes.",
+        "Para WhatsApp, escribe en 'Nombre de plantilla' el nombre exacto aprobado en Meta (p. ej. 'reengagement_v2') — sin comillas y en minúsculas.",
+        "Ajusta el 'Intento 1' a 4 h y el 'Intento 2' a 24 h: ese ritmo es menos invasivo y reduce los bloqueos de los contactos.",
+        "Selecciona 'Crear tarea' como acción final para que el CRM genere una tarea de seguimiento manual cuando se agotan los intentos automáticos."
+      ]
+    },
+    "settingsPipeline": {
+      "title": "¿Cómo personalizar las etapas del pipeline?",
+      "description": "Aquí defines el embudo de ventas de tu negocio: nombres, colores, probabilidad de cierre y reglas de transición por etapa. Un pipeline bien configurado mejora los reportes y el trabajo de tu equipo.",
+      "tips": [
+        "Arrastra el ícono de las 6 líneas (⠿) para reordenar etapas sin perder los leads que ya están en ellas.",
+        "Haz clic en el selector de color de cada fila para asignar un color único; usa verde para etapas de cierre (p. ej. 'Ganado') y gris para terminales negativas (p. ej. 'Perdido').",
+        "Establece la 'Probabilidad' entre 0 y 100 según el porcentaje real de cierres históricos en esa etapa; esto alimenta el forecast del CRM.",
+        "Usa el botón 'Cargar presets del sector' para importar etapas prediseñadas según el vertical de tu tenant y ajustarlas después."
+      ]
+    },
+    "settingsPlatform": {
+      "title": "¿Qué configuras en Ajustes de plataforma?",
+      "description": "Esta sección es exclusiva para super administradores y controla los parámetros globales del motor: nombre de la plataforma, idioma y zona horaria por defecto, límites de conversaciones y activación de módulos como Analytics y RAG.",
+      "tips": [
+        "Cambia el 'Nombre de plataforma' para que coincida con tu marca si haces white-label (p. ej. 'SalesBot Pro' en vez de 'Parallext Engine').",
+        "Ajusta la 'Zona horaria por defecto' al país donde opera la mayoría de tus tenants; esto afecta los reportes y los horarios de envío.",
+        "Desactiva 'RAG enabled' temporalmente si estás realizando migraciones de la base de conocimiento para evitar respuestas inconsistentes.",
+        "El toggle 'Analytics enabled' controla el tracking de eventos de toda la plataforma; mantenlo activo para no perder datos de conversiones."
+      ]
+    },
+    "settingsPlatformChangelog": {
+      "title": "¿Cómo publicar novedades a todos los tenants?",
+      "description": "El compilador de changelog te permite redactar, traducir y publicar anuncios de actualización que aparecen en el dashboard de todos los tenants como un modal de 'Qué hay de nuevo'. Gestiona el historial y edita entradas anteriores desde la pestaña 'Historial'.",
+      "tips": [
+        "Completa primero el título en español (campo obligatorio) y luego cambia de pestaña de idioma (es/en/pt/fr) para traducir antes de publicar.",
+        "Usa el botón 'Añadir Sección' para agregar características individuales; elige la categoría correcta: 'Nuevo' (azul), 'Mejora' (verde) o 'Corregido' (amarillo).",
+        "Sube una captura de pantalla por característica con 'Subir Captura/Imagen' para que el modal sea más visual y fácil de entender por el usuario final.",
+        "Deja 'Publicado' desactivado si quieres guardar un borrador y revisarlo en la vista previa antes de que los tenants lo vean."
+      ]
+    },
+    "settingsPolicies": {
+      "title": "¿Para qué sirven las políticas?",
+      "description": "Aquí guardas los textos legales de tu negocio (devoluciones, garantía, privacidad, etc.). Cada vez que guardas, se crea una nueva versión con número de versión para que tengas historial completo.",
+      "tips": [
+        "Usa el panel izquierdo para cambiar entre tipos: 'Envío', 'Devolución', 'Privacidad', etc. El badge verde muestra qué versión está activa.",
+        "El campo 'Título' es el nombre visible del documento; el campo 'Contenido' acepta Markdown, así que puedes usar **negritas**, listas y encabezados.",
+        "Haz clic en 'Ver historial (v3)' para ver versiones anteriores del mismo tipo de política sin perder la actual.",
+        "Guarda siempre antes de cambiar de tipo de política para no perder cambios; el botón dice 'Guardar nueva versión' cuando ya existe una."
+      ]
+    },
+    "settingsPrechat": {
+      "title": "¿Cómo funciona el formulario pre-chat?",
+      "description": "El formulario pre-chat recopila datos del visitante antes de que el agente lo atienda. Puedes agregar campos como nombre, email, teléfono o listas desplegables, y la vista previa de WhatsApp te muestra cómo quedará.",
+      "tips": [
+        "Activa el toggle 'Formulario activo' para que el formulario aparezca al inicio de la conversación; desactívalo si quieres recopilar datos solo con el agente.",
+        "Al agregar un campo, elige 'Mapear a' → 'contact.name' o 'contact.email' para que los datos se guarden directamente en el perfil del contacto.",
+        "Para el tipo 'Selección', escribe las opciones separadas por coma: 'Compra, Soporte, Información' y el cliente verá la lista numerada.",
+        "La vista previa de la derecha simula la pantalla de WhatsApp en tiempo real; úsala para verificar el orden de tus preguntas antes de guardar."
+      ]
+    },
+    "settingsProfile": {
+      "title": "¿Qué puedo editar en mi perfil?",
+      "description": "Tu perfil guarda tu nombre, teléfono y cargo dentro de la plataforma. El email no se puede cambiar aquí porque está vinculado a tu cuenta de acceso.",
+      "tips": [
+        "Edita 'Nombre' y 'Apellido' para que tu nombre aparezca correctamente en el inbox y en los reportes de equipo.",
+        "El campo 'Teléfono' es opcional pero útil si el equipo necesita contactarte; usa formato internacional, por ejemplo +57 300 123 4567.",
+        "El campo 'Cargo' (ej.: 'Gerente de Ventas') solo es visible internamente y ayuda a identificar tu rol en el equipo.",
+        "El email está bloqueado (muestra el ícono de candado) porque está ligado a tu autenticación; si necesitas cambiarlo, contacta al administrador."
+      ]
+    },
+    "settingsPublicBooking": {
+      "title": "¿Qué es la página pública de reservas?",
+      "description": "Es una URL pública donde tus clientes pueden agendar citas sin necesidad de un agente. Puedes activarla, personalizar el texto de bienvenida y el color de tu marca.",
+      "tips": [
+        "Activa el toggle para habilitar la página; aparecerá un enlace listo para copiar y compartir en redes sociales o WhatsApp.",
+        "Usa el botón 'Copiar' para obtener la URL exacta y pégala en tu bio de Instagram o en un mensaje de difusión de WhatsApp.",
+        "Haz clic en 'Mostrar QR' para generar un código QR descargable; ideal para imprimir en material físico como tarjetas o flyers.",
+        "En 'Personalización' puedes escribir un mensaje de bienvenida (máx. 300 caracteres) y elegir el color de acento de la página para reflejar tu marca."
+      ]
+    },
+    "settingsRecall": {
+      "title": "¿Qué es el Recall de clientes?",
+      "description": "El Recall envía automáticamente un mensaje a clientes que no han interactuado en N días, invitándolos a volver. Funciona por el canal que elijas (WhatsApp, SMS, etc.) y respeta un período de enfriamiento para no ser invasivo.",
+      "tips": [
+        "Activa el toggle 'Recall habilitado' y establece 'Días sin interacción' (ej.: 180) para contactar solo a clientes verdaderamente inactivos.",
+        "El campo 'Días de espera entre recalls' (ej.: 90) evita que el sistema le escriba al mismo cliente varias veces en poco tiempo.",
+        "En el mensaje usa las variables {name} para el nombre del cliente y {months} para los meses transcurridos: 'Hola {name}, hace {months} meses que no te vemos'.",
+        "Usa el botón 'Ejecutar ahora' para hacer una prueba manual y ver cuántos mensajes se enviarían hoy; el sistema te mostrará el total enviado."
+      ]
+    },
+    "settingsScoringConfig": {
+      "title": "¿Cómo funciona el scoring de leads?",
+      "description": "El scoring asigna un puntaje (0-100) a cada lead basándose en 5 factores con pesos configurables. También puedes definir palabras clave de compra y activar la caída de puntaje por inactividad.",
+      "tips": [
+        "Los pesos deben sumar exactamente 100%; si el total es diferente, el botón de guardar se desactiva y verás el porcentaje en rojo.",
+        "Sube el peso de 'Intención' si tu negocio depende de palabras clave como 'precio' o 'comprar'; bájalo si priorizas el historial de etapas.",
+        "En 'Palabras clave de compra' agrega términos relevantes para tu industria (ej.: 'financiación', 'cuotas') y presiona Enter o el botón '+ Agregar'.",
+        "Activa 'Decaimiento de score' y define los días (ej.: 30) y el factor (ej.: 50%) si quieres que los leads inactivos pierdan puntos automáticamente."
+      ]
+    },
+    "settingsSecurity": {
+      "title": "¿Cómo protejo mi cuenta?",
+      "description": "Aquí puedes cambiar tu contraseña, activar la autenticación de dos factores (2FA) con una app como Google Authenticator, gestionar dispositivos de confianza y configurar SSO/SAML para tu organización.",
+      "tips": [
+        "Para activar 2FA, haz clic en 'Activar autenticación de dos factores', escanea el código QR con Google Authenticator y luego ingresa el código de 6 dígitos.",
+        "Guarda los códigos de respaldo en un lugar seguro fuera de la plataforma; si pierdes acceso a tu app de autenticación, son tu única forma de recuperar la cuenta.",
+        "En 'Dispositivos de confianza' puedes revocar el acceso de un equipo específico haciendo clic en 'Revocar'; usa 'Revocar todos' si sospechas un acceso no autorizado.",
+        "Si tu organización usa SSO (plan Enterprise), ingresa el 'Entity ID del IdP' y la 'URL SSO del IdP' de tu proveedor (Okta, Azure AD, etc.) y activa 'Forzar SSO' para obligar a todos a autenticarse por ahí."
+      ]
     }
   },
   "helpAssistant": {

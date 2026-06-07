@@ -19,6 +19,7 @@ import {
     CheckCircle,
 } from "lucide-react";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const channelTabs = [
     { id: "whatsapp", label: "WhatsApp", icon: MessageSquare, color: "text-green-500", activeBg: "bg-green-500/10", activeBorder: "border-green-500" },
@@ -74,6 +75,7 @@ export default function ChannelsSettingsPage() {
 
 function ChannelsSettingsContent() {
     const t = useTranslations("settings");
+    const tHelp = useTranslations("help");
     const [activeTab, setActiveTab] = useState("whatsapp");
     const [values, setValues] = useState<Record<string, string>>({});
     const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -131,6 +133,13 @@ function ChannelsSettingsContent() {
                     {saving ? t("saving") : saved ? t("saved") : t("save")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsChannels.title")}
+                description={tHelp("settingsChannels.description")}
+                tips={tHelp.raw("settingsChannels.tips") as string[]}
+                mediaKey="settingsChannels"
+            />
 
             {/* Channel tabs */}
             <div className="flex flex-wrap gap-2">

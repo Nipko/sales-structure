@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { BarChart2, Save, Loader2, X, Plus } from "lucide-react";
 
 interface Weights {
@@ -48,6 +49,7 @@ const WEIGHT_KEYS: (keyof Weights)[] = [
 export default function ScoringConfigPage() {
     const t = useTranslations("scoringConfig");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [config, setConfig] = useState<ScoringConfigData>(DEFAULT_CONFIG);
@@ -150,6 +152,13 @@ export default function ScoringConfigPage() {
                 title={t("title")}
                 subtitle={t("subtitle")}
                 icon={BarChart2}
+            />
+
+            <HelpPanel
+                title={tHelp("settingsScoringConfig.title")}
+                description={tHelp("settingsScoringConfig.description")}
+                tips={tHelp.raw("settingsScoringConfig.tips") as string[]}
+                mediaKey="settingsScoringConfig"
             />
 
             {/* Card 1: Score Weights */}

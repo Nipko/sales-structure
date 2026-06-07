@@ -7,6 +7,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Clock, Save, CheckCircle, AlertCircle, Globe } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface DaySchedule {
     enabled: boolean;
@@ -59,6 +60,7 @@ const defaultConfig: BusinessHoursConfig = {
 export default function BusinessHoursPage() {
     const tc = useTranslations("common");
     const t = useTranslations("settings.businessHoursPage");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [config, setConfig] = useState<BusinessHoursConfig>(defaultConfig);
@@ -135,6 +137,13 @@ export default function BusinessHoursPage() {
                     {t("subtitle")}
                 </p>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsBusinessHours.title")}
+                description={tHelp("settingsBusinessHours.description")}
+                tips={tHelp.raw("settingsBusinessHours.tips") as string[]}
+                mediaKey="settingsBusinessHours"
+            />
 
             {error && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">

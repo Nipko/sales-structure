@@ -7,6 +7,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Globe, DollarSign, Calendar, Clock, Save, CheckCircle, AlertCircle } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const TIMEZONES = [
     { value: "America/Bogota", label: "Colombia (GMT-5)" },
@@ -59,6 +60,7 @@ const WEEK_STARTS = [
 
 export default function LocalizationPage() {
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [form, setForm] = useState({
@@ -132,6 +134,13 @@ export default function LocalizationPage() {
                     Timezone, currency, date format and workspace language
                 </p>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsLocalization.title")}
+                description={tHelp("settingsLocalization.description")}
+                tips={tHelp.raw("settingsLocalization.tips") as string[]}
+                mediaKey="settingsLocalization"
+            />
 
             {error && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">

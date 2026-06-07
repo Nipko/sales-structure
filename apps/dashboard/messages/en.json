@@ -5547,6 +5547,376 @@
         "Each row shows a relative time (e.g. '12s', '3m') in the right column: very recent events with 'error' status are the highest priority to investigate.",
         "The system stores only summaries (no PII or full payloads): if you need the full payload, use the API container logs with the accountId shown in the row."
       ]
+    },
+    "settingsAiConfig": {
+      "title": "How to configure global AI model behavior?",
+      "description": "This section controls the parameters the AI router uses when it cannot automatically decide which model to apply. Adjusting these values impacts the cost, speed, and creativity of all your agents' responses.",
+      "tips": [
+        "Choose the 'Default model' based on your priority: 'gpt-4o-mini' is cheaper and faster; 'gpt-4o' or 'claude-sonnet-4-20250514' handle complex conversations better.",
+        "Set 'Temperature' between 0.3 and 0.5 for precise sales responses. Raise it to 0.7 if you want the agent to sound more natural and varied.",
+        "Set 'Max Tokens' to 400-600 for concise WhatsApp replies. Raise it to 1200+ only if your agents handle long content like quotes or detailed FAQs.",
+        "After changing any value, press 'Save' — the button turns green with a checkmark when changes are applied successfully."
+      ]
+    },
+    "settingsAiProviders": {
+      "title": "How to connect AI provider API keys?",
+      "description": "Here you configure the secret keys for each model provider (OpenAI, Anthropic, Google AI, xAI, DeepSeek) that the platform uses to generate responses. Without at least one valid key, your agents cannot work.",
+      "tips": [
+        "Paste the key into the corresponding provider field — for example, an OpenAI key starts with 'sk-'. The eye icon lets you verify you copied it completely before saving.",
+        "When a key is saved, a green 'Configured' badge appears on the provider card. If it doesn't appear, the key hasn't been registered yet.",
+        "You can load keys from multiple providers simultaneously — the AI router will select the most suitable one based on plan and task. Having at least OpenAI + one additional is recommended.",
+        "After pasting all keys, press the 'Save' button in the top right corner. Keys are stored encrypted — they are never shown in full text after saving."
+      ]
+    },
+    "settingsAlerts": {
+      "title": "How to configure alerts and automated reports?",
+      "description": "This section lets you create rules that send automatic emails when a metric exceeds a threshold (e.g., active conversations > 50) and schedule periodic reports with a summary of your account activity.",
+      "tips": [
+        "Click '+ New alert', assign a descriptive name like 'Queue saturated', choose the metric 'queue_depth', operator '>' and threshold '20' — so you know when too many conversations are waiting.",
+        "In 'Notification emails', separate multiple recipients with commas: e.g., 'manager@company.com, support@company.com'. The field accepts up to 5 addresses.",
+        "Set 'Cooldown' to at least 60 minutes to avoid alert spam if the metric fluctuates. For critical alerts like LLM costs, use 30 minutes.",
+        "In the 'Scheduled reports' section, enable the 'Active' toggle, select frequency 'Weekly' or 'Monthly', enter recipients and save — you'll receive an automatic summary without doing anything else."
+      ]
+    },
+    "settingsApiKeys": {
+      "title": "How to create and manage public API keys?",
+      "description": "API Keys allow you to connect external systems (CRM, ERP, custom integrations) to Parallly without exposing your user credentials. Each key has specific permissions (scopes) that limit what operations it can perform.",
+      "tips": [
+        "Click 'Create key', type a name like 'CRM-Salesforce', select only the scopes you need (e.g., 'Read contacts' + 'Write messages') and save — you'll see the full key only once, copy it immediately.",
+        "Use 'Rotate' to replace a compromised key without removing its permissions — the system generates a new one and the old key stops working instantly.",
+        "When a key is no longer needed, use 'Revoke' (red button) to permanently delete it. Confirm in the modal — this action cannot be undone.",
+        "In each request header, use the exact format: 'Authorization: Bearer pk_live_YOUR_KEY' against the base endpoint 'https://api.parallly-chat.cloud/api/v1'."
+      ]
+    },
+    "settingsAppearance": {
+      "title": "How to change the dashboard visual theme?",
+      "description": "Here you can adjust the visual appearance of the interface by choosing between light, dark, or automatic mode based on the operating system. The change applies immediately across the entire platform without needing to reload.",
+      "tips": [
+        "Click the 'Dark' card to enable dark mode — ideal if you work long hours in front of a screen or in low-light environments. The blue checkmark indicates the active theme.",
+        "Choose 'System' so the dashboard automatically follows your device's light/dark mode — useful if you use the platform on both computer and phone.",
+        "Use the 'Component preview' section to see how buttons, cards, and badges look with your chosen theme before confirming your preference.",
+        "The 'Graphite' and 'Midnight' themes appear locked with the 'Coming soon' badge — they will be available in future versions. For now, the three active themes cover all use cases."
+      ]
+    },
+    "settingsBilling": {
+      "title": "How do I manage my subscription and payments?",
+      "description": "Here you control your current plan, monthly AI message usage, and payment history. You can change plans, update your card, or redeem a coupon from this page.",
+      "tips": [
+        "If your usage bar exceeds 80%, click 'Upgrade now' to move to a higher plan before your messages run out.",
+        "To update your credit card, use the 'Change card' button in your active plan section.",
+        "If you have a promo code, enter it in the 'Redeem coupon' field (e.g. LAUNCH50) and press 'Redeem'.",
+        "Download individual invoices from the 'Payment history' table by clicking 'Download'."
+      ]
+    },
+    "settingsBusinessHours": {
+      "title": "How do I configure the bot's business hours?",
+      "description": "Define which days and times your AI agent responds to messages. Outside those hours, a custom message is automatically sent to your customers.",
+      "tips": [
+        "Enable the '24/7' toggle if you want the bot to respond at any time without schedule restrictions.",
+        "Select the correct timezone (e.g. 'America/Bogota') so hours are applied accurately to your country.",
+        "Enable or disable individual days using each row's toggle; adjust open and close times with the time fields.",
+        "Write an out-of-hours message in the bottom field (e.g. 'Hi! We respond Monday to Friday from 8am to 6pm.') and save changes."
+      ]
+    },
+    "settingsBusinessInfo": {
+      "title": "Why is it important to complete my company information?",
+      "description": "Your company information is used by the AI agent to answer questions about your business. A complete profile improves the accuracy and credibility of responses.",
+      "tips": [
+        "The 'Company name' field is required; use the name your customers recognize (e.g. 'Smile Dental Clinic').",
+        "Upload your logo by clicking the dotted area or switch to 'URL' mode to paste an external link like 'https://cdn.example.com/logo.png'.",
+        "Fill in the 'Phone' and 'Email' fields so the bot can share them when a customer asks.",
+        "Add your social networks in the 'Social media' section (e.g. Instagram, Facebook) so the agent can mention them in responses."
+      ]
+    },
+    "settingsChangePassword": {
+      "title": "How do I change my password safely?",
+      "description": "From here you can update your account password. If you signed in with Google, you can also set an additional password to log in with email and password.",
+      "tips": [
+        "Enter your current password in the first field; if you don't remember it, sign out and use the 'Forgot your password?' option.",
+        "Your new password must meet all requirements shown in the checklist (uppercase, number, special character, minimum 8 characters).",
+        "Use the eye icon to the right of each field to show or hide what you type and avoid typing errors.",
+        "If your account is Google-only, you can set an additional password without needing to enter a current password."
+      ]
+    },
+    "settingsChannels": {
+      "title": "How do I configure my messaging channel credentials?",
+      "description": "Here you enter the API keys and tokens to connect WhatsApp, Instagram, Messenger, and Telegram. These credentials allow the bot to send and receive messages on each channel.",
+      "tips": [
+        "Select the tab for the channel you want to configure (e.g. 'WhatsApp') and fill in the 'Phone Number ID' and 'Access Token' from Meta Business.",
+        "Password-type fields (marked with a lock icon) are hidden by default; use the eye icon to reveal them and verify you pasted the correct value.",
+        "For Telegram, get the 'Bot Token' from @BotFather on Telegram and paste it in the corresponding field (e.g. '1234567890:AAHfiqk...').",
+        "The 'Webhook URL' for each channel is pre-filled; copy and paste it into the Meta or Telegram developer settings so messages arrive correctly."
+      ]
+    },
+    "settingsCompany": {
+      "title": "How do I set up my company information?",
+      "description": "Here you define your business general data: name, industry, size, website, and support contact. This information is used in email templates and in your AI agents' identity.",
+      "tips": [
+        "Fill in the 'Industry' field so the system tailors suggestions to your business type (e.g. choose 'Health' for clinics).",
+        "The 'Support email' appears in automatic emails sent to your customers; use a real mailbox your team monitors.",
+        "To add or change your company logo, click the 'Media bank' link at the bottom of the form.",
+        "After editing any field, press 'Save changes' — the button turns green with a checkmark when the operation succeeds."
+      ]
+    },
+    "settingsCustomAttributes": {
+      "title": "What are custom attributes for?",
+      "description": "Custom attributes are extra fields you define to enrich information for your contacts, leads, companies, or conversations. They let you store business-specific data that doesn't exist by default.",
+      "tips": [
+        "Use the 'Contact', 'Lead', 'Company', and 'Conversation' tabs to view and create attributes per entity; each tab shows only that type's fields.",
+        "When creating an attribute, the 'Key' is auto-generated from the 'Label' (e.g. 'Birth date' → 'birth_date'); you can edit it manually if you need a different name.",
+        "Choose the 'List' type if you want a closed-options field; type options separated by commas (e.g. 'Premium, Standard, Basic').",
+        "Enable 'Required field' only for truly mandatory data; required fields block saving when left empty."
+      ]
+    },
+    "settingsEmailTemplates": {
+      "title": "How do I create and use email templates?",
+      "description": "Email templates are reusable messages with dynamic variables that the system sends automatically (appointment confirmations, reminders, welcomes, etc.). You can create them from scratch or start from a preset.",
+      "tips": [
+        "Click 'Create from template' to choose from 6 pre-designed models (Appointment Confirmation, Reminder, Booking, Check-in, Welcome, Team Notification) and start with the HTML already built.",
+        "Insert variables like '{{customer_name}}' or '{{appointment_date}}' by clicking the 'Available variables' chips; they insert at your cursor position.",
+        "Use the 'Preview' panel to see the email rendered with sample data before saving; switch to the 'HTML' tab to review the code.",
+        "Once the template is saved, use the 'Send test' button to receive the real email in your inbox and validate the design."
+      ]
+    },
+    "settingsIntegrations": {
+      "title": "How do I connect external integrations?",
+      "description": "Integrations let you connect Parallly with external tools like CRMs, vertical platforms, and MCP servers. Each integration automatically syncs data between systems.",
+      "tips": [
+        "Go to the 'CRM' section to connect HubSpot, Pipedrive, or Kommo via OAuth; the process takes less than a minute.",
+        "Use the 'Test' button on an active integration to verify the connection still works before launching a campaign.",
+        "If an integration shows an error status, click 'Disconnect' and reconnect to renew the access token.",
+        "Vertical integrations (Toast, Mindbody, Cliniko) are available in the 'Vertical' subsection for specific industries."
+      ]
+    },
+    "settingsIntegrationsCrm": {
+      "title": "How do I sync my external CRM with Parallly?",
+      "description": "Here you connect Parallly with your external CRM (HubSpot, Pipedrive, or Kommo) to keep contacts and conversations synchronized between both systems in real time.",
+      "tips": [
+        "Click 'Connect' on the card of the provider you use; the CRM OAuth flow opens and in less than a minute the integration is active.",
+        "Once connected, use the 'Test' button to validate the API responds correctly — if an error appears, disconnect and re-authorize.",
+        "Use 'Import' to bring your existing CRM contacts into Parallly; the system shows a preview with counts of new, matched, and invalid records before you confirm.",
+        "If the 'Last sync' column is empty or very old, disconnect and reconnect to force a fresh synchronization."
+      ]
+    },
+    "settingsIntegrationsMcp": {
+      "title": "What are MCP servers?",
+      "description": "MCP (Model Context Protocol) lets you connect the AI agent to external tools via compatible servers. Use it so your agent can query APIs, databases, or your own services in real time during a conversation.",
+      "tips": [
+        "Copy your MCP endpoint URL (the 'Your MCP endpoint' block) and paste it into the external client you want to connect — include the authorization header to secure it.",
+        "To add an external server, fill in the 'Name', 'URL', and 'Auth header' fields and click 'Add server'. You will see the green indicator when it is active.",
+        "Use the 'Test' button on each server to verify the connection before enabling it in production — it shows the number of available tools if everything is correct.",
+        "You can pause a server with the power icon without deleting it; the indicator turns gray and the agent temporarily stops using it."
+      ]
+    },
+    "settingsIntegrationsReviews": {
+      "title": "How does review management work?",
+      "description": "This section connects your Google Business Profile account to view and reply to reviews directly from the dashboard. The AI can suggest personalized responses and publish them to Google automatically if you enable the option.",
+      "tips": [
+        "Click 'Connect Google Business' to start the OAuth flow; you need administrator access to the Google My Business account.",
+        "Enable 'Auto-reply' (the checkbox next to 'Sync') so the AI responds to new reviews without manual intervention — ideal for high volumes.",
+        "On each unanswered review, use 'AI Suggestion' to generate a draft based on the customer's comment; you can edit it before publishing with 'Post reply'.",
+        "Use 'Sync' to pull the latest reviews from Google at any time; the 'Unreplied' and 'Negative' counters help you prioritize."
+      ]
+    },
+    "settingsIntegrationsSlack": {
+      "title": "What is the Slack integration for?",
+      "description": "Connect Parallly to a Slack channel to receive automatic notifications when key events occur in the system. This way your team is instantly informed without having to check the dashboard manually.",
+      "tips": [
+        "Create an Incoming Webhook in your Slack workspace (Slack App Directory → 'Incoming WebHooks') and paste the URL starting with 'https://hooks.slack.com/services/...' into the 'Webhook URL' field.",
+        "Check 'Handoff to agent' to receive a Slack alert every time the bot transfers a conversation to a human agent — useful for fast response.",
+        "Enable 'New appointment' so the team sees each booking confirmed by the AI agent in Slack without opening the Appointments module.",
+        "Use 'Send test message' after saving to verify the webhook works correctly before enabling it in production."
+      ]
+    },
+    "settingsIntegrationsVertical": {
+      "title": "What are vertical integrations?",
+      "description": "Connect Parallly with industry-specific software (Toast for restaurants, Mindbody for gyms/wellness, Cliniko for clinics) so the agent can check availability, book appointments, and sync data in real time.",
+      "tips": [
+        "To connect Toast, enter the 'Hostname', 'Client ID', 'Client Secret', and 'Restaurant GUID' from your Toast developer account (available at developer.toasttab.com).",
+        "For Cliniko, the 'Base URL (shard)' field depends on your region: Australia uses 'https://api.au1.cliniko.com/v1' and other regions have their own subdomain.",
+        "Once connected, use 'Test' to verify that the credentials work — you will see a success message if the API responds correctly.",
+        "Use 'Sync' after connecting to import available services, schedules, or practitioners; the count of synced records appears as confirmation."
+      ]
+    },
+    "settingsIntegrationsWebChat": {
+      "title": "How to install the chat widget on your website?",
+      "description": "The chat widget embeds the AI agent on any website with a JavaScript snippet. You can customize colors, position, welcome message, and pre-chat form, then copy the code to paste into your HTML.",
+      "tips": [
+        "Click 'Create widget' to generate a new widget; then use the gear icon to configure the name, color (color picker), position ('Bottom right' / 'Bottom left'), and welcome message.",
+        "Enable the 'Pre-chat form' with the toggle in the edit section to ask visitors for their name, email, or other data before starting the conversation.",
+        "Copy the code snippet with the '</>' icon and paste it before the closing '</body>' tag on your site — the widget will appear automatically for all visitors.",
+        "Use the 'Triggers' button to define automatic appearance rules (for example, show the chat after 30 seconds or on specific pages) without any extra code."
+      ]
+    },
+    "settingsIntegrationsWebChatTriggers": {
+      "title": "How do widget triggers work?",
+      "description": "Triggers are automatic rules that open or show the chat widget when a visitor meets certain conditions. Use them to start conversations at the right moment and boost engagement.",
+      "tips": [
+        "Combine conditions: use 'Time on page' (e.g. 30 seconds) with 'Page URL' (e.g. '/pricing') to fire the widget only when someone has spent time on your pricing page.",
+        "Use 'Exit intent' to show a retention message (e.g. 'Leaving? We have a special offer') right before the visitor closes the tab.",
+        "Set 'Frequency' to 60 minutes or more to avoid showing the same message repeatedly to a visitor browsing multiple pages.",
+        "Assign lower priority numbers to your most important triggers; the system runs the highest-priority one first."
+      ]
+    },
+    "settingsIntegrationsWebhooks": {
+      "title": "What are outbound webhooks for?",
+      "description": "Webhooks send event data from your account (new leads, appointments, handoffs) to an external URL in real time. Use them to connect Parallly with your CRM, ERP, or other tools without polling.",
+      "tips": [
+        "When creating an endpoint, select only the events you need (e.g. 'lead.created' and 'appointment.booked') to avoid unnecessary traffic to your server.",
+        "Use the 'Send test' button (airplane icon) to verify your server receives and processes the payload correctly before activating the webhook in production.",
+        "Verify each call's authenticity using the HMAC-SHA256 signature in the 'X-Webhook-Signature' header; compare it with the secret shown in the 'Secret' section.",
+        "If the secret is compromised, use the recycle button (orange icon) to regenerate it without needing to create a new endpoint."
+      ]
+    },
+    "settingsLocalization": {
+      "title": "What do you configure in Localization?",
+      "description": "Localization sets the timezone, currency, date/time format, and working language for your workspace. These settings affect how data is displayed in the dashboard and reports.",
+      "tips": [
+        "Select the timezone where your team operates (e.g. 'Colombia (GMT-5)') so appointment schedules and reports match your local reality.",
+        "Choose the date format your customers use (e.g. 'DD/MM/YYYY' for LatAm) and the time format (24h or 12h) to avoid confusion in appointment confirmations.",
+        "The 'Currency' field defines the symbol shown in quotes and sales reports; change it if you operate in multiple countries.",
+        "Set 'First day of the week' to Monday or Sunday according to your country's calendar so the calendar views in the appointments module display correctly."
+      ]
+    },
+    "settingsMacros": {
+      "title": "What are macros?",
+      "description": "Macros are predefined action sequences that an agent can run with one click in the inbox. They automate repetitive tasks like assigning conversations, changing statuses, or adding tags.",
+      "tips": [
+        "Create a 'Team' visibility macro so all agents can use common actions, for example: 'Escalate to supervisor' (action: change status to 'Waiting for agent').",
+        "Combine multiple actions in a single macro: first 'Assign agent', then 'Add tag' (e.g. 'vip'), and finally 'Change status' to 'Active'.",
+        "Macros with 'Personal' visibility are yours only; use them for personal workflows, such as adding an internal note with your follow-up template.",
+        "Use the 'Description' field to clarify when to apply each macro (e.g. 'Use when the customer asks for pricing a second time')."
+      ]
+    },
+    "settingsMedia": {
+      "title": "What is the media bank for?",
+      "description": "The media bank is your centralized image gallery for use in campaigns, WhatsApp templates, and conversations. Upload, organize, and copy image URLs to reuse them across any module.",
+      "tips": [
+        "Classify each image with the 'Type' selector ('General', 'Product', 'Course') before uploading so you can filter them easily from the gallery.",
+        "Add descriptive tags (e.g. 'promo-june', 'web-banner') to each image using the 'Edit' button; then filter by tag using the colored pills in the gallery.",
+        "Use 'Copy URL' (copy icon on the card) to paste the direct image link into a WhatsApp template or the campaign builder.",
+        "Drag and drop images directly onto the dotted area to upload them faster, without needing to click the upload zone."
+      ]
+    },
+    "settingsNotifications": {
+      "title": "How to configure your notifications?",
+      "description": "Here you control which alerts you receive and through which channel. Adjust categories so you only get what truly matters and never miss key signals from your conversations.",
+      "tips": [
+        "Enable 'Push notifications' to receive real-time alerts even when the dashboard is in the background.",
+        "If you get too many emails, change 'Email digest' to 'Daily' for one consolidated digest instead of one per event.",
+        "Disable the 'Automations' category if your flows are already stable and you don't need to monitor every trigger.",
+        "Always keep the 'Handoff' category active so you never miss a conversation transferred to a human agent."
+      ]
+    },
+    "settingsNurturing": {
+      "title": "How does automatic lead nurturing work?",
+      "description": "Nurturing sequences automatically resend messages to leads who stopped replying. Configure timings, channels, and the final action to recover opportunities without manual intervention.",
+      "tips": [
+        "Enable the 'Enable nurturing' toggle only when you have at least one channel selected; otherwise the sequence won't send any messages.",
+        "For WhatsApp, type in 'Template name' the exact Meta-approved name (e.g. 'reengagement_v2') — lowercase, no quotes.",
+        "Set 'Attempt 1' to 4 h and 'Attempt 2' to 24 h: that rhythm is less intrusive and reduces contact blocks.",
+        "Choose 'Create task' as the final action so the CRM generates a manual follow-up task when automatic attempts are exhausted."
+      ]
+    },
+    "settingsPipeline": {
+      "title": "How to customize pipeline stages?",
+      "description": "Here you define your business sales funnel: names, colors, close probability, and transition rules per stage. A well-configured pipeline improves reporting and your team's workflow.",
+      "tips": [
+        "Drag the 6-dot icon (⠿) to reorder stages without losing leads already in them.",
+        "Click the color picker on each row to assign a unique color; use green for closing stages (e.g. 'Won') and gray for negative terminals (e.g. 'Lost').",
+        "Set 'Probability' between 0 and 100 based on real historical close rates for that stage; this feeds the CRM forecast.",
+        "Use the 'Load industry presets' button to import pre-designed stages for your tenant's vertical, then customize them."
+      ]
+    },
+    "settingsPlatform": {
+      "title": "What do you configure in Platform settings?",
+      "description": "This section is exclusive to super administrators and controls global engine parameters: platform name, default language and timezone, conversation limits, and module activation such as Analytics and RAG.",
+      "tips": [
+        "Change the 'Platform name' to match your brand for white-label deployments (e.g. 'SalesBot Pro' instead of 'Parallext Engine').",
+        "Set the 'Default timezone' to the country where most of your tenants operate; this affects reports and send schedules.",
+        "Temporarily disable 'RAG enabled' during knowledge base migrations to avoid inconsistent responses.",
+        "The 'Analytics enabled' toggle controls platform-wide event tracking; keep it active to avoid losing conversion data."
+      ]
+    },
+    "settingsPlatformChangelog": {
+      "title": "How to publish updates to all tenants?",
+      "description": "The changelog compiler lets you write, translate, and publish update announcements that appear in all tenants' dashboards as a 'What's new' modal. Manage history and edit previous entries from the 'History' tab.",
+      "tips": [
+        "Fill in the title in Spanish first (required field), then switch language tabs (es/en/pt/fr) to translate before publishing.",
+        "Use the 'Add Section' button to add individual features; choose the right category: 'New' (blue), 'Improved' (green), or 'Fixed' (yellow).",
+        "Upload a screenshot per feature with 'Upload Screenshot/Image' to make the modal more visual and easier for end users to understand.",
+        "Leave 'Published' unchecked if you want to save a draft and review it in the live preview before tenants see it."
+      ]
+    },
+    "settingsPolicies": {
+      "title": "What are policies used for?",
+      "description": "Store your business legal texts here (returns, warranty, privacy, etc.). Every time you save, a new numbered version is created so you have a full history.",
+      "tips": [
+        "Use the left panel to switch types: 'Shipping', 'Return', 'Privacy', etc. The green badge shows the active version number.",
+        "The 'Title' field is the document's visible name; 'Content' accepts Markdown, so you can use **bold**, lists, and headings.",
+        "Click 'View history (v3)' to review previous versions of the same policy type without losing the current one.",
+        "Always save before switching policy types to avoid losing changes; the button reads 'Save new version' when a policy already exists."
+      ]
+    },
+    "settingsPrechat": {
+      "title": "How does the pre-chat form work?",
+      "description": "The pre-chat form collects visitor data before the agent attends them. You can add fields like name, email, phone, or dropdowns, and the WhatsApp preview shows how it will look.",
+      "tips": [
+        "Turn on the 'Active form' toggle so the form appears at the start of the conversation; disable it if you prefer to collect data only through the agent.",
+        "When adding a field, choose 'Map to' → 'contact.name' or 'contact.email' so data is saved directly to the contact profile.",
+        "For the 'Select' type, enter options separated by commas: 'Purchase, Support, Info' and the customer will see the numbered list.",
+        "The right-side preview simulates the WhatsApp screen in real time; use it to verify the order of questions before saving."
+      ]
+    },
+    "settingsProfile": {
+      "title": "What can I edit in my profile?",
+      "description": "Your profile stores your name, phone number, and job title within the platform. The email cannot be changed here because it is linked to your login account.",
+      "tips": [
+        "Edit 'First name' and 'Last name' so your name appears correctly in the inbox and team reports.",
+        "The 'Phone' field is optional but useful if the team needs to reach you; use international format, e.g. +57 300 123 4567.",
+        "The 'Job title' field (e.g. 'Sales Manager') is only visible internally and helps identify your role within the team.",
+        "The email is locked (shows a lock icon) because it is tied to your authentication; contact an admin if you need to change it."
+      ]
+    },
+    "settingsPublicBooking": {
+      "title": "What is the public booking page?",
+      "description": "It is a public URL where your customers can book appointments without needing an agent. You can enable it, customize the welcome message, and set your brand color.",
+      "tips": [
+        "Enable the toggle to activate the page; a ready-to-copy link will appear so you can share it on social media or WhatsApp.",
+        "Use the 'Copy' button to get the exact URL and paste it in your Instagram bio or a WhatsApp broadcast message.",
+        "Click 'Show QR' to generate a downloadable QR code; great for printing on physical materials like business cards or flyers.",
+        "In 'Customization' you can write a welcome message (max. 300 characters) and pick the accent color of the page to match your brand."
+      ]
+    },
+    "settingsRecall": {
+      "title": "What is Customer Recall?",
+      "description": "Recall automatically sends a message to customers who have not interacted in N days, inviting them back. It works through the channel you choose (WhatsApp, SMS, etc.) and respects a cooldown period to avoid being intrusive.",
+      "tips": [
+        "Enable the 'Recall enabled' toggle and set 'Days without interaction' (e.g. 180) to only contact truly inactive customers.",
+        "The 'Days between recalls' field (e.g. 90) prevents the system from messaging the same customer multiple times in a short period.",
+        "In the message, use {name} for the customer's name and {months} for months elapsed: 'Hi {name}, it has been {months} months since your last visit'.",
+        "Use the 'Run now' button for a manual test to see how many messages would be sent today; the system will show you the total sent."
+      ]
+    },
+    "settingsScoringConfig": {
+      "title": "How does lead scoring work?",
+      "description": "Scoring assigns a score (0-100) to each lead based on 5 configurable weighted factors. You can also define purchase keywords and enable score decay for inactivity.",
+      "tips": [
+        "Weights must add up to exactly 100%; if the total differs, the save button is disabled and you will see the percentage in red.",
+        "Increase the 'Intent' weight if your business relies on keywords like 'price' or 'buy'; decrease it if you prioritize stage history.",
+        "In 'Purchase keywords' add terms relevant to your industry (e.g. 'financing', 'installments') and press Enter or the '+ Add' button.",
+        "Enable 'Score decay' and set the days (e.g. 30) and factor (e.g. 50%) if you want inactive leads to lose points automatically."
+      ]
+    },
+    "settingsSecurity": {
+      "title": "How do I protect my account?",
+      "description": "Here you can change your password, enable two-factor authentication (2FA) with an app like Google Authenticator, manage trusted devices, and configure SSO/SAML for your organization.",
+      "tips": [
+        "To enable 2FA, click 'Enable two-factor authentication', scan the QR code with Google Authenticator, then enter the 6-digit code.",
+        "Save the backup codes somewhere safe outside the platform; if you lose access to your authenticator app, they are your only way to recover your account.",
+        "In 'Trusted devices' you can revoke access for a specific device by clicking 'Revoke'; use 'Revoke all' if you suspect unauthorized access.",
+        "If your organization uses SSO (Enterprise plan), enter the 'IdP Entity ID' and 'IdP SSO URL' from your provider (Okta, Azure AD, etc.) and enable 'Force SSO' to require all users to authenticate through it."
+      ]
     }
   },
   "helpAssistant": {

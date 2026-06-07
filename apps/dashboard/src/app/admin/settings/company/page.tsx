@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Building2, Globe, Mail, Phone, Save, CheckCircle, AlertCircle, Image } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const INDUSTRY_KEYS = [
     "retail", "education", "health", "tourism", "technology",
@@ -20,6 +21,7 @@ export default function CompanyPage() {
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const t = useTranslations("settings.companyPage");
+    const tHelp = useTranslations("help");
     const [form, setForm] = useState({
         name: "", website: "", industry: "", companySize: "", supportEmail: "", phone: "",
     });
@@ -73,6 +75,13 @@ export default function CompanyPage() {
                 <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("title")}</h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsCompany.title")}
+                description={tHelp("settingsCompany.description")}
+                tips={tHelp.raw("settingsCompany.tips") as string[]}
+                mediaKey="settingsCompany"
+            />
 
             {error && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">

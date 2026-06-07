@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { UpgradeBanner } from "@/components/ui/upgrade-banner";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface PipelineStage {
     id?: string;
@@ -40,6 +41,7 @@ const DEFAULT_STAGES: PipelineStage[] = [
 export default function PipelineSettingsPage() {
     const t = useTranslations("pipelineSettings");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const { canCreate, getLimit } = usePlanLimits();
 
@@ -193,6 +195,13 @@ export default function PipelineSettingsPage() {
                 title={t("title")}
                 subtitle={t("subtitle")}
                 icon={Settings}
+            />
+
+            <HelpPanel
+                title={tHelp("settingsPipeline.title")}
+                description={tHelp("settingsPipeline.description")}
+                tips={tHelp.raw("settingsPipeline.tips") as string[]}
+                mediaKey="settingsPipeline"
             />
 
             <UpgradeBanner current={stages.length} limit={getLimit("pipelineStages")} resourceLabel="etapas de pipeline" />

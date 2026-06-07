@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { 
     Sparkles, Plus, Trash2, Globe, Image as ImageIcon, Eye, 
     Save, FileText, CheckCircle2, ChevronRight, Edit2, List, Trash, X
@@ -43,6 +45,7 @@ export default function PlatformChangelogPage() {
 }
 
 function ChangelogManagerContent() {
+    const tHelp = useTranslations("help");
     // --- Tabs ---
     const [activeTab, setActiveTab] = useState<"compose" | "history">("compose");
 
@@ -258,6 +261,13 @@ function ChangelogManagerContent() {
                     </div>
                 )}
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsPlatformChangelog.title")}
+                description={tHelp("settingsPlatformChangelog.description")}
+                tips={tHelp.raw("settingsPlatformChangelog.tips") as string[]}
+                mediaKey="settingsPlatformChangelog"
+            />
 
             {/* Notifications */}
             {successMessage && (

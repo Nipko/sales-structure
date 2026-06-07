@@ -5,6 +5,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { Scale, Save, CheckCircle, AlertCircle, History, Info } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const POLICY_TYPES = ["shipping", "return", "warranty", "cancellation", "terms", "privacy"] as const;
 type PolicyType = typeof POLICY_TYPES[number];
@@ -24,6 +25,7 @@ type Policy = {
 export default function PoliciesPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("settings.policies");
+    const tHelp = useTranslations("help");
     const [policies, setPolicies] = useState<Record<PolicyType, Policy | null>>({} as any);
     const [selectedType, setSelectedType] = useState<PolicyType>("shipping");
     const [form, setForm] = useState({ title: "", content: "" });
@@ -105,6 +107,13 @@ export default function PoliciesPage() {
                 </h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsPolicies.title")}
+                description={tHelp("settingsPolicies.description")}
+                tips={tHelp.raw("settingsPolicies.tips") as string[]}
+                mediaKey="settingsPolicies"
+            />
 
             <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300 flex gap-2">
                 <Info size={16} className="flex-shrink-0 mt-0.5" />

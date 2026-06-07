@@ -9,6 +9,7 @@ import {
     Copy, CheckCircle, XCircle, Loader2, Send, ToggleLeft, ToggleRight,
     Clock, ChevronDown, ChevronUp, AlertTriangle,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface WebhookEndpoint {
     id: string;
@@ -48,6 +49,7 @@ const inputCls =
 export default function WebhooksSettingsPage() {
     const t = useTranslations("outboundWebhooks");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [endpoints, setEndpoints] = useState<WebhookEndpoint[]>([]);
@@ -166,6 +168,13 @@ export default function WebhooksSettingsPage() {
                     {t("addEndpoint")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsIntegrationsWebhooks.title")}
+                description={tHelp("settingsIntegrationsWebhooks.description")}
+                tips={tHelp.raw("settingsIntegrationsWebhooks.tips") as string[]}
+                mediaKey="settingsIntegrationsWebhooks"
+            />
 
             {error && (
                 <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-700 dark:text-red-300 flex items-center gap-2">

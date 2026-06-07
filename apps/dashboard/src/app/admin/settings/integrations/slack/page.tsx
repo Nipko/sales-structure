@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { Slack, Loader2, CheckCircle, Send } from "lucide-react";
 
 interface SlackConfig {
@@ -19,6 +20,7 @@ const inputCls =
 export default function SlackSettingsPage() {
     const t = useTranslations("slackIntegration");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [cfg, setCfg] = useState<SlackConfig>({ enabled: false, webhookUrl: "", events: { handoff: true, appointment: true } });
@@ -72,6 +74,13 @@ export default function SlackSettingsPage() {
     return (
         <div className="max-w-2xl mx-auto p-6">
             <PageHeader icon={Slack} title={t("title")} subtitle={t("subtitle")} />
+
+            <HelpPanel
+                title={tHelp("settingsIntegrationsSlack.title")}
+                description={tHelp("settingsIntegrationsSlack.description")}
+                tips={tHelp.raw("settingsIntegrationsSlack.tips") as string[]}
+                mediaKey="settingsIntegrationsSlack"
+            />
 
             {loading ? (
                 <div className="flex justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>

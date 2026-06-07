@@ -90,6 +90,13 @@ existing `images` / `videoUrl` props (they take precedence over `mediaKey`).
 | usage | /admin/usage | sort by usage + over-quota tile |
 | webhooks | /admin/webhooks | channel/status filter + pause |
 
+## Phase 2 — Settings (added, keys prefixed `settings…`)
+36 Settings sub-tabs now have help (keys `settingsAiConfig`, `settingsApiKeys`,
+`settingsSecurity`, `settingsPipeline`, … one per tab). GIFs are optional here —
+most config tabs are self-explanatory; add `/help/{key}.gif` only for the few
+that benefit from a walkthrough (e.g. `settingsSecurity`, `settingsScoringConfig`,
+`settingsPrechat`). `settings/integrations` is a redirect (no panel).
+
 ## New pages to add help to (later phases — see docs/help-panel-audit-2026-06.md)
 When adding `HelpPanel` to a new page, also add `mediaKey="{newKey}"` and a
 matching `help.{newKey}` entry in all 4 `messages/*.json`.

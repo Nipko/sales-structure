@@ -14,6 +14,7 @@ import {
     ShoppingCart,
     Settings,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface NotificationCategory {
     id: string;
@@ -36,6 +37,7 @@ const defaultCategories: NotificationCategory[] = [
 
 export default function NotificationsPage() {
     const t = useTranslations("notifications");
+    const tHelp = useTranslations("help");
     const [categories, setCategories] = useState(defaultCategories);
     const [emailDigest, setEmailDigest] = useState("realtime");
     const [soundEnabled, setSoundEnabled] = useState(true);
@@ -54,6 +56,13 @@ export default function NotificationsPage() {
                     {t("subtitle")}
                 </p>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsNotifications.title")}
+                description={tHelp("settingsNotifications.description")}
+                tips={tHelp.raw("settingsNotifications.tips") as string[]}
+                mediaKey="settingsNotifications"
+            />
 
             {/* Push notifications */}
             <PushNotificationToggle />

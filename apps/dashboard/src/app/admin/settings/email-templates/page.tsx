@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { UpgradeBanner } from "@/components/ui/upgrade-banner";
+import { HelpPanel } from "@/components/ui/help-panel";
 import {
   Mail,
   Plus,
@@ -195,6 +196,7 @@ const PRESET_ICON_MAP: Record<LucideIconName, React.ElementType> = {
 export default function EmailTemplatesPage() {
   const t = useTranslations('emailTemplates');
     const tc = useTranslations("common");
+  const tHelp = useTranslations("help");
   const { activeTenantId } = useTenant();
   const { canCreate, getLimit } = usePlanLimits();
 
@@ -521,6 +523,13 @@ export default function EmailTemplatesPage() {
           </button>
         </div>
       </div>
+
+      <HelpPanel
+          title={tHelp("settingsEmailTemplates.title")}
+          description={tHelp("settingsEmailTemplates.description")}
+          tips={tHelp.raw("settingsEmailTemplates.tips") as string[]}
+          mediaKey="settingsEmailTemplates"
+      />
 
       {/* Main layout */}
       <div className="flex gap-5 h-[calc(100vh-180px)]">

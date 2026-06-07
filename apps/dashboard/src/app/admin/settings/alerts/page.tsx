@@ -9,6 +9,7 @@ import {
     Bell, Plus, Trash2, Save, Mail, Clock, Loader2,
     AlertTriangle, CheckCircle, XCircle, Calendar,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const METRICS = [
     { value: "active_conversations" },
@@ -30,6 +31,7 @@ const OPERATORS = [
 export default function AlertsSettingsPage() {
     const t = useTranslations("alertsSettings");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const tenantId = user?.tenantId;
 
@@ -121,6 +123,13 @@ export default function AlertsSettingsPage() {
 
     return (
         <div className="p-6 max-w-[900px] mx-auto space-y-8">
+            <HelpPanel
+                title={tHelp("settingsAlerts.title")}
+                description={tHelp("settingsAlerts.description")}
+                tips={tHelp.raw("settingsAlerts.tips") as string[]}
+                mediaKey="settingsAlerts"
+            />
+
             {/* ── Alert Rules ── */}
             <div>
                 <div className="flex items-center justify-between mb-4">

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { SlidersHorizontal, Save, CheckCircle } from "lucide-react";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const MODELS = [
     "gpt-4o", "gpt-4o-mini", "gemini-2.0-flash", "gemini-2.0-pro",
@@ -22,6 +23,7 @@ export default function AIConfigPage() {
 
 function AIConfigContent() {
     const t = useTranslations("settings");
+    const tHelp = useTranslations("help");
     const [values, setValues] = useState({
         "llm.default_model": "gpt-4o-mini",
         "llm.default_temperature": "0.7",
@@ -82,6 +84,13 @@ function AIConfigContent() {
                     {saving ? t("saving") : saved ? t("saved") : t("save")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsAiConfig.title")}
+                description={tHelp("settingsAiConfig.description")}
+                tips={tHelp.raw("settingsAiConfig.tips") as string[]}
+                mediaKey="settingsAiConfig"
+            />
 
             <div className="space-y-5 rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 {/* Default model */}

@@ -18,6 +18,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
@@ -59,6 +60,7 @@ const SCOPE_GROUPS = [
 export default function ApiKeysPage() {
   const t = useTranslations("apiKeys");
   const tc = useTranslations("common");
+  const tHelp = useTranslations("help");
   const { user } = useAuth();
   const { activeTenantId } = useTenant();
   const { features, loading: planLoading } = usePlanLimits();
@@ -223,6 +225,13 @@ export default function ApiKeysPage() {
             {t("createKey")}
           </button>
         }
+      />
+
+      <HelpPanel
+        title={tHelp("settingsApiKeys.title")}
+        description={tHelp("settingsApiKeys.description")}
+        tips={tHelp.raw("settingsApiKeys.tips") as string[]}
+        mediaKey="settingsApiKeys"
       />
 
       {/* ── API Reference & Help Card ─────────────────── */}

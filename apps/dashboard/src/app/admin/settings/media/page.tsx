@@ -11,6 +11,7 @@ import {
   ArrowLeft, Upload, ImageIcon, Trash2, Copy, Check, X,
   Loader2, ZoomIn, Pencil, Save, Tag, Plus,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 // ---------------------------------------------------------------------------
 // Types & helpers
@@ -67,7 +68,8 @@ const ENTITY_KEYS = [
 
 export default function MediaBankPage() {
   const t = useTranslations('media');
-    const tc = useTranslations("common");
+  const tc = useTranslations("common");
+  const tHelp = useTranslations("help");
   const { user } = useAuth();
   const { activeTenantId } = useTenant();
   const tenantId = activeTenantId || user?.tenantId || "";
@@ -218,6 +220,13 @@ export default function MediaBankPage() {
           </div>
         </div>
       </div>
+
+      <HelpPanel
+        title={tHelp("settingsMedia.title")}
+        description={tHelp("settingsMedia.description")}
+        tips={tHelp.raw("settingsMedia.tips") as string[]}
+        mediaKey="settingsMedia"
+      />
 
       {/* Upload Section */}
       <div className="bg-card rounded-[14px] border border-border p-6 mb-6">

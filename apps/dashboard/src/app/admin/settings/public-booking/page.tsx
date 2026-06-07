@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { Calendar, Copy, Check, ExternalLink, QrCode, Loader2 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { motion } from "motion/react";
 
 interface Config {
@@ -18,6 +19,7 @@ interface Config {
 export default function PublicBookingSettingsPage() {
     const t = useTranslations("publicBookingSettings");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [config, setConfig] = useState<Config | null>(null);
@@ -89,6 +91,13 @@ export default function PublicBookingSettingsPage() {
                     {t("subtitle")}
                 </p>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsPublicBooking.title")}
+                description={tHelp("settingsPublicBooking.description")}
+                tips={tHelp.raw("settingsPublicBooking.tips") as string[]}
+                mediaKey="settingsPublicBooking"
+            />
 
             {/* Toggle */}
             <motion.div

@@ -6,10 +6,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { User, Mail, Phone, Briefcase, Save, CheckCircle, AlertCircle } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 export default function ProfilePage() {
     const tc = useTranslations("common");
     const t = useTranslations("settings.profilePage");
+    const tHelp = useTranslations("help");
     const tRoles = useTranslations("roles");
     const { user } = useAuth();
 
@@ -85,6 +87,13 @@ export default function ProfilePage() {
                     {t("subtitle")}
                 </p>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsProfile.title")}
+                description={tHelp("settingsProfile.description")}
+                tips={tHelp.raw("settingsProfile.tips") as string[]}
+                mediaKey="settingsProfile"
+            />
 
             {error && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">

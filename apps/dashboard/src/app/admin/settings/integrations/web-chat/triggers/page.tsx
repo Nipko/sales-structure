@@ -9,6 +9,7 @@ import {
     X, ChevronLeft, Clock, MousePointerClick, ArrowUpFromLine,
     Globe, Eye,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -71,6 +72,7 @@ function conditionIcon(type: string) {
 
 export default function WidgetTriggersPage() {
     const t = useTranslations("widgetTriggers");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const [triggers, setTriggers] = useState<Trigger[]>([]);
     const [widgetConfigId, setWidgetConfigId] = useState<string | null>(null);
@@ -255,6 +257,13 @@ export default function WidgetTriggersPage() {
                     {t("create")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsIntegrationsWebChatTriggers.title")}
+                description={tHelp("settingsIntegrationsWebChatTriggers.description")}
+                tips={tHelp.raw("settingsIntegrationsWebChatTriggers.tips") as string[]}
+                mediaKey="settingsIntegrationsWebChatTriggers"
+            />
 
             {/* No widget warning */}
             {!widgetConfigId && (

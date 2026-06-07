@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
 import { Zap, Plus, Pencil, Trash2, X, Check, UserPlus, Tag, RefreshCw, FileText, Send, Eye, EyeOff } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface Macro { id: string; name: string; description: string; actions: MacroAction[]; visibility: string; }
 interface MacroAction { type: string; config: Record<string, any>; }
@@ -19,6 +20,7 @@ const emptyForm = () => ({ name: "", description: "", visibility: "personal", ac
 
 export default function MacrosPage() {
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const [macros, setMacros] = useState<Macro[]>([]);
     const [loading, setLoading] = useState(true);
@@ -60,6 +62,13 @@ export default function MacrosPage() {
     return (
         <div className="p-8 max-w-[1100px] mx-auto">
             {toast && <div className={cn("fixed top-6 right-6 z-[9999] text-white px-6 py-3 rounded-[10px] text-sm font-semibold shadow-lg", toast.includes("Error") ? "bg-destructive" : "bg-[var(--success)]")}>{toast}</div>}
+
+            <HelpPanel
+                title={tHelp("settingsMacros.title")}
+                description={tHelp("settingsMacros.description")}
+                tips={tHelp.raw("settingsMacros.tips") as string[]}
+                mediaKey="settingsMacros"
+            />
 
             <div className="flex justify-between items-center mb-7">
                 <div className="flex items-center gap-3">

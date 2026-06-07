@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Key, Eye, EyeOff, Save, CheckCircle, Shield } from "lucide-react";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const providers = [
     { key: "llm.openai_api_key", label: "OpenAI", description: "GPT-4o y GPT-4o-mini", placeholder: "sk-...", color: "bg-emerald-500" },
@@ -27,6 +28,7 @@ export default function AIProvidersPage() {
 
 function AIProvidersContent() {
     const t = useTranslations("settings");
+    const tHelp = useTranslations("help");
     const [values, setValues] = useState<Record<string, string>>({});
     const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
     const [saving, setSaving] = useState(false);
@@ -76,6 +78,13 @@ function AIProvidersContent() {
                     {saving ? t("saving") : saved ? t("saved") : t("save")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsAiProviders.title")}
+                description={tHelp("settingsAiProviders.description")}
+                tips={tHelp.raw("settingsAiProviders.tips") as string[]}
+                mediaKey="settingsAiProviders"
+            />
 
             <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs text-neutral-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-neutral-400">
                 <Shield size={14} className="shrink-0 text-indigo-600" />

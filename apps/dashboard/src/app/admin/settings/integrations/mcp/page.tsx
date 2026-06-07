@@ -6,6 +6,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { Plug2, Loader2, Plus, Trash2, CheckCircle2, Server, Copy, Power } from "lucide-react";
 
 interface McpServer { id: string; name: string; url: string; authHeader?: string; enabled: boolean }
@@ -15,6 +16,7 @@ const inputCls = "w-full rounded-lg border border-border bg-background px-3 py-2
 
 export default function McpSettingsPage() {
     const t = useTranslations("mcp");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [servers, setServers] = useState<McpServer[]>([]);
@@ -81,6 +83,13 @@ export default function McpSettingsPage() {
     return (
         <div className="max-w-3xl mx-auto p-6">
             <PageHeader icon={Plug2} title={t("title")} subtitle={t("subtitle")} />
+
+            <HelpPanel
+                title={tHelp("settingsIntegrationsMcp.title")}
+                description={tHelp("settingsIntegrationsMcp.description")}
+                tips={tHelp.raw("settingsIntegrationsMcp.tips") as string[]}
+                mediaKey="settingsIntegrationsMcp"
+            />
 
             {toast && <div className={cn("mb-4 text-sm font-medium", toast.ok ? "text-emerald-500" : "text-red-400")}>{toast.msg}</div>}
 

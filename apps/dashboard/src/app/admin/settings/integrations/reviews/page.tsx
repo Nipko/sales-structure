@@ -6,6 +6,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { Star, Loader2, RefreshCw, Sparkles, Send, Link2, CheckCircle2, MessageSquare } from "lucide-react";
 
 interface Cfg { connected: boolean; accountId?: string; locationId?: string; locationName?: string; autoReply: boolean }
@@ -24,6 +25,7 @@ function Stars({ n }: { n: number }) {
 
 export default function ReviewsSettingsPage() {
     const t = useTranslations("reviewsModule");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [cfg, setCfg] = useState<Cfg | null>(null);
@@ -97,6 +99,13 @@ export default function ReviewsSettingsPage() {
     return (
         <div className="max-w-3xl mx-auto p-6 space-y-5">
             <PageHeader icon={Star} title={t("title")} subtitle={t("subtitle")} />
+
+            <HelpPanel
+                title={tHelp("settingsIntegrationsReviews.title")}
+                description={tHelp("settingsIntegrationsReviews.description")}
+                tips={tHelp.raw("settingsIntegrationsReviews.tips") as string[]}
+                mediaKey="settingsIntegrationsReviews"
+            />
 
             {loading && !cfg ? (
                 <div className="flex justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>

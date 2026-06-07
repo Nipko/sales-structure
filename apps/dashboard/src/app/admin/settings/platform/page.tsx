@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Settings, Save, CheckCircle } from "lucide-react";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
+import { HelpPanel } from "@/components/ui/help-panel";
 import MaintenanceModeCard from "./_MaintenanceModeCard";
 
 export default function PlatformPage() {
@@ -18,6 +19,7 @@ export default function PlatformPage() {
 
 function PlatformContent() {
     const t = useTranslations("settings");
+    const tHelp = useTranslations("help");
     const [values, setValues] = useState({
         "general.platform_name": "Parallext Engine",
         "general.default_language": "es-CO",
@@ -78,6 +80,13 @@ function PlatformContent() {
                     {saving ? t("saving") : saved ? t("saved") : t("save")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsPlatform.title")}
+                description={tHelp("settingsPlatform.description")}
+                tips={tHelp.raw("settingsPlatform.tips") as string[]}
+                mediaKey="settingsPlatform"
+            />
 
             <div className="space-y-5 rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 <div>

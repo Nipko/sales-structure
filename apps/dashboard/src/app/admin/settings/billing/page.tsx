@@ -12,6 +12,7 @@ import {
     Mic, Eye, ArrowUpRight, BookOpen, FileText,
 } from "lucide-react";
 import MpCardForm from "@/components/billing/MpCardForm";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 type SubscriptionStatus = "pending_auth" | "trialing" | "active" | "past_due" | "cancelled" | "expired";
 
@@ -117,6 +118,7 @@ function MpSecurityScript() {
 
 export default function BillingPage() {
     const t = useTranslations("billingPage");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const { user } = useAuth();
     const isSuperAdmin = user?.role === "super_admin";
@@ -413,6 +415,13 @@ export default function BillingPage() {
                 </h1>
                 <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
             </header>
+
+            <HelpPanel
+                title={tHelp("settingsBilling.title")}
+                description={tHelp("settingsBilling.description")}
+                tips={tHelp.raw("settingsBilling.tips") as string[]}
+                mediaKey="settingsBilling"
+            />
 
             {error && (
                 <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 text-sm flex gap-2">

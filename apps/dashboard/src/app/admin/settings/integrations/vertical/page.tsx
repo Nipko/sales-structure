@@ -6,6 +6,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { Plug, Loader2, CheckCircle2, RefreshCw, Trash2, Plug2, UtensilsCrossed, Dumbbell, Stethoscope } from "lucide-react";
 
 type Provider = "toast" | "mindbody" | "cliniko";
@@ -41,6 +42,7 @@ const inputCls = "w-full rounded-lg border border-border bg-background px-3 py-2
 
 export default function VerticalIntegrationsPage() {
     const t = useTranslations("verticalIntegrations");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [configs, setConfigs] = useState<Record<string, any>>({});
@@ -112,6 +114,13 @@ export default function VerticalIntegrationsPage() {
     return (
         <div className="max-w-3xl mx-auto p-6">
             <PageHeader icon={Plug} title={t("title")} subtitle={t("subtitle")} />
+
+            <HelpPanel
+                title={tHelp("settingsIntegrationsVertical.title")}
+                description={tHelp("settingsIntegrationsVertical.description")}
+                tips={tHelp.raw("settingsIntegrationsVertical.tips") as string[]}
+                mediaKey="settingsIntegrationsVertical"
+            />
 
             {toast && (
                 <div className={cn("mb-4 text-sm font-medium", toast.ok ? "text-emerald-500" : "text-red-400")}>{toast.msg}</div>

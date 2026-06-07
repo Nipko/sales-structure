@@ -7,10 +7,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { Lock, Eye, EyeOff, Check, X, AlertCircle, Shield, CheckCircle, ShieldCheck, ShieldOff, Key, Copy, Loader2, Globe, Download, ExternalLink, Monitor, Trash2, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 export default function SecurityPage() {
     const t = useTranslations("settings.securityPage");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const isGoogleOnly = !(user as any)?.hasPassword;
 
@@ -66,6 +68,13 @@ export default function SecurityPage() {
     return (
         <div className="max-w-2xl space-y-6">
             <PageHeader title={t("title")} subtitle={t("subtitle")} icon={Shield} />
+
+            <HelpPanel
+                title={tHelp("settingsSecurity.title")}
+                description={tHelp("settingsSecurity.description")}
+                tips={tHelp.raw("settingsSecurity.tips") as string[]}
+                mediaKey="settingsSecurity"
+            />
 
             {error && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">

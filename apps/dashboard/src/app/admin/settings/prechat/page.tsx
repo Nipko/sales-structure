@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
 import { MessageSquare, Plus, X, Save, GripVertical, Smartphone } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { PageHeader } from "@/components/ui/page-header";
 
 interface PrechatField { key: string; label: string; type: string; required: boolean; options: string; map_to: string; }
@@ -23,6 +24,7 @@ const labelCls = "block text-xs font-semibold text-neutral-500 dark:text-neutral
 export default function PrechatPage() {
     const t = useTranslations("prechatPage");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const [config, setConfig] = useState<PrechatConfig>(defaultConfig());
     const [loading, setLoading] = useState(true);
@@ -140,6 +142,13 @@ export default function PrechatPage() {
                     <Save size={16} /> {saving ? tc("saving") : tc("saveChanges")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsPrechat.title")}
+                description={tHelp("settingsPrechat.description")}
+                tips={tHelp.raw("settingsPrechat.tips") as string[]}
+                mediaKey="settingsPrechat"
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
                 <div className="space-y-5">

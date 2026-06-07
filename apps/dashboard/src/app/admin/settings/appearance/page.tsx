@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { Palette, Sun, Moon, Monitor, Check, Lock } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const themeConfigs = [
   {
@@ -71,6 +72,7 @@ const futureThemeConfigs = [
 
 export default function AppearancePage() {
   const t = useTranslations("settings.appearancePage");
+  const tHelp = useTranslations("help");
   const { theme, setTheme } = useTheme();
 
   return (
@@ -89,6 +91,13 @@ export default function AppearancePage() {
           </p>
         </div>
       </div>
+
+      <HelpPanel
+        title={tHelp("settingsAppearance.title")}
+        description={tHelp("settingsAppearance.description")}
+        tips={tHelp.raw("settingsAppearance.tips") as string[]}
+        mediaKey="settingsAppearance"
+      />
 
       {/* Theme selector cards */}
       <div>

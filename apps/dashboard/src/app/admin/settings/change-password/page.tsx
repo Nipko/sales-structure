@@ -20,6 +20,7 @@ import {
     Info,
     Loader2,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface PasswordRequirement {
     label: string;
@@ -37,6 +38,7 @@ const PASSWORD_REQUIREMENTS: PasswordRequirement[] = [
 export default function ChangePasswordPage() {
     const t = useTranslations('changePassword');
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const router = useRouter();
     const { user } = useAuth();
 
@@ -127,6 +129,13 @@ export default function ChangePasswordPage() {
                     </p>
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsChangePassword.title")}
+                description={tHelp("settingsChangePassword.description")}
+                tips={tHelp.raw("settingsChangePassword.tips") as string[]}
+                mediaKey="settingsChangePassword"
+            />
 
             {/* Google-only notice */}
             {isGoogleOnly && (

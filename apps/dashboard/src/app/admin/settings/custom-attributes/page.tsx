@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { Database, Plus, Pencil, Trash2, X, Check, AlertCircle } from "lucide-react";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { UpgradeBanner } from "@/components/ui/upgrade-banner";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface CustomAttribute { id: string; entity_type: string; attribute_key: string; label: string; data_type: string; is_required: boolean; options: string[] | null; }
 
@@ -22,6 +23,7 @@ const emptyForm = () => ({ entity_type: "contact", attribute_key: "", label: "",
 
 export default function CustomAttributesPage() {
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const { canCreate, getLimit } = usePlanLimits();
     const [attributes, setAttributes] = useState<CustomAttribute[]>([]);
@@ -65,6 +67,13 @@ export default function CustomAttributesPage() {
                 </div>
                 <button onClick={openCreate} disabled={!canCreate("customAttributes", attributes.length)} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] bg-primary text-white border-none cursor-pointer text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"><Plus size={16} /> New Attribute</button>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsCustomAttributes.title")}
+                description={tHelp("settingsCustomAttributes.description")}
+                tips={tHelp.raw("settingsCustomAttributes.tips") as string[]}
+                mediaKey="settingsCustomAttributes"
+            />
 
             <div className="flex gap-2 mb-6">
                 {ENTITY_TYPES.map(et => (

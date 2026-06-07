@@ -5,6 +5,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { Building2, Save, CheckCircle, AlertCircle, Globe, Mail, Phone, MapPin, Info, Upload, Loader2, Link2, Image as ImageIcon } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 type SocialLinks = {
     facebook?: string;
@@ -54,6 +55,7 @@ function logoFullUrl(relative: string): string {
 export default function BusinessInfoPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("settings.businessInfo");
+    const tHelp = useTranslations("help");
     const [form, setForm] = useState<BusinessForm>(EMPTY);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -162,6 +164,13 @@ export default function BusinessInfoPage() {
                 </h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
             </div>
+
+            <HelpPanel
+                title={tHelp("settingsBusinessInfo.title")}
+                description={tHelp("settingsBusinessInfo.description")}
+                tips={tHelp.raw("settingsBusinessInfo.tips") as string[]}
+                mediaKey="settingsBusinessInfo"
+            />
 
             <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300 flex gap-2">
                 <Info size={16} className="flex-shrink-0 mt-0.5" />

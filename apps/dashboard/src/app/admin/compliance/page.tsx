@@ -248,6 +248,7 @@ export default function CompliancePage() {
           title={tHelp("compliance.title")}
           description={tHelp("compliance.description")}
           tips={tHelp.raw("compliance.tips") as string[]}
+          mediaKey="compliance"
         />
 
         {/* Info banner */}

@@ -100,6 +100,7 @@ export default function FinancialsPage() {
         title={tHelp("financials.title")}
         description={tHelp("financials.description")}
         tips={tHelp.raw("financials.tips") as string[]}
+        mediaKey="financials"
       />
 
       <TabNav tabs={tabs} activeTab={activeTab} onTabChange={(id) => setActiveTab(id as TabId)} />

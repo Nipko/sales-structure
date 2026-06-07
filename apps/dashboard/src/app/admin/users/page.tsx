@@ -445,6 +445,7 @@ export default function UsersPage() {
                     title={tHelp("users.title")}
                     description={tHelp("users.description")}
                     tips={tHelp.raw("users.tips") as string[]}
+                    mediaKey="users"
                 />
 
                 <div className="grid grid-cols-4 gap-4 mb-6">

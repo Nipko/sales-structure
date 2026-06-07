@@ -193,6 +193,7 @@ export default function TenantsPage() {
         title={tHelp("tenants.title")}
         description={tHelp("tenants.description")}
         tips={tHelp.raw("tenants.tips") as string[]}
+        mediaKey="tenants"
       />
 
       <TabNav tabs={tabs} activeTab={activeTab} onTabChange={(id) => setActiveTab(id as TabId)} />

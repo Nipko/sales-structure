@@ -157,6 +157,7 @@ export default function DripSequencesPage() {
         title={tHelp("dripSequences.title")}
         description={tHelp("dripSequences.description")}
         tips={tHelp.raw("dripSequences.tips") as string[]}
+        mediaKey="dripSequences"
       />
 
       <div className="grid grid-cols-3 gap-3 mb-6">

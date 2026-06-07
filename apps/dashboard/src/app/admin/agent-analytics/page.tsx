@@ -389,6 +389,7 @@ export default function AgentAnalyticsPage() {
                 title={tHelp("agentAnalytics.title")}
                 description={tHelp("agentAnalytics.description")}
                 tips={tHelp.raw("agentAnalytics.tips") as string[]}
+                mediaKey="agentAnalytics"
             />
 
             {/* Tabs */}

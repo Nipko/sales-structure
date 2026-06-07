@@ -130,6 +130,7 @@ export default function FeatureRequestsPage() {
                 title={tHelp("featureRequests.title")}
                 description={tHelp("featureRequests.description")}
                 tips={tHelp.raw("featureRequests.tips") as string[]}
+                mediaKey="featureRequests"
             />
 
             <div className="flex gap-1 mb-4 border-b border-neutral-200 dark:border-neutral-800">

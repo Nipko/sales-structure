@@ -326,6 +326,7 @@ export default function ReportBuilderPage() {
                 title={tHelp("reportBuilder.title")}
                 description={tHelp("reportBuilder.description")}
                 tips={tHelp.raw("reportBuilder.tips") as string[]}
+                mediaKey="reportBuilder"
             />
 
             {/* Toast */}

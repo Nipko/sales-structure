@@ -27,6 +27,8 @@ export default function SettingsHub() {
             <HelpPanel
                 title={tHelp("settings.title")}
                 description={tHelp("settings.description")}
+                tips={tHelp.raw("settings.tips") as string[]}
+                mediaKey="settings"
             />
 
             {sections.map((section, sIdx) => (

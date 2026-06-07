@@ -256,6 +256,7 @@ export default function AutomationTemplatesPage() {
         title={tHelp("automationTemplates.title")}
         description={tHelp("automationTemplates.description")}
         tips={tHelp.raw("automationTemplates.tips") as string[]}
+        mediaKey="automationTemplates"
       />
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">

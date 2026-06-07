@@ -162,6 +162,7 @@ export default function AnalyticsV2Page() {
                 title={tHelp("analyticsV2.title")}
                 description={tHelp("analyticsV2.description")}
                 tips={tHelp.raw("analyticsV2.tips") as string[]}
+                mediaKey="analyticsV2"
             />
 
             {/* Tabs */}

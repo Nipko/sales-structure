@@ -239,6 +239,7 @@ export default function PropertiesPage() {
         title={tHelp("properties.title")}
         description={tHelp("properties.description")}
         tips={tHelp.raw("properties.tips") as string[]}
+        mediaKey="properties"
       />
 
       {properties.length === 0 ? (

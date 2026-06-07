@@ -325,6 +325,7 @@ export default function AdminDashboard() {
                 title={tHelp("dashboard.title")}
                 description={tHelp("dashboard.description")}
                 tips={tHelp.raw("dashboard.tips") as string[]}
+                mediaKey="dashboard"
             />
 
             {user?.role === "super_admin" && <OnboardingMetricsCard />}

@@ -397,6 +397,7 @@ export default function AutomationPage() {
                     title={tHelp("automation.title")}
                     description={tHelp("automation.description")}
                     tips={tHelp.raw("automation.tips") as string[]}
+                    mediaKey="automation"
                 />
 
                 {/* Stats row */}

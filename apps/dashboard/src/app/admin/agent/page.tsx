@@ -378,6 +378,7 @@ export default function AgentListPage() {
         title={tHelp("agent.title")}
         description={tHelp("agent.description")}
         tips={tHelp.raw("agent.tips") as string[]}
+        mediaKey="agent"
       />
 
       <SetupBanner show={needsSetup} onAction={() => {

@@ -288,6 +288,7 @@ export default function BroadcastPage() {
                     title={tHelp("broadcast.title")}
                     description={tHelp("broadcast.description")}
                     tips={tHelp.raw("broadcast.tips") as string[]}
+                    mediaKey="broadcast"
                 />
 
                 {/* Stats */}

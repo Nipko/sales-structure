@@ -874,6 +874,7 @@ export default function AppointmentsPage() {
           title={tHelp("appointments.title")}
           description={tHelp("appointments.description")}
           tips={tHelp.raw("appointments.tips") as string[]}
+          mediaKey="appointments"
         />
 
         {/* ── KPI row (compact) ─────────────────────────────────── */}

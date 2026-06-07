@@ -570,6 +570,7 @@ export default function KnowledgePage() {
                 title={tHelp("knowledge.title")}
                 description={tHelp("knowledge.description")}
                 tips={tHelp.raw("knowledge.tips") as string[]}
+                mediaKey="knowledge"
             />
 
             {/* Tabs */}

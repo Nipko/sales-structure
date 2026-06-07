@@ -119,6 +119,7 @@ export default function ChannelsOverviewPage() {
                 title={tHelp("channels.title")}
                 description={tHelp("channels.description")}
                 tips={tHelp.raw("channels.tips") as string[]}
+                mediaKey="channels"
             />
 
             {/* Channel Cards Grid */}

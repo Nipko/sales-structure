@@ -79,6 +79,7 @@ export default function CrmAnalyticsPage() {
                 title={tHelp("crmAnalytics.title")}
                 description={tHelp("crmAnalytics.description")}
                 tips={tHelp.raw("crmAnalytics.tips") as string[]}
+                mediaKey="crmAnalytics"
             />
             <TabNav tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 

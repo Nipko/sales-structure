@@ -1,5 +1,13 @@
 # Auditoría del Panel de Ayuda (HelpPanel) — Junio 2026
 
+> **ESTADO (actualizado): COMPLETADO.** Cobertura de ayuda llevada de 23 → **104 páginas**
+> (namespace `help` = **106 claves**, paridad es/en/pt/fr). Fase 0 (enriquecer 23) ✅ ·
+> Fase 1 núcleo (26) ✅ · Fase 2 Settings (36) ✅ · Fase 3 Verticales (12) ✅ ·
+> Fase 4 Canales (7) ✅. Excluidos a propósito: páginas de detalle `[id]` (heredan
+> contexto), `setup-wizard` (asistente guiado) y redirects (`channels/sms`,
+> `settings/integrations`, `channels/instagram/callback`). Pendiente transversal:
+> grabar los GIF en `apps/dashboard/public/help/{key}.gif` (ver README ahí).
+
 ## Objetivo
 Identificar qué páginas del dashboard tienen el menú de ayuda contextual (`HelpPanel`)
 y cuáles no, para (1) cerrar las brechas y (2) enriquecer el contenido existente con

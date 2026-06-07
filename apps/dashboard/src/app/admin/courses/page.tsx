@@ -17,6 +17,7 @@ import {
     GraduationCap, Plus, Edit2, Trash2, X, Loader2, Save, Calendar,
     Users, BookOpen, AlertTriangle, CheckCircle, AlertCircle,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface Course {
     id: string;
@@ -78,6 +79,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function CoursesPage() {
     const t = useTranslations("courses");
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
@@ -146,6 +148,13 @@ export default function CoursesPage() {
                     </button>
                 )}
             </div>
+
+            <HelpPanel
+                title={tHelp("courses.title")}
+                description={tHelp("courses.description")}
+                tips={tHelp.raw("courses.tips") as string[]}
+                mediaKey="courses"
+            />
 
             <div className="flex bg-card border border-border rounded-lg p-0.5 w-fit">
                 {([

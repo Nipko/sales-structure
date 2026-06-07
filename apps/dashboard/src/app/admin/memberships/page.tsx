@@ -17,6 +17,7 @@ import {
     Dumbbell, Users, Plus, Trash2, Edit2, X, Loader2, Save, Pause, Play,
     AlertTriangle, CheckCircle, Calendar, Search, Snowflake,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface Plan {
     id: string;
@@ -55,6 +56,7 @@ type TabId = "plans" | "members";
 export default function MembershipsPage() {
     const t = useTranslations("memberships");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [tab, setTab] = useState<TabId>("plans");
@@ -114,6 +116,13 @@ export default function MembershipsPage() {
                     </button>
                 )}
             </div>
+
+            <HelpPanel
+                title={tHelp("memberships.title")}
+                description={tHelp("memberships.description")}
+                tips={tHelp.raw("memberships.tips") as string[]}
+                mediaKey="memberships"
+            />
 
             <div className="flex bg-card border border-border rounded-lg p-0.5 w-fit">
                 {([

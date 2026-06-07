@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { SkeletonTable } from "@/components/ui/skeleton-loader";
 import { EmptyState } from "@/components/ui/empty-state";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface PlanRow {
     id: string;
@@ -43,6 +44,7 @@ const STATUS_META: Record<string, { icon: any; bg: string; text: string }> = {
 
 export default function TreatmentPlansPage() {
     const t = useTranslations("treatmentPlansPage");
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
@@ -83,6 +85,13 @@ export default function TreatmentPlansPage() {
                 title={t("title")}
                 subtitle={t("subtitle")}
                 icon={ClipboardList}
+            />
+
+            <HelpPanel
+                title={tHelp("treatmentPlans.title")}
+                description={tHelp("treatmentPlans.description")}
+                tips={tHelp.raw("treatmentPlans.tips") as string[]}
+                mediaKey="treatmentPlans"
             />
 
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import {
     CalendarRange, Plus, X, Loader2, Save, MapPin, User, Clock, AlertTriangle,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface FitnessClass {
     id: string;
@@ -36,6 +37,7 @@ const LEVELS = ["principiante", "intermedio", "avanzado"];
 
 export default function ClassesPage() {
     const t = useTranslations("classes");
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
@@ -94,6 +96,13 @@ export default function ClassesPage() {
                     <Plus className="h-4 w-4" /> {t("addClass")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("classes.title")}
+                description={tHelp("classes.description")}
+                tips={tHelp.raw("classes.tips") as string[]}
+                mediaKey="classes"
+            />
 
             {loading ? (
                 <div className="space-y-3">

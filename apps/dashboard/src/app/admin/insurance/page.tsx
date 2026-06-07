@@ -15,6 +15,7 @@ import {
     ShieldCheck, Plus, Trash2, X, Loader2, Save, FileSignature,
     AlertTriangle, FileText, CheckCircle, Edit2,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface Plan {
     id: string;
@@ -81,6 +82,7 @@ type TabId = "plans" | "quotes" | "policies" | "claims";
 export default function InsurancePage() {
     const t = useTranslations("insurance");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [tab, setTab] = useState<TabId>("plans");
@@ -132,6 +134,13 @@ export default function InsurancePage() {
                     </button>
                 )}
             </div>
+
+            <HelpPanel
+                title={tHelp("insurance.title")}
+                description={tHelp("insurance.description")}
+                tips={tHelp.raw("insurance.tips") as string[]}
+                mediaKey="insurance"
+            />
 
             <div className="flex bg-card border border-border rounded-lg p-0.5 w-fit">
                 {([

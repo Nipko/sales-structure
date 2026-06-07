@@ -17,6 +17,7 @@ import {
     ChefHat, RefreshCw, Loader2, Clock, MapPin, Phone, ChevronRight,
     UtensilsCrossed, Bike, Store, X, AlertCircle, Truck, Check,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface OrderItem {
     id: string;
@@ -66,6 +67,7 @@ const ORDER_TYPE_ICON: Record<string, any> = {
 
 export default function FoodOrdersPage() {
     const t = useTranslations("foodOrders");
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
@@ -161,6 +163,13 @@ export default function FoodOrdersPage() {
                     {tc("refresh")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("foodOrders.title")}
+                description={tHelp("foodOrders.description")}
+                tips={tHelp.raw("foodOrders.tips") as string[]}
+                mediaKey="foodOrders"
+            />
 
             {error && (
                 <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">

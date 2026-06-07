@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/ui/page-header";
 import { SkeletonCards } from "@/components/ui/skeleton-loader";
+import { HelpPanel } from "@/components/ui/help-panel";
 import Link from "next/link";
 import {
     Compass, Plus, Clock, MapPin, Users, X, Tag,
@@ -44,6 +45,7 @@ const AVAILABLE_LANGUAGES = [
 export default function ToursPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("tours");
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
 
     const [packages, setPackages] = useState<TourPackage[]>([]);
@@ -85,6 +87,13 @@ export default function ToursPage() {
                         <Plus size={16} /> {t("createPackage")}
                     </button>
                 }
+            />
+
+            <HelpPanel
+                title={tHelp("tours.title")}
+                description={tHelp("tours.description")}
+                tips={tHelp.raw("tours.tips") as string[]}
+                mediaKey="tours"
             />
 
             {packages.length === 0 ? (

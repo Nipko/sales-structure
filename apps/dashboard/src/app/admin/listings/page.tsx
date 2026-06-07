@@ -10,6 +10,7 @@ import {
     Building2, Plus, MapPin, BedDouble, Bath, Square, X, Tag,
 } from "lucide-react";
 import { SkeletonCards } from "@/components/ui/skeleton-loader";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const LISTINGS_API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 function resolveMediaUrl(url: string): string {
@@ -50,6 +51,7 @@ export default function ListingsPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("listings");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
 
     const [listings, setListings] = useState<Listing[]>([]);
     const [loading, setLoading] = useState(true);
@@ -92,6 +94,13 @@ export default function ListingsPage() {
                         <Plus size={16} /> {t("createListing")}
                     </button>
                 }
+            />
+
+            <HelpPanel
+                title={tHelp("listings.title")}
+                description={tHelp("listings.description")}
+                tips={tHelp.raw("listings.tips") as string[]}
+                mediaKey="listings"
             />
 
             {/* Filter pills */}

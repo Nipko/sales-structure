@@ -5888,6 +5888,126 @@
         "Dans 'Appareils de confiance' vous pouvez révoquer l'accès d'un appareil spécifique en cliquant sur 'Révoquer'; utilisez 'Révoquer tout' si vous suspectez un accès non autorisé.",
         "Si votre organisation utilise SSO (plan Enterprise), saisissez l'Entity ID du fournisseur d'identité et l'URL SSO IdP de votre fournisseur (Okta, Azure AD, etc.) et activez 'Forcer SSO' pour obliger tous les utilisateurs à s'authentifier via ce système."
       ]
+    },
+    "classes": {
+      "title": "Comment gérer les cours collectifs ?",
+      "description": "Cette section affiche le calendrier des cours des 30 prochains jours, regroupés par jour. Vous pouvez créer de nouveaux cours et annuler les existants, ce qui notifie automatiquement les inscrits.",
+      "tips": [
+        "Cliquez sur 'Ajouter un cours' pour ouvrir le formulaire : renseignez le nom, le type (ex. 'yoga'), l'instructeur, la date/heure et la capacité maximale avant d'enregistrer.",
+        "La barre de progression sur chaque carte passe à l'orange au-delà de 70 % d'occupation et au rouge quand elle est pleine ; utilisez-la pour prioriser l'ouverture de nouvelles places.",
+        "Assignez une 'Salle' lors de la création du cours pour que l'instructeur sache exactement où enseigner ; l'information apparaît sur la carte à côté de l'icône de localisation.",
+        "Lors de l'annulation d'un cours, le système demande une raison ; rédigez-la clairement (ex. 'instructeur malade') pour qu'elle reste dans l'historique et que l'agent puisse informer les clients."
+      ]
+    },
+    "courses": {
+      "title": "Comment gérer les cours, cohortes et inscriptions ?",
+      "description": "Cette page organise le catalogue éducatif en trois onglets : 'Cours' (le catalogue de base), 'Cohortes' (les sessions planifiées avec dates et instructeur) et 'Inscriptions' (les étudiants et leur progression). C'est le centre d'opérations du vertical éducation.",
+      "tips": [
+        "Créez d'abord le cours dans l'onglet 'Cours' avec le nom, la modalité (presencial/online/hybrid) et le prix ; puis utilisez le bouton 'Ajouter une cohorte' sur sa carte pour planifier une session spécifique avec une date de début.",
+        "Dans l'onglet 'Cohortes', la colonne 'Places' affiche occupées/total avec une mini-barre colorée ; si elle est rouge (statut 'full'), créez une cohorte supplémentaire pour ne pas perdre de prospects.",
+        "Dans 'Inscriptions', vérifiez la colonne 'Paiement' pour identifier les étudiants avec le statut 'pending' ou 'partial' ; l'agent peut assurer le suivi de paiement sans que vous ayez à exporter quoi que ce soit.",
+        "Ajoutez le champ 'Certification' au cours (ex. 'Certificat de Marketing Digital') pour que l'agent le mentionne automatiquement en répondant aux questions sur les avantages du cours."
+      ]
+    },
+    "foodOrders": {
+      "title": "Comment fonctionne le tableau de commandes ?",
+      "description": "Le tableau organise les commandes actives en quatre colonnes selon leur statut : 'Reçu', 'En préparation', 'Prêt' et 'Livré'. Il se rafraîchit automatiquement toutes les 15 secondes pour que la cuisine puisse suivre le flux sans recharger la page.",
+      "tips": [
+        "Cliquez sur le bouton flèche (→) sur chaque carte pour faire avancer la commande au statut suivant, par exemple de 'Reçu' à 'En préparation' ; c'est l'action principale pendant le service.",
+        "Les cartes avec une bordure orange sont dans leur statut actuel depuis plus de 30 minutes ; traitez-les en priorité pour éviter les réclamations des clients pour retard.",
+        "Cliquez sur n'importe quelle carte pour voir le détail complet de la commande : articles, instructions spéciales, adresse de livraison et moyen de paiement ; vous pouvez également annuler depuis là si nécessaire.",
+        "Utilisez le bouton 'Actualiser' en haut quand vous souhaitez forcer un rechargement immédiat plutôt que d'attendre les 15 secondes automatiques, utile lors des pics de trafic."
+      ]
+    },
+    "menu": {
+      "title": "Comment gérer le menu du restaurant ?",
+      "description": "Cette page comporte deux sections : les catégories dans la barre latérale gauche (ex. 'Entrées', 'Boissons') et les articles du catalogue à droite avec le prix, les tags et les allergènes. Depuis ici vous pouvez activer ou mettre en pause des articles et mettre à jour les prix en temps réel.",
+      "tips": [
+        "Utilisez le bouton vert/rouge de disponibilité sur chaque article pour le marquer comme 'Épuisé' pendant le service ; l'agent cessera automatiquement de le proposer jusqu'à ce que vous le réactiviez.",
+        "Cliquez sur le '+' dans la barre latérale pour créer une nouvelle catégorie (ex. 'Menu du jour') puis assignez des plats à celle-ci depuis le formulaire d'édition de chaque article.",
+        "Lors de l'ajout ou de la modification d'un article, sélectionnez ses tags (vegetariano, vegano, sin_gluten, picante, etc.) et allergènes (gluten, lactosa, mariscos, etc.) pour que l'agent filtre correctement lors des demandes clients.",
+        "Le champ 'Temps de préparation' en minutes (ex. 15) permet à l'agent d'indiquer un temps d'attente estimé réaliste lorsqu'un client demande combien de temps prendra sa commande."
+      ]
+    },
+    "memberships": {
+      "title": "Comment gérer les plans et membres d'une salle de sport ?",
+      "description": "Cet écran centralise le catalogue de plans d'abonnement et le registre actif des membres. Vous pouvez créer de nouveaux plans, modifier leurs avantages et contrôler le statut de chaque membre sans quitter le panneau.",
+      "tips": [
+        "Utilisez 'Ajouter un plan' pour créer un nouveau plan ; remplissez 'Crédits de cours' et laissez le champ vide pour des crédits illimités, ex. plan 'Premium illimité'.",
+        "Dans l'onglet 'Membres', recherchez par nom et cliquez sur l'icône flocon pour geler l'abonnement d'un membre en vacances.",
+        "Les membres dont l'abonnement expire dans moins de 7 jours apparaissent avec la date en jaune dans la colonne 'Expire' ; contactez-les avant pour les fidéliser.",
+        "Pour dégeler un membre, repérez-le dans le tableau avec le statut 'frozen' et cliquez sur le bouton 'Réactiver' dans sa ligne."
+      ]
+    },
+    "insurance": {
+      "title": "Comment gérer les polices et devis d'assurance ?",
+      "description": "Cette page organise tout le cycle de vie de l'assurance en quatre onglets : catalogue de plans, devis actifs en pipeline, polices en vigueur et sinistres en cours. L'agent IA utilise ces plans pour établir des devis automatiques via WhatsApp.",
+      "tips": [
+        "Créez des plans dans l'onglet 'Plans' avec le type ('vida', 'auto', 'salud', etc.) et le niveau de couverture ('basico', 'medio', 'premium') pour que le bot propose la bonne option selon le profil du client.",
+        "Dans 'Devis', vérifiez le champ 'Valable jusqu'au' pour prioriser les relances ; les devis expirés restent en statut 'expired' et ne se convertissent pas automatiquement en police.",
+        "Dans 'Polices', les paiements en retard apparaissent en rouge dans la colonne 'Prochain paiement' ; utilisez ce signal pour lancer une campagne de rappel WhatsApp via 'Broadcast'.",
+        "Dans 'Sinistres', le numéro de sinistre (ex. 'CLM-0042') est l'identifiant officiel ; partagez-le avec l'assuré pour le suivi du processus d'indemnisation."
+      ]
+    },
+    "listings": {
+      "title": "Comment publier et gérer des biens immobiliers à la vente ou en location ?",
+      "description": "Cette page affiche le catalogue de biens chargés sur la plateforme, avec prise en charge de la vente et de la location. Chaque annonce est la source d'information que l'agent IA consulte pour répondre aux prospects via WhatsApp.",
+      "tips": [
+        "Utilisez les filtres 'Vente', 'Location' ou 'Tous' (pastilles en haut) pour segmenter votre inventaire et trouver rapidement le bien à mettre à jour.",
+        "Lors de la création d'une annonce avec 'Créer un bien', choisissez d'abord le type de transaction (vente en violet, location en vert) — ce champ détermine comment le bot présente le prix au client.",
+        "Remplissez 'Quartier' et 'Ville' dans le formulaire ; l'agent utilise ces données pour répondre à des questions comme 'avez-vous quelque chose à Belgrano pour moins de 2 millions ?'.",
+        "Cliquez sur n'importe quelle carte du catalogue pour ouvrir le détail du bien où vous pouvez ajouter des photos, une description étendue et des caractéristiques supplémentaires."
+      ]
+    },
+    "pets": {
+      "title": "Comment consulter et gérer les animaux de mes clients ?",
+      "description": "Cet écran affiche la liste centralisée des animaux enregistrés à la clinique, liés à leurs propriétaires dans le CRM. Vous pouvez filtrer par espèce, rechercher par nom et accéder à l'historique complet de chaque patient.",
+      "tips": [
+        "Utilisez les onglets 'Chiens', 'Chats' ou 'Autres' pour filtrer par espèce ; quand un client écrit sur WhatsApp pour son animal, vous pouvez retrouver sa fiche en quelques secondes.",
+        "Tapez le nom de l'animal ou du propriétaire dans le champ de recherche (loupe, en haut à droite) pour retrouver 'Max' ou 'Luna' parmi des centaines de fiches.",
+        "Le compteur de vaccins et la date de 'Dernière visite' sur chaque carte indiquent quels animaux ont un calendrier vaccinal en retard — priorisez-les pour des campagnes préventives.",
+        "Cliquez sur n'importe quelle carte pour accéder au profil du propriétaire dans le CRM, où vous pouvez voir l'historique complet, ajouter des notes et programmer le prochain rendez-vous depuis le module Rendez-vous."
+      ]
+    },
+    "photoSessions": {
+      "title": "Comment gérer tes séances photo ?",
+      "description": "Cette section affiche toutes les séances photo de tes clients avec leur statut, le forfait contracté et les livrables. Utilise-la pour suivre la progression de la séance programmée jusqu'à la livraison de la galerie.",
+      "tips": [
+        "Utilise les onglets 'Programmée', 'En cours' et 'Livrée' pour te concentrer sur les séances qui nécessitent une attention immédiate.",
+        "Le compteur d'images (ex. : '12 / 30') indique combien de photos tu as déjà livrées sur le total convenu avec le client.",
+        "Si une séance a déjà une galerie prête, le lien 'Voir la galerie' apparaît — partage-le directement depuis ici avec ton client.",
+        "Utilise la barre de recherche en haut pour retrouver rapidement un client par nom ou téléphone sans changer d'onglet."
+      ]
+    },
+    "tours": {
+      "title": "Comment gérer tes tours et forfaits ?",
+      "description": "Ici tu peux créer et gérer les forfaits de tours que tu proposes : tours d'une journée (heures) ou de plusieurs jours, avec prix, capacité maximale et langues disponibles. L'agent IA utilisera ces informations pour coter et réserver avec les voyageurs.",
+      "tips": [
+        "Lors de la création d'un forfait, choisis 'Même jour' si le tour dure quelques heures, ou 'Plusieurs jours' s'il inclut des nuitées — cela influe sur la façon dont l'agent présente l'offre.",
+        "Remplis le champ 'Destination' avec le nom du lieu (ex. : 'Carthagène, Colombie') pour qu'il apparaisse avec l'icône de localisation sur la carte.",
+        "Active les langues que tu proposes dans 'Langues disponibles' pour que l'agent gère les réservations dans cette langue automatiquement.",
+        "Clique sur une carte de forfait pour la modifier et ajouter des images — les forfaits avec photo ont un meilleur taux de conversion dans les conversations de l'agent."
+      ]
+    },
+    "treatmentPlans": {
+      "title": "Comment suivre les plans de traitement ?",
+      "description": "Ce tableau affiche tous les plans de traitement assignés à tes patients, avec la progression des séances, le statut actuel et le coût total. Il aide l'équipe de santé à surveiller l'avancement de chaque patient sans manquer aucune séance.",
+      "tips": [
+        "Utilise l'onglet 'Actif' par défaut pour ne voir que les plans en cours — les plans en pause ou terminés apparaissent dans leurs onglets respectifs.",
+        "La barre de progression (ex. : '4 / 10') indique les séances terminées sur le total ; clique sur le nom du patient pour accéder au détail du contact.",
+        "Recherche par nom ou numéro de téléphone du patient dans le champ de recherche pour trouver rapidement un plan spécifique parmi tous les actifs.",
+        "L'icône de statut (vert = actif, orange = en pause, bleu = terminé) te donne un aperçu de la santé du plan en un coup d'œil dans la colonne 'Statut'."
+      ]
+    },
+    "serviceRequests": {
+      "title": "Comment opérer le tableau des demandes de service ?",
+      "description": "Ce tableau est la centrale d'expédition pour les services à domicile : il affiche chaque demande avec son niveau d'urgence, le type de service, l'adresse et le technicien assigné. Il se met à jour automatiquement toutes les 20 secondes pour que l'équipe opérationnelle agisse en temps réel.",
+      "tips": [
+        "Utilise le filtre 'Urgence' pour ne voir que les demandes urgentes et les prioriser avant 9h avec le bouton 'Avancer'.",
+        "Clique sur n'importe quelle demande de la liste pour ouvrir le panneau de détail, où tu peux assigner le technicien, programmer la date et enregistrer le coût estimé.",
+        "Les demandes urgentes qui attendent depuis plus de 30 minutes sans réponse sont surlignées en rouge — traite-les en premier pour éviter les annulations.",
+        "Le bouton 'Avancer' fait passer la demande à l'état suivant du flux (en attente → devisé → planifié → expédié → en cours → terminé) sans ouvrir le modal."
+      ]
     }
   },
   "helpAssistant": {

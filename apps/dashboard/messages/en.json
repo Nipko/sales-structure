@@ -5917,6 +5917,126 @@
         "In 'Trusted devices' you can revoke access for a specific device by clicking 'Revoke'; use 'Revoke all' if you suspect unauthorized access.",
         "If your organization uses SSO (Enterprise plan), enter the 'IdP Entity ID' and 'IdP SSO URL' from your provider (Okta, Azure AD, etc.) and enable 'Force SSO' to require all users to authenticate through it."
       ]
+    },
+    "classes": {
+      "title": "How do I manage group classes?",
+      "description": "This section shows the class schedule for the next 30 days, grouped by day. From here you can create new classes and cancel existing ones, which automatically notifies enrolled members.",
+      "tips": [
+        "Click 'Add class' to open the form: fill in the name, type (e.g. 'yoga'), instructor, date/time and max capacity before saving.",
+        "The progress bar on each card turns amber above 70% occupancy and red when full; use it to prioritise opening new spots.",
+        "Assign a 'Room' when creating the class so the instructor knows exactly where to teach; it appears on the card next to the location icon.",
+        "When cancelling a class the system asks for a reason; write it clearly (e.g. 'instructor sick') so it stays in the history and the agent can inform customers."
+      ]
+    },
+    "courses": {
+      "title": "How do I manage courses, cohorts and enrollments?",
+      "description": "This page organises the educational catalog in three tabs: 'Courses' (the base catalog), 'Cohorts' (scheduled instances with dates and instructor) and 'Enrollments' (students and their progress). It is the operations hub for the education vertical.",
+      "tips": [
+        "Create the course first in the 'Courses' tab with name, modality (presencial/online/hybrid) and price; then use the 'Add cohort' button on its card to schedule a specific instance with a start date.",
+        "In the 'Cohorts' tab the 'Seats' column shows occupied/total with a colour mini-bar; if you see it in red (status 'full'), create an additional cohort so you don't lose interested students.",
+        "In 'Enrollments' check the 'Payment' column to identify students with 'pending' or 'partial' status; the agent can follow up on payment without you needing to export anything.",
+        "Add the 'Certification' field to the course (e.g. 'Digital Marketing Certificate') so the agent mentions it automatically when answering questions about course benefits."
+      ]
+    },
+    "foodOrders": {
+      "title": "How does the orders board work?",
+      "description": "The board organises active orders into four columns by status: 'Received', 'Preparing', 'Ready' and 'Delivered'. It auto-refreshes every 15 seconds so the kitchen can follow the flow without reloading the page.",
+      "tips": [
+        "Click the arrow button (→) on each card to advance the order to the next status, for example from 'Received' to 'Preparing'; this is the main action during service.",
+        "Cards with an amber border have been in their current status for more than 30 minutes; handle them first to avoid customer complaints about delays.",
+        "Click any card to see the full order detail: items, special instructions, delivery address and payment method; you can also cancel from there if needed.",
+        "Use the 'Refresh' button at the top when you want to force an immediate reload instead of waiting for the automatic 15-second interval, useful during peak traffic."
+      ]
+    },
+    "menu": {
+      "title": "How do I manage the restaurant menu?",
+      "description": "This page has two sections: categories in the left sidebar (e.g. 'Starters', 'Drinks') and catalog items on the right with price, tags and allergens. From here you can activate or pause items and update prices in real time.",
+      "tips": [
+        "Use the green/red availability button on each item to mark it as 'Sold out' during service; the agent will automatically stop offering it until you reactivate it.",
+        "Click the '+' in the sidebar to create a new category (e.g. 'Daily special') and then assign dishes to it from the edit form of each item.",
+        "When adding or editing an item, select its tags (vegetariano, vegano, sin_gluten, picante, etc.) and allergens (gluten, lactosa, mariscos, etc.) so the agent filters correctly for customer queries.",
+        "The 'Prep time' field in minutes (e.g. 15) lets the agent give a realistic estimated wait time when a customer asks how long their order will take."
+      ]
+    },
+    "memberships": {
+      "title": "How do I manage gym plans and members?",
+      "description": "This screen centralizes the membership plan catalog and the active member roster. You can create new plans, edit their benefits, and control each member's status without leaving the panel.",
+      "tips": [
+        "Use 'Add plan' to create a new plan; fill in 'Class credits' and leave it empty for unlimited credits, e.g. a 'Premium unlimited' plan.",
+        "In the 'Members' tab, search by name in the search field and then click the snowflake icon to freeze a member's membership while they're on vacation.",
+        "Members expiring in less than 7 days appear with the date highlighted in yellow in the 'Expires' column; contact them before it lapses to retain them.",
+        "To unfreeze a member, find them in the table with 'frozen' status and click the 'Reactivate' button in their row."
+      ]
+    },
+    "insurance": {
+      "title": "How do I manage insurance policies and quotes?",
+      "description": "This page organizes the full insurance lifecycle across four tabs: plan catalog, active quotes in pipeline, active policies, and ongoing claims. The AI agent uses these plans to auto-quote via WhatsApp.",
+      "tips": [
+        "Create plans in the 'Plans' tab with type ('vida', 'auto', 'salud', etc.) and coverage level ('basico', 'medio', 'premium') so the bot offers the right option based on the client's profile.",
+        "In 'Quotes', review the 'Valid until' field to prioritize follow-up; expired quotes stay in 'expired' status and don't convert to a policy automatically.",
+        "In 'Policies', overdue payments appear in red in the 'Next payment' column; use that signal to trigger a WhatsApp reminder campaign from 'Broadcast'.",
+        "In 'Claims', the claim number (e.g. 'CLM-0042') is the official identifier; share it with the insured for tracking the indemnification process."
+      ]
+    },
+    "listings": {
+      "title": "How do I publish and manage sale or rental listings?",
+      "description": "This page displays the property catalog loaded into the platform, supporting both sale and rental types. Each listing is the source of information the AI agent consults to respond to prospects via WhatsApp.",
+      "tips": [
+        "Use the 'Sale', 'Rental', or 'All' filter pills at the top to segment your inventory and quickly find the property you need to update.",
+        "When creating a listing with 'Create listing', first choose the transaction type (sale in purple, rental in green) — this field determines how the bot presents the price to the client.",
+        "Fill in 'Neighborhood' and 'City' in the creation form; the agent uses that data to answer questions like 'do you have anything in Chapinero under 2 million?'.",
+        "Click any card in the catalog to open the property detail page where you can add photos, extended description, and additional features."
+      ]
+    },
+    "pets": {
+      "title": "How do I view and manage my clients' pets?",
+      "description": "This screen shows the centralized list of pets registered at the clinic, linked to their owners in the CRM. From here you can filter by species, search by name, and access each patient's full history.",
+      "tips": [
+        "Use the 'Dogs', 'Cats', or 'Others' tabs to filter by species; when a client writes on WhatsApp asking about their pet, you can locate their record in seconds.",
+        "Type the pet's or owner's name in the search field (magnifying glass, top right) to quickly find 'Max' or 'Luna' among hundreds of records.",
+        "The vaccination count and 'Last visit' date on each card show which pets have an outdated vaccination schedule — prioritize those for preventive campaigns.",
+        "Click any card to go to the owner's profile in the CRM, where you can view the full history, add notes, and schedule the next appointment from the Appointments module."
+      ]
+    },
+    "photoSessions": {
+      "title": "How do you manage your photo sessions?",
+      "description": "This section displays all your clients' photo sessions with their status, hired package, and deliverables. Use it to track progress from the scheduled session all the way to gallery delivery.",
+      "tips": [
+        "Use the 'Scheduled', 'In progress', and 'Delivered' tabs to focus on sessions that need attention right now.",
+        "The image counter (e.g. '12 / 30') shows how many photos you have already delivered out of the total agreed with the client.",
+        "If a session already has a ready gallery, the 'View gallery' link appears — share it directly from here with your client.",
+        "Use the search bar at the top to quickly find a client by name or phone without switching tabs."
+      ]
+    },
+    "tours": {
+      "title": "How do you manage your tours and packages?",
+      "description": "Here you can create and manage the tour packages you offer: same-day tours (hours) or multi-day tours, with price, maximum capacity, and available languages. The AI agent will use this information to quote and book with travelers.",
+      "tips": [
+        "When creating a package, choose 'Same day' if the tour lasts hours, or 'Multi-day' if it includes overnight stays — this affects how the agent presents the offer.",
+        "Fill in the 'Destination' field with the place name (e.g. 'Cartagena, Colombia') so it appears with the location icon on the card.",
+        "Enable the languages you offer under 'Available languages' so the agent handles bookings in that language automatically.",
+        "Click a package card to edit it and add images — packages with photos have a higher conversion rate in agent conversations."
+      ]
+    },
+    "treatmentPlans": {
+      "title": "How do you track treatment plans?",
+      "description": "This table displays all treatment plans assigned to your patients, with their session progress, current status, and total cost. It helps your health team monitor each patient's progress without missing any session.",
+      "tips": [
+        "Use the 'Active' tab by default to see only ongoing plans — paused or completed plans appear in their respective tabs.",
+        "The progress bar (e.g. '4 / 10') shows completed sessions out of the total; click the patient's name to go to the contact detail.",
+        "Search by patient name or phone number in the search field to quickly find a specific plan among all active ones.",
+        "The status icon (green = active, orange = paused, blue = completed) gives you the plan's health overview at a glance in the 'Status' column."
+      ]
+    },
+    "serviceRequests": {
+      "title": "How do you operate the service requests board?",
+      "description": "This board is the dispatch center for home services: it shows each request with its urgency, service type, address, and assigned technician. It auto-refreshes every 20 seconds so the operations team can act in real time.",
+      "tips": [
+        "Use the 'Emergency' filter to see only urgent requests and prioritize them before 9 AM with the 'Advance' button.",
+        "Click any request in the list to open the detail panel, where you can assign the technician, schedule the date, and record the estimated cost.",
+        "Emergency requests that have been waiting more than 30 minutes without attention are highlighted in red — handle them first to avoid cancellations.",
+        "The 'Advance' button moves the request to the next state in the flow (pending → quoted → scheduled → dispatched → in progress → completed) without opening the modal."
+      ]
     }
   },
   "helpAssistant": {

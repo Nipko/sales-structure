@@ -97,6 +97,12 @@ most config tabs are self-explanatory; add `/help/{key}.gif` only for the few
 that benefit from a walkthrough (e.g. `settingsSecurity`, `settingsScoringConfig`,
 `settingsPrechat`). `settings/integrations` is a redirect (no panel).
 
+## Phase 3 — Vertical pages (added, industry-gated)
+12 vertical sections now have help, keyed by route: `classes`, `courses`, `foodOrders`,
+`menu`, `memberships`, `insurance`, `listings`, `pets`, `photoSessions`, `tours`,
+`treatmentPlans`, `serviceRequests`. Each only shows for its industry. Drop a
+`/help/{key}.gif` per page if a walkthrough helps (e.g. `listings`, `treatmentPlans`).
+
 ## New pages to add help to (later phases — see docs/help-panel-audit-2026-06.md)
 When adding `HelpPanel` to a new page, also add `mediaKey="{newKey}"` and a
 matching `help.{newKey}` entry in all 4 `messages/*.json`.

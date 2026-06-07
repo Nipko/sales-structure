@@ -16,6 +16,7 @@ import {
     Wrench, RefreshCw, Loader2, MapPin, Phone, AlertTriangle,
     Clock, ChevronRight, X, Save, User,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface ServiceRequest {
     id: string;
@@ -49,6 +50,7 @@ const STATUS_FLOW = ["pending", "quoted", "scheduled", "dispatched", "in_progres
 
 export default function ServiceRequestsPage() {
     const t = useTranslations("serviceRequests");
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
@@ -103,6 +105,13 @@ export default function ServiceRequestsPage() {
                     {tc("refresh")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("serviceRequests.title")}
+                description={tHelp("serviceRequests.description")}
+                tips={tHelp.raw("serviceRequests.tips") as string[]}
+                mediaKey="serviceRequests"
+            />
 
             <div className="flex bg-card border border-border rounded-lg p-0.5 w-fit">
                 {([

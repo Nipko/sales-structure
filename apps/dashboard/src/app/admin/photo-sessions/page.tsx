@@ -14,6 +14,7 @@ import {
 import { motion } from "motion/react";
 import { SkeletonCards } from "@/components/ui/skeleton-loader";
 import { EmptyState } from "@/components/ui/empty-state";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface SessionRow {
     id: string;
@@ -49,6 +50,7 @@ const STATUS_META: Record<string, { bg: string; text: string }> = {
 
 export default function PhotoSessionsPage() {
     const t = useTranslations("photoSessionsPage");
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
@@ -89,6 +91,13 @@ export default function PhotoSessionsPage() {
                 title={t("title")}
                 subtitle={t("subtitle")}
                 icon={Camera}
+            />
+
+            <HelpPanel
+                title={tHelp("photoSessions.title")}
+                description={tHelp("photoSessions.description")}
+                tips={tHelp.raw("photoSessions.tips") as string[]}
+                mediaKey="photoSessions"
             />
 
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

@@ -5888,6 +5888,126 @@
         "Em 'Dispositivos confiáveis' você pode revogar o acesso de um dispositivo específico clicando em 'Revogar'; use 'Revogar todos' se suspeitar de acesso não autorizado.",
         "Se sua organização usa SSO (plano Enterprise), insira o 'Entity ID do IdP' e a 'URL SSO do IdP' do seu provedor (Okta, Azure AD, etc.) e ative 'Forçar SSO' para exigir que todos se autentiquem por lá."
       ]
+    },
+    "classes": {
+      "title": "Como gerencio as aulas em grupo?",
+      "description": "Esta seção mostra o calendário de aulas dos próximos 30 dias, agrupadas por dia. Daqui você pode criar novas aulas e cancelar as existentes, notificando automaticamente os inscritos.",
+      "tips": [
+        "Clique em 'Adicionar aula' para abrir o formulário: preencha nome, tipo (ex. 'yoga'), instrutor, data/hora e capacidade máxima antes de salvar.",
+        "A barra de progresso em cada cartão fica âmbar acima de 70% de ocupação e vermelha quando lotada; use-a para priorizar a abertura de novas vagas.",
+        "Atribua um 'Salão' ao criar a aula para que o instrutor saiba exatamente onde lecionar; o dado aparece no cartão ao lado do ícone de localização.",
+        "Ao cancelar uma aula, o sistema pede um motivo; escreva-o claramente (ex. 'instrutor doente') para que fique no histórico e o agente possa informar os clientes."
+      ]
+    },
+    "courses": {
+      "title": "Como administro cursos, turmas e matrículas?",
+      "description": "Esta página organiza o catálogo educacional em três abas: 'Cursos' (catálogo base), 'Turmas' (instâncias programadas com datas e instrutor) e 'Matrículas' (alunos e seu progresso). É o centro de operações do vertical educação.",
+      "tips": [
+        "Crie primeiro o curso na aba 'Cursos' com nome, modalidade (presencial/online/hybrid) e preço; depois use o botão 'Adicionar turma' no cartão para programar uma instância específica com data de início.",
+        "Na aba 'Turmas' a coluna 'Vagas' mostra ocupadas/total com uma mini-barra colorida; se estiver vermelha (status 'full'), crie uma turma adicional para não perder interessados.",
+        "Em 'Matrículas' verifique a coluna 'Pagamento' para identificar alunos com status 'pending' ou 'partial'; o agente pode fazer acompanhamento de cobrança sem precisar exportar nada.",
+        "Adicione o campo 'Certificação' ao curso (ex. 'Certificado de Marketing Digital') para que o agente o mencione automaticamente ao responder perguntas sobre os benefícios do curso."
+      ]
+    },
+    "foodOrders": {
+      "title": "Como funciona o painel de pedidos?",
+      "description": "O painel organiza os pedidos ativos em quatro colunas por status: 'Recebido', 'Em preparo', 'Pronto' e 'Entregue'. Ele se atualiza automaticamente a cada 15 segundos para que a cozinha possa acompanhar o fluxo sem recarregar a página.",
+      "tips": [
+        "Clique no botão de seta (→) em cada cartão para avançar o pedido ao próximo status, por exemplo de 'Recebido' para 'Em preparo'; esta é a ação principal durante o serviço.",
+        "Cartões com borda âmbar estão no status atual há mais de 30 minutos; atenda-os primeiro para evitar reclamações de clientes por atrasos.",
+        "Clique em qualquer cartão para ver o detalhe completo do pedido: itens, instruções especiais, endereço de entrega e método de pagamento; você também pode cancelar de lá se necessário.",
+        "Use o botão 'Atualizar' no topo quando quiser forçar um recarregamento imediato em vez de aguardar os 15 segundos automáticos, útil em momentos de alto tráfego."
+      ]
+    },
+    "menu": {
+      "title": "Como administro o cardápio do restaurante?",
+      "description": "Esta página tem duas seções: as categorias na barra lateral esquerda (ex. 'Entradas', 'Bebidas') e os itens do catálogo à direita com preço, tags e alérgenos. Daqui você pode ativar ou pausar itens e atualizar preços em tempo real.",
+      "tips": [
+        "Use o botão verde/vermelho de disponibilidade em cada item para marcá-lo como 'Esgotado' durante o serviço; o agente deixará de oferecê-lo automaticamente até que você o reative.",
+        "Clique no '+' na barra lateral para criar uma nova categoria (ex. 'Prato do dia') e depois atribua pratos a ela pelo formulário de edição de cada item.",
+        "Ao adicionar ou editar um item, selecione suas tags (vegetariano, vegano, sin_gluten, picante, etc.) e alérgenos (gluten, lactosa, mariscos, etc.) para que o agente filtre corretamente nas consultas dos clientes.",
+        "O campo 'Tempo de preparo' em minutos (ex. 15) permite que o agente informe um tempo de espera estimado realista quando o cliente pergunta sobre a demora do pedido."
+      ]
+    },
+    "memberships": {
+      "title": "Como gerencio planos e sócios da academia?",
+      "description": "Esta tela centraliza o catálogo de planos de membresía e o cadastro ativo de sócios. Você pode criar novos planos, editar benefícios e controlar o status de cada sócio sem sair do painel.",
+      "tips": [
+        "Use 'Adicionar plano' para criar um novo plano; preencha 'Créditos de aulas' e deixe o campo vazio para créditos ilimitados, ex.: plano 'Premium sem limite'.",
+        "Na aba 'Membros', pesquise pelo nome e clique no ícone de floco de neve para congelar a membresía de um sócio que está de férias.",
+        "Sócios com vencimento em menos de 7 dias aparecem com a data em amarelo na coluna 'Vence'; contate-os antes para fidelizá-los.",
+        "Para descongelar um sócio, localize-o na tabela com status 'frozen' e clique no botão 'Reativar' na linha correspondente."
+      ]
+    },
+    "insurance": {
+      "title": "Como gerencio apólices e cotações de seguros?",
+      "description": "Esta página organiza o ciclo de vida completo do seguro em quatro abas: catálogo de planos, cotações ativas no pipeline, apólices vigentes e sinistros em andamento. O agente de IA usa esses planos para cotar automaticamente via WhatsApp.",
+      "tips": [
+        "Crie planos na aba 'Planos' com tipo ('vida', 'auto', 'saúde', etc.) e nível de cobertura ('basico', 'medio', 'premium') para que o bot ofereça a opção certa conforme o perfil do cliente.",
+        "Em 'Cotações', revise o campo 'Válida até' para priorizar o acompanhamento; cotações vencidas ficam com status 'expired' e não se convertem em apólice automaticamente.",
+        "Em 'Apólices', pagamentos vencidos aparecem em vermelho na coluna 'Próximo pagamento'; use esse sinal para disparar uma campanha de lembrete via WhatsApp em 'Broadcast'.",
+        "Em 'Sinistros', o número do sinistro (ex. 'CLM-0042') é o identificador oficial; compartilhe-o com o segurado para acompanhamento do processo de indenização."
+      ]
+    },
+    "listings": {
+      "title": "Como publico e gerencio imóveis para aluguel ou venda?",
+      "description": "Esta página exibe o catálogo de imóveis carregados na plataforma, com suporte a venda e aluguel. Cada listagem é a fonte de informação que o agente de IA consulta para responder a prospects via WhatsApp.",
+      "tips": [
+        "Use os filtros 'Venda', 'Aluguel' ou 'Todos' (pílulas no topo) para segmentar seu inventário e encontrar rapidamente o imóvel que precisa atualizar.",
+        "Ao criar uma listagem com 'Criar imóvel', escolha primeiro o tipo de transação (venda em roxo, aluguel em verde) — esse campo define como o bot apresenta o preço ao cliente.",
+        "Preencha 'Bairro' e 'Cidade' no formulário de criação; o agente usa esses dados para responder perguntas como 'vocês têm algo no Leblon por menos de 5 mil?'.",
+        "Clique em qualquer card do catálogo para abrir o detalhe do imóvel onde você pode adicionar fotos, descrição estendida e características adicionais."
+      ]
+    },
+    "pets": {
+      "title": "Como consulto e gerencio os pets dos meus clientes?",
+      "description": "Esta tela exibe a lista centralizada de pets registrados na clínica, vinculados aos seus tutores no CRM. Daqui você pode filtrar por espécie, pesquisar por nome e acessar o histórico completo de cada paciente.",
+      "tips": [
+        "Use as abas 'Cães', 'Gatos' ou 'Outros' para filtrar por espécie; quando um cliente escreve via WhatsApp perguntando sobre seu pet, você localiza a ficha em segundos.",
+        "Digite o nome do pet ou do tutor no campo de pesquisa (lupa, canto superior direito) para encontrar 'Max' ou 'Luna' entre centenas de registros.",
+        "O contador de vacinas e a data de 'Última visita' em cada card indicam quais pets têm o esquema de vacinação desatualizado — priorize esses para campanhas preventivas.",
+        "Clique em qualquer card para ir ao perfil do tutor no CRM, onde você pode ver o histórico completo, adicionar notas e agendar a próxima consulta pelo módulo de Agendamentos."
+      ]
+    },
+    "photoSessions": {
+      "title": "Como gerenciar suas sessões de fotos?",
+      "description": "Esta seção exibe todas as sessões fotográficas dos seus clientes com o status, pacote contratado e entregáveis. Use-a para acompanhar desde a sessão agendada até a entrega da galeria.",
+      "tips": [
+        "Use as abas 'Agendada', 'Em andamento' e 'Entregue' para focar nas sessões que precisam de atenção agora.",
+        "O contador de imagens (ex.: '12 / 30') indica quantas fotos você já entregou do total acordado com o cliente.",
+        "Se uma sessão já tiver galeria pronta, aparece o link 'Ver galeria' — compartilhe diretamente daqui com seu cliente.",
+        "Use a barra de pesquisa para encontrar rapidamente um cliente pelo nome ou telefone sem trocar de aba."
+      ]
+    },
+    "tours": {
+      "title": "Como administrar seus tours e pacotes?",
+      "description": "Aqui você pode criar e gerenciar os pacotes de tours que oferece: tours no mesmo dia (horas) ou de vários dias, com preço, capacidade máxima e idiomas disponíveis. O agente de IA usará essas informações para cotar e reservar com os viajantes.",
+      "tips": [
+        "Ao criar um pacote, escolha 'Mesmo dia' se o tour dura horas, ou 'Vários dias' se inclui pernoites — isso afeta como o agente apresenta a oferta.",
+        "Preencha o campo 'Destino' com o nome do local (ex.: 'Cartagena, Colômbia') para que apareça com o ícone de localização no cartão.",
+        "Ative os idiomas que você oferece em 'Idiomas disponíveis' para que o agente atenda reservas nesse idioma automaticamente.",
+        "Clique em um cartão de pacote para editá-lo e adicionar imagens — pacotes com foto têm maior taxa de conversão nas conversas do agente."
+      ]
+    },
+    "treatmentPlans": {
+      "title": "Como acompanhar os planos de tratamento?",
+      "description": "Esta tabela exibe todos os planos de tratamento atribuídos aos seus pacientes, com o progresso das sessões, status atual e custo total. Ajuda a equipe de saúde a monitorar o avanço de cada paciente sem perder nenhuma sessão.",
+      "tips": [
+        "Use a aba 'Ativo' por padrão para ver apenas os planos em andamento — planos pausados ou concluídos aparecem nas abas correspondentes.",
+        "A barra de progresso (ex.: '4 / 10') mostra as sessões concluídas sobre o total; clique no nome do paciente para acessar o detalhe do contato.",
+        "Pesquise pelo nome ou telefone do paciente no campo de busca para localizar rapidamente um plano específico entre todos os ativos.",
+        "O ícone de status (verde = ativo, laranja = pausado, azul = concluído) oferece uma visão geral do plano na coluna 'Status' de relance."
+      ]
+    },
+    "serviceRequests": {
+      "title": "Como operar o painel de solicitações de serviço?",
+      "description": "Este painel é a central de despacho para serviços domiciliares: exibe cada solicitação com sua urgência, tipo de serviço, endereço e técnico atribuído. Atualiza-se automaticamente a cada 20 segundos para que a equipe de operações aja em tempo real.",
+      "tips": [
+        "Use o filtro 'Emergência' para ver apenas as solicitações urgentes e priorizá-las antes das 9h com o botão 'Avançar'.",
+        "Clique em qualquer solicitação da lista para abrir o painel de detalhes, onde você pode atribuir o técnico, agendar a data e registrar o custo estimado.",
+        "Solicitações de emergência que aguardam mais de 30 minutos sem atendimento são destacadas em vermelho — atenda-as primeiro para evitar cancelamentos.",
+        "O botão 'Avançar' move a solicitação para o próximo estado do fluxo (pendente → cotado → agendado → despachado → em andamento → concluído) sem abrir o modal."
+      ]
     }
   },
   "helpAssistant": {

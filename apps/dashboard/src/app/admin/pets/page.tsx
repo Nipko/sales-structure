@@ -11,6 +11,7 @@ import { PawPrint, Search, Syringe, Calendar, ChevronRight } from "lucide-react"
 import { motion } from "motion/react";
 import { SkeletonCards } from "@/components/ui/skeleton-loader";
 import { EmptyState } from "@/components/ui/empty-state";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface PetRow {
     id: string;
@@ -56,6 +57,7 @@ function ageFromBirth(date: string | null): string {
 export default function PetsPage() {
     const t = useTranslations("petsPage");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [pets, setPets] = useState<PetRow[]>([]);
@@ -88,6 +90,13 @@ export default function PetsPage() {
                 title={t("title")}
                 subtitle={t("subtitle")}
                 icon={PawPrint}
+            />
+
+            <HelpPanel
+                title={tHelp("pets.title")}
+                description={tHelp("pets.description")}
+                tips={tHelp.raw("pets.tips") as string[]}
+                mediaKey="pets"
             />
 
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

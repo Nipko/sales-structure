@@ -18,6 +18,7 @@ import {
     AlertTriangle, CheckCircle, FolderTree, ChevronDown, ChevronRight,
     Tag, Wheat, Sparkles, BadgeAlert,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface Category {
     id: string;
@@ -50,6 +51,7 @@ const TAG_OPTIONS = ["vegetariano", "vegano", "sin_gluten", "picante", "saludabl
 
 export default function MenuPage() {
     const t = useTranslations("menu");
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
@@ -154,6 +156,13 @@ export default function MenuPage() {
                     <Plus className="h-4 w-4" /> {t("addItem")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("menu.title")}
+                description={tHelp("menu.description")}
+                tips={tHelp.raw("menu.tips") as string[]}
+                mediaKey="menu"
+            />
 
             {feedback && (
                 <div className={cn(

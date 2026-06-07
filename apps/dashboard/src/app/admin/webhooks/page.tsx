@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import {
     Radio, RefreshCw, Loader2, CheckCircle, XCircle, AlertTriangle, Pause, Play, Eye,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface WebhookEvent {
     channelType: string;
@@ -50,6 +51,7 @@ const POLL_MS = 5000;
 export default function WebhooksPage() {
     const t = useTranslations("webhookTap");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const [events, setEvents] = useState<WebhookEvent[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -133,6 +135,13 @@ export default function WebhooksPage() {
                     </button>
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("webhooks.title")}
+                description={tHelp("webhooks.description")}
+                tips={tHelp.raw("webhooks.tips") as string[]}
+                mediaKey="webhooks"
+            />
 
             {/* Filters */}
             <div className="flex items-center gap-3 flex-wrap">

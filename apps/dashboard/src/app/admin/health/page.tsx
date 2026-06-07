@@ -19,6 +19,7 @@ import {
     ListOrdered, AlertTriangle, Clock as ClockIcon, Play, Inbox as InboxIcon,
     ChevronDown, ChevronRight, Trash2, RotateCw, Trash, Eraser,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface HealthData {
     services: { api: boolean; redis: boolean; postgres: boolean };
@@ -28,6 +29,7 @@ interface HealthData {
 export default function HealthPage() {
     const t = useTranslations("platformHealth");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const [data, setData] = useState<HealthData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -82,6 +84,13 @@ export default function HealthPage() {
                     {tc("refresh")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("health.title")}
+                description={tHelp("health.description")}
+                tips={tHelp.raw("health.tips") as string[]}
+                mediaKey="health"
+            />
 
             {/* Overall status banner */}
             <div className={cn(

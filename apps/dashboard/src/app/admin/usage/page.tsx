@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import {
     TrendingUp, RefreshCw, Loader2, ArrowDown, ArrowUp, AlertTriangle, Search,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface UsageRow {
     tenantId: string;
@@ -41,6 +42,7 @@ const planColor: Record<string, string> = {
 export default function UsagePage() {
     const t = useTranslations("platformUsage");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const [data, setData] = useState<UsageRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -123,6 +125,13 @@ export default function UsagePage() {
                     {tc("refresh")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("usage.title")}
+                description={tHelp("usage.description")}
+                tips={tHelp.raw("usage.tips") as string[]}
+                mediaKey="usage"
+            />
 
             {/* Summary tiles */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

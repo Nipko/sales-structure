@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { HelpPanel } from "@/components/ui/help-panel";
 import {
     Megaphone, Plus, Edit2, Power, Clock, Layers, X, Play, Pause
 } from "lucide-react";
@@ -18,6 +19,7 @@ const statusColors: Record<string, { bg: string; text: string; label: string }> 
 
 export default function CampaignsPage() {
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [courses, setCourses] = useState<any[]>([]);
@@ -79,6 +81,13 @@ export default function CampaignsPage() {
                         <Plus size={18} /> New Campaign
                     </button>
                 </div>
+
+                <HelpPanel
+                    title={tHelp("campaigns.title")}
+                    description={tHelp("campaigns.description")}
+                    tips={tHelp.raw("campaigns.tips") as string[]}
+                    mediaKey="campaigns"
+                />
 
                 {/* Stats */}
                 <div className="grid grid-cols-4 gap-3 mb-6">

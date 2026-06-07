@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { UpgradeBanner } from "@/components/ui/upgrade-banner";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface Segment { id: string; name: string; description: string; filter_rules: FilterRule[]; contact_count: number; created_at: string; }
 interface FilterRule { field: string; operator: string; value: string; }
@@ -23,6 +24,7 @@ const emptyForm = () => ({
 export default function SegmentsPage() {
     const tc = useTranslations("common");
     const t = useTranslations("contacts.segmentsPage");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const [segments, setSegments] = useState<Segment[]>([]);
     const [loading, setLoading] = useState(true);
@@ -186,6 +188,13 @@ export default function SegmentsPage() {
                     <Plus size={16} /> {t("newSegment")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("segments.title")}
+                description={tHelp("segments.description")}
+                tips={tHelp.raw("segments.tips") as string[]}
+                mediaKey="segments"
+            />
 
             <UpgradeBanner current={segments.length} limit={getLimit("segments")} resourceLabel="segmentos" />
             <div className="flex flex-col gap-3">

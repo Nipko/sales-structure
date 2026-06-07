@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { HelpCircle, Plus, Trash2, Save, X, Edit2, Eye, EyeOff, Tag, BookOpen, Search } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 type Faq = {
     id: string;
@@ -43,6 +44,7 @@ export default function FaqsPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("knowledge.faqs");
     const tKb = useTranslations("knowledge");
+    const tHelp = useTranslations("help");
     const [faqs, setFaqs] = useState<Faq[]>([]);
     const [loading, setLoading] = useState(true);
     const [editorOpen, setEditorOpen] = useState(false);
@@ -150,6 +152,13 @@ export default function FaqsPage() {
                     <Search size={16} /> {tKb("tabs.search")}
                 </Link>
             </div>
+
+            <HelpPanel
+                title={tHelp("faqs.title")}
+                description={tHelp("faqs.description")}
+                tips={tHelp.raw("faqs.tips") as string[]}
+                mediaKey="faqs"
+            />
 
             {loading ? (
                 <div className="text-sm text-neutral-500">{t("loading")}</div>

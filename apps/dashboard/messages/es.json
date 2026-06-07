@@ -5371,6 +5371,182 @@
         "Usa el botón 'Actualizar' (esquina superior derecha) para forzar una recarga de datos en tiempo real si acabas de crear o activar tenants y los indicadores aún no los reflejan.",
         "En la tabla de ranking de tenants del 'Detalle', la columna 'Activado' con un punto verde indica que ese tenant ya envió su primer mensaje; los que tienen círculo vacío aún no han iniciado conversaciones reales y pueden necesitar soporte."
       ]
+    },
+    "audit": {
+      "title": "¿Para qué sirve el registro de auditoría?",
+      "description": "El registro de auditoría muestra cada acción importante que ocurrió en la plataforma, como conexiones, suspensiones y eventos de facturación. Úsalo para rastrear quién hizo qué y cuándo, sin tener que revisar logs del servidor.",
+      "tips": [
+        "Filtra por 'Inquilino' escribiendo el UUID o nombre para ver solo las acciones de ese tenant, p. ej. ingresa 'acme' en el campo 'Buscar tenant'.",
+        "Usa el filtro 'Acción' con palabras clave como 'disconnect' o 'reactivate' para encontrar eventos críticos rápidamente.",
+        "Establece una fecha de inicio con 'Desde' para acotar la búsqueda a incidentes recientes, p. ej. el día de una caída.",
+        "Haz clic en cualquier fila de la tabla para expandirla y ver el JSON completo con los detalles del evento.",
+        "Si necesitas ver más resultados, usa los botones 'Anterior' / 'Siguiente' en la parte inferior; cada página muestra 100 registros."
+      ]
+    },
+    "catalog": {
+      "title": "¿Qué puedo gestionar desde el Catálogo?",
+      "description": "El Catálogo es el hub central donde organizas la oferta de tu negocio: cursos, campañas de marketing y promociones. Desde aquí accedes a cada sección con un solo clic para administrar tu portafolio completo.",
+      "tips": [
+        "Haz clic en la tarjeta 'Cursos' para gestionar tu oferta educativa: crear, editar y activar cursos con precio y modalidad.",
+        "Usa la tarjeta 'Campañas' para crear campañas de marketing ligadas a tus cursos y canales de WhatsApp o Email.",
+        "La tarjeta 'Ofertas' te lleva a las promociones activas que el agente IA puede mencionar durante las conversaciones.",
+        "Navega entre secciones usando las tarjetas — cada una muestra una descripción breve para orientarte.",
+        "Vuelve a esta página en cualquier momento desde el ítem 'Catálogo' en el menú lateral para tener una vista general."
+      ]
+    },
+    "campaigns": {
+      "title": "¿Cómo funcionan las campañas del catálogo?",
+      "description": "Las campañas son el mecanismo para captar leads y guiarlos hacia un curso u oferta mediante canales como WhatsApp o Email. Cada campaña define el canal, la plantilla de mensaje y la fuente de entrada de prospectos.",
+      "tips": [
+        "Haz clic en 'New Campaign' para crear una; asigna un nombre claro como 'Admisiones Junio 2026' para identificarla fácilmente.",
+        "Selecciona el 'Main Course' en el modal para asociar la campaña a un curso del catálogo — solo aparecen los cursos ya registrados.",
+        "Elige el 'Entry Source' según cómo llegarán los leads: 'Landing Page', 'CSV Import', 'Meta Lead Ads', etc.",
+        "Si usas WhatsApp, completa el campo 'WhatsApp Template' con el nombre exacto de la plantilla aprobada en Meta.",
+        "Activa el 'email fallback' si quieres que la plataforma intente contactar por correo cuando el mensaje de WhatsApp falla."
+      ]
+    },
+    "catalogCourses": {
+      "title": "¿Cómo gestiono los cursos del catálogo?",
+      "description": "El catálogo de cursos es donde registras toda tu oferta educativa con precio, modalidad y duración para que el agente IA pueda presentarla a prospectos. Desde aquí creas, editas y controlas la disponibilidad de cada curso.",
+      "tips": [
+        "Haz clic en 'New Course' para agregar un curso; completa al menos el nombre y el precio para que el agente tenga información útil.",
+        "Usa el campo 'Slug (URL)' con un identificador corto como 'diplomado-marketing' — se genera automáticamente si lo dejas vacío.",
+        "Indica la 'Modality': 'In-person', 'Virtual' o 'Hybrid'; el agente IA usará este dato al responder preguntas de prospectos.",
+        "Agrega la URL del brochure en 'Brochure URL' para que el agente pueda compartir el documento cuando un lead lo solicite.",
+        "Revisa el contador 'Active' en las estadísticas superiores para saber cuántos cursos están disponibles para el agente en este momento."
+      ]
+    },
+    "offers": {
+      "title": "¿Cómo funcionan las ofertas del catálogo?",
+      "description": "Las ofertas son promociones (descuentos, promos o bundles) que tu agente de IA puede comunicar a los clientes. Configura fechas de vigencia y condiciones para que solo se activen en el momento correcto.",
+      "tips": [
+        "Usa el botón 'Nueva oferta' para crear una promoción; elige entre los tipos 'Descuento', 'Promo' o 'Bundle' según la estrategia de venta.",
+        "Completa los campos 'Válido desde' y 'Válido hasta' para que la oferta se marque automáticamente como activa (badge verde) solo durante el período configurado.",
+        "En el campo 'Condiciones' ingresa un JSON válido con los parámetros de la oferta, por ejemplo: {\"discount_pct\": 20, \"code\": \"VERANO20\"}.",
+        "Desactiva el toggle 'Activo' si quieres dejar una oferta en borrador sin que el agente la use todavía.",
+        "Edita cualquier oferta existente con el ícono de lápiz; los cambios se reflejan de inmediato en las respuestas del agente."
+      ]
+    },
+    "complianceAdmin": {
+      "title": "¿Qué puedo gestionar desde Compliance Admin?",
+      "description": "Este panel centraliza las solicitudes de cumplimiento normativo (GDPR/LGPD) de todos los tenants de la plataforma. Como super admin puedes monitorear eliminaciones pendientes, opt-outs recientes y exportar datos de cualquier contacto.",
+      "tips": [
+        "Revisa la pestaña 'Eliminaciones' regularmente: si el contador rojo supera 0, hay solicitudes de borrado pendientes que debes procesar para cumplir los plazos del Artículo 17 GDPR.",
+        "En la pestaña 'Opt-outs' filtra por tenant haciendo clic en el nombre de la empresa; te lleva directamente a su perfil de tenant para tomar acción.",
+        "Para exportar datos de un contacto (Artículo 15), ve a la pestaña 'Exportar', ingresa el UUID del tenant y el UUID del contacto, y descarga el JSON resultante.",
+        "Usa el botón 'Actualizar' en la esquina superior derecha para refrescar el estado de las solicitudes sin recargar la página.",
+        "Los badges de estado en 'Opt-outs' cambian de color según el resultado: verde = confirmado, rojo = rechazado, amarillo = pendiente."
+      ]
+    },
+    "segments": {
+      "title": "¿Para qué sirven los segmentos de contactos?",
+      "description": "Los segmentos son grupos de contactos que se forman automáticamente según reglas que tú defines (etapa, puntuación, canal, etc.). Úsalos para enviar campañas dirigidas o analizar grupos específicos de leads.",
+      "tips": [
+        "Crea un segmento con 'Nuevo segmento' y combina múltiples filtros; por ejemplo, 'etapa = calificado' + 'puntuación >= 70' para identificar leads listos para cerrar.",
+        "Antes de guardar, haz clic en el ícono de ojo 'Vista previa' para ver cuántos contactos cumplen los filtros actuales y ajustar los criterios si el número es muy alto o muy bajo.",
+        "Haz clic sobre cualquier segmento de la lista para ver la tabla de contactos que lo componen con nombre, teléfono, email, etapa y puntuación.",
+        "Usa el operador 'en' (in) para filtrar por múltiples valores a la vez; por ejemplo, en el campo 'etapa' ingresa 'prospecto,calificado' separados por comas.",
+        "El contador de contactos en cada tarjeta de segmento se actualiza cada vez que cargas la página, así siempre ves el total real y actual."
+      ]
+    },
+    "conversations": {
+      "title": "¿Cómo explorar todas las conversaciones?",
+      "description": "Esta vista muestra en una sola tabla todas las conversaciones activas, en espera, resueltas y en handoff de tu tenant. Úsala para tener una visión global del estado de atención y detectar conversaciones que necesitan atención inmediata.",
+      "tips": [
+        "Filtra por estado usando el selector 'All / Active / Waiting / Resolved' para concentrarte en las conversaciones más urgentes; el estado 'Waiting' suele indicar que el cliente está esperando respuesta.",
+        "Usa la barra de búsqueda para encontrar una conversación por nombre de contacto, teléfono o fragmento del último mensaje.",
+        "Cambia el orden con el botón 'Recent / Most messages' para priorizar las conversaciones con más intercambios y detectar leads muy activos.",
+        "Revisa la columna 'Sentiment' (emoji) para identificar de un vistazo los contactos con sentimiento negativo y priorizar su atención.",
+        "La sección 'Most used tags' al final de la página muestra cuáles etiquetas aparecen más; úsalos para detectar temas recurrentes en las conversaciones."
+      ]
+    },
+    "funnel": {
+      "title": "¿Cómo funciona el embudo de conversión?",
+      "description": "El embudo muestra cuántos tenants avanzan desde el registro hasta el pago, etapa por etapa. Úsalo para identificar dónde se pierde mayor volumen y priorizar acciones de activación.",
+      "tips": [
+        "Usa los botones '7d', '30d' y '90d' para comparar períodos: si el embudo de 7d muestra peor conversión que el de 30d, puede haber un problema reciente de onboarding.",
+        "La columna 'Conversión' en la tabla 'Por fuente' te indica qué canal de adquisición trae tenants que realmente pagan. Enfoca esfuerzos de marketing ahí.",
+        "El indicador 'Tiempo hasta primer mensaje' (TTFM) mide qué tan rápido un tenant activa su agente. Un valor mayor a 48h sugiere que el onboarding es complicado.",
+        "Si la barra de 'Onboarding completado' cae más de 30% respecto a 'Registros', revisa el wizard de setup: puede haber un paso que bloquea a los usuarios.",
+        "Haz clic en 'Actualizar' después de un cambio en el producto para ver el impacto en tiempo real sin esperar el ciclo automático."
+      ]
+    },
+    "health": {
+      "title": "¿Qué muestra este panel de salud?",
+      "description": "El panel muestra en tiempo real el estado de los servicios principales (API, Redis, Postgres) y el volumen de jobs en cada cola BullMQ. Sirve para detectar degradaciones antes de que afecten a los tenants.",
+      "tips": [
+        "El banner de estado (verde/amarillo/rojo) resume el diagnóstico general: si está en amarillo hay jobs fallidos en alguna cola, aunque los servicios estén activos. Revisa las filas con números en rojo.",
+        "Haz clic en cualquier número de la columna 'Fallidos' para abrir el inspector y ver el motivo exacto del error de cada job. Desde ahí puedes usar 'Reintentar' para relanzarlo.",
+        "Si la columna 'Demorado' muestra valores altos (>100) en una cola, puede haber un cuello de botella en el procesador. Revisa los logs del worker correspondiente.",
+        "Usa 'Limpiar todo' en el inspector (filtrando por 'más de 24h') para purgar jobs fallidos acumulados sin eliminar los recientes que aún podrían reintentarse.",
+        "La página se actualiza automáticamente cada 15 segundos; no necesitas recargar manualmente salvo que quieras un dato inmediato tras una acción."
+      ]
+    },
+    "faqs": {
+      "title": "¿Cómo gestionar las preguntas frecuentes?",
+      "description": "Las FAQs son respuestas predefinidas que el agente de IA puede utilizar directamente cuando un cliente hace una pregunta común. Mantenerlas actualizadas reduce alucinaciones del modelo y mejora la precisión.",
+      "tips": [
+        "Haz clic en 'Nueva FAQ' para crear una entrada. Completa al menos 'Pregunta' y 'Respuesta'; los campos 'Categoría' y 'Tags' son opcionales pero ayudan a organizar cuando el volumen crece.",
+        "Usa el campo 'Categoría' con nombres consistentes (ej: 'Precios', 'Envíos') para que las FAQs aparezcan agrupadas en la lista y sea más fácil encontrarlas al editar.",
+        "El campo 'Tags' acepta valores separados por coma (ej: 'devolución, reembolso, garantía'). El motor de búsqueda RAG los usa para recuperar la FAQ correcta ante variantes de la misma pregunta.",
+        "Desactiva el toggle 'Publicado' si estás redactando o revisando una respuesta: la FAQ no será considerada por el agente hasta que la vuelvas a publicar.",
+        "El contador de 'vistas' en cada tarjeta te indica qué preguntas el agente recibe más. Prioriza mantener actualizadas las FAQs con mayor tráfico."
+      ]
+    },
+    "landings": {
+      "title": "¿Para qué sirven las landing pages?",
+      "description": "Las landing pages son páginas públicas de captura de leads vinculadas a cursos y campañas. Cada página tiene una URL propia con slug y se puede publicar o mantener en borrador.",
+      "tips": [
+        "Usa el buscador en la parte superior para filtrar páginas por título o slug. Si tienes varias, escribe las primeras letras del nombre para localizar rápido la que quieres editar.",
+        "Al crear una nueva página con 'New Landing', el slug (URL pública) se genera automáticamente si lo dejas vacío. Para personalizar la URL escríbelo en el campo 'Slug'; usa solo letras, números y guiones.",
+        "Vincula la página a un 'Course' (curso) o 'Campaign' (campaña) durante la creación para que los leads capturados queden asociados automáticamente al funnel correcto.",
+        "El indicador de estado en cada tarjeta puede ser 'draft' (borrador, punto amarillo) o 'published' (publicado, punto verde). Solo las páginas publicadas son accesibles desde la URL pública.",
+        "Haz clic en 'View Landing' en la tarjeta para abrir la página pública en una pestaña nueva y verificar cómo la ven los visitantes antes de compartir el enlace."
+      ]
+    },
+    "llmStats": {
+      "title": "¿Qué son las Estadísticas de IA?",
+      "description": "Esta pantalla muestra el costo y volumen de todas las llamadas a modelos de IA (LLM, media y embeddings) agrupadas por mes, categoría, proveedor y tenant. Te permite detectar qué tenant o proveedor genera mayor gasto y tomar decisiones de optimización.",
+      "tips": [
+        "Cambia el rango con los botones '1M / 3M / 6M / 12M' para ver tendencias de corto o largo plazo: usa '1M' para diagnóstico inmediato y '12M' para planificación anual.",
+        "En la sección 'Por proveedor' compara columnas 'Tokens' y 'Costo' entre openai y anthropic para elegir el proveedor más eficiente para cada tarea.",
+        "La tabla 'Top tenants' muestra quién genera más gasto: haz clic en el nombre del tenant para ir a su detalle y revisar si su plan cubre el consumo real.",
+        "Si la barra de 'LLM' (índigo) domina el gráfico mensual, revisa si el tier de LLM asignado al plan del tenant corresponde a su nivel de uso (Starter no debería usar tier_3).",
+        "Usa el botón 'Actualizar' después de cambiar el rango para forzar la recarga sin esperar el ciclo automático."
+      ]
+    },
+    "plans": {
+      "title": "¿Cómo gestionar los planes de suscripción?",
+      "description": "Esta pantalla muestra la tabla comparativa de todos los planes (Starter, Pro, Enterprise, Custom) con sus límites, features y precios. Desde aquí puedes editar cualquier parámetro y el cambio se propaga automáticamente a los tenants activos en ese plan.",
+      "tips": [
+        "Haz clic en el ícono de lápiz (pencil) en la columna de un plan para entrar en modo edición; los campos se vuelven editables sin recargar la página.",
+        "Después de editar, haz clic en el ícono de guardar (save) en el encabezado del plan: el sistema invalida el caché de todos los tenants del plan y muestra cuántos fueron actualizados.",
+        "Para cambiar los canales habilitados (whatsapp, instagram, messenger, telegram, sms), actívalos o desactívalos con los chips de colores en la fila 'Channels' mientras estás en edición.",
+        "Usa la sección 'Invalidar caché' al pie de la página para forzar la actualización de un plan específico sin tocar sus valores, útil tras cambios de infraestructura.",
+        "Revisa la columna 'Tenants' en el encabezado de cada plan antes de reducir límites: si hay tenants activos, comunícales el cambio antes de guardar para evitar interrupciones."
+      ]
+    },
+    "usage": {
+      "title": "¿Para qué sirve el panel de Uso de la plataforma?",
+      "description": "Esta pantalla muestra el consumo real de automatizaciones y mensajes outbound de cada tenant activo frente a los límites de su plan. Te ayuda a identificar quién está cerca de su cuota para escalar su plan o contactarlos proactivamente.",
+      "tips": [
+        "Haz clic en los encabezados 'Automatizaciones' u 'Outbound' para ordenar la tabla por porcentaje de uso descendente y ver de inmediato los tenants más cercanos a su límite.",
+        "La barra roja indica que el tenant ya superó su cuota (100%); la barra ámbar señala uso entre 80% y 99%: actúa antes de que se bloqueen sus mensajes.",
+        "Usa el campo de búsqueda para filtrar por nombre de tenant o plan (p. ej. escribe 'pro' para ver solo los tenants Pro y comparar su consumo entre sí).",
+        "El tile 'Fuera de cuota' en la parte superior muestra cuántos tenants están al 100%: si es mayor que cero, prioriza contactarlos para evitar churn.",
+        "Haz clic en el nombre de un tenant en la tabla para ir a su detalle en '/admin/tenants' y desde ahí cambiar su plan o revisar su historial de facturación."
+      ]
+    },
+    "webhooks": {
+      "title": "¿Qué es el monitor de Webhooks entrantes?",
+      "description": "Esta pantalla es una consola de monitoreo en tiempo real (actualización cada 5 segundos) que muestra los últimos 200 eventos de webhook recibidos de todos los canales. Sirve para depurar integraciones y detectar errores sin necesidad de acceder al servidor.",
+      "tips": [
+        "Usa los filtros de canal (whatsapp, instagram, messenger, telegram, sms) y de estado (parsed, ignored, error, rejected) para aislar exactamente los eventos que te interesan: p. ej. selecciona 'whatsapp' + 'error' para ver solo fallas de WhatsApp.",
+        "Haz clic en 'Pausar' para detener las actualizaciones automáticas y leer los eventos con calma; cuando termines, haz clic en 'Reanudar' para volver al modo en vivo.",
+        "Los tiles de resumen (Parsed / Ignored / Rejected / Error) muestran conteos del lote actual: si 'Error' es mayor que cero, revisa los eventos rojos en la lista para identificar el mensaje de error exacto.",
+        "Cada fila muestra el tiempo relativo (p. ej. '12s', '3m') en la columna derecha: eventos muy recientes con estado 'error' son prioritarios para investigar.",
+        "El sistema almacena solo resúmenes (sin PII ni payloads completos): si necesitas el payload completo, usa los logs del contenedor de API con el accountId que aparece en la fila."
+      ]
     }
   },
   "helpAssistant": {

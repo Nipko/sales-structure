@@ -5,6 +5,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { Tag, Plus, Trash2, Save, X, Edit2, CheckCircle, Clock } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 type OfferType = "discount" | "promo" | "bundle";
 
@@ -42,6 +43,7 @@ const EMPTY: Form = {
 export default function OffersPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("catalog.offers");
+    const tHelp = useTranslations("help");
     const [offers, setOffers] = useState<Offer[]>([]);
     const [loading, setLoading] = useState(true);
     const [editorOpen, setEditorOpen] = useState(false);
@@ -149,6 +151,13 @@ export default function OffersPage() {
                     {t("newOffer")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("offers.title")}
+                description={tHelp("offers.description")}
+                tips={tHelp.raw("offers.tips") as string[]}
+                mediaKey="offers"
+            />
 
             {loading ? (
                 <div className="text-sm text-neutral-500">{t("loading")}</div>

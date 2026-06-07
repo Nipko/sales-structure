@@ -20,6 +20,7 @@ import {
     Scale, RefreshCw, Loader2, Trash2, Ban, Download, Calendar, Search,
     ExternalLink, AlertTriangle, CheckCircle,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface DeletionRow {
     id: string;
@@ -57,6 +58,7 @@ type TabId = "deletions" | "optouts" | "export";
 export default function ComplianceAdminPage() {
     const t = useTranslations("complianceAdmin");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const [data, setData] = useState<OverviewData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -132,6 +134,13 @@ export default function ComplianceAdminPage() {
                     {tc("refresh")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("complianceAdmin.title")}
+                description={tHelp("complianceAdmin.description")}
+                tips={tHelp.raw("complianceAdmin.tips") as string[]}
+                mediaKey="complianceAdmin"
+            />
 
             {/* Summary tiles */}
             <div className="grid grid-cols-2 gap-3">

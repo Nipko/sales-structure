@@ -7,6 +7,7 @@ import {
     Layers, Save, CheckCircle, AlertCircle, Loader2, Pencil, X,
     RefreshCw, Users, ToggleLeft, ToggleRight,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 type Plan = {
     id: string;
@@ -60,6 +61,7 @@ export default function PlansPage() {
     const t = useTranslations("plansPage");
     const tf = useTranslations("plansPage.features");
     const tc = useTranslations("plansPage.categories");
+    const tHelp = useTranslations("help");
 
     const [plans, setPlans] = useState<Plan[]>([]);
     const [loading, setLoading] = useState(true);
@@ -277,6 +279,13 @@ export default function PlansPage() {
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("plans.title")}
+                description={tHelp("plans.description")}
+                tips={tHelp.raw("plans.tips") as string[]}
+                mediaKey="plans"
+            />
 
             {toast && (
                 <div className={`flex items-center gap-2 rounded-lg px-4 py-3 text-sm ${

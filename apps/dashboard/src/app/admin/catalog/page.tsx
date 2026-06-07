@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { BookOpen, Megaphone, Tag, ArrowRight, type LucideIcon } from "lucide-react";
 
 interface Card {
@@ -17,6 +18,7 @@ interface Card {
 export default function CatalogHub() {
     const router = useRouter();
     const t = useTranslations("catalog.hub");
+    const tHelp = useTranslations("help");
 
     const cards: Card[] = [
         {
@@ -51,6 +53,13 @@ export default function CatalogHub() {
                 <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">{t("title")}</h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
             </div>
+
+            <HelpPanel
+                title={tHelp("catalog.title")}
+                description={tHelp("catalog.description")}
+                tips={tHelp.raw("catalog.tips") as string[]}
+                mediaKey="catalog"
+            />
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {cards.map((card) => {

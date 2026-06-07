@@ -12,6 +12,7 @@ import {
     CheckCircle2, AlertCircle, ArrowUpDown, ChevronRight,
     Calendar, Hash, Tag,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const statusConfig: Record<string, { label: string; color: string }> = {
     active: { label: "Active", color: "#2ecc71" },
@@ -28,6 +29,7 @@ const sentimentConfig: Record<string, { label: string; emoji: string }> = {
 
 export default function ConversationsPage() {
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [conversations, setConversations] = useState<any[]>([]);
@@ -75,6 +77,13 @@ export default function ConversationsPage() {
                     <p className="text-muted-foreground mt-1">{stats.total} conversaciones · {stats.totalMessages} total messages</p>
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("conversations.title")}
+                description={tHelp("conversations.description")}
+                tips={tHelp.raw("conversations.tips") as string[]}
+                mediaKey="conversations"
+            />
 
             <div className="grid grid-cols-4 gap-4 mb-6">
                 {[

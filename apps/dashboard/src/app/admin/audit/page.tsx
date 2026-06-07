@@ -12,6 +12,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { HelpPanel } from "@/components/ui/help-panel";
 import {
     ShieldCheck, RefreshCw, Loader2, ChevronDown, ChevronRight, Search,
     Calendar, X, AlertTriangle, CheckCircle, Info,
@@ -53,6 +54,7 @@ function actionIcon(action: string) {
 export default function AuditPage() {
     const t = useTranslations("platformAudit");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
 
     const [data, setData] = useState<AuditResponse | null>(null);
     const [loading, setLoading] = useState(true);
@@ -128,6 +130,13 @@ export default function AuditPage() {
                     {tc("refresh")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("audit.title")}
+                description={tHelp("audit.description")}
+                tips={tHelp.raw("audit.tips") as string[]}
+                mediaKey="audit"
+            />
 
             {/* Filters */}
             <div className="bg-card border border-border rounded-xl p-4 space-y-3">

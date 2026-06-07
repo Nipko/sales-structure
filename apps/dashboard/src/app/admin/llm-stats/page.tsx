@@ -9,6 +9,7 @@ import {
     Brain, RefreshCw, Loader2, TrendingUp, DollarSign,
     Mic, Eye, Database, Cpu, ChevronDown,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface AiUsageData {
     totals: {
@@ -52,6 +53,7 @@ const CATEGORY_CONFIG: Record<string, { icon: any; color: string; barColor: stri
 export default function AiUsagePage() {
     const t = useTranslations("aiUsage");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const [months, setMonths] = useState(3);
     const [data, setData] = useState<AiUsageData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -119,6 +121,13 @@ export default function AiUsagePage() {
                     </button>
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("llmStats.title")}
+                description={tHelp("llmStats.description")}
+                tips={tHelp.raw("llmStats.tips") as string[]}
+                mediaKey="llmStats"
+            />
 
             {error && (
                 <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-400">

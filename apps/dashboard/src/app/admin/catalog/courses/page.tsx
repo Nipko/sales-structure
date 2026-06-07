@@ -5,12 +5,14 @@ import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { HelpPanel } from "@/components/ui/help-panel";
 import {
     BookOpen, Plus, Edit2, Power, DollarSign, Clock, Globe, X
 } from "lucide-react";
 
 export default function CoursesPage() {
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const [courses, setCourses] = useState<any[]>([]);
     const [showModal, setShowModal] = useState(false);
@@ -73,6 +75,13 @@ export default function CoursesPage() {
                         <Plus size={18} /> New Course
                     </button>
                 </div>
+
+                <HelpPanel
+                    title={tHelp("catalogCourses.title")}
+                    description={tHelp("catalogCourses.description")}
+                    tips={tHelp.raw("catalogCourses.tips") as string[]}
+                    mediaKey="catalogCourses"
+                />
 
                 {/* Stats */}
                 <div className="grid grid-cols-3 gap-3 mb-6">

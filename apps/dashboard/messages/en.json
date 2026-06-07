@@ -5371,6 +5371,182 @@
         "Use the 'Refresh' button (top right) to force a real-time data reload if you just created or activated tenants and the KPIs do not yet reflect those changes.",
         "In the 'Drilldown' tenant ranking table, the 'Activated' column with a green dot means that tenant already sent their first message; empty circles indicate no real conversations yet, and those tenants may need onboarding support."
       ]
+    },
+    "audit": {
+      "title": "What is the audit log for?",
+      "description": "The audit log records every important action on the platform, such as channel connections, suspensions, and billing events. Use it to trace who did what and when, without needing to dig into server logs.",
+      "tips": [
+        "Filter by 'Tenant' by typing the UUID or name to see only that tenant's actions, e.g. type 'acme' in the tenant search field.",
+        "Use the 'Action' filter with keywords like 'disconnect' or 'reactivate' to quickly find critical events.",
+        "Set a start date with 'Since' to narrow the search to recent incidents, e.g. the day of an outage.",
+        "Click any row in the table to expand it and view the full JSON with event details.",
+        "Use the 'Previous' / 'Next' buttons at the bottom to browse pages; each page shows 100 records."
+      ]
+    },
+    "catalog": {
+      "title": "What can I manage from the Catalog?",
+      "description": "The Catalog is the central hub where you organize your business offer: courses, marketing campaigns, and promotions. From here you can access each section with a single click to manage your complete portfolio.",
+      "tips": [
+        "Click the 'Courses' card to manage your educational offer: create, edit and activate courses with price and modality.",
+        "Use the 'Campaigns' card to create marketing campaigns linked to your courses and WhatsApp or Email channels.",
+        "The 'Offers' card takes you to active promotions the AI agent can mention during conversations.",
+        "Navigate between sections using the cards — each one shows a short description to guide you.",
+        "Return to this page anytime from the 'Catalog' item in the sidebar for an overall view."
+      ]
+    },
+    "campaigns": {
+      "title": "How do catalog campaigns work?",
+      "description": "Campaigns are the mechanism for capturing leads and guiding them toward a course or offer through channels like WhatsApp or Email. Each campaign defines the channel, message template, and lead entry source.",
+      "tips": [
+        "Click 'New Campaign' to create one; assign a clear name like 'June 2026 Admissions' for easy identification.",
+        "Select 'Main Course' in the modal to link the campaign to a catalog course — only already-registered courses appear.",
+        "Choose the 'Entry Source' based on how leads will arrive: 'Landing Page', 'CSV Import', 'Meta Lead Ads', etc.",
+        "If using WhatsApp, fill in the 'WhatsApp Template' field with the exact name of the Meta-approved template.",
+        "Enable 'email fallback' if you want the platform to try email contact when the WhatsApp message fails."
+      ]
+    },
+    "catalogCourses": {
+      "title": "How do I manage courses in the catalog?",
+      "description": "The course catalog is where you register your full educational offer with price, modality and duration so the AI agent can present it to prospects. From here you create, edit and control the availability of each course.",
+      "tips": [
+        "Click 'New Course' to add a course; fill in at least the name and price so the agent has useful information.",
+        "Use the 'Slug (URL)' field with a short identifier like 'marketing-diploma' — it is auto-generated if left empty.",
+        "Set the 'Modality': 'In-person', 'Virtual' or 'Hybrid'; the AI agent will use this data when answering prospect questions.",
+        "Add the brochure URL in 'Brochure URL' so the agent can share the document when a lead requests it.",
+        "Check the 'Active' counter in the top stats to see how many courses are currently available to the agent."
+      ]
+    },
+    "offers": {
+      "title": "How do catalog offers work?",
+      "description": "Offers are promotions (discounts, promos or bundles) that your AI agent can communicate to customers. Set validity dates and conditions so they only activate at the right time.",
+      "tips": [
+        "Click 'New offer' to create a promotion; choose between 'Discount', 'Promo' or 'Bundle' depending on your sales strategy.",
+        "Fill in 'Valid from' and 'Valid to' so the offer is automatically marked as active (green badge) only during the configured period.",
+        "In the 'Conditions' field enter a valid JSON with the offer parameters, for example: {\"discount_pct\": 20, \"code\": \"SUMMER20\"}.",
+        "Uncheck 'Active' to keep an offer as a draft without the agent using it yet.",
+        "Edit any existing offer with the pencil icon; changes are immediately reflected in agent responses."
+      ]
+    },
+    "complianceAdmin": {
+      "title": "What can I manage from Compliance Admin?",
+      "description": "This panel centralizes compliance requests (GDPR/LGPD) across all platform tenants. As a super admin you can monitor pending deletions, recent opt-outs and export data for any contact.",
+      "tips": [
+        "Check the 'Deletions' tab regularly: if the red counter exceeds 0, there are pending deletion requests you must process to meet Article 17 GDPR deadlines.",
+        "In the 'Opt-outs' tab click on a tenant name to navigate directly to its tenant profile and take action.",
+        "To export contact data (Article 15), go to the 'Export' tab, enter the tenant UUID and contact UUID, and download the resulting JSON.",
+        "Use the 'Refresh' button in the top-right corner to update request status without reloading the page.",
+        "Status badges in 'Opt-outs' change color by result: green = confirmed, red = rejected, yellow = pending."
+      ]
+    },
+    "segments": {
+      "title": "What are contact segments for?",
+      "description": "Segments are groups of contacts automatically formed by rules you define (stage, score, channel, etc.). Use them to send targeted campaigns or analyze specific groups of leads.",
+      "tips": [
+        "Create a segment with 'New segment' and combine multiple filters; for example, 'stage = qualified' + 'score >= 70' to identify leads ready to close.",
+        "Before saving, click the eye icon 'Preview' to see how many contacts match the current filters and adjust criteria if the number is too high or too low.",
+        "Click any segment in the list to see the contact table with name, phone, email, stage and score.",
+        "Use the 'in' operator to filter by multiple values at once; for example, in the 'stage' field enter 'prospect,qualified' separated by commas.",
+        "The contact counter on each segment card updates every time you load the page, so you always see the real current total."
+      ]
+    },
+    "conversations": {
+      "title": "How do I explore all conversations?",
+      "description": "This view shows all active, waiting, resolved and handoff conversations for your tenant in a single table. Use it to get a global picture of service status and spot conversations that need immediate attention.",
+      "tips": [
+        "Filter by status using the 'All / Active / Waiting / Resolved' selector to focus on the most urgent conversations; 'Waiting' status usually means the customer is waiting for a reply.",
+        "Use the search bar to find a conversation by contact name, phone number or a fragment of the last message.",
+        "Toggle the sort order with the 'Recent / Most messages' button to prioritize highly active conversations and spot engaged leads.",
+        "Check the 'Sentiment' column (emoji) to quickly identify contacts with negative sentiment and prioritize their care.",
+        "The 'Most used tags' section at the bottom shows which tags appear most often; use them to detect recurring topics across conversations."
+      ]
+    },
+    "funnel": {
+      "title": "How does the conversion funnel work?",
+      "description": "The funnel shows how many tenants advance from signup to payment, stage by stage. Use it to identify where the most volume is lost and prioritize activation actions.",
+      "tips": [
+        "Use the '7d', '30d', and '90d' buttons to compare periods: if the 7d funnel shows worse conversion than the 30d one, there may be a recent onboarding issue.",
+        "The 'Conversion' column in the 'By source' table tells you which acquisition channel brings tenants who actually pay. Focus your marketing efforts there.",
+        "The 'Time to first message' (TTFM) metric measures how quickly a tenant activates their agent. A value over 48h suggests the onboarding flow is too complex.",
+        "If the 'Onboarding completed' bar drops more than 30% compared to 'Signups', review the setup wizard — a blocking step may be stopping users.",
+        "Click 'Refresh' after a product change to see the impact in real time without waiting for the automatic cycle."
+      ]
+    },
+    "health": {
+      "title": "What does this health panel show?",
+      "description": "The panel displays the real-time status of core services (API, Redis, Postgres) and the job volume in each BullMQ queue. Use it to detect degradations before they impact tenants.",
+      "tips": [
+        "The status banner (green/yellow/red) summarizes the overall diagnosis: yellow means there are failed jobs in some queue even if services are active. Check rows with red numbers.",
+        "Click any number in the 'Failed' column to open the inspector and see the exact error reason for each job. From there, use 'Retry' to requeue it.",
+        "If the 'Delayed' column shows high values (>100) in a queue, there may be a bottleneck in the processor. Review the corresponding worker logs.",
+        "Use 'Clean all' in the inspector (filtering by 'older than 24h') to purge accumulated failed jobs without deleting recent ones that could still be retried.",
+        "The page auto-refreshes every 15 seconds; no need to reload manually unless you want immediate data after an action."
+      ]
+    },
+    "faqs": {
+      "title": "How to manage frequently asked questions?",
+      "description": "FAQs are predefined answers that the AI agent can use directly when a customer asks a common question. Keeping them up to date reduces model hallucinations and improves accuracy.",
+      "tips": [
+        "Click 'New FAQ' to create an entry. Fill in at least 'Question' and 'Answer'; the 'Category' and 'Tags' fields are optional but help organize content as volume grows.",
+        "Use the 'Category' field with consistent names (e.g., 'Pricing', 'Shipping') so FAQs appear grouped in the list, making them easier to find when editing.",
+        "The 'Tags' field accepts comma-separated values (e.g., 'return, refund, warranty'). The RAG search engine uses them to retrieve the correct FAQ for variations of the same question.",
+        "Uncheck the 'Published' toggle if you are drafting or reviewing an answer: the FAQ won't be considered by the agent until you publish it again.",
+        "The 'views' counter on each card tells you which questions the agent receives most. Prioritize keeping high-traffic FAQs up to date."
+      ]
+    },
+    "landings": {
+      "title": "What are landing pages for?",
+      "description": "Landing pages are public lead capture pages linked to courses and campaigns. Each page has its own URL with a slug and can be published or kept as a draft.",
+      "tips": [
+        "Use the search bar at the top to filter pages by title or slug. If you have many, type the first letters of the name to quickly find the one you want to edit.",
+        "When creating a new page with 'New Landing', the slug (public URL) is generated automatically if you leave it empty. To customize the URL, type it in the 'Slug' field using only letters, numbers, and hyphens.",
+        "Link the page to a 'Course' or 'Campaign' during creation so captured leads are automatically associated with the correct funnel.",
+        "The status indicator on each card can be 'draft' (yellow dot) or 'published' (green dot). Only published pages are accessible from the public URL.",
+        "Click 'View Landing' on the card to open the public page in a new tab and verify how visitors see it before sharing the link."
+      ]
+    },
+    "llmStats": {
+      "title": "What are AI Stats?",
+      "description": "This screen shows the cost and volume of all AI model calls (LLM, media, and embeddings) grouped by month, category, provider, and tenant. It helps you spot which tenant or provider drives the most spend so you can optimize costs.",
+      "tips": [
+        "Switch the range with the '1M / 3M / 6M / 12M' buttons to see short- or long-term trends: use '1M' for immediate diagnosis and '12M' for annual planning.",
+        "In the 'By provider' section, compare 'Tokens' and 'Cost' columns between openai and anthropic to pick the most efficient provider for each task type.",
+        "The 'Top tenants' table shows who spends the most: click a tenant name to go to their detail and verify whether their plan covers actual consumption.",
+        "If the 'LLM' (indigo) bar dominates the monthly chart, check whether the LLM tier assigned to that tenant's plan matches their usage level (Starter should not use tier_3).",
+        "Hit 'Refresh' after changing the date range to force an immediate reload without waiting for the next automatic cycle."
+      ]
+    },
+    "plans": {
+      "title": "How to manage subscription plans?",
+      "description": "This screen shows the comparison table for all plans (Starter, Pro, Enterprise, Custom) with their limits, features, and prices. You can edit any parameter here and the change automatically propagates to active tenants on that plan.",
+      "tips": [
+        "Click the pencil icon on a plan's column header to enter edit mode; fields become editable without reloading the page.",
+        "After editing, click the save icon in the plan header: the system invalidates the cache for all tenants on that plan and shows how many were updated.",
+        "To change enabled channels (whatsapp, instagram, messenger, telegram, sms), toggle the colored chips in the 'Channels' row while in edit mode.",
+        "Use the 'Invalidate cache' section at the bottom of the page to force a specific plan's update without changing its values — useful after infrastructure changes.",
+        "Check the 'Tenants' count in each plan header before reducing limits: if there are active tenants, notify them before saving to avoid service disruptions."
+      ]
+    },
+    "usage": {
+      "title": "What is the Platform Usage panel for?",
+      "description": "This screen shows the actual consumption of automations and outbound messages for each active tenant against their plan limits. It helps you identify who is approaching their quota so you can upgrade their plan or reach out proactively.",
+      "tips": [
+        "Click the 'Automations' or 'Outbound' column headers to sort the table by usage percentage descending and immediately see the tenants closest to their limit.",
+        "A red bar means the tenant has already exceeded their quota (100%); an amber bar signals usage between 80% and 99%: act before their messages get blocked.",
+        "Use the search field to filter by tenant name or plan (e.g. type 'pro' to see only Pro tenants and compare their consumption against each other).",
+        "The 'Over quota' tile at the top shows how many tenants are at 100%: if it's greater than zero, prioritize contacting them to prevent churn.",
+        "Click a tenant name in the table to go to their detail at '/admin/tenants' and from there change their plan or review their billing history."
+      ]
+    },
+    "webhooks": {
+      "title": "What is the Webhook monitor?",
+      "description": "This screen is a real-time monitoring console (updates every 5 seconds) showing the last 200 webhook events received from all channels. It is used to debug integrations and detect errors without needing server access.",
+      "tips": [
+        "Use the channel filters (whatsapp, instagram, messenger, telegram, sms) and status filters (parsed, ignored, error, rejected) to isolate exactly the events you need: e.g. select 'whatsapp' + 'error' to see only WhatsApp failures.",
+        "Click 'Pause' to stop automatic updates and read events calmly; when done, click 'Resume' to return to live mode.",
+        "The summary tiles (Parsed / Ignored / Rejected / Error) show counts from the current batch: if 'Error' is greater than zero, review the red events in the list to find the exact error message.",
+        "Each row shows a relative time (e.g. '12s', '3m') in the right column: very recent events with 'error' status are the highest priority to investigate.",
+        "The system stores only summaries (no PII or full payloads): if you need the full payload, use the API container logs with the accountId shown in the row."
+      ]
     }
   },
   "helpAssistant": {

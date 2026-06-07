@@ -70,6 +70,26 @@ existing `images` / `videoUrl` props (they take precedence over `mediaKey`).
 | procedures | /admin/procedures | write SOP → compile to steps |
 | verticalAnalytics | /admin/vertical-analytics | overview bar → drilldown |
 
+## Phase 1 — Wave B (added, drop a `{key}.gif` for each)
+| key | page | suggested GIF |
+|-----|------|----------------|
+| audit | /admin/audit | filter by tenant/action + expand a row |
+| catalog | /admin/catalog | hub cards navigation |
+| campaigns | /admin/catalog/campaigns | create campaign + entry source |
+| catalogCourses | /admin/catalog/courses | new course (price/modality) |
+| offers | /admin/catalog/offers | new offer (type/validity) |
+| complianceAdmin | /admin/compliance-admin | deletions tab + export |
+| segments | /admin/contacts/segments | build filters + preview |
+| conversations | /admin/conversations | status filter + sentiment |
+| funnel | /admin/funnel | period toggle + by-source |
+| health | /admin/health | status banner + failed jobs inspector |
+| faqs | /admin/knowledge/faqs | new FAQ + tags |
+| landings | /admin/landings | new landing + publish |
+| llmStats | /admin/llm-stats | range toggle + top tenants |
+| plans | /admin/plans | edit plan + save (cache invalidation) |
+| usage | /admin/usage | sort by usage + over-quota tile |
+| webhooks | /admin/webhooks | channel/status filter + pause |
+
 ## New pages to add help to (later phases — see docs/help-panel-audit-2026-06.md)
 When adding `HelpPanel` to a new page, also add `mediaKey="{newKey}"` and a
 matching `help.{newKey}` entry in all 4 `messages/*.json`.

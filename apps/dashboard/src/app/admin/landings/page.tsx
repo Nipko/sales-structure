@@ -9,9 +9,11 @@ import { cn } from "@/lib/utils";
 import {
     Search, Plus, Globe, ExternalLink, MoreVertical, FileText, Settings, LayoutTemplate
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 export default function LandingsPage() {
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const router = useRouter();
 
@@ -88,6 +90,13 @@ export default function LandingsPage() {
                         <Plus size={16} /> New Landing
                     </button>
                 </div>
+
+                <HelpPanel
+                    title={tHelp("landings.title")}
+                    description={tHelp("landings.description")}
+                    tips={tHelp.raw("landings.tips") as string[]}
+                    mediaKey="landings"
+                />
 
                 {/* Filters */}
                 <div className="mb-6 flex gap-4">

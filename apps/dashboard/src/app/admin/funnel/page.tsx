@@ -20,6 +20,7 @@ import {
     Filter as FunnelIcon, RefreshCw, Loader2, TrendingUp, Clock, Users,
     UserPlus, MessageSquare, DollarSign,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 interface Stage {
     key: string;
@@ -67,6 +68,7 @@ const STAGE_COLORS: Record<string, { bar: string; bg: string; text: string }> = 
 export default function FunnelPage() {
     const t = useTranslations("funnel");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const [days, setDays] = useState(30);
     const [data, setData] = useState<FunnelData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -135,6 +137,13 @@ export default function FunnelPage() {
                     </button>
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("funnel.title")}
+                description={tHelp("funnel.description")}
+                tips={tHelp.raw("funnel.tips") as string[]}
+                mediaKey="funnel"
+            />
 
             {error && (
                 <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">

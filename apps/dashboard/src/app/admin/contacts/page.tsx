@@ -358,6 +358,7 @@ export default function ContactsPage() {
                 title={tHelp("contacts.title")}
                 description={tHelp("contacts.description")}
                 tips={tHelp.raw("contacts.tips") as string[]}
+                mediaKey="contacts"
             />
 
             {/* Stats Cards */}

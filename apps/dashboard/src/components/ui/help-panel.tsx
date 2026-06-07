@@ -10,11 +10,39 @@ interface HelpPanelProps {
     description: string;
     videoUrl?: string;
     images?: Array<{ src: string; alt: string; caption?: string }>;
+    /**
+     * Convention-based animated GIF/screenshot. When set (and `images` is not),
+     * the panel auto-loads `/help/{mediaKey}.gif` and renders it only if the file
+     * exists — a missing asset hides itself silently (no broken image).
+     * Drop assets into `apps/dashboard/public/help/` to light them up.
+     */
+    mediaKey?: string;
     tips?: string[];
     defaultOpen?: boolean;
 }
 
-export function HelpPanel({ title, description, videoUrl, images, tips, defaultOpen = false }: HelpPanelProps) {
+/** Auto-loaded help media that removes itself if the asset is missing. */
+function HelpMedia({ src, alt }: { src: string; alt: string }) {
+    const [hidden, setHidden] = useState(false);
+    if (hidden) return null;
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl overflow-hidden border border-border shadow-sm bg-background/50"
+        >
+            <img
+                src={src}
+                alt={alt}
+                loading="lazy"
+                onError={() => setHidden(true)}
+                className="w-full h-auto object-cover"
+            />
+        </motion.div>
+    );
+}
+
+export function HelpPanel({ title, description, videoUrl, images, mediaKey, tips, defaultOpen = false }: HelpPanelProps) {
     const [open, setOpen] = useState(defaultOpen);
 
     return (
@@ -109,6 +137,11 @@ export function HelpPanel({ title, description, videoUrl, images, tips, defaultO
                                         </motion.div>
                                     ))}
                                 </div>
+                            )}
+
+                            {/* Convention-based auto media (GIF/screenshot) */}
+                            {mediaKey && (!images || images.length === 0) && (
+                                <HelpMedia src={`/help/${mediaKey}.gif`} alt={title} />
                             )}
 
                             {/* Tips */}

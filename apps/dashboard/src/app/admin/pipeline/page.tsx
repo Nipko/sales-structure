@@ -347,6 +347,7 @@ export default function PipelinePage() {
                     title={tHelp("pipeline.title")}
                     description={tHelp("pipeline.description")}
                     tips={tHelp.raw("pipeline.tips") as string[]}
+                    mediaKey="pipeline"
                 />
 
                 {pipelines.length > 0 && (

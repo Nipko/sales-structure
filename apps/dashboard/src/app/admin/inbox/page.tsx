@@ -1291,6 +1291,7 @@ export default function InboxPage() {
                         title={tHelp("inbox.title")}
                         description={tHelp("inbox.description")}
                         tips={tHelp.raw("inbox.tips") as string[]}
+                        mediaKey="inbox"
                     />
                 </div>
 

@@ -203,6 +203,9 @@ export const api = {
     createDeal: (tenantId: string, data: any) =>
         apiPost(`/pipeline/deals/${tenantId}`, data),
 
+    createOpportunity: (tenantId: string, data: any) =>
+        apiPost(`/crm/opportunities/${tenantId}`, data),
+
     moveDeal: (tenantId: string, dealId: string, stageId: string) =>
         apiPut(`/pipeline/deals/${tenantId}/${dealId}/move`, { stageId }),
 

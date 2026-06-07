@@ -69,13 +69,17 @@ export default function PipelinePage() {
 
     const canApprove = hasRole('super_admin', 'tenant_admin', 'tenant_supervisor');
 
-    const loadKanban = useCallback(async (pipelineId?: string | null) => {
+    const loadKanban = useCallback(async (_pipelineId?: string | null) => {
         if (!activeTenantId) return;
         setLoading(true);
         try {
-            const json = pipelineId
-                ? await api.getKanbanByPipeline(activeTenantId, pipelineId)
-                : await api.fetch(`/crm/kanban/${activeTenantId}`);
+            // Always read the opportunities board (/crm/kanban). The deals/pipeline
+            // system auto-seeds a default "Pipeline Principal" for every tenant, but it
+            // is NOT fed by the live lead flow — WhatsApp/conversations, lead creation
+            // and intake all write `opportunities`. Reading /pipeline/kanban (deals)
+            // therefore showed an empty board even when leads/opportunities existed
+            // (bugs ID 2 + 78). Moving and approving cards already use /crm/...
+            const json = await api.fetch(`/crm/kanban/${activeTenantId}`);
             if (json.success && json.data) {
                 setKanban(json.data);
                 setIsLive(true);
@@ -181,11 +185,14 @@ export default function PipelinePage() {
         if (!activeTenantId || !dealForm.contactId || !dealForm.title || !dealForm.stageId) return;
         setDealCreating(true);
         try {
-            await api.createDeal(activeTenantId, {
-                contactId: dealForm.contactId,
+            // Create an opportunity (not a deal) so it lands in the same system the
+            // board reads (/crm/kanban). `stageId` here is an opportunity stage slug
+            // (e.g. 'nuevo'); title/notes are stored on the opportunity metadata.
+            await api.createOpportunity(activeTenantId, {
+                lead_id: dealForm.contactId,
                 title: dealForm.title,
                 value: Number(dealForm.value) || 0,
-                stageId: dealForm.stageId,
+                stage: dealForm.stageId || 'nuevo',
                 notes: dealForm.notes || undefined,
             });
             setDealForm({ contactId: "", title: "", value: "", stageId: "", notes: "" });

@@ -60,17 +60,35 @@ export class OpportunitiesRepository {
     const schema = await this.getTenantSchema(tenantId);
     if (!schema) return null;
 
-    const record = data as Record<string, any>;
-    const ALLOWED_FIELDS = [
-      'lead_id', 'title', 'value', 'currency', 'stage', 'probability',
-      'expected_close_date', 'assigned_to', 'notes', 'metadata',
-      'source', 'lost_reason', 'won_date', 'lost_date',
+    // Map friendly inputs to the REAL opportunities schema. This table is
+    // lead-centric: it has `estimated_value` (not `value`) and no `title`/`notes`
+    // columns — those live on `deals`. Fold title/notes into `metadata` so a
+    // manually-created opportunity still renders on the board (getKanban reads
+    // metadata.title). Inserting non-existent columns previously failed the INSERT.
+    const d = { ...(data as Record<string, any>) };
+    if (d.lead_id == null && (d.leadId ?? d.contactId) != null) d.lead_id = d.leadId ?? d.contactId;
+    if (d.estimated_value == null && d.value != null) d.estimated_value = d.value;
+    if (!d.stage) d.stage = 'nuevo';
+    if (!d.lead_id) return null;
+    const metadata = { ...(d.metadata || {}) };
+    if (d.title) metadata.title = d.title;
+    if (d.notes) metadata.notes = d.notes;
+    d.metadata = metadata;
+
+    const REAL_COLUMNS = [
+      'lead_id', 'course_id', 'campaign_id', 'conversation_id', 'stage', 'score',
+      'estimated_value', 'currency', 'sla_deadline', 'won_at', 'lost_at',
+      'loss_reason', 'assigned_to', 'approval_status', 'approval_stage', 'approved_by',
+      'metadata', 'deal_id',
     ];
-    const fields = Object.keys(record).filter(k => record[k] !== undefined && ALLOWED_FIELDS.includes(k));
-    const values = fields.map(k => record[k]);
+    const UUID_COLUMNS = new Set(['lead_id', 'course_id', 'campaign_id', 'conversation_id', 'deal_id']);
+    const JSON_COLUMNS = new Set(['metadata']);
+
+    const fields = REAL_COLUMNS.filter(k => d[k] !== undefined);
+    const values = fields.map(k => (JSON_COLUMNS.has(k) ? JSON.stringify(d[k]) : d[k]));
     const placeholders = fields.map((k, i) => {
-      const isUuid = ['lead_id', 'assigned_to'].includes(k);
-      return `$${i + 1}${isUuid ? '::uuid' : ''}`;
+      const suffix = UUID_COLUMNS.has(k) ? '::uuid' : JSON_COLUMNS.has(k) ? '::jsonb' : '';
+      return `$${i + 1}${suffix}`;
     }).join(', ');
 
     const results = await this.prisma.executeInTenantSchema<Opportunity[]>(
@@ -181,8 +199,14 @@ export class OpportunitiesRepository {
 
       const allOpps = opps || [];
 
-      const kanbanStages = STAGES.map(s => {
-          const stageOpps = allOpps.filter((o: any) => o.stage === s.key);
+      const knownStageKeys = STAGES.map(s => s.key);
+      const kanbanStages = STAGES.map((s, idx) => {
+          const stageOpps = allOpps.filter((o: any) =>
+              o.stage === s.key ||
+              // First column also catches opportunities whose stage matches no configured
+              // column (null / legacy / custom-stage mismatch) so a card is never silently
+              // dropped from the board.
+              (idx === 0 && (!o.stage || !knownStageKeys.includes(o.stage))));
           const totalValue = stageOpps.reduce((sum: number, o: any) => sum + parseFloat(o.estimated_value || 0), 0);
 
           return {
@@ -197,7 +221,7 @@ export class OpportunitiesRepository {
                   const daysInStage = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
                   return {
                       id: o.id,
-                      title: o.course_name || o.campaign_name || 'Oportunidad',
+                      title: o.course_name || o.campaign_name || o.metadata?.title || 'Oportunidad',
                       contactName: `${o.first_name || ''} ${o.last_name || ''}`.trim() || 'Desconocido',
                       contactPhone: o.phone || '',
                       value: parseFloat(o.estimated_value || o.course_price || 0),

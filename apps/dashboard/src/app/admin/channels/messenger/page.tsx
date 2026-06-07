@@ -17,6 +17,7 @@ import {
     Loader2,
 } from "lucide-react";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 declare global {
     interface Window {
@@ -32,6 +33,7 @@ const MESSENGER_CONFIG_ID = process.env.NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID
 export default function MessengerSetupPage() {
     const t = useTranslations("channels");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [status, setStatus] = useState<any>(null);
@@ -218,6 +220,13 @@ export default function MessengerSetupPage() {
                     {isConnected ? t("connected") : t("disconnected")}
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("channelsMessenger.title")}
+                description={tHelp("channelsMessenger.description")}
+                tips={tHelp.raw("channelsMessenger.tips") as string[]}
+                mediaKey="channelsMessenger"
+            />
 
             {/* Alert Message */}
             {message.text && (

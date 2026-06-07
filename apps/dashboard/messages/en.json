@@ -6037,6 +6037,86 @@
         "Emergency requests that have been waiting more than 30 minutes without attention are highlighted in red — handle them first to avoid cancellations.",
         "The 'Advance' button moves the request to the next state in the flow (pending → quoted → scheduled → dispatched → in progress → completed) without opening the modal."
       ]
+    },
+    "channelsEmail": {
+      "title": "How do I connect the email channel?",
+      "description": "The email channel lets you send outbound messages from Parallly using your own SMTP server or the SendGrid API. To connect it you need an active provider account (Gmail/Workspace, Outlook, SendGrid or another SMTP) and access to the authentication credentials.",
+      "tips": [
+        "Choose your provider: click 'SMTP' or 'SendGrid' in the 'Provider' section, then expand the settings using the arrow. For Gmail use host 'smtp.gmail.com', port 587 and TLS encryption; enable 'App Passwords' in your Google account if you have 2FA active.",
+        "Fill in the sender fields: enter the email address messages will be sent from in 'From Email' (required) and the visible name in 'From Name'. Optionally add a 'Reply-To' address if you want replies to go to a different inbox.",
+        "If you use SendGrid as provider, paste your API Key (starts with 'SG.') in the corresponding field. Make sure the key has the 'Mail Send' permission enabled in your SendGrid dashboard.",
+        "Troubleshooting: if the status stays 'Not configured' after saving, check that 'From Email' is a valid address and that your SMTP credentials are correct. For Gmail the password must be a 16-character 'App Password', not your regular account password."
+      ]
+    },
+    "channelsInstagram": {
+      "title": "How do I connect Instagram DM?",
+      "description": "The Instagram DM channel lets your AI agent respond to direct messages on Instagram from Parallly via Meta's official OAuth. To connect it you need a 'Professional' Instagram account (Business or Creator) linked to a Facebook Page.",
+      "tips": [
+        "Key prerequisite: your Instagram account must be a 'Business' or 'Creator' type and linked to a Facebook Page. If you have a personal account, convert it to a professional one in Instagram's settings before continuing.",
+        "Click 'Connect with Instagram': a Meta popup will open. Log in with the Instagram account you want to connect, accept the 'instagram_business_basic' and 'instagram_business_manage_messages' permissions and complete the flow.",
+        "After authorizing, the panel shows the account name, profile picture, and token expiration date (long-lived tokens last ~60 days). The system renews the token automatically, but if you see the 'Expired token' alert, click 'Reconnect'.",
+        "Troubleshooting: if the popup doesn't open, disable the browser's popup blocker for this site. If the button stays on 'Connecting...' indefinitely, refresh the page and try again; the flow uses BroadcastChannel to communicate the result between windows."
+      ]
+    },
+    "channelsMessenger": {
+      "title": "How do I connect Messenger?",
+      "description": "The Messenger channel connects your AI agent to your Facebook business page's Messenger conversations using the official Facebook login (FB SDK). To connect it you need to be an administrator of the Facebook Page you want to link.",
+      "tips": [
+        "Prerequisite: you must be an administrator of the Facebook Page you want to connect. The page must have 'Messages' enabled in its settings (Settings → General → Messages). If the page doesn't appear in the selector, check your role.",
+        "Click 'Connect with Facebook': the Facebook login dialog will open. Sign in with your Facebook account, select the business page and grant the 'pages_messaging', 'pages_show_list' and 'pages_manage_metadata' permissions.",
+        "After authorizing, the panel lists the connected pages with their photo, name and ID. You can connect multiple pages in the same tenant if your plan allows it. Each page is associated with an AI agent.",
+        "Troubleshooting: if the 'Connect with Facebook' button is disabled when you arrive, wait 1-2 seconds for the Facebook SDK to load. If the error says 'configIdNotSet', the platform administrator needs to set the 'NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID' environment variable on the server."
+      ]
+    },
+    "channelsSms": {
+      "title": "How do I connect the SMS channel?",
+      "description": "The SMS channel sends and receives text messages via Twilio. To connect it you need an active Twilio account with a purchased phone number and the authentication credentials from your Twilio project.",
+      "tips": [
+        "Get your credentials: go to console.twilio.com and copy the 'Account SID' and 'Auth Token' shown at the top of the dashboard. These are the two values you need to enter in Parallly to authenticate the connection.",
+        "Buy or use a Twilio number: in the Twilio console go to 'Phone Numbers → Manage → Active Numbers'. If you don't have one, buy a number with SMS capability. Copy the number in E.164 format (e.g. +15551234567) to enter it in Parallly.",
+        "Set up the Twilio webhook: in the Twilio console, select your number and in the 'Messaging' section paste Parallly's webhook URL in the 'A message comes in' field. Make sure to select the POST method.",
+        "Troubleshooting: if messages aren't arriving, check that the webhook is saved in Twilio and that the number has SMS capability enabled. Twilio trial numbers can only send to verified numbers; switch to a production number to receive from any contact."
+      ]
+    },
+    "channelsTelegram": {
+      "title": "How do I connect Telegram to Parallly?",
+      "description": "Telegram connects through a bot you create yourself in minutes. You need an active Telegram account and access to @BotFather to get the token.",
+      "tips": [
+        "Open Telegram and search '@BotFather'. Send /newbot, choose a display name and a username ending in 'bot' (e.g. MyStoreBot). BotFather will give you a token in the format '123456789:AAH...'.",
+        "Copy the full token and paste it in the 'Bot Token' field in step 2. The token is sensitive: never share it or include it in public code.",
+        "Click 'Connect' and wait for validation. If you see your bot name confirmed, the webhook was registered automatically.",
+        "If the token is rejected, make sure you copied it in full (including the colon ':' and all characters). If you revoked it in BotFather, generate a new one with /revoke and try again."
+      ]
+    },
+    "channelsWhatsapp": {
+      "title": "How do I connect WhatsApp Business to Parallly?",
+      "description": "The connection uses Meta's Embedded Signup: an official flow that links your WhatsApp Business number directly from the dashboard. You need a Meta Business account and a phone number not already linked to the personal WhatsApp app.",
+      "tips": [
+        "Before starting, create or verify your account at 'business.facebook.com'. The number you use must be free from personal WhatsApp (if it's on your phone, remove it from the app first).",
+        "Choose the right route: 'New number' to start fresh, 'Coexistence' if you already use that number in the WhatsApp Business app and want the AI to share it, or 'Migration' to move the number to the API (you'll stop receiving messages in the app).",
+        "Click the green connect button and complete Meta's flow in the popup window. Grant the requested permissions and select the Facebook page linked to your business.",
+        "If you see the error 'number already registered', make sure it is not active in another Meta Business account. For the Migration route, disable two-step verification in the WhatsApp Business app before starting."
+      ]
+    },
+    "channelsWhatsappProfile": {
+      "title": "How do I edit the WhatsApp Business public profile?",
+      "description": "From here you manage the information customers see when they open your chat on WhatsApp: photo, description, address, website, and industry. Changes sync directly with the Meta API.",
+      "tips": [
+        "To upload a profile photo, click the camera icon. Only JPG or PNG files up to 5 MB are accepted. The image is cropped to a circle, so use centered square images.",
+        "Fill in the 'Description' field with up to 512 characters: explain what your business does, your hours, and value proposition. This text appears on the profile before customers message you.",
+        "Choose the 'Vertical' (industry) that best describes your business: this helps Meta categorize your account. Click 'Save changes' after editing any field.",
+        "If the name status shows 'DECLINED', the verified name was rejected by Meta. Make sure it matches your business legal name exactly. A red 'Quality' indicator means you should reduce unwanted or spam messages to avoid restrictions."
+      ]
+    },
+    "channelsWhatsappTemplates": {
+      "title": "How do I create and manage WhatsApp templates?",
+      "description": "Templates are Meta pre-approved messages you can send when the 24-hour conversation window is closed. You need WhatsApp Business connected to create or sync templates.",
+      "tips": [
+        "To create a template, click '+ New template'. Set the name (lowercase only, no spaces), language, category (UTILITY for transactional, MARKETING for promotions, AUTHENTICATION for codes), and message body. Use {{1}}, {{2}} for dynamic variables.",
+        "Click 'Sync from Meta' to import templates already approved in your Meta Business Manager account. This updates the status (APPROVED / PENDING / REJECTED) of each template.",
+        "A PENDING template can take from minutes to 24 hours to be reviewed by Meta. APPROVED templates appear in green and can already be used in broadcast campaigns or the AI agent.",
+        "If a template is REJECTED, check the rejection reason shown on the card (e.g. 'Promotional content in UTILITY category'). Adjust the content to match the correct category and create a new version."
+      ]
     }
   },
   "helpAssistant": {

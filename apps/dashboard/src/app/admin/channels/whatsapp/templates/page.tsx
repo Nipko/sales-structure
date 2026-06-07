@@ -9,6 +9,7 @@ import {
     ArrowLeft, MessageSquare, RefreshCw, CheckCircle, Clock,
     XCircle, Sprout, AlertCircle, Info, Plus, X, Loader2,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 type Template = {
     id: string;
@@ -379,6 +380,7 @@ function CreateTemplateModal({ t, onClose, onCreated }: {
 
 export default function WhatsAppTemplatesPage() {
     const t = useTranslations("whatsappTemplates");
+    const tHelp = useTranslations("help");
     const router = useRouter();
     const [templates, setTemplates] = useState<Template[]>([]);
     const [loading, setLoading] = useState(true);
@@ -471,6 +473,13 @@ export default function WhatsAppTemplatesPage() {
                     </div>
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("channelsWhatsappTemplates.title")}
+                description={tHelp("channelsWhatsappTemplates.description")}
+                tips={tHelp.raw("channelsWhatsappTemplates.tips") as string[]}
+                mediaKey="channelsWhatsappTemplates"
+            />
 
             {/* Alert */}
             {message && (

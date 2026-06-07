@@ -19,6 +19,7 @@ import {
     Clock,
 } from "lucide-react";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const BRAND_COLOR = "#E4405F";
 const INSTAGRAM_APP_ID = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || "1472258884595741";
@@ -27,6 +28,7 @@ const INSTAGRAM_REDIRECT_URI = process.env.NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI ||
 export default function InstagramSetupPage() {
     const t = useTranslations("channels");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
     const [status, setStatus] = useState<any>(null);
@@ -194,6 +196,13 @@ export default function InstagramSetupPage() {
                     {isConnected && !hasTokenError ? t("connected") : t("disconnected")}
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("channelsInstagram.title")}
+                description={tHelp("channelsInstagram.description")}
+                tips={tHelp.raw("channelsInstagram.tips") as string[]}
+                mediaKey="channelsInstagram"
+            />
 
             {/* Alert Message */}
             {message.text && (

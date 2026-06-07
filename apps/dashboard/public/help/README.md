@@ -103,6 +103,13 @@ that benefit from a walkthrough (e.g. `settingsSecurity`, `settingsScoringConfig
 `treatmentPlans`, `serviceRequests`. Each only shows for its industry. Drop a
 `/help/{key}.gif` per page if a walkthrough helps (e.g. `listings`, `treatmentPlans`).
 
+## Phase 4 — Channel setup (added, focus: how to connect)
+7 channel setup pages now have help: `channelsEmail`, `channelsInstagram`,
+`channelsMessenger`, `channelsTelegram`, `channelsWhatsapp`, `channelsWhatsappProfile`,
+`channelsWhatsappTemplates`. (`channels/sms` is a redirect stub — its `channelsSms`
+content is staged in i18n for when the SMS UI ships.) GIFs of the connect flow are
+high-value here — prioritize `channelsWhatsapp` and `channelsInstagram`.
+
 ## New pages to add help to (later phases — see docs/help-panel-audit-2026-06.md)
 When adding `HelpPanel` to a new page, also add `mediaKey="{newKey}"` and a
 matching `help.{newKey}` entry in all 4 `messages/*.json`.

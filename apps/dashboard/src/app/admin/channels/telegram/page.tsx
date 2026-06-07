@@ -20,6 +20,7 @@ import {
     Zap,
 } from "lucide-react";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const BRAND = "#0088cc";
 
@@ -27,6 +28,7 @@ export default function TelegramSetupPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("channels");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
 
     const [status, setStatus] = useState<any>(null);
     const [botToken, setBotToken] = useState("");
@@ -266,6 +268,13 @@ export default function TelegramSetupPage() {
                     {t("telegram.setupSubtitle")}
                 </p>
             </div>
+
+            <HelpPanel
+                title={tHelp("channelsTelegram.title")}
+                description={tHelp("channelsTelegram.description")}
+                tips={tHelp.raw("channelsTelegram.tips") as string[]}
+                mediaKey="channelsTelegram"
+            />
 
             {/* Step indicator */}
             <div className="flex items-center justify-center gap-2 mb-8">

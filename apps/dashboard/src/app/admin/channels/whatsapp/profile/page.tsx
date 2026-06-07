@@ -10,6 +10,7 @@ import {
     CheckCircle, AlertTriangle, XCircle, Clock, Info, Shield, Globe,
     MessageSquare, BadgeCheck, Smartphone, Radio, HelpCircle,
 } from "lucide-react";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 const VERTICALS = [
     "UNDEFINED", "OTHER", "AUTO", "BEAUTY", "APPAREL", "EDU", "ENTERTAIN",
@@ -53,6 +54,7 @@ interface Profile {
 export default function WhatsAppProfilePage() {
     const t = useTranslations("whatsappProfile");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     const router = useRouter();
 
     const [loading, setLoading] = useState(true);
@@ -256,6 +258,13 @@ export default function WhatsAppProfilePage() {
                     {refreshing ? t("refreshing") : t("refresh")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("channelsWhatsappProfile.title")}
+                description={tHelp("channelsWhatsappProfile.description")}
+                tips={tHelp.raw("channelsWhatsappProfile.tips") as string[]}
+                mediaKey="channelsWhatsappProfile"
+            />
 
             {/* Feedback */}
             {feedback && (

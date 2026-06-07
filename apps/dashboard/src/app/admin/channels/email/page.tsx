@@ -14,6 +14,7 @@ import {
     Info,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -72,6 +73,7 @@ export default function EmailChannelPage() {
     const { activeTenantId } = useTenant();
     const { user } = useAuth();
     const t = useTranslations("emailChannel");
+    const tHelp = useTranslations("help");
 
     const [config, setConfig] = useState<EmailChannelConfig>({ ...DEFAULT_CONFIG });
     const [hasExisting, setHasExisting] = useState(false);
@@ -183,6 +185,12 @@ export default function EmailChannelPage() {
                 subtitle={t("subtitle")}
                 icon={Mail}
                 iconColor="bg-blue-500/10"
+            />
+            <HelpPanel
+                title={tHelp("channelsEmail.title")}
+                description={tHelp("channelsEmail.description")}
+                tips={tHelp.raw("channelsEmail.tips") as string[]}
+                mediaKey="channelsEmail"
             />
 
             {/* ── Toast ─────────────────────────────────────── */}

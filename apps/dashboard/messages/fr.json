@@ -6008,6 +6008,86 @@
         "Les demandes urgentes qui attendent depuis plus de 30 minutes sans réponse sont surlignées en rouge — traite-les en premier pour éviter les annulations.",
         "Le bouton 'Avancer' fait passer la demande à l'état suivant du flux (en attente → devisé → planifié → expédié → en cours → terminé) sans ouvrir le modal."
       ]
+    },
+    "channelsEmail": {
+      "title": "Comment connecter le canal email ?",
+      "description": "Le canal email te permet d'envoyer des messages sortants depuis Parallly en utilisant ton propre serveur SMTP ou l'API SendGrid. Pour le connecter, tu as besoin d'un compte actif chez un fournisseur (Gmail/Workspace, Outlook, SendGrid ou autre SMTP) et des identifiants d'authentification.",
+      "tips": [
+        "Choisis ton fournisseur : clique sur 'SMTP' ou 'SendGrid' dans la section 'Provider', puis déploie les paramètres avec la flèche. Pour Gmail, utilise l'hôte 'smtp.gmail.com', le port 587 et le chiffrement TLS ; active les 'Mots de passe d'application' dans ton compte Google si tu as la 2FA activée.",
+        "Remplis les champs de l'expéditeur : saisis l'adresse d'envoi dans 'From Email' (obligatoire) et le nom visible dans 'From Name'. Tu peux aussi ajouter un 'Reply-To' différent si tu veux recevoir les réponses dans une autre boîte.",
+        "Si tu utilises SendGrid comme fournisseur, colle ta clé API (commence par 'SG.') dans le champ correspondant. Assure-toi que la clé a la permission 'Mail Send' activée dans ton dashboard SendGrid.",
+        "Dépannage : si le statut reste 'Non configuré' après l'enregistrement, vérifie que 'From Email' est une adresse valide et que tes identifiants SMTP sont corrects. Pour Gmail, le mot de passe doit être un 'Mot de passe d'application' de 16 caractères, pas ton mot de passe habituel."
+      ]
+    },
+    "channelsInstagram": {
+      "title": "Comment connecter Instagram DM ?",
+      "description": "Le canal Instagram DM permet à ton agent IA de répondre aux messages directs sur Instagram depuis Parallly via l'OAuth officiel de Meta. Pour le connecter, tu as besoin d'un compte Instagram de type 'Professionnel' (Entreprise ou Créateur) lié à une page Facebook.",
+      "tips": [
+        "Prérequis clé : ton compte Instagram doit être de type 'Entreprise' ou 'Créateur' et être lié à une page Facebook. Si tu as un compte personnel, convertis-le en compte professionnel dans les paramètres Instagram avant de continuer.",
+        "Clique sur 'Connecter avec Instagram' : une fenêtre pop-up Meta s'ouvrira. Connecte-toi avec le compte Instagram à relier, accepte les permissions 'instagram_business_basic' et 'instagram_business_manage_messages' et complète le flux.",
+        "Après autorisation, le panneau affiche le nom du compte, la photo de profil et la date d'expiration du token (les tokens longue durée durent ~60 jours). Le système renouvelle le token automatiquement, mais si tu vois l'alerte 'Token expiré', clique sur 'Reconnecter'.",
+        "Dépannage : si la pop-up ne s'ouvre pas, désactive le bloqueur de pop-ups du navigateur pour ce site. Si le bouton reste sur 'Connexion en cours...' indéfiniment, actualise la page et réessaie ; le flux utilise BroadcastChannel pour communiquer le résultat entre fenêtres."
+      ]
+    },
+    "channelsMessenger": {
+      "title": "Comment connecter Messenger ?",
+      "description": "Le canal Messenger connecte ton agent IA aux conversations Facebook Messenger de ta page professionnelle via le login officiel Facebook (FB SDK). Pour le connecter, tu dois être administrateur de la page Facebook que tu veux relier.",
+      "tips": [
+        "Prérequis : tu dois être administrateur de la page Facebook à connecter. La page doit avoir 'Messages' activé dans ses paramètres (Paramètres → Général → Messages). Si la page n'apparaît pas dans le sélecteur, vérifie ton rôle sur la page.",
+        "Clique sur 'Connecter avec Facebook' : la fenêtre de connexion Facebook s'ouvrira. Connecte-toi avec ton compte Facebook, sélectionne la page professionnelle et accorde les permissions 'pages_messaging', 'pages_show_list' et 'pages_manage_metadata'.",
+        "Après autorisation, le panneau liste les pages connectées avec leur photo, nom et ID. Tu peux connecter plusieurs pages dans le même tenant si ton plan le permet. Chaque page est associée à un agent IA.",
+        "Dépannage : si le bouton 'Connecter avec Facebook' est désactivé à l'arrivée, attends 1-2 secondes le temps que le SDK Facebook charge. Si l'erreur indique 'configIdNotSet', l'administrateur de la plateforme doit configurer la variable 'NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID' sur le serveur."
+      ]
+    },
+    "channelsSms": {
+      "title": "Comment connecter le canal SMS ?",
+      "description": "Le canal SMS envoie et reçoit des messages texte via Twilio. Pour le connecter, tu as besoin d'un compte Twilio actif avec un numéro de téléphone acheté et les identifiants d'authentification de ton projet.",
+      "tips": [
+        "Obtiens tes identifiants : va sur console.twilio.com et copie le 'Account SID' et le 'Auth Token' affichés en haut du dashboard. Ce sont les deux valeurs à saisir dans Parallly pour authentifier la connexion.",
+        "Achète ou utilise un numéro Twilio : dans la console Twilio, va dans 'Phone Numbers → Manage → Active Numbers'. Si tu n'en as pas, achète un numéro avec la capacité SMS. Copie le numéro au format E.164 (ex: +15551234567) pour le saisir dans Parallly.",
+        "Configure le webhook Twilio : dans la console Twilio, sélectionne ton numéro et dans la section 'Messaging' colle l'URL de webhook de Parallly dans le champ 'A message comes in'. Assure-toi de sélectionner la méthode POST.",
+        "Dépannage : si les messages n'arrivent pas, vérifie que le webhook est enregistré dans Twilio et que le numéro a la capacité SMS activée. Les numéros d'essai Twilio ne peuvent envoyer qu'à des numéros vérifiés ; passe à un numéro de production pour recevoir de n'importe quel contact."
+      ]
+    },
+    "channelsTelegram": {
+      "title": "Comment connecter Telegram à Parallly ?",
+      "description": "Telegram se connecte via un bot que vous créez vous-même en quelques minutes. Vous avez besoin d'un compte Telegram actif et d'un accès à @BotFather pour obtenir le token.",
+      "tips": [
+        "Ouvrez Telegram et recherchez '@BotFather'. Envoyez /newbot, choisissez un nom d'affichage et un username se terminant par 'bot' (ex. MonMagasinBot). BotFather vous donnera un token au format '123456789:AAH...'.",
+        "Copiez le token complet et collez-le dans le champ 'Bot Token' de l'étape 2. Le token est sensible : ne le partagez pas et ne l'incluez pas dans du code public.",
+        "Cliquez sur 'Connecter' et attendez la validation. Si le nom de votre bot apparaît confirmé, le webhook a été enregistré automatiquement.",
+        "Si le token est rejeté, vérifiez qu'il a bien été copié en entier (y compris les deux-points ':' et tous les caractères). Si vous l'avez révoqué dans BotFather, générez-en un nouveau avec /revoke et réessayez."
+      ]
+    },
+    "channelsWhatsapp": {
+      "title": "Comment connecter WhatsApp Business à Parallly ?",
+      "description": "La connexion utilise l'Embedded Signup de Meta : un flux officiel qui relie votre numéro WhatsApp Business directement depuis le tableau de bord. Vous avez besoin d'un compte Meta Business et d'un numéro de téléphone non lié à l'application WhatsApp personnelle.",
+      "tips": [
+        "Avant de commencer, créez ou vérifiez votre compte sur 'business.facebook.com'. Le numéro doit être libre de WhatsApp personnel (s'il est sur votre téléphone, supprimez-le d'abord de l'application).",
+        "Choisissez la bonne route : 'Nouveau numéro' pour partir de zéro, 'Coexistence' si vous utilisez déjà ce numéro dans l'application WhatsApp Business et souhaitez que l'IA le partage, ou 'Migration' pour transférer le numéro vers l'API (vous ne recevrez plus de messages dans l'application).",
+        "Cliquez sur le bouton vert de connexion et complétez le flux Meta dans la fenêtre pop-up. Accordez les autorisations demandées et sélectionnez la page Facebook liée à votre entreprise.",
+        "Si vous voyez l'erreur 'numéro déjà enregistré', vérifiez qu'il n'est pas actif dans un autre compte Meta Business. Pour la route Migration, désactivez la vérification en deux étapes dans l'application WhatsApp Business avant de commencer."
+      ]
+    },
+    "channelsWhatsappProfile": {
+      "title": "Comment modifier le profil public WhatsApp Business ?",
+      "description": "Depuis cette page, vous gérez les informations que vos clients voient en ouvrant votre chat WhatsApp : photo, description, adresse, site web et secteur d'activité. Les modifications sont synchronisées directement avec l'API Meta.",
+      "tips": [
+        "Pour télécharger une photo de profil, cliquez sur l'icône appareil photo. Seuls les fichiers JPG ou PNG de 5 Mo maximum sont acceptés. L'image est recadrée en cercle, utilisez donc des images carrées centrées.",
+        "Remplissez le champ 'Description' avec jusqu'à 512 caractères : expliquez ce que fait votre entreprise, vos horaires et votre proposition de valeur. Ce texte apparaît sur le profil avant que le client vous écrive.",
+        "Choisissez le 'Vertical' (secteur) qui décrit le mieux votre entreprise : cela aide Meta à catégoriser votre compte. Cliquez sur 'Enregistrer les modifications' après avoir modifié un champ.",
+        "Si l'état du nom affiche 'DECLINED', le nom vérifié a été rejeté par Meta. Assurez-vous qu'il correspond exactement au nom légal de votre entreprise. Un indicateur 'Qualité' rouge signifie que vous devez réduire les messages indésirables ou le spam pour éviter des restrictions."
+      ]
+    },
+    "channelsWhatsappTemplates": {
+      "title": "Comment créer et gérer des modèles WhatsApp ?",
+      "description": "Les modèles sont des messages pré-approuvés par Meta que vous pouvez envoyer lorsque la fenêtre de conversation de 24 heures est fermée. Vous devez avoir WhatsApp Business connecté pour créer ou synchroniser des modèles.",
+      "tips": [
+        "Pour créer un modèle, cliquez sur '+ Nouveau modèle'. Définissez le nom (minuscules uniquement, sans espaces), la langue, la catégorie (UTILITY pour les transactionnels, MARKETING pour les promotions, AUTHENTICATION pour les codes) et le corps du message. Utilisez {{1}}, {{2}} pour les variables dynamiques.",
+        "Cliquez sur 'Synchroniser depuis Meta' pour importer les modèles déjà approuvés dans votre compte Meta Business Manager. Cela met à jour le statut (APPROVED / PENDING / REJECTED) de chaque modèle.",
+        "Un modèle PENDING peut prendre de quelques minutes à 24 heures pour être examiné par Meta. Les modèles APPROVED apparaissent en vert et peuvent déjà être utilisés dans des campagnes de diffusion ou dans l'agent IA.",
+        "Si un modèle est REJECTED, consultez la raison du rejet affichée sur la carte (ex. : 'Contenu promotionnel dans la catégorie UTILITY'). Ajustez le contenu pour correspondre à la bonne catégorie et créez une nouvelle version."
+      ]
     }
   },
   "helpAssistant": {

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 type Route = "new" | "coexistence" | "migration";
 
@@ -60,6 +61,7 @@ export default function WhatsAppSetupPage() {
     const tc = useTranslations("common");
     const t = useTranslations("channels");
     const tw = useTranslations("channels.whatsapp");
+    const tHelp = useTranslations("help");
     const twt = useTranslations("whatsappTemplates");
     const router = useRouter();
     const { user } = useAuth();
@@ -167,6 +169,13 @@ export default function WhatsAppSetupPage() {
                     )}
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("channelsWhatsapp.title")}
+                description={tHelp("channelsWhatsapp.description")}
+                tips={tHelp.raw("channelsWhatsapp.tips") as string[]}
+                mediaKey="channelsWhatsapp"
+            />
 
             {/* Alert */}
             {message.text && (

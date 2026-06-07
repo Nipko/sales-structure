@@ -5014,184 +5014,223 @@
       ]
     },
     "appointments": {
-      "title": "Como gerenciar compromissos?",
-      "description": "Agende compromissos, configure serviços com duração e preço, gerencie a disponibilidade da sua equipe e conecte calendários externos (Google/Microsoft).",
+      "title": "Como gerenciar agendamentos e disponibilidade?",
+      "description": "A seção de agendamentos é um calendário completo onde você visualiza, cria e edita as reservas dos seus clientes, configura serviços com duração e preço, e conecta o Google Calendar ou Microsoft para sincronização bidirecional. O agente IA usa essa configuração para agendar automaticamente.",
       "tips": [
-        "Configure seus serviços com preço e duração para que o agente de IA possa agendar automaticamente",
-        "Conecte o Google Agenda para sincronização bidirecional de compromissos",
-        "Os lembretes são enviados automaticamente 24h e 1h antes"
+        "Antes de ativar o agente para agendar, vá à aba 'Configuração' e salve seu horário de disponibilidade; sem esse passo, o bot responderá que não há horários disponíveis.",
+        "Na aba 'Serviços', crie cada serviço com sua duração, preço e intervalo de descanso; o agente só oferece serviços que estejam ativos.",
+        "Clique em qualquer célula do calendário para criar um agendamento manual; você também pode arrastar um agendamento existente para remarcá-lo.",
+        "Conecte o Google Calendar ou Microsoft em 'Configuração' para que agendamentos externos bloqueiem automaticamente esses horários e você evite reservas duplicadas.",
+        "Os lembretes de 24h e 1h são enviados automaticamente; ative ou desative-os com os toggles de 'Lembretes' na aba 'Configuração'."
       ]
     },
     "properties": {
-      "title": "Como gerenciar propriedades?",
-      "description": "Gerencie seus apartamentos de aluguel por temporada. Adicione fotos, comodidades, preços e regras. Sincronize a disponibilidade com Airbnb e Booking.com usando iCal.",
+      "title": "Como gerenciar suas propriedades para aluguel?",
+      "description": "A seção Propriedades é o seu catálogo de acomodações turísticas: cadastre cada unidade com fotos, quartos, banheiros, capacidade, diária, taxa de limpeza e comodidades. Use-a para que o agente de IA tenha tudo o que precisa para cotar e reservar automaticamente com seus clientes.",
       "tips": [
-        "O calendário é a visualização principal — mostra disponibilidade em verde, reservas em vermelho e bloqueios externos em laranja",
-        "Cole a URL do iCal do Airbnb/Booking para sincronizar automaticamente a cada 30 minutos",
-        "Copie sua URL de exportação e cole no Airbnb/Booking para que vejam suas reservas diretas"
+        "Clique em 'Nova propriedade' para cadastrar uma acomodação; o nome e o preço por noite são o mínimo para que o agente consiga cotar.",
+        "Marque as comodidades reais da unidade (WiFi, Piscina, Aceita pets, etc.) — o agente as menciona quando o cliente pergunta o que está incluído.",
+        "Configure a moeda correta (COP, USD, BRL, etc.) para que os preços sejam exibidos no contexto local dos seus clientes.",
+        "Defina 'Mínimo de noites' para evitar reservas de uma única noite que não são rentáveis; por exemplo, coloque 2 se seu mínimo é duas noites.",
+        "Clique no cartão de uma propriedade para acessar seus detalhes, enviar fotos e gerenciar o calendário de disponibilidade."
       ]
     },
     "broadcast": {
-      "title": "Como enviar campanhas?",
-      "description": "Envie mensagens em massa para seus contatos via WhatsApp usando templates aprovados pela Meta. Segmente seu público por tags, etapa ou segmentos salvos.",
+      "title": "Como criar e enviar uma campanha de broadcast?",
+      "description": "O Broadcast permite enviar mensagens em massa para seus contatos via WhatsApp ou Email de uma só vez, com rastreamento de entrega e leitura em tempo real. Use para promoções, avisos importantes ou reativação de clientes inativos.",
       "tips": [
-        "Você só pode enviar templates aprovados pela Meta (não mensagens livres)",
-        "Programe o envio para uma data e hora específica",
-        "Monitore as métricas: enviados, entregues, lidos, com falha"
+        "Clique em '+ Criar' e escolha o canal (WhatsApp ou Email); para WhatsApp, insira o nome exato do seu modelo aprovado pela Meta no campo 'Modelo'.",
+        "Em 'Audiência', escolha 'Todos os contatos' para alcançar toda a sua base, ou selecione um 'Segmento' salvo para atingir um grupo específico (ex.: leads qualificados deste mês).",
+        "Ative o botão 'A/B Test' (disponível nos planos Pro+) para testar duas versões da mensagem e deixar a plataforma identificar o vencedor pela taxa de leitura.",
+        "Deixe o campo de data vazio para salvar como rascunho e enviar manualmente com 'Enviar agora', ou agende uma data e hora exatas para envio automático.",
+        "Após o envio, clique na campanha para ver as métricas: destinatários, entregues (verde) e lidos (azul) na barra de progresso."
       ]
     },
     "automation": {
-      "title": "Como criar automações?",
-      "description": "Crie regras que rodam automaticamente quando um evento ocorre. Por exemplo: quando um lead quente chega, atribuir a um agente específico. Ou quando não há resposta em 4 horas, enviar acompanhamento.",
+      "title": "Como criar e gerenciar automações?",
+      "description": "As automações são regras do tipo 'se X acontecer, então faça Y' que rodam sozinhas em segundo plano. Use-as para enviar follow-ups, mudar etapas de leads, atribuir agentes ou adicionar tags sem intervenção manual.",
       "tips": [
-        "Cada regra tem: gatilho (quando), condições (se) e ações (então)",
-        "As automações de nutrição enviam acompanhamentos a leads que não respondem",
-        "Você pode ativar/desativar regras sem excluí-las"
+        "Crie uma regra com o botão '+ Nova regra' e escolha um trigger: por exemplo, 'Lead capturado' para dar as boas-vindas automaticamente a cada novo prospecto.",
+        "Adicione condições no passo 2 do wizard para filtrar: por exemplo, ativar a regra apenas se o canal for 'WhatsApp' e o score for maior que 60.",
+        "No passo 3, defina ações encadeadas: primeiro 'Mudar etapa' para 'Qualificado' e depois 'Enviar modelo' de boas-vindas, tudo em uma única regra.",
+        "Use o ícone de atividade (gráfico) de cada cartão para ver o histórico de execuções e confirmar que a regra está sendo disparada corretamente.",
+        "Ative ou desative uma regra com o toggle sem precisar excluí-la — ideal para pausar campanhas temporárias sem perder a configuração."
       ]
     },
     "agent": {
-      "title": "Como configurar o Agente de IA?",
-      "description": "Seu agente de IA responde automaticamente às mensagens dos seus clientes. Configure nome, personalidade, regras, tópicos proibidos e canais atribuídos. Use templates pré-criados para sua indústria.",
+      "title": "Como gerenciar seus Agentes IA?",
+      "description": "Os agentes IA são os assistentes virtuais que respondem automaticamente aos seus clientes no WhatsApp, Instagram, Messenger ou Telegram. Aqui você cria, duplica e organiza todos os seus agentes, e vê quais canais cada um tem atribuídos.",
       "tips": [
-        "Cada canal (WhatsApp, Instagram, etc.) pode ter um agente diferente",
-        "O agente respeita as regras e tópicos proibidos que você configurar",
-        "Teste seu agente na seção de Teste antes de ativá-lo"
+        "Clique em 'Novo agente' para escolher um modelo para seu setor (vendas, suporte, agenda, etc.) e dê um nome antes de criá-lo.",
+        "Use o menu de três pontos de cada cartão para 'Salvar como modelo' e reutilizar a configuração em agentes futuros.",
+        "Se você vir o banner vermelho de 'Canais sem agente', entre no agente e atribua o canal antes que as mensagens fiquem sem resposta.",
+        "O ícone de estrela no menu permite marcar um agente como 'Padrão'; esse é o que responde quando nenhum canal tem atribuição específica.",
+        "Duplique um agente existente com o ícone de cópia para criar variações (por ex., um em português e outro em inglês) sem configurar tudo do zero."
       ]
     },
     "knowledge": {
-      "title": "Como funciona a Base de Conhecimento?",
-      "description": "A base de conhecimento alimenta o agente de IA com informações sobre o seu negócio. Faça upload de documentos, crie FAQs e defina políticas. O agente pesquisa aqui antes de responder.",
+      "title": "Como gerenciar a Base de Conhecimento?",
+      "description": "A Base de Conhecimento é a memória do seu agente IA: faça upload de documentos, adicione URLs para rastrear automaticamente, crie FAQs e organize tudo em categorias. Quanto mais completa e atualizada ela estiver, mais precisas serão as respostas do agente aos seus clientes.",
       "tips": [
-        "As FAQs são a maneira mais rápida de ensinar o agente",
-        "Os documentos são processados com IA (RAG) para respostas contextuais",
-        "Quanto mais informações você carregar, melhor será a resposta do agente"
+        "Use o botão 'Upload em massa' para carregar vários arquivos (PDF, Word, TXT) de uma vez e atribuir uma categoria no mesmo passo.",
+        "Para páginas web que mudam com frequência (preços, menus, catálogos), use 'Adicionar URL' e ative o re-rastreamento automático para que o conteúdo se atualize sozinho.",
+        "Na aba 'Qualidade' você verá uma pontuação de 0 a 100 por documento — priorize os que têm pontuação baixa para reescrevê-los ou enriquecê-los com mais detalhes.",
+        "Na aba 'Análises' revise as 'Consultas sem resposta': são perguntas reais que o agente não conseguiu resolver; crie um artigo diretamente dessa lista clicando no ícone '+'.",
+        "Use a aba 'Lacunas' junto com 'Sugestões IA' para que o sistema detecte automaticamente quais temas faltam na sua base e proponha títulos e esboços de novos artigos."
       ]
     },
     "analyticsV2": {
-      "title": "Como ler as Análises?",
-      "description": "As análises mostram o desempenho do seu negócio: conversas, resolução por IA, campanhas, CSAT e mais. Use os filtros de data para diferentes períodos.",
+      "title": "Como ler as Análises avançadas?",
+      "description": "As análises avançadas reúnem em um só lugar o desempenho das conversas, IA, campanhas, automações e CSAT, com dados em tempo real e filtros de data. Use-as para tomar decisões baseadas em dados e detectar problemas antes que se agravem.",
       "tips": [
-        "A guia 'IA & Bot' mostra quantas conversas a IA resolveu sem intervenção humana",
-        "A guia 'CRM' vincula às análises de funil e velocidade do pipeline",
-        "Exporte relatórios em CSV pelo botão de download"
+        "O painel em tempo real (parte superior) atualiza a cada 30 segundos; se o 'Queue depth' subir, há mensagens aguardando atenção.",
+        "Mude o período com o 'DateRangePicker' e clique em 'Export CSV' para baixar os dados e trabalhar no Excel.",
+        "Na aba 'IA & Bot', verifique a 'AI Resolution Rate': se cair abaixo de 70%, revise as regras do agente ou enriqueça a base de conhecimento.",
+        "A aba 'Anomalias' alerta automaticamente quando uma métrica se afasta da média histórica (mais de 2σ), poupando monitoramento manual.",
+        "Use a aba 'Broadcast' para ver o funil das suas campanhas (total → enviado → entregue → lido) e otimizar modelos com baixa taxa de leitura."
       ]
     },
     "channels": {
-      "title": "Como conectar canais?",
-      "description": "Conecte seus canais de mensagens para receber e responder mensagens pela plataforma. WhatsApp usa Embedded Signup, Instagram e Messenger usam OAuth, Telegram usa Token de Bot.",
+      "title": "Como conectar e gerenciar canais?",
+      "description": "Canais é o hub onde você conecta cada rede de mensagens (WhatsApp, Instagram DM, Facebook Messenger, Telegram e Email) para que seu agente de IA possa receber e responder de todos os lugares. Cada cartão mostra se o canal está 'Conectado' ou 'Desconectado' e leva à sua configuração individual.",
       "tips": [
-        "WhatsApp requer uma conta WhatsApp Business",
-        "Instagram requer uma conta profissional conectada a uma página do Facebook",
-        "Cada canal pode ter um agente de IA diferente atribuído"
+        "Clique em 'Configurar' no cartão do WhatsApp para iniciar o Embedded Signup da Meta; você precisará de uma conta do WhatsApp Business e de uma página do Facebook.",
+        "Para o Instagram DM, a conta deve ser profissional e estar vinculada a uma página do Facebook; o processo usa OAuth e leva menos de 2 minutos.",
+        "Conectar o Messenger requer login com o Facebook (FB SDK) e seleção da página do seu negócio para obter o token de mensagens.",
+        "O Telegram só precisa de um Bot Token: crie um bot com o @BotFather, copie o token e cole nas configurações do canal.",
+        "Um canal conectado exibe o badge verde 'Conectado'; se aparecer o badge vermelho 'Desconectado', abra o cartão para reconectar e atribuir um agente de IA."
       ]
     },
     "users": {
-      "title": "Como gerenciar a equipe?",
-      "description": "Convide sua equipe por email. Cada pessoa cria sua própria senha ao aceitar o convite. Atribua funções (admin, supervisor, agente) e habilidades para roteamento inteligente.",
+      "title": "Como gerenciar a equipe e os convites?",
+      "description": "A seção Usuários exibe todos os membros da sua equipe com seu cargo, habilidades, status e empresa, e permite convidar novas pessoas por email. Use-a para controlar quem tem acesso, o que cada pessoa pode fazer e para quais conversas as mensagens são direcionadas.",
       "tips": [
-        "Clique em \"Enviar convite\" — a pessoa recebe um email com um link seguro",
-        "Os convites expiram em 14 dias; você pode reenviar ou cancelar na aba Convites",
-        "Os agentes veem apenas suas conversas; os supervisores veem tudo",
-        "As habilidades servem para o sistema encaminhar conversas ao agente certo"
+        "Clique em 'Convidar usuário', insira o email e escolha o cargo (Agente, Supervisor ou Admin); a pessoa receberá um email com um link seguro para criar sua senha.",
+        "Na aba 'Convites' você pode ver o status de cada convite (pendente, aceito, expirado ou revogado); se expirou, reenvie-o com o botão 'Reenviar'.",
+        "Adicione habilidades (skills) aos agentes — por exemplo 'vendas', 'suporte' ou 'técnico' — para que o sistema encaminhe automaticamente as mensagens ao agente mais adequado.",
+        "Use a barra de pesquisa e o filtro de cargos para encontrar rapidamente um membro da equipe; filtre por Agente, Supervisor ou Admin.",
+        "Clique em 'Editar' para atualizar nome, cargo, telefone, função ou status ativo/inativo de um usuário; desativar alguém impede o login até que você o reative."
       ]
     },
     "settings": {
-      "title": "O que posso configurar?",
-      "description": "As configurações são organizadas em 5 seções: Conta (seu perfil e segurança), Empresa (informações e horários), Ferramentas (atributos, macros, templates), IA (provedores e configuração) e Avançado (alertas e integrações).",
+      "title": "O que posso configurar nesta seção?",
+      "description": "Configurações é o painel central onde você ajusta tudo que controla o comportamento da plataforma: seu perfil e segurança, informações da empresa, ferramentas operacionais, integrações externas e parâmetros avançados de IA. Use-o sempre que precisar alterar o funcionamento do sistema ou adicionar novas conexões.",
       "tips": [
-        "Em 'Empresa' configure seu horário de atendimento — o agente o respeita",
-        "Em 'Ferramentas' personalize as etapas do pipeline e o scoring de leads",
-        "Em 'IA' configure qual modelo LLM usar (GPT-4, Claude, Gemini, etc.)"
+        "Em 'Conta' você pode alterar sua senha, ativar 2FA e configurar o horário de notificações para não ser interrompido fora do seu turno.",
+        "Em 'Empresa' encontrará 'Horário de atendimento': configure seus dias e horários reais para que o agente de IA saiba quando o suporte humano está disponível.",
+        "Em 'Operações' personalize as etapas do funil ('Etapas do pipeline') e os pesos do scoring de leads para adaptar ao seu processo de vendas.",
+        "Em 'Comunicação' crie macros com respostas frequentes para que seus agentes humanos respondam mais rápido pelo Inbox.",
+        "Em 'Integrações' conecte webhooks de saída, seu Web Chat ou uma integração vertical (Toast, Mindbody, Cliniko) para sincronizar dados com suas ferramentas externas."
       ]
     },
     "tenants": {
-      "title": "Painel Super Admin",
-      "description": "Gerencie todos os tenants da plataforma. Veja métricas de saúde, atividade, configuração de IA e status de faturamento de cada empresa.",
+      "title": "Como administrar os tenants da plataforma?",
+      "description": "A seção Tenants é o painel exclusivo do super administrador onde você pode ver, criar e gerenciar todas as empresas (tenants) registradas no Parallly. Use-a para monitorar o status de cada conta, gerenciar cobranças e assinaturas, revisar o progresso do onboarding e realizar ações administrativas como suspender ou personificar um tenant.",
       "tips": [
-        "O Health Score (0-100) indica o quão bem configurado está cada tenant",
-        "Use 'Personificar' para ver a plataforma como se fosse o tenant",
-        "A guia 'Atividade' mostra mensagens, conversas e handoffs"
+        "Use a aba 'Visão geral' para ver a tabela completa de tenants com plano, status da assinatura, canais conectados e número de usuários; clique em 'Personificar' para entrar na plataforma como se fosse esse tenant.",
+        "A aba 'Onboarding' mostra quais contas não completaram a configuração inicial (sem canal conectado ou sem agente configurado) para que você possa entrar em contato.",
+        "Em 'Offboarding' gerencie tenants em processo de cancelamento: você pode suspendê-los com um motivo ou reativá-los se o cliente mudar de ideia.",
+        "A aba 'Faturamento' consolida MRR, ARR e status de pagamento de cada conta; identifique rapidamente assinaturas vencidas ou contas em período de carência.",
+        "Em 'Plataforma' verifique a saúde do sistema em tempo real (filas do BullMQ, uso do Redis, latência da API) para detectar problemas antes que afetem os clientes."
       ]
     },
     "financials": {
-      "title": "O que as Finanças mostram?",
-      "description": "Métricas financeiras da plataforma: MRR, ARR, churn, LTV e rentabilidade por tenant. Visível apenas para super administradores.",
+      "title": "Como ler as Finanças da plataforma?",
+      "description": "Finanças é o painel de métricas SaaS exclusivo para o super administrador: exibe MRR, ARR, churn, LTV, custos de infraestrutura e rentabilidade por tenant. Use-o para tomar decisões sobre preços, planos e otimização de custos operacionais.",
       "tips": [
-        "O MRR é calculado das assinaturas ativas (não trials)",
-        "A guia 'Custos' mostra infraestrutura + custos de LLM por tenant",
-        "Gere snapshots mensais para rastreamento histórico"
+        "A aba 'Visão Geral' mostra o MRR atual e a projeção para 6 meses — revise-a mensalmente para detectar tendências de crescimento ou queda.",
+        "Na aba 'Receita' você verá o detalhamento por tipo de plano (Starter, Pro, Enterprise, Custom); compare o número de tenants em trial vs. ativos para medir a taxa de conversão.",
+        "A aba 'Clientes' inclui a tendência de churn — se houver picos de cancelamento em algum mês, investigue o que aconteceu nessa data (mudança de preço, incidente, etc.).",
+        "Em 'Custos' você pode ver os gastos de infraestrutura mais o custo LLM por tenant; identifique quais tenants consomem mais IA para ajustar os limites de plano.",
+        "Use o botão 'Atualizar dados' (aba 'Configurações') para gerar um snapshot mensal manual e manter o histórico financeiro atualizado."
       ]
     },
     "dashboard": {
-      "title": "Como funciona o Painel?",
-      "description": "Seu painel de controle centralizado com métricas fundamentais de integridade, volume de mensagens processadas, custos acumulados e atividade de leads em tempo real.",
+      "title": "O que o Painel de Controle mostra?",
+      "description": "O Painel de Controle é a visão geral do seu negócio: quantos leads chegaram hoje, quantos estão quentes, quantas mensagens a IA processou e quanto custou. Use-o toda manhã para saber onde concentrar sua energia antes de explorar o restante da plataforma.",
       "tips": [
-        "Monitore leads quentes para priorizar suas oportunidades comerciais",
-        "Acompanhe diariamente o custo de IA acumulado para otimizar seus orçamentos",
-        "Use o widget de atividade para visualizar eventos ao vivo no fluxo de mensagens"
+        "O contador 'Leads Hoje' exibe novos contatos do dia — se o número estiver baixo, verifique se o canal de WhatsApp está ativo em 'Canais'.",
+        "O valor 'Custo IA Hoje' é atualizado em tempo real — se ultrapassar seu orçamento diário, ajuste o modelo LLM na seção 'IA'.",
+        "O card 'Atividade Recente' diferencia conversas (verde), handoffs (laranja) e pedidos (índigo) — clique em uma linha de handoff para abrir o chat direto no Inbox.",
+        "O gráfico 'Uso de Modelos' mostra qual LLM atendeu mais solicitações hoje e em qual porcentagem — útil para verificar se o roteador está usando o tier correto.",
+        "Se aparecer o banner amarelo 'Sem canal conectado', clique em 'Conectar canal' para ir diretamente à configuração de WhatsApp, Instagram ou Telegram."
       ]
     },
     "dripSequences": {
-      "title": "Como usar Sequências Drip?",
-      "description": "Envie fluxos automatizados de mensagens ao longo do tempo para nutrir seus leads. Defina esperas e condições de parada específicas para suspender o fluxo quando o cliente responder.",
+      "title": "Como funcionam as Sequências Drip?",
+      "description": "Uma sequência drip é uma série de mensagens enviadas automaticamente aos seus leads ao longo do tempo, com pausas configuradas entre cada uma. Use-a para nutrir prospects que ainda não estão prontos para comprar, sem precisar escrever cada mensagem manualmente.",
       "tips": [
-        "Configure tempos de espera orgânicos para que as mensagens não pareçam spam",
-        "Defina condições de parada robustas para evitar mensagens a quem já respondeu",
-        "Analise estatísticas de inscritos e ativos para avaliar o sucesso de sua nutrição"
+        "Clique em '+ Nova Sequência' para criar uma; escolha o gatilho (ex.: 'Lead capturado') e adicione cada etapa com seu conteúdo e o tempo de espera antes da próxima mensagem.",
+        "Ative ou desative qualquer sequência com o interruptor toggle sem precisar excluí-la — útil para pausar durante férias ou campanhas especiais.",
+        "Verifique o contador 'Inscritos' em cada card para ver quantos leads estão nesse fluxo agora; se o número crescer muito rápido, confira se as condições de parada estão corretas.",
+        "Defina condições de parada ('stop_if') para que a sequência seja cancelada automaticamente quando o lead responder ou mudar de etapa — evita enviar mensagens a clientes que já converteram.",
+        "Use o tipo de etapa 'Gerada por IA' para que o agente escreva a mensagem com base no contexto do lead, em vez de sempre enviar o mesmo texto fixo."
       ]
     },
     "automationTemplates": {
-      "title": "Como usar Modelos?",
-      "description": "Acelere seus fluxos de trabalho importando regras e gatilhos pré-configurados especificamente para o seu setor (saúde, imobiliário, varejo, etc.).",
+      "title": "Como instalar um modelo de automação?",
+      "description": "Os modelos são automações prontas para uso, organizadas por categoria (nutrição, lembretes, carrinho abandonado, boas-vindas, etc.) e setor (saúde, imóveis, varejo…). Eles permitem ativar fluxos em segundos, sem precisar configurá-los do zero.",
       "tips": [
-        "Filtre pelo seu setor ou categoria para encontrar automações prontas para usar",
-        "Clique em qualquer modelo para visualizar a lógica dos gatilhos antes de instalar",
-        "Configure as variáveis e valores padrão no modelo para adaptá-lo ao seu negócio"
+        "Use a barra de busca e os filtros de 'Categoria' e 'Setor' para encontrar o modelo certo; por exemplo, filtre por 'abandoned_cart' + 'retail' para recuperar vendas perdidas.",
+        "Antes de instalar, veja o contador de 'Usos' (ícone de tendência) e a descrição do cartão para entender o que a automação faz.",
+        "Ao clicar em 'Instalar', um modal mostra o gatilho, o número de ações e as variáveis configuráveis — ajuste-as ao seu negócio antes de confirmar.",
+        "Após instalar, clique em 'Ver regras' no modal de sucesso para ir direto à seção de Automação e ativar ou editar a regra recém-criada.",
+        "Se não encontrar resultados, limpe os filtros com 'Limpar filtros' — a galeria completa inclui modelos universais para qualquer setor."
       ]
     },
     "crmAnalytics": {
-      "title": "Como interpretar as Análises de CRM?",
-      "description": "Analise a saúde comercial do seu negócio por meio de métricas de conversão, velocidade de fechamento, funil de etapas e desempenho da equipe de vendas.",
+      "title": "Como interpretar as Analíticas de CRM?",
+      "description": "As analíticas de CRM medem a saúde comercial do seu negócio: oportunidades ativas, valor do pipeline, taxa de conversão, velocidade de fechamento e desempenho por agente. Use-as para identificar gargalos no seu funil e tomar decisões baseadas em dados reais.",
       "tips": [
-        "Monitore o funil para detectar em qual etapa você perde mais oportunidades",
-        "Acompanhe a velocidade do lead para otimizar o tempo médio de fechamento",
-        "Consulte o leaderboard de agentes para incentivar e premiar os melhores resultados"
+        "Na aba 'Geral', revise os 5 KPIs principais (total de contatos, oportunidades ativas, valor do pipeline, pontuação média e taxa de conversão) para ter uma visão rápida do seu funil.",
+        "Na aba 'Funil', use o gráfico de barras horizontais por etapa para ver onde os leads se acumulam mais; uma etapa muito cheia pode indicar um gargalo no acompanhamento.",
+        "A aba 'Velocidade' mostra a média de dias que um lead passa em cada etapa — se 'Qualificado' tiver muitos dias, a equipe pode precisar de ações de fechamento mais rápidas.",
+        "Verifique a análise de Ganho/Perdido para sua taxa de fechamento e os motivos de perda mais frequentes; esses motivos indicam quais objeções trabalhar com o agente de IA.",
+        "Na aba 'Agentes', o leaderboard classifica sua equipe por negócios fechados e valor total — use-o para reconhecer o melhor vendedor do mês ou identificar quem precisa de suporte."
       ]
     },
     "agentAnalytics": {
-      "title": "Como avaliar o Desempenho de Agentes?",
-      "description": "Meça a eficiência de seus agentes de atendimento. Acompanhe tempos de primeira resposta, taxas de resolução e pontuações de satisfação (CSAT).",
+      "title": "Como avaliar o desempenho dos seus agentes?",
+      "description": "Esta seção mostra métricas de desempenho de cada agente IA e humano: conversas atendidas, tempo de primeira resposta, taxa de resolução e CSAT. Use-a para identificar quem está performando melhor e onde há gargalos.",
       "tips": [
-        "Compare o tempo médio de resposta com o P90 para evitar atrasos críticos com clientes",
-        "Monitore a satisfação (CSAT) de cada agente para garantir altos padrões de suporte",
-        "Use o detalhamento por canal para ver onde seus agentes estão concentrados"
+        "Altere o intervalo de datas com os seletores no topo para comparar semanas ou meses específicos.",
+        "Na aba 'Agents', clique no cabeçalho de uma coluna (ex.: 'Response Time') para ordenar e encontrar o agente mais lento.",
+        "O badge 'IA' (índigo) distingue agentes automáticos dos humanos (verde), para que você compare de forma justa.",
+        "Um CSAT em vermelho (abaixo de 3,0) é um sinal de alerta; revise as conversas recentes desse agente para entender a causa.",
+        "Use a aba 'CSAT' para ler o feedback literal dos clientes e identificar padrões que os números não mostram."
       ]
     },
     "reportBuilder": {
-      "title": "Como usar o Criador de Relatórios?",
-      "description": "Desenhe relatórios dinâmicos cruzando métricas como volume de mensagens, custo de IA e conversões de CRM. Escolha entre gráficos de barras, linhas, áreas ou pizza.",
+      "title": "Como criar e salvar relatórios personalizados?",
+      "description": "O Criador de Relatórios permite combinar até 16 métricas de negócio (conversas, custo de IA, leads, agendamentos, CSAT, etc.) em um gráfico de barras, linhas, área ou pizza, com o intervalo de datas que você precisar. Use-o para criar os relatórios exatos que sua equipe precisa e salvá-los para consulta rápida.",
       "tips": [
-        "Use favoritos para manter seus relatórios comerciais sempre fáceis de acessar",
-        "Exporte para CSV a partir da tela principal para processar os dados externamente",
-        "Combine múltiplas métricas para contrastar o volume contra o custo de IA"
+        "Clique em 'Novo relatório', escolha as métricas do grupo que interessa (por exemplo 'IA' para ver custo e taxa de resolução) e clique no ícone de olho para visualizar antes de salvar.",
+        "Escolha o tipo de gráfico conforme o que quer comunicar: 'Barras' para comparar períodos, 'Linha' para ver tendências, 'Pizza' para mostrar proporções.",
+        "Clique no ícone de estrela em um relatório salvo para adicioná-lo aos favoritos e encontrá-lo rapidamente no topo da lista.",
+        "Use o botão 'Duplicar' em um relatório existente para criar uma variante sem apagar o original — útil para comparar intervalos de datas diferentes.",
+        "Ajuste o intervalo de datas dentro do editor e pressione o ícone de olho para atualizar a visualização antes de salvar as alterações."
       ]
     },
     "compliance": {
-      "title": "Como gerenciar Conformidade & Legal?",
-      "description": "Centralize os textos de políticas de privacidade, termos de serviço e consentimentos explícitos. Administre registros de opt-out (não contato) e solicitações de exclusão de dados em conformidade com as regulamentações globais.",
+      "title": "Como gerenciar privacidade e conformidade legal?",
+      "description": "O Compliance centraliza tudo relacionado à proteção de dados: textos legais (políticas, termos, consentimentos), registros de opt-out, solicitações de exclusão e um log de auditoria completo. Use-o para cumprir o GDPR, a LGPD e regulamentações locais sem deixar nada ao acaso.",
       "tips": [
-        "Defina textos de consentimento específicos por canal (ex: WhatsApp vs. Web)",
-        "Mantenha o registro de opt-outs atualizado para evitar reclamações de spam",
-        "Use a aba de Auditoria para rastrear todas as alterações de políticas e assinaturas"
+        "Na aba 'Textos legais', crie um texto do tipo 'Política de privacidade' ou 'Consentimento' e atribua-o aos canais e agentes corretos com os chips de seleção — o agente o exibirá automaticamente.",
+        "Use o filtro de tipos (privacidade, termos, divulgação de IA, opt-in, etc.) para localizar rapidamente o texto que deseja editar ou versionar; o número da versão é incrementado automaticamente.",
+        "Na aba 'Opt-outs', revise os itens pendentes (badge vermelho na aba) e confirme ou rejeite cada um; confirmar bloqueia o contato para envios futuros, rejeitar o marca como falso positivo.",
+        "Quando um cliente solicita a exclusão de seus dados, o pedido aparece em 'Solicitações de exclusão' com status pendente — clique em 'Processar' para executar a exclusão e registrá-la no sistema.",
+        "A aba 'Auditoria' registra cada ação de conformidade com o responsável e o carimbo de data/hora; use-a em qualquer consulta jurídica ou revisão interna."
       ]
     },
     "featureRequests": {
-      "title": "Como sugerir e votar em Recursos?",
-      "description": "Proponha ideias de melhorias e vote nas sugestões de outros usuários. A equipe de produto do Parallly prioriza as funcionalidades mais votadas.",
+      "title": "Como sugerir e votar em funcionalidades?",
+      "description": "A seção de solicitações de funcionalidades é o canal direto entre você e a equipe de produto da Parallly: proponha ideias, vote nas dos outros e acompanhe o status de cada solicitação de 'Aberta' até 'Lançada'. Quanto mais votos uma ideia receber, mais prioritária ela se torna no roadmap.",
       "tips": [
-        "Pesquise antes de publicar para evitar duplicar uma ideia já proposta",
-        "Vote nas sugestões que considerar críticas para o crescimento do seu negócio",
-        "Consulte o Changelog para ver quais novas ferramentas e melhorias lançamos"
+        "Antes de criar uma nova solicitação, use a barra de pesquisa para verificar se já existe uma ideia similar — o sistema detecta duplicatas automaticamente e mostra a porcentagem de correspondência.",
+        "Clique no botão de votar (seta para cima) em qualquer card para adicionar seu voto; você pode retirá-lo depois se mudar de ideia.",
+        "Filtre por categoria (IA, Integrações, CRM, Análises, etc.) ou use o seletor de ordenação 'Mais Votadas' / 'Recentes' para encontrar rapidamente o que procura.",
+        "Mude para a aba 'Changelog' para ver quais solicitações do quadro já foram lançadas, agrupadas pelo mês de entrega.",
+        "Abra qualquer solicitação para ler comentários da equipe ou deixar o seu — respostas marcadas como 'Equipe' vêm diretamente da equipe de produto da Parallly."
       ]
     }
   },

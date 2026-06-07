@@ -5043,184 +5043,223 @@
       ]
     },
     "appointments": {
-      "title": "How to manage appointments?",
-      "description": "Schedule appointments, configure services with duration and price, manage your team's availability, and connect external calendars (Google/Microsoft).",
+      "title": "How do I manage appointments and availability?",
+      "description": "The appointments section is a full calendar where you view, create, and edit your customers' bookings, set up services with duration and price, and connect Google Calendar or Microsoft for two-way sync. The AI agent uses this configuration to schedule automatically.",
       "tips": [
-        "Configure your services with price and duration so the AI agent can schedule automatically",
-        "Connect Google Calendar for two-way appointment sync",
-        "Reminders are sent automatically 24h and 1h before"
+        "Before activating the agent to schedule, go to the 'Config' tab and save your availability schedule; without that step, the bot will reply that no time slots are available.",
+        "In the 'Services' tab, create each service with its duration, price, and rest buffer; the agent only offers services that are active.",
+        "Click any cell in the calendar to create a manual appointment; you can also drag an existing appointment to reschedule it.",
+        "Connect Google Calendar or Microsoft in 'Config' so that external appointments automatically block those slots and you avoid double bookings.",
+        "24h and 1h reminders are sent automatically; enable or disable them with the 'Reminders' toggles in the 'Config' tab."
       ]
     },
     "properties": {
-      "title": "How to manage properties?",
-      "description": "Manage your vacation rental apartments. Add photos, amenities, prices and rules. Sync availability with Airbnb and Booking.com using iCal.",
+      "title": "How do I manage my rental properties?",
+      "description": "The Properties section is your vacation rental catalog: register each unit with photos, rooms, bathrooms, capacity, nightly price, cleaning fee, and amenities. Use it so the AI agent has everything it needs to quote and book automatically with your clients.",
       "tips": [
-        "The calendar is the main view — shows availability in green, bookings in red and external blocks in orange",
-        "Paste the iCal URL from Airbnb/Booking to sync automatically every 30 minutes",
-        "Copy your export URL and paste it in Airbnb/Booking so they see your direct bookings"
+        "Click 'New property' to register a unit; the name and nightly price are the minimum required for the agent to quote it.",
+        "Check the actual amenities for each unit (WiFi, Pool, Pet friendly, etc.) — the agent mentions them when a client asks what is included.",
+        "Set the correct currency (COP, USD, MXN, etc.) so prices are shown in the local context your clients expect.",
+        "Set 'Minimum nights' to avoid unprofitable single-night bookings; for example, enter 2 if your minimum stay is two nights.",
+        "Click on a property card to open its detail page, upload photos, and manage the availability calendar."
       ]
     },
     "broadcast": {
-      "title": "How to send campaigns?",
-      "description": "Send mass messages to your contacts via WhatsApp using Meta-approved templates. Segment your audience by tags, stage or saved segments.",
+      "title": "How do I create and send a broadcast campaign?",
+      "description": "Broadcast lets you send bulk messages to your contacts via WhatsApp or Email in one shot, with real-time delivery and read tracking. Use it for promotions, important announcements, or re-engaging inactive customers.",
       "tips": [
-        "You can only send Meta-approved templates (not free-form messages)",
-        "Schedule the send for a specific date and time",
-        "Monitor metrics: sent, delivered, read, failed"
+        "Click '+ Create' and choose the channel (WhatsApp or Email); for WhatsApp, enter the exact name of your Meta-approved template in the 'Template' field.",
+        "Under 'Audience', pick 'All contacts' to reach your entire base, or select a saved 'Segment' to target a specific group (e.g., qualified leads from this month).",
+        "Toggle 'A/B Test' (available on Pro+ plans) to test two message versions and let the platform identify the winner based on read rate.",
+        "Leave the date field empty to save as a draft and send manually with 'Send now', or schedule an exact date and time for automatic delivery.",
+        "Once sent, click the campaign to see metrics: recipients, delivered (green), and read (blue) on the progress bar."
       ]
     },
     "automation": {
-      "title": "How to create automations?",
-      "description": "Create rules that run automatically when an event occurs. For example: when a hot lead arrives, assign to a specific agent. Or when there is no response in 4 hours, send a follow-up.",
+      "title": "How do I create and manage automations?",
+      "description": "Automations are 'if X happens, then do Y' rules that run on their own in the background. Use them to send follow-ups, change lead stages, assign agents, or add tags without manual intervention.",
       "tips": [
-        "Each rule has: trigger (when), conditions (if), and actions (then)",
-        "Nurturing automations send follow-ups to leads that don't respond",
-        "You can activate/deactivate rules without deleting them"
+        "Create a rule with the '+ New rule' button and choose a trigger: for example, 'Lead captured' to automatically welcome every new prospect.",
+        "Add conditions in step 2 of the wizard to filter: for example, only activate the rule if the channel is 'WhatsApp' and the score is above 60.",
+        "In step 3, define chained actions: first 'Change stage' to 'Qualified' and then 'Send template' as a welcome message, all in a single rule.",
+        "Use the activity icon (chart) on each card to view the execution history and confirm the rule is firing correctly.",
+        "Enable or disable a rule with the toggle without deleting it — ideal for pausing temporary campaigns without losing your configuration."
       ]
     },
     "agent": {
-      "title": "How to configure the AI Agent?",
-      "description": "Your AI agent automatically responds to your customers' messages. Configure its name, personality, rules, forbidden topics, and assigned channels. Use pre-designed templates for your industry.",
+      "title": "How do I manage my AI Agents?",
+      "description": "AI agents are the virtual assistants that automatically reply to your customers on WhatsApp, Instagram, Messenger, or Telegram. Here you create, duplicate, and organize all your agents, and see which channels each one is assigned to.",
       "tips": [
-        "Each channel (WhatsApp, Instagram, etc.) can have a different agent",
-        "The agent respects the rules and forbidden topics you configure",
-        "Test your agent in the Test section before activating it"
+        "Click 'New agent' to pick a template for your industry (sales, support, scheduling, etc.) and give it a name before creating it.",
+        "Use the three-dot menu on each card to 'Save as template' and reuse the setup for future agents.",
+        "If you see the red 'Channels without agent' banner, open that agent and assign the channel before messages go unanswered.",
+        "The star icon in the menu lets you set an agent as 'Default'; this one replies when no channel has a specific assignment.",
+        "Duplicate an existing agent with the copy icon to create variations (e.g., one in Spanish and one in English) without starting from scratch."
       ]
     },
     "knowledge": {
-      "title": "How does the Knowledge Base work?",
-      "description": "The knowledge base feeds the AI agent with information about your business. Upload documents, create FAQs, and define policies. The agent searches here before responding.",
+      "title": "How do I manage the Knowledge Base?",
+      "description": "The Knowledge Base is your AI agent's memory: upload documents, add URLs to crawl automatically, create FAQs, and organize everything into categories. The more complete and up to date it is, the more accurate the agent's answers will be for your customers.",
       "tips": [
-        "FAQs are the fastest way to teach the agent",
-        "Documents are processed with AI (RAG) for contextual answers",
-        "The more information you load, the better the agent will respond"
+        "Use the 'Bulk upload' button to load multiple files (PDF, Word, TXT) at once and assign them a category in the same step.",
+        "For web pages that change frequently (prices, menus, catalogs), use 'Add URL' and enable automatic re-crawl so the content stays up to date on its own.",
+        "In the 'Quality' tab you'll see a score from 0 to 100 for each document — prioritize the ones with low scores to rewrite or enrich them with more detail.",
+        "In the 'Analytics' tab review the 'Unanswered Queries': these are real questions the agent couldn't handle; create an article directly from that list by clicking the '+' icon.",
+        "Use the 'Gaps' tab together with 'AI Suggestions' to let the system automatically detect missing topics in your base and propose titles and outlines for new articles."
       ]
     },
     "analyticsV2": {
-      "title": "How to read Analytics?",
-      "description": "Analytics show your business performance: conversations, AI resolution, campaigns, CSAT, and more. Use date filters for different periods.",
+      "title": "How do I read the Advanced Analytics?",
+      "description": "Advanced analytics brings together conversation performance, AI, campaigns, automations, and CSAT in one place, with real-time data and date filters. Use them to make data-driven decisions and catch problems before they escalate.",
       "tips": [
-        "The 'AI & Bot' tab shows how many conversations AI resolved without human intervention",
-        "The 'CRM' tab links to funnel and pipeline velocity analytics",
-        "Export reports in CSV from the download button"
+        "The real-time panel (top) refreshes every 30 seconds; if 'Queue depth' rises, there are messages waiting that need attention.",
+        "Change the period with the 'DateRangePicker' and then click 'Export CSV' to download the data and work on it in Excel.",
+        "In the 'IA & Bot' tab, check the 'AI Resolution Rate': if it drops below 70%, review the agent rules or enrich the knowledge base.",
+        "The 'Anomalies' tab alerts you automatically when a metric strays from its historical average (more than 2σ), saving you manual monitoring.",
+        "Use the 'Broadcast' tab to see your campaign funnel (total → sent → delivered → read) and optimize low-read-rate templates."
       ]
     },
     "channels": {
-      "title": "How to connect channels?",
-      "description": "Connect your messaging channels to receive and respond to messages from the platform. WhatsApp uses Embedded Signup, Instagram and Messenger use OAuth, Telegram uses Bot Token.",
+      "title": "How do I connect and manage channels?",
+      "description": "Channels is the hub where you connect each messaging network (WhatsApp, Instagram DM, Facebook Messenger, Telegram, and Email) so your AI agent can receive and reply from everywhere. Each card shows whether the channel is 'Connected' or 'Disconnected' and takes you to its individual settings.",
       "tips": [
-        "WhatsApp requires a WhatsApp Business account",
-        "Instagram requires a professional account connected to a Facebook page",
-        "Each channel can have a different AI agent assigned"
+        "Click 'Configure' on the WhatsApp card to start Meta's Embedded Signup; you'll need a WhatsApp Business account and a Facebook page.",
+        "For Instagram DM, the account must be a professional account linked to a Facebook page; the process uses OAuth and takes under 2 minutes.",
+        "Connecting Messenger requires logging in with Facebook (FB SDK) and selecting your business page to get the messaging token.",
+        "Telegram only needs a Bot Token: create a bot with @BotFather, copy the token, and paste it in the channel settings.",
+        "A connected channel shows the green 'Connected' badge; if you see the red 'Disconnected' badge, open the card to reconnect and assign an AI agent."
       ]
     },
     "users": {
-      "title": "How to manage the team?",
-      "description": "Invite your team by email. Each person creates their own password when accepting the invitation. Assign roles (admin, supervisor, agent) and skills for smart routing.",
+      "title": "How do I manage the team and invitations?",
+      "description": "The Users section shows all team members with their role, skills, status, and company, and lets you invite new people by email. Use it to control who has access, what each person can do, and which conversations get routed to each agent.",
       "tips": [
-        "Click \"Send invitation\" — the person receives an email with a secure link",
-        "Invitations expire in 14 days; you can resend or revoke them from the Invitations tab",
-        "Agents only see their own conversations; supervisors see everything",
-        "Skills are used by the system to route conversations to the right agent"
+        "Click 'Invite user', enter the email, and choose a role (Agent, Supervisor, or Admin); the person will receive an email with a secure link to set their password.",
+        "Under the 'Invitations' tab you can see the status of each invitation (pending, accepted, expired, or revoked); if one expired, resend it with the 'Resend' button.",
+        "Add skill tags to agents — for example 'sales', 'support', or 'technical' — so the system automatically routes messages to the most suitable agent.",
+        "Use the search bar and role filter to quickly find a team member; filter by Agent, Supervisor, or Admin.",
+        "Click 'Edit' to update a user's name, job title, phone, role, or active/inactive status; deactivating someone prevents them from logging in until you reactivate them."
       ]
     },
     "settings": {
-      "title": "What can I configure?",
-      "description": "Settings are organized in 5 sections: Account (your profile and security), Company (info and hours), Tools (attributes, macros, templates), AI (providers and config), and Advanced (alerts and integrations).",
+      "title": "What can I configure in this section?",
+      "description": "Settings is the central panel where you adjust everything that controls platform behavior: your profile and security, company information, operational tools, external integrations, and advanced AI parameters. Use it whenever you need to change how the system works or add new connections.",
       "tips": [
-        "In 'Company' configure your business hours — the agent respects them",
-        "In 'Tools' customize pipeline stages and lead scoring",
-        "In 'AI' configure which LLM model to use (GPT-4, Claude, Gemini, etc.)"
+        "Under 'Account' you can change your password, enable 2FA, and set your notification schedule so you are not interrupted outside your shift.",
+        "Under 'Company' you will find 'Business Hours': configure your actual working days and times so the AI agent knows when human support is available.",
+        "Under 'Operations' customize the pipeline stages and the lead scoring weights to match your own sales process.",
+        "Under 'Communication' create macros with frequent replies so your human agents can respond faster from the Inbox.",
+        "Under 'Integrations' connect outbound webhooks, your Web Chat, or a vertical integration (Toast, Mindbody, Cliniko) to sync data with your external tools."
       ]
     },
     "tenants": {
-      "title": "Super Admin Panel",
-      "description": "Manage all platform tenants. View health metrics, activity, AI configuration, and billing status for each company.",
+      "title": "How do I manage platform tenants?",
+      "description": "The Tenants section is the exclusive super admin panel where you can view, create, and manage all companies (tenants) registered on Parallly. Use it to monitor each account's status, manage billing and subscriptions, review onboarding progress, and perform administrative actions such as suspending or impersonating a tenant.",
       "tips": [
-        "The Health Score (0-100) indicates how well configured each tenant is",
-        "Use 'Impersonate' to view the platform as if you were the tenant",
-        "The 'Activity' tab shows messages, conversations and handoffs"
+        "Use the 'Overview' tab to see the full tenant table with plan, subscription status, connected channels, and user count; click 'Impersonate' to enter the platform as that tenant.",
+        "The 'Onboarding' tab shows which accounts have not completed initial setup (no connected channel or no configured agent) so you can reach out to them.",
+        "Under 'Offboarding' manage tenants in the cancellation process: you can suspend them with a reason or reactivate them if the client changes their mind.",
+        "The 'Billing' tab consolidates MRR, ARR, and payment status for each account; quickly spot expired subscriptions or accounts in a grace period.",
+        "Under 'Platform' check system health in real time (BullMQ queues, Redis usage, API latency) to catch issues before they affect clients."
       ]
     },
     "financials": {
-      "title": "What do Financials show?",
-      "description": "Platform financial metrics: MRR, ARR, churn, LTV, and profitability per tenant. Only visible to super administrators.",
+      "title": "How do I read the Platform Financials?",
+      "description": "Financials is the SaaS metrics panel exclusively for super admins: it shows MRR, ARR, churn, LTV, infrastructure costs, and per-tenant profitability. Use it to make decisions about pricing, plans, and operational cost optimization.",
       "tips": [
-        "MRR is calculated from active subscriptions (not trials)",
-        "The 'Costs' tab shows infrastructure + LLM costs per tenant",
-        "Generate monthly snapshots for historical tracking"
+        "The 'Overview' tab shows the current MRR and a 6-month projection — review it monthly to spot growth or decline trends.",
+        "In the 'Revenue' tab you'll see a breakdown by plan type (Starter, Pro, Enterprise, Custom); compare the number of trial vs. active tenants to measure conversion rate.",
+        "The 'Customers' tab includes a churn trend — if you see cancellation spikes in a given month, look into what happened around that date (price change, incident, etc.).",
+        "Under 'Costs' you can see infrastructure spending plus LLM cost per tenant; identify which tenants consume the most AI to adjust their plan limits.",
+        "Use the 'Refresh data' button (in the 'Settings' tab) to generate a manual monthly snapshot and keep the financial history up to date."
       ]
     },
     "dashboard": {
-      "title": "How does the Dashboard work?",
-      "description": "Your centralized control panel with key health metrics, volume of processed messages, accumulated costs, and lead activity in real time.",
+      "title": "What does the Dashboard show?",
+      "description": "The Dashboard is your business overview: new leads today, hot leads, messages processed by the AI, and how much it cost. Use it every morning to decide where to focus before diving into the rest of the platform.",
       "tips": [
-        "Review hot leads to prioritize your sales opportunities",
-        "Monitor accumulated AI cost daily to optimize your budget",
-        "Use the activity widget to view live events in the messaging flow"
+        "The 'Leads Today' counter shows new contacts for the day — if it looks low, check whether your WhatsApp or other channel is active under 'Channels'.",
+        "The 'AI Cost Today' figure updates in real time — if it exceeds your daily budget, switch the LLM model from the 'AI' section.",
+        "The 'Recent Activity' card color-codes events: green for conversations, orange for handoffs, indigo for orders — click a handoff row to jump straight to that chat in the Inbox.",
+        "The 'Model Usage' chart shows which LLM handled the most requests today and at what percentage — useful for checking whether your router is using the right tier.",
+        "If you see the yellow 'No channel connected' banner, click 'Connect channel' to go directly to the WhatsApp, Instagram, or Telegram setup page."
       ]
     },
     "dripSequences": {
-      "title": "How to use Drip Sequences?",
-      "description": "Send automated messaging sequences over time to nurture your leads. Set specific delays and stop conditions to automatically halt the sequence when the customer replies.",
+      "title": "How do Drip Sequences work?",
+      "description": "A drip sequence is a series of messages sent automatically to your leads over time, with configured delays between each one. Use it to nurture prospects who are not yet ready to buy, without having to write each message manually.",
       "tips": [
-        "Establish organic delays so that messages don't feel like spam",
-        "Define robust stop conditions to avoid sending messages to customers who have already responded",
-        "Analyze enrolled and active subscriber stats to evaluate your nurturing success"
+        "Click '+ New Sequence' to create one; pick a trigger (e.g., 'Lead captured') and then add each step with its content and the wait time before the next message.",
+        "Enable or disable any sequence with the toggle switch without deleting it — handy if you want to pause it during holidays or special campaigns.",
+        "Check the 'Enrolled' counter on each card to see how many leads are in that flow right now; if the number grows very fast, make sure the stop conditions are properly configured.",
+        "Set stop conditions ('stop_if') so the sequence cancels automatically when a lead replies or changes stage — prevents messaging contacts who have already converted.",
+        "Use the 'AI generated' step type to let the agent compose the message based on the lead's context, instead of always sending the same fixed text."
       ]
     },
     "automationTemplates": {
-      "title": "How to use Templates?",
-      "description": "Accelerate your workflows by importing rules and triggers pre-configured specifically for your industry (health, real estate, retail, etc.).",
+      "title": "How do I install an automation template?",
+      "description": "Templates are ready-to-use automations grouped by category (nurturing, reminders, abandoned cart, welcome sequences, etc.) and industry (health, real estate, retail…). Use them to activate workflows in seconds without building from scratch.",
       "tips": [
-        "Filter by your industry or category to find ready-to-use automations",
-        "Click any template to preview its logical triggers before installing",
-        "Configure variables and default values in the template to adapt it to your business"
+        "Use the search bar and the 'Category' and 'Industry' filters to narrow results; for example, filter by 'abandoned_cart' + 'retail' to recover lost sales.",
+        "Before installing, check the usage counter (trend icon) and the card description to understand exactly what the automation does.",
+        "Clicking 'Install' opens a modal showing the trigger, the number of actions, and configurable variables — adjust those variables to your business before confirming.",
+        "After installing, click 'View rules' in the success modal to go straight to the Automation page and activate or edit the newly created rule.",
+        "If you get no results, try clearing filters with 'Clear filters' — the full gallery includes universal templates that work for any industry."
       ]
     },
     "crmAnalytics": {
-      "title": "How to read CRM Analytics?",
-      "description": "Analyze your business's sales health through conversion metrics, close velocity, pipeline stages, and sales team performance.",
+      "title": "How do I read the CRM Analytics?",
+      "description": "CRM Analytics measures your business health: active opportunities, pipeline value, conversion rate, closing velocity, and agent performance. Use them to spot bottlenecks in your funnel and make data-driven decisions.",
       "tips": [
-        "Monitor the funnel to detect at which stage you lose the most opportunities",
-        "Review lead velocity to optimize average closing time",
-        "Check the agent leaderboard to incentivize and reward top performance"
+        "In the 'Overview' tab, review the 5 top KPIs (total contacts, active opportunities, pipeline value, average score, and conversion rate) for a quick snapshot of your funnel.",
+        "In the 'Funnel' tab, use the horizontal bar chart by stage to see where leads accumulate most; a very crowded stage may indicate a follow-up bottleneck.",
+        "The 'Velocity' tab shows the average number of days a lead spends in each stage — if 'Qualified' has a high number, the team may need faster closing actions.",
+        "Check the Won/Lost analysis for your close rate and the most common loss reasons; those reasons tell you which objections to train your AI agent on.",
+        "In the 'Agents' tab, the leaderboard ranks your team by closed deals and total value — use it to recognize the top seller of the month or spot who needs support."
       ]
     },
     "agentAnalytics": {
-      "title": "How to evaluate Agent Performance?",
-      "description": "Measure the performance of your support agents. Track first response times, resolution rates, and customer satisfaction (CSAT) scores.",
+      "title": "How do I evaluate your agents' performance?",
+      "description": "This section shows performance metrics for each AI and human agent: conversations handled, first response time, resolution rate, and CSAT. Use it to identify who is performing best and where bottlenecks are forming.",
       "tips": [
-        "Compare average response time with P90 to avoid critical delays with customers",
-        "Monitor satisfaction (CSAT) for each agent to ensure high support standards",
-        "Use the channel breakdown to see where your agents are concentrated"
+        "Change the date range with the selectors at the top to compare specific weeks or months.",
+        "In the 'Agents' tab, click a column header (e.g., 'Response Time') to sort and find the slowest agent.",
+        "The 'IA' badge (indigo) distinguishes automated agents from humans (green), so you compare like with like.",
+        "A CSAT in red (below 3.0) is a warning sign; review that agent's recent conversations to understand the cause.",
+        "Use the 'CSAT' tab to read customers' literal feedback and spot patterns that numbers alone don't reveal."
       ]
     },
     "reportBuilder": {
-      "title": "How to use the Report Builder?",
-      "description": "Design dynamic reports crossing metrics like message volume, AI cost, and CRM conversions. Choose between bar, line, area, or pie charts.",
+      "title": "How do I create and save custom reports?",
+      "description": "The Report Builder lets you combine up to 16 business metrics (conversations, AI cost, leads, appointments, CSAT, etc.) into a bar, line, area, or pie chart, for any date range you need. Use it to build the exact reports your team needs and save them for quick access.",
       "tips": [
-        "Use favorites to keep your commercial reports always accessible",
-        "Export to CSV from the main screen to process data externally",
-        "Combine multiple metrics to contrast volume against AI cost"
+        "Click 'New report', pick metrics from the group you care about (e.g., 'AI' to see cost and resolution rate), then hit the eye icon to preview before saving.",
+        "Choose a chart type based on what you want to communicate: 'Bar' to compare periods, 'Line' to spot trends, 'Pie' to show proportions.",
+        "Click the star icon on any saved report to mark it as a favorite and find it quickly at the top of the list.",
+        "Use the 'Duplicate' button on an existing report to create a variant without deleting the original — handy for comparing different date ranges.",
+        "Adjust the date range inside the editor and press the eye icon to refresh the preview before saving your changes."
       ]
     },
     "compliance": {
-      "title": "How to manage Compliance & Legal?",
-      "description": "Centralize privacy policies, terms of service, and explicit consent texts. Manage opt-out registries and data deletion requests according to global regulations.",
+      "title": "How do I manage privacy and legal compliance?",
+      "description": "Compliance centralizes everything related to data protection: legal texts (policies, terms, consents), opt-out records, deletion requests, and a full audit log. Use it to comply with GDPR, LGPD, and local regulations without leaving anything to chance.",
       "tips": [
-        "Define specific consent texts per channel (e.g. WhatsApp vs. Web)",
-        "Keep the opt-out registry updated to avoid spam complaints",
-        "Use the Audit tab to track all policy modifications and signatures"
+        "In the 'Legal texts' tab, create a text of type 'Privacy policy' or 'Consent' and assign it to the right channels and agents using the selection chips — the agent will display it automatically.",
+        "Use the type filter (privacy, terms, AI disclosure, opt-in, etc.) to quickly find the text you want to edit or version; the version number increments automatically.",
+        "In the 'Opt-outs' tab, review pending items (red badge on the tab) and confirm or reject each one; confirming blocks the contact from future sends, rejecting marks it as a false positive.",
+        "When a customer requests data deletion, it appears in 'Deletion requests' with a pending status — click 'Process' to execute the deletion and leave a record in the system.",
+        "The 'Audit' tab logs every compliance action with its responsible user and timestamp; use it for any legal inquiry or internal review."
       ]
     },
     "featureRequests": {
-      "title": "How to suggest and vote on Features?",
-      "description": "Propose improvement ideas and vote on suggestions from other users. The Parallly product team prioritizes the most voted features.",
+      "title": "How do I suggest and vote on features?",
+      "description": "The feature requests section is the direct channel between you and the Parallly product team: submit ideas, vote on others', and track each request's status from 'Open' to 'Shipped'. The more votes an idea gets, the higher it moves on the roadmap.",
       "tips": [
-        "Search before posting to avoid duplicating an already proposed idea",
-        "Vote for suggestions you consider critical to your business growth",
-        "Check the Changelog to see what new tools and improvements we have launched"
+        "Before submitting a new request, use the search bar to check if a similar idea already exists — the system automatically detects duplicates and shows you the match percentage.",
+        "Click the vote button (up arrow) on any card to add your vote; you can remove it later if you change your mind.",
+        "Filter by category (AI, Integrations, CRM, Analytics, etc.) or use the 'Top Voted' / 'Recent' sort selector to quickly find what you're looking for.",
+        "Switch to the 'Changelog' tab to see which requests from the board have already been shipped, grouped by the month they were released.",
+        "Open any request to read team comments or leave your own — replies marked as 'Team' come directly from the Parallly product team."
       ]
     }
   },

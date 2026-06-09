@@ -85,6 +85,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         './plugins/withAndroidNetworkSecurity',
         // Permiso de micrófono para notas de voz salientes (expo-av no lo inyecta solo).
         './plugins/withAudioPermission',
+        // Play hygiene: quita permisos sensibles no usados del AAB (SYSTEM_ALERT_WINDOW,
+        // WRITE_EXTERNAL_STORAGE) para no trabar la revisión de la tienda.
+        './plugins/withCleanPermissions',
     ],
     extra: {
         eas: { projectId: '5a6f6dab-dec2-44e0-b00a-58e77c909501' },

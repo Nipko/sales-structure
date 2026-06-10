@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 import Redis from 'ioredis';
 
 @Injectable()
@@ -63,6 +64,42 @@ export class RedisService implements OnModuleDestroy {
 
     async releaseLock(key: string): Promise<void> {
         await this.client.del(key);
+    }
+
+    // ---- Ownership-token locking (safe for locks that may outlive their TTL) ----
+
+    /**
+     * Acquire a lock with a unique ownership token. Returns the token when
+     * acquired (pass it to releaseLockToken / renewLockToken), or null if the
+     * lock is currently held. Unlike acquireLock, the token lets the release be
+     * conditional so a holder can never delete a lock that has since been
+     * re-acquired by another process after a TTL expiry.
+     */
+    async acquireLockToken(key: string, ttlSeconds: number): Promise<string | null> {
+        const token = randomUUID();
+        const result = await this.client.set(key, token, 'EX', ttlSeconds, 'NX');
+        return result === 'OK' ? token : null;
+    }
+
+    /** Release a lock only if we still own it (compare-and-delete via Lua). */
+    async releaseLockToken(key: string, token: string): Promise<void> {
+        await this.client.eval(
+            `if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end`,
+            1, key, token,
+        );
+    }
+
+    /**
+     * Extend a lock's TTL only if we still own it. Returns true when renewed.
+     * Used as a heartbeat so a long-running critical section keeps the lock
+     * alive instead of letting it expire mid-flight.
+     */
+    async renewLockToken(key: string, token: string, ttlSeconds: number): Promise<boolean> {
+        const result = await this.client.eval(
+            `if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('pexpire', KEYS[1], ARGV[2]) else return 0 end`,
+            1, key, token, String(ttlSeconds * 1000),
+        );
+        return result === 1;
     }
 
     // ---- Tenant-scoped operations ----

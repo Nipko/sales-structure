@@ -97,8 +97,24 @@ export class ConversationsService {
         const { tenantId, contactId, channelType, content } = normalizedMsg;
         this.logger.log(`Processing inbound message from ${contactId} on ${channelType} for tenant ${tenantId}`);
 
-        // 1. Resolve Contact & Conversation
-        const { contact, lead, conversation } = await this.resolveConversation(tenantId, contactId, channelType, normalizedMsg);
+        // 1. Resolve Contact & Conversation.
+        // Serialize find-or-create per contact: two near-simultaneous first
+        // messages would otherwise each create a duplicate lead/conversation.
+        // The conversation lock below can't prevent this — it keys on
+        // conversation.id, which doesn't exist yet at this point.
+        const contactLockKey = `lock:contact:${tenantId}:${channelType}:${contactId}`;
+        let contactLockToken: string | null = null;
+        for (let i = 0; i < 6 && !contactLockToken; i++) {
+            contactLockToken = await this.redis.acquireLockToken(contactLockKey, 10).catch(() => null);
+            if (!contactLockToken) await new Promise(r => setTimeout(r, 300));
+        }
+        let resolved: { contact: any; lead: any; conversation: any };
+        try {
+            resolved = await this.resolveConversation(tenantId, contactId, channelType, normalizedMsg);
+        } finally {
+            if (contactLockToken) await this.redis.releaseLockToken(contactLockKey, contactLockToken).catch(() => {});
+        }
+        const { contact, lead, conversation } = resolved;
         normalizedMsg.conversationId = conversation.id;
 
         // Click-to-WhatsApp ads attribution (T3.22): capture the ad referral on
@@ -111,22 +127,57 @@ export class ConversationsService {
         }
 
         // Serialize message processing per conversation to prevent race conditions.
-        // If user sends 2 messages in quick succession, the second one waits for the first.
+        // If a user sends 2 messages in quick succession, the second waits for the
+        // first. The lock uses an ownership token so the release can't delete a
+        // lock re-acquired by another turn after a TTL expiry, and a heartbeat
+        // renews the TTL so a long turn (media + LLM fallback chains) never loses
+        // the lock mid-flight.
         const lockKey = `lock:conv:${conversation.id}`;
-        let lockAcquired = await this.redis.acquireLock(lockKey, 30); // 30s safety TTL
-        if (!lockAcquired) {
-            // Another message is being processed — wait up to 10s with retries
-            for (let i = 0; i < 5; i++) {
+        const LOCK_TTL = 30;
+        let lockToken = await this.redis.acquireLockToken(lockKey, LOCK_TTL);
+        if (!lockToken) {
+            // Another message is being processed — wait (budget > TTL) for it to finish.
+            for (let i = 0; i < 18; i++) {
                 await new Promise(r => setTimeout(r, 2000));
-                lockAcquired = await this.redis.acquireLock(lockKey, 30);
-                if (lockAcquired) break;
+                lockToken = await this.redis.acquireLockToken(lockKey, LOCK_TTL);
+                if (lockToken) break;
             }
-            if (!lockAcquired) {
-                this.logger.warn(`[Pipeline] Could not acquire lock for conversation ${conversation.id} — processing anyway`);
+            if (!lockToken) {
+                this.logger.warn(`[Pipeline] Could not acquire lock for conversation ${conversation.id} after waiting — processing anyway`);
             }
+        }
+        // Heartbeat: keep the lock alive while we process so a turn that legitimately
+        // exceeds the TTL doesn't expire its lock and let a concurrent turn in.
+        let lockHeartbeat: ReturnType<typeof setInterval> | undefined;
+        if (lockToken) {
+            const token = lockToken;
+            lockHeartbeat = setInterval(() => {
+                this.redis.renewLockToken(lockKey, token, LOCK_TTL).catch(() => {});
+            }, 10_000);
+            lockHeartbeat.unref?.();
         }
 
         try {
+
+        const schemaName = await this.tenantSchema(tenantId);
+
+        // Re-read the conversation snapshot AFTER acquiring the lock. While we
+        // waited, the turn that held the lock may have changed status (e.g.
+        // escalated to handoff) or bumped updated_at. The pre-lock snapshot from
+        // resolveConversation can be stale, which would mis-route the handoff and
+        // new-session checks below.
+        try {
+            const fresh = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT status, updated_at FROM conversations WHERE id = $1::uuid`,
+                [conversation.id],
+            );
+            if (fresh?.length) {
+                conversation.status = fresh[0].status;
+                conversation.updated_at = fresh[0].updated_at;
+            }
+        } catch (e: any) {
+            this.logger.debug(`[Pipeline] Snapshot re-read skipped: ${e.message}`);
+        }
 
         // Capture the timestamp of the last message BEFORE we save the new one.
         // This is used later for new-session detection (30 min gap = fresh start).
@@ -151,7 +202,7 @@ export class ConversationsService {
         );
 
         // Auto-progress stage from 'nuevo' to 'respondio' upon user message
-        const schemaName = await this.tenantSchema(tenantId);
+        // (schemaName resolved above, right after acquiring the lock).
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE opportunities SET stage = 'respondio' WHERE conversation_id = $1::uuid AND stage = 'nuevo'`,
             [conversation.id],
@@ -422,9 +473,12 @@ export class ConversationsService {
         }
 
         } finally {
-            // Release conversation lock
-            if (lockAcquired) {
-                await this.redis.releaseLock(lockKey).catch(e => this.logger.warn(`Lock release failed for ${lockKey}: ${e.message}`));
+            // Stop the heartbeat and release the conversation lock — but only if we
+            // still own it (compare-and-delete), so we never delete a lock another
+            // turn re-acquired after a TTL expiry.
+            if (lockHeartbeat) clearInterval(lockHeartbeat);
+            if (lockToken) {
+                await this.redis.releaseLockToken(lockKey, lockToken).catch(e => this.logger.warn(`Lock release failed for ${lockKey}: ${e.message}`));
             }
         }
     }
@@ -1060,7 +1114,10 @@ export class ConversationsService {
         let engineProducedText: string | null = null;
 
         if (toolsEnabled) {
-            const todayISO = now.toISOString().split('T')[0];
+            // Tenant-local "today" — toISOString() would be UTC, which rolls over
+            // to tomorrow during the evening across all of LatAm (UTC-3…-6) and
+            // would make the booking engine treat "hoy" as the next day.
+            const todayISO = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
             const customerProfile = {
                 name: contact?.name || lead?.first_name || lead?.firstName,
                 email: contact?.email,
@@ -1245,6 +1302,12 @@ export class ConversationsService {
             tools = [...tools, ...PHOTOGRAPHY_TOOLS];
         }
 
+        // When the booking/procedure engine produced a directive, the LLM must
+        // ONLY voice that directive — never call tools. The registration block
+        // above re-adds tools from the agent's feature flags, overriding the
+        // `tools = []` set in the express phase, so enforce it as the last word.
+        if (engineProducedText) tools = [];
+
         if (bookingState.step && bookingState.step !== 'idle') {
             const selectedService = bookingState.serviceId
                 ? bookingState.services?.find(s => s.id === bookingState.serviceId)
@@ -1367,15 +1430,22 @@ export class ConversationsService {
             turnContext.directive = engineProducedText;
         }
 
-        // 3. Get Conversation History with smart truncation
-        const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT direction, content_text FROM messages WHERE conversation_id = $1::uuid ORDER BY created_at ASC LIMIT 30`,
+        // 3. Get Conversation History with smart truncation.
+        // Fetch the 30 MOST RECENT messages (DESC), not the 30 oldest — long
+        // conversations were sending the LLM the start of the chat and losing all
+        // recent context. LIMIT 31 + drop the first row removes the current
+        // inbound message (already saved above), which is re-added separately as
+        // the live user turn — otherwise it would be duplicated in the prompt.
+        // Reverse back to chronological order (oldest→newest) for the builders below.
+        const historyDesc = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT direction, content_text FROM messages WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 31`,
             [conversation.id],
         );
+        const history = (historyDesc || []).slice(1).reverse();
 
         // Anti-repetition: tell the LLM how many messages exist in this conversation.
         // message_count > 1 means it's a CONTINUATION — don't re-introduce yourself.
-        turnContext.messageCount = (history?.length || 0) + 1; // +1 for current message already saved
+        turnContext.messageCount = (history?.length || 0) + 1; // +1 for current message (excluded from history above)
 
         const systemPrompt = this.promptAssembler.assemble(config, turnContext, bizHours);
 
@@ -1465,6 +1535,31 @@ export class ConversationsService {
                 // No tool calls — this is the final text response
                 finalResponse = response.content || '[Error Generating AI Response]';
                 break;
+            }
+
+            // Tool loop exhausted all iterations without ever producing a final text
+            // answer (the LLM kept requesting tools). The side effects already ran,
+            // so force one last call WITHOUT tools to get a natural reply instead of
+            // returning empty and leaving the customer with no response.
+            if (!finalResponse) {
+                this.logger.warn(`[Pipeline] Tool loop exhausted ${MAX_TOOL_ITERATIONS} iterations without a final answer — forcing a no-tools response`);
+                try {
+                    const closing = await this.llmRouter.execute({
+                        task: 'conversation',
+                        messages: currentMessages,
+                        systemPrompt,
+                        temperature: 0.7,
+                        allowedTiers,
+                        tenantId,
+                        traceContext: { conversationId: conversation.id, stage: 'conversation' },
+                    });
+                    finalResponse = closing.content || '';
+                } catch (e: any) {
+                    this.logger.warn(`[Pipeline] Forced no-tools response failed: ${e.message}`);
+                }
+                if (!finalResponse) {
+                    finalResponse = 'Disculpa, estoy teniendo problemas para completar tu solicitud en este momento. ¿Podrías intentarlo de nuevo o reformular tu mensaje?';
+                }
             }
 
             // Booking state already persisted earlier in the engine block

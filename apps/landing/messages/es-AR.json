@@ -6,6 +6,38 @@
     "title": "Mirá todo lo que podés hacer",
     "subtitle": "Estas son algunas de las herramientas que vienen incluidas. Todas funcionan automáticamente — vos solo configurás una vez al inicio."
   },
+  "solutions": {
+    "heroSubtitle": "18 verticales con agente IA, pipeline, FAQs y servicios pre-configurados. Elegí tu industria y empezá a vender en 10 minutos.",
+    "ctaTitle": "¿No encontrás tu industria?"
+  },
+  "industryPage": {
+    "solutionStep1": "Conectá tus canales",
+    "solutionStep2": "Activá tu agente de {industry}",
+    "solutionStep3": "Empezá a recibir clientes",
+    "agentSpotlightTitle": "Conocé a {agentName}, tu agente de {industry}",
+    "roiTitle": "Resultados que podés esperar",
+    "pricingTitle": "Elegí tu plan para {industry}",
+    "ctaBanner": "Empezá a automatizar tu {industry} hoy"
+  },
+  "pricingPage": {
+    "heroSubtitle": "Elegí el plan que mejor se adapte a tu negocio. Todos incluyen prueba gratuita.",
+    "upsellEmpToStarter1": "Agregá Instagram y Messenger",
+    "needMore": "¿Necesitás más? →",
+    "comparisonTitle": "Compará todos los planes en detalle",
+    "quizSubtitle": "Respondé 3 preguntas y te recomendamos el plan ideal.",
+    "quizQ1": "¿Cuántos canales usás?",
+    "quizQ2": "¿Cuántos mensajes recibís al mes?",
+    "quizQ3": "¿Necesitás automatización avanzada?",
+    "enterpriseCtaTitle": "¿Necesitás más? Hablemos",
+    "faqA1": "Sí. Podés subir o bajar de plan cuando quieras. El cambio se aplica inmediatamente y se prorratea.",
+    "faqA2": "Si no elegís un plan, tu cuenta se pausa automáticamente. Tus datos se mantienen 30 días. Podés reactivar cuando quieras.",
+    "faqA3": "No. El precio que ves incluye todo. Solo pagarías extra si excedés los límites de mensajes IA (te avisamos antes).",
+    "faqA6": "Sí. Podés pausar hasta 90 días sin perder tus datos. Ideal para negocios estacionales.",
+    "faqA7": "Ofrecemos reembolso completo dentro de los primeros 7 días después del pago. Después, podés cancelar y mantener acceso hasta fin del período."
+  },
+  "pricing": {
+    "subtitle": "Empezá con prueba gratis. Cancelá cuando quieras. Sin letra pequeña."
+  },
   "howItWorks": {
     "step1": "Conectá tus canales",
     "step2": "Elegí tu industria",
@@ -17,5 +49,25 @@
     "f1Desc": "Configurá tono, estilo, reglas y horario. Tu IA responde como si fueras vos — pero 24/7 y sin pausas.",
     "f5Desc": "Reglas trigger → condiciones → acciones. Secuencias de nurturing, recall, follow-ups. Configurás con clicks.",
     "f7Desc": "Cargá tu catálogo, FAQs, políticas y documentos. Tu agente busca con IA y responde con info real."
+  },
+  "faq": {
+    "a1": "Para nada. Todo se configura con clicks. Si sabés usar WhatsApp, sabés usar Parallly. El onboarding te lleva paso a paso en menos de 10 minutos.",
+    "a2": "Subís tu información (catálogo, FAQs, reglas) y elegís tu industria. La IA aprende y responde con tu tono. Usamos modelos avanzados (Claude, GPT-4, Gemini) entrenados con la info de tu negocio.",
+    "a5": "1 hora para tu agente IA respondiendo con info real. En serio: conectás WhatsApp con OAuth oficial de Meta, elegís tu industria, cargás tu info básica y listo.",
+    "a7": "Sí, en cualquier momento. Pausás cuando te vas de viaje, cancelás al final del período (mantenés acceso hasta esa fecha), o cancelás inmediatamente. Todo desde un panel — sin llamadas a soporte.",
+    "a8": "Sí. API abierta + webhooks para integrar con tu ERP/CRM existente. Parallly trae su propio CRM completo, pero también podés conectarlo a HubSpot, Salesforce u otros.",
+    "ctaText": "¿Tenés otra pregunta? Escribinos y te respondemos en minutos."
+  },
+  "footer": {
+    "seeHow": "Mirá cómo funciona ↓"
+  },
+  "product": {
+    "hubTitle": "Todo lo que necesitás para vender más",
+    "hubBenefit1Desc": "Sin código, sin IT. Conectás tus canales, elegís tu industria y tu agente IA empieza a trabajar.",
+    "agentFeaturesSubtitle": "Configurá una vez, dejá que la IA se encargue del resto.",
+    "agentDemoTitle": "Mirá al agente en acción",
+    "agentFeature4Desc": "Cargá catálogos, PDFs, FAQs y documentos. La IA busca con vectores + keywords y responde con info real, no inventada.",
+    "crmFeaturesSubtitle": "Todo lo que necesitás para convertir leads en clientes, sin perder ninguno.",
+    "demoTitle": "Mirá cómo funciona"
   }
 }

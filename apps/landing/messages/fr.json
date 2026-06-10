@@ -535,7 +535,7 @@
     "row8": "Paiements MercadoPago"
   },
   "socialProof": {
-    "trust": "Plus de 500 entreprises en Amérique latine font confiance à Parallly",
+    "trust": "Des entreprises de toute l'Amérique latine automatisent avec Parallly",
     "stat1Label": "conversations automatisées/mois",
     "stat2Label": "satisfaction client",
     "stat3Label": "plus de conversions en moyenne",
@@ -562,7 +562,7 @@
     "t3Stat": "800+ commandes/mois"
   },
   "pricing": {
-    "title": "Tarifs transparents en devise locale",
+    "title": "Tarifs clairs, payez dans votre devise avec MercadoPago",
     "subtitle": "Commencez avec un essai gratuit. Annulez à tout moment. Sans petits caractères.",
     "monthly": "Mensuel",
     "annual": "Annuel",
@@ -618,7 +618,7 @@
       "Support prioritaire dédié"
     ],
     "perMonth": "/mois",
-    "currencyHint": "Prix en COP (pesos colombiens)",
+    "currencyHint": "Payez dans votre devise locale avec MercadoPago : COP, ARS, MXN, CLP, PEN, UYU et BRL · ou USD avec une carte internationale.",
     "transparencyTitle": "Des prix honnêtes, sans surprises",
     "transparencyAiIncluded": "IA incluse dans tous les forfaits — sans options surprises",
     "transparencyWhatsapp": "Frais WhatsApp de Meta au coût réel (répercussion transparente)",

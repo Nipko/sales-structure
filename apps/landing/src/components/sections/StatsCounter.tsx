@@ -10,7 +10,7 @@ const STATS = [
   { num: 70, suffix: "%", labelKey: "stat5Label" },
   { num: 4.9, suffix: "/5", labelKey: "stat2Label" },
   { num: 45, suffix: "%", labelKey: "stat3Label" },
-  { num: 16, suffix: "", labelKey: "stat4Label" },
+  { num: 18, suffix: "", labelKey: "stat4Label" },
 ] as const;
 
 export function StatsCounter() {

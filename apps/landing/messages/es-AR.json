@@ -42,7 +42,9 @@
     "faqA7": "Ofrecemos reembolso completo dentro de los primeros 7 días después del pago. Después, podés cancelar y mantener acceso hasta fin del período."
   },
   "pricing": {
-    "subtitle": "Empezá con prueba gratis. Cancelá cuando quieras. Sin letra pequeña."
+    "subtitle": "Empezá con prueba gratis. Cancelá cuando quieras. Sin letra pequeña.",
+    "title": "Precios claros, pagás en tu moneda con MercadoPago",
+    "currencyHint": "Pagás en tu moneda local con MercadoPago: COP, ARS, MXN, CLP, PEN, UYU y BRL · o USD con tarjeta internacional."
   },
   "howItWorks": {
     "step1": "Conectá tus canales",

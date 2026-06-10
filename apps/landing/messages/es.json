@@ -535,7 +535,7 @@
     "row8": "Pagos con MercadoPago"
   },
   "socialProof": {
-    "trust": "Más de 500 negocios en LatinoAmérica confían en Parallly",
+    "trust": "Negocios de toda LatinoAmérica ya automatizan con Parallly",
     "stat1Label": "conversaciones automatizadas/mes",
     "stat2Label": "satisfacción del cliente",
     "stat3Label": "más conversiones promedio",
@@ -562,7 +562,7 @@
     "t3Stat": "800+ pedidos/mes"
   },
   "pricing": {
-    "title": "Precios transparentes en moneda local",
+    "title": "Precios claros, pagas en tu moneda con MercadoPago",
     "subtitle": "Empieza con prueba gratis. Cancela cuando quieras. Sin letra pequeña.",
     "monthly": "Mensual",
     "annual": "Anual",
@@ -618,7 +618,7 @@
       "Soporte prioritario dedicado"
     ],
     "perMonth": "/mes",
-    "currencyHint": "Precios en COP (pesos colombianos). ",
+    "currencyHint": "Pagas en tu moneda local con MercadoPago: COP, ARS, MXN, CLP, PEN, UYU y BRL · o USD con tarjeta internacional.",
     "transparencyTitle": "Precios honestos, sin sorpresas",
     "transparencyAiIncluded": "IA incluida en todos los planes — sin add-ons sorpresa",
     "transparencyWhatsapp": "Costos de WhatsApp de Meta sin recargo (pass-through transparente)",

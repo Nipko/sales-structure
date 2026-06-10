@@ -187,86 +187,85 @@ export class WhatsappWebhookService {
 
      if (!value?.messages || value.messages.length === 0) return;
 
-     const msg = value.messages[0];
-     const contact = value?.contacts?.[0];
-     const waMessageId = msg?.id; // wamid.xxx
-
-     // === Idempotency check (Blueprint Paso 7) ===
-     const idempotencyKey = `idem:wa:${waMessageId}`;
-     const alreadyProcessed = await this.redis.get(idempotencyKey);
-     if (alreadyProcessed) {
-         this.logger.debug(`Duplicate webhook for message ${waMessageId}, skipping`);
-         return;
-     }
-     // Mark as processing immediately to prevent race conditions
-     await this.redis.set(idempotencyKey, '1', this.IDEMPOTENCY_TTL);
-
-     // === Dynamic tenant resolution ===
+     // === Dynamic tenant resolution (per phone_number_id — same for the batch) ===
      const tenantId = await this.resolveTenantId(phoneNumberId);
      if (!tenantId) {
          this.logger.warn(`No tenant found for phoneNumberId: ${phoneNumberId} — ignoring message`);
          return;
      }
 
-     // === Read receipt — checks azules (Blueprint Paso 6) ===
-     // Fire immediately, don't await — don't block message processing
-     if (waMessageId) {
-         this.resolveAccessTokenAndMarkRead(tenantId, phoneNumberId, waMessageId);
-     }
+     const contact = value?.contacts?.[0];
 
-     const fromPhone = msg?.from;
-     const messageText = msg?.text?.body
-         || msg?.button?.text
-         || msg?.interactive?.button_reply?.title
-         || '';
+     // Process EVERY message in the batch — WhatsApp can deliver several messages
+     // in a single webhook; taking only messages[0] silently dropped the rest.
+     for (const msg of value.messages) {
+         const waMessageId = msg?.id; // wamid.xxx
 
-     // === Compliance: Opt-out detection (registers for admin review, does NOT block message) ===
-     if (messageText && this.complianceService.detectOptOut(messageText)) {
-         this.logger.warn(`OptOut candidate from ${fromPhone}: "${messageText}" — pending admin review`);
-         try {
-             await this.complianceService.processOptOut(tenantId, {
-                 phone: fromPhone,
-                 channel: 'whatsapp',
-                 triggerMessage: messageText,
-                 detectedFrom: 'keyword',
-             });
-         } catch (e: any) {
-             this.logger.error(`OptOut registration failed for ${fromPhone}: ${e.message}`, e.stack);
+         // === Idempotency check (Blueprint Paso 7) — per message, claimed atomically ===
+         if (waMessageId) {
+             const claimed = await this.redis.acquireLock(`idem:wa:${waMessageId}`, this.IDEMPOTENCY_TTL);
+             if (!claimed) {
+                 this.logger.debug(`Duplicate webhook for message ${waMessageId}, skipping`);
+                 continue;
+             }
+             // === Read receipt — checks azules (Blueprint Paso 6) === fire-and-forget
+             this.resolveAccessTokenAndMarkRead(tenantId, phoneNumberId, waMessageId);
          }
-     }
 
-     const contentType = msg.type === 'button' || msg.type === 'interactive' ? 'text' : msg.type;
-     const mediaObj = msg[msg.type];
-     const mediaId = mediaObj?.id;
-     const mediaMimeType = mediaObj?.mime_type;
-     const mediaCaption = mediaObj?.caption;
+         const fromPhone = msg?.from;
+         const messageText = msg?.text?.body
+             || msg?.button?.text
+             || msg?.interactive?.button_reply?.title
+             || '';
 
-     if (mediaId) {
-         this.logger.log(`[WhatsApp] Media message type=${msg.type} mediaId=${mediaId} mime=${mediaMimeType || 'unknown'}`);
-     }
+         // === Compliance: Opt-out detection (registers for admin review, does NOT block message) ===
+         if (messageText && this.complianceService.detectOptOut(messageText)) {
+             this.logger.warn(`OptOut candidate from ${fromPhone}: "${messageText}" — pending admin review`);
+             try {
+                 await this.complianceService.processOptOut(tenantId, {
+                     phone: fromPhone,
+                     channel: 'whatsapp',
+                     triggerMessage: messageText,
+                     detectedFrom: 'keyword',
+                 });
+             } catch (e: any) {
+                 this.logger.error(`OptOut registration failed for ${fromPhone}: ${e.message}`, e.stack);
+             }
+         }
 
-     const normalizedMsg = {
-         tenantId,
-         contactId: fromPhone,
-         channelType: 'whatsapp',
-         channelAccountId: phoneNumberId,
-         content: {
-             type: contentType,
-             text: messageText,
-             ...(mediaId && { mediaUrl: mediaId }),
-             ...(mediaMimeType && { mimeType: mediaMimeType }),
-             ...(mediaCaption && { caption: mediaCaption }),
-         },
-         metadata: {
-             contactName: contact?.profile?.name,
-             waMessageId,
-         },
-     };
+         const contentType = msg.type === 'button' || msg.type === 'interactive' ? 'text' : msg.type;
+         const mediaObj = msg[msg.type];
+         const mediaId = mediaObj?.id;
+         const mediaMimeType = mediaObj?.mime_type;
+         const mediaCaption = mediaObj?.caption;
 
-     try {
-         await this.conversationsService.processIncomingMessage(normalizedMsg as any);
-     } catch (error: any) {
-         this.logger.error(`Error processing incoming message: ${error.message}`, error.stack);
+         if (mediaId) {
+             this.logger.log(`[WhatsApp] Media message type=${msg.type} mediaId=${mediaId} mime=${mediaMimeType || 'unknown'}`);
+         }
+
+         const normalizedMsg = {
+             tenantId,
+             contactId: fromPhone,
+             channelType: 'whatsapp',
+             channelAccountId: phoneNumberId,
+             content: {
+                 type: contentType,
+                 text: messageText,
+                 ...(mediaId && { mediaUrl: mediaId }),
+                 ...(mediaMimeType && { mimeType: mediaMimeType }),
+                 ...(mediaCaption && { caption: mediaCaption }),
+             },
+             metadata: {
+                 contactName: contact?.profile?.name,
+                 waMessageId,
+             },
+         };
+
+         try {
+             await this.conversationsService.processIncomingMessage(normalizedMsg as any);
+         } catch (error: any) {
+             this.logger.error(`Error processing incoming message: ${error.message}`, error.stack);
+         }
      }
   }
 

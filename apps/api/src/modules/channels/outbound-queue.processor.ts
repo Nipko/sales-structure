@@ -1,6 +1,6 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
+import { Job, DelayedError } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { ChannelGatewayService } from './channel-gateway.service';
 import { OutboundMessage } from '@parallext/shared';
@@ -27,13 +27,18 @@ export class OutboundQueueProcessor extends WorkerHost {
         super();
     }
 
-    async process(job: Job<OutboundJobData>): Promise<string | null> {
+    async process(job: Job<OutboundJobData>, token?: string): Promise<string | null> {
         const { outbound, accessToken } = job.data;
         const startTime = Date.now();
 
-        // Per-tenant rate limit — retry if exceeded
+        // Per-tenant rate limit. Don't throw — that burns one of the 3 attempts,
+        // and a sustained throttle would exhaust them and DROP the customer's
+        // message. Instead re-schedule the job as delayed (no attempt consumed)
+        // so it sends in the next window.
         if (await this.throttle.isLimited(outbound.tenantId, 'outbound')) {
-            throw new Error(`Tenant ${outbound.tenantId} rate limited for outbound — will retry`);
+            this.logger.warn(`[Outbound] Tenant ${outbound.tenantId} rate limited — delaying job ${job.id} 60s (no attempt consumed)`);
+            await job.moveToDelayed(Date.now() + 60_000, token);
+            throw new DelayedError();
         }
 
         this.logger.log(

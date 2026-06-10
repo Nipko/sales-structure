@@ -135,8 +135,13 @@ export class WebhookProcessor extends WorkerHost {
       );
       this.logger.log(`Forwarded message from ${normalizedMsg.contactId} to ConversationsService`);
     } catch (err: any) {
-      // No re-throw — la auditoría ya fue guardada; si la IA falla, no perdemos el mensaje
-      this.logger.error(`Failed to forward message to API: ${err.message}`);
+      // Re-throw so BullMQ retries the job: if the forward fails, the customer
+      // never gets an AI reply (the message is effectively lost). The audit
+      // insert + contact upsert above are idempotent (ON CONFLICT), and the
+      // internal endpoint acks immediately (a 5s timeout means non-delivery),
+      // so retrying is safe and won't double-process.
+      this.logger.error(`Failed to forward message to API: ${err.message} — will retry`);
+      throw err;
     }
   }
 

@@ -1,0 +1,21 @@
+{
+  "hero": {
+    "subtitle": "Mientras vos atendés tu negocio (o dormís), tu asistente con IA contesta cada mensaje en segundos, agenda citas y guarda los datos de cada cliente para que ninguna venta se escape. Lo configurás una vez, sin saber de tecnología."
+  },
+  "tools": {
+    "title": "Mirá todo lo que podés hacer",
+    "subtitle": "Estas son algunas de las herramientas que vienen incluidas. Todas funcionan automáticamente — vos solo configurás una vez al inicio."
+  },
+  "howItWorks": {
+    "step1": "Conectá tus canales",
+    "step2": "Elegí tu industria",
+    "step3": "Empezá a vender"
+  },
+  "features": {
+    "title": "Todo lo que necesitás para vender más, en una plataforma",
+    "f1Title": "Agente IA que suena como vos",
+    "f1Desc": "Configurá tono, estilo, reglas y horario. Tu IA responde como si fueras vos — pero 24/7 y sin pausas.",
+    "f5Desc": "Reglas trigger → condiciones → acciones. Secuencias de nurturing, recall, follow-ups. Configurás con clicks.",
+    "f7Desc": "Cargá tu catálogo, FAQs, políticas y documentos. Tu agente busca con IA y responde con info real."
+  }
+}

@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "Parallly — Conversational AI to sell, support and book 24/7",
-    "description": "Connect WhatsApp, Instagram and Messenger. Your AI agent replies, books appointments, qualifies leads and sells while you sleep. Tailored to 16 industries. Made in Latin America."
+    "title": "Parallly — Your business replies, books and sells on its own via WhatsApp, 24/7",
+    "description": "Connect WhatsApp, Instagram and Messenger. Your AI assistant replies, books appointments, saves every customer's details and sells while you sleep. Tailored to 18 industries. Made in Latin America."
   },
   "nav": {
     "features": "Features",
@@ -76,17 +76,17 @@
     "tool3Title": "Multi-Calendar Scheduling",
     "tool3Desc": "AI books appointments checking real availability. Syncs bidirectionally with Google and Microsoft Outlook Calendar, generating Meet/Teams links and sending custom email confirmations.",
     "tool4Title": "Real-time analytics",
-    "tool4Desc": "Volume, response times, Z-score deviations, and anomaly detection. No waiting for end-of-month reports.",
-    "tool5Title": "5-Tier Knowledge Base",
-    "tool5Desc": "Powered by your business identity, FAQs, catalog, policies, and extensive knowledge articles (RAG++). The AI searches and replies with 100% real info — never hallucinates.",
-    "tool6Title": "3-Layer Cognitive Architecture",
-    "tool6Desc": "Customize the tone, rules (Layer 1), and personality (Layer 2) of the agent per channel. Additionally, the turn context (Layer 3) grounds every conversation instantly."
+    "tool4Desc": "See live how many customers message you, how fast you reply and which channel drives the most sales. If something looks off, we alert you — no waiting for end-of-month reports.",
+    "tool5Title": "Replies with your real information — never makes it up",
+    "tool5Desc": "Upload your catalog, your prices, your FAQs and your policies. Your assistant only answers with what you loaded: it never invents prices or promises what you can't deliver.",
+    "tool6Title": "An assistant with your tone and your rules",
+    "tool6Desc": "Decide how your assistant speaks on each channel: formal on email, friendly on Instagram. You set the rules — what it can promise, what it can't — and it follows them in every conversation."
   },
   "hero": {
-    "badge": "5-Channel Conversational AI · 18 industries · Made in LatAm",
-    "title": "The AI that sells, books and supports — 24/7",
-    "titleHighlight": "sells, books and supports",
-    "subtitle": "Connect WhatsApp, Instagram, Messenger, Telegram and Email. Your AI agent replies in seconds with a 3-layer cognitive engine, fills your CRM by itself and books appointments intelligently.",
+    "badge": "Your AI salesperson · WhatsApp, Instagram and 3 more channels · Made in LatAm",
+    "title": "Your business <em>replies, books and sells on its own</em> via WhatsApp — 24/7",
+    "titleHighlight": "replies, books and sells on its own",
+    "subtitle": "While you run your business (or sleep), your AI assistant answers every message in seconds, books appointments and saves each customer's details so no sale slips away. Set it up once, no tech skills needed.",
     "cta": "Try free for 7 days",
     "ctaSecondary": "See how it works",
     "beforeLabel": "Without AI",
@@ -105,10 +105,10 @@
       "turismo": "Travel"
     },
     "noCard": "No credit card · Setup in 1 hour",
-    "trustline": "500+ businesses across LatAm already automate with Parallly"
+    "trustline": "Official Meta integration for WhatsApp, Instagram and Messenger · Secure payments with MercadoPago"
   },
   "trust": {
-    "title": "Backed by trust, security and the big players",
+    "title": "Backed by Meta and MercadoPago",
     "metaTitle": "Meta Tech Provider",
     "metaDesc": "Official integration with WhatsApp Business, Instagram and Messenger",
     "mpTitle": "MercadoPago Payments",
@@ -482,7 +482,7 @@
   },
   "howItWorks": {
     "sectionTitle": "Up and running in 3 steps",
-    "subtitle": "No code. No IT. No manuals. If you can use WhatsApp, you can use Parallly.",
+    "subtitle": "No code, no techies. If you can use WhatsApp, you can use Parallly.",
     "step1": "Connect your channels",
     "step1Desc": "WhatsApp, Instagram, Messenger, Telegram or SMS. Official Meta OAuth — one click and done.",
     "step1Tag": "5 minutes",
@@ -508,7 +508,7 @@
     "f5Desc": "Trigger → conditions → actions rules. Nurturing sequences, recall, follow-ups. Configure with clicks.",
     "f6Title": "Metrics that matter",
     "f6Desc": "Response time, conversion by channel, CSAT, agent leaderboard. All in real time.",
-    "f7Title": "Knowledge base (RAG)",
+    "f7Title": "Answers with your information, never makes it up",
     "f7Desc": "Upload your catalog, FAQs, policies and documents. Your agent searches with AI and answers with real info.",
     "f8Title": "Multi-agent, multi-channel",
     "f8Desc": "A formal agent on email, a casual one on Instagram. Your team gets handoffs by skills.",
@@ -517,7 +517,7 @@
     "f10Title": "Email templates",
     "f10Desc": "Booking confirmations, reminders, welcomes — auto-generated and customizable with variables.",
     "f11Title": "Compliance and privacy",
-    "f11Desc": "Auto opt-out, GDPR-ready, immutable audit log, AES-256-GCM encryption, tenant-isolated data.",
+    "f11Desc": "Your data and your customers' protected with bank-grade encryption, separated by company and backed up daily. We comply with international privacy standards.",
     "f12Title": "Granular roles & permissions",
     "f12Desc": "Admin, Supervisor, Agent — each one sees and does just what's needed. Skills route handoffs."
   },
@@ -575,7 +575,7 @@
     "emprendedorFeatures": [
       "1 channel (WhatsApp)",
       "1,000 AI messages/month",
-      "1 AI agent with Layer 1",
+      "1 AI assistant ready for your industry",
       "Basic sales pipeline",
       "1 Google/Microsoft Calendar",
       "Premium email confirmations"
@@ -601,7 +601,7 @@
       "Advanced CRM + automations",
       "3 Google/Microsoft Calendar sync",
       "Premium templates + full analytics",
-      "Live WebSocket agent console",
+      "Real-time team console",
       "Priority support"
     ],
     "enterpriseName": "Enterprise",
@@ -611,8 +611,8 @@
     "enterpriseFeatures": [
       "All channels (WhatsApp + IG + FB + TG + Email)",
       "100,000 AI messages/month",
-      "10 AI agents + 5-tier RAG KB",
-      "Z-Score deviation anomaly detection",
+      "10 AI assistants + advanced knowledge base",
+      "Automatic alerts when something looks off",
       "10 Google/Microsoft Calendar sync",
       "SSO + audit logs",
       "Dedicated priority support"
@@ -649,7 +649,7 @@
     "ctaLink": "Contact support"
   },
   "cta": {
-    "title": "This is what your business needs",
+    "title": "Your assistant could be answering customers today",
     "subtitle": "7-day trial. No card for Starter. Setup in 1 hour with Spanish/English support.",
     "button": "Start free trial",
     "secondaryButton": "Talk to sales",

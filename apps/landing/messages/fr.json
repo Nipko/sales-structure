@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "Parallly — IA conversationnelle pour vendre, servir et planifier 24/7",
-    "description": "Connectez WhatsApp, Instagram et Messenger. Votre agent IA répond, planifie des rendez-vous, qualifie les leads et vend pendant que vous dormez. Adapté à 18 industries. Fait en Amérique latine."
+    "title": "Parallly — Votre entreprise répond, planifie et vend toute seule sur WhatsApp, 24/7",
+    "description": "Connectez WhatsApp, Instagram et Messenger. Votre assistant IA répond, planifie des rendez-vous, enregistre les données de chaque client et vend pendant que vous dormez. Adapté à 18 industries. Fait en Amérique latine."
   },
   "nav": {
     "features": "Fonctionnalités",
@@ -76,17 +76,17 @@
     "tool3Title": "Planification Multi-Calendrier",
     "tool3Desc": "L'IA planifie les rendez-vous en vérifiant la disponibilité réelle. Synchronise de manière bidirectionnelle avec Google et Microsoft Outlook Calendar, générant des liens Meet/Teams et envoyant des confirmations d'email personnalisées.",
     "tool4Title": "Analytique temps réel",
-    "tool4Desc": "Volume, temps de réponse, écarts de Z-score et détection d'anomalies. Sans attendre les rapports de fin de mois.",
-    "tool5Title": "Base de Connaissances à 5 Niveaux",
-    "tool5Desc": "Alimentée par votre identité d'entreprise, FAQ, catalogue, politiques de marque et articles détaillés (RAG++). L'IA cherche et répond avec des informations 100% réelles — elle n'invente rien.",
-    "tool6Title": "Architecture Cognitive à 3 Couches",
-    "tool6Desc": "Configurez le ton, les règles (Layer 1) et la personnalité (Layer 2) de l'agent par canal. De plus, la couche de tour (Layer 3) contextualise instantanément chaque conversation."
+    "tool4Desc": "Voyez en direct combien de clients vous écrivent, à quelle vitesse vous répondez et quel canal génère le plus de ventes. Si quelque chose sort de l'ordinaire, on vous alerte — sans attendre les rapports de fin de mois.",
+    "tool5Title": "Répond avec vos informations réelles — n'invente rien",
+    "tool5Desc": "Téléversez votre catalogue, vos prix, vos questions fréquentes et vos politiques. Votre assistant répond uniquement avec ce que vous avez chargé : il n'invente jamais de prix et ne promet pas ce que vous ne pouvez pas tenir.",
+    "tool6Title": "Un assistant avec votre ton et vos règles",
+    "tool6Desc": "Décidez comment votre assistant parle sur chaque canal : formel sur l'email, proche sur Instagram. Vous fixez les règles — ce qu'il peut promettre, ce qu'il ne peut pas — et il les respecte dans chaque conversation."
   },
   "hero": {
-    "badge": "IA conversationnelle à 5 canaux · 18 industries · Fait en LatAm",
-    "title": "L'IA qui <em>vend, planifie et sert</em> — 24/7",
-    "titleHighlight": "vend, planifie et sert",
-    "subtitle": "Connectez WhatsApp, Instagram, Messenger, Telegram et Email. Votre agent IA répond en secondes avec un moteur cognitif à 3 couches, remplit votre CRM tout seul et planifie intelligemment.",
+    "badge": "Votre vendeur IA · WhatsApp, Instagram et 3 canaux de plus · Fait en LatAm",
+    "title": "Votre entreprise <em>répond, planifie et vend toute seule</em> sur WhatsApp — 24/7",
+    "titleHighlight": "répond, planifie et vend toute seule",
+    "subtitle": "Pendant que vous gérez votre entreprise (ou que vous dormez), votre assistant IA répond à chaque message en quelques secondes, planifie les rendez-vous et enregistre les données de chaque client pour qu'aucune vente ne vous échappe. Vous le configurez une fois, sans connaissances techniques.",
     "cta": "Essai gratuit 7 jours",
     "ctaSecondary": "Voir comment ça marche",
     "beforeLabel": "Sans IA",
@@ -105,10 +105,10 @@
       "turismo": "Tourisme"
     },
     "noCard": "Sans carte de crédit · Configuration en 1 heure",
-    "trustline": "Plus de 500 entreprises en LatAm automatisent déjà avec Parallly"
+    "trustline": "Intégration officielle de Meta pour WhatsApp, Instagram et Messenger · Paiements sécurisés avec MercadoPago"
   },
   "trust": {
-    "title": "Confiance, sécurité et le soutien des grands",
+    "title": "Soutenus par Meta et MercadoPago",
     "metaTitle": "Meta Tech Provider",
     "metaDesc": "Intégration officielle avec WhatsApp Business, Instagram et Messenger",
     "mpTitle": "Paiements MercadoPago",
@@ -482,7 +482,7 @@
   },
   "howItWorks": {
     "sectionTitle": "Opérationnel en 3 étapes",
-    "subtitle": "Sans code. Sans IT. Sans manuels. Si vous savez utiliser WhatsApp, vous savez utiliser Parallly.",
+    "subtitle": "Sans code et sans techniciens. Si vous savez utiliser WhatsApp, vous savez utiliser Parallly.",
     "step1": "Connectez vos canaux",
     "step1Desc": "WhatsApp, Instagram, Messenger, Telegram ou SMS. OAuth officiel Meta — un clic et c'est fait.",
     "step1Tag": "5 minutes",
@@ -508,7 +508,7 @@
     "f5Desc": "Règles déclencheur → conditions → actions. Séquences nurturing, recall, follow-ups. Configurez avec des clics.",
     "f6Title": "Métriques qui comptent",
     "f6Desc": "Temps de réponse, conversion par canal, CSAT, classement des agents. Tout en temps réel.",
-    "f7Title": "Base de connaissances (RAG)",
+    "f7Title": "Répond avec vos informations, n'invente rien",
     "f7Desc": "Téléchargez votre catalogue, FAQ, politiques et documents. Votre agent cherche avec IA et répond avec info réelle.",
     "f8Title": "Multi-agent, multi-canal",
     "f8Desc": "Un agent formel sur email, un décontracté sur Instagram. Votre équipe reçoit les handoffs par compétences.",
@@ -517,7 +517,7 @@
     "f10Title": "Modèles email",
     "f10Desc": "Confirmations de RDV, rappels, bienvenues — auto-générés et personnalisables avec variables.",
     "f11Title": "Conformité et confidentialité",
-    "f11Desc": "Opt-out auto, RGPD-ready, audit log immutable, chiffrement AES-256-GCM, données isolées par tenant.",
+    "f11Desc": "Vos données et celles de vos clients protégées par un chiffrement de niveau bancaire, séparées par entreprise et sauvegardées chaque jour. Nous respectons les normes internationales de confidentialité.",
     "f12Title": "Rôles et permissions granulaires",
     "f12Desc": "Admin, Superviseur, Agent — chacun voit et fait juste ce qu'il faut. Compétences routent les handoffs."
   },
@@ -575,7 +575,7 @@
     "emprendedorFeatures": [
       "1 canal (WhatsApp)",
       "1 000 messages IA/mois",
-      "1 agent IA avec Layer 1",
+      "1 assistant IA prêt pour votre industrie",
       "Pipeline de vente basique",
       "1 calendrier Google/Microsoft",
       "Confirmations premium par email"
@@ -601,7 +601,7 @@
       "CRM avancé + automatisations",
       "3 calendriers Google/Microsoft sync",
       "Modèles personnalisés + analytics complet",
-      "Console par WebSockets en direct",
+      "Console d'équipe en temps réel",
       "Support prioritaire"
     ],
     "enterpriseName": "Enterprise",
@@ -611,8 +611,8 @@
     "enterpriseFeatures": [
       "Tous les canaux (WhatsApp + IG + FB + TG + Email)",
       "100 000 messages IA/mois",
-      "10 agents IA + RAG de 5 niveaux",
-      "Détection des anomalies Z-Score",
+      "10 assistants IA + base de connaissances avancée",
+      "Alertes automatiques quand quelque chose sort de l'ordinaire",
       "10 calendriers Google/Microsoft sync",
       "SSO + journal d'audit",
       "Support prioritaire dédié"
@@ -649,7 +649,7 @@
     "ctaLink": "Contacter le support"
   },
   "cta": {
-    "title": "C'est ce dont votre entreprise a besoin",
+    "title": "Votre assistant pourrait répondre à vos clients dès aujourd'hui",
     "subtitle": "Essai 7 jours. Sans carte pour Starter. Configuration en 1 heure avec support FR/ES.",
     "button": "Commencer l'essai gratuit",
     "secondaryButton": "Parler aux ventes",

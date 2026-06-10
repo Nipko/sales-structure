@@ -314,6 +314,131 @@ export class NurturingService {
         }
     }
 
+    // ─── Abandoned booking follow-ups (#11 — "sales agent") ──────────
+
+    /** Mid-flow booking steps worth recovering (everything except idle/booked). */
+    private static readonly MID_FLOW_BOOKING_STEPS = ['show_services', 'ask_date', 'show_slots', 'ask_name', 'ask_email', 'confirm'];
+
+    /**
+     * Cron: every 2h, recover bookings abandoned mid-flow. Unlike the generic
+     * stale follow-up, this references WHAT the customer was booking (service/date)
+     * for a far more compelling nudge — the highest-ROI "sales agent" behavior.
+     */
+    @Cron('30 */2 * * *')
+    async checkAbandonedBookingsAllTenants(): Promise<void> {
+        this.logger.log('[Cron] Checking abandoned bookings across all tenants...');
+        try {
+            const tenants = await this.prisma.$queryRaw<any[]>`
+                SELECT id, schema_name FROM tenants WHERE is_active = true
+            `;
+            for (const tenant of tenants || []) {
+                try {
+                    await this.checkAbandonedBookings(tenant.id, tenant.schema_name);
+                } catch (e: any) {
+                    this.logger.warn(`Abandoned-booking check failed for tenant ${tenant.id}: ${e.message}`);
+                }
+            }
+        } catch (e: any) {
+            this.logger.error(`[Cron] Abandoned bookings check failed: ${e.message}`);
+        }
+    }
+
+    /**
+     * Find conversations stuck mid-booking (2-24h, no customer reply since) that
+     * we haven't nudged for this abandonment cycle, and send a booking-aware
+     * follow-up. Gated on nurturing being enabled.
+     */
+    async checkAbandonedBookings(tenantId: string, schemaName?: string): Promise<void> {
+        const schema = schemaName || await this.tenantSchema(tenantId);
+        const config = await this.getNurturingConfig(tenantId);
+        if (!config.enabled) return;
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT c.id AS conversation_id, c.metadata->'bookingState' AS booking_state
+             FROM conversations c
+             WHERE c.status = 'active'
+               AND (c.metadata->'bookingState'->>'step') = ANY($1::text[])
+               AND (c.metadata->>'bookingStateUpdatedAt') IS NOT NULL
+               AND (c.metadata->>'bookingStateUpdatedAt')::timestamptz < NOW() - INTERVAL '2 hours'
+               AND (c.metadata->>'bookingStateUpdatedAt')::timestamptz > NOW() - INTERVAL '24 hours'
+               AND (
+                   c.metadata->>'bookingFollowUpAt' IS NULL
+                   OR (c.metadata->>'bookingFollowUpAt')::timestamptz < (c.metadata->>'bookingStateUpdatedAt')::timestamptz
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM messages m
+                   WHERE m.conversation_id = c.id AND m.direction = 'inbound'
+                     AND m.created_at > (c.metadata->>'bookingStateUpdatedAt')::timestamptz
+               )
+             LIMIT 50`,
+            [NurturingService.MID_FLOW_BOOKING_STEPS],
+            { timeout: 30000 },
+        );
+
+        if (!rows || rows.length === 0) return;
+        this.logger.log(`Found ${rows.length} abandoned booking(s) for tenant ${tenantId}`);
+
+        for (const row of rows) {
+            try {
+                await this.sendBookingFollowUp(tenantId, schema, row.conversation_id, row.booking_state);
+            } catch (e: any) {
+                this.logger.warn(`Booking follow-up failed for conv ${row.conversation_id}: ${e.message}`);
+            }
+        }
+    }
+
+    private async sendBookingFollowUp(tenantId: string, schemaName: string, conversationId: string, bookingState: any): Promise<void> {
+        const contact = await this.getContact(schemaName, conversationId);
+        if (!contact) return;
+
+        const text = await this.generateBookingFollowUpText(tenantId, contact, bookingState);
+        // Reuse the generic sender — it enforces the 24h window, opt-out/allowed
+        // channels, the once-per-day cap, and persists the message.
+        await this.sendFollowUpText(tenantId, schemaName, conversationId, contact, text);
+
+        // Mark this abandonment cycle as nudged so we don't re-send until the
+        // booking advances (bookingStateUpdatedAt moves past bookingFollowUpAt).
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE conversations
+             SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{bookingFollowUpAt}', to_jsonb(NOW()::text))
+             WHERE id = $1::uuid`,
+            [conversationId],
+        );
+    }
+
+    /** Booking-aware follow-up copy — LLM in the agent's voice, with a safe fallback. */
+    private async generateBookingFollowUpText(tenantId: string, contact: any, bookingState: any): Promise<string> {
+        const name = contact?.name ? ` ${String(contact.name).split(' ')[0]}` : '';
+        const svc = bookingState?.serviceName;
+        const date = bookingState?.date;
+        const time = bookingState?.time;
+        const fallback = svc
+            ? `¡Hola${name}! 👋 Vi que estabas por agendar *${svc}*${date ? ` para el ${date}` : ''}${time ? ` a las ${time}` : ''} pero no llegamos a confirmarlo. ¿Querés que lo terminemos de reservar?`
+            : `¡Hola${name}! 👋 Vi que estabas agendando una cita pero quedó a medias. ¿Seguimos? Estoy para ayudarte.`;
+
+        try {
+            const persona = await this.personaService.getActivePersona(tenantId);
+            if (!persona) return fallback;
+            const ctx = [svc && `servicio: ${svc}`, date && `fecha: ${date}`, time && `hora: ${time}`].filter(Boolean).join(', ') || 'sin detalles';
+            const response = await this.llmRouter.execute({
+                task: 'conversation',
+                messages: [{
+                    role: 'user',
+                    content: `Un cliente${name ? ` (${name.trim()})` : ''} empezó a agendar una cita pero la dejó a medias (${ctx}). ` +
+                        `Genera UN mensaje breve, cálido y en español para invitarlo a retomar y completar la reserva, sin presionar. ` +
+                        `Menciona naturalmente el servicio/fecha si los hay. Devuelve SOLO el mensaje.`,
+                }],
+                systemPrompt: this.personaService.buildSystemPrompt(persona),
+                temperature: 0.8,
+                tenantId,
+            });
+            return response.content?.trim() || fallback;
+        } catch {
+            return fallback;
+        }
+    }
+
     // ─── Private: Attempt Implementations ────────────────────────────
 
     /**

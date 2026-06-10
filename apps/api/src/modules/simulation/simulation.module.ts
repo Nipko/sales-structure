@@ -9,6 +9,8 @@ import { ConversationsModule } from '../conversations/conversations.module';
 import { SimulationService, SIMULATION_QUEUE } from './simulation.service';
 import { SimulationController } from './simulation.controller';
 import { SimulationProcessor } from './simulation.processor';
+import { EvalService } from './eval.service';
+import { EvalController } from './eval.controller';
 
 /**
  * Agent Simulation pre-deploy (T2.13). Reuses:
@@ -26,8 +28,8 @@ import { SimulationProcessor } from './simulation.processor';
         ConversationsModule,
         BullModule.registerQueue({ name: SIMULATION_QUEUE }),
     ],
-    providers: [SimulationService, SimulationProcessor],
-    controllers: [SimulationController],
-    exports: [SimulationService],
+    providers: [SimulationService, SimulationProcessor, EvalService],
+    controllers: [SimulationController, EvalController],
+    exports: [SimulationService, EvalService],
 })
 export class SimulationModule {}

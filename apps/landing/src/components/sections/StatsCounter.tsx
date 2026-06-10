@@ -7,6 +7,7 @@ import { CountUp } from "../ui/CountUp";
 
 const STATS = [
   { num: 2_000_000, suffix: "+", labelKey: "stat1Label" },
+  { num: 70, suffix: "%", labelKey: "stat5Label" },
   { num: 4.9, suffix: "/5", labelKey: "stat2Label" },
   { num: 45, suffix: "%", labelKey: "stat3Label" },
   { num: 16, suffix: "", labelKey: "stat4Label" },
@@ -20,7 +21,7 @@ export function StatsCounter() {
       <p className="text-center text-text-muted text-xs uppercase tracking-widest mb-10">
         {t("trust")}
       </p>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-6 text-center">
         {STATS.map((s, i) => (
           <motion.div
             key={i}

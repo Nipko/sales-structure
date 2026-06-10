@@ -539,7 +539,8 @@
     "stat1Label": "automated conversations/month",
     "stat2Label": "customer satisfaction",
     "stat3Label": "average more conversions",
-    "stat4Label": "industry verticals supported"
+    "stat4Label": "industry verticals supported",
+    "stat5Label": "conversations resolved without an agent"
   },
   "testimonials": {
     "title": "What automated businesses say",

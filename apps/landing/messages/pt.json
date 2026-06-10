@@ -539,7 +539,8 @@
     "stat1Label": "conversas automatizadas/mês",
     "stat2Label": "satisfação do cliente",
     "stat3Label": "mais conversões em média",
-    "stat4Label": "verticais de indústria suportadas"
+    "stat4Label": "verticais de indústria suportadas",
+    "stat5Label": "conversas resolvidas sem agente"
   },
   "testimonials": {
     "title": "O que dizem os negócios automatizados",

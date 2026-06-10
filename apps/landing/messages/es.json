@@ -539,7 +539,8 @@
     "stat1Label": "conversaciones automatizadas/mes",
     "stat2Label": "satisfacción del cliente",
     "stat3Label": "más conversiones promedio",
-    "stat4Label": "industrias verticales soportadas"
+    "stat4Label": "industrias verticales soportadas",
+    "stat5Label": "conversaciones resueltas sin agente"
   },
   "testimonials": {
     "title": "Lo que dicen quienes ya automatizaron",

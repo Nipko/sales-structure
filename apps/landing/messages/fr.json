@@ -539,7 +539,8 @@
     "stat1Label": "conversations automatisées/mois",
     "stat2Label": "satisfaction client",
     "stat3Label": "plus de conversions en moyenne",
-    "stat4Label": "verticales d'industrie supportées"
+    "stat4Label": "verticales d'industrie supportées",
+    "stat5Label": "conversations résolues sans agent"
   },
   "testimonials": {
     "title": "Ce que disent les entreprises automatisées",

@@ -623,10 +623,21 @@ export class KnowledgeService {
         const KEYWORD_BOOST = 0.15;
         const LANG_BOOST = 0.1;
         const wantLang = (options?.language || '').slice(0, 2).toLowerCase();
+        // Graded keyword signal: tokens of the query (accent-insensitive, len>3).
+        // Boost is proportional to how many appear in the chunk — far better than
+        // the previous binary "whole query as one ILIKE" which almost never hit
+        // for multi-word queries (a light, no-index step toward BM25/RRF).
+        const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        const queryTokens = [...new Set(norm(query).split(/\s+/).filter(w => w.length > 3))];
         const enriched = results
             .map((r: any) => {
                 const vectorScore = 1 - Number(r.distance ?? 0);
-                const keywordBoost = r.keyword_hit ? KEYWORD_BOOST : 0;
+                let keywordBoost = r.keyword_hit ? KEYWORD_BOOST : 0;
+                if (queryTokens.length) {
+                    const chunkNorm = norm(r.chunk_text || '');
+                    const hits = queryTokens.filter(t => chunkNorm.includes(t)).length;
+                    if (hits > 0) keywordBoost = Math.max(keywordBoost, KEYWORD_BOOST * (hits / queryTokens.length));
+                }
                 // Soft boost (not a hard filter — would empty monolingual KBs) for
                 // chunks whose document language matches the conversation language.
                 const langBoost = wantLang && (r.doc_language || '').slice(0, 2).toLowerCase() === wantLang ? LANG_BOOST : 0;

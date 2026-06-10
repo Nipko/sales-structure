@@ -1399,8 +1399,11 @@ export class ConversationsService {
                 // this in their RAG config if they need broader recall.
                 const similarityThreshold = ragConfig?.similarityThreshold ?? 0.35;
                 const searchThreshold = Math.min(0.25, similarityThreshold);
+                // RAG 2.0: rewrite follow-up questions into a standalone search query
+                // so anaphora ("¿y eso cuánto sale?") don't embed garbage.
+                const searchQuery = await this.rewriteSearchQuery(userText, schemaName, conversation.id, tenantId);
                 const ragResults = await this.knowledgeService.searchRelevant(
-                    tenantId, userText, topK, { similarityThreshold: searchThreshold, conversationId: conversation.id, language: userLanguage },
+                    tenantId, searchQuery, topK, { similarityThreshold: searchThreshold, conversationId: conversation.id, language: userLanguage },
                 );
                 if (ragResults.length > 0) {
                     const retrieved = ragResults.filter((r: any) => r.score >= similarityThreshold);
@@ -1744,6 +1747,59 @@ export class ConversationsService {
             this.logger.log(`[Debounce] Flushed ${parts.length} messages as one turn for ${msg.contactId}`);
         }
         return (parts.length ? parts : [text]).join('\n').trim() || text;
+    }
+
+    /**
+     * RAG 2.0 query rewriting. Follow-up questions ("¿y eso cuánto sale?", "el
+     * segundo") embed poorly because the raw text lacks the referent. When the
+     * message looks like a follow-up, rewrite it into a standalone search query
+     * using recent history (cheap tier). Self-contained questions pass through
+     * unchanged so we don't add latency where it isn't needed.
+     */
+    private async rewriteSearchQuery(userText: string, schemaName: string, conversationId: string, tenantId: string): Promise<string> {
+        // Only worth a rewrite for likely follow-ups (short or anaphoric) — a
+        // self-contained question passes through so we don't add a call/latency.
+        const looksLikeFollowUp = userText.length < 80 ||
+            /\b(eso|esa|ese|esos|esas|esto|estos|aquello|ello|lo mismo|tambi[eé]n|el primero|el segundo|la primera|la segunda|cu[aá]nto|y\s)\b/i.test(userText);
+        if (!looksLikeFollowUp) return userText;
+
+        // Fetch a little prior context (decoupled from the main history fetch,
+        // which happens later in the pipeline). Skip the current inbound (OFFSET 1).
+        let recent = '';
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT direction, content_text FROM messages
+                 WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 5 OFFSET 1`,
+                [conversationId]);
+            if (!rows?.length) return userText; // no prior context → nothing to resolve
+            recent = rows.reverse()
+                .map(m => `${m.direction === 'inbound' ? 'Cliente' : 'Agente'}: ${(m.content_text || '').slice(0, 200)}`)
+                .join('\n');
+        } catch {
+            return userText;
+        }
+        if (!recent) return userText;
+
+        try {
+            const resp = await this.llmRouter.execute({
+                task: 'conversation',
+                messages: [{
+                    role: 'user',
+                    content: `Dada la conversación, reescribe la ÚLTIMA pregunta del cliente como una consulta de búsqueda autónoma, resolviendo referencias ("eso", "ese", "el segundo") con el contexto. Si ya es autónoma, devuélvela igual. Devuelve SOLO la consulta, sin comillas ni explicación.\n\n${recent}\nCliente: ${userText}`,
+                }],
+                systemPrompt: 'Reescribes preguntas en consultas de búsqueda autónomas. Devuelves solo la consulta.',
+                temperature: 0,
+                tenantId,
+            });
+            const rewritten = resp.content?.trim().replace(/^["']|["']$/g, '');
+            if (rewritten && rewritten.length > 2 && rewritten.length < 300) {
+                this.logger.debug(`[RAG] Query rewritten: "${userText}" → "${rewritten}"`);
+                return rewritten;
+            }
+        } catch (e: any) {
+            this.logger.debug(`[RAG] Query rewrite skipped: ${e.message}`);
+        }
+        return userText;
     }
 
     /**

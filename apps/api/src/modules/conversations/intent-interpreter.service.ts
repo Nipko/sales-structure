@@ -182,7 +182,12 @@ export class IntentInterpreterService {
         // Two passes so the FIRST loose word-overlap can't beat a more specific
         // service: e.g. "consulta especializada" must win over "consulta general"
         // for "quiero consulta especializada".
-        if (!base.serviceMentioned) {
+        // Skip entirely while collecting name/email or at confirm: a surname like
+        // "Cortés" (stem of "corte") would otherwise reset the booking and switch
+        // service. A real change of service is handled by the intent interpreter
+        // on a fresh turn outside these steps.
+        const collectingPersonalInfo = step === 'ask_name' || step === 'ask_email' || step === 'confirm';
+        if (!base.serviceMentioned && !collectingPersonalInfo) {
             // Pass 1: full service name appears in the text — pick the LONGEST
             // (most specific) such match across all services.
             let bestExact: string | null = null;
@@ -243,8 +248,21 @@ export class IntentInterpreterService {
             for (const [name, num] of Object.entries(months)) {
                 const m = t.match(new RegExp(`(\\d{1,2})\\s*(?:de\\s+)?${name}`, 'i'));
                 if (m) {
-                    const y = new Date(todayDate).getFullYear();
-                    base.dateMentioned = `${y}-${String(num).padStart(2, '0')}-${String(parseInt(m[1])).padStart(2, '0')}`;
+                    const day = parseInt(m[1]);
+                    if (day < 1 || day > 31) break; // invalid day → ignore
+                    let y = new Date(todayDate).getFullYear();
+                    let candidate = `${y}-${String(num).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    // If the date already passed this year, roll over to next year
+                    // ("10 de enero" said in June means next January, not the past).
+                    if (candidate < todayDate) {
+                        y += 1;
+                        candidate = `${y}-${String(num).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    }
+                    // Validate it's a real calendar date (rejects e.g. "31 de febrero").
+                    const parsed = new Date(`${candidate}T12:00:00`);
+                    if (!isNaN(parsed.getTime()) && parsed.getMonth() + 1 === num && parsed.getDate() === day) {
+                        base.dateMentioned = candidate;
+                    }
                     break;
                 }
             }
@@ -262,7 +280,9 @@ export class IntentInterpreterService {
         }
 
         // ── Detect time ──
-        const timeMatch = t.match(/(\d{1,2})[:\.](\d{2})/);
+        // (?!\d) so a LatAm thousands separator like "30.000" (pesos) is NOT
+        // parsed as 30:00 — the third digit after the dot rejects the match.
+        const timeMatch = t.match(/(\d{1,2})[:\.](\d{2})(?!\d)/);
         if (timeMatch) {
             base.timeMentioned = `${String(parseInt(timeMatch[1])).padStart(2, '0')}:${timeMatch[2]}`;
         } else {
@@ -363,11 +383,48 @@ Respond ONLY with valid JSON matching this schema:
 
         try {
             const cleaned = (response.content || '').replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-            return JSON.parse(cleaned);
+            return this.sanitizeLlmIntent(JSON.parse(cleaned), userText, todayDate);
         } catch {
             this.logger.warn(`[Interpret] Failed to parse LLM JSON: ${response.content}`);
             return this.fallbackIntent(userText);
         }
+    }
+
+    /**
+     * Validate/coerce the LLM's JSON so malformed or relative values never reach
+     * the booking engine / SQL: dateMentioned must be ISO (relative words mapped),
+     * timeMentioned must be HH:MM, booleans/strings coerced, unknown intents dropped.
+     */
+    private sanitizeLlmIntent(parsed: any, userText: string, todayDate: string): InterpretedIntent {
+        const out = this.fallbackIntent(userText);
+        if (!parsed || typeof parsed !== 'object') return out;
+
+        const VALID = ['greet', 'ask_services', 'select_service', 'ask_availability', 'select_time', 'provide_info', 'confirm', 'cancel', 'general_question', 'farewell', 'unknown'];
+        if (typeof parsed.intent === 'string' && VALID.includes(parsed.intent)) out.intent = parsed.intent as any;
+        if (typeof parsed.serviceMentioned === 'string' && parsed.serviceMentioned.trim()) out.serviceMentioned = parsed.serviceMentioned.trim();
+
+        const d = parsed.dateMentioned;
+        if (typeof d === 'string') {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+                out.dateMentioned = d;
+            } else if (/^(today|hoy|hoje|aujourd)/i.test(d)) {
+                out.dateMentioned = todayDate;
+            } else if (/^(tomorrow|mañana|manana|amanh|demain)/i.test(d)) {
+                const x = new Date(`${todayDate}T12:00:00`);
+                x.setDate(x.getDate() + 1);
+                out.dateMentioned = x.toISOString().slice(0, 10);
+            }
+        }
+        if (typeof parsed.timeMentioned === 'string' && /^\d{1,2}:\d{2}$/.test(parsed.timeMentioned)) {
+            out.timeMentioned = parsed.timeMentioned;
+        }
+        out.isConfirmation = parsed.isConfirmation === true;
+        out.isNegation = parsed.isNegation === true;
+        if (typeof parsed.nameProvided === 'string' && parsed.nameProvided.trim()) out.nameProvided = parsed.nameProvided.trim();
+        if (typeof parsed.emailProvided === 'string' && /\S+@\S+\.\S+/.test(parsed.emailProvided)) out.emailProvided = parsed.emailProvided.trim();
+        if (typeof parsed.questionTopic === 'string') out.questionTopic = parsed.questionTopic;
+        if (typeof parsed.language === 'string') out.language = parsed.language;
+        return out;
     }
 
     private fallbackIntent(userText: string): InterpretedIntent {

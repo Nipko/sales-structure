@@ -16,11 +16,15 @@ import { Injectable } from '@nestjs/common';
 export class LanguageDetectorService {
     // Curated stop-word sets — high-signal words that are unlikely to appear
     // in other languages. Keep short to minimize false positives.
+    // DISCRIMINATIVE markers only — words shared across languages ('que', 'de',
+    // 'para', 'por', 'la', 'una'...) were removed because they inflated every
+    // language's score equally and stopped the winner from clearing the margin
+    // (Portuguese in particular always lost to the tenant default).
     private readonly markers: Record<string, string[]> = {
-        es: ['que', 'de', 'la', 'el', 'es', 'en', 'por', 'para', 'con', 'una', 'uno', 'los', 'las', 'no', 'si', 'hola', 'gracias', 'cuando', 'donde', 'como', 'quiero', 'necesito', 'puedo', 'tengo', 'usted', 'nosotros'],
-        en: ['the', 'and', 'you', 'for', 'are', 'but', 'not', 'with', 'this', 'that', 'hello', 'thanks', 'thank', 'want', 'need', 'have', 'would', 'could', 'please', 'when', 'where', 'what', 'how'],
-        pt: ['que', 'de', 'nao', 'nao', 'para', 'com', 'uma', 'por', 'esta', 'isso', 'obrigado', 'obrigada', 'ola', 'quero', 'preciso', 'voce', 'nos', 'quando', 'onde', 'como', 'tambem'],
-        fr: ['que', 'de', 'le', 'la', 'les', 'pour', 'avec', 'une', 'bonjour', 'merci', 'est', 'sont', 'veux', 'besoin', 'vous', 'nous', 'quand', 'comment', 'aussi', 'mais', "c'est"],
+        es: ['hola', 'gracias', 'quiero', 'necesito', 'puedo', 'tengo', 'usted', 'ustedes', 'nosotros', 'pero', 'muy', 'tambien', 'aqui', 'ahora', 'quisiera', 'disculpa', 'cuanto', 'cuesta', 'donde', 'tienen'],
+        en: ['the', 'and', 'you', 'for', 'are', 'but', 'not', 'with', 'this', 'that', 'hello', 'thanks', 'thank', 'want', 'need', 'have', 'would', 'could', 'please', 'when', 'where', 'what', 'how', 'your', 'can'],
+        pt: ['nao', 'obrigado', 'obrigada', 'voce', 'voces', 'preciso', 'isso', 'tambem', 'entao', 'ola', 'sim', 'quero', 'gostaria', 'muito', 'quanto', 'custa', 'tudo', 'bom'],
+        fr: ['bonjour', 'bonsoir', 'merci', 'vous', 'nous', 'veux', 'besoin', 'comment', 'aussi', "c'est", 'oui', 'est', 'sont', 'avec', 'pourquoi', 'tres', 'voudrais', 'combien', 'salut', 'je'],
     };
 
     /**
@@ -49,7 +53,11 @@ export class LanguageDetectorService {
         const [winner, winnerScore] = ranked[0];
         const secondScore = ranked[1]?.[1] ?? 0;
 
-        if (winnerScore >= 2 && winnerScore - secondScore >= 2) {
+        // Confident when the winner clearly leads. With discriminative markers a
+        // strong winner (≥3 hits) only needs a margin of 1; a weaker winner still
+        // needs a margin of 2 to avoid coin-flips on short messages.
+        const margin = winnerScore - secondScore;
+        if ((winnerScore >= 2 && margin >= 2) || (winnerScore >= 3 && margin >= 1)) {
             return winner;
         }
         return this.short(fallback);

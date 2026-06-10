@@ -17,6 +17,7 @@ import { DripSequenceService } from '../automation/drip-sequence.service';
 import { NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem, ModelTier } from '@parallext/shared';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
+import { ResponseValidatorService } from './response-validator.service';
 import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
 import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
 import { FAQ_TOOL, POLICY_TOOL, KB_TOOL } from './tools/knowledge-tools';
@@ -83,6 +84,7 @@ export class ConversationsService {
         private dripSequenceService: DripSequenceService,
         private identityService: IdentityService,
         private toolExecutor: AIToolExecutorService,
+        private responseValidator: ResponseValidatorService,
         private bookingEngine: BookingEngineService,
         private procedureEngine: ProcedureEngineService,
         private intentInterpreter: IntentInterpreterService,
@@ -1622,6 +1624,13 @@ export class ConversationsService {
 
             // Booking state already persisted earlier in the engine block
 
+            // Output guardrail (#3): catch invented prices before the reply leaves.
+            // Corpus = the system prompt (services/KB/directive/business info) + the
+            // whole message thread (history + tool results) — everything the model saw.
+            finalResponse = await this.applyOutputGuardrails(
+                finalResponse, systemPrompt, currentMessages, allowedTiers, tenantId, conversation.id,
+            );
+
             // Reset failedAttempts on successful AI response
             await this.prisma.executeInTenantSchema(schemaName,
                 `UPDATE conversations
@@ -1707,6 +1716,58 @@ export class ConversationsService {
             this.logger.log(`[Debounce] Flushed ${parts.length} messages as one turn for ${msg.contactId}`);
         }
         return (parts.length ? parts : [text]).join('\n').trim() || text;
+    }
+
+    /**
+     * Output guardrail: if the response states a price the model wasn't given this
+     * turn, do ONE corrective re-generation constrained to context prices. Never
+     * blocks the customer — if it still can't be fixed, emits an event for
+     * monitoring and sends the best attempt. Regex-cheap unless a mismatch is found.
+     */
+    private async applyOutputGuardrails(
+        response: string,
+        systemPrompt: string,
+        currentMessages: any[],
+        allowedTiers: ModelTier[],
+        tenantId: string,
+        conversationId: string,
+    ): Promise<string> {
+        if (!response || response === ERROR_FALLBACK_MSG) return response;
+
+        const corpus = systemPrompt + '\n' + (currentMessages || [])
+            .map(m => (typeof m?.content === 'string' ? m.content : '')).join('\n');
+
+        const check = this.responseValidator.validatePrices(response, corpus);
+        if (check.ok) return response;
+
+        this.logger.warn(`[Guardrail] Response stated price(s) not in context: ${check.hallucinatedPrices.join(', ')} — corrective retry`);
+        try {
+            const corrected = await this.llmRouter.execute({
+                task: 'conversation',
+                messages: [
+                    ...currentMessages,
+                    { role: 'assistant', content: response },
+                    { role: 'user', content: 'Tu respuesta anterior mencionó uno o más precios que NO aparecen en la información que tienes. Reescríbela usando ÚNICAMENTE precios presentes en el contexto; si no tienes el precio exacto, dilo con naturalidad y ofrece confirmarlo. Devuelve solo el mensaje corregido.' },
+                ],
+                systemPrompt,
+                temperature: 0.3,
+                allowedTiers,
+                tenantId,
+            });
+            const fixed = corrected.content?.trim();
+            if (fixed) {
+                const recheck = this.responseValidator.validatePrices(fixed, corpus);
+                if (!recheck.ok) {
+                    this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: recheck.hallucinatedPrices });
+                }
+                return fixed;
+            }
+        } catch (e: any) {
+            this.logger.warn(`[Guardrail] corrective retry failed: ${e.message}`);
+        }
+        // Couldn't correct — surface for monitoring but never drop the customer reply.
+        this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: check.hallucinatedPrices });
+        return response;
     }
 
     /** Resolve `p`, or reject after `ms` so one slow tool can't stall the turn. */

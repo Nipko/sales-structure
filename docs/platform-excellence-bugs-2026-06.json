@@ -126,7 +126,14 @@
     "severity": "medium",
     "evidence": "const alreadyProcessed = await this.redis.get(idempotencyKey);\nif (alreadyProcessed) { ... return; }\nawait this.redis.set(idempotencyKey, '1', this.IDEMPOTENCY_TTL);",
     "fix": "Reemplazar por const first = await this.redis.acquireLock(idemKey, 86400); if (!first) return; (SET NX EX atómico).",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/whatsapp/services/whatsapp-webhook.service.ts",
@@ -136,7 +143,14 @@
     "severity": "medium",
     "evidence": "// Mark as processing immediately to prevent race conditions\nawait this.redis.set(idempotencyKey, '1', this.IDEMPOTENCY_TTL);\nconst tenantId = await this.resolveTenantId(phoneNumberId);\nif (!tenantId) { ... return; }\n...\ntry { await this.conversationsService.processIncomingMessage(...) } catch (error) { this.logger.error(...) }",
     "fix": "Usar SETNX como lock corto y borrar la clave (o marcarla 'failed' con TTL corto) cuando el procesamiento lanza, para que el reintento de Meta sí se procese.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/throttle/tenant-throttle.service.ts",
@@ -146,7 +160,14 @@
     "severity": "medium",
     "evidence": "const limit = limits[action];\nif (!limit) return false;\nif (limit === Number.POSITIVE_INFINITY) return false;\n// seed-billing-plans.js (emprendedor): rateLimits: { automation: 0, outbound: 100, broadcast: 0, ... }",
     "fix": "Tratar 0 como 'bloqueado' (return true) y reservar -1/Infinity como ilimitado, alineado con getPlanLimit.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/throttle/tenant-throttle.service.ts",
@@ -156,7 +177,14 @@
     "severity": "medium",
     "evidence": "const key = `throttle:${action}:${tenantId}:${Math.floor(Date.now() / (WINDOW_SECONDS * 1000))}`;\nconst current = await this.redis.incrementRateLimit(key, WINDOW_SECONDS);\nif (current > limit) { ... return true; }",
     "fix": "Separar check (GET) de consume (INCR tras envío exitoso), o decrementar el contador cuando el envío del attempt falla.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/channels/telegram/telegram.adapter.ts",
@@ -166,7 +194,14 @@
     "severity": "medium",
     "evidence": "body: JSON.stringify({\n    chat_id: to,\n    text,\n    parse_mode: 'HTML',\n}),",
     "fix": "Escapar &, <, > antes de enviar, o quitar parse_mode (texto plano) y usar HTML solo para contenido formateado controlado.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/channels/outbound-queue.service.ts",
@@ -176,7 +211,14 @@
     "severity": "medium",
     "evidence": "async enqueue(outbound: OutboundMessage, accessToken: string): Promise<void> {\n    const priority = await this.throttle.getPriority(outbound.tenantId);\n    await this.outboundQueue.add('send', { outbound, accessToken }, {...});\n// grep getMaxPendingJobs → solo tenant-throttle.service.ts:109 (sin callers)",
     "fix": "Mantener un contador Redis de jobs pendientes por tenant en enqueue/process y rechazar o degradar prioridad al superar getMaxPendingJobs.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/whatsapp/src/modules/webhooks/webhooks.service.ts",
@@ -186,7 +228,14 @@
     "severity": "medium",
     "evidence": "const exists = await this.redis.get(dedupeKey);\nif (exists) { ... continue; }\nawait this.webhookQueue.add('process-message', {...}, { jobId: `process-message-${msg.id}`, ... });\nawait this.redis.setex(dedupeKey, 86400, '1');",
     "fix": "Usar `SET dedupeKey 1 EX 86400 NX` y encolar solo si devuelve OK.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/whatsapp/src/modules/jobs/webhook.processor.ts",
@@ -196,7 +245,14 @@
     "severity": "low",
     "evidence": "await this.prisma.executeInTenantSchema(\n  schemaName,\n  `UPDATE messages SET status = $1, updated_at = NOW() WHERE external_id = $2`,\n  [status.status, status.id],\n);",
     "fix": "Aplicar precedencia: UPDATE ... WHERE external_id=$2 AND status_rank(status) < status_rank($1) (CASE sent<delivered<read<failed).",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts",
@@ -206,7 +262,14 @@
     "severity": "medium",
     "evidence": "const response = await fetch(url, {\n    method: 'POST',\n    headers: { 'Authorization': `Bearer ${accessToken}`, ... },\n    body: JSON.stringify({...}),\n}); // sin signal/timeout — y @Processor(OUTBOUND_QUEUE, { concurrency: 5, ... })",
     "fix": "Agregar AbortSignal.timeout(10_000) a todos los fetch de envío en los adapters.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/whatsapp/src/modules/webhooks/webhooks.controller.ts",
@@ -216,7 +279,14 @@
     "severity": "low",
     "evidence": "this.processWebhookAsync(body).catch(err => { this.logger.error(`Webhook processing error: ${err.message}`); });\nreturn { status: 'received' };\n// processWebhookAsync: for (const entry of entries) { for (const change of changes) { await this.webhooksService.processChange(entry.id, change); } }",
     "fix": "Envolver cada processChange en try/catch individual; opcionalmente validar conectividad y devolver 5xx cuando el enqueue falla para forzar retry de Meta.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/channels/outbound-queue.service.ts",
@@ -226,7 +296,14 @@
     "severity": "low",
     "evidence": "await this.outboundQueue.add('send', { outbound, accessToken }, { ... removeOnFail: { age: 86400 } });",
     "fix": "Encolar solo tenantId/channelType y resolver el token en el processor vía ChannelTokenService (ya cacheado 5 min).",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/prompt-assembler.service.ts",
@@ -312,7 +389,14 @@
     "severity": "medium",
     "evidence": "language-detector.service.ts:20-23: 'que','de','para','por','como' aparecen en es y pt; 'que','de','la','les' en es y fr. :52 `if (winnerScore >= 2 && winnerScore - secondScore >= 2)`. pt además tiene 'nao' duplicado en la lista (cuenta 1 sola vez por el Set, pero delata falta de revisión).",
     "fix": "Quitar de cada lista las palabras compartidas (dejar solo discriminantes: voce/obrigado/nao para pt; bonjour/merci/vous+est para fr) o ponderar solo tokens exclusivos; relajar el margen a 1 cuando el winner tiene ≥3 hits.",
-    "finder": "rag-knowledge"
+    "finder": "rag-knowledge",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/knowledge/knowledge.service.ts",
@@ -322,7 +406,14 @@
     "severity": "medium",
     "evidence": "knowledge.service.ts:231-232 `SELECT id, title, file_type FROM knowledge_documents WHERE id = $1::uuid` vs :258 `const currentVersion = existing[0].version || 1;` — columna nunca seleccionada.",
     "fix": "Añadir version (y source_type) al SELECT de la línea 232, o usar `version = COALESCE(version,1) + 1` directamente en el UPDATE SQL.",
-    "finder": "rag-knowledge"
+    "finder": "rag-knowledge",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/knowledge/knowledge.service.ts",
@@ -349,7 +440,14 @@
     "severity": "low",
     "evidence": "knowledge.service.ts:942-951: tras `chunks.push(currentChunk.trim()); currentChunk = currentChunk.slice(-CHUNK_OVERLAP_CHARS);` la condición `if (trimmed.length > CHUNK_MAX_CHARS) { if (currentChunk.length > 0) { chunks.push(currentChunk.trim()); ... } }` vuelve a pushear el overlap solo.",
     "fix": "En la rama de párrafo grande, descartar el overlap (currentChunk = '') en vez de pushearlo; alinear los slice(-200) al inicio de la siguiente palabra/oración.",
-    "finder": "rag-knowledge"
+    "finder": "rag-knowledge",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/knowledge/knowledge.service.ts",
@@ -359,7 +457,14 @@
     "severity": "low",
     "evidence": "knowledge.service.ts:638 `.filter(r => r.score >= similarityThreshold)` y :670 `r.score >= threshold` con el mismo valor → tautología. conversations.service.ts:1278 `const searchThreshold = Math.min(0.25, similarityThreshold);`.",
     "fix": "Pasar a trackRetrieval el threshold efectivo de uso (el similarityThreshold del tenant, 0.35) en lugar del searchThreshold de recall, o marcar was_used desde conversations.service según qué chunks entraron a retrievedKnowledge.",
-    "finder": "rag-knowledge"
+    "finder": "rag-knowledge",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/knowledge/knowledge.service.ts",
@@ -369,7 +474,14 @@
     "severity": "low",
     "evidence": "knowledge.service.ts:606-617: WHERE solo tiene `kd.status = 'ready'`; firma searchRelevant(tenantId, query, topK, options) sin parámetro de idioma. conversations.service.ts:1279-1281 no propaga userLanguage.",
     "fix": "Pasar turnContext.language a searchRelevant y aplicar boost (no filtro duro, para no vaciar KBs monolingües) a chunks cuyo kd.language coincida, p.ej. +0.1 al score.",
-    "finder": "rag-knowledge"
+    "finder": "rag-knowledge",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/knowledge/knowledge.service.ts",
@@ -379,7 +491,14 @@
     "severity": "low",
     "evidence": "knowledge.service.ts:835-838 cuenta embeddings sin filtrar por kd.status; :108-116 el catch solo hace UPDATE de status, sin DELETE FROM knowledge_embeddings WHERE document_id = ... (updateDocument sí lo hace en la línea 271-272, ingestDocument no).",
     "fix": "En el catch de ingestDocument, borrar los embeddings del documento fallido; y/o hacer el COUNT con JOIN a knowledge_documents WHERE status='ready'.",
-    "finder": "rag-knowledge"
+    "finder": "rag-knowledge",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/conversations.service.ts",
@@ -389,7 +508,14 @@
     "severity": "medium",
     "evidence": "conversations.service.ts:53 `const MAX_HISTORY_CHARS = 12_000;` (chars, no tokens); :1274 `const topK = ragConfig?.topK ?? 5;` sin Math.min; knowledge.service.ts:599 `poolSize = Math.max(topK, options?.poolSize ?? topK * 4)`. Ninguna medición del tamaño del systemPrompt en assemble() ni antes de llmRouter.execute (línea 1414).",
     "fix": "Clampear topK (p.ej. Math.min(topK, 10)), truncar cada chunk inyectado a un máximo, y validar un presupuesto total estimado de tokens (chars/4) para systemPrompt+messages antes del llmRouter.execute.",
-    "finder": "rag-knowledge"
+    "finder": "rag-knowledge",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/knowledge/knowledge.service.ts",
@@ -399,7 +525,14 @@
     "severity": "low",
     "evidence": "knowledge.service.ts:31-33 `new OpenAI({ apiKey: this.configService.get<string>('OPENAI_API_KEY') || '' })` y :1056-1060 sin fallback a otro proveedor de embeddings ni check de configuración.",
     "fix": "Validar la presencia de OPENAI_API_KEY al ingestar (error claro al tenant / deshabilitar la UI de KB) y registrar un health-check; opcionalmente soportar un proveedor de embeddings alternativo (Gemini) como fallback.",
-    "finder": "rag-knowledge"
+    "finder": "rag-knowledge",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/conversations.service.ts",
@@ -635,7 +768,14 @@
     "severity": "low",
     "evidence": "Líneas 256-268: const isYes = /^(s[ií]|yes|sim|oui|claro|...)/i.test(cleanText); const isNo = /^(no|n[aã]o|non|...)/i.test(cleanText); ... `SELECT id, service_name FROM appointments WHERE contact_id = $1::uuid AND status IN ('pending','confirmed') AND no_show_followed_up = true AND end_at < NOW() ORDER BY end_at DESC LIMIT 1`  — y línea 291: return; // Don't process through AI",
     "fix": "Acotar la ventana (p.ej. AND end_at > NOW() - INTERVAL '48 hours' o un flag de 'esperando respuesta de asistencia' con TTL) y limpiar no_show_followed_up tras procesar.",
-    "finder": "conv-core"
+    "finder": "conv-core",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/conversations.service.ts",
@@ -645,7 +785,14 @@
     "severity": "low",
     "evidence": "Líneas 1485-1500 (catch): return 'Disculpa, tuve un problema procesando tu mensaje. ¿Podrías repetirlo?';  — caller líneas 379-386: if (response) { this.throttle.incrementAiMessageCount(tenantId).catch(() => {}); this.analyticsService.trackEvent({ ... eventType: 'message_sent', ... source: 'ai' ...}); }",
     "fix": "Devolver el fallback con un flag (p.ej. { text, fromError: true }) o setear una variable de error y saltarse incrementAiMessageCount/trackEvent cuando la respuesta es el fallback de error.",
-    "finder": "conv-core"
+    "finder": "conv-core",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/conversations.service.ts",
@@ -655,7 +802,14 @@
     "severity": "low",
     "evidence": "Método completo processWidgetMessage (líneas 1603-1669): no contiene ninguna llamada a this.redis.acquireLock/releaseLock; widget.gateway.ts llama directamente await this.conversations.processWidgetMessage(tenantId, schemaName, conversationId, contactId, data.content).",
     "fix": "Reutilizar el mismo patrón de lock lock:conv:{conversationId} (con release por token) alrededor del cuerpo de processWidgetMessage.",
-    "finder": "conv-core"
+    "finder": "conv-core",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/pre-chat.service.ts",
@@ -665,7 +819,14 @@
     "severity": "low",
     "evidence": "Líneas 56-70: await this.prisma.executeInTenantSchema(schema, `UPDATE pre_chat_forms SET is_active = false, updated_at = NOW() WHERE is_active = true`, []); const rows = await this.prisma.executeInTenantSchema(schema, ` INSERT INTO pre_chat_forms ... `);  — y getActiveForm: `SELECT ... FROM pre_chat_forms WHERE is_active = true LIMIT 1` (sin ORDER BY).",
     "fix": "Hacer ambas operaciones en una sola transacción (o un solo statement: INSERT ... ; con CTE: WITH off AS (UPDATE ... ) INSERT ...) y añadir ORDER BY updated_at DESC al getActiveForm como defensa.",
-    "finder": "conv-core"
+    "finder": "conv-core",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/conversations.gateway.ts",
@@ -675,7 +836,14 @@
     "severity": "low",
     "evidence": "Líneas 149-156: for (const [, meta] of this.connectedClients) { if ((meta.role === 'super_admin' || meta.role === 'tenant_admin') && !notified.has(meta.tenantId)) { notified.add(meta.tenantId); this.server.to(meta.tenantId).emit('system:llm_alert', payload); } }",
     "fix": "Emitir por socket individual (this.server.sockets.get(socketId)?.emit(...)) a los clientes con rol admin, o mantener rooms separados por rol (p.ej. `${tenantId}:admins`).",
-    "finder": "conv-core"
+    "finder": "conv-core",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/ai-tool-executor.service.ts",
@@ -748,7 +916,14 @@
     "severity": "low",
     "evidence": "`} catch (error: any) { this.logger.error(`[Tool] ${toolName} failed: ${error.message}`); return { error: error.message }; }` (L325-328); patron repetido en decenas de handlers, p.ej. `return { error: e.message };` en getMenu/placeOrder/getCoursesTool/listMyTourBookings/etc.",
     "fix": "Loggear el error tecnico internamente (ya se hace) pero devolver al LLM un mensaje generico y seguro (p.ej. { error: 'tool_failed' } o un texto neutro), sin propagar error.message del driver de BD.",
-    "finder": "tool-executor"
+    "finder": "tool-executor",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/booking-engine.service.ts",
@@ -889,7 +1064,14 @@
     "severity": "medium",
     "evidence": "booking-engine.service.ts:242-277: `if (state.services?.length && !intent.serviceMentioned) { const numMatch = tNorm.match(/(?:el|la|opcion|numero|...)\\s*(\\d+)/); ... }` y el bloque de ordinales — ninguno verifica state.step, a diferencia de intent-interpreter.service.ts:136 `if (step === 'show_services' && services.length > 0)`. Luego 417-427 resetea date/slots/time al detectar 'otro' servicio.",
     "fix": "Gatear las ramas numérica y ordinal del engine a state.step === 'show_services', y en show_slots mapear ordinales/números a state.slots.",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/intent-interpreter.service.ts",
@@ -899,7 +1081,14 @@
     "severity": "medium",
     "evidence": "intent-interpreter.service.ts:194-205: `const stemMatch = userWords.some(uw => svcWords.some(sw => { const stemLen = Math.min(5, ...); return uw.substring(0, stemLen) === sw.substring(0, stemLen); }));` — sin chequear step. booking-engine.service.ts:417-427: `if (intent.serviceMentioned && state.serviceId && ... norm(intent.serviceMentioned) !== norm(state.serviceName)) { ... state.date = undefined; state.slots = undefined; state.time = undefined; state.step = 'ask_date'; }`.",
     "fix": "No ejecutar matching de servicios cuando step ∈ {ask_name, ask_email, confirm} (o exigir señal explícita de cambio: 'mejor', 'cambia', 'prefiero').",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/intent-interpreter.service.ts",
@@ -909,7 +1098,14 @@
     "severity": "medium",
     "evidence": "intent-interpreter.service.ts:226-233: `const y = new Date(todayDate).getFullYear(); base.dateMentioned = `${y}-${String(num).padStart(2,'0')}-${String(parseInt(m[1])).padStart(2,'0')}`;` — sin rollover ni validación de rango. ai-tool-executor.service.ts:809: `const dayOfWeek = new Date(date + 'T12:00:00').getDay();`.",
     "fix": "Si la fecha resultante < hoy, sumar 1 año; validar día 1-31 y descartar fechas inválidas (isNaN(Date.parse(...))).",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/intent-interpreter.service.ts",
@@ -919,7 +1115,14 @@
     "severity": "medium",
     "evidence": "intent-interpreter.service.ts:248-250: `const timeMatch = t.match(/(\\d{1,2})[:\\.](\\d{2})/); if (timeMatch) base.timeMentioned = ...` — '12.500' → grupos ('12','50'). booking-engine.service.ts:357-366: acepta el slot más cercano a ±30min de ese valor.",
     "fix": "Excluir matches seguidos de más dígitos (lookahead `(?!\\d)`) y/o exigir contexto horario ('a las', 'hs', ':') para el separador '.'.",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/intent-interpreter.service.ts",
@@ -929,7 +1132,14 @@
     "severity": "medium",
     "evidence": "intent-interpreter.service.ts:341-342: `const cleaned = (response.content || '')...; return JSON.parse(cleaned);` — sin validación. intent-interpreter.service.ts:19: docstring 'Date mentioned in YYYY-MM-DD or relative like \"today\", \"tomorrow\"'. booking-engine.service.ts:317: `if (intent.dateMentioned < todayDate)` — comparación lexicográfica de strings.",
     "fix": "Validar con regex /^\\d{4}-\\d{2}-\\d{2}$/ y mapear 'today'/'tomorrow' a fechas ISO antes de devolver; descartar campos con tipos inesperados.",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/booking-engine.service.ts",
@@ -939,7 +1149,14 @@
     "severity": "medium",
     "evidence": "booking-engine.service.ts:411-414: `if (state.step === 'booked') { return { handled: false, state }; }` — sin ninguna transición de salida booked→idle en todo el archivo (las únicas salidas a idle son cancel/confirm_no/servicio eliminado). booking-engine.service.ts:300: `if (intent.serviceMentioned && !state.serviceId && ...)` bloqueado por el serviceId retenido.",
     "fix": "Al detectar intent de booking (ask_availability/select_service) con step='booked', resetear a idle (limpiando serviceId/date/time) y procesar el nuevo flujo.",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/booking-engine.service.ts",
@@ -949,7 +1166,14 @@
     "severity": "medium",
     "evidence": "booking-engine.service.ts:378-384: `const isBookingTrigger = intent.isConfirmation || intent.intent === 'select_service' || ...; if (!state.serviceId && state.services?.length === 1 && isBookingTrigger) { state.serviceId = state.services[0].id; ... }` + 470-473: `if (state.serviceId && !state.date) { state.step = 'ask_date'; return { handled: true, ... } }`.",
     "fix": "Exigir que isConfirmation solo sea trigger cuando state.step !== 'idle' (hay un flujo de booking en curso que confirmar).",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/booking-engine.service.ts",
@@ -959,7 +1183,14 @@
     "severity": "medium",
     "evidence": "booking-engine.service.ts:562-568 construye buttonMessage con ids confirm_yes/confirm_no; único consumidor del engine: conversations.service.ts:1096-1110, que solo lee .handled/.text/.state. Grep global de 'svc_|slot_' encuentra solo los handlers del propio engine (389-399). intent-interpreter.service.ts:105: regex `^(si|sí|yes|ok|confirmo|dale|...)` no incluye 'confirmar'.",
     "fix": "Propagar buttonMessage/listMessage al ChannelGateway para canales con mensajes interactivos (WhatsApp), o eliminar los handlers muertos y agregar 'confirmar' al regex de confirmación.",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed-partial",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/conversations.service.ts",
@@ -969,7 +1200,14 @@
     "severity": "medium",
     "evidence": "conversations.service.ts:1132-1136: `if (!engineProducedText) { const procResult = await this.procedureEngine.process(...) }` — gating por resultado del booking. procedure-engine.service.ts:171-175: `if (state.awaitingField) { state.collected[state.awaitingField] = userText; ... }` captura ciegamente el siguiente userText que le llegue, sea cual sea.",
     "fix": "Si existe estado de procedure con awaitingField, darle prioridad al procedure engine sobre el booking engine (o cancelar explícitamente el procedure al entrar al booking).",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/procedure-engine.service.ts",
@@ -979,7 +1217,14 @@
     "severity": "medium",
     "evidence": "procedure-engine.service.ts:120-128: `const text = (userText || '').toLowerCase(); ... if (kws.some((k) => k && text.includes(k))) return p;` — k se usa crudo, sin toLowerCase() ni strip de acentos ni \\b.",
     "fix": "Normalizar ambos lados (lowercase + NFD sin diacríticos) y matchear con word boundaries.",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/booking-engine.service.ts",
@@ -989,7 +1234,14 @@
     "severity": "low",
     "evidence": "booking-engine.service.ts:369: `(state as any)._requestedUnavailableTime = intent.timeMentioned;` — único delete en la línea 478, dentro de `if ((state as any)._requestedUnavailableTime && state.step === 'show_slots' && state.slots?.length)` (476), rama que se evalúa DESPUÉS de checkAvailability (457) y que puede no alcanzarse en el mismo turno; el estado completo se persiste vía JSON.stringify en conversations.service.ts:1535.",
     "fix": "Borrar el flag incondicionalmente al final de cada process() (o no guardarlo en state: usar una variable local del turno).",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/procedure-engine.service.ts",
@@ -999,7 +1251,14 @@
     "severity": "low",
     "evidence": "procedure-engine.service.ts:178-179: `let guard = 0; while (state.currentStepId && guard++ < MAX_STEPS_PER_TURN) {...}` y 233-240: `// Reached the end (or ran out of steps) → procedure complete. await this.clearState(conversationId); return { handled: parts.length > 0, ..., completed: true, ... }` — no distingue 'guard agotado con currentStepId pendiente' de fin real.",
     "fix": "Si el guard se agota con currentStepId !== null, guardar el estado (saveState) y continuar en el próximo turno, o marcar error en lugar de completed.",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/conversations/procedure-engine.service.ts",
@@ -1009,7 +1268,14 @@
     "severity": "low",
     "evidence": "procedure-engine.service.ts:89-95: `} catch { procs = []; // table missing or transient error — treat as no active procedures } await this.redis.setJson(cacheKey, procs, ACTIVE_CACHE_TTL).catch(() => {});` — el propio comentario admite 'or transient error' y aún así cachea.",
     "fix": "Solo cachear el array vacío cuando to_regclass devolvió NULL o el error sea 42P01; en errores transitorios, no escribir el cache.",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/reviews/reviews.service.ts",
@@ -1036,7 +1302,14 @@
     "severity": "medium",
     "evidence": "`@Controller('portal') export class CustomerPortalController { ... @Post(':tenantId/request-access') async requestAccess(@Param('tenantId') tenantId, @Body() body:{phone?;email?}){ const result = await this.portalService.requestAccess(tenantId, body); ...}` (sin guards/throttle). En el servicio: `if (!contacts || contacts.length === 0) { throw new NotFoundException('No active contact found with the provided information'); }` (customer-portal.service.ts:100-102) revela existencia; luego `const code=this.generateCode(); await this.redis.set(redisKey, JSON.stringify({code,contactId,attempts:0}), 600);` sin límite por IP/identifier (customer-portal.service.ts:104-111).",
     "fix": "Aplicar rate limiting basado en Redis por IP y por identifier (p.ej. 3/identifier/hora, 5/IP/hora) en request-access; devolver siempre una respuesta genérica de éxito (no distinguir contacto existente vs inexistente) para evitar enumeración.",
-    "finder": "security"
+    "finder": "security",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/widget/widget.service.ts",
@@ -1046,7 +1319,14 @@
     "severity": "low",
     "evidence": "`this.jwtSecret = this.config.get<string>('JWT_SECRET') || 'widget-secret';` (widget.service.ts:18). Firma: `jwt.sign({sessionId,tenantId,widgetId}, this.jwtSecret, {expiresIn:'7d'})` (widget.service.ts:247-252). Verificación: `const decoded = jwt.verify(token, this.jwtSecret); ... WHERE ws.id = $1::uuid, decoded.sessionId` (widget.service.ts:220-229) — no valida tenantId/widgetId.",
     "fix": "Eliminar el fallback literal y usar getOrThrow para el secreto del widget (o un secreto dedicado distinto de JWT_SECRET). En getSessionByToken, validar también que decoded.tenantId/widgetId coincidan con la fila de sesión.",
-    "finder": "security"
+    "finder": "security",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/appointments/public-booking.controller.ts",
@@ -1056,7 +1336,14 @@
     "severity": "low",
     "evidence": "`const count = await this.redis.get(key); if (count && parseInt(count) >= 10) { throw ... } const pipeline = await this.redis.get(key); if (pipeline) { await this.redis.set(key, String(parseInt(pipeline)+1), 60); } else { await this.redis.set(key, '1', 60); }` (public-booking.controller.ts:26-38) — patrón check-then-act no atómico.",
     "fix": "Usar INCR atómico con EXPIRE en la primera escritura (p.ej. INCR key; if result===1 then EXPIRE key 60; if result>10 reject), idealmente vía el RedisService.isRateLimited ya existente.",
-    "finder": "security"
+    "finder": "security",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/ai/providers/xai.provider.ts",
@@ -1203,7 +1490,14 @@
     "severity": "medium",
     "evidence": "const req: Anthropic.MessageCreateParamsNonStreaming = {\n    model: options.model,\n    messages: this.formatMessages(options.messages),\n    max_tokens: Number(options.maxTokens || 4096),\n    temperature: Number(options.temperature ?? 0.7),\n};\n// ... se setean systemPrompt y tools, pero options.jsonMode nunca se lee en todo el archivo\n// (openai.provider.ts:47-49: if (options.jsonMode) req.response_format = { type: 'json_object' };)",
     "fix": "Cuando options.jsonMode sea true, agregar una instruccion de salida JSON al system prompt o usar tool_choice forzado con un tool de schema JSON (Anthropic no tiene response_format json_object); como minimo loguear que el flag se ignora.",
-    "finder": "llm-router"
+    "finder": "llm-router",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/ai/providers/gemini.provider.ts",
@@ -1213,7 +1507,14 @@
     "severity": "low",
     "evidence": "const text = response.text();   // <-- lanza si finishReason == SAFETY o sin candidates\nreturn {\n    content: text,\n    finishReason: 'stop',           // <-- hardcoded: truncamiento por maxOutputTokens invisible\n    ...",
     "fix": "Mapear result.response.candidates[0].finishReason (MAX_TOKENS -> 'length', SAFETY -> 'content_filter'), y manejar el bloqueo de safety retornando finishReason 'content_filter' en lugar de lanzar (o clasificar ese error para no abrir el breaker).",
-    "finder": "llm-router"
+    "finder": "llm-router",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/ai/router/llm-router.service.ts",
@@ -1223,7 +1524,14 @@
     "severity": "low",
     "evidence": "let modelConfig = options.model ? MODEL_REGISTRY.find(m => m.id === options.model) : undefined;\nif (!modelConfig) {\n    modelConfig = MODEL_REGISTRY[0];   // <-- claude-sonnet-4-6, tier_1_premium, sin isConfigured/isProviderHealthy\n    this.logger.warn(`Model ${options.model || '(none)'} not in registry, falling back to ${modelConfig.id}`);\n}",
     "fix": "Hacer fallback al primer candidato configurado y sano de la cadena 'conversation' (o al modelo mas barato disponible), no al primero del registry; validar isConfigured antes de despachar.",
-    "finder": "llm-router"
+    "finder": "llm-router",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/ai/router/llm-router.service.ts",
@@ -1233,7 +1541,14 @@
     "severity": "low",
     "evidence": "const tenantSet = opts.tenantId ? [opts.tenantId] : (await this.redis.smembers(`llm:stats:tenants:${date}`) || []);\n...\n// --- Media stats ---\nconst mediaTenantsToScan = opts.tenantId ? [opts.tenantId] : tenantSet;   // <-- set de tenants LLM, no de media",
     "fix": "Mantener un set propio media:stats:tenants:{date} al registrar uso de media (igual que llm:stats:tenants) y usarlo para el escaneo.",
-    "finder": "llm-router"
+    "finder": "llm-router",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   },
   {
     "file": "apps/api/src/modules/ai/router/llm-router.service.ts",
@@ -1243,6 +1558,13 @@
     "severity": "low",
     "evidence": "{ id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.015, maxContextTokens: 200000, supportsTools: true },\n{ id: 'deepseek-chat', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.0001, maxContextTokens: 64000, supportsTools: true },\n// en execute(): const response = await provider.generate(reqOptions);  // sin chequeo de tamano vs candidate.maxContextTokens",
     "fix": "Estimar tokens del prompt (chars/4) y excluir candidatos cuyo maxContextTokens sea menor antes del despacho; corregir claude-sonnet-4-6 a 1000000.",
-    "finder": "llm-router"
+    "finder": "llm-router",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10-batch7-15"
   }
 ]

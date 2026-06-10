@@ -430,6 +430,21 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
         this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
     }
 
+    /**
+     * Draft-for-approval (WS3 #6): the AI generated a reply but draft mode is on,
+     * so instead of sending it we surface it to the console for a human to
+     * approve/edit/send in one click.
+     */
+    @OnEvent('draft.suggested')
+    handleDraftSuggested(event: { tenantId: string; conversationId: string; text: string; contactName?: string }) {
+        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:draft_suggestion', {
+            conversationId: event.conversationId,
+            suggestedText: event.text,
+            contactName: event.contactName,
+        });
+        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
+    }
+
     @OnEvent('handoff.escalated_supervisor')
     handleSupervisorEscalation(event: { tenantId: string; conversationId: string; contactName: string; reason: string; waitMinutes: number }) {
         this.logger.warn(`[Escalation] Supervisor notified: ${event.contactName} waiting ${event.waitMinutes}min`);

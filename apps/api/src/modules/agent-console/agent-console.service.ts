@@ -331,6 +331,13 @@ export class AgentConsoleService {
 
         const msg = result[0];
 
+        // Draft-for-approval (WS3 #6): the agent just replied, so any pending AI
+        // draft for this conversation is resolved — clear it (fire-and-forget).
+        this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE conversations SET metadata = metadata - 'pendingDraft' WHERE id = $1::uuid AND metadata ? 'pendingDraft'`,
+            [conversationId],
+        ).catch(() => { /* non-blocking */ });
+
         // Track first response time in conversation_assignments (only if not yet set)
         try {
             await this.prisma.executeInTenantSchema(

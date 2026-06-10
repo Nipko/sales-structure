@@ -465,17 +465,32 @@ export class ConversationsService {
         // we always respond. Opt-out blocking only applies to proactive outbound
         // (broadcasts, automations, reminders) — not to conversation replies.
         if (response) {
-            // Deliver long, multi-paragraph replies as 2-3 natural bubbles (more
-            // human than a wall of text). Short replies go as one message. Bubbles
-            // are staggered so they arrive in order with a brief pause.
-            const chunks = this.splitResponseIntoChunks(response);
-            const CHUNK_GAP_MS = 1200;
-            this.logger.log(`[Pipeline] Sending response via outbound queue (${chunks.length} bubble(s))...`);
-            for (let i = 0; i < chunks.length; i++) {
-                await this.sendResponse(tenantId, chunks[i], normalizedMsg, i * CHUNK_GAP_MS);
-                await this.saveAiMessage(tenantId, conversation.id, chunks[i], normalizedMsg.channelType);
+            const draftMode = (config.behavior as any)?.draftMode === true;
+            if (draftMode && response !== ERROR_FALLBACK_MSG) {
+                // Draft-for-approval (WS3 #6): a human reviews/edits/sends in the
+                // console instead of the AI replying directly. Store the suggestion
+                // and notify the inbox; the customer gets nothing until approval.
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `UPDATE conversations SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{pendingDraft}', $2::jsonb), updated_at = NOW() WHERE id = $1::uuid`,
+                    [conversation.id, JSON.stringify({ text: response, createdAt: new Date().toISOString() })],
+                ).catch(e => this.logger.warn(`Draft persist failed: ${e.message}`));
+                this.eventEmitter.emit('draft.suggested', {
+                    tenantId, conversationId: conversation.id, text: response, contactName: contact?.name,
+                });
+                this.logger.log(`[Pipeline] Draft mode — reply suggested to console (not sent to customer)`);
+            } else {
+                // Deliver long, multi-paragraph replies as 2-3 natural bubbles (more
+                // human than a wall of text). Short replies go as one message. Bubbles
+                // are staggered so they arrive in order with a brief pause.
+                const chunks = this.splitResponseIntoChunks(response);
+                const CHUNK_GAP_MS = 1200;
+                this.logger.log(`[Pipeline] Sending response via outbound queue (${chunks.length} bubble(s))...`);
+                for (let i = 0; i < chunks.length; i++) {
+                    await this.sendResponse(tenantId, chunks[i], normalizedMsg, i * CHUNK_GAP_MS);
+                    await this.saveAiMessage(tenantId, conversation.id, chunks[i], normalizedMsg.channelType);
+                }
+                this.logger.log(`[Pipeline] Response sent and saved`);
             }
-            this.logger.log(`[Pipeline] Response sent and saved`);
         } else {
             this.logger.warn(`[Pipeline] No response generated — customer gets no reply`);
         }

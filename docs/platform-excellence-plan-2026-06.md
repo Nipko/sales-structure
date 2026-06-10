@@ -291,7 +291,7 @@ Fortalezas reales: demos interactivos por industria (mostrar > contar), strip an
 
 - Workflow multi-agente `wf_bebde273-439` (77+ agentes, ~2M tokens, 3 runs por límite de sesión): 87 hallazgos brutos → 86 dedupe.
 - **Críticos/altos**: 19 confirmados adversarialmente + 5 verificados manualmente contra el código = **24 válidos**. **3 refutados** con razón:
-  - `conversations.service.ts:1063` dateLabel UTC — `TIMESTAMP WITHOUT TIME ZONE` se almacena en la TZ del tenant; el bug no existe.
+  - `conversations.service.ts:947` dateLabel UTC — `TIMESTAMP WITHOUT TIME ZONE` se almacena en la TZ del tenant; el bug no existe. (Distinto de `:1063 todayISO`, que SÍ se confirmó y corrigió — ese usa `toISOString()` para calcular "hoy" y sí daba fecha UTC.)
   - `anthropic.provider.ts:145` merge de tool_results — los mensajes tool pasan por la rama de la línea 128-141 y nunca alcanzan la lógica de merge; no se pierden.
   - `executeStream` con fallos — función sin call sites en el repo (código muerto, no ejecutable).
 - Los **P0 y P1 de la sección 3** fueron validados leyendo cada `file:line` citado — los bugs existen en el código.

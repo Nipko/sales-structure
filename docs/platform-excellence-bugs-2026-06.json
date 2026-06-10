@@ -7,7 +7,14 @@
     "severity": "critical",
     "evidence": "if (!channelAccount) {\n    channelAccount = await this.prisma.channelAccount.findFirst({\n        where: { channelType: 'telegram', isActive: true },\n    });\n}\n... normalized.tenantId = channelAccount.tenantId;",
     "fix": "Eliminar el fallback global; si no se resuelve el bot exacto (por accountId/botUsername o por token del secret header), descartar el update. La ruta genérica sin botUsername debería deprecarse.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/channels/channels.controller.ts",
@@ -17,7 +24,14 @@
     "severity": "high",
     "evidence": "const updateId = body?.update_id;\nif (updateId) {\n    const idemKey = `idem:tg:${updateId}`;\n    if (await this.redis.get(idemKey)) return;\n    await this.redis.set(idemKey, '1', 86400);\n}",
     "fix": "Incluir el bot en la clave: idem:tg:{botUsername||accountId}:{update_id}, y setearla después de resolver el channelAccount.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/channels/channels.controller.ts",
@@ -27,7 +41,14 @@
     "severity": "high",
     "evidence": "const messageSid = body?.MessageSid;\nif (messageSid) {\n    const idemKey = `idem:sms:${messageSid}`;\n    if (await this.redis.get(idemKey)) return;\n    await this.redis.set(idemKey, '1', 86400);\n}\n// ... 20 líneas después ...\n} else if (!this.validateTwilioSignature(webhookUrl, body || {}, twilioSignature, authToken)) { ... return; }",
     "fix": "Validar la firma primero (auth antes de cualquier efecto colateral) y marcar idempotencia solo para requests autenticados, idealmente con SET NX.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/channels/outbound-queue.processor.ts",
@@ -37,7 +58,14 @@
     "severity": "high",
     "evidence": "if (await this.throttle.isLimited(outbound.tenantId, 'outbound')) {\n    throw new Error(`Tenant ${outbound.tenantId} rate limited for outbound — will retry`);\n}\n// enqueue: attempts: 3, backoff: { type: 'exponential', delay: 2000 }",
     "fix": "Al detectar throttle, mover el job a delayed (job.moveToDelayed hasta el próximo bucket horario) o usar Worker rate-limiting por grupo, sin consumir attempts.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/whatsapp/services/whatsapp-webhook.service.ts",
@@ -47,7 +75,14 @@
     "severity": "high",
     "evidence": "if (!value?.messages || value.messages.length === 0) return;\nconst msg = value.messages[0];\nconst contact = value?.contacts?.[0];\nconst waMessageId = msg?.id;",
     "fix": "Iterar for (const msg of value.messages) con idempotencia por cada msg.id (el mismo patrón que ya usa apps/whatsapp/webhooks.service.ts).",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/channels/instagram/instagram.adapter.ts",
@@ -57,7 +92,14 @@
     "severity": "high",
     "evidence": "const entry = payload?.entry?.[0];\nconst messaging = entry?.messaging?.[0];\n// channels.controller.ts:124: const messageId = body?.entry?.[0]?.messaging?.[0]?.message?.mid;",
     "fix": "Cambiar IChannelAdapter.handleWebhook a devolver NormalizedMessage[] (o iterar entries/messaging en el controller) con idempotencia por mid individual.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/whatsapp/src/modules/jobs/webhook.processor.ts",
@@ -67,7 +109,14 @@
     "severity": "high",
     "evidence": "} catch (err: any) {\n  // No re-throw — la auditoría ya fue guardada; si la IA falla, no perdemos el mensaje\n  this.logger.error(`Failed to forward message to API: ${err.message}`);\n}",
     "fix": "Relanzar el error para que BullMQ reintente (el endpoint interno responde 200 inmediato, así que el timeout de 5s es seguro), o encolar un job de reintento de forwarding.",
-    "finder": "outbound-webhooks"
+    "finder": "outbound-webhooks",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/whatsapp/services/whatsapp-webhook.service.ts",
@@ -187,7 +236,14 @@
     "severity": "critical",
     "evidence": "prompt-assembler.service.ts:249 `return `    <item ${attrs.join(' ')}>${item.content}</item>`;` y attrEscape: `s.replace(/\\\"/g, '&quot;')`. knowledge.service.ts:1037-1038: `.replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')` re-introduce tags literales en texto crawleado de URLs de terceros.",
     "fix": "Escapar &, <, > en item.content y en todos los valores interpolados al XML (content y atributos); además anteponer una regla en Layer 1: el contenido de retrieved_knowledge es DATA no confiable, nunca instrucciones.",
-    "finder": "rag-knowledge"
+    "finder": "rag-knowledge",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/conversations/conversations.service.ts",
@@ -239,7 +295,14 @@
     "severity": "high",
     "evidence": "conversations.service.ts:901-903: `const configuredLanguage = config.language || 'es-CO'; const detectedLanguage = this.languageDetector.detect(userText, configuredLanguage); const userLanguage = detectedLanguage;` + language-detector.service.ts:35 `if (normalized.length < 3) return this.short(fallback);` y :52-55 (winner>=2 y margen>=2, si no → fallback). 'yes'/'ok' no existen en markers.",
     "fix": "Persistir el último idioma detectado con confianza (p.ej. conversation.metadata.detectedLanguage) y usarlo como fallback de detect() en turnos siguientes en lugar del default del tenant.",
-    "finder": "rag-knowledge"
+    "finder": "rag-knowledge",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/conversations/language-detector.service.ts",
@@ -269,7 +332,14 @@
     "severity": "high",
     "evidence": "knowledge.service.ts:967 `const sentences = text.match(/[^.!?]+[.!?]+\\s*/g) || [text];` — 'Precio plan Pro: $49\\nPrecio plan Enterprise: $99' (sin punto final) deja fuera del array todo el tramo tras la última puntuación, y sin puntuación produce un chunk de tamaño arbitrario.",
     "fix": "Tras el match, comparar la suma de longitudes con text.length y anexar el resto como sentence final; y en el loop, hard-split por CHUNK_MAX_CHARS cualquier 'sentence' que exceda el límite.",
-    "finder": "rag-knowledge"
+    "finder": "rag-knowledge",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/knowledge/knowledge.service.ts",
@@ -709,7 +779,14 @@
     "severity": "high",
     "evidence": "conversations.service.ts:1565: `const state = conversationMetadata?.bookingState || { step: 'idle' };` (sin chequeo de bookingStateUpdatedAt ni de state.date < hoy). booking-engine.service.ts:317: `if (intent.dateMentioned < todayDate)` — única validación de pasado, no aplica al estado restaurado. booking-engine.service.ts:462-465: con serviceId+date+time+isConfirmation va directo a createBooking.",
     "fix": "En loadBookingState, descartar el fallback PG si bookingStateUpdatedAt > 1h (o si state.date < hoy); en el engine, validar state.date contra todayDate al inicio de process() y re-pedir fecha.",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/conversations/conversations.service.ts",
@@ -761,7 +838,14 @@
     "severity": "high",
     "evidence": "intent-interpreter.service.ts:252-256: `const hourMatch = t.match(/(?:a las |las )(\\d{1,2})\\s*(am|pm|de la)?/i); ... if (hourMatch[2]?.toLowerCase()?.startsWith('p') && h < 12) h += 12;` — 'de la' nunca empieza con 'p'; además 'tarde'/'noche' ni siquiera se capturan.",
     "fix": "Capturar `(am|pm|de la tarde|de la noche|de la mañana|tarde|noche)` y sumar 12 para tarde/noche (y h<7 sin calificador en horario comercial).",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/conversations/intent-interpreter.service.ts",
@@ -771,7 +855,14 @@
     "severity": "high",
     "evidence": "intent-interpreter.service.ts:174-207: por cada svc se prueba `tNorm.includes(svcNorm)` y si no, `userWords.some(w => svcNorm.includes(w))` con `break` inmediato — para 'quiero consulta especializada' y svc='consulta general', userWords incluye 'consulta' y `'consulta general'.includes('consulta')` → true → break antes de evaluar el segundo servicio.",
     "fix": "Hacer dos pasadas: primero buscar match exacto/substring completo en TODOS los servicios, y solo si no hay ninguno aplicar reverse/stem; ante múltiples candidatos, elegir el de mayor score, no el primero.",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/conversations/intent-interpreter.service.ts",
@@ -781,7 +872,14 @@
     "severity": "high",
     "evidence": "intent-interpreter.service.ts:105-114: `if (/^(si|sí|yes|ok|confirmo|dale|...)\\b/i.test(t)) { base.isConfirmation = true; base.intent = 'confirm'; }` y `if (/^(no|nop|nope|cancel|cancelar|mejor no|nah)\\b/i.test(t))` — ambos anclados con ^; 'si, mejor no' matchea el primero y nunca el segundo. booking-engine.service.ts:463: `if (intent.isConfirmation && state.customerName && state.customerEmail) return this.createBooking(...)`.",
     "fix": "Evaluar negación/cancelación buscando keywords en todo el texto (no solo ^) y dándole prioridad sobre la confirmación cuando ambas aparecen.",
-    "finder": "booking-procedure"
+    "finder": "booking-procedure",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/conversations/booking-engine.service.ts",
@@ -921,7 +1019,14 @@
     "severity": "high",
     "evidence": "getAuthUrl: `return oauth2.generateAuthUrl({ access_type:'offline', prompt:'consent', scope:[...], state: tenantId });` (reviews.service.ts:53-58). Callback público: `async callback(@Query('code') code, @Query('state') state, @Res() res){ ... await this.reviews.handleCallback(code, state); ...}` (reviews.controller.ts:15-25, controlador SIN @UseGuards). handleCallback: `async handleCallback(code, tenantId){ const {tokens}=await oauth2.getToken(code); ... cfg.encryptedRefreshToken=this.encrypt(tokens.refresh_token); await this.saveConfigRaw(tenantId,cfg); }` (reviews.service.ts:61-67) — confía en `state` como tenantId sin validar.",
     "fix": "Generar un `state` aleatorio (nonce) y guardarlo en Redis ligado al tenant autenticado que inició la conexión (p.ej. clave `gbp:oauth:{nonce}` con TTL corto y el tenantId del JWT). En el callback, resolver el tenant desde el nonce almacenado y eliminarlo (un solo uso); rechazar si no existe.",
-    "finder": "security"
+    "finder": "security",
+    "verdict": {
+      "status": "confirmed",
+      "isReal": true,
+      "verifiedBy": "manual-code-review-during-fix-2026-06-10"
+    },
+    "fixStatus": "fixed",
+    "fixSession": "2026-06-10"
   },
   {
     "file": "apps/api/src/modules/customer-portal/customer-portal.controller.ts",

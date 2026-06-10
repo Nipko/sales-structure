@@ -182,6 +182,9 @@ export class MediaProcessingService {
             this.redis.incrBy(`${baseKey}:${mediaType}:count`, 1),
             this.redis.incrBy(`${baseKey}:${mediaType}:cost_cents`, result.costCentsUsd),
             this.redis.incrBy(`${baseKey}:${result.provider}:count`, 1),
+            // Track tenants with media usage so the unified usage report includes
+            // tenants that used ONLY media that day (the LLM tenant set misses them).
+            this.redis.sadd(`media:stats:tenants:${date}`, tenantId),
         ]);
         await Promise.allSettled([
             this.redis.expire(`${baseKey}:${mediaType}:count`, ttl),

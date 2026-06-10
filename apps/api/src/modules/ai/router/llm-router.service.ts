@@ -25,7 +25,7 @@ interface ModelConfig {
 // change pricing. costPer1kTokens is a rough blended figure for display only.
 const MODEL_REGISTRY: ModelConfig[] = [
     // Tier 1 — Premium (best quality, reserved for enterprise/custom plans)
-    { id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.009, costInPer1k: 0.003, costOutPer1k: 0.015, maxContextTokens: 200000, supportsTools: true },
+    { id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.009, costInPer1k: 0.003, costOutPer1k: 0.015, maxContextTokens: 1000000, supportsTools: true },
     { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.00625, costInPer1k: 0.0025, costOutPer1k: 0.010, maxContextTokens: 128000, supportsTools: true },
     { id: 'gemini-2.5-pro', provider: 'google', tier: 'tier_1_premium', costPer1kTokens: 0.00563, costInPer1k: 0.00125, costOutPer1k: 0.010, maxContextTokens: 1000000, supportsTools: false },
     // Tier 2 — Standard (good quality, good value — pro plans)
@@ -165,6 +165,16 @@ export class LLMRouterService {
         }).catch(e => this.logger.warn(`Redis circuit breaker tracking failed for ${provider}: ${e.message}`));
     }
 
+    /** Rough prompt-size estimate (chars/4) used to exclude too-small context windows. */
+    private estimatePromptTokens(systemPrompt?: string, messages?: Array<{ content: any }>): number {
+        let chars = (systemPrompt || '').length;
+        for (const m of messages || []) {
+            const c = (m as any)?.content;
+            chars += typeof c === 'string' ? c.length : JSON.stringify(c ?? '').length;
+        }
+        return Math.ceil(chars / 4);
+    }
+
     private async buildCandidates(
         task: TaskType,
         allowedTiers: ModelTier[],
@@ -205,10 +215,20 @@ export class LLMRouterService {
 
         if (options.task) {
             const allowedTiers = options.allowedTiers || ALL_TIERS;
-            const candidates = await this.buildCandidates(options.task, allowedTiers);
+            let candidates = await this.buildCandidates(options.task, allowedTiers);
 
             if (candidates.length === 0) {
                 throw new Error('No LLM provider is configured — set at least one API key from the super admin dashboard');
+            }
+
+            // Drop candidates whose context window can't fit this prompt (rough
+            // chars/4 estimate). If nothing fits, keep the original list and try
+            // anyway (largest-context models are first via the chain order).
+            const estTokens = this.estimatePromptTokens(options.systemPrompt, options.messages);
+            const fitting = candidates.filter(c => c.maxContextTokens >= estTokens);
+            if (fitting.length && fitting.length < candidates.length) {
+                this.logger.warn(`[LLM] Prompt ~${estTokens} tokens — excluding ${candidates.length - fitting.length} candidate(s) with smaller context`);
+                candidates = fitting;
             }
 
             let lastError: Error | undefined;
@@ -277,7 +297,11 @@ export class LLMRouterService {
             : undefined;
 
         if (!modelConfig) {
-            modelConfig = MODEL_REGISTRY[0];
+            // Unknown/unspecified model — don't blindly pick the premium
+            // MODEL_REGISTRY[0]. Use the best CONFIGURED + healthy model from the
+            // conversation chain so we never dispatch to an unconfigured provider.
+            const fallbackCandidates = await this.buildCandidates('conversation', ALL_TIERS);
+            modelConfig = fallbackCandidates[0] || MODEL_REGISTRY[0];
             this.logger.warn(`Model ${options.model || '(none)'} not in registry, falling back to ${modelConfig.id}`);
         }
 
@@ -558,7 +582,10 @@ export class LLMRouterService {
             }
 
             // --- Media stats ---
-            const mediaTenantsToScan = opts.tenantId ? [opts.tenantId] : tenantSet;
+            // Union the LLM tenant set with the media tenant set so tenants that
+            // used ONLY media that day aren't missed.
+            const mediaTenantSet = opts.tenantId ? [opts.tenantId] : (await this.redis.smembers(`media:stats:tenants:${date}`) || []);
+            const mediaTenantsToScan = opts.tenantId ? [opts.tenantId] : [...new Set([...tenantSet, ...mediaTenantSet])];
             for (const t of mediaTenantsToScan) {
                 const mediaBase = `media:stats:${t}:${date}`;
                 const [audioCount, audioCost, imageCount, imageCost] = await Promise.all([

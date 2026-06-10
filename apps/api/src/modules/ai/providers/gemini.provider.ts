@@ -49,11 +49,27 @@ export class GeminiProvider implements ILLMProvider {
             const result = await model.generateContent(requestParams);
             const response = result.response;
 
-            const text = response.text();
+            // Map the real finish reason. A SAFETY/RECITATION block makes
+            // response.text() THROW — which would wrongly open the circuit breaker
+            // for the whole provider. Detect it and return content_filter instead.
+            const fr = (response.candidates?.[0] as any)?.finishReason;
+            let finishReason: 'stop' | 'length' | 'content_filter' | 'error' = 'stop';
+            if (fr === 'MAX_TOKENS') finishReason = 'length';
+            else if (fr === 'SAFETY' || fr === 'RECITATION' || fr === 'BLOCKLIST' || fr === 'PROHIBITED_CONTENT' || fr === 'SPII') finishReason = 'content_filter';
+
+            let text = '';
+            if (finishReason !== 'content_filter') {
+                try {
+                    text = response.text();
+                } catch (e: any) {
+                    this.logger.warn(`Gemini response.text() failed (likely safety block): ${e.message}`);
+                    finishReason = 'content_filter';
+                }
+            }
 
             return {
                 content: text,
-                finishReason: 'stop',
+                finishReason,
                 usage: response.usageMetadata ? {
                     promptTokens: response.usageMetadata.promptTokenCount,
                     completionTokens: response.usageMetadata.candidatesTokenCount,

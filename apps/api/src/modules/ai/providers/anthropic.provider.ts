@@ -38,6 +38,13 @@ export class AnthropicProvider implements ILLMProvider {
                 req.system = options.systemPrompt;
             }
 
+            if (options.jsonMode) {
+                // Anthropic has no response_format:json_object — steer JSON output
+                // via the system prompt so a fallback into Claude still honours it.
+                const jsonInstruction = 'CRITICAL: Respond with a single valid JSON object and nothing else — no prose, no explanations, no markdown code fences.';
+                req.system = req.system ? `${req.system}\n\n${jsonInstruction}` : jsonInstruction;
+            }
+
             if (options.tools && options.tools.length > 0) {
                 req.tools = options.tools.map(t => ({
                     name: t.name,

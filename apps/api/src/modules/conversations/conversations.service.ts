@@ -953,8 +953,20 @@ export class ConversationsService {
         // Language: default from config, then auto-detect from the inbound text
         // so we follow the customer when they switch languages mid-conversation.
         const configuredLanguage = config.language || 'es-CO';
-        const detectedLanguage = this.languageDetector.detect(userText, configuredLanguage);
+        // Use the LAST detected language as the fallback (not the tenant default):
+        // the detector falls back for inputs under ~3 chars or low margin, so short
+        // replies like "ok", "yes", "gracias" were reverting an English/Portuguese
+        // conversation back to the tenant default mid-chat.
+        const previousLanguage = (conversation.metadata as any)?.detectedLanguage;
+        const detectedLanguage = this.languageDetector.detect(userText, previousLanguage || configuredLanguage);
         const userLanguage = detectedLanguage;
+        // Persist when it changes so the stickiness carries to the next turn.
+        if (detectedLanguage && detectedLanguage !== previousLanguage) {
+            this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
+                [conversation.id, JSON.stringify({ detectedLanguage })],
+            ).catch(() => { /* non-blocking */ });
+        }
         const tz = bizHours?.timezone || config.hours?.timezone || 'America/Bogota';
         const now = new Date();
         const businessHoursStatus: 'open' | 'closed' = this.isWithinBusinessHours(config, bizHours) ? 'open' : 'closed';
@@ -1656,12 +1668,22 @@ export class ConversationsService {
                 }
             }
         } catch {}
-        // Fallback to PG metadata
-        const state = conversationMetadata?.bookingState || { step: 'idle' };
-        if (state.step && state.step !== 'idle') {
+        // Fallback to PG metadata — but only if it's FRESH. The PG backup has no
+        // TTL (unlike the 1h Redis key), so without this an abandoned booking could
+        // be restored days later and, with date+time already captured, book a slot
+        // in the past. Mirror the Redis 1h expiry.
+        const state = conversationMetadata?.bookingState;
+        if (state?.step && state.step !== 'idle') {
+            const updatedAt = conversationMetadata?.bookingStateUpdatedAt;
+            const ageMs = updatedAt ? (Date.now() - new Date(updatedAt).getTime()) : Infinity;
+            if (ageMs > 3600_000) {
+                this.logger.log(`[Pipeline] Discarding stale PG booking state (age ${Math.round(ageMs / 60000)}min) — restarting idle`);
+                return { step: 'idle' } as BookingState;
+            }
             this.logger.log(`[Pipeline] Booking state loaded from PG metadata: step=${state.step}`);
+            return state;
         }
-        return state;
+        return state || { step: 'idle' };
     }
 
     private async tenantSchema(tenantId: string): Promise<string> {

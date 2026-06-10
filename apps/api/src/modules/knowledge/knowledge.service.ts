@@ -964,11 +964,29 @@ export class KnowledgeService {
     }
 
     private splitBySentences(text: string): string[] {
-        const sentences = text.match(/[^.!?]+[.!?]+\s*/g) || [text];
+        const sentences: string[] = text.match(/[^.!?]+[.!?]+\s*/g) || [];
+        // The regex drops any trailing text WITHOUT terminal punctuation (e.g. a
+        // price list with no final period) — recover it as a final sentence.
+        const matchedLen = sentences.reduce((n, s) => n + s.length, 0);
+        if (matchedLen < text.length) {
+            const rest = text.slice(matchedLen);
+            if (rest.trim().length > 0) sentences.push(rest);
+        }
+        if (sentences.length === 0) sentences.push(text);
+
         const chunks: string[] = [];
         let current = '';
 
         for (const sentence of sentences) {
+            // A single "sentence" longer than the max (no punctuation at all)
+            // would otherwise produce one unbounded chunk — hard-split it.
+            if (sentence.length > CHUNK_MAX_CHARS) {
+                if (current.trim().length > 0) { chunks.push(current.trim()); current = ''; }
+                for (let i = 0; i < sentence.length; i += CHUNK_MAX_CHARS) {
+                    chunks.push(sentence.slice(i, i + CHUNK_MAX_CHARS).trim());
+                }
+                continue;
+            }
             if (current.length + sentence.length > CHUNK_MAX_CHARS && current.length > 0) {
                 chunks.push(current.trim());
                 current = current.slice(-CHUNK_OVERLAP_CHARS);
@@ -976,7 +994,7 @@ export class KnowledgeService {
             current += sentence;
         }
         if (current.trim().length > 0) chunks.push(current.trim());
-        return chunks;
+        return chunks.filter(c => c.length > 0);
     }
 
     // ─── File Parsing ────────────────────────────────────────────────────────

@@ -107,9 +107,17 @@ export class IntentInterpreterService {
             base.intent = 'confirm';
         }
 
-        // ── Detect negation ──
-        if (/^(no|nop|nope|cancel|cancelar|mejor no|nah)\b/i.test(t)) {
+        // ── Detect negation / cancellation ──
+        // Cancellation can appear AFTER an affirmative ("sí, mejor no", "sí, cancela"),
+        // which previously matched the confirmation regex above and booked the
+        // appointment. Check explicit cancel phrases ANYWHERE and let them override
+        // a confirmation; keep the bare "no/nah" anchored to the start to avoid
+        // false positives like "sí, no hay problema".
+        const cancelAnywhere = /\b(mejor no|ya no|cancela|cancelar|cancel|olvidalo|olvídalo|dejalo|déjalo|mejor nada|nada de eso)\b/i.test(t);
+        const leadingNo = /^(no|nop|nope|nah)\b/i.test(t);
+        if (cancelAnywhere || leadingNo) {
             base.isNegation = true;
+            base.isConfirmation = false; // override any earlier confirmation match
             base.intent = 'cancel';
             return base;
         }
@@ -171,37 +179,46 @@ export class IntentInterpreterService {
         }
 
         // ── Match service by name ──
+        // Two passes so the FIRST loose word-overlap can't beat a more specific
+        // service: e.g. "consulta especializada" must win over "consulta general"
+        // for "quiero consulta especializada".
         if (!base.serviceMentioned) {
+            // Pass 1: full service name appears in the text — pick the LONGEST
+            // (most specific) such match across all services.
+            let bestExact: string | null = null;
             for (const svc of services) {
-                const svcNorm = norm(svc);
-                // Exact substring: "asesoramiento" in user text
-                if (tNorm.includes(svcNorm)) {
-                    base.serviceMentioned = svc;
-                    base.intent = 'select_service';
-                    break;
+                if (tNorm.includes(norm(svc))) {
+                    if (!bestExact || norm(svc).length > norm(bestExact).length) bestExact = svc;
                 }
-                // Reverse substring: user text word inside service name
-                // e.g. "asesoria" is inside "asesoramiento", "consulta" is inside "consultoria"
+            }
+            if (bestExact) {
+                base.serviceMentioned = bestExact;
+                base.intent = 'select_service';
+            } else {
+                // Pass 2: fuzzy — score every service by reverse-substring (a user
+                // word inside the service name) and stem overlap, and pick the
+                // highest-scoring one, not the first that overlaps at all.
                 const userWords = tNorm.split(/\s+/).filter(w => w.length > 4);
-                const reverseMatch = userWords.some(w => svcNorm.includes(w));
-                if (reverseMatch) {
-                    base.serviceMentioned = svc;
-                    base.intent = 'select_service';
-                    break;
+                let best: { svc: string; score: number } | null = null;
+                for (const svc of services) {
+                    const svcNorm = norm(svc);
+                    const svcWords = svcNorm.split(/\s+/).filter(w => w.length > 4);
+                    let score = 0;
+                    for (const w of userWords) {
+                        if (svcNorm.includes(w)) {
+                            score += 2; // reverse substring — strong signal
+                        } else if (svcWords.some(sw => {
+                            const stemLen = Math.min(5, Math.min(w.length, sw.length));
+                            return w.substring(0, stemLen) === sw.substring(0, stemLen);
+                        })) {
+                            score += 1; // stem overlap — weaker signal
+                        }
+                    }
+                    if (score > 0 && (!best || score > best.score)) best = { svc, score };
                 }
-                // Stem overlap: compare first 5+ chars of words
-                // "asesoria" stem(5)="aseso" matches "asesoramiento" stem(5)="aseso"
-                const svcWords = svcNorm.split(/\s+/).filter(w => w.length > 4);
-                const stemMatch = userWords.some(uw =>
-                    svcWords.some(sw => {
-                        const stemLen = Math.min(5, Math.min(uw.length, sw.length));
-                        return uw.substring(0, stemLen) === sw.substring(0, stemLen);
-                    })
-                );
-                if (stemMatch) {
-                    base.serviceMentioned = svc;
+                if (best) {
+                    base.serviceMentioned = best.svc;
                     base.intent = 'select_service';
-                    break;
                 }
             }
         }
@@ -249,11 +266,18 @@ export class IntentInterpreterService {
         if (timeMatch) {
             base.timeMentioned = `${String(parseInt(timeMatch[1])).padStart(2, '0')}:${timeMatch[2]}`;
         } else {
-            const hourMatch = t.match(/(?:a las |las )(\d{1,2})\s*(am|pm|de la)?/i);
+            // Capture the full period qualifier — "de la tarde/noche" never started
+            // with 'p', so "a las 3 de la tarde" was parsed as 03:00 instead of 15:00.
+            const hourMatch = t.match(/(?:a las |las )(\d{1,2})(?::(\d{2}))?\s*(am|pm|de la tarde|de la noche|de la mañana|de la manana|de la madrugada|tarde|noche|mañana|manana|madrugada)?/i);
             if (hourMatch) {
                 let h = parseInt(hourMatch[1]);
-                if (hourMatch[2]?.toLowerCase()?.startsWith('p') && h < 12) h += 12;
-                base.timeMentioned = `${String(h).padStart(2, '0')}:00`;
+                const min = hourMatch[2] || '00';
+                const q = (hourMatch[3] || '').toLowerCase();
+                const isPm = q === 'pm' || q.includes('tarde') || q.includes('noche');
+                const isAm = q === 'am' || q.includes('mañana') || q.includes('manana') || q.includes('madrugada');
+                if (isPm && h < 12) h += 12;
+                else if (isAm && h === 12) h = 0;
+                base.timeMentioned = `${String(h).padStart(2, '0')}:${min}`;
             }
         }
 

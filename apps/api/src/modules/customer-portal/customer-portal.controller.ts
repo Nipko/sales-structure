@@ -5,9 +5,11 @@ import {
     Body,
     Param,
     Headers,
+    Req,
     Logger,
     UnauthorizedException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { CustomerPortalService } from './customer-portal.service';
 
@@ -25,8 +27,9 @@ export class CustomerPortalController {
     async requestAccess(
         @Param('tenantId') tenantId: string,
         @Body() body: { phone?: string; email?: string },
+        @Req() req: Request,
     ) {
-        const result = await this.portalService.requestAccess(tenantId, body);
+        const result = await this.portalService.requestAccess(tenantId, body, req.ip);
         return {
             success: true,
             data: {

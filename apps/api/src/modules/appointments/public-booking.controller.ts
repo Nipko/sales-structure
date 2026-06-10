@@ -24,16 +24,12 @@ export class PublicBookingController {
 
     /** Simple IP-based rate limit: max 10 bookings per minute per IP */
     private async checkRateLimit(ip: string): Promise<void> {
+        // Atomic INCR + EXPIRE — the previous GET/check/GET/SET had a TOCTOU window
+        // that let concurrent requests slip past the limit.
         const key = `ratelimit:booking:${ip}`;
-        const count = await this.redis.get(key);
-        if (count && parseInt(count) >= 10) {
+        const count = await this.redis.incrementRateLimit(key, 60);
+        if (count > 10) {
             throw new BadRequestException('Too many requests. Please try again later.');
-        }
-        const pipeline = await this.redis.get(key);
-        if (pipeline) {
-            await this.redis.set(key, String(parseInt(pipeline) + 1), 60);
-        } else {
-            await this.redis.set(key, '1', 60);
         }
     }
 

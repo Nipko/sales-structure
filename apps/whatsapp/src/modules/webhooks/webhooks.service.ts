@@ -87,41 +87,45 @@ export class WebhooksService implements OnModuleDestroy {
     for (const msg of messages) {
       const dedupeKey = `wa:msg:${msg.id}`;
 
-      // Check idempotencia en Redis
-      const exists = await this.redis.get(dedupeKey);
-      if (exists) {
+      // Claim atomically (SET NX EX) — a GET-then-SET let two simultaneous
+      // deliveries of the same message both pass the check and enqueue twice.
+      const claimed = await this.redis.set(dedupeKey, '1', 'EX', 86400, 'NX');
+      if (claimed !== 'OK') {
         this.logger.debug(`Duplicate message ignored: ${msg.id}`);
         continue;
       }
 
       // Encolar para procesamiento
-      await this.webhookQueue.add('process-message', {
-        tenantId: tenantInfo.tenantId,
-        schemaName: tenantInfo.schemaName,
-        wabaId,
-        phoneNumberId,
-        message: msg,
-        contacts: value?.contacts || [],
-        statuses: value?.statuses || [],
-        timestamp: new Date().toISOString(),
-      }, {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 2000 },
-        jobId: `process-message-${msg.id}`,
-        removeOnComplete: 100,
-        removeOnFail: 1000,
-      });
-
-      // Marcar dedupe solo después de encolar exitosamente.
-      await this.redis.setex(dedupeKey, 86400, '1');
+      try {
+        await this.webhookQueue.add('process-message', {
+          tenantId: tenantInfo.tenantId,
+          schemaName: tenantInfo.schemaName,
+          wabaId,
+          phoneNumberId,
+          message: msg,
+          contacts: value?.contacts || [],
+          statuses: value?.statuses || [],
+          timestamp: new Date().toISOString(),
+        }, {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 2000 },
+          jobId: `process-message-${msg.id}`,
+          removeOnComplete: 100,
+          removeOnFail: 1000,
+        });
+      } catch (err) {
+        // Release the claim so Meta's retry re-processes (we never enqueued).
+        await this.redis.del(dedupeKey).catch(() => {});
+        throw err;
+      }
     }
 
     // También procesar status updates (delivered, read, etc.)
     const statuses = value?.statuses || [];
     for (const status of statuses) {
       const dedupeKey = `wa:status:${status.id}:${status.status}`;
-      const exists = await this.redis.get(dedupeKey);
-      if (exists) continue;
+      const claimed = await this.redis.set(dedupeKey, '1', 'EX', 86400, 'NX');
+      if (claimed !== 'OK') continue;
 
       await this.webhookQueue.add('process-status', {
         tenantId: tenantInfo.tenantId,
@@ -135,8 +139,7 @@ export class WebhooksService implements OnModuleDestroy {
         jobId: `process-status-${status.id}-${status.status}`,
         removeOnComplete: 100,
       });
-
-      await this.redis.setex(dedupeKey, 86400, '1');
+      // (dedupe key already claimed atomically above)
     }
   }
 

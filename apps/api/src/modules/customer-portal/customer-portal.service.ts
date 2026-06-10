@@ -76,6 +76,7 @@ export class CustomerPortalService {
     async requestAccess(
         tenantId: string,
         body: { phone?: string; email?: string },
+        ip?: string,
     ): Promise<{ identifier: string; channel: 'whatsapp' | 'email' }> {
         const schema = await this.getSchemaName(tenantId);
 
@@ -85,6 +86,15 @@ export class CustomerPortalService {
         }
 
         const channel: 'whatsapp' | 'email' = body.phone ? 'whatsapp' : 'email';
+
+        // Rate limit this public endpoint (atomic INCR+EXPIRE) by identifier and
+        // by IP, to stop contact enumeration and code/SMS bombing.
+        const idCount = await this.redis.incrementRateLimit(`ratelimit:portal:id:${tenantId}:${identifier}`, 3600);
+        if (idCount > 3) throw new BadRequestException('Too many requests. Please try again later.');
+        if (ip) {
+            const ipCount = await this.redis.incrementRateLimit(`ratelimit:portal:ip:${ip}`, 3600);
+            if (ipCount > 10) throw new BadRequestException('Too many requests. Please try again later.');
+        }
 
         // Verify the contact exists in the tenant schema
         const whereClause = body.phone
@@ -97,26 +107,21 @@ export class CustomerPortalService {
             [identifier],
         );
 
-        if (!contacts || contacts.length === 0) {
-            throw new NotFoundException('No active contact found with the provided information');
+        // Generate+store the code ONLY when the contact exists, but ALWAYS return
+        // the same generic response so callers can't tell whether a phone/email is
+        // a registered contact (enumeration). Delivery is handled by the caller.
+        if (contacts && contacts.length > 0) {
+            const code = this.generateCode();
+            const redisKey = this.codeKey(tenantId, identifier);
+            await this.redis.set(redisKey, JSON.stringify({
+                code,
+                contactId: contacts[0].id,
+                attempts: 0,
+            }), 600); // 10 minutes
+            this.logger.log(`Portal access code generated for ${channel}:${identifier} in tenant ${tenantId}`);
+        } else {
+            this.logger.warn(`Portal access requested for unknown ${channel} in tenant ${tenantId} — generic response`);
         }
-
-        // Generate and store verification code (10 min TTL)
-        const code = this.generateCode();
-        const redisKey = this.codeKey(tenantId, identifier);
-        await this.redis.set(redisKey, JSON.stringify({
-            code,
-            contactId: contacts[0].id,
-            attempts: 0,
-        }), 600); // 10 minutes
-
-        this.logger.log(`Portal access code generated for ${channel}:${identifier} in tenant ${tenantId}`);
-
-        // NOTE: The actual sending of the code via WhatsApp or email should be
-        // handled by the caller or an event listener. We return the code here
-        // so the controller can orchestrate delivery.
-        // In production, you would NOT return the code in the response —
-        // it would be sent via the channel only.
 
         return { identifier, channel };
     }

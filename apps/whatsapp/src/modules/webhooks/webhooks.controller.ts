@@ -131,7 +131,14 @@ export class WebhooksController {
     for (const entry of entries) {
       const changes = entry?.changes || [];
       for (const change of changes) {
-        await this.webhooksService.processChange(entry.id, change);
+        // Isolate each change: a failure in one (e.g. a malformed template
+        // update) must not abort the remaining changes in the same payload,
+        // which would silently drop real customer messages bundled with it.
+        try {
+          await this.webhooksService.processChange(entry.id, change);
+        } catch (err: any) {
+          this.logger.error(`processChange failed (field=${change?.field}, waba=${entry?.id}): ${err.message}`);
+        }
       }
     }
   }

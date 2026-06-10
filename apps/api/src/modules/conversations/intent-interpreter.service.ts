@@ -102,7 +102,7 @@ export class IntentInterpreterService {
         if (emailMatch) base.emailProvided = emailMatch[0];
 
         // ── Detect confirmation (set flag but DON'T return yet — continue extracting) ──
-        if (/^(si|sí|yes|ok|confirmo|dale|listo|perfecto|claro|correcto|de acuerdo|por supuesto|sure|oui|sim|va|vamos|eso|exacto)\b/i.test(t)) {
+        if (/^(si|sí|yes|ok|confirmo|confirmar|confirma|confirmado|dale|listo|perfecto|claro|correcto|de acuerdo|por supuesto|sure|oui|sim|va|vamos|eso|exacto)\b/i.test(t)) {
             base.isConfirmation = true;
             base.intent = 'confirm';
         }

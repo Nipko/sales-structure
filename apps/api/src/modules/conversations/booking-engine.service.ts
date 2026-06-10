@@ -207,6 +207,11 @@ export class BookingEngineService {
     ): Promise<EngineResult> {
         const state = { ...currentState };
         const L = language; // shorthand for msg() calls
+        // Per-turn signal (NOT persisted): set when the user asks for a time with
+        // no nearby available slot, consumed later this same turn. Previously this
+        // lived on `state` and leaked into Redis/PG, firing a stale "time
+        // unavailable" message on later turns.
+        let requestedUnavailableTime: string | undefined;
 
         // ── Reload services fresh on EVERY process() call ──────────────────────────────────
         // We ALWAYS overwrite state.services from the tenantId-scoped cache or DB.
@@ -235,11 +240,27 @@ export class BookingEngineService {
             // Keep previous state.services as last resort — better than crashing
         }
 
+        // ── Re-booking after a completed booking ──
+        // step='booked' is a terminal state; without this a fresh booking intent
+        // would never be handled by the engine again (it returns handled:false
+        // forever at the booked guard below). Reset to idle so the new flow runs
+        // clean and the customer can book a second appointment.
+        if (state.step === 'booked') {
+            const wantsNewBooking = intent.intent === 'ask_availability'
+                || intent.intent === 'select_service'
+                || !!intent.serviceMentioned
+                || !!intent.dateMentioned;
+            if (wantsNewBooking) {
+                Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
+                this.logger.log('[Decide] New booking intent after a completed booking — resetting to idle');
+            }
+        }
+
         // ── Numeric/ordinal service selection: "El 1", "el primero", "la segunda"... ──
         // Runs AFTER services are loaded. Overrides intent when the user picks by index.
         // This runs in the engine (not only in the intent interpreter) so it also covers
         // the case where the interpreter already ran with the OLD step before this refresh.
-        if (state.services?.length && !intent.serviceMentioned) {
+        if (state.services?.length && !intent.serviceMentioned && state.step === 'show_services') {
             const tNorm = rawText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
             // "El 1", "la 2", "opcion 3", "numero 1", "#2"
             const numMatch = tNorm.match(/(?:el|la|opcion|numero|el numero|la opcion|quiero el|quiero la|#)\s*(\d+)/);
@@ -274,6 +295,31 @@ export class BookingEngineService {
                         break;
                     }
                 }
+            }
+        }
+
+        // ── Numeric/ordinal SLOT selection at show_slots: "el 1", "la primera", "2" ──
+        // Mirrors the service-index selection but maps to the offered time slots, so
+        // picking "el primero" at show_slots no longer fell through to the service
+        // matcher and reset the flow.
+        if (state.step === 'show_slots' && state.slots?.length && !intent.timeMentioned) {
+            const tNorm = rawText.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+            const ordinals: Record<string, number> = {
+                primer: 0, primero: 0, primera: 0, segund: 1, segundo: 1, segunda: 1,
+                tercer: 2, tercero: 2, tercera: 2, cuart: 3, cuarto: 3, cuarta: 3,
+                quint: 4, quinto: 4, quinta: 4,
+            };
+            let slotIdx = -1;
+            const numMatch = tNorm.match(/^(?:el|la|opcion|numero|#)?\s*(\d+)$/);
+            if (numMatch) {
+                slotIdx = parseInt(numMatch[1]) - 1;
+            } else {
+                for (const [word, idx] of Object.entries(ordinals)) {
+                    if (tNorm.includes(word)) { slotIdx = idx; break; }
+                }
+            }
+            if (slotIdx >= 0 && slotIdx < state.slots.length) {
+                intent.timeMentioned = state.slots[slotIdx].time;
             }
         }
 
@@ -366,7 +412,7 @@ export class BookingEngineService {
                     state.time = closest.time;
                 } else {
                     // Time mentioned but NOT within range of available slots — flag it
-                    (state as any)._requestedUnavailableTime = intent.timeMentioned;
+                    requestedUnavailableTime = intent.timeMentioned;
                 }
             }
         }
@@ -376,7 +422,11 @@ export class BookingEngineService {
 
         // ── Auto-select single service ──
         const hasDateOrTime = !!(intent.dateMentioned || intent.timeMentioned);
-        const isBookingTrigger = intent.isConfirmation || intent.intent === 'select_service' || (intent.intent === 'ask_availability' && hasDateOrTime);
+        // A bare confirmation ("sí") only triggers booking when a flow is already
+        // in progress — otherwise answering "sí" to an unrelated LLM question would
+        // start a booking for single-service tenants.
+        const confirmInFlow = intent.isConfirmation && state.step !== 'idle' && state.step !== 'booked';
+        const isBookingTrigger = confirmInFlow || intent.intent === 'select_service' || (intent.intent === 'ask_availability' && hasDateOrTime);
         if (!state.serviceId && state.services?.length === 1 && isBookingTrigger) {
             state.serviceId = state.services[0].id;
             state.serviceName = state.services[0].name;
@@ -473,9 +523,8 @@ export class BookingEngineService {
         }
 
         // ── User asked for a specific time that's NOT available ──
-        if ((state as any)._requestedUnavailableTime && state.step === 'show_slots' && state.slots?.length) {
-            const requested = (state as any)._requestedUnavailableTime;
-            delete (state as any)._requestedUnavailableTime;
+        if (requestedUnavailableTime && state.step === 'show_slots' && state.slots?.length) {
+            const requested = requestedUnavailableTime;
             const available = (state.slots ?? []).map(s => `${s.time}-${s.endTime}`).join(', ');
             return {
                 handled: true, state,

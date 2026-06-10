@@ -76,7 +76,7 @@ export const VERTICALS: VerticalDef[] = [
       { from: "customer", text: "Hola! Vi tu trabajo, quiero mechas balayage" },
       { from: "ai", text: "¡Hola! Soy Luna 💇‍♀️ Gracias por escribirnos. Mechas balayage desde $180k. ¿Para cuándo te gustaría?" },
       { from: "customer", text: "Este sábado si hay" },
-      { from: "ai", text: "Sábado tenemos 10am y 2pm con Camila (especialista en color). ¿Cuál preferís?" },
+      { from: "ai", text: "Sábado tenemos 10am y 2pm con Camila (especialista en color). ¿Cuál prefieres?" },
     ],
   },
   {
@@ -89,7 +89,7 @@ export const VERTICALS: VerticalDef[] = [
     channel: "messenger",
     demoMessages: [
       { from: "customer", text: "Hola, info sobre membresías" },
-      { from: "ai", text: "¡Hola! Soy Coach 💪 Tenemos mensual $89k, trimestral $240k (ahorrás $27k). ¿Te agendo una visita?" },
+      { from: "ai", text: "¡Hola! Soy Coach 💪 Tenemos mensual $89k, trimestral $240k (ahorras $27k). ¿Te agendo una visita?" },
       { from: "customer", text: "Sí, mañana puedo" },
       { from: "ai", text: "Te agendo mañana a las 10am para tour + clase de prueba gratis ✅" },
     ],
@@ -290,7 +290,7 @@ export const VERTICALS: VerticalDef[] = [
       { from: "customer", text: "Hola, necesito información sobre sus servicios" },
       { from: "ai", text: "¡Hola! Con gusto te ayudo. ¿Qué servicio te interesa?" },
       { from: "customer", text: "Quiero cotizar" },
-      { from: "ai", text: "Perfecto. Te paso las opciones disponibles. ¿Preferís que te agende una llamada?" },
+      { from: "ai", text: "Perfecto. Te paso las opciones disponibles. ¿Prefieres que te agende una llamada?" },
     ],
   },
 ];

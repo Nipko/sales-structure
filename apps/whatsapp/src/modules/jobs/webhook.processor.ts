@@ -153,10 +153,15 @@ export class WebhookProcessor extends WorkerHost {
     this.logger.debug(`Processing status update: ${status.status} for message ${status.id}`);
 
     try {
+      // Apply status only if it advances the lifecycle (sent<delivered<read<failed).
+      // Webhooks can arrive out of order, so a late 'delivered' must not overwrite
+      // an already-recorded 'read'.
       await this.prisma.executeInTenantSchema(
         schemaName,
         `UPDATE messages SET status = $1, updated_at = NOW()
-         WHERE external_id = $2`,
+         WHERE external_id = $2
+           AND (CASE COALESCE(status,'') WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'read' THEN 3 WHEN 'failed' THEN 4 ELSE 0 END)
+             < (CASE $1 WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'read' THEN 3 WHEN 'failed' THEN 4 ELSE 0 END)`,
         [status.status, status.id],
       );
 

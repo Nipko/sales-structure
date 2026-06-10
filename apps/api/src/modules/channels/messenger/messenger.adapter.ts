@@ -106,6 +106,7 @@ export class MessengerAdapter implements IChannelAdapter {
                 message: { text },
                 messaging_type: 'RESPONSE',
             }),
+            signal: AbortSignal.timeout(10_000),
         });
 
         const data = await response.json() as any;

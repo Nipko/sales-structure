@@ -89,14 +89,19 @@ export class TelegramAdapter implements IChannelAdapter {
     async sendTextMessage(to: string, text: string, _botId: string, botToken: string): Promise<string> {
         const url = `${this.apiUrl}/bot${botToken}/sendMessage`;
 
+        // parse_mode HTML requires &, <, > escaped — raw LLM text containing any of
+        // them made Telegram reject the message (400) and the reply was lost.
+        const safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 chat_id: to,
-                text,
+                text: safeText,
                 parse_mode: 'HTML',
             }),
+            signal: AbortSignal.timeout(10_000),
         });
 
         const data = await response.json() as any;
@@ -128,6 +133,7 @@ export class TelegramAdapter implements IChannelAdapter {
                 caption: caption || '',
                 parse_mode: 'HTML',
             }),
+            signal: AbortSignal.timeout(10_000),
         });
 
         const data = await response.json() as any;

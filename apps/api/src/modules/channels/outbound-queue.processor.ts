@@ -3,14 +3,18 @@ import { Logger } from '@nestjs/common';
 import { Job, DelayedError } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { ChannelGatewayService } from './channel-gateway.service';
+import { ChannelTokenService } from './channel-token.service';
+import { RedisService } from '../redis/redis.service';
 import { OutboundMessage } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 export const OUTBOUND_QUEUE = 'outbound-messages';
 
+/** Per-tenant pending-jobs counter key (queue-depth backpressure). */
+export const pendingJobsKey = (tenantId: string) => `outbound:pending:${tenantId}`;
+
 export interface OutboundJobData {
     outbound: OutboundMessage;
-    accessToken: string;
 }
 
 @Processor(OUTBOUND_QUEUE, {
@@ -23,12 +27,14 @@ export class OutboundQueueProcessor extends WorkerHost {
     constructor(
         private channelGateway: ChannelGatewayService,
         private throttle: TenantThrottleService,
+        private channelToken: ChannelTokenService,
+        private redis: RedisService,
     ) {
         super();
     }
 
     async process(job: Job<OutboundJobData>, token?: string): Promise<string | null> {
-        const { outbound, accessToken } = job.data;
+        const { outbound } = job.data;
         const startTime = Date.now();
 
         // Per-tenant rate limit. Don't throw — that burns one of the 3 attempts,
@@ -41,11 +47,15 @@ export class OutboundQueueProcessor extends WorkerHost {
             throw new DelayedError();
         }
 
+        // Resolve the access token at send time (not stored in the job) — fresh
+        // and never persisted in Redis as a plaintext credential.
+        const creds = await this.channelToken.getChannelToken(outbound.tenantId, outbound.channelType);
+
         this.logger.log(
             `[Outbound] Sending to ${outbound.to} via ${outbound.channelType} tenant=${outbound.tenantId}`,
         );
 
-        const result = await this.channelGateway.sendMessage(outbound, accessToken);
+        const result = await this.channelGateway.sendMessage(outbound, creds.accessToken);
 
         if (!result) {
             throw new Error(`Failed to send message to ${outbound.to} via ${outbound.channelType}`);
@@ -59,9 +69,21 @@ export class OutboundQueueProcessor extends WorkerHost {
         return result;
     }
 
+    /** Decrement the per-tenant pending counter when a job leaves the queue. */
+    private async decrPending(tenantId: string): Promise<void> {
+        const v = await this.redis.incrBy(pendingJobsKey(tenantId), -1).catch(() => 0);
+        if (v < 0) await this.redis.set(pendingJobsKey(tenantId), '0', 3600).catch(() => {});
+    }
+
+    @OnWorkerEvent('completed')
+    onCompleted(job: Job<OutboundJobData>) {
+        this.decrPending(job.data.outbound.tenantId).catch(() => {});
+    }
+
     @OnWorkerEvent('failed')
     onFailed(job: Job<OutboundJobData>, error: Error) {
         const { outbound } = job.data;
+        this.decrPending(outbound.tenantId).catch(() => {});
         this.logger.error({
             msg: 'Outbound message failed after all retries',
             jobId: job.id,

@@ -167,6 +167,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
                 type: 'text',
                 text: { body: text },
             }),
+            signal: AbortSignal.timeout(10_000),
         });
 
         const data = await response.json() as any;
@@ -212,6 +213,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
                 type,
                 [type]: mediaObj,
             }),
+            signal: AbortSignal.timeout(10_000),
         });
 
         const data = await response.json() as any;
@@ -342,6 +344,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(10_000),
         });
         const data = await response.json() as any;
         if (!response.ok) {
@@ -383,6 +386,7 @@ export class WhatsAppAdapter implements IChannelAdapter {
                     },
                 },
             }),
+            signal: AbortSignal.timeout(10_000),
         });
         const data = await response.json() as any;
         if (!response.ok) {

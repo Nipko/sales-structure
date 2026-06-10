@@ -105,6 +105,7 @@ export class InstagramAdapter implements IChannelAdapter {
                 recipient: { id: to },
                 message: { text },
             }),
+            signal: AbortSignal.timeout(10_000),
         });
 
         const data = await response.json() as any;

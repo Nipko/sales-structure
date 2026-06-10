@@ -92,6 +92,7 @@ export class SmsAdapter implements IChannelAdapter {
                 'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
             },
             body: params.toString(),
+            signal: AbortSignal.timeout(10_000),
         });
 
         const data = await response.json() as any;
@@ -126,6 +127,7 @@ export class SmsAdapter implements IChannelAdapter {
                 'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
             },
             body: params.toString(),
+            signal: AbortSignal.timeout(10_000),
         });
 
         const data = await response.json() as any;

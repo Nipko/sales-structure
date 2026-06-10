@@ -31,7 +31,7 @@ export const VERTICALS: VerticalDef[] = [
       { from: "customer", text: "Hola, necesito una cita con el dentista" },
       { from: "ai", text: "¡Hola! Soy Sofía, asistente de la clínica. Tenemos disponibilidad mañana jueves a las 9am y 3pm. ¿Cuál te queda mejor?" },
       { from: "customer", text: "Jueves 9am porfa" },
-      { from: "ai", text: "Perfecto ✅ Tu cita queda confirmada para jueves 9:00 AM. Te enviaré un recordatorio el miércoles. ¿Necesitás algo más?" },
+      { from: "ai", text: "Perfecto ✅ Tu cita queda confirmada para jueves 9:00 AM. Te enviaré un recordatorio el miércoles. ¿Necesitas algo más?" },
     ],
   },
   {
@@ -44,7 +44,7 @@ export const VERTICALS: VerticalDef[] = [
     channel: "whatsapp",
     demoMessages: [
       { from: "customer", text: "Quiero pedir para domicilio" },
-      { from: "ai", text: "¡Hola! Soy Luca 🍽️ Te paso el menú del día. ¿Querés ver el menú completo o las promociones?" },
+      { from: "ai", text: "¡Hola! Soy Luca 🍽️ Te paso el menú del día. ¿Quieres ver el menú completo o las promociones?" },
       { from: "customer", text: "Las promociones" },
       { from: "ai", text: "🔥 Hoy: 2x1 en hamburguesas + bebida gratis en pedidos +$35k. ¿Te anoto algo?" },
     ],
@@ -61,7 +61,7 @@ export const VERTICALS: VerticalDef[] = [
       { from: "customer", text: "Hola, busco apto en arriendo en Chapinero" },
       { from: "ai", text: "¡Hola! Soy Carlos, tu asesor inmobiliario. Tenemos 12 opciones en Chapinero. ¿Cuál es tu presupuesto mensual?" },
       { from: "customer", text: "Entre 2 y 3 millones" },
-      { from: "ai", text: "Tengo 5 aptos en ese rango. Te paso las fichas con fotos. ¿Querés agendar visita para este sábado?" },
+      { from: "ai", text: "Tengo 5 aptos en ese rango. Te paso las fichas con fotos. ¿Quieres agendar visita para este sábado?" },
     ],
   },
   {
@@ -119,7 +119,7 @@ export const VERTICALS: VerticalDef[] = [
     channel: "whatsapp",
     demoMessages: [
       { from: "customer", text: "Quiero info sobre cursos de inglés" },
-      { from: "ai", text: "¡Hola! Soy Ana 📚 Tenemos cursos A1-C2, presencial y virtual. ¿Sabés tu nivel actual?" },
+      { from: "ai", text: "¡Hola! Soy Ana 📚 Tenemos cursos A1-C2, presencial y virtual. ¿Sabes tu nivel actual?" },
       { from: "customer", text: "No, nunca hice prueba" },
       { from: "ai", text: "Te hago un mini diagnóstico acá mismo (5 preguntas). ¿Empezamos? Primera: How would you describe your daily routine?" },
     ],
@@ -181,7 +181,7 @@ export const VERTICALS: VerticalDef[] = [
     channel: "whatsapp",
     demoMessages: [
       { from: "customer", text: "Hola, necesito revisión de frenos" },
-      { from: "ai", text: "¡Hola! Soy Mech 🚗 La revisión de frenos cuesta $85k (incluye diagnóstico). ¿Qué vehículo tenés?" },
+      { from: "ai", text: "¡Hola! Soy Mech 🚗 La revisión de frenos cuesta $85k (incluye diagnóstico). ¿Qué vehículo tienes?" },
       { from: "customer", text: "Renault Sandero 2021" },
       { from: "ai", text: "Tengo cupo mañana a las 2pm. Demora aprox 1h. ¿Te agendo?" },
     ],
@@ -228,7 +228,7 @@ export const VERTICALS: VerticalDef[] = [
     channel: "whatsapp",
     demoMessages: [
       { from: "customer", text: "Necesito asesoría legal para mi empresa" },
-      { from: "ai", text: "¡Hola! ¿En qué área necesitás apoyo: laboral, societario, tributario?" },
+      { from: "ai", text: "¡Hola! ¿En qué área necesitas apoyo: laboral, societario, tributario?" },
       { from: "customer", text: "Tributario" },
       { from: "ai", text: "Tengo disponibilidad para una consulta esta semana. ¿Te agendo?" },
     ],
@@ -243,7 +243,7 @@ export const VERTICALS: VerticalDef[] = [
     channel: "whatsapp",
     demoMessages: [
       { from: "customer", text: "Hola, necesito soporte con mi software" },
-      { from: "ai", text: "¡Hola! ¿Es un problema técnico o querés info sobre planes y servicios?" },
+      { from: "ai", text: "¡Hola! ¿Es un problema técnico o quieres info sobre planes y servicios?" },
       { from: "customer", text: "Problema técnico, no puedo iniciar sesión" },
       { from: "ai", text: "Entendido. Te genero un ticket de soporte prioritario. Un técnico te contacta en 15min." },
     ],

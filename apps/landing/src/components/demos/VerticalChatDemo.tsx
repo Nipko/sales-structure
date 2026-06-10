@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence, useInView } from "motion/react";
+import { useTranslations } from "next-intl";
 import { CHANNELS } from "../../data/channels";
 import type { VerticalDef } from "../../data/verticals";
 
@@ -11,6 +12,7 @@ interface VerticalChatDemoProps {
 }
 
 export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoProps) {
+  const t = useTranslations("verticals");
   const skin = CHANNELS[vertical.channel];
   const [visibleCount, setVisibleCount] = useState(0);
   const [cycle, setCycle] = useState(0);
@@ -67,7 +69,7 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
             {vertical.slug}
           </p>
           <p className="text-white/80 text-[11px]">
-            {skin.statusText} · responde en segundos
+            {skin.statusText} · {t("demoRespondsIn", { defaultValue: "responde en segundos" })}
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -114,7 +116,7 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
                         : skin.incomingText,
                   }}
                 >
-                  {msg.text}
+                  {t(`${vertical.slug}.demo${i + 1}`, { defaultValue: msg.text })}
                 </div>
               </motion.div>
             )}
@@ -148,7 +150,7 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
             className="text-[11px] font-medium"
             style={{ color: vertical.color }}
           >
-            Respondió en 3 segundos
+            {t("demoRespondedIn", { defaultValue: "Respondió en 3 segundos" })}
           </span>
         </div>
       </div>

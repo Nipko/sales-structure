@@ -61,7 +61,7 @@
   "faq": {
     "a1": "Para nada. Todo se configura con clicks. Si sabés usar WhatsApp, sabés usar Parallly. El onboarding te lleva paso a paso en menos de 10 minutos.",
     "a2": "Subís tu información (catálogo, FAQs, reglas) y elegís tu industria. La IA aprende y responde con tu tono. Usamos modelos avanzados (Claude, GPT-4, Gemini) entrenados con la info de tu negocio.",
-    "a5": "1 hora para tu agente IA respondiendo con info real. En serio: conectás WhatsApp con OAuth oficial de Meta, elegís tu industria, cargás tu info básica y listo.",
+    "a5": "10 minutos para tu agente IA respondiendo con info real. En serio: conectás WhatsApp con OAuth oficial de Meta, elegís tu industria, cargás tu info básica y listo.",
     "a7": "Sí, en cualquier momento. Pausás cuando te vas de viaje, cancelás al final del período (mantenés acceso hasta esa fecha), o cancelás inmediatamente. Todo desde un panel — sin llamadas a soporte.",
     "a8": "Sí. API abierta + webhooks para integrar con tu ERP/CRM existente. Parallly trae su propio CRM completo, pero también podés conectarlo a HubSpot, Salesforce u otros.",
     "ctaText": "¿Tenés otra pregunta? Escribinos y te respondemos en minutos."

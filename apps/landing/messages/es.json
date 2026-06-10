@@ -104,7 +104,7 @@
       "gimnasios": "Gimnasios",
       "turismo": "Turismo"
     },
-    "noCard": "Sin tarjeta de crédito · Configuración en 1 hora",
+    "noCard": "Sin tarjeta de crédito · Configuración en 10 minutos",
     "trustline": "Integración oficial de Meta para WhatsApp, Instagram y Messenger · Pagos seguros con MercadoPago"
   },
   "trust": {
@@ -638,7 +638,7 @@
     "q4": "¿Y si la IA mete la pata?",
     "a4": "Tranquilo. Si la IA no sabe qué decir o detecta una frase como 'quiero hablar con un humano', pasa la conversación a tu equipo al instante con todo el contexto. Tu equipo no empieza desde cero.",
     "q5": "¿Cuánto tiempo toma implementarlo?",
-    "a5": "1 hora para tu agente IA respondiendo con info real. En serio: conectas WhatsApp con OAuth oficial de Meta, eliges tu industria, cargas tu info básica y listo.",
+    "a5": "10 minutos para tu agente IA respondiendo con info real. En serio: conectas WhatsApp con OAuth oficial de Meta, eliges tu industria, cargas tu info básica y listo.",
     "q6": "¿Funciona en mi país?",
     "a6": "Sí. Soporte completo de números de teléfono LatAm (CO, AR, MX, BR, CL, PE, EC, UY) más US/Canadá. Precios en moneda local cuando aplica (COP, ARS, MXN, CLP, PEN, UYU, BRL, USD).",
     "q7": "¿Puedo cambiar de plan, pausarlo o cancelarlo?",
@@ -650,7 +650,7 @@
   },
   "cta": {
     "title": "Tu asistente puede estar respondiendo clientes hoy mismo",
-    "subtitle": "7 días de prueba. Sin tarjeta para Emprendedor y Starter. Configuración en 1 hora con soporte en español.",
+    "subtitle": "7 días de prueba. Sin tarjeta para Emprendedor y Starter. Configuración en 10 minutos con soporte en español.",
     "button": "Empezar prueba gratis",
     "secondaryButton": "Hablar con ventas",
     "guarantees": "✓ Sin contratos · ✓ Cancelación al instante · ✓ Soporte 24/7 en español"
@@ -686,7 +686,7 @@
     "hubViewMore": "Ver más →",
     "hubWhyTitle": "¿Por qué elegir Parallly?",
     "hubWhySubtitle": "Diseñado para que tu negocio crezca sin complicaciones.",
-    "hubBenefit1": "Configuración en 1 hora",
+    "hubBenefit1": "Configuración en 10 minutos",
     "hubBenefit1Desc": "Sin código, sin IT. Conectas tus canales, eliges tu industria y tu agente IA empieza a trabajar.",
     "hubBenefit2": "Seguridad empresarial",
     "hubBenefit2Desc": "Cifrado AES-256-GCM, datos aislados por tenant, audit log inmutable. Tu información está protegida.",

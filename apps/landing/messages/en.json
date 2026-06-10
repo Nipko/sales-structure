@@ -104,7 +104,7 @@
       "gimnasios": "Fitness",
       "turismo": "Travel"
     },
-    "noCard": "No credit card · Setup in 1 hour",
+    "noCard": "No credit card · Setup in 10 minutes",
     "trustline": "Official Meta integration for WhatsApp, Instagram and Messenger · Secure payments with MercadoPago"
   },
   "trust": {
@@ -638,7 +638,7 @@
     "q4": "What if the AI messes up?",
     "a4": "No worries. If the AI doesn't know what to say or detects a phrase like 'I want to talk to a human', it hands off to your team instantly with full context. Your team doesn't start from scratch.",
     "q5": "How long does setup take?",
-    "a5": "1 hour to have your AI agent answering with real info. Seriously: connect WhatsApp via official Meta OAuth, pick your industry, upload basic info and you're done.",
+    "a5": "10 minutes to have your AI agent answering with real info. Seriously: connect WhatsApp via official Meta OAuth, pick your industry, upload basic info and you're done.",
     "q6": "Does it work in my country?",
     "a6": "Yes. Full LatAm phone number support (CO, AR, MX, BR, CL, PE, EC, UY) plus US/Canada. Local currency pricing where applicable (COP, ARS, MXN, CLP, PEN, UYU, BRL, USD).",
     "q7": "Can I change plans, pause or cancel?",
@@ -650,7 +650,7 @@
   },
   "cta": {
     "title": "Your assistant could be answering customers today",
-    "subtitle": "7-day trial. No card for Starter. Setup in 1 hour with Spanish/English support.",
+    "subtitle": "7-day trial. No card for Starter. Setup in 10 minutes with Spanish/English support.",
     "button": "Start free trial",
     "secondaryButton": "Talk to sales",
     "guarantees": "✓ No contracts · ✓ Instant cancellation · ✓ 24/7 support"
@@ -686,7 +686,7 @@
     "hubViewMore": "Learn more →",
     "hubWhyTitle": "Why choose Parallly?",
     "hubWhySubtitle": "Designed to grow your business without complications.",
-    "hubBenefit1": "Setup in 1 hour",
+    "hubBenefit1": "Setup in 10 minutes",
     "hubBenefit1Desc": "No code, no IT. Connect your channels, pick your industry and your AI agent starts working.",
     "hubBenefit2": "Enterprise-grade security",
     "hubBenefit2Desc": "AES-256-GCM encryption, tenant-isolated data, immutable audit log. Your information is protected.",

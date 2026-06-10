@@ -6,19 +6,17 @@ import { Section } from "../ui/Section";
 import { Icon } from "../ui/Icon";
 import { useSpotlight } from "../../hooks/useSpotlight";
 
+// Trimmed from 12 to 6, organized by the outcome the buyer cares about (sell more
+// / save time / never lose a customer). Dropped cards (metrics, multi-agent,
+// identity, email templates, compliance, roles) are covered in the product hub
+// and FAQ — the grid stays focused instead of overwhelming.
 const FEATURES = [
-  { iconFn: () => Icon.bot("w-6 h-6"), key: "f1" },
-  { iconFn: () => Icon.inbox("w-6 h-6"), key: "f2" },
-  { iconFn: () => Icon.users("w-6 h-6"), key: "f3" },
-  { iconFn: () => Icon.calendar("w-6 h-6"), key: "f4" },
-  { iconFn: () => Icon.zap("w-6 h-6"), key: "f5" },
-  { iconFn: () => Icon.chart("w-6 h-6"), key: "f6" },
-  { iconFn: () => Icon.book("w-6 h-6"), key: "f7" },
-  { iconFn: () => Icon.layers("w-6 h-6"), key: "f8" },
-  { iconFn: () => Icon.fingerprint("w-6 h-6"), key: "f9" },
-  { iconFn: () => Icon.mail("w-6 h-6"), key: "f10" },
-  { iconFn: () => Icon.shield("w-6 h-6"), key: "f11" },
-  { iconFn: () => Icon.lock("w-6 h-6"), key: "f12" },
+  { iconFn: () => Icon.bot("w-6 h-6"), key: "f1" },     // Vender más — agente IA
+  { iconFn: () => Icon.book("w-6 h-6"), key: "f7" },    // Vender más — responde con tu info
+  { iconFn: () => Icon.inbox("w-6 h-6"), key: "f2" },   // Ahorrar tiempo — bandeja unificada
+  { iconFn: () => Icon.zap("w-6 h-6"), key: "f5" },     // Ahorrar tiempo — automatizaciones
+  { iconFn: () => Icon.users("w-6 h-6"), key: "f3" },   // No perder cliente — CRM que se llena solo
+  { iconFn: () => Icon.calendar("w-6 h-6"), key: "f4" }, // No perder cliente — citas y agenda
 ];
 
 interface FeatureCardProps {

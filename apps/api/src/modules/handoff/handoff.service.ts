@@ -50,33 +50,59 @@ export class HandoffService {
         const triggers = config.behavior?.handoffTriggers || [];
         const text = message.toLowerCase();
 
-        // 1. Explicit request for human
+        // Decision categories — each can be toggled per tenant via
+        // config.behavior.handoffCategories ({ complaint:false } disables it).
+        // Absent config = all enabled (previous behavior). The returned reason IS
+        // the category, so the console can route (manager for discounts, support
+        // for complaints, etc.).
+        const categoriesCfg = (config.behavior as any)?.handoffCategories as Record<string, boolean> | undefined;
+        const enabled = (cat: string) => !categoriesCfg || categoriesCfg[cat] !== false;
+
+        // 1. Explicit request for a human
         const humanKeywords = [
             'hablar con un humano', 'agente humano', 'persona real',
             'hablar con alguien', 'operador', 'asesor humano',
             'quiero hablar con una persona', 'talk to a human', 'human agent',
         ];
-        if (humanKeywords.some(kw => text.includes(kw))) {
-            return 'explicit_human_request';
+        if (enabled('human_request') && humanKeywords.some(kw => text.includes(kw))) {
+            return 'human_request';
         }
 
-        // 2. Frustration / complaint detection
-        const frustrationKeywords = [
+        // 2. Complaint / frustration
+        const complaintKeywords = [
             'queja', 'reclamo', 'molesto', 'furioso', 'inaceptable',
-            'devolucion', 'reembolso', 'pésimo', 'horrible', 'terrible',
+            'devolucion', 'devolución', 'reembolso', 'pésimo', 'pesimo', 'horrible', 'terrible',
             'no funciona', 'estafa', 'demanda', 'abogado',
         ];
-        if (frustrationKeywords.some(kw => text.includes(kw))) {
-            return 'frustration_detected';
+        if (enabled('complaint') && complaintKeywords.some(kw => text.includes(kw))) {
+            return 'complaint';
         }
 
-        // 3. Too many failed AI attempts
+        // 3. Out-of-policy discount / price negotiation — route to someone who can
+        // approve, instead of letting the AI improvise a discount.
+        const discountKeywords = [
+            'descuento', 'rebaja', 'mas barato', 'más barato', 'precio especial',
+            'me lo dejas', 'me lo deja en', 'oferta especial', 'mejor precio', 'hacer precio',
+        ];
+        if (enabled('discount_request') && discountKeywords.some(kw => text.includes(kw))) {
+            return 'discount_request';
+        }
+
+        // 4. VIP customer (flagged on the contact/lead/memory) — best-effort from
+        // what the conversation row carries.
+        const isVip = conversation?.metadata?.vip === true || conversation?.is_vip === true
+            || conversation?.lead?.is_vip === true || conversation?.contact?.is_vip === true;
+        if (enabled('vip') && isVip) {
+            return 'vip';
+        }
+
+        // 5. Too many failed AI attempts
         const failedAttempts = conversation.metadata?.failedAttempts || 0;
-        if (failedAttempts >= 3) {
+        if (enabled('max_failed_attempts') && failedAttempts >= 3) {
             return 'max_failed_attempts';
         }
 
-        // 4. Custom triggers from persona YAML config
+        // 6. Custom triggers from persona config
         for (const trigger of triggers) {
             if (text.includes(trigger.toLowerCase())) {
                 return `custom_trigger:${trigger}`;
@@ -389,11 +415,17 @@ export class HandoffService {
             const settings = tenantRows?.[0]?.settings || {};
             const vertical = settings.verticalConfig?.industry || '';
 
-            // 4. Map handoff reasons to skill tags for routing
+            // 4. Map handoff CATEGORY to skill tag for routing (the typed reason
+            // from shouldHandoff lets us send each kind to the right person).
             const skillMap: Record<string, string> = {
+                complaint: 'complaints',
+                human_request: 'general',
+                discount_request: 'sales',   // someone who can approve a price/discount
+                vip: 'senior',
+                max_failed_attempts: 'technical',
+                // legacy reason strings (back-compat with any in-flight conversations)
                 frustration_detected: 'complaints',
                 explicit_human_request: 'general',
-                max_failed_attempts: 'technical',
             };
             const preferredSkill = reason ? skillMap[reason] || null : null;
 

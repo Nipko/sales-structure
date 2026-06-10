@@ -146,11 +146,12 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
     @OnEvent('llm.provider.alert')
     onLlmProviderAlert(payload: { provider: string; severity: string; failures: number; error: string; timestamp: string }) {
         this.logger.warn(`[LLM Alert] ${payload.provider}: ${payload.error} (failures: ${payload.failures})`);
-        const notified = new Set<string>();
-        for (const [, meta] of this.connectedClients) {
-            if ((meta.role === 'super_admin' || meta.role === 'tenant_admin') && !notified.has(meta.tenantId)) {
-                notified.add(meta.tenantId);
-                this.server.to(meta.tenantId).emit('system:llm_alert', payload);
+        // Emit to each admin's OWN socket, not the tenant room — emitting to the
+        // room delivered the alert to every connected client (incl. agents); the
+        // role check only gated whether to emit, not who received it.
+        for (const [socketId, meta] of this.connectedClients) {
+            if (meta.role === 'super_admin' || meta.role === 'tenant_admin') {
+                this.server.to(socketId).emit('system:llm_alert', payload);
             }
         }
     }

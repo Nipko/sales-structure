@@ -265,6 +265,9 @@ export class WhatsappWebhookService {
              await this.conversationsService.processIncomingMessage(normalizedMsg as any);
          } catch (error: any) {
              this.logger.error(`Error processing incoming message: ${error.message}`, error.stack);
+             // Release the idempotency claim so Meta's retry re-delivers this message
+             // instead of it being lost forever (we claimed the key before processing).
+             if (waMessageId) await this.redis.del(`idem:wa:${waMessageId}`).catch(() => {});
          }
      }
   }

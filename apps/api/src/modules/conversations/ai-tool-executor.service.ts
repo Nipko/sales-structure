@@ -325,8 +325,11 @@ export class AIToolExecutorService {
                     return { error: `Unknown tool: ${toolName}` };
             }
         } catch (error: any) {
+            // Log the technical detail internally, but return a GENERIC error to the
+            // LLM — error.message can carry schema names and raw SQL fragments from
+            // the DB driver that could otherwise be surfaced to the customer.
             this.logger.error(`[Tool] ${toolName} failed: ${error.message}`);
-            return { error: error.message };
+            return { error: 'tool_failed', message: 'No se pudo completar esta acción en este momento.' };
         }
     }
 

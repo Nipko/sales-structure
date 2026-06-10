@@ -53,12 +53,14 @@ export class PreChatService {
     }) {
         const schema = await this.getSchema(tenantId);
 
-        await this.prisma.executeInTenantSchema(schema,
-            `UPDATE pre_chat_forms SET is_active = false, updated_at = NOW() WHERE is_active = true`,
-            [],
-        );
-
+        // Deactivate the previous form and insert the new one ATOMICALLY in a
+        // single statement (data-modifying CTE). Two separate statements left the
+        // tenant with no active form if the INSERT failed, or two active forms on
+        // a concurrent save.
         const rows = await this.prisma.executeInTenantSchema(schema, `
+            WITH deactivated AS (
+                UPDATE pre_chat_forms SET is_active = false, updated_at = NOW() WHERE is_active = true RETURNING 1
+            )
             INSERT INTO pre_chat_forms (tenant_id, name, fields_json, greeting_message, is_active)
             VALUES ($1, 'default', $2, $3, $4)
             RETURNING id, name, fields_json, greeting_message, is_active

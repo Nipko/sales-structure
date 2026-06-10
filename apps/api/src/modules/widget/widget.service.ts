@@ -15,7 +15,10 @@ export class WidgetService implements OnModuleInit {
         private readonly redis: RedisService,
         private readonly config: ConfigService,
     ) {
-        this.jwtSecret = this.config.get<string>('JWT_SECRET') || 'widget-secret';
+        // No hardcoded literal fallback — a predictable secret would let anyone
+        // forge widget session tokens. Prefer a dedicated secret, else the platform
+        // JWT secret (required env var; fail fast if absent).
+        this.jwtSecret = this.config.get<string>('WIDGET_JWT_SECRET') || this.config.getOrThrow<string>('JWT_SECRET');
     }
 
     async onModuleInit() {
@@ -227,7 +230,16 @@ export class WidgetService implements OnModuleInit {
                  WHERE ws.id = $1::uuid`,
                 decoded.sessionId,
             );
-            return rows?.[0] || null;
+            const row = rows?.[0] || null;
+            if (!row) return null;
+            // Defense in depth: the token's tenant/widget claims must match the
+            // session's actual config (a token can't be replayed across tenants).
+            if ((decoded.tenantId && decoded.tenantId !== row.tenant_id) ||
+                (decoded.widgetId && decoded.widgetId !== row.widget_id)) {
+                this.logger.warn(`[Widget] token claim mismatch for session ${decoded.sessionId}`);
+                return null;
+            }
+            return row;
         } catch {
             return null;
         }

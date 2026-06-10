@@ -25,7 +25,7 @@ export class OutboundQueueService {
      * fresh in the processor (avoids retaining a plaintext credential in Redis
      * for up to 24h, and uses the current token if it rotated since enqueue).
      */
-    async enqueue(outbound: OutboundMessage, _accessToken?: string): Promise<void> {
+    async enqueue(outbound: OutboundMessage, _accessToken?: string, delayMs?: number): Promise<void> {
         let priority = await this.throttle.getPriority(outbound.tenantId);
 
         // Per-tenant queue-depth backpressure: when a tenant exceeds maxPendingJobs
@@ -48,6 +48,7 @@ export class OutboundQueueService {
                 priority,
                 attempts: 3,
                 backoff: { type: 'exponential', delay: 2000 },
+                ...(delayMs && delayMs > 0 ? { delay: delayMs } : {}),
                 removeOnComplete: { age: 3600 },
                 removeOnFail: { age: 86400 },
             },

@@ -463,9 +463,16 @@ export class ConversationsService {
         // we always respond. Opt-out blocking only applies to proactive outbound
         // (broadcasts, automations, reminders) — not to conversation replies.
         if (response) {
-            this.logger.log(`[Pipeline] Sending response via outbound queue...`);
-            await this.sendResponse(tenantId, response, normalizedMsg);
-            await this.saveAiMessage(tenantId, conversation.id, response, normalizedMsg.channelType);
+            // Deliver long, multi-paragraph replies as 2-3 natural bubbles (more
+            // human than a wall of text). Short replies go as one message. Bubbles
+            // are staggered so they arrive in order with a brief pause.
+            const chunks = this.splitResponseIntoChunks(response);
+            const CHUNK_GAP_MS = 1200;
+            this.logger.log(`[Pipeline] Sending response via outbound queue (${chunks.length} bubble(s))...`);
+            for (let i = 0; i < chunks.length; i++) {
+                await this.sendResponse(tenantId, chunks[i], normalizedMsg, i * CHUNK_GAP_MS);
+                await this.saveAiMessage(tenantId, conversation.id, chunks[i], normalizedMsg.channelType);
+            }
             this.logger.log(`[Pipeline] Response sent and saved`);
         } else {
             this.logger.warn(`[Pipeline] No response generated — customer gets no reply`);
@@ -865,7 +872,7 @@ export class ConversationsService {
         }, conversationId);
     }
 
-    private async sendResponse(tenantId: string, text: string, inboundMsg: NormalizedMessage) {
+    private async sendResponse(tenantId: string, text: string, inboundMsg: NormalizedMessage, delayMs?: number) {
         const outbound: OutboundMessage = {
             tenantId,
             channelType: inboundMsg.channelType,
@@ -875,8 +882,9 @@ export class ConversationsService {
         };
 
         const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType);
-        // Use BullMQ queue for retry resilience (3 attempts, exponential backoff)
-        await this.outboundQueue.enqueue(outbound, accessToken);
+        // Use BullMQ queue for retry resilience (3 attempts, exponential backoff).
+        // delayMs staggers chunked bubbles so they arrive in order with a pause.
+        await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
     }
 
     /**
@@ -1768,6 +1776,34 @@ export class ConversationsService {
         // Couldn't correct — surface for monitoring but never drop the customer reply.
         this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: check.hallucinatedPrices });
         return response;
+    }
+
+    /**
+     * Split a long reply into at most 3 balanced bubbles on paragraph boundaries.
+     * Short or single-paragraph replies are returned as-is (never split mid-text),
+     * so the common case is unchanged.
+     */
+    private splitResponseIntoChunks(text: string): string[] {
+        const MIN_LEN_TO_CHUNK = 600;
+        const MAX_CHUNKS = 3;
+        if (!text || text.length <= MIN_LEN_TO_CHUNK) return [text];
+
+        const paras = text.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+        if (paras.length <= 1) return [text]; // no natural break — don't split mid-paragraph
+
+        const targetLen = Math.ceil(text.length / Math.min(MAX_CHUNKS, paras.length));
+        const chunks: string[] = [];
+        let cur = '';
+        for (const p of paras) {
+            if (cur && cur.length + p.length > targetLen && chunks.length < MAX_CHUNKS - 1) {
+                chunks.push(cur);
+                cur = p;
+            } else {
+                cur = cur ? `${cur}\n\n${p}` : p;
+            }
+        }
+        if (cur) chunks.push(cur);
+        return chunks.length ? chunks : [text];
     }
 
     /** Resolve `p`, or reject after `ms` so one slow tool can't stall the turn. */

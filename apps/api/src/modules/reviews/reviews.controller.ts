@@ -46,7 +46,7 @@ export class ReviewsController {
     @Get(':tenantId/connect')
     @Roles('super_admin', 'tenant_admin')
     async connect(@Param('tenantId') tenantId: string) {
-        return { success: true, data: { url: this.reviews.getAuthUrl(tenantId) } };
+        return { success: true, data: { url: await this.reviews.getAuthUrl(tenantId) } };
     }
 
     @Delete(':tenantId')

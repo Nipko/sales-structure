@@ -48,17 +48,29 @@ export class ReviewsService {
     }
 
     // ── OAuth ────────────────────────────────────────────────
-    getAuthUrl(tenantId: string): string {
+    async getAuthUrl(tenantId: string): Promise<string> {
         const oauth2 = new google.auth.OAuth2(this.clientId, this.clientSecret, this.redirectUri);
+        // CSRF / cross-tenant protection: bind a single-use random nonce to the
+        // authenticated tenant and use it as the OAuth `state`. Sending the raw
+        // tenantId would let the public callback connect a Google account to any
+        // tenant an attacker names in `state`.
+        const nonce = crypto.randomBytes(32).toString('hex');
+        await this.redis.set(`gbp:oauth:${nonce}`, tenantId, 600); // 10 min TTL
         return oauth2.generateAuthUrl({
             access_type: 'offline',
             prompt: 'consent',
             scope: ['https://www.googleapis.com/auth/business.manage'],
-            state: tenantId,
+            state: nonce,
         });
     }
 
-    async handleCallback(code: string, tenantId: string): Promise<void> {
+    async handleCallback(code: string, state: string): Promise<void> {
+        // Resolve the tenant from the single-use nonce — never trust `state` as a
+        // raw tenantId.
+        const nonceKey = `gbp:oauth:${state}`;
+        const tenantId = await this.redis.get(nonceKey);
+        if (!tenantId) throw new BadRequestException('OAuth state inválido o expirado');
+        await this.redis.del(nonceKey); // single use
         const oauth2 = new google.auth.OAuth2(this.clientId, this.clientSecret, this.redirectUri);
         const { tokens } = await oauth2.getToken(code);
         if (!tokens.refresh_token) throw new BadRequestException('Google no devolvió refresh_token (revoca el acceso y reintenta)');

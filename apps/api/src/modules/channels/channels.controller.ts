@@ -117,67 +117,76 @@ export class ChannelsController {
         res.status(200).send('OK');
 
         try {
-            const igUserId = body?.entry?.[0]?.id;
-            if (!igUserId) return;
+            // Process EVERY entry/messaging event — Meta can batch several in one
+            // webhook; taking only entry[0].messaging[0] silently dropped the rest.
+            const entries = Array.isArray(body?.entry) ? body.entry : [];
+            for (const entry of entries) {
+                const igUserId = entry?.id;
+                if (!igUserId) continue;
 
-            // Idempotency check
-            const messageId = body?.entry?.[0]?.messaging?.[0]?.message?.mid;
-            if (messageId) {
-                const idemKey = `idem:ig:${messageId}`;
-                if (await this.redis.get(idemKey)) return;
-                await this.redis.set(idemKey, '1', 86400);
-            }
+                const channelAccount = await this.prisma.channelAccount.findFirst({
+                    where: { channelType: 'instagram', accountId: igUserId, isActive: true },
+                });
+                if (!channelAccount) {
+                    this.logger.warn(`No tenant found for Instagram IG User ID: ${igUserId}`);
+                    continue;
+                }
 
-            const channelAccount = await this.prisma.channelAccount.findFirst({
-                where: { channelType: 'instagram', accountId: igUserId, isActive: true },
-            });
-
-            if (!channelAccount) {
-                this.logger.warn(`No tenant found for Instagram IG User ID: ${igUserId}`);
-                return;
-            }
-
-            const normalized = await this.gateway.processIncomingWebhook('instagram', body, igUserId);
-            if (!normalized) return;
-
-            normalized.tenantId = channelAccount.tenantId;
-
-            // Fetch sender profile (name + profile picture) from Instagram Graph API — cached 1h
-            if (normalized.contactId) {
-                const igCacheKey = `ig_profile:${normalized.contactId}`;
-                const cachedProfile = await this.redis.getJson<any>(igCacheKey);
-                if (cachedProfile) {
-                    normalized.metadata = { ...normalized.metadata, ...cachedProfile };
-                } else try {
-                    const token = await this.channelToken.getChannelToken(channelAccount.tenantId, 'instagram');
-                    const profileRes = await fetch(
-                        `https://graph.instagram.com/v21.0/${normalized.contactId}?fields=name,username,profile_pic&access_token=${token.accessToken}`,
-                    );
-                    const profileBody = await profileRes.json() as any;
-                    this.logger.log(`[IG Profile] ${normalized.contactId} → status=${profileRes.status} name=${profileBody.name || ''} username=${profileBody.username || ''}`);
-                    if (profileRes.ok && !profileBody.error) {
-                        const username = profileBody.username || '';
-                        const displayName = profileBody.name
-                            ? (username ? `${profileBody.name} (@${username})` : profileBody.name)
-                            : (username ? `@${username}` : '');
-                        const profileData = {
-                            contactName: displayName,
-                            contactUsername: username,
-                            contactProfilePic: profileBody.profile_pic || profileBody.profile_picture_url || '',
-                        };
-                        normalized.metadata = { ...normalized.metadata, ...profileData };
-                        await this.redis.setJson(igCacheKey, profileData, 3600);
+                const messagingItems = Array.isArray(entry?.messaging) ? entry.messaging : [];
+                for (const messagingItem of messagingItems) {
+                    // Per-message idempotency (atomic SET NX).
+                    const messageId = messagingItem?.message?.mid;
+                    if (messageId) {
+                        const claimed = await this.redis.acquireLock(`idem:ig:${messageId}`, 86400);
+                        if (!claimed) continue;
                     }
-                } catch (e: any) {
-                    this.logger.warn(`Could not fetch IG sender profile: ${e.message}`);
+                    // Synthesize a single-item payload for the adapter (it reads entry[0].messaging[0]).
+                    const singlePayload = { ...body, entry: [{ ...entry, messaging: [messagingItem] }] };
+                    const normalized = await this.gateway.processIncomingWebhook('instagram', singlePayload, igUserId);
+                    if (!normalized) continue;
+                    normalized.tenantId = channelAccount.tenantId;
+                    await this.enrichIgProfileAndProcess(normalized, channelAccount.tenantId);
                 }
             }
-
-            this.logger.log(`Incoming Instagram DM for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
-            await this.conversationsService.processIncomingMessage(normalized);
         } catch (error) {
             this.logger.error(`Error processing Instagram webhook: ${error}`);
         }
+    }
+
+    /** Fetch the IG sender profile (cached 1h) and dispatch the message to the pipeline. */
+    private async enrichIgProfileAndProcess(normalized: any, tenantId: string): Promise<void> {
+        if (normalized.contactId) {
+            const igCacheKey = `ig_profile:${normalized.contactId}`;
+            const cachedProfile = await this.redis.getJson<any>(igCacheKey);
+            if (cachedProfile) {
+                normalized.metadata = { ...normalized.metadata, ...cachedProfile };
+            } else try {
+                const token = await this.channelToken.getChannelToken(tenantId, 'instagram');
+                const profileRes = await fetch(
+                    `https://graph.instagram.com/v21.0/${normalized.contactId}?fields=name,username,profile_pic&access_token=${token.accessToken}`,
+                );
+                const profileBody = await profileRes.json() as any;
+                this.logger.log(`[IG Profile] ${normalized.contactId} → status=${profileRes.status} name=${profileBody.name || ''} username=${profileBody.username || ''}`);
+                if (profileRes.ok && !profileBody.error) {
+                    const username = profileBody.username || '';
+                    const displayName = profileBody.name
+                        ? (username ? `${profileBody.name} (@${username})` : profileBody.name)
+                        : (username ? `@${username}` : '');
+                    const profileData = {
+                        contactName: displayName,
+                        contactUsername: username,
+                        contactProfilePic: profileBody.profile_pic || profileBody.profile_picture_url || '',
+                    };
+                    normalized.metadata = { ...normalized.metadata, ...profileData };
+                    await this.redis.setJson(igCacheKey, profileData, 3600);
+                }
+            } catch (e: any) {
+                this.logger.warn(`Could not fetch IG sender profile: ${e.message}`);
+            }
+        }
+
+        this.logger.log(`Incoming Instagram DM for tenant ${tenantId} from ${normalized.contactId}`);
+        await this.conversationsService.processIncomingMessage(normalized);
     }
 
     // ==========================================
@@ -210,64 +219,71 @@ export class ChannelsController {
         res.status(200).send('OK');
 
         try {
-            const pageId = body?.entry?.[0]?.id;
-            if (!pageId) return;
+            // Process EVERY entry/messaging event — Meta can batch several in one
+            // webhook; taking only entry[0].messaging[0] silently dropped the rest.
+            const entries = Array.isArray(body?.entry) ? body.entry : [];
+            for (const entry of entries) {
+                const pageId = entry?.id;
+                if (!pageId) continue;
 
-            // Idempotency check
-            const messageId = body?.entry?.[0]?.messaging?.[0]?.message?.mid;
-            if (messageId) {
-                const idemKey = `idem:fb:${messageId}`;
-                if (await this.redis.get(idemKey)) return;
-                await this.redis.set(idemKey, '1', 86400);
-            }
+                const channelAccount = await this.prisma.channelAccount.findFirst({
+                    where: { channelType: 'messenger', accountId: pageId, isActive: true },
+                });
+                if (!channelAccount) {
+                    this.logger.warn(`No tenant found for Messenger Page ID: ${pageId}`);
+                    continue;
+                }
 
-            const channelAccount = await this.prisma.channelAccount.findFirst({
-                where: { channelType: 'messenger', accountId: pageId, isActive: true },
-            });
-
-            if (!channelAccount) {
-                this.logger.warn(`No tenant found for Messenger Page ID: ${pageId}`);
-                return;
-            }
-
-            const normalized = await this.gateway.processIncomingWebhook('messenger', body, pageId);
-            if (!normalized) return;
-
-            normalized.tenantId = channelAccount.tenantId;
-
-            // Fetch sender profile from Facebook Graph API (name + photo) — cached 1h
-            if (normalized.contactId) {
-                const fbCacheKey = `fb_profile:${normalized.contactId}`;
-                const cachedFbProfile = await this.redis.getJson<any>(fbCacheKey);
-                if (cachedFbProfile) {
-                    normalized.metadata = { ...normalized.metadata, ...cachedFbProfile };
-                } else try {
-                    const token = await this.channelToken.getChannelToken(channelAccount.tenantId, 'messenger');
-                    const profileRes = await fetch(
-                        `https://graph.facebook.com/v21.0/${normalized.contactId}?fields=name,profile_pic&access_token=${token.accessToken}`,
-                    );
-                    const fbProfileBody = await profileRes.json() as any;
-                    this.logger.log(`[FB Profile] ${normalized.contactId} → status=${profileRes.status} name=${fbProfileBody.name || ''}`);
-                    if (profileRes.ok && !fbProfileBody.error) {
-                        const profileData = {
-                            contactName: fbProfileBody.name || fbProfileBody.first_name || '',
-                            contactProfilePic: fbProfileBody.profile_pic || '',
-                        };
-                        if (profileData.contactName || profileData.contactProfilePic) {
-                            normalized.metadata = { ...normalized.metadata, ...profileData };
-                            await this.redis.setJson(fbCacheKey, profileData, 3600);
-                        }
+                const messagingItems = Array.isArray(entry?.messaging) ? entry.messaging : [];
+                for (const messagingItem of messagingItems) {
+                    const messageId = messagingItem?.message?.mid;
+                    if (messageId) {
+                        const claimed = await this.redis.acquireLock(`idem:fb:${messageId}`, 86400);
+                        if (!claimed) continue;
                     }
-                } catch (e: any) {
-                    this.logger.warn(`Could not fetch Messenger sender profile: ${e.message}`);
+                    const singlePayload = { ...body, entry: [{ ...entry, messaging: [messagingItem] }] };
+                    const normalized = await this.gateway.processIncomingWebhook('messenger', singlePayload, pageId);
+                    if (!normalized) continue;
+                    normalized.tenantId = channelAccount.tenantId;
+                    await this.enrichFbProfileAndProcess(normalized, channelAccount.tenantId);
                 }
             }
-
-            this.logger.log(`Incoming Messenger message for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
-            await this.conversationsService.processIncomingMessage(normalized);
         } catch (error) {
             this.logger.error(`Error processing Messenger webhook: ${error}`);
         }
+    }
+
+    /** Fetch the Messenger sender profile (cached 1h) and dispatch the message to the pipeline. */
+    private async enrichFbProfileAndProcess(normalized: any, tenantId: string): Promise<void> {
+        if (normalized.contactId) {
+            const fbCacheKey = `fb_profile:${normalized.contactId}`;
+            const cachedFbProfile = await this.redis.getJson<any>(fbCacheKey);
+            if (cachedFbProfile) {
+                normalized.metadata = { ...normalized.metadata, ...cachedFbProfile };
+            } else try {
+                const token = await this.channelToken.getChannelToken(tenantId, 'messenger');
+                const profileRes = await fetch(
+                    `https://graph.facebook.com/v21.0/${normalized.contactId}?fields=name,profile_pic&access_token=${token.accessToken}`,
+                );
+                const fbProfileBody = await profileRes.json() as any;
+                this.logger.log(`[FB Profile] ${normalized.contactId} → status=${profileRes.status} name=${fbProfileBody.name || ''}`);
+                if (profileRes.ok && !fbProfileBody.error) {
+                    const profileData = {
+                        contactName: fbProfileBody.name || fbProfileBody.first_name || '',
+                        contactProfilePic: fbProfileBody.profile_pic || '',
+                    };
+                    if (profileData.contactName || profileData.contactProfilePic) {
+                        normalized.metadata = { ...normalized.metadata, ...profileData };
+                        await this.redis.setJson(fbCacheKey, profileData, 3600);
+                    }
+                }
+            } catch (e: any) {
+                this.logger.warn(`Could not fetch Messenger sender profile: ${e.message}`);
+            }
+        }
+
+        this.logger.log(`Incoming Messenger message for tenant ${tenantId} from ${normalized.contactId}`);
+        await this.conversationsService.processIncomingMessage(normalized);
     }
 
     // ==========================================
@@ -336,13 +352,6 @@ export class ChannelsController {
         webhookUrl?: string,
     ): Promise<void> {
         try {
-            const messageSid = body?.MessageSid;
-            if (messageSid) {
-                const idemKey = `idem:sms:${messageSid}`;
-                if (await this.redis.get(idemKey)) return;
-                await this.redis.set(idemKey, '1', 86400);
-            }
-
             const channelAccount = await this.prisma.channelAccount.findFirst({
                 where: { channelType: 'sms', accountId: phoneNumber, isActive: true },
             });
@@ -352,7 +361,7 @@ export class ChannelsController {
                 return;
             }
 
-            // ── Twilio signature validation ──
+            // ── Twilio signature validation (BEFORE any side effect) ──
             const authToken = (channelAccount.metadata as any)?.twilioAuthToken
                 || this.configService.get<string>('TWILIO_AUTH_TOKEN');
 
@@ -369,6 +378,15 @@ export class ChannelsController {
                     `Invalid Twilio signature for SMS webhook on ${phoneNumber} — rejecting request`,
                 );
                 return;
+            }
+
+            // Idempotency AFTER auth — claimed atomically (SET NX). Setting it
+            // before signature validation let an attacker (or a spoofed SID) burn
+            // the key and make the real, signed message be dropped as a duplicate.
+            const messageSid = body?.MessageSid;
+            if (messageSid) {
+                const claimed = await this.redis.acquireLock(`idem:sms:${messageSid}`, 86400);
+                if (!claimed) return;
             }
 
             const adapter = this.gateway.getAdapter('sms');
@@ -412,16 +430,10 @@ export class ChannelsController {
 
     private async processTelegramUpdate(body: any, botUsername: string | null, secretToken?: string): Promise<void> {
         try {
-            // Idempotency check via update_id
-            const updateId = body?.update_id;
-            if (updateId) {
-                const idemKey = `idem:tg:${updateId}`;
-                if (await this.redis.get(idemKey)) return;
-                await this.redis.set(idemKey, '1', 86400);
-            }
-
-            // Resolve tenant: prefer bot-specific URL, fallback to chat.id lookup
-            let channelAccount: any;
+            // Resolve the EXACT bot first. NEVER fall back to "any active telegram
+            // bot" — with more than one tenant on Telegram that routed updates to
+            // the wrong tenant (cross-tenant message leak).
+            let channelAccount: any = null;
 
             if (botUsername) {
                 channelAccount = await this.prisma.channelAccount.findFirst({
@@ -429,24 +441,39 @@ export class ChannelsController {
                 });
             }
 
-            if (!channelAccount) {
-                channelAccount = await this.prisma.channelAccount.findFirst({
+            // Generic route (no botUsername in the URL): identify the bot by its
+            // per-bot webhook secret token. Only matches a bot that actually has a
+            // secret configured, so it can never silently pick the wrong one.
+            if (!channelAccount && secretToken) {
+                const candidates = await this.prisma.channelAccount.findMany({
                     where: { channelType: 'telegram', isActive: true },
                 });
-            }
-
-            // Validate webhook secret if configured on this bot
-            if (channelAccount) {
-                const expectedSecret = (channelAccount.metadata as any)?.webhookSecret;
-                if (expectedSecret && secretToken !== expectedSecret) {
-                    this.logger.warn(`Telegram webhook secret mismatch for bot ${botUsername || 'unknown'}`);
-                    return;
-                }
+                channelAccount = candidates.find(c => {
+                    const s = (c.metadata as any)?.webhookSecret;
+                    return s && s === secretToken;
+                }) || null;
             }
 
             if (!channelAccount) {
-                this.logger.warn(`No tenant configured for Telegram bot: ${botUsername || 'unknown'}`);
+                this.logger.warn(`No tenant resolved for Telegram update (bot=${botUsername || 'generic'}) — discarding`);
                 return;
+            }
+
+            // Validate webhook secret if configured on this bot (defense in depth).
+            const expectedSecret = (channelAccount.metadata as any)?.webhookSecret;
+            if (expectedSecret && secretToken !== expectedSecret) {
+                this.logger.warn(`Telegram webhook secret mismatch for bot ${botUsername || channelAccount.accountId}`);
+                return;
+            }
+
+            // Idempotency — namespaced by bot (update_id is per-bot, so a bare
+            // idem:tg:{update_id} collided across tenants) and claimed atomically
+            // via SET NX, only after the bot is resolved.
+            const updateId = body?.update_id;
+            if (updateId) {
+                const idemKey = `idem:tg:${channelAccount.accountId}:${updateId}`;
+                const claimed = await this.redis.acquireLock(idemKey, 86400);
+                if (!claimed) return;
             }
 
             const normalized = await this.gateway.processIncomingWebhook('telegram', body, channelAccount.accountId);

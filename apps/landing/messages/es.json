@@ -470,11 +470,11 @@
     "faqA8": "No, se cotiza según tu volumen, número de agentes y requerimientos especiales. Contactanos para una propuesta."
   },
   "problem": {
-    "title": "¿Cuántas ventas perdés por no responder a tiempo?",
+    "title": "¿Cuántas ventas pierdes por no responder a tiempo?",
     "subtitle": "Cada minuto sin responder es un cliente que se va con tu competencia.",
-    "card1": "Tus clientes escriben por WhatsApp, Instagram y Messenger... y respondés horas después.",
-    "card2": "Cada lead queda en un chat diferente. No sabés quién es quién ni qué le dijiste.",
-    "card3": "No tenés datos. No sabés qué canal vende más ni cuánto te cuesta cada lead."
+    "card1": "Tus clientes escriben por WhatsApp, Instagram y Messenger... y respondes horas después.",
+    "card2": "Cada cliente queda en un chat diferente. No sabes quién es quién ni qué le dijiste.",
+    "card3": "No tienes datos. No sabes qué canal vende más ni cuánto te cuesta cada cliente."
   },
   "demo": {
     "title": "Así se ve en acción",

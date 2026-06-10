@@ -11,24 +11,31 @@ interface ModelConfig {
     id: string;
     provider: string;
     tier: ModelTier;
+    /** Blended display rate (USD per 1k tokens). Kept for routing-decision display. */
     costPer1kTokens: number;
+    /** Real input/output rates (USD per 1k tokens) — used for accurate cost tracking. */
+    costInPer1k: number;
+    costOutPer1k: number;
     maxContextTokens: number;
     supportsTools: boolean;
 }
 
+// Rates are USD per 1k tokens (provider list price / 1000), input vs output
+// separated because output is typically 3-5× input. Update when providers
+// change pricing. costPer1kTokens is a rough blended figure for display only.
 const MODEL_REGISTRY: ModelConfig[] = [
     // Tier 1 — Premium (best quality, reserved for enterprise/custom plans)
-    { id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.015, maxContextTokens: 200000, supportsTools: true },
-    { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.0125, maxContextTokens: 128000, supportsTools: true },
-    { id: 'gemini-2.5-pro', provider: 'google', tier: 'tier_1_premium', costPer1kTokens: 0.010, maxContextTokens: 1000000, supportsTools: false },
+    { id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.009, costInPer1k: 0.003, costOutPer1k: 0.015, maxContextTokens: 200000, supportsTools: true },
+    { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.00625, costInPer1k: 0.0025, costOutPer1k: 0.010, maxContextTokens: 128000, supportsTools: true },
+    { id: 'gemini-2.5-pro', provider: 'google', tier: 'tier_1_premium', costPer1kTokens: 0.00563, costInPer1k: 0.00125, costOutPer1k: 0.010, maxContextTokens: 1000000, supportsTools: false },
     // Tier 2 — Standard (good quality, good value — pro plans)
-    { id: 'grok-4-1-fast-non-reasoning', provider: 'xai', tier: 'tier_2_standard', costPer1kTokens: 0.0005, maxContextTokens: 131072, supportsTools: true },
-    { id: 'gpt-4.1-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.004, maxContextTokens: 1000000, supportsTools: true },
-    { id: 'gpt-4o-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.003, maxContextTokens: 128000, supportsTools: true },
+    { id: 'grok-4-1-fast-non-reasoning', provider: 'xai', tier: 'tier_2_standard', costPer1kTokens: 0.00035, costInPer1k: 0.0002, costOutPer1k: 0.0005, maxContextTokens: 131072, supportsTools: true },
+    { id: 'gpt-4.1-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.001, costInPer1k: 0.0004, costOutPer1k: 0.0016, maxContextTokens: 1000000, supportsTools: true },
+    { id: 'gpt-4o-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.000375, costInPer1k: 0.00015, costOutPer1k: 0.0006, maxContextTokens: 128000, supportsTools: true },
     // Tier 3 — Efficient (fast, cheap — starter plans)
-    { id: 'gemini-2.5-flash', provider: 'google', tier: 'tier_3_efficient', costPer1kTokens: 0.0005, maxContextTokens: 1000000, supportsTools: false },
+    { id: 'gemini-2.5-flash', provider: 'google', tier: 'tier_3_efficient', costPer1kTokens: 0.0014, costInPer1k: 0.0003, costOutPer1k: 0.0025, maxContextTokens: 1000000, supportsTools: false },
     // Tier 4 — Budget (cheapest available)
-    { id: 'deepseek-chat', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.0001, maxContextTokens: 64000, supportsTools: true },
+    { id: 'deepseek-chat', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.000685, costInPer1k: 0.00027, costOutPer1k: 0.0011, maxContextTokens: 64000, supportsTools: true },
 ];
 
 // Task-based fallback chains ordered by cost-effectiveness.
@@ -60,8 +67,11 @@ const ALL_TIERS: ModelTier[] = ['tier_1_premium', 'tier_2_standard', 'tier_3_eff
 @Injectable()
 export class LLMRouterService {
     private readonly logger = new Logger(LLMRouterService.name);
-    private providerHealth = new Map<string, number>();
     private readonly CIRCUIT_BREAKER_TTL_MS = 120_000;
+    // Open the breaker only after this many breakable failures within the window —
+    // a single transient blip must not knock out a whole provider.
+    private readonly BREAKER_THRESHOLD = 3;
+    private readonly BREAKER_WINDOW_SEC = 60;
 
     constructor(
         @Inject('LLM_PROVIDERS') private providers: ILLMProvider[],
@@ -76,29 +86,79 @@ export class LLMRouterService {
         return provider;
     }
 
-    private isProviderHealthy(provider: string): boolean {
-        const unhealthyUntil = this.providerHealth.get(provider);
-        if (!unhealthyUntil) return true;
-        if (Date.now() >= unhealthyUntil) {
-            this.providerHealth.delete(provider);
-            return true;
-        }
-        return false;
+    private breakerOpenKey(provider: string): string {
+        return `llm:health:${provider}:open`;
     }
 
-    private markProviderUnhealthy(provider: string, errorMessage?: string): void {
-        this.providerHealth.set(provider, Date.now() + this.CIRCUIT_BREAKER_TTL_MS);
-        this.logger.warn(`[CircuitBreaker] ${provider} marked unhealthy for ${this.CIRCUIT_BREAKER_TTL_MS / 1000}s`);
+    /**
+     * Classify an error: does it indicate provider unavailability (and thus
+     * count toward opening the breaker)? 4xx client/config errors (400 malformed
+     * request, 401/403 auth, 404, 422) are NOT health problems — they'd fail on
+     * every provider and must not knock out a healthy one. 429 (rate limit) is
+     * transient: fall through to the next candidate but don't open the breaker.
+     * Only 5xx, timeouts and network errors count.
+     */
+    private isBreakableError(err: any): boolean {
+        const code = err?.code || err?.cause?.code;
+        if (code && ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE'].includes(code)) return true;
+        if (err?.name === 'APIConnectionTimeoutError' || err?.name === 'APIConnectionError') return true;
+        const status = err?.status ?? err?.statusCode ?? err?.response?.status;
+        if (typeof status === 'number') {
+            if (status >= 400 && status < 500) return false; // client/config/rate-limit — not a health signal
+            if (status >= 500) return true;                  // provider-side failure
+        }
+        // Unknown shape — treat as breakable so a genuinely broken provider still
+        // trips; the threshold prevents a single blip from opening it.
+        return true;
+    }
 
+    /** Read the breaker open-state from Redis for a set of providers (shared across API + worker). */
+    private async getUnhealthyProviders(providers: string[]): Promise<Set<string>> {
+        const unhealthy = new Set<string>();
+        await Promise.all(providers.map(async p => {
+            try {
+                if (await this.redis.get(this.breakerOpenKey(p))) unhealthy.add(p);
+            } catch { /* Redis down — fail open (treat as healthy) */ }
+        }));
+        return unhealthy;
+    }
+
+    /**
+     * Record a provider failure. Classifies the error and only opens the breaker
+     * for genuine unavailability past a threshold within a short window. The
+     * open-state lives in Redis (TTL) so it's shared across processes; when the
+     * TTL expires the next request naturally probes the provider (half-open).
+     */
+    private async markProviderFailure(provider: string, err: any): Promise<void> {
+        if (!this.isBreakableError(err)) {
+            this.logger.debug(`[CircuitBreaker] ${provider} error not breakable (status=${err?.status ?? err?.statusCode ?? 'n/a'}) — not counting`);
+            return;
+        }
+
+        let count = this.BREAKER_THRESHOLD;
+        try {
+            const winKey = `llm:health:${provider}:errwin`;
+            count = await this.redis.incrBy(winKey, 1);
+            await this.redis.expire(winKey, this.BREAKER_WINDOW_SEC);
+        } catch { /* Redis hiccup — be conservative and open */ }
+
+        if (count >= this.BREAKER_THRESHOLD) {
+            try {
+                await this.redis.set(this.breakerOpenKey(provider), String(Date.now()), Math.ceil(this.CIRCUIT_BREAKER_TTL_MS / 1000));
+            } catch (e: any) { this.logger.warn(`Breaker open write failed for ${provider}: ${e.message}`); }
+            this.logger.warn(`[CircuitBreaker] ${provider} OPEN for ${this.CIRCUIT_BREAKER_TTL_MS / 1000}s after ${count} failures in ${this.BREAKER_WINDOW_SEC}s`);
+        }
+
+        // Long-window failure counter for alerting.
         const failKey = `llm:health:${provider}:failures`;
-        this.redis.incrBy(failKey, 1).then(count => {
+        this.redis.incrBy(failKey, 1).then(c => {
             this.redis.expire(failKey, 600).catch(e => this.logger.warn(`Redis expire failed for ${failKey}: ${e.message}`));
-            if (count === 3 || count === 10 || count === 25) {
+            if (c === 3 || c === 10 || c === 25) {
                 this.eventEmitter.emit('llm.provider.alert', {
                     provider,
-                    severity: count >= 10 ? 'critical' : 'warning',
-                    failures: count,
-                    error: errorMessage || 'Provider unavailable',
+                    severity: c >= 10 ? 'critical' : 'warning',
+                    failures: c,
+                    error: err?.message || 'Provider unavailable',
                     timestamp: new Date().toISOString(),
                 });
             }
@@ -123,8 +183,9 @@ export class LLMRouterService {
             if (await this.llmKeys.isConfigured(p)) configuredProviders.add(p);
         }
 
+        const unhealthy = await this.getUnhealthyProviders([...new Set(eligible.map(m => m.provider))]);
         const available = eligible.filter(m =>
-            configuredProviders.has(m.provider) && this.isProviderHealthy(m.provider),
+            configuredProviders.has(m.provider) && !unhealthy.has(m.provider),
         );
 
         const primary = available.filter(m => allowedTiers.includes(m.tier));
@@ -193,7 +254,7 @@ export class LLMRouterService {
                 } catch (err: any) {
                     const durationMs = Date.now() - startTime;
                     this.trackStats(options.tenantId, candidate, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
-                    this.markProviderUnhealthy(candidate.provider, err.message);
+                    await this.markProviderFailure(candidate.provider, err);
                     lastError = err;
                     this.logger.warn(`[LLM] ${candidate.provider}/${candidate.id} failed: ${err.message} — trying next`);
                 }
@@ -260,12 +321,14 @@ export class LLMRouterService {
         if (!tenantId) return;
         const date = new Date().toISOString().slice(0, 10);
         const baseKey = `llm:stats:${tenantId}:${date}:${modelConfig.provider}`;
-        const tokens = usage?.totalTokens || 0;
         const tokensIn = usage?.promptTokens || 0;
         const tokensOut = usage?.completionTokens || 0;
         // Cost in centi-USD (USD * 10000) so we can use integer INCRBY.
-        // costPer1kTokens is dollars per 1000 tokens.
-        const costCentiUsd = Math.round((tokens / 1000) * modelConfig.costPer1kTokens * 10000);
+        // Input and output are priced separately (output is 3-5× input), so a
+        // single blended rate on total tokens was materially wrong.
+        const costUsd = (tokensIn / 1000) * modelConfig.costInPer1k
+            + (tokensOut / 1000) * modelConfig.costOutPer1k;
+        const costCentiUsd = Math.round(costUsd * 10000);
 
         const ttl = 90 * 24 * 3600;
         const incrs: Promise<any>[] = [
@@ -689,16 +752,21 @@ export class LLMRouterService {
         const result = [];
         for (const p of providers) {
             const configured = await this.llmKeys.isConfigured(p);
-            const healthy = this.isProviderHealthy(p);
             const failKey = `llm:health:${p}:failures`;
             const failures = Number(await this.redis.get(failKey) || 0);
-            const unhealthyTs = this.providerHealth.get(p);
+            // Breaker open-state lives in Redis (shared across processes). The key
+            // stores the open timestamp and carries a TTL = CIRCUIT_BREAKER_TTL_MS.
+            const openedAt = await this.redis.get(this.breakerOpenKey(p)).catch(() => null);
+            const healthy = !openedAt;
+            const unhealthyUntil = openedAt
+                ? new Date(Number(openedAt) + this.CIRCUIT_BREAKER_TTL_MS).toISOString()
+                : null;
             result.push({
                 provider: p,
                 configured,
                 healthy: configured && healthy,
                 recentFailures: failures,
-                unhealthyUntil: unhealthyTs ? new Date(unhealthyTs).toISOString() : null,
+                unhealthyUntil,
             });
         }
         return result;

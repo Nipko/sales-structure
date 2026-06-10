@@ -16,7 +16,9 @@ export class XAIProvider implements ILLMProvider {
         const key = await this.llmKeys.getKey('xai');
         if (!key) throw new Error('xAI API key not configured');
         if (this.client && key === this.currentKey) return this.client;
-        this.client = new OpenAI({ apiKey: key, baseURL: 'https://api.x.ai/v1' });
+        // Bound per-request latency (SDK default is 10min × 2 retries). The router
+        // owns fallback across providers, so keep retries minimal.
+        this.client = new OpenAI({ apiKey: key, baseURL: 'https://api.x.ai/v1', timeout: 45_000, maxRetries: 1 });
         this.currentKey = key;
         return this.client;
     }
@@ -96,15 +98,33 @@ export class XAIProvider implements ILLMProvider {
         }
     }
 
-    private formatMessages(options: LLMRequestOptions) {
+    private formatMessages(options: LLMRequestOptions): any[] {
         const messages: any[] = [];
         if (options.systemPrompt) {
             messages.push({ role: 'system', content: options.systemPrompt });
         }
-        if (options.messages) {
-            for (const msg of options.messages) {
-                messages.push(msg);
+        for (const msg of options.messages || []) {
+            // Map our internal ChatMessage shape to the OpenAI wire format. xAI is
+            // OpenAI-compatible, so tool-call fields MUST be snake_case
+            // (tool_call_id / tool_calls) — pushing the camelCase fields verbatim
+            // silently breaks any conversation that involves tool calls.
+            const formattedMsg: any = {
+                role: msg.role,
+                content: msg.content,
+            };
+            if (msg.name) formattedMsg.name = msg.name;
+            if (msg.toolCallId) formattedMsg.tool_call_id = msg.toolCallId;
+            if (msg.toolCalls) {
+                formattedMsg.tool_calls = msg.toolCalls.map(tc => ({
+                    id: tc.id,
+                    type: 'function',
+                    function: {
+                        name: tc.function.name,
+                        arguments: tc.function.arguments,
+                    },
+                }));
             }
+            messages.push(formattedMsg);
         }
         return messages;
     }

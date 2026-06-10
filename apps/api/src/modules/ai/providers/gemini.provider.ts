@@ -24,7 +24,9 @@ export class GeminiProvider implements ILLMProvider {
     async generate(options: LLMRequestOptions): Promise<LLMResponse> {
         try {
             const genAI = await this.ensureClient();
-            const model = genAI.getGenerativeModel({ model: options.model });
+            // Bound per-request latency (default has no client timeout). The router
+            // owns fallback across providers.
+            const model = genAI.getGenerativeModel({ model: options.model }, { timeout: 45_000 });
 
             const contents = this.formatMessages(options.messages);
 
@@ -68,7 +70,9 @@ export class GeminiProvider implements ILLMProvider {
     async *generateStream(options: LLMRequestOptions): AsyncGenerator<string, void, unknown> {
         try {
             const genAI = await this.ensureClient();
-            const model = genAI.getGenerativeModel({ model: options.model });
+            // Bound per-request latency (default has no client timeout). The router
+            // owns fallback across providers.
+            const model = genAI.getGenerativeModel({ model: options.model }, { timeout: 45_000 });
 
             const contents = this.formatMessages(options.messages);
             const requestParams: any = {

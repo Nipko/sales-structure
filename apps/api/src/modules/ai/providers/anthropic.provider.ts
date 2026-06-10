@@ -16,7 +16,9 @@ export class AnthropicProvider implements ILLMProvider {
         const key = await this.llmKeys.getKey('anthropic');
         if (!key) throw new Error('Anthropic API key not configured');
         if (this.client && key === this.currentKey) return this.client;
-        this.client = new Anthropic({ apiKey: key });
+        // Bound per-request latency (SDK default is 10min × 2 retries). The router
+        // owns fallback across providers, so keep retries minimal.
+        this.client = new Anthropic({ apiKey: key, timeout: 45_000, maxRetries: 1 });
         this.currentKey = key;
         return this.client;
     }

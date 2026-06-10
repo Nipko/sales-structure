@@ -293,6 +293,8 @@ export default function InboxPage() {
     // --- AI Suggestion State ---
     const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
     const [aiSuggestionLoading, setAiSuggestionLoading] = useState(false);
+    // Draft-for-approval (WS3 #6): AI-generated replies awaiting a human send, keyed by conversation.
+    const [draftsByConv, setDraftsByConv] = useState<Record<string, string>>({});
 
     // --- Copilot Rewrite / Summarize State ---
     const [rewriting, setRewriting] = useState(false);
@@ -789,6 +791,13 @@ export default function InboxPage() {
             loadInbox({ silent: true });
         });
 
+        // Draft-for-approval (WS3 #6): the AI suggested a reply for a human to review.
+        socket.on('inbox:draft_suggestion', (payload: { conversationId: string; suggestedText: string; contactName?: string }) => {
+            if (payload?.conversationId && payload?.suggestedText) {
+                setDraftsByConv(prev => ({ ...prev, [payload.conversationId]: payload.suggestedText }));
+            }
+        });
+
         socket.on('inbox:handoff', (payload: any) => {
             console.log('Received inbox:handoff', payload);
             const { conversationId, reason, summary, triggeredAt } = payload;
@@ -1119,6 +1128,9 @@ export default function InboxPage() {
         try {
             if (activeTenantId && selectedConv?.id) {
                 await api.sendMessage(activeTenantId, selectedConv.id, content, user?.id);
+                // Draft-for-approval (#6): the agent replied — clear any pending AI draft.
+                const convId = selectedConv.id;
+                setDraftsByConv(prev => { const n = { ...prev }; delete n[convId]; return n; });
             }
         } catch (err) {
             console.error("Send message failed:", err);
@@ -1864,6 +1876,31 @@ export default function InboxPage() {
                                     </div>
                                 );
                             })}
+
+                            {/* Draft-for-approval banner (WS3 #6) — AI reply waiting for the agent to review/send */}
+                            {selectedConv && draftsByConv[selectedConv.id] && (
+                                <div className="px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500/[0.08] to-teal-500/[0.08] border border-emerald-500/20 flex gap-2.5 items-start mt-3">
+                                    <Sparkles size={16} className="text-emerald-500 mt-0.5 flex-shrink-0" />
+                                    <div className="flex-1">
+                                        <div className="text-[11px] font-semibold text-emerald-500 mb-1">Borrador de IA — revisá y enviá</div>
+                                        <div className="text-[13px] text-muted-foreground leading-relaxed">&quot;{draftsByConv[selectedConv.id]}&quot;</div>
+                                        <div className="flex gap-2 mt-2">
+                                            <button
+                                                onClick={() => { setMessageInput(draftsByConv[selectedConv.id]); messageInputRef.current?.focus(); }}
+                                                className="py-1 px-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-500 text-xs cursor-pointer flex gap-1.5 items-center hover:bg-emerald-500/20 transition-colors font-medium"
+                                            >
+                                                <Zap size={12} /> Usar borrador
+                                            </button>
+                                            <button
+                                                onClick={() => setDraftsByConv(prev => { const n = { ...prev }; delete n[selectedConv.id]; return n; })}
+                                                className="py-1 px-3 rounded-lg border border-border bg-transparent text-muted-foreground text-xs cursor-pointer flex gap-1.5 items-center hover:bg-muted transition-colors"
+                                            >
+                                                Descartar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* AI Suggestion Banner */}
                             {selectedConv && ['with_human', 'waiting_human', 'handoff', 'assigned', 'open'].includes(selectedConv.status) && (

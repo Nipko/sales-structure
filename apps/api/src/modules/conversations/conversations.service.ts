@@ -51,6 +51,9 @@ import { AiResolutionService } from '../analytics/ai-resolution.service';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 const MAX_HISTORY_CHARS = 12_000;
+// Returned when the LLM pipeline errors out. Sent to the customer but NOT counted
+// as a successful AI response (no monthly-quota increment, no message_sent event).
+const ERROR_FALLBACK_MSG = 'Disculpa, tuve un problema procesando tu mensaje. ¿Podrías repetirlo?';
 
 @Injectable()
 export class ConversationsService {
@@ -315,6 +318,7 @@ export class ConversationsService {
                            AND status IN ('pending', 'confirmed')
                            AND no_show_followed_up = true
                            AND end_at < NOW()
+                           AND end_at > NOW() - INTERVAL '48 hours'
                          ORDER BY end_at DESC LIMIT 1`,
                         [contact.id],
                     );
@@ -426,8 +430,10 @@ export class ConversationsService {
         const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead, previousMessageAt, bizHours);
         this.logger.log(`[Pipeline] AI response generated: ${response ? response.substring(0, 80) + '...' : 'NULL/EMPTY'}`);
 
-        // Track AI response event + increment monthly quota counter
-        if (response) {
+        // Track AI response event + increment monthly quota counter — but NOT for
+        // the error fallback (it isn't a real AI answer; counting it inflates the
+        // monthly quota and emits a spurious message_sent event).
+        if (response && response !== ERROR_FALLBACK_MSG) {
             this.throttle.incrementAiMessageCount(tenantId).catch(() => {});
             this.analyticsService.trackEvent({
                 tenantId, eventType: 'message_sent',
@@ -1125,7 +1131,13 @@ export class ConversationsService {
         let bookingState: BookingState = await this.loadBookingState(conversation.id, conversation.metadata);
         let engineProducedText: string | null = null;
 
-        if (toolsEnabled) {
+        // If a procedure (AOP/SOP) is mid-flow waiting for a field, the current
+        // message is the ANSWER to that field — give the procedure engine priority
+        // so the booking engine doesn't hijack it and leave the procedure hung.
+        const procedureAwaiting = await this.procedureEngine.getState(conversation.id)
+            .then(s => !!s?.awaitingField).catch(() => false);
+
+        if (toolsEnabled && !procedureAwaiting) {
             // Tenant-local "today" — toISOString() would be UTC, which rolls over
             // to tomorrow during the evening across all of LatAm (UTC-3…-6) and
             // would make the booking engine treat "hoy" as the next day.
@@ -1346,7 +1358,10 @@ export class ConversationsService {
             const ragConfig = config.rag;
             const ragEnabled = ragConfig?.enabled !== false;
             if (hasKnowledge && ragEnabled) {
-                const topK = ragConfig?.topK ?? 5;
+                // Clamp topK so a misconfigured agent can't flood the prompt with
+                // dozens of chunks (cost + context blowout). Chunks are already
+                // capped at CHUNK_MAX_CHARS each at ingest time.
+                const topK = Math.min(Math.max(1, ragConfig?.topK ?? 5), 10);
                 // Default 0.35 — filters out irrelevant chunks. Agents can lower
                 // this in their RAG config if they need broader recall.
                 const similarityThreshold = ragConfig?.similarityThreshold ?? 0.35;
@@ -1604,7 +1619,7 @@ export class ConversationsService {
                 [conversation.id],
             );
 
-            return 'Disculpa, tuve un problema procesando tu mensaje. ¿Podrías repetirlo?';
+            return ERROR_FALLBACK_MSG;
         }
     }
 
@@ -1727,6 +1742,23 @@ export class ConversationsService {
         const config = await this.personaService.getPersonaForChannel(tenantId, 'web_widget');
         if (!config) return null;
 
+        // Serialize widget turns per conversation, same mutex as the main pipeline
+        // (token + heartbeat), so two quick widget messages don't process in parallel.
+        const lockKey = `lock:conv:${conversationId}`;
+        let lockToken = await this.redis.acquireLockToken(lockKey, 30);
+        for (let i = 0; i < 4 && !lockToken; i++) {
+            await new Promise(r => setTimeout(r, 500));
+            lockToken = await this.redis.acquireLockToken(lockKey, 30);
+        }
+        let lockHeartbeat: ReturnType<typeof setInterval> | undefined;
+        if (lockToken) {
+            const tk = lockToken;
+            lockHeartbeat = setInterval(() => { this.redis.renewLockToken(lockKey, tk, 30).catch(() => {}); }, 10_000);
+            lockHeartbeat.unref?.();
+        }
+
+        try {
+
         const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT direction, content_text FROM messages
              WHERE conversation_id = $1::uuid ORDER BY created_at ASC LIMIT 20`,
@@ -1782,6 +1814,10 @@ export class ConversationsService {
         } catch (err: any) {
             this.logger.warn(`Widget AI failed: ${err.message}`);
             return null;
+        }
+        } finally {
+            if (lockHeartbeat) clearInterval(lockHeartbeat);
+            if (lockToken) await this.redis.releaseLockToken(lockKey, lockToken).catch(() => {});
         }
     }
 

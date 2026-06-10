@@ -54,6 +54,9 @@ const MAX_HISTORY_CHARS = 12_000;
 // Returned when the LLM pipeline errors out. Sent to the customer but NOT counted
 // as a successful AI response (no monthly-quota increment, no message_sent event).
 const ERROR_FALLBACK_MSG = 'Disculpa, tuve un problema procesando tu mensaje. ¿Podrías repetirlo?';
+// Per-tool execution ceiling — a single tool (esp. an external MCP server) must
+// never hang the whole conversational turn.
+const TOOL_TIMEOUT_MS = 25_000;
 
 @Injectable()
 export class ConversationsService {
@@ -1508,11 +1511,18 @@ export class ConversationsService {
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 const hasTools = tools.length > 0;
 
+                // Honor the agent's configured temperature/maxTokens (previously
+                // ignored). Tool-calling stays deterministic (0.3) regardless, since
+                // a high temperature degrades tool-argument accuracy.
+                const personaTemp = typeof config.llm?.temperature === 'number' ? config.llm.temperature : 0.8;
+                const personaMaxTokens = typeof config.llm?.maxTokens === 'number' && config.llm.maxTokens > 0
+                    ? config.llm.maxTokens : undefined;
                 const response = await this.llmRouter.execute({
                     task: hasTools ? 'tool_calling' : 'conversation',
                     messages: currentMessages,
                     systemPrompt,
-                    temperature: hasTools ? 0.3 : 0.8,
+                    temperature: hasTools ? 0.3 : personaTemp,
+                    maxTokens: personaMaxTokens,
                     tools: hasTools ? tools : undefined,
                     allowedTiers,
                     tenantId,
@@ -1536,16 +1546,26 @@ export class ConversationsService {
                         toolCalls: response.toolCalls,
                     });
 
-                    // Execute each tool and update booking state
+                    // Execute each tool. Sequential on purpose — parallelizing tools
+                    // with side effects (booking/orders) would race. Each tool is
+                    // isolated (bad args / a hung external MCP tool can't kill the
+                    // turn) and bounded by a per-tool timeout.
                     const contactId = conversation.contact_id || '';
                     for (const tc of response.toolCalls) {
-                        const args = typeof tc.function.arguments === 'string'
-                            ? JSON.parse(tc.function.arguments)
-                            : tc.function.arguments;
-
-                        const result = await this.toolExecutor.execute(
-                            schemaName, tenantId, contactId, tc.function.name, args, conversation.id,
-                        );
+                        let result: any;
+                        try {
+                            const args = typeof tc.function.arguments === 'string'
+                                ? JSON.parse(tc.function.arguments)
+                                : (tc.function.arguments || {});
+                            result = await this.withTimeout(
+                                this.toolExecutor.execute(schemaName, tenantId, contactId, tc.function.name, args, conversation.id),
+                                TOOL_TIMEOUT_MS,
+                                tc.function.name,
+                            );
+                        } catch (e: any) {
+                            this.logger.warn(`[Pipeline] Tool ${tc.function.name} failed/timed out: ${e.message}`);
+                            result = { error: 'tool_failed', retryable: false, message: 'No se pudo ejecutar esta acción en este momento.' };
+                        }
 
                         this.logger.log(`[Pipeline] Tool ${tc.function.name} executed in LLM loop`);
 
@@ -1627,6 +1647,14 @@ export class ConversationsService {
      * Truncate conversation history to stay within MAX_HISTORY_CHARS.
      * Keeps the most recent messages and always includes the current user message.
      */
+    /** Resolve `p`, or reject after `ms` so one slow tool can't stall the turn. */
+    private withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+        return Promise.race([
+            p,
+            new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Tool ${label} timed out after ${ms}ms`)), ms)),
+        ]);
+    }
+
     private truncateHistory(history: any[], currentMessage: string): Array<{ role: string; content: string }> {
         const messages: Array<{ role: string; content: string }> = [];
         let totalChars = currentMessage.length;

@@ -240,13 +240,21 @@ export class IntentInterpreterService {
             const d = new Date(todayDate); d.setDate(d.getDate() + 1);
             base.dateMentioned = d.toISOString().split('T')[0];
         } else {
-            // Month names
+            // Month names (es/pt/fr/en) — matched accent-insensitively against tNorm.
             const months: Record<string, number> = {
-                enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
-                julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+                // es
+                enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+                // pt
+                janeiro: 1, fevereiro: 2, marco: 3, maio: 5, junho: 6, julho: 7, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
+                // fr
+                janvier: 1, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6, juillet: 7, aout: 8, decembre: 12,
+                // en
+                january: 1, february: 2, march: 3, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
             };
             for (const [name, num] of Object.entries(months)) {
-                const m = t.match(new RegExp(`(\\d{1,2})\\s*(?:de\\s+)?${name}`, 'i'));
+                // day-before-month ("10 de enero", "10 janvier") or month-before-day ("january 10")
+                const m = tNorm.match(new RegExp(`(\\d{1,2})\\s*(?:de\\s+|of\\s+)?${name}\\b`, 'i'))
+                    || tNorm.match(new RegExp(`\\b${name}\\s+(\\d{1,2})\\b`, 'i'));
                 if (m) {
                     const day = parseInt(m[1]);
                     if (day < 1 || day > 31) break; // invalid day → ignore
@@ -266,9 +274,16 @@ export class IntentInterpreterService {
                     break;
                 }
             }
-            // Day names
+            // Day names (es/pt/fr/en) — matched accent-insensitively against tNorm.
             const days: Record<string, number> = {
+                // es
                 domingo: 0, lunes: 1, martes: 2, miercoles: 3, jueves: 4, viernes: 5, sabado: 6,
+                // pt
+                segunda: 1, terca: 2, quarta: 3, quinta: 4, sexta: 5,
+                // fr
+                dimanche: 0, lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6,
+                // en
+                sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
             };
             for (const [name, num] of Object.entries(days)) {
                 if (tNorm.includes(name)) {
@@ -288,16 +303,25 @@ export class IntentInterpreterService {
         } else {
             // Capture the full period qualifier — "de la tarde/noche" never started
             // with 'p', so "a las 3 de la tarde" was parsed as 03:00 instead of 15:00.
-            const hourMatch = t.match(/(?:a las |las )(\d{1,2})(?::(\d{2}))?\s*(am|pm|de la tarde|de la noche|de la mañana|de la manana|de la madrugada|tarde|noche|mañana|manana|madrugada)?/i);
+            // Prefixes for es/pt/fr/en ("a las", "às", "at", "à") + multilingual
+            // period qualifiers, so "amanhã às 15h" / "at 3 pm" / "à 15h" parse.
+            const hourMatch = t.match(/(?:a las |las |às |as |at |à )(\d{1,2})(?::(\d{2}))?\s*(am|pm|de la tarde|de la noche|de la mañana|de la manana|de la madrugada|tarde|noche|mañana|manana|madrugada|da tarde|da noite|da manha|du soir|du matin|de l'apres-midi|in the afternoon|in the evening|in the morning|a\.?m|p\.?m|h|hs|hrs?)?/i);
             if (hourMatch) {
                 let h = parseInt(hourMatch[1]);
                 const min = hourMatch[2] || '00';
                 const q = (hourMatch[3] || '').toLowerCase();
-                const isPm = q === 'pm' || q.includes('tarde') || q.includes('noche');
-                const isAm = q === 'am' || q.includes('mañana') || q.includes('manana') || q.includes('madrugada');
+                const isPm = q.startsWith('pm') || q === 'p.m' || q.includes('tarde') || q.includes('noche') || q.includes('noite') || q.includes('soir') || q.includes('afternoon') || q.includes('evening') || q.includes('apres');
+                const isAm = q.startsWith('am') || q === 'a.m' || q.includes('mañana') || q.includes('manana') || q.includes('madrugada') || q.includes('manha') || q.includes('matin') || q.includes('morning');
                 if (isPm && h < 12) h += 12;
                 else if (isAm && h === 12) h = 0;
                 base.timeMentioned = `${String(h).padStart(2, '0')}:${min}`;
+            } else {
+                // Bare "15h" / "15hs" / "15hrs" (common in pt/fr) without a prefix.
+                const hMatch = t.match(/\b(\d{1,2})\s*h(?:s|rs?)?\b/i);
+                if (hMatch) {
+                    const h = parseInt(hMatch[1]);
+                    if (h >= 0 && h <= 23) base.timeMentioned = `${String(h).padStart(2, '0')}:00`;
+                }
             }
         }
 

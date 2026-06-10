@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { CalendarIntegrationService } from '../appointments/calendar-integration.service';
 import { FaqsService } from '../faqs/faqs.service';
 import { PoliciesService } from '../policies/policies.service';
@@ -30,6 +31,7 @@ export class AIToolExecutorService {
 
     constructor(
         private prisma: PrismaService,
+        private redis: RedisService,
         private eventEmitter: EventEmitter2,
         private calendarIntegration: CalendarIntegrationService,
         private faqsService: FaqsService,
@@ -245,13 +247,13 @@ export class AIToolExecutorService {
                     return this.getMyMembership(schemaName, contactId);
 
                 case 'book_class':
-                    return this.bookClassTool(schemaName, args);
+                    return this.bookClassTool(schemaName, contactId, args);
 
                 case 'freeze_membership':
-                    return this.freezeMembershipTool(schemaName, args);
+                    return this.freezeMembershipTool(schemaName, contactId, args);
 
                 case 'cancel_class_booking':
-                    return this.cancelClassBooking(schemaName, args.bookingId);
+                    return this.cancelClassBooking(schemaName, contactId, args.bookingId);
 
                 // ── Education tools ───────────────────────────────
                 case 'get_courses':
@@ -1000,6 +1002,50 @@ export class AIToolExecutorService {
         };
     }
 
+    /**
+     * Re-check for an overlapping appointment for the same resource just before
+     * committing. Mirrors the overlap semantics of check_availability: a conflict
+     * exists unless BOTH the new and the existing appointment have a *distinct*
+     * assigned_to (i.e. null staff = single shared resource → conflicts with all).
+     * `excludeId` skips the appointment being rescheduled.
+     */
+    private async findAppointmentConflict(
+        schema: string, startAt: string, endAt: string,
+        assignedTo: string | null, excludeId?: string,
+    ): Promise<boolean> {
+        const params: any[] = [endAt, startAt, assignedTo || null];
+        let excludeSql = '';
+        if (excludeId) { excludeSql = ' AND id != $4::uuid'; params.push(excludeId); }
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT id FROM "${schema}".appointments
+             WHERE status NOT IN ('cancelled')
+               AND start_at < $1::timestamp
+               AND end_at > $2::timestamp
+               AND ($3::uuid IS NULL OR assigned_to IS NULL OR assigned_to = $3::uuid)
+               ${excludeSql}
+             LIMIT 1`,
+            ...params,
+        );
+        return rows.length > 0;
+    }
+
+    /**
+     * Acquire a short-lived per-(resource,date) lock so the conflict re-check
+     * and the INSERT/UPDATE run atomically against concurrent bookings. Held for
+     * a couple of DB queries only (TTL 10s is a safety net, not the expected
+     * hold time). Best-effort: after a brief retry budget it proceeds without
+     * the lock so a Redis hiccup never blocks a legitimate booking.
+     */
+    private async acquireSlotLock(schema: string, assignedTo: string | null, date: string): Promise<string | null> {
+        const lockKey = `lock:slot:${schema}:${assignedTo || 'any'}:${date}`;
+        for (let i = 0; i < 5; i++) {
+            if (await this.redis.acquireLock(lockKey, 10)) return lockKey;
+            await new Promise(r => setTimeout(r, 200));
+        }
+        this.logger.warn(`[Tool] Slot lock ${lockKey} busy after retries — proceeding best-effort`);
+        return null;
+    }
+
     private async createAppointment(
         schema: string, tenantId: string, contactId: string,
         args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string },
@@ -1032,16 +1078,32 @@ export class AIToolExecutorService {
         const endMinutes = parseInt(args.time.split(':')[0]) * 60 + parseInt(args.time.split(':')[1]) + effectiveDuration;
         const endAt = `${args.date}T${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}:00`;
 
-        const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `INSERT INTO "${schema}".appointments
-             (contact_id, service_id, service_name, assigned_to, start_at, end_at, status, customer_name, customer_phone, customer_email, notes)
-             VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5::timestamp, $6::timestamp, 'confirmed', $7, $8, $9, $10)
-             RETURNING id, service_name, start_at, end_at, status`,
-            contactId, args.serviceId, svc.name,
-            args.staffId || null,
-            startAt, endAt,
-            args.customerName, args.customerPhone || null, args.customerEmail || null, args.notes || null,
-        );
+        // Double-booking guard: re-check availability and INSERT under a short
+        // per-(staff,date) lock. check_availability runs earlier in the turn, but
+        // without this there is a TOCTOU window where two concurrent customers
+        // (or the deterministic booking engine racing the LLM tool path) can both
+        // book the same slot. Both paths funnel through this INSERT.
+        const assignedTo = args.staffId || null;
+        const lockKey = await this.acquireSlotLock(schema, assignedTo, args.date);
+        let rows: any[];
+        try {
+            if (await this.findAppointmentConflict(schema, startAt, endAt, assignedTo)) {
+                this.logger.warn(`[Tool] Double-booking prevented: ${args.date} ${args.time} (staff=${assignedTo || 'any'})`);
+                return { error: 'That time slot was just taken. Offer the customer another available time (call check_availability again).' };
+            }
+            rows = await this.prisma.$queryRawUnsafe(
+                `INSERT INTO "${schema}".appointments
+                 (contact_id, service_id, service_name, assigned_to, start_at, end_at, status, customer_name, customer_phone, customer_email, notes)
+                 VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5::timestamp, $6::timestamp, 'confirmed', $7, $8, $9, $10)
+                 RETURNING id, service_name, start_at, end_at, status`,
+                contactId, args.serviceId, svc.name,
+                assignedTo,
+                startAt, endAt,
+                args.customerName, args.customerPhone || null, args.customerEmail || null, args.notes || null,
+            );
+        } finally {
+            if (lockKey) await this.redis.releaseLock(lockKey);
+        }
 
         const apt = rows[0];
         this.logger.log(`[Tool] Appointment created: ${apt.id} for ${args.customerName}`);
@@ -1875,6 +1937,40 @@ export class AIToolExecutorService {
                 return { error: 'deliveryAddress is required for delivery orders' };
             }
 
+            // Price integrity: NEVER trust the unitPrice supplied by the LLM/customer.
+            // Resolve the authoritative price from menu_items for every item. An item
+            // without a valid, active+available menuItemId is rejected so a tampered
+            // price can't slip through into the order total.
+            const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const validIds = [...new Set(
+                args.items.map((it: any) => it.menuItemId).filter((id: any) => typeof id === 'string' && uuidRe.test(id)),
+            )] as string[];
+            const priceMap: Record<string, { price: number; name: string }> = {};
+            if (validIds.length) {
+                const rows: any[] = await this.prisma.$queryRawUnsafe(
+                    `SELECT id, name, price FROM "${schemaName}".menu_items
+                     WHERE id = ANY($1::uuid[]) AND is_active = true AND is_available = true`,
+                    validIds,
+                );
+                for (const r of rows) priceMap[r.id] = { price: Number(r.price), name: r.name };
+            }
+
+            const resolvedItems: Array<{ menuItemId: string; name: string; quantity: number; unitPrice: number; specialInstructions?: string }> = [];
+            for (const it of args.items) {
+                const menuItem = it.menuItemId ? priceMap[it.menuItemId] : undefined;
+                if (!menuItem) {
+                    return { error: `Item "${it.name || it.menuItemId || 'unknown'}" is not on the menu or is unavailable. Use the menu tools to get valid items before placing the order.` };
+                }
+                const qty = Math.max(1, Math.floor(Number(it.quantity) || 1));
+                resolvedItems.push({
+                    menuItemId: it.menuItemId,
+                    name: menuItem.name,        // snapshot the real catalog name
+                    quantity: qty,
+                    unitPrice: menuItem.price,  // authoritative price — overrides the arg
+                    specialInstructions: it.specialInstructions,
+                });
+            }
+
             const order = await this.restaurantsService.createOrder(schemaName, {
                 contactId,
                 conversationId,
@@ -1884,13 +1980,7 @@ export class AIToolExecutorService {
                 deliveryAddress: args.deliveryAddress,
                 deliveryNotes: args.deliveryNotes,
                 tableNumber: args.tableNumber,
-                items: args.items.map((it: any) => ({
-                    menuItemId: it.menuItemId,
-                    name: it.name,
-                    quantity: it.quantity,
-                    unitPrice: it.unitPrice,
-                    specialInstructions: it.specialInstructions,
-                })),
+                items: resolvedItems,
                 paymentMethod: args.paymentMethod,
                 notes: args.notes,
             });
@@ -1992,9 +2082,19 @@ export class AIToolExecutorService {
         }
     }
 
-    private async bookClassTool(schemaName: string, args: any): Promise<any> {
+    private async bookClassTool(schemaName: string, contactId: string, args: any): Promise<any> {
         try {
-            const booking = await this.gymsService.bookClass(schemaName, args.classId, args.memberId);
+            // IDOR guard: a customer can only book classes against their OWN membership.
+            // Resolve the member from the current contact and ignore/reject any memberId
+            // the LLM (or a malicious customer) may have supplied.
+            const member = await this.gymsService.getMemberByContact(schemaName, contactId);
+            if (!member) {
+                return { error: 'The contact has no active membership. Offer get_membership_plans to sign up first.' };
+            }
+            if (args.memberId && args.memberId !== member.id) {
+                return { error: 'You can only book classes for your own membership.' };
+            }
+            const booking = await this.gymsService.bookClass(schemaName, args.classId, member.id);
             return {
                 bookingId: booking.id,
                 status: booking.status,
@@ -2006,14 +2106,22 @@ export class AIToolExecutorService {
         }
     }
 
-    private async freezeMembershipTool(schemaName: string, args: any): Promise<any> {
+    private async freezeMembershipTool(schemaName: string, contactId: string, args: any): Promise<any> {
         try {
-            const member = await this.gymsService.freezeMember(schemaName, args.memberId, args.days);
+            // IDOR guard: only the contact's own membership can be frozen.
+            const member = await this.gymsService.getMemberByContact(schemaName, contactId);
+            if (!member) {
+                return { error: 'The contact has no active membership to freeze.' };
+            }
+            if (args.memberId && args.memberId !== member.id) {
+                return { error: 'You can only freeze your own membership.' };
+            }
+            const frozen = await this.gymsService.freezeMember(schemaName, member.id, args.days);
             return {
-                memberId: member.id,
-                status: member.status,
-                frozenFrom: member.frozen_from,
-                frozenUntil: member.frozen_until,
+                memberId: frozen.id,
+                status: frozen.status,
+                frozenFrom: frozen.frozen_from,
+                frozenUntil: frozen.frozen_until,
                 message: `Membership frozen for ${args.days} days.`,
             };
         } catch (e: any) {
@@ -2397,14 +2505,26 @@ export class AIToolExecutorService {
             ? `\n[Rescheduled: ${reason}]`
             : '\n[Rescheduled by customer]';
 
-        await this.prisma.$queryRawUnsafe(
-            `UPDATE "${schema}".appointments
-             SET start_at = $1::timestamp, end_at = $2::timestamp,
-                 notes = COALESCE(notes, '') || $3,
-                 updated_at = NOW()
-             WHERE id = $4::uuid`,
-            newStartAt, newEndAt, noteAppend, appointmentId,
-        );
+        // Double-booking guard for the new slot (excludes the appointment itself),
+        // mirroring createAppointment.
+        const assignedTo = apt.assigned_to || null;
+        const lockKey = await this.acquireSlotLock(schema, assignedTo, newDate);
+        try {
+            if (await this.findAppointmentConflict(schema, newStartAt, newEndAt, assignedTo, appointmentId)) {
+                this.logger.warn(`[Tool] Reschedule conflict prevented: ${newDate} ${newTime} (staff=${assignedTo || 'any'})`);
+                return { error: 'That new time slot is already taken. Offer the customer another available time (call check_availability).' };
+            }
+            await this.prisma.$queryRawUnsafe(
+                `UPDATE "${schema}".appointments
+                 SET start_at = $1::timestamp, end_at = $2::timestamp,
+                     notes = COALESCE(notes, '') || $3,
+                     updated_at = NOW()
+                 WHERE id = $4::uuid`,
+                newStartAt, newEndAt, noteAppend, appointmentId,
+            );
+        } finally {
+            if (lockKey) await this.redis.releaseLock(lockKey);
+        }
 
         // Re-create calendar event for the new time (no patch API available)
         try {
@@ -2682,8 +2802,17 @@ export class AIToolExecutorService {
 
     // ── Gyms management handlers ─────────────────────────────────────
 
-    private async cancelClassBooking(schemaName: string, bookingId: string): Promise<any> {
+    private async cancelClassBooking(schemaName: string, contactId: string, bookingId: string): Promise<any> {
         try {
+            // IDOR guard: verify the booking belongs to this contact before cancelling
+            // (same ownership pattern as cancelAppointment / cancelEnrollment).
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, contact_id FROM "${schemaName}".class_bookings WHERE id = $1::uuid`,
+                bookingId,
+            );
+            if (!rows.length) return { error: 'Booking not found' };
+            if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own bookings.' };
+
             await this.gymsService.cancelBooking(schemaName, bookingId);
             return { success: true, message: 'Class booking cancelled. Credits have been restored.' };
         } catch (e: any) {

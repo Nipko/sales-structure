@@ -57,6 +57,9 @@ const ERROR_FALLBACK_MSG = 'Disculpa, tuve un problema procesando tu mensaje. ¿
 // Per-tool execution ceiling — a single tool (esp. an external MCP server) must
 // never hang the whole conversational turn.
 const TOOL_TIMEOUT_MS = 25_000;
+// Burst debounce window: WhatsApp users send a thought across several quick
+// messages. We wait this long for follow-ups and process the batch as one turn.
+const DEBOUNCE_MS = 800;
 
 @Injectable()
 export class ConversationsService {
@@ -102,6 +105,14 @@ export class ConversationsService {
     async processIncomingMessage(normalizedMsg: NormalizedMessage): Promise<void> {
         const { tenantId, contactId, channelType, content } = normalizedMsg;
         this.logger.log(`Processing inbound message from ${contactId} on ${channelType} for tenant ${tenantId}`);
+
+        // 0. Debounce bursts: WhatsApp users often send one thought as 3-5 short
+        // messages. Buffer them and process the batch as ONE turn (less LLM cost,
+        // no interleaved/double replies, better intent). Returns the combined text
+        // for the LAST message of the burst; the earlier ones bail here.
+        const combined = await this.debounceBurst(normalizedMsg).catch(() => undefined);
+        if (combined === null) return; // a newer message arrived — it will flush the batch
+        if (combined !== undefined) normalizedMsg.content.text = combined;
 
         // 1. Resolve Contact & Conversation.
         // Serialize find-or-create per contact: two near-simultaneous first
@@ -1647,6 +1658,57 @@ export class ConversationsService {
      * Truncate conversation history to stay within MAX_HISTORY_CHARS.
      * Keeps the most recent messages and always includes the current user message.
      */
+    /**
+     * Debounce a burst of messages from the same contact into one turn.
+     * Returns: a combined string for the LAST message of the burst (flusher),
+     * `null` for earlier messages (a newer one will flush — caller should bail),
+     * or `undefined` when not debounced (media/non-text or Redis unavailable).
+     *
+     * Coordination is Redis-based (works across processes): each message bumps a
+     * sequence and appends its text; after the window only the message still
+     * holding the latest sequence drains the buffer (atomic Lua check+drain+del).
+     */
+    private async debounceBurst(msg: NormalizedMessage): Promise<string | null | undefined> {
+        const text = msg.content?.type === 'text' ? (msg.content?.text || '') : '';
+        if (!text) return undefined; // media/buttons are distinct turns — no debounce
+
+        const base = `buf:conv:${msg.tenantId}:${msg.channelType}:${msg.contactId}`;
+        const seqKey = `${base}:seq`;
+        const msgsKey = `${base}:msgs`;
+
+        let mySeq: number;
+        try {
+            mySeq = await this.redis.incr(seqKey);
+            await this.redis.expire(seqKey, 60);
+            await this.redis.rpush(msgsKey, text);
+            await this.redis.expire(msgsKey, 60);
+        } catch {
+            return undefined; // Redis hiccup → process this message as-is
+        }
+
+        await new Promise(r => setTimeout(r, DEBOUNCE_MS));
+
+        // Atomic flush: only the holder of the latest sequence drains the buffer.
+        let parts: string[] | null;
+        try {
+            parts = await this.redis.getClient().eval(
+                `if redis.call('get', KEYS[1]) == ARGV[1] then
+                   local m = redis.call('lrange', KEYS[2], 0, -1)
+                   redis.call('del', KEYS[2]); redis.call('del', KEYS[1]); return m
+                 else return false end`,
+                2, seqKey, msgsKey, String(mySeq),
+            ) as string[] | null;
+        } catch {
+            return text; // Redis hiccup → process just this message's text
+        }
+
+        if (!parts) return null; // a newer fragment arrived — it will flush the batch
+        if (parts.length > 1) {
+            this.logger.log(`[Debounce] Flushed ${parts.length} messages as one turn for ${msg.contactId}`);
+        }
+        return (parts.length ? parts : [text]).join('\n').trim() || text;
+    }
+
     /** Resolve `p`, or reject after `ms` so one slow tool can't stall the turn. */
     private withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
         return Promise.race([

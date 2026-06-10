@@ -448,7 +448,7 @@ export class ChannelsController {
                 const candidates = await this.prisma.channelAccount.findMany({
                     where: { channelType: 'telegram', isActive: true },
                 });
-                channelAccount = candidates.find(c => {
+                channelAccount = candidates.find((c: any) => {
                     const s = (c.metadata as any)?.webhookSecret;
                     return s && s === secretToken;
                 }) || null;

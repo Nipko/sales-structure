@@ -1,6 +1,8 @@
 "use client";
 
 import { HeroSection } from "../../components/sections/HeroSection";
+import { ProblemSection } from "../../components/sections/ProblemSection";
+import { ResultsBand } from "../../components/sections/ResultsBand";
 import { TrustRow } from "../../components/sections/TrustRow";
 import { VerticalsShowcase } from "../../components/sections/VerticalsShowcase";
 import { MultiChannelShowcase } from "../../components/sections/MultiChannelShowcase";
@@ -22,15 +24,17 @@ export default function HomePage() {
       <JsonLd data={organizationJsonLd()} />
       <JsonLd data={softwareAppJsonLd()} />
       <HeroSection />
-      <TrustRow />
+      <ProblemSection />
+      <ResultsBand />
+      <HowItWorks />
       <VerticalsShowcase />
       <MultiChannelShowcase />
       <ToolsShowcase />
-      <HowItWorks />
       <FeaturesGrid />
       <ComparisonTable />
       <StatsCounter />
       <TestimonialsSection />
+      <TrustRow />
       <PricingSection />
       <FAQSection />
       <CTABanner />

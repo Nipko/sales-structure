@@ -18,6 +18,7 @@ import { NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, Retrieve
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { ResponseValidatorService } from './response-validator.service';
+import { CustomerMemoryService } from './customer-memory.service';
 import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
 import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
 import { FAQ_TOOL, POLICY_TOOL, KB_TOOL } from './tools/knowledge-tools';
@@ -85,6 +86,7 @@ export class ConversationsService {
         private identityService: IdentityService,
         private toolExecutor: AIToolExecutorService,
         private responseValidator: ResponseValidatorService,
+        private customerMemory: CustomerMemoryService,
         private bookingEngine: BookingEngineService,
         private procedureEngine: ProcedureEngineService,
         private intentInterpreter: IntentInterpreterService,
@@ -1009,6 +1011,13 @@ export class ConversationsService {
             businessHoursStatus,
         };
 
+        // Long-term memory (#1): inject what we know about this customer across
+        // conversations, when the agent has it enabled.
+        if (config.llm?.memory?.longTerm && conversation.contact_id) {
+            const mem = await this.customerMemory.getMemory(schemaName, conversation.contact_id).catch(() => null);
+            if (mem) turnContext.customerMemory = mem;
+        }
+
         if (contact) {
             const contactName = contact.name || lead?.first_name || lead?.firstName;
             turnContext.contact = {
@@ -1638,6 +1647,13 @@ export class ConversationsService {
             finalResponse = await this.applyOutputGuardrails(
                 finalResponse, systemPrompt, currentMessages, allowedTiers, tenantId, conversation.id,
             );
+
+            // Long-term memory (#1): periodically distill the conversation into
+            // durable facts (fire-and-forget, cheap tier). Cadence keeps cost low.
+            if (config.llm?.memory?.longTerm && conversation.contact_id && (turnContext.messageCount || 0) % 6 === 0) {
+                this.customerMemory.extractFromConversation(tenantId, schemaName, conversation.id, conversation.contact_id)
+                    .catch(() => { /* best-effort */ });
+            }
 
             // Reset failedAttempts on successful AI response
             await this.prisma.executeInTenantSchema(schemaName,

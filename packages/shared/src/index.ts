@@ -597,6 +597,12 @@ export interface TurnContext {
     }>;
     /** Directive from booking engine — tells the LLM WHAT to communicate, not HOW */
     directive?: string;
+    /** Long-term memory about this customer (cross-conversation): durable facts +
+     *  a rolling summary, injected so the agent doesn't "forget" between sessions. */
+    customerMemory?: {
+        facts?: string[];
+        summary?: string;
+    };
     /** Number of messages in the current conversation (used for anti-repetition) */
     messageCount?: number;
     /** Vertical-specific context injected based on tenant industry */

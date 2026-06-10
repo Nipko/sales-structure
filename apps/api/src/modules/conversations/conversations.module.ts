@@ -5,6 +5,7 @@ import { ConversationsService } from './conversations.service';
 import { ConversationsController } from './conversations.controller';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { ResponseValidatorService } from './response-validator.service';
+import { CustomerMemoryService } from './customer-memory.service';
 import { BookingEngineService } from './booking-engine.service';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { PromptAssemblerService } from './prompt-assembler.service';
@@ -85,7 +86,7 @@ import { AttributionModule } from '../attribution/attribution.module';
             inject: [ConfigService],
         }),
     ],
-    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, ResponseValidatorService, BookingEngineService, ProcedureEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, AgentTestService, PreChatService],
+    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, ResponseValidatorService, CustomerMemoryService, BookingEngineService, ProcedureEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, AgentTestService, PreChatService],
     controllers: [ConversationsController, AgentTestController],
     exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, AgentTestService, AIToolExecutorService],
 })

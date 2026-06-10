@@ -39,6 +39,23 @@ export class PromptAssemblerService {
     }
 
     /**
+     * Like assemble(), but also returns the length of the byte-stable prefix
+     * (contract + persona — identical across turns of the same agent), so the LLM
+     * router/providers can cache it. Layer 3 (the per-turn <turn> block) is the
+     * only dynamic part and sits after the boundary.
+     */
+    assembleWithCacheBoundary(config: TenantConfig, turn: TurnContext, tenantBusinessHours?: any): { systemPrompt: string; cachePrefixChars: number } {
+        const layer1 = this.buildContractLayer();
+        const layer2 = this.personaService.buildSystemPrompt(config, tenantBusinessHours);
+        const stablePrefix = `${layer1}\n\n${layer2}`;
+        const layer3 = this.buildTurnLayer(turn);
+        return {
+            systemPrompt: `${stablePrefix}\n\n${layer3}`,
+            cachePrefixChars: stablePrefix.length,
+        };
+    }
+
+    /**
      * Layer 1 — universal contract. Applies to every agent regardless of config.
      * Short, authoritative, defines the bot's relationship to the backend.
      */

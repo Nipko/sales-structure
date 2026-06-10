@@ -34,15 +34,28 @@ export class AnthropicProvider implements ILLMProvider {
                 temperature: Number(options.temperature ?? 0.7),
             };
 
-            if (options.systemPrompt) {
-                req.system = options.systemPrompt;
-            }
-
+            // Build the system text first (append the JSON-mode steer if needed —
+            // Anthropic has no response_format:json_object), then apply prompt
+            // caching by splitting at the stable-prefix boundary.
+            let systemText = options.systemPrompt || '';
             if (options.jsonMode) {
-                // Anthropic has no response_format:json_object — steer JSON output
-                // via the system prompt so a fallback into Claude still honours it.
                 const jsonInstruction = 'CRITICAL: Respond with a single valid JSON object and nothing else — no prose, no explanations, no markdown code fences.';
-                req.system = req.system ? `${req.system}\n\n${jsonInstruction}` : jsonInstruction;
+                systemText = systemText ? `${systemText}\n\n${jsonInstruction}` : jsonInstruction;
+            }
+            if (systemText) {
+                const prefixLen = options.cacheableSystemPromptChars;
+                if (prefixLen && prefixLen > 0 && prefixLen < systemText.length) {
+                    // Cache the byte-stable prefix (contract + persona); the dynamic
+                    // <turn> tail (+ any JSON steer) stays uncached. 90% input discount.
+                    const prefix = systemText.slice(0, prefixLen);
+                    const rest = systemText.slice(prefixLen);
+                    req.system = [
+                        { type: 'text', text: prefix, cache_control: { type: 'ephemeral' } },
+                        ...(rest.trim() ? [{ type: 'text', text: rest }] : []),
+                    ] as any;
+                } else {
+                    req.system = systemText;
+                }
             }
 
             if (options.tools && options.tools.length > 0) {

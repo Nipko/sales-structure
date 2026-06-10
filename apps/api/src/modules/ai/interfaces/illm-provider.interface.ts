@@ -16,6 +16,13 @@ export interface LLMRequestOptions {
     model: string;
     messages: ChatMessage[];
     systemPrompt?: string;
+    /**
+     * Length (chars) of the byte-stable prefix of systemPrompt (contract + persona)
+     * that is identical across turns and safe to cache. Providers that support
+     * prompt caching (Anthropic via cache_control; OpenAI auto-caches stable
+     * prefixes) may use it; others ignore it. The full systemPrompt is unchanged.
+     */
+    cacheableSystemPromptChars?: number;
     temperature?: number;
     maxTokens?: number;
     tools?: ToolDefinition[];

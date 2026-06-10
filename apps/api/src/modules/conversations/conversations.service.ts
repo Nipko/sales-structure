@@ -1507,7 +1507,10 @@ export class ConversationsService {
         // message_count > 1 means it's a CONTINUATION — don't re-introduce yourself.
         turnContext.messageCount = (history?.length || 0) + 1; // +1 for current message (excluded from history above)
 
-        const systemPrompt = this.promptAssembler.assemble(config, turnContext, bizHours);
+        // Assemble with a cache boundary: the contract+persona prefix is stable
+        // across turns and can be cached by the provider (90% off on Anthropic;
+        // better OpenAI auto-cache hit-rate). Only the <turn> block changes.
+        const { systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, bizHours);
 
         let messages: Array<{ role: string; content: string }>;
         if (engineProducedText) {
@@ -1551,6 +1554,7 @@ export class ConversationsService {
                     task: hasTools ? 'tool_calling' : 'conversation',
                     messages: currentMessages,
                     systemPrompt,
+                    cacheableSystemPromptChars: cachePrefixChars,
                     temperature: hasTools ? 0.3 : personaTemp,
                     maxTokens: personaMaxTokens,
                     tools: hasTools ? tools : undefined,

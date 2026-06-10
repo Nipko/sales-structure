@@ -105,6 +105,9 @@ export class AIToolExecutorService {
                 case 'check_stock':
                     return this.checkStock(schemaName, args.productId);
 
+                case 'send_product_image':
+                    return this.sendProductImage(schemaName, args.productId);
+
                 case 'search_faqs':
                     return this.searchFaqs(tenantId, args.query, args.limit);
 
@@ -429,6 +432,23 @@ export class AIToolExecutorService {
             this.logger.warn(`[Tool] get_product products lookup failed: ${e.message}`);
         }
         return { error: 'Product not found' };
+    }
+
+    /**
+     * Resolve a product's real catalog image and signal the conversation pipeline
+     * to send it as a media message. The URL comes from the DB (never the LLM), so
+     * the model can't make us send an arbitrary/hallucinated link.
+     */
+    private async sendProductImage(schema: string, productIdOrName: string): Promise<any> {
+        const product = await this.getProduct(schema, productIdOrName);
+        if (product?.error) return { error: product.error };
+        const url = Array.isArray(product.images) && product.images.length ? product.images[0] : null;
+        if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+            return { error: 'Ese producto no tiene una imagen disponible.' };
+        }
+        // `_mediaToSend` is consumed by ConversationsService (which has the channel
+        // routing) and stripped before the result reaches the LLM.
+        return { success: true, productName: product.name, _mediaToSend: { url, caption: product.name || undefined } };
     }
 
     private async checkStock(schema: string, productIdOrName: string): Promise<any> {

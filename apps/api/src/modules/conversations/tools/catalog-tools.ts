@@ -40,6 +40,17 @@ export const CATALOG_TOOLS: ToolDefinition[] = [
             required: ['productId'],
         },
     },
+    {
+        name: 'send_product_image',
+        description: 'Send the customer a photo of a specific product (the real catalog image). Use when showing/recommending a product would benefit from a visual — e.g. after the customer asks to see it or expresses interest. Only call with a product you got from search_products/get_product.',
+        parameters: {
+            type: 'object',
+            properties: {
+                productId: { type: 'string', description: 'Product UUID or exact name' },
+            },
+            required: ['productId'],
+        },
+    },
 ];
 
 /**

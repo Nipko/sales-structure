@@ -889,6 +889,19 @@ export class ConversationsService {
         await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
     }
 
+    /** Send an image (or other media) to the customer on their channel. */
+    private async sendMedia(tenantId: string, inboundMsg: NormalizedMessage, mediaUrl: string, caption: string | undefined, delayMs?: number) {
+        const outbound: OutboundMessage = {
+            tenantId,
+            channelType: inboundMsg.channelType,
+            channelAccountId: inboundMsg.channelAccountId,
+            to: inboundMsg.contactId,
+            content: { type: 'image', mediaUrl, caption },
+        };
+        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType);
+        await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
+    }
+
     /**
      * Resolve real Meta access token for a given tenantId and channel type.
      */
@@ -1540,6 +1553,9 @@ export class ConversationsService {
             const MAX_TOOL_ITERATIONS = 5;
             let currentMessages = [...messages] as any[];
             let finalResponse = '';
+            // Media the LLM asked to send (e.g. product images), collected across
+            // tool iterations and dispatched after the text reply.
+            const mediaToSend: Array<{ url: string; caption?: string }> = [];
 
             const planFeatures = await this.throttle.getPlanFeatures(tenantId);
             const allowedTiers = this.mapLlmTierToAllowed(planFeatures.llmTier);
@@ -1606,6 +1622,13 @@ export class ConversationsService {
 
                         this.logger.log(`[Pipeline] Tool ${tc.function.name} executed in LLM loop`);
 
+                        // Capture any media the tool wants sent (e.g. a product
+                        // image) and strip the marker so it never reaches the LLM.
+                        if (result && result._mediaToSend?.url) {
+                            mediaToSend.push({ url: result._mediaToSend.url, caption: result._mediaToSend.caption });
+                            delete result._mediaToSend;
+                        }
+
                         currentMessages.push({
                             role: 'tool',
                             toolCallId: tc.id,
@@ -1660,6 +1683,13 @@ export class ConversationsService {
             if (config.llm?.memory?.longTerm && conversation.contact_id && (turnContext.messageCount || 0) % 6 === 0) {
                 this.customerMemory.extractFromConversation(tenantId, schemaName, conversation.id, conversation.contact_id)
                     .catch(() => { /* best-effort */ });
+            }
+
+            // Multimodal out (#13): dispatch product images the LLM requested,
+            // staggered AFTER the text reply so they land in a natural order.
+            for (let i = 0; i < mediaToSend.length; i++) {
+                await this.sendMedia(tenantId, msg, mediaToSend[i].url, mediaToSend[i].caption, 2000 + i * 1200);
+                await this.saveAiMessage(tenantId, conversation.id, `[📷 ${mediaToSend[i].caption || 'imagen'}]`, msg.channelType);
             }
 
             // Reset failedAttempts on successful AI response

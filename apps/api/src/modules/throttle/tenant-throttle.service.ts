@@ -85,8 +85,8 @@ export class TenantThrottleService {
         const { plan, limits } = await this.resolveLimits(tenantId);
         const limit = limits[action];
 
-        if (!limit) return false;
-        if (limit === Number.POSITIVE_INFINITY) return false;
+        if (limit === Number.POSITIVE_INFINITY) return false; // -1 → unlimited
+        if (limit <= 0) return true; // 0 means BLOCKED for this action, not unlimited
 
         const key = `throttle:${action}:${tenantId}:${Math.floor(Date.now() / (WINDOW_SECONDS * 1000))}`;
         const current = await this.redis.incrementRateLimit(key, WINDOW_SECONDS);
@@ -99,6 +99,27 @@ export class TenantThrottleService {
         }
 
         return false;
+    }
+
+    /**
+     * Read-only limit check (does NOT consume quota). Use this to gate retries/
+     * re-checks so the counter isn't incremented multiple times for one logical
+     * action; call recordUsage() once after the action actually succeeds.
+     */
+    async isOverLimit(tenantId: string, action: ActionType): Promise<boolean> {
+        const { limits } = await this.resolveLimits(tenantId);
+        const limit = limits[action];
+        if (limit === Number.POSITIVE_INFINITY) return false;
+        if (limit <= 0) return true;
+        const key = `throttle:${action}:${tenantId}:${Math.floor(Date.now() / (WINDOW_SECONDS * 1000))}`;
+        const current = Number(await this.redis.get(key) || 0);
+        return current >= limit;
+    }
+
+    /** Record one consumed action against the per-hour quota (INCR + EXPIRE). */
+    async recordUsage(tenantId: string, action: ActionType): Promise<void> {
+        const key = `throttle:${action}:${tenantId}:${Math.floor(Date.now() / (WINDOW_SECONDS * 1000))}`;
+        await this.redis.incrementRateLimit(key, WINDOW_SECONDS);
     }
 
     async getPriority(tenantId: string): Promise<number> {

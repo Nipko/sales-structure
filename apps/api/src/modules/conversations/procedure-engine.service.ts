@@ -87,10 +87,14 @@ export class ProcedureEngineService {
                 }));
             }
         } catch {
-            procs = []; // table missing or transient error — treat as no active procedures
+            // to_regclass already handled the "table missing" case (returns NULL,
+            // no throw). Reaching here means the SELECT failed — a TRANSIENT error.
+            // Return empty for THIS turn only; do NOT cache it, or a momentary DB
+            // blip would disable procedures for the full cache TTL.
+            return [];
         }
-        // Cache either way (empty included) so we don't re-query on every message.
-        // ProceduresService invalidates `procedures:active:{tenantId}` on create/activate.
+        // Cache the successful result (a genuine empty list included — table missing
+        // via to_regclass NULL also lands here). Invalidated on create/activate.
         await this.redis.setJson(cacheKey, procs, ACTIVE_CACHE_TTL).catch(() => {});
         return procs;
     }
@@ -118,11 +122,14 @@ export class ProcedureEngineService {
     }
 
     private matchTrigger(procs: ProcedureDefinition[], userText: string): ProcedureDefinition | null {
-        const text = (userText || '').toLowerCase();
+        // Normalize BOTH sides (lowercase + strip accents) so a keyword like
+        // "Devolución" matches "quiero una devolucion" regardless of case/accents.
+        const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        const text = norm(userText);
         if (!text.trim()) return null;
         for (const p of procs) {
             const kws = p.trigger?.keywords || [];
-            if (kws.some((k) => k && text.includes(k))) return p;
+            if (kws.some((k) => k && text.includes(norm(k)))) return p;
         }
         return null;
     }
@@ -230,7 +237,20 @@ export class ProcedureEngineService {
             state.currentStepId = this.nextStepId(procedure, state.currentStepId);
         }
 
-        // Reached the end (or ran out of steps) → procedure complete.
+        // If the per-turn step guard tripped while steps are still pending, the
+        // procedure is NOT complete — persist the state and resume next turn
+        // instead of wrongly marking it completed and discarding mid-flow state.
+        if (state.currentStepId) {
+            await this.saveState(conversationId, state);
+            return {
+                handled: parts.length > 0,
+                text: parts.length ? parts.join('\n\n') : undefined,
+                completed: false,
+                procedureName: procedure.name,
+            };
+        }
+
+        // Reached the end → procedure complete.
         await this.clearState(conversationId);
         return {
             handled: parts.length > 0,

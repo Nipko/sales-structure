@@ -37,11 +37,12 @@ export class OutboundQueueProcessor extends WorkerHost {
         const { outbound } = job.data;
         const startTime = Date.now();
 
-        // Per-tenant rate limit. Don't throw — that burns one of the 3 attempts,
-        // and a sustained throttle would exhaust them and DROP the customer's
-        // message. Instead re-schedule the job as delayed (no attempt consumed)
-        // so it sends in the next window.
-        if (await this.throttle.isLimited(outbound.tenantId, 'outbound')) {
+        // Per-tenant rate limit — read-only check (isOverLimit) so a delayed job's
+        // repeated re-checks don't keep incrementing the counter and pin the tenant
+        // over-limit forever. Don't throw a normal error (that burns one of the 3
+        // attempts and a sustained throttle would DROP the message): re-schedule as
+        // delayed (no attempt consumed) so it sends in the next window.
+        if (await this.throttle.isOverLimit(outbound.tenantId, 'outbound')) {
             this.logger.warn(`[Outbound] Tenant ${outbound.tenantId} rate limited — delaying job ${job.id} 60s (no attempt consumed)`);
             await job.moveToDelayed(Date.now() + 60_000, token);
             throw new DelayedError();
@@ -60,6 +61,9 @@ export class OutboundQueueProcessor extends WorkerHost {
         if (!result) {
             throw new Error(`Failed to send message to ${outbound.to} via ${outbound.channelType}`);
         }
+
+        // Count the quota only on a SUCCESSFUL send (not on every check/retry).
+        await this.throttle.recordUsage(outbound.tenantId, 'outbound').catch(() => {});
 
         const durationMs = Date.now() - startTime;
         this.logger.log(

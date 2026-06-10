@@ -1352,7 +1352,7 @@ export class ConversationsService {
                 const similarityThreshold = ragConfig?.similarityThreshold ?? 0.35;
                 const searchThreshold = Math.min(0.25, similarityThreshold);
                 const ragResults = await this.knowledgeService.searchRelevant(
-                    tenantId, userText, topK, { similarityThreshold: searchThreshold, conversationId: conversation.id },
+                    tenantId, userText, topK, { similarityThreshold: searchThreshold, conversationId: conversation.id, language: userLanguage },
                 );
                 if (ragResults.length > 0) {
                     const retrieved = ragResults.filter((r: any) => r.score >= similarityThreshold);

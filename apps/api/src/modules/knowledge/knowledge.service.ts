@@ -14,6 +14,9 @@ const mammoth = require('mammoth');
 const CHUNK_MAX_CHARS = 2000;
 const CHUNK_OVERLAP_CHARS = 200;
 const HAS_KNOWLEDGE_TTL = 300;
+// Effective relevance bar for "was this chunk actually used" analytics — distinct
+// from the (often 0) recall threshold used to build the candidate pool.
+const KB_USE_THRESHOLD = 0.35;
 const CRAWL_TIMEOUT_MS = 15_000;
 const CRAWL_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -229,7 +232,7 @@ export class KnowledgeService {
         const schema = await this.tenantSchema(tenantId);
 
         const existing = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, title, file_type FROM knowledge_documents WHERE id = $1::uuid`, [documentId]);
+            `SELECT id, title, file_type, version FROM knowledge_documents WHERE id = $1::uuid`, [documentId]);
         if (!existing?.[0]) throw new BadRequestException({ error: 'document_not_found' });
 
         let textContent = update.content || '';
@@ -593,7 +596,7 @@ export class KnowledgeService {
         tenantId: string,
         query: string,
         topK = 5,
-        options?: { similarityThreshold?: number; poolSize?: number; conversationId?: string },
+        options?: { similarityThreshold?: number; poolSize?: number; conversationId?: string; language?: string },
     ): Promise<any[]> {
         const schema = await this.tenantSchema(tenantId);
         const poolSize = Math.max(topK, options?.poolSize ?? topK * 4);
@@ -606,7 +609,7 @@ export class KnowledgeService {
         const results = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
-                    kd.title AS title, kd.id AS document_id,
+                    kd.title AS title, kd.id AS document_id, kd.language AS doc_language,
                     (ke.embedding <=> $1::vector) AS distance,
                     CASE WHEN ke.chunk_text ILIKE $2 THEN 1 ELSE 0 END AS keyword_hit
              FROM knowledge_embeddings ke
@@ -618,11 +621,16 @@ export class KnowledgeService {
         );
 
         const KEYWORD_BOOST = 0.15;
+        const LANG_BOOST = 0.1;
+        const wantLang = (options?.language || '').slice(0, 2).toLowerCase();
         const enriched = results
             .map((r: any) => {
                 const vectorScore = 1 - Number(r.distance ?? 0);
                 const keywordBoost = r.keyword_hit ? KEYWORD_BOOST : 0;
-                const score = Math.min(1, Math.max(0, vectorScore + keywordBoost));
+                // Soft boost (not a hard filter — would empty monolingual KBs) for
+                // chunks whose document language matches the conversation language.
+                const langBoost = wantLang && (r.doc_language || '').slice(0, 2).toLowerCase() === wantLang ? LANG_BOOST : 0;
+                const score = Math.min(1, Math.max(0, vectorScore + keywordBoost + langBoost));
                 return {
                     id: r.chunk_id,
                     document_id: r.document_id,
@@ -662,12 +670,16 @@ export class KnowledgeService {
                     [query.substring(0, 500), queryHash]);
             }
 
+            // was_used must reflect the EFFECTIVE use bar (a chunk that actually
+            // grounds the answer), not the recall threshold (often 0 to return a
+            // wide pool to the LLM) — otherwise the hit-rate reports ~100%.
+            const useThreshold = Math.max(threshold, KB_USE_THRESHOLD);
             for (const r of results.slice(0, 10)) {
                 await this.prisma.executeInTenantSchema(schema,
                     `INSERT INTO kb_retrieval_log (document_id, chunk_id, query, score, was_used, conversation_id)
                      VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::uuid)`,
                     [r.document_id, r.id, query.substring(0, 500), r.score,
-                     r.score >= threshold, conversationId || null]);
+                     r.score >= useThreshold, conversationId || null]);
             }
         } catch (e: any) {
             this.logger.warn(`[KB Analytics] tracking failed (non-fatal): ${e.message}`);
@@ -834,7 +846,12 @@ export class KnowledgeService {
         const schema = await this.tenantSchema(tenantId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT COUNT(*)::int AS cnt FROM knowledge_embeddings LIMIT 1`,
+            // JOIN to ready documents so orphan embeddings from a failed ingest
+            // don't make us report knowledge that can never be retrieved
+            // (searchRelevant only returns chunks of status='ready' docs).
+            `SELECT COUNT(*)::int AS cnt FROM knowledge_embeddings ke
+             JOIN knowledge_documents kd ON kd.id = ke.document_id
+             WHERE kd.status = 'ready'`,
         );
         const hasKnowledge = rows[0]?.cnt > 0;
         await this.redis.set(cacheKey, hasKnowledge ? '1' : '0', HAS_KNOWLEDGE_TTL);
@@ -951,9 +968,10 @@ export class KnowledgeService {
                 }
                 const sentenceChunks = this.splitBySentences(trimmed);
                 chunks.push(...sentenceChunks);
-                currentChunk = sentenceChunks.length > 0
-                    ? sentenceChunks[sentenceChunks.length - 1].slice(-CHUNK_OVERLAP_CHARS)
-                    : '';
+                // Don't carry the tail of the last sentence-chunk forward: at loop
+                // end it would be pushed as a standalone ~200-char mid-word fragment.
+                // splitBySentences already applied overlap internally.
+                currentChunk = '';
             } else {
                 currentChunk += (currentChunk.length > 0 ? '\n\n' : '') + trimmed;
             }
@@ -1072,6 +1090,15 @@ export class KnowledgeService {
     // ─── Embedding ───────────────────────────────────────────────────────────
 
     private async generateEmbedding(text: string, tenantId?: string): Promise<number[]> {
+        // Embeddings currently require OpenAI specifically. Fail with a clear,
+        // actionable message instead of an opaque 401 from the SDK when the key
+        // is missing (the platform contract only guarantees ≥1 provider of any kind).
+        if (!this.configService.get<string>('OPENAI_API_KEY')) {
+            throw new BadRequestException({
+                error: 'embeddings_unavailable',
+                message: 'La base de conocimiento requiere una API key de OpenAI configurada (se usa para generar los embeddings). Configúrala en el panel de super admin.',
+            });
+        }
         const response = await this.openai.embeddings.create({
             model: 'text-embedding-3-small',
             input: text,

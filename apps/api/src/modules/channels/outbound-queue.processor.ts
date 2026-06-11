@@ -65,12 +65,33 @@ export class OutboundQueueProcessor extends WorkerHost {
         // Count the quota only on a SUCCESSFUL send (not on every check/retry).
         await this.throttle.recordUsage(outbound.tenantId, 'outbound').catch(() => {});
 
+        // End-to-end latency (webhook receipt → customer) for observability.
+        const inboundTs = Number((outbound.metadata as any)?.inboundTs);
+        if (Number.isFinite(inboundTs) && inboundTs > 0) {
+            const e2eMs = Date.now() - inboundTs;
+            this.recordE2e(outbound.channelType, e2eMs).catch(() => {});
+            this.logger.log(`[Outbound] e2e webhook→customer ${e2eMs}ms channel=${outbound.channelType}`);
+        }
+
         const durationMs = Date.now() - startTime;
         this.logger.log(
             `[Outbound] Sent to ${outbound.to} via ${outbound.channelType} tenant=${outbound.tenantId} (${durationMs}ms)`,
         );
 
         return result;
+    }
+
+    /** Record an end-to-end (webhook→customer) latency sample into a capped Redis reservoir. */
+    private async recordE2e(channel: string, ms: number): Promise<void> {
+        if (!(ms >= 0 && ms <= 600_000)) return; // skip clock-skew / absurd values
+        try {
+            const key = `latency:e2e:${channel}:samples`;
+            await this.redis.getClient().multi()
+                .rpush(key, String(Math.round(ms)))
+                .ltrim(key, -200, -1)
+                .expire(key, 900)
+                .exec();
+        } catch { /* best-effort */ }
     }
 
     /** Decrement the per-tenant pending counter when a job leaves the queue. */

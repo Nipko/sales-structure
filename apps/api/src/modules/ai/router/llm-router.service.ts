@@ -76,6 +76,13 @@ export class LLMRouterService {
     // to preserve Anthropic prompt-cache (cache_control) and OpenAI auto-prefix-cache.
     // TTL outlasts a typical inter-turn gap but lets affinity decay when idle.
     private readonly AFFINITY_TTL_SEC = 1800;
+    // TTFT (time-to-first-token) as an ADDITIONAL breaker signal: a provider that is up
+    // but sustainedly slow should degrade out of rotation. Only measurable on the
+    // streaming path (web widget); kept fully separate from the error breaker.
+    private readonly TTFT_RESERVOIR = 50;          // max samples kept per provider
+    private readonly TTFT_WINDOW_SEC = 300;
+    private readonly TTFT_P95_THRESHOLD_MS = 8000; // sustained p95 over this ⇒ degrade
+    private readonly TTFT_MIN_SAMPLES = 8;         // don't judge on too few samples
 
     constructor(
         @Inject('LLM_PROVIDERS') private providers: ILLMProvider[],
@@ -118,6 +125,33 @@ export class LLMRouterService {
         } catch { /* best-effort */ }
     }
 
+    private ttftKey(provider: string): string {
+        return `llm:ttft:${provider}:samples`;
+    }
+
+    /** Record a stream TTFT sample (ms) into a capped Redis reservoir. Never throws. */
+    private async recordTtftSample(provider: string, ms: number): Promise<void> {
+        try {
+            const key = this.ttftKey(provider);
+            await this.redis.getClient().multi()
+                .rpush(key, String(Math.round(ms)))
+                .ltrim(key, -this.TTFT_RESERVOIR, -1)
+                .expire(key, this.TTFT_WINDOW_SEC)
+                .exec();
+        } catch { /* best-effort, never throw */ }
+    }
+
+    /** p95 of the provider's recent stream TTFT, or null if too few samples / Redis down. */
+    private async getTtftP95(provider: string): Promise<number | null> {
+        try {
+            const raw = await this.redis.getClient().lrange(this.ttftKey(provider), 0, -1);
+            if (!raw || raw.length < this.TTFT_MIN_SAMPLES) return null;
+            const nums = raw.map(Number).filter(n => Number.isFinite(n)).sort((a, b) => a - b);
+            if (nums.length < this.TTFT_MIN_SAMPLES) return null;
+            return nums[Math.ceil(0.95 * nums.length) - 1];
+        } catch { return null; /* fail open = healthy */ }
+    }
+
     /**
      * Classify an error: does it indicate provider unavailability (and thus
      * count toward opening the breaker)? 4xx client/config errors (400 malformed
@@ -146,6 +180,10 @@ export class LLMRouterService {
         await Promise.all(providers.map(async p => {
             try {
                 if (await this.redis.get(this.breakerOpenKey(p))) unhealthy.add(p);
+                // Additive signal: a sustainedly-slow provider (p95 TTFT over threshold)
+                // degrades out of rotation WITHOUT touching the error-count breaker.
+                const p95 = await this.getTtftP95(p);
+                if (p95 !== null && p95 > this.TTFT_P95_THRESHOLD_MS) unhealthy.add(p);
             } catch { /* Redis down — fail open (treat as healthy) */ }
         }));
         return unhealthy;
@@ -753,9 +791,11 @@ export class LLMRouterService {
         const startMs = Date.now();
         let charCount = 0;
         let errored = false;
+        let firstChunkMs: number | undefined;
 
         try {
             for await (const chunk of provider.generateStream(reqOptions)) {
+                if (firstChunkMs === undefined) firstChunkMs = Date.now() - startMs;
                 charCount += chunk.length;
                 yield chunk;
             }
@@ -765,6 +805,8 @@ export class LLMRouterService {
         } finally {
             const durationMs = Date.now() - startMs;
             const estimatedTokensOut = Math.ceil(charCount / 4);
+            // TTFT breaker signal — only when a first chunk actually arrived (success).
+            if (firstChunkMs !== undefined) this.recordTtftSample(modelConfig.provider, firstChunkMs).catch(() => {});
             this.trackStats(options.tenantId, modelConfig, durationMs, {
                 promptTokens: 0,
                 completionTokens: estimatedTokensOut,

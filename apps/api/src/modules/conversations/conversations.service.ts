@@ -896,6 +896,9 @@ export class ConversationsService {
             channelAccountId: inboundMsg.channelAccountId,
             to: inboundMsg.contactId,
             content: { type: 'text', text },
+            // Webhook-receipt marker → lets the outbound processor measure end-to-end
+            // (webhook → customer) latency on send.
+            metadata: { inboundTs: this.inboundTs(inboundMsg) },
         };
 
         const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType);
@@ -912,9 +915,16 @@ export class ConversationsService {
             channelAccountId: inboundMsg.channelAccountId,
             to: inboundMsg.contactId,
             content: { type: 'image', mediaUrl, caption },
+            metadata: { inboundTs: this.inboundTs(inboundMsg) },
         };
         const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType);
         await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
+    }
+
+    /** Epoch ms of the inbound webhook receipt (for end-to-end latency measurement). */
+    private inboundTs(inboundMsg: NormalizedMessage): number {
+        const t = inboundMsg.timestamp as any;
+        return t instanceof Date ? t.getTime() : new Date(t).getTime();
     }
 
     /**

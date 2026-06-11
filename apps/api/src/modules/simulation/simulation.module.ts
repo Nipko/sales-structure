@@ -11,6 +11,8 @@ import { SimulationController } from './simulation.controller';
 import { SimulationProcessor } from './simulation.processor';
 import { EvalService } from './eval.service';
 import { EvalController } from './eval.controller';
+import { EvalAutorunListener, EVAL_GATE_QUEUE } from './eval-autorun.listener';
+import { EvalGateProcessor } from './eval-gate.processor';
 
 /**
  * Agent Simulation pre-deploy (T2.13). Reuses:
@@ -27,8 +29,9 @@ import { EvalController } from './eval.controller';
         QualityModule,
         ConversationsModule,
         BullModule.registerQueue({ name: SIMULATION_QUEUE }),
+        BullModule.registerQueue({ name: EVAL_GATE_QUEUE }),
     ],
-    providers: [SimulationService, SimulationProcessor, EvalService],
+    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalGateProcessor],
     controllers: [SimulationController, EvalController],
     exports: [SimulationService, EvalService],
 })

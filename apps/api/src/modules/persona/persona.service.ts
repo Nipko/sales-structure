@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as yaml from 'js-yaml';
 import { TenantConfig } from '@parallext/shared';
 
@@ -21,6 +22,7 @@ export class PersonaService {
         private redis: RedisService,
         private tenantsService: TenantsService,
         private throttleService: TenantThrottleService,
+        private eventEmitter: EventEmitter2,
     ) { }
 
     /**
@@ -679,6 +681,13 @@ export class PersonaService {
         const allChannels = ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'];
         for (const ch of allChannels) {
             await this.redis.del(`persona:${tenantId}:channel:${ch}`);
+        }
+
+        // Auto-run the eval gate when the agent's BEHAVIOUR config changed — not on
+        // trivial flips (isActive/isDefault/channels/scheduleMode/name). In-process,
+        // best-effort emit; the listener debounces + enqueues.
+        if (data.configJson !== undefined) {
+            this.eventEmitter.emit('agent.config.updated', { tenantId, agentId, changed: 'config_json' });
         }
 
         return agent;

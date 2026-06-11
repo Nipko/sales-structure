@@ -33,6 +33,7 @@ import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
 import { TOURS_TOOLS } from './tools/tours-tools';
 import { TREATMENT_TOOLS } from './tools/treatment-tools';
 import { LISTINGS_TOOLS } from './tools/listings-tools';
+import { VEHICLE_TOOLS } from './tools/vehicle-tools';
 import { PETS_TOOLS } from './tools/pets-tools';
 import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
 import { GYMS_TOOLS } from './tools/gyms-tools';
@@ -1393,6 +1394,9 @@ export class ConversationsService {
         }
         if (cfgTools?.realEstate?.enabled === true) {
             tools = [...tools, ...LISTINGS_TOOLS];
+        }
+        if (cfgTools?.vehicles?.enabled === true) {
+            tools = [...tools, ...VEHICLE_TOOLS];
         }
         if (cfgTools?.pets?.enabled === true) {
             tools = [...tools, ...PETS_TOOLS];

@@ -115,6 +115,15 @@ export class AIToolExecutorService {
                 case 'send_listing_image':
                     return this.sendListingImage(schemaName, args.listingId);
 
+                case 'search_vehicles':
+                    return this.searchVehicles(schemaName, args);
+
+                case 'get_vehicle_details':
+                    return this.getVehicleDetails(schemaName, args.vehicleId);
+
+                case 'send_vehicle_image':
+                    return this.sendVehicleImage(schemaName, args.vehicleId);
+
                 case 'search_faqs':
                     return this.searchFaqs(tenantId, args.query, args.limit);
 
@@ -487,6 +496,87 @@ export class AIToolExecutorService {
         } catch (e: any) {
             this.logger.warn(`[Tool] send_listing_image failed: ${e.message}`);
             return { error: 'No se pudo enviar la imagen del inmueble.' };
+        }
+    }
+
+    /** Search the vehicle inventory (query-directa, no VerticalsModule DI). */
+    private async searchVehicles(schema: string, args: any): Promise<any> {
+        try {
+            const conditions: string[] = [`status = 'available'`];
+            const params: any[] = [];
+            let idx = 1;
+            if (args?.make) { conditions.push(`make ILIKE $${idx++}`); params.push(`%${args.make}%`); }
+            // budgetMax is given in the major currency unit; vehicles.price_cents is in cents.
+            if (args?.budgetMax) { conditions.push(`price_cents <= $${idx++}`); params.push(Math.round(Number(args.budgetMax) * 100)); }
+            if (args?.category) { conditions.push(`category = $${idx++}`); params.push(args.category); }
+            if (args?.fuelType) { conditions.push(`fuel_type = $${idx++}`); params.push(args.fuelType); }
+            if (args?.condition) { conditions.push(`condition = $${idx++}`); params.push(args.condition); }
+            if (args?.year) { conditions.push(`year >= $${idx++}`); params.push(Number(args.year)); }
+
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, make, model, year, trim_level, color, fuel_type, transmission,
+                        mileage_km, condition, price_cents, currency, category, photos[1] AS photo
+                 FROM "${schema}".vehicles
+                 WHERE ${conditions.join(' AND ')}
+                 ORDER BY is_featured DESC, price_cents ASC
+                 LIMIT 10`,
+                ...params,
+            );
+            const vehicles = rows.map((r: any) => {
+                const { price_cents, ...rest } = r;
+                return { ...rest, price: Number(price_cents) / 100 };
+            });
+            return { count: vehicles.length, vehicles };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] search_vehicles failed: ${e.message}`);
+            return { error: 'No se pudo buscar vehículos en este momento.' };
+        }
+    }
+
+    /** Full details of one vehicle (query-directa). */
+    private async getVehicleDetails(schema: string, vehicleId: string): Promise<any> {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vehicleId || '')) {
+            return { error: 'vehicle_not_found' };
+        }
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, make, model, year, trim_level, color, fuel_type, transmission,
+                        mileage_km, condition, price_cents, currency, category, features,
+                        description, location, status
+                 FROM "${schema}".vehicles WHERE id = $1::uuid LIMIT 1`,
+                vehicleId,
+            );
+            if (!rows.length) return { error: 'vehicle_not_found' };
+            const { price_cents, ...rest } = rows[0];
+            return { ...rest, price: Number(price_cents) / 100 };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] get_vehicle_details failed: ${e.message}`);
+            return { error: 'No se pudieron obtener los detalles del vehículo.' };
+        }
+    }
+
+    /** Send a vehicle's real photo (URL from the DB, never the LLM). photos is TEXT[]. */
+    private async sendVehicleImage(schema: string, vehicleId: string): Promise<any> {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vehicleId || '')) {
+            return { error: 'vehicle_not_found' };
+        }
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, make, model, year, photos FROM "${schema}".vehicles WHERE id = $1::uuid LIMIT 1`,
+                vehicleId,
+            );
+            if (!rows.length) return { error: 'vehicle_not_found' };
+            const v = rows[0];
+            const photos = Array.isArray(v.photos) ? v.photos : [];
+            const url = photos.length ? photos[0] : null;
+            if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+                return { error: 'Ese vehículo no tiene una imagen disponible.' };
+            }
+            const caption = `${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim() || undefined;
+            return { success: true, vehicle: caption, _mediaToSend: { url, caption } };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] send_vehicle_image failed: ${e.message}`);
+            return { error: 'No se pudo enviar la imagen del vehículo.' };
         }
     }
 

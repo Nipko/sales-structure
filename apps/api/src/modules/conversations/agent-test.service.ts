@@ -23,6 +23,7 @@ import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
 import { TOURS_TOOLS } from './tools/tours-tools';
 import { TREATMENT_TOOLS } from './tools/treatment-tools';
 import { LISTINGS_TOOLS } from './tools/listings-tools';
+import { VEHICLE_TOOLS } from './tools/vehicle-tools';
 import { PETS_TOOLS } from './tools/pets-tools';
 import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
 import { GYMS_TOOLS } from './tools/gyms-tools';
@@ -150,6 +151,7 @@ export class AgentTestService {
         if (cfgTools?.tours?.enabled === true) tools.push(...TOURS_TOOLS);
         if (cfgTools?.treatments?.enabled === true) tools.push(...TREATMENT_TOOLS);
         if (cfgTools?.realEstate?.enabled === true) tools.push(...LISTINGS_TOOLS);
+        if (cfgTools?.vehicles?.enabled === true) tools.push(...VEHICLE_TOOLS);
         if (cfgTools?.pets?.enabled === true) tools.push(...PETS_TOOLS);
         if (cfgTools?.restaurants?.enabled === true) tools.push(...RESTAURANTS_TOOLS);
         if (cfgTools?.gyms?.enabled === true) tools.push(...GYMS_TOOLS);

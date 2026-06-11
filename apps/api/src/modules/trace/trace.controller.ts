@@ -18,4 +18,15 @@ export class TraceController {
         const data = await this.trace.getTrace(tenantId, conversationId, parseInt(limit || '100') || 100);
         return { success: true, data };
     }
+
+    /** Step-by-step turn traces for a conversation (WS5 #1). */
+    @Get(':tenantId/:conversationId/turns')
+    async getTurnTraces(
+        @Param('tenantId') tenantId: string,
+        @Param('conversationId') conversationId: string,
+        @Query('limit') limit?: string,
+    ) {
+        const data = await this.trace.getTurnTraces(tenantId, conversationId, parseInt(limit || '50') || 50);
+        return { success: true, data };
+    }
 }

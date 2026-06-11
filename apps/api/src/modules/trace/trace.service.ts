@@ -28,7 +28,8 @@ export class TraceService {
     ) {}
 
     async ensureTables(schemaName: string): Promise<void> {
-        const cacheKey = `trace_cols:${schemaName}`;
+        // v2 forces a one-time re-ensure on existing tenants so turn_traces appears.
+        const cacheKey = `trace_cols_v2:${schemaName}`;
         if (await this.redis.get(cacheKey)) return;
 
         const ignoreDupError = (err: any) => {
@@ -78,6 +79,35 @@ export class TraceService {
             await this.prisma.executeInTenantSchema(
                 schemaName,
                 `CREATE INDEX IF NOT EXISTS idx_ctrace_conversation ON conversation_traces(conversation_id, created_at)`,
+                [],
+            );
+        } catch (err) {
+            ignoreDupError(err);
+        }
+
+        // Step-by-step turn traces (WS5 #1) — one row per turn, steps[] as JSONB.
+        try {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `CREATE TABLE IF NOT EXISTS turn_traces (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    conversation_id UUID NOT NULL,
+                    message_id UUID NULL,
+                    total_duration_ms INTEGER,
+                    step_count INTEGER,
+                    steps JSONB DEFAULT '[]'::jsonb,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )`,
+                [],
+            );
+        } catch (err) {
+            ignoreDupError(err);
+        }
+
+        try {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `CREATE INDEX IF NOT EXISTS idx_turntrace_conv ON turn_traces(conversation_id, created_at)`,
                 [],
             );
         } catch (err) {
@@ -147,6 +177,50 @@ export class TraceService {
             fallbackUsed: !!r.fallback_used,
             kbSources: Array.isArray(r.kb_sources) ? r.kb_sources : [],
             stage: r.stage,
+            createdAt: r.created_at,
+        }));
+    }
+
+    /** Persist one turn's step-by-step trace. Best-effort — never throws into the pipeline. */
+    async recordTurn(evt: {
+        tenantId: string;
+        conversationId: string;
+        messageId?: string | null;
+        totalDurationMs: number;
+        stepCount: number;
+        steps: any[];
+    }): Promise<void> {
+        if (!evt?.tenantId || !evt?.conversationId) return;
+        try {
+            const schemaName = await this.prisma.getTenantSchemaName(evt.tenantId);
+            if (!schemaName) return;
+            await this.ensureTables(schemaName);
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `INSERT INTO turn_traces (conversation_id, message_id, total_duration_ms, step_count, steps)
+                 VALUES ($1::uuid, $2::uuid, $3, $4, $5::jsonb)`,
+                [evt.conversationId, evt.messageId || null, evt.totalDurationMs, evt.stepCount, JSON.stringify(evt.steps || [])],
+            );
+        } catch (err: any) {
+            this.logger.warn(`Failed to record turn trace for ${evt.conversationId}: ${err.message}`);
+        }
+    }
+
+    async getTurnTraces(tenantId: string, conversationId: string, limit = 50) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        if (!schemaName) return [];
+        await this.ensureTables(schemaName);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT message_id, total_duration_ms, step_count, steps, created_at
+             FROM turn_traces WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT $2`,
+            [conversationId, limit],
+        );
+        return (rows || []).map((r: any) => ({
+            messageId: r.message_id,
+            totalDurationMs: Number(r.total_duration_ms) || 0,
+            stepCount: Number(r.step_count) || 0,
+            steps: Array.isArray(r.steps) ? r.steps : [],
             createdAt: r.created_at,
         }));
     }

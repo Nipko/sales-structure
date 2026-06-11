@@ -14,4 +14,17 @@ export class TraceListenerService {
     async handleTurn(event: LlmTurnEvent) {
         await this.trace.record(event);
     }
+
+    /** Step-by-step turn trace (WS5 #1), emitted at the end of generateResponse. */
+    @OnEvent('llm.turn.steps')
+    async handleTurnSteps(evt: {
+        tenantId: string;
+        conversationId: string;
+        messageId?: string | null;
+        totalDurationMs: number;
+        stepCount: number;
+        steps: any[];
+    }) {
+        await this.trace.recordTurn(evt);
+    }
 }

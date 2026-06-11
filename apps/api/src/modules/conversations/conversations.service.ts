@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { TurnTraceContext } from '../trace/turn-trace-context';
 import { PersonaService } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
@@ -1041,6 +1042,10 @@ export class ConversationsService {
         const now = new Date();
         const businessHoursStatus: 'open' | 'closed' = this.isWithinBusinessHours(config, bizHours) ? 'open' : 'closed';
 
+        // Step-by-step turn trace (WS5 #1) — accumulated in memory, persisted
+        // fire-and-forget at the end. Never affects the turn's behaviour or latency.
+        const turnTrace = new TurnTraceContext({ tenantId, conversationId: conversation.id });
+
         const turnContext: TurnContext = {
             language: userLanguage,
             timezone: tz,
@@ -1443,6 +1448,10 @@ export class ConversationsService {
                 const ragResults = await this.knowledgeService.searchRelevant(
                     tenantId, searchQuery, topK, { similarityThreshold: searchThreshold, conversationId: conversation.id, language: userLanguage },
                 );
+                turnTrace.add('kb_retrieval', 'RAG', {
+                    topK, threshold: similarityThreshold, retrievedCount: ragResults.length,
+                    sources: ragResults.slice(0, 5).map((r: any) => r.title),
+                });
                 if (ragResults.length > 0) {
                     const retrieved = ragResults.filter((r: any) => r.score >= similarityThreshold);
                     const possible = ragResults.filter((r: any) => r.score >= 0.25 && r.score < similarityThreshold);
@@ -1646,6 +1655,10 @@ export class ConversationsService {
                         }
 
                         this.logger.log(`[Pipeline] Tool ${tc.function.name} executed in LLM loop`);
+                        turnTrace.add('tool_result', tc.function.name, {
+                            ok: !(result && result.error),
+                            error: result?.error,
+                        });
 
                         // Capture any media the tool wants sent (e.g. a product
                         // image) and strip the marker so it never reaches the LLM.
@@ -1702,6 +1715,7 @@ export class ConversationsService {
             finalResponse = await this.applyOutputGuardrails(
                 finalResponse, systemPrompt, currentMessages, allowedTiers, tenantId, conversation.id,
             );
+            turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
 
             // Long-term memory (#1): periodically distill the conversation into
             // durable facts (fire-and-forget, cheap tier). Cadence keeps cost low.
@@ -1728,6 +1742,13 @@ export class ConversationsService {
                  WHERE id = $1::uuid`,
                 [conversation.id],
             );
+
+            turnTrace.add('decision', 'final_response', {
+                finalResponseLength: finalResponse?.length || 0,
+                mediaCount: mediaToSend.length,
+            });
+            // Persist the step-by-step trace, fire-and-forget — tracing never breaks the turn.
+            try { this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
 
             return finalResponse;
         } catch (e: any) {

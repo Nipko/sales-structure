@@ -72,6 +72,10 @@ export class LLMRouterService {
     // a single transient blip must not knock out a whole provider.
     private readonly BREAKER_THRESHOLD = 3;
     private readonly BREAKER_WINDOW_SEC = 60;
+    // Sticky routing: keep the same provider+model across turns of a conversation
+    // to preserve Anthropic prompt-cache (cache_control) and OpenAI auto-prefix-cache.
+    // TTL outlasts a typical inter-turn gap but lets affinity decay when idle.
+    private readonly AFFINITY_TTL_SEC = 1800;
 
     constructor(
         @Inject('LLM_PROVIDERS') private providers: ILLMProvider[],
@@ -88,6 +92,30 @@ export class LLMRouterService {
 
     private breakerOpenKey(provider: string): string {
         return `llm:health:${provider}:open`;
+    }
+
+    private affinityKey(conversationId: string): string {
+        return `llm:affinity:${conversationId}`;
+    }
+
+    /** Sticky provider:model for a conversation. Fails open (null) on any Redis error. */
+    private async getAffinity(conversationId?: string): Promise<{ provider: string; model: string } | null> {
+        if (!conversationId) return null;
+        try {
+            const raw = await this.redis.get(this.affinityKey(conversationId));
+            if (!raw) return null;
+            const idx = raw.indexOf(':');
+            if (idx <= 0) return null;
+            return { provider: raw.slice(0, idx), model: raw.slice(idx + 1) };
+        } catch { return null; }
+    }
+
+    /** Persist/refresh the sticky provider:model. Never throws — affinity is best-effort. */
+    private async setAffinity(conversationId: string | undefined, provider: string, model: string): Promise<void> {
+        if (!conversationId) return;
+        try {
+            await this.redis.set(this.affinityKey(conversationId), `${provider}:${model}`, this.AFFINITY_TTL_SEC);
+        } catch { /* best-effort */ }
     }
 
     /**
@@ -231,6 +259,23 @@ export class LLMRouterService {
                 candidates = fitting;
             }
 
+            // Sticky routing: bias the (already filtered: configured + healthy +
+            // fits-context) candidate list toward the provider+model used last turn
+            // of this conversation, keeping the provider-side prompt cache warm.
+            // Pure reorder — if the sticky model isn't in `candidates` (provider
+            // unconfigured, breaker open, or context too small) it's silently absent
+            // and normal tier order applies. Never overrides the breaker.
+            const convId = options.traceContext?.conversationId;
+            const affinity = await this.getAffinity(convId);
+            if (affinity) {
+                const stickyIdx = candidates.findIndex(c => c.provider === affinity.provider && c.id === affinity.model);
+                if (stickyIdx > 0) {
+                    const [sticky] = candidates.splice(stickyIdx, 1);
+                    candidates.unshift(sticky);
+                    this.logger.debug(`[LLM] Sticky routing — pinned ${sticky.id} (${sticky.provider}) for conv ${convId}`);
+                }
+            }
+
             let lastError: Error | undefined;
             for (const candidate of candidates) {
                 const startTime = Date.now();
@@ -250,6 +295,8 @@ export class LLMRouterService {
                     }
 
                     this.logger.log(`[LLM] ${options.task} via ${candidate.provider} (${candidate.id}) in ${durationMs}ms`);
+                    // Remember this provider+model for the conversation's next turn (cache warmth).
+                    this.setAffinity(convId, candidate.provider, candidate.id).catch(() => {});
                     this.trackStats(options.tenantId, candidate, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
                     this.emitTurnTrace(options, candidate, durationMs, response, escalated, options.task);
 

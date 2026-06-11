@@ -778,6 +778,18 @@
     "ctaText": "Have another question? Write to us and we'll reply in minutes.",
     "ctaLink": "Contact support"
   },
+  "aiControl": {
+    "title": "Your AI, under control",
+    "subtitle": "Three guarantees about what your assistant tells every customer.",
+    "promise1Title": "Answers only with your information",
+    "promise1Desc": "It replies with your catalog, your prices and your policies — it never makes things up. If something isn't loaded, it says so instead of improvising.",
+    "promise2Title": "Hands off to a human when needed",
+    "promise2Desc": "Faced with a question beyond its scope, a complaint or a special request, it passes the conversation to your team instantly and with full context.",
+    "promise3Title": "Every conversation is auditable",
+    "promise3Desc": "There's a record of what information it used and what action it took on each reply. No black boxes.",
+    "faqQ": "What if the AI says something wrong?",
+    "faqA": "Your business sets the rules of what it can and can't promise, and the assistant follows them. It also validates prices before sending them and flags anything that doesn't add up."
+  },
   "cta": {
     "title": "Your assistant could be answering customers today",
     "subtitle": "7-day trial. No card for Starter. Setup in 10 minutes with Spanish/English support.",

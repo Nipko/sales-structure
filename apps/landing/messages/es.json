@@ -706,6 +706,18 @@
     "ctaText": "¿Tienes otra pregunta? Escríbenos y te respondemos en minutos.",
     "ctaLink": "Contactar soporte"
   },
+  "aiControl": {
+    "title": "Tu IA, bajo control",
+    "subtitle": "Tres garantías sobre lo que tu asistente le dice a cada cliente.",
+    "promise1Title": "Responde solo con tu información",
+    "promise1Desc": "Contesta con tu catálogo, tus precios y tus políticas — nunca inventa. Si algo no está cargado, lo aclara en vez de improvisar.",
+    "promise2Title": "Deriva a un humano cuando hace falta",
+    "promise2Desc": "Ante una duda fuera de su alcance, una queja o un pedido especial, pasa la conversación a tu equipo al instante y con todo el contexto.",
+    "promise3Title": "Cada conversación queda auditable",
+    "promise3Desc": "Hay registro de qué información usó y qué acción tomó en cada respuesta. Nada de cajas negras.",
+    "faqQ": "¿Y si la IA dice algo incorrecto?",
+    "faqA": "Las reglas de qué puede y qué no puede prometer las define tu negocio, y el asistente las cumple. Además valida los precios antes de enviarlos y avisa si algo no cuadra."
+  },
   "cta": {
     "title": "Tu asistente puede estar respondiendo clientes hoy mismo",
     "subtitle": "7 días de prueba. Sin tarjeta para Emprendedor y Starter. Configuración en 10 minutos con soporte en español.",

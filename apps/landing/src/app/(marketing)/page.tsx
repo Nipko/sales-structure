@@ -8,6 +8,7 @@ import { VerticalsShowcase } from "../../components/sections/VerticalsShowcase";
 import { ToolsShowcase } from "../../components/sections/ToolsShowcase";
 import { HowItWorks } from "../../components/sections/HowItWorks";
 import { FeaturesGrid } from "../../components/sections/FeaturesGrid";
+import { AiControlSection } from "../../components/sections/AiControlSection";
 import { ComparisonTable } from "../../components/sections/ComparisonTable";
 import { StatsCounter } from "../../components/sections/StatsCounter";
 import { TestimonialsSection } from "../../components/sections/TestimonialsSection";
@@ -29,6 +30,7 @@ export default function HomePage() {
       <VerticalsShowcase />
       <ToolsShowcase />
       <FeaturesGrid />
+      <AiControlSection />
       <ComparisonTable />
       <StatsCounter />
       <TestimonialsSection />

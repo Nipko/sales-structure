@@ -2129,6 +2129,95 @@ export class ConversationsService {
         }
     }
 
+    /**
+     * Streaming variant of processWidgetMessage for the web chat widget (#6 Fase-2).
+     * Same lock/history/persona/handoff logic, but yields the AI reply token-by-token
+     * via the router's executeStream so the widget renders progressively (lower TTFT).
+     * It does NOT persist the outbound message nor emit sockets — the gateway does that
+     * once the stream closes (mirroring how the gateway persists today). On error it
+     * propagates so the gateway can emit widget:stream_error. Messaging channels are
+     * untouched (they stay non-streaming).
+     */
+    async *streamWidgetMessage(
+        tenantId: string,
+        schemaName: string,
+        conversationId: string,
+        contactId: string,
+        text: string,
+    ): AsyncGenerator<string, void, unknown> {
+        const config = await this.personaService.getPersonaForChannel(tenantId, 'web_widget');
+        if (!config) return;
+
+        const lockKey = `lock:conv:${conversationId}`;
+        let lockToken = await this.redis.acquireLockToken(lockKey, 30);
+        for (let i = 0; i < 4 && !lockToken; i++) {
+            await new Promise(r => setTimeout(r, 500));
+            lockToken = await this.redis.acquireLockToken(lockKey, 30);
+        }
+        let lockHeartbeat: ReturnType<typeof setInterval> | undefined;
+        if (lockToken) {
+            const tk = lockToken;
+            lockHeartbeat = setInterval(() => { this.redis.renewLockToken(lockKey, tk, 30).catch(() => {}); }, 10_000);
+            lockHeartbeat.unref?.();
+        }
+
+        try {
+            const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT direction, content_text FROM messages
+                 WHERE conversation_id = $1::uuid ORDER BY created_at ASC LIMIT 20`,
+                [conversationId],
+            );
+            const conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT * FROM conversations WHERE id = $1::uuid LIMIT 1`,
+                [conversationId],
+            );
+
+            const handoffReason = this.handoffService.shouldHandoff(text, conversation?.[0] || {}, config);
+            if (handoffReason) {
+                await this.handoffService.executeHandoff(tenantId, conversationId, {
+                    tenantId, conversationId, contactId, channelType: 'web_widget',
+                    content: { type: 'text', text },
+                } as any, handoffReason);
+                yield 'Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve.';
+                return;
+            }
+            if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {
+                return;
+            }
+
+            const now = new Date();
+            const turnContext: any = {
+                userMessage: text,
+                language: 'es',
+                channelType: 'web_widget',
+                messageCount: (history?.length || 0) + 1,
+                timezone: 'America/Bogota',
+                now: now.toISOString(),
+                upcomingDays: [],
+                businessHoursStatus: 'open' as const,
+            };
+            const systemPrompt = this.promptAssembler.assemble(config, turnContext);
+            const chatMessages = (history || []).map((m: any) => ({
+                role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
+                content: m.content_text || '',
+            }));
+            chatMessages.push({ role: 'user' as const, content: text });
+
+            for await (const chunk of this.llmRouter.executeStream({
+                model: 'grok-4-1-fast-non-reasoning',
+                messages: chatMessages,
+                systemPrompt,
+                temperature: 0.8,
+                tenantId,
+            })) {
+                yield chunk;
+            }
+        } finally {
+            if (lockHeartbeat) clearInterval(lockHeartbeat);
+            if (lockToken) await this.redis.releaseLockToken(lockKey, lockToken).catch(() => {});
+        }
+    }
+
     private mapLlmTierToAllowed(planTier: string | undefined): ModelTier[] {
         switch (planTier) {
             case 'tier_1':

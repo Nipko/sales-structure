@@ -8,6 +8,7 @@ import {
     ConnectedSocket,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Server, Socket } from 'socket.io';
 import { WidgetService } from './widget.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -116,28 +117,43 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         );
 
         client.emit('widget:typing', { isTyping: true });
+        const messageId = randomUUID();
+        let full = '';
 
         try {
-            const aiResponse = await this.conversations.processWidgetMessage(
-                tenantId, schemaName, conversationId, contactId, data.content,
-            );
+            client.emit('widget:stream_start', { messageId, role: 'assistant', timestamp: new Date().toISOString() });
 
-            if (aiResponse) {
+            for await (const chunk of this.conversations.streamWidgetMessage(
+                tenantId, schemaName, conversationId, contactId, data.content,
+            )) {
+                full += chunk;
+                client.emit('widget:stream_chunk', { messageId, delta: chunk });
+            }
+
+            // Persist the full outbound once the stream closes (same insert as before).
+            if (full.trim()) {
                 await this.prisma.executeInTenantSchema(schemaName,
                     `INSERT INTO messages (conversation_id, direction, content_text, metadata, created_at)
                      VALUES ($1::uuid, 'outbound', $2, '{"channel":"web_widget","ai":true}'::jsonb, NOW())`,
-                    [conversationId, aiResponse],
+                    [conversationId, full],
                 );
-
-                client.emit('widget:message', {
-                    content: aiResponse,
-                    role: 'assistant',
-                    timestamp: new Date().toISOString(),
-                });
+            }
+            client.emit('widget:stream_end', { messageId, content: full, timestamp: new Date().toISOString() });
+            // Back-compat: cached loaders that only listen for widget:message still render.
+            if (full.trim()) {
+                client.emit('widget:message', { content: full, role: 'assistant', timestamp: new Date().toISOString() });
             }
         } catch (err: any) {
-            this.logger.warn(`Widget AI response failed: ${err.message}`);
-            client.emit('widget:error', { message: 'Failed to process message' });
+            this.logger.warn(`Widget AI stream failed: ${err.message}`);
+            // Persist whatever streamed before the error so history stays coherent.
+            if (full.trim()) {
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `INSERT INTO messages (conversation_id, direction, content_text, metadata, created_at)
+                     VALUES ($1::uuid, 'outbound', $2, '{"channel":"web_widget","ai":true,"partial":true}'::jsonb, NOW())`,
+                    [conversationId, full],
+                ).catch(() => {});
+            }
+            client.emit('widget:stream_error', { messageId, message: 'Failed to process message', partial: full });
         } finally {
             client.emit('widget:typing', { isTyping: false });
         }

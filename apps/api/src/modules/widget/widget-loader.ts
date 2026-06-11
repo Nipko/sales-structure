@@ -54,10 +54,36 @@ function connectWS(){
     }
   });
   st.sock.on('widget:message',function(d){
+    // Dedup: the gateway double-emits widget:message after a stream for old loaders;
+    // if we already rendered this content via streaming, skip it.
+    var prev=st.msgs[st.msgs.length-1];
+    if(prev&&prev.role==='assistant'&&!prev.streaming&&prev.content===d.content) return;
     st.msgs.push({role:d.role||'assistant',content:d.content,ts:d.timestamp||new Date().toISOString()});
     st.typing=false;renderMsgs();renderTyping();
     if(!st.open){st.unread++;renderBadge()}
     playSound()
+  });
+  // Streaming (#6 Fase-2): the assistant reply arrives token-by-token.
+  st.sock.on('widget:stream_start',function(d){
+    st.streamingId=d.messageId;
+    st.msgs.push({role:d.role||'assistant',content:'',ts:d.timestamp||new Date().toISOString(),streaming:true});
+    st.typing=false;renderMsgs();renderTyping();
+  });
+  st.sock.on('widget:stream_chunk',function(d){
+    var last=st.msgs[st.msgs.length-1];
+    if(last&&last.streaming){last.content+=d.delta;renderMsgs();}
+  });
+  st.sock.on('widget:stream_end',function(d){
+    var last=st.msgs[st.msgs.length-1];
+    if(last&&last.streaming){last.content=d.content||last.content;last.streaming=false;}
+    st.streamingId=null;renderMsgs();
+    if(!st.open){st.unread++;renderBadge()}
+    playSound()
+  });
+  st.sock.on('widget:stream_error',function(d){
+    var last=st.msgs[st.msgs.length-1];
+    if(last&&last.streaming){last.streaming=false;if(!last.content){last.content='⚠️';}}
+    st.streamingId=null;renderMsgs();
   });
   st.sock.on('widget:typing',function(d){st.typing=d.isTyping;renderTyping()});
   st.sock.on('widget:error',function(d){console.warn('Parallly:',d.message)});

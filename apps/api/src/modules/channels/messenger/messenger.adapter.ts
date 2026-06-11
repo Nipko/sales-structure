@@ -92,6 +92,24 @@ export class MessengerAdapter implements IChannelAdapter {
     /**
      * Send a text message via Messenger Send API
      */
+    /** Best-effort "typing…" indicator (Meta sender_action). Never throws. */
+    async sendTypingIndicator(_pageId: string, to: string, accessToken: string): Promise<void> {
+        try {
+            const res = await fetch(`${this.apiUrl}/me/messages`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recipient: { id: to }, sender_action: 'typing_on' }),
+                signal: AbortSignal.timeout(5_000),
+            });
+            if (!res.ok) {
+                const d = await res.json().catch(() => ({})) as any;
+                this.logger.debug(`Messenger typing_on ${res.status}: ${d.error?.message || 'unknown'}`);
+            }
+        } catch (e: any) {
+            this.logger.debug(`Messenger typing_on failed (non-blocking): ${e.message}`);
+        }
+    }
+
     async sendTextMessage(to: string, text: string, _pageId: string, accessToken: string): Promise<string> {
         const url = `${this.apiUrl}/me/messages`;
 

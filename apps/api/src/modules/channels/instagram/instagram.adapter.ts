@@ -92,6 +92,24 @@ export class InstagramAdapter implements IChannelAdapter {
     /**
      * Send a text message via Instagram Messaging API
      */
+    /** Best-effort "typing…" indicator (Meta sender_action). Never throws. */
+    async sendTypingIndicator(igUserId: string, to: string, accessToken: string): Promise<void> {
+        try {
+            const res = await fetch(`${this.apiUrl}/${igUserId}/messages`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recipient: { id: to }, sender_action: 'typing_on' }),
+                signal: AbortSignal.timeout(5_000),
+            });
+            if (!res.ok) {
+                const d = await res.json().catch(() => ({})) as any;
+                this.logger.debug(`Instagram typing_on ${res.status}: ${d.error?.message || 'unknown'}`);
+            }
+        } catch (e: any) {
+            this.logger.debug(`Instagram typing_on failed (non-blocking): ${e.message}`);
+        }
+    }
+
     async sendTextMessage(to: string, text: string, igUserId: string, accessToken: string): Promise<string> {
         const url = `${this.apiUrl}/${igUserId}/messages`;
 

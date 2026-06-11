@@ -12,6 +12,8 @@ export interface IChannelAdapter {
     sendTextMessage(to: string, text: string, accountId: string, accessToken: string): Promise<string>;
     sendMediaMessage(to: string, mediaUrl: string, caption: string | undefined, accountId: string, accessToken: string, mediaType?: 'image' | 'document' | 'audio' | 'video', filename?: string): Promise<string>;
     verifyWebhook(query: any): string | null;
+    /** Optional — best-effort "typing…" indicator. SMS/email don't implement it. */
+    sendTypingIndicator?(channelAccountId: string, to: string, accessToken: string): Promise<void>;
 }
 
 @Injectable()
@@ -120,7 +122,7 @@ export class ChannelGatewayService {
      */
     async sendTypingIndicator(channelType: ChannelType, channelAccountId: string, to: string, accessToken: string): Promise<void> {
         try {
-            const adapter = this.adapters.get(channelType) as any;
+            const adapter = this.adapters.get(channelType);
             if (adapter?.sendTypingIndicator) {
                 await adapter.sendTypingIndicator(channelAccountId, to, accessToken);
             }

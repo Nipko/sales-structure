@@ -75,6 +75,9 @@ export class SmsAdapter implements IChannelAdapter {
      * Send a text SMS via Twilio REST API.
      * accessToken format: "accountSid:authToken"
      */
+    /** SMS/Twilio has no typing indicator — intentional no-op (satisfies the interface). */
+    async sendTypingIndicator(_from: string, _to: string, _accessToken: string): Promise<void> { /* no-op */ }
+
     async sendTextMessage(to: string, text: string, fromNumber: string, accessToken: string): Promise<string> {
         const { accountSid, authToken } = this.parseCredentials(accessToken);
 

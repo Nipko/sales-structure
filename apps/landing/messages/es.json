@@ -122,6 +122,8 @@
     "latamBadge": "🇨🇴 🇲🇽 🇦🇷 🇨🇱 🇵🇪 LatAm"
   },
   "verticals": {
+    "demoRespondsIn": "responde en segundos",
+    "demoRespondedIn": "Respondió en 3 segundos",
     "solutionsOmnichannel": "Soluciones Omnicanal",
     "recommendedAgent": "Agente IA Recomendado",
     "preConfigured": "Pre-configurado",

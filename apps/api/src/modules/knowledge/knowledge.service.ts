@@ -738,7 +738,10 @@ export class KnowledgeService {
                 .map((c, i) => `[${i}] ${(c.title || '').slice(0, 80)} — ${(c.chunk_text || '').slice(0, 400)}`)
                 .join('\n');
             const resp = await this.llmRouter.execute({
-                task: 'tool_calling',
+                // 'conversation' not 'tool_calling': the reranker emits a free-text JSON
+                // array, not native tool calls — using tool_calling would wrongly exclude
+                // tool-incapable cheap models (e.g. gemini-flash) from the budget tiers.
+                task: 'conversation',
                 allowedTiers: ['tier_4_budget', 'tier_3_efficient'],
                 temperature: 0,
                 maxTokens: 200,

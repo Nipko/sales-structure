@@ -89,6 +89,7 @@
     "subtitle": "Pendant que vous gérez votre entreprise (ou que vous dormez), votre assistant IA répond à chaque message en quelques secondes, planifie les rendez-vous et enregistre les données de chaque client pour qu'aucune vente ne vous échappe. Vous le configurez une fois, sans connaissances techniques.",
     "cta": "Essai gratuit 7 jours",
     "ctaSecondary": "Voir comment ça marche",
+    "ctaWhatsapp": "Parlez à notre IA",
     "beforeLabel": "Sans IA",
     "beforeStat": "6h d'attente en moyenne",
     "afterLabel": "Avec Parallly",
@@ -776,7 +777,7 @@
     "q8": "Ça s'intègre avec mon système actuel ?",
     "a8": "Oui. API ouverte + webhooks pour intégrer avec votre ERP/CRM existant. Parallly apporte son propre CRM complet, mais vous pouvez aussi vous connecter à HubSpot, Salesforce ou autres.",
     "ctaText": "Vous avez une autre question ? Écrivez-nous et nous vous répondons en quelques minutes.",
-    "ctaLink": "Contacter le support"
+    "ctaLink": "Écrivez-nous sur WhatsApp"
   },
   "aiControl": {
     "title": "Votre IA, sous contrôle",
@@ -794,7 +795,7 @@
     "title": "Votre assistant pourrait répondre à vos clients dès aujourd'hui",
     "subtitle": "Essai 7 jours. Sans carte pour Starter. Configuration en 10 minutes avec support FR/ES.",
     "button": "Commencer l'essai gratuit",
-    "secondaryButton": "Parler aux ventes",
+    "secondaryButton": "Parlez à notre IA",
     "guarantees": "✓ Sans contrats · ✓ Annulation instantanée · ✓ Support 24/7"
   },
   "footer": {

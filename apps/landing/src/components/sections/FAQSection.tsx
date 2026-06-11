@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { Section } from "../ui/Section";
 import { FAQItem } from "../ui/FAQItem";
+import { WHATSAPP_URL } from "../../lib/constants";
 
 const FAQ_COUNT = 8;
 
@@ -35,7 +36,9 @@ export function FAQSection() {
       <div className="max-w-3xl mx-auto mt-10 text-center">
         <p className="text-text-secondary text-sm mb-4">{t("ctaText")}</p>
         <a
-          href="mailto:it.executive@parallext.com"
+          href={WHATSAPP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
           className="inline-flex items-center gap-2 text-accent hover:text-accent-hover font-medium text-sm transition-colors"
         >
           {t("ctaLink")}

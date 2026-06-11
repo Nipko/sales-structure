@@ -89,6 +89,7 @@
     "subtitle": "While you run your business (or sleep), your AI assistant answers every message in seconds, books appointments and saves each customer's details so no sale slips away. Set it up once, no tech skills needed.",
     "cta": "Try free for 7 days",
     "ctaSecondary": "See how it works",
+    "ctaWhatsapp": "Talk to our AI",
     "beforeLabel": "Without AI",
     "beforeStat": "6h avg wait time",
     "afterLabel": "With Parallly",
@@ -776,7 +777,7 @@
     "q8": "Does it integrate with my current system?",
     "a8": "Yes. Open API + webhooks to integrate with your existing ERP/CRM. Parallly brings its own complete CRM, but you can also connect to HubSpot, Salesforce or others.",
     "ctaText": "Have another question? Write to us and we'll reply in minutes.",
-    "ctaLink": "Contact support"
+    "ctaLink": "Message us on WhatsApp"
   },
   "aiControl": {
     "title": "Your AI, under control",
@@ -794,7 +795,7 @@
     "title": "Your assistant could be answering customers today",
     "subtitle": "7-day trial. No card for Starter. Setup in 10 minutes with Spanish/English support.",
     "button": "Start free trial",
-    "secondaryButton": "Talk to sales",
+    "secondaryButton": "Talk to our AI",
     "guarantees": "✓ No contracts · ✓ Instant cancellation · ✓ 24/7 support"
   },
   "footer": {

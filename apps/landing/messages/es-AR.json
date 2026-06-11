@@ -1,6 +1,7 @@
 {
   "hero": {
-    "subtitle": "Mientras vos atendés tu negocio (o dormís), tu asistente con IA contesta cada mensaje en segundos, agenda citas y guarda los datos de cada cliente para que ninguna venta se escape. Lo configurás una vez, sin saber de tecnología."
+    "subtitle": "Mientras vos atendés tu negocio (o dormís), tu asistente con IA contesta cada mensaje en segundos, agenda citas y guarda los datos de cada cliente para que ninguna venta se escape. Lo configurás una vez, sin saber de tecnología.",
+    "ctaWhatsapp": "Hablá con nuestra IA"
   },
   "problem": {
     "title": "¿Cuántas ventas perdés por no responder a tiempo?",
@@ -64,7 +65,11 @@
     "a5": "10 minutos para tu agente IA respondiendo con info real. En serio: conectás WhatsApp con OAuth oficial de Meta, elegís tu industria, cargás tu info básica y listo.",
     "a7": "Sí, en cualquier momento. Pausás cuando te vas de viaje, cancelás al final del período (mantenés acceso hasta esa fecha), o cancelás inmediatamente. Todo desde un panel — sin llamadas a soporte.",
     "a8": "Sí. API abierta + webhooks para integrar con tu ERP/CRM existente. Parallly trae su propio CRM completo, pero también podés conectarlo a HubSpot, Salesforce u otros.",
-    "ctaText": "¿Tenés otra pregunta? Escribinos y te respondemos en minutos."
+    "ctaText": "¿Tenés otra pregunta? Escribinos y te respondemos en minutos.",
+    "ctaLink": "Escribinos por WhatsApp"
+  },
+  "cta": {
+    "secondaryButton": "Hablá con nuestra IA"
   },
   "footer": {
     "seeHow": "Mirá cómo funciona ↓"

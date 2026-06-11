@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useTranslations } from "next-intl";
-import { SIGNUP_URL } from "../../lib/constants";
+import { SIGNUP_URL, WHATSAPP_URL } from "../../lib/constants";
 import { Icon, getVerticalIcon } from "../ui/Icon";
 import { VerticalChatDemo } from "../demos/VerticalChatDemo";
 import { VERTICALS } from "../../data/verticals";
@@ -189,6 +189,18 @@ export function HeroSection() {
             className="inline-flex items-center justify-center gap-2 px-7 py-3.5 bg-accent hover:bg-accent-hover text-white font-semibold rounded-xl text-base transition-all shadow-[0_0_20px_rgba(56,151,240,0.25)] hover:shadow-[0_0_28px_rgba(56,151,240,0.35)] cursor-pointer"
           >
             {t("cta")} {Icon.arrow()}
+          </motion.a>
+          <motion.a
+            whileHover={{ scale: 1.03, y: -2 }}
+            whileTap={{ scale: 0.97 }}
+            transition={{ type: "spring", stiffness: 400, damping: 15 }}
+            href={WHATSAPP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 px-7 py-3.5 bg-[#25D366] hover:bg-[#1ebe5b] text-white font-semibold rounded-xl text-base transition-all shadow-[0_0_20px_rgba(37,211,102,0.25)] hover:shadow-[0_0_28px_rgba(37,211,102,0.35)] cursor-pointer"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 2C6.5 2 2 6.2 2 11.3c0 1.8.5 3.5 1.5 5L2 22l5.9-1.5c1.4.8 3 1.2 4.6 1.2 5.5 0 10-4.2 10-9.4S17.5 2 12 2Zm5.8 13.3c-.2.7-1.4 1.3-2 1.4-.5.1-1.2.1-1.9-.1-.4-.1-1-.3-1.7-.6-3-1.3-4.9-4.3-5.1-4.5-.1-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5.2.6.8 2 .9 2.1.1.1.1.3 0 .5-.1.2-.1.3-.3.5l-.4.5c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.4 2.4 1.5.3.1.5.1.6-.1.2-.2.7-.8.9-1.1.2-.3.4-.2.6-.1.2.1 1.5.7 1.7.8.2.1.4.2.5.3.1.1.1.6-.1 1.3Z"/></svg>
+            {t("ctaWhatsapp")}
           </motion.a>
           <motion.a
             whileHover={{ scale: 1.02, y: -1 }}

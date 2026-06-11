@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import { Section } from "../ui/Section";
 import { Icon } from "../ui/Icon";
-import { SIGNUP_URL, CONTACT_EMAIL } from "../../lib/constants";
+import { SIGNUP_URL, WHATSAPP_URL } from "../../lib/constants";
 
 export function CTABanner() {
   const t = useTranslations("cta");
@@ -29,9 +29,12 @@ export function CTABanner() {
               {t("button")} {Icon.arrow()}
             </a>
             <a
-              href={`mailto:${CONTACT_EMAIL}`}
-              className="inline-flex items-center justify-center px-8 py-4 border border-border-light hover:border-accent text-text-primary font-medium rounded-xl text-base transition-colors cursor-pointer"
+              href={WHATSAPP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 px-8 py-4 border border-[#25D366]/40 hover:border-[#25D366] text-text-primary font-medium rounded-xl text-base transition-colors cursor-pointer"
             >
+              <svg viewBox="0 0 24 24" fill="#25D366" className="w-5 h-5"><path d="M12 2C6.5 2 2 6.2 2 11.3c0 1.8.5 3.5 1.5 5L2 22l5.9-1.5c1.4.8 3 1.2 4.6 1.2 5.5 0 10-4.2 10-9.4S17.5 2 12 2Zm5.8 13.3c-.2.7-1.4 1.3-2 1.4-.5.1-1.2.1-1.9-.1-.4-.1-1-.3-1.7-.6-3-1.3-4.9-4.3-5.1-4.5-.1-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5.2.6.8 2 .9 2.1.1.1.1.3 0 .5-.1.2-.1.3-.3.5l-.4.5c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.4 2.4 1.5.3.1.5.1.6-.1.2-.2.7-.8.9-1.1.2-.3.4-.2.6-.1.2.1 1.5.7 1.7.8.2.1.4.2.5.3.1.1.1.6-.1 1.3Z"/></svg>
               {t("secondaryButton")}
             </a>
           </div>

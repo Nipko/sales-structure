@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
 
 export interface CustomerMemory {
     facts: string[];
@@ -9,15 +10,23 @@ export interface CustomerMemory {
 
 const MAX_FACTS = 12;          // cap stored facts so the block stays compact
 const MEMORY_BLOCK_FACTS = 8;  // how many to inject into the prompt
+const RETRIEVE_K = 8;          // semantic top-K facts injected per turn
+const FACT_DEDUP_DISTANCE = 0.15; // cosine distance < this ⇒ same fact (update, not insert)
 
 /**
- * Long-term customer memory (#1, Phase 1). Mem0-style extract+update done by a
- * cheap LLM (no pgvector yet — one compact memory row per contact; the model
- * merges/dedups facts). Injected each turn so the agent doesn't "forget" the
- * customer across sessions / the 30-min new-session gap.
+ * Long-term customer memory.
  *
- * Phase 2 (noted, not built): pgvector for semantic dedup/retrieval at scale and
- * keying by the unified IdentityService customer instead of per-contact.
+ * Phase 1: a Mem0-style merged row per contact in customer_memories (facts JSONB +
+ * summary) maintained by a cheap LLM. Kept as the "previous memory" the extractor
+ * merges/cleans at the text level.
+ *
+ * Phase 2 (this file): an additive semantic layer in customer_memory_facts —
+ * each durable fact stored with its embedding so the upsert dedups SEMANTICALLY
+ * (cosine) and getMemory retrieves the top-K facts relevant to the current turn,
+ * keyed by the UNIFIED IdentityService customer (profile) with a fallback to the
+ * contact before identity resolution. Reuses KnowledgeService.generateEmbedding
+ * (same OpenAI pipeline + usage tracking). Everything is best-effort and degrades
+ * gracefully when OpenAI embeddings aren't configured.
  */
 @Injectable()
 export class CustomerMemoryService {
@@ -27,6 +36,7 @@ export class CustomerMemoryService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly llmRouter: LLMRouterService,
+        private readonly knowledge: KnowledgeService,
     ) {}
 
     private async ensureTable(schema: string): Promise<void> {
@@ -39,6 +49,20 @@ export class CustomerMemoryService {
                     summary TEXT,
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                  )`);
+            // Semantic per-fact layer (one statement per call — PgBouncer tx mode).
+            await this.prisma.executeInTenantSchema(schema,
+                `CREATE TABLE IF NOT EXISTS customer_memory_facts (
+                    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                    owner_kind VARCHAR(16) NOT NULL DEFAULT 'profile',
+                    owner_id UUID NOT NULL,
+                    fact_text TEXT NOT NULL,
+                    embedding vector(1536),
+                    seen_count INTEGER NOT NULL DEFAULT 1,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                 )`);
+            await this.prisma.executeInTenantSchema(schema,
+                `CREATE INDEX IF NOT EXISTS idx_cmf_owner ON customer_memory_facts (owner_kind, owner_id)`);
             this.ensuredSchemas.add(schema);
         } catch (e: any) {
             if (/already exists|duplicate|23505|42P07/i.test(e?.message || '')) {
@@ -49,21 +73,73 @@ export class CustomerMemoryService {
         }
     }
 
-    /** Compact memory for prompt injection. Returns null when nothing is known. */
-    async getMemory(schema: string, contactId: string): Promise<CustomerMemory | null> {
-        if (!contactId) return null;
+    /** Resolve the unified customer (profile) for a contact, or fall back to contact. */
+    private async resolveOwner(schema: string, contactId: string): Promise<{ kind: 'profile' | 'contact'; id: string }> {
         try {
             const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT customer_profile_id FROM contact_identities WHERE contact_id = $1::uuid LIMIT 1`,
+                [contactId]);
+            const pid = rows?.[0]?.customer_profile_id;
+            if (pid) return { kind: 'profile', id: pid };
+        } catch { /* table may not exist for this tenant — fall back */ }
+        return { kind: 'contact', id: contactId };
+    }
+
+    /**
+     * Compact memory for prompt injection. With `query` set, returns the facts most
+     * relevant to this turn (semantic top-K); without it, the merged Phase-1 set
+     * (e.g. for the extractor's "previous memory" input). Returns null when nothing
+     * is known.
+     */
+    async getMemory(schema: string, contactId: string, query?: string): Promise<CustomerMemory | null> {
+        if (!contactId) return null;
+        try {
+            const memRows = await this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT facts, summary FROM customer_memories WHERE contact_id = $1::uuid`,
                 [contactId]);
-            const row = rows?.[0];
-            if (!row) return null;
-            const facts = Array.isArray(row.facts) ? row.facts.filter((f: any) => typeof f === 'string') : [];
-            if (!facts.length && !row.summary) return null;
-            return { facts: facts.slice(0, MEMORY_BLOCK_FACTS), summary: row.summary || undefined };
+            const summary = memRows?.[0]?.summary || undefined;
+            const mergedFacts = Array.isArray(memRows?.[0]?.facts)
+                ? memRows[0].facts.filter((f: any) => typeof f === 'string')
+                : [];
+
+            let facts: string[];
+            if (query && query.trim()) {
+                facts = await this.retrieveFacts(schema, contactId, query.trim());
+                if (!facts.length) facts = mergedFacts; // fall back to the merged view
+            } else {
+                facts = mergedFacts;
+            }
+
+            if (!facts.length && !summary) return null;
+            return { facts: facts.slice(0, MEMORY_BLOCK_FACTS), summary };
         } catch {
-            // Table not created yet for this tenant, or a transient error — no memory.
             return null;
+        }
+    }
+
+    /** Semantic top-K facts for the owner; falls back to most-recent when embeddings are off. */
+    private async retrieveFacts(schema: string, contactId: string, query: string): Promise<string[]> {
+        try {
+            const owner = await this.resolveOwner(schema, contactId);
+            let emb: number[] | null = null;
+            try { emb = await this.knowledge.generateEmbedding(query.slice(0, 1000)); } catch { emb = null; }
+            if (emb) {
+                const embStr = `[${emb.join(',')}]`;
+                const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                    `SELECT fact_text FROM customer_memory_facts
+                      WHERE owner_kind = $1 AND owner_id = $2::uuid AND embedding IS NOT NULL
+                      ORDER BY embedding <=> $3::vector LIMIT $4`,
+                    [owner.kind, owner.id, embStr, RETRIEVE_K]);
+                return (rows || []).map(r => r.fact_text).filter((f: any) => typeof f === 'string');
+            }
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT fact_text FROM customer_memory_facts
+                  WHERE owner_kind = $1 AND owner_id = $2::uuid
+                  ORDER BY last_seen_at DESC LIMIT $3`,
+                [owner.kind, owner.id, MEMORY_BLOCK_FACTS]);
+            return (rows || []).map(r => r.fact_text).filter((f: any) => typeof f === 'string');
+        } catch {
+            return [];
         }
     }
 
@@ -115,16 +191,73 @@ export class CustomerMemoryService {
                 : (existing?.summary ?? null);
             if (!facts.length && !summary) return;
 
+            // Merged view (Phase-1) — drives the next extraction's "previous memory".
             await this.prisma.executeInTenantSchema(schema,
                 `INSERT INTO customer_memories (contact_id, facts, summary, updated_at)
                  VALUES ($1::uuid, $2::jsonb, $3, NOW())
                  ON CONFLICT (contact_id) DO UPDATE SET facts = EXCLUDED.facts, summary = EXCLUDED.summary, updated_at = NOW()`,
                 [contactId, JSON.stringify(facts), summary]);
 
+            // Semantic layer (Phase-2) — per-fact embedding + dedup for retrieval.
+            await this.upsertFactsSemantic(schema, contactId, facts).catch(() => {});
+
             this.logger.log(`[Memory] Updated memory for contact ${contactId} (${facts.length} facts)`);
         } catch (e: any) {
             this.logger.warn(`[Memory] extract failed for contact ${contactId}: ${e.message}`);
         }
+    }
+
+    /** Embed each fact and upsert it semantically (cosine dedup) under the owner. */
+    private async upsertFactsSemantic(schema: string, contactId: string, facts: string[]): Promise<void> {
+        const owner = await this.resolveOwner(schema, contactId);
+        for (const fact of facts) {
+            const text = (fact || '').trim().slice(0, 300);
+            if (!text) continue;
+            let emb: number[] | null = null;
+            try { emb = await this.knowledge.generateEmbedding(text); } catch { emb = null; }
+
+            if (!emb) {
+                // No embeddings — only guard against exact-duplicate inserts.
+                await this.prisma.executeInTenantSchema(schema,
+                    `INSERT INTO customer_memory_facts (owner_kind, owner_id, fact_text)
+                     SELECT $1, $2::uuid, $3
+                     WHERE NOT EXISTS (SELECT 1 FROM customer_memory_facts WHERE owner_kind = $1 AND owner_id = $2::uuid AND fact_text = $3)`,
+                    [owner.kind, owner.id, text]).catch(() => {});
+                continue;
+            }
+
+            const embStr = `[${emb.join(',')}]`;
+            const near = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT id, (embedding <=> $3::vector) AS distance
+                   FROM customer_memory_facts
+                  WHERE owner_kind = $1 AND owner_id = $2::uuid AND embedding IS NOT NULL
+                  ORDER BY embedding <=> $3::vector LIMIT 1`,
+                [owner.kind, owner.id, embStr]).catch(() => [] as any[]);
+
+            const hit = near?.[0];
+            if (hit && Number(hit.distance) < FACT_DEDUP_DISTANCE) {
+                await this.prisma.executeInTenantSchema(schema,
+                    `UPDATE customer_memory_facts
+                        SET fact_text = $2, embedding = $3::vector, last_seen_at = NOW(), seen_count = seen_count + 1
+                      WHERE id = $1::uuid`,
+                    [hit.id, text, embStr]).catch(() => {});
+            } else {
+                await this.prisma.executeInTenantSchema(schema,
+                    `INSERT INTO customer_memory_facts (owner_kind, owner_id, fact_text, embedding)
+                     VALUES ($1, $2::uuid, $3, $4::vector)`,
+                    [owner.kind, owner.id, text, embStr]).catch(() => {});
+            }
+        }
+
+        // Prune to the MAX_FACTS most-recent facts per owner.
+        await this.prisma.executeInTenantSchema(schema,
+            `DELETE FROM customer_memory_facts
+              WHERE owner_kind = $1 AND owner_id = $2::uuid
+                AND id NOT IN (
+                    SELECT id FROM customer_memory_facts
+                     WHERE owner_kind = $1 AND owner_id = $2::uuid
+                     ORDER BY last_seen_at DESC LIMIT $3)`,
+            [owner.kind, owner.id, MAX_FACTS]).catch(() => {});
     }
 
     private parseJson(content?: string): any | null {

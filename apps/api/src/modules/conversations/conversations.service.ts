@@ -1042,7 +1042,7 @@ export class ConversationsService {
         // Long-term memory (#1): inject what we know about this customer across
         // conversations, when the agent has it enabled.
         if (config.llm?.memory?.longTerm && conversation.contact_id) {
-            const mem = await this.customerMemory.getMemory(schemaName, conversation.contact_id).catch(() => null);
+            const mem = await this.customerMemory.getMemory(schemaName, conversation.contact_id, userText).catch(() => null);
             if (mem) turnContext.customerMemory = mem;
         }
 

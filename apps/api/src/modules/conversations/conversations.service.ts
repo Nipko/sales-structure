@@ -1463,7 +1463,14 @@ export class ConversationsService {
                 // so anaphora ("¿y eso cuánto sale?") don't embed garbage.
                 const searchQuery = await this.rewriteSearchQuery(userText, schemaName, conversation.id, tenantId);
                 const ragResults = await this.knowledgeService.searchRelevant(
-                    tenantId, searchQuery, topK, { similarityThreshold: searchThreshold, conversationId: conversation.id, language: userLanguage },
+                    tenantId, searchQuery, topK,
+                    {
+                        similarityThreshold: searchThreshold,
+                        conversationId: conversation.id,
+                        language: userLanguage,
+                        // Opt-in LLM reranker (adds latency/cost) — off unless the agent enables it.
+                        rerank: (config as any).llm?.kbReranker === true,
+                    },
                 );
                 turnTrace.add('kb_retrieval', 'RAG', {
                     topK, threshold: similarityThreshold, retrievedCount: ragResults.length,

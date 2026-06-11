@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { LlmKeyService } from '../settings/llm-key.service';
+import { LLMRouterService } from '../ai/router/llm-router.service';
 import OpenAI from 'openai';
 import axios from 'axios';
 import * as crypto from 'crypto';
@@ -23,17 +25,35 @@ const CRAWL_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 @Injectable()
 export class KnowledgeService {
     private readonly logger = new Logger(KnowledgeService.name);
-    private readonly openai: OpenAI;
+    private openai: OpenAI | null = null;
+    private currentKey = '';
 
     constructor(
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly configService: ConfigService,
         private readonly throttle: TenantThrottleService,
-    ) {
-        this.openai = new OpenAI({
-            apiKey: this.configService.get<string>('OPENAI_API_KEY') || '',
-        });
+        private readonly llmKeys: LlmKeyService,
+        private readonly llmRouter: LLMRouterService,
+    ) {}
+
+    /**
+     * Lazily build the OpenAI client from the platform-configured key (LlmKeyService
+     * resolves platform_settings first, then falls back to the OPENAI_API_KEY env),
+     * rebuilding when the key rotates. Throws a clear error when no key is available.
+     */
+    private async ensureOpenAI(): Promise<OpenAI> {
+        const key = await this.llmKeys.getKey('openai');
+        if (!key) {
+            throw new BadRequestException({
+                error: 'embeddings_unavailable',
+                message: 'La base de conocimiento requiere una API key de OpenAI configurada (se usa para generar los embeddings). Configúrala en el panel de super admin.',
+            });
+        }
+        if (this.openai && key === this.currentKey) return this.openai;
+        this.openai = new OpenAI({ apiKey: key });
+        this.currentKey = key;
+        return this.openai;
     }
 
     // ─── Document Ingestion ──────────────────────────────────────────────────
@@ -433,7 +453,7 @@ export class KnowledgeService {
         const docList = (existingDocs || []).map((d: any) => `- ${d.title}${d.category ? ` [${d.category}]` : ''}`).join('\n');
 
         try {
-            const completion = await this.openai.chat.completions.create({
+            const completion = await (await this.ensureOpenAI()).chat.completions.create({
                 model: 'gpt-4o-mini',
                 temperature: 0.4,
                 max_tokens: 1500,
@@ -596,7 +616,7 @@ export class KnowledgeService {
         tenantId: string,
         query: string,
         topK = 5,
-        options?: { similarityThreshold?: number; poolSize?: number; conversationId?: string; language?: string },
+        options?: { similarityThreshold?: number; poolSize?: number; conversationId?: string; language?: string; rerank?: boolean; rerankTopN?: number },
     ): Promise<any[]> {
         const schema = await this.tenantSchema(tenantId);
         const poolSize = Math.max(topK, options?.poolSize ?? topK * 4);
@@ -660,7 +680,7 @@ export class KnowledgeService {
             fused.set(r.chunk_id, c);
         });
 
-        const enriched = [...fused.values()]
+        const ranked = [...fused.values()]
             .map(({ row, rrf, vecSim, inTs }) => {
                 let keywordBoost = inTs ? KEYWORD_BOOST : 0;
                 if (queryTokens.length) {
@@ -689,14 +709,59 @@ export class KnowledgeService {
             // Keep a chunk if it clears the relevance bar OR it's a keyword match
             // (the BM25 win the pure-vector path would have dropped on threshold).
             .filter(r => r.score >= similarityThreshold || r.keywordHit)
-            .sort((a, b) => b._rrf - a._rrf || b.score - a.score)
-            .slice(0, topK)
-            .map(({ _rrf, ...rest }) => rest);
+            .sort((a, b) => b._rrf - a._rrf || b.score - a.score);
+
+        // Optional LLM reranker over the top-N of the fused pool — best-effort, gated by
+        // the caller (cost + latency). Reorders before the final topK cut.
+        const reranked = (options?.rerank && ranked.length > 1)
+            ? await this.rerankChunks(query, ranked, options.rerankTopN ?? 12, tenantId)
+            : ranked;
+
+        const enriched = reranked.slice(0, topK).map(({ _rrf, ...rest }) => rest);
 
         // Fire-and-forget analytics tracking
         this.trackRetrieval(schema, tenantId, query, enriched, similarityThreshold, options?.conversationId).catch(() => {});
 
         return enriched;
+    }
+
+    /**
+     * Best-effort LLM reranker over the top-N fused candidates. Asks a cheap tier to
+     * return indices ordered by relevance, reorders the top-N and appends the rest.
+     * Any failure (parse/timeout/no key) returns the input unchanged — never blocks search.
+     */
+    private async rerankChunks(query: string, candidates: any[], topN: number, tenantId?: string): Promise<any[]> {
+        const pool = candidates.slice(0, Math.min(topN, candidates.length));
+        if (pool.length <= 1) return candidates;
+        try {
+            const list = pool
+                .map((c, i) => `[${i}] ${(c.title || '').slice(0, 80)} — ${(c.chunk_text || '').slice(0, 400)}`)
+                .join('\n');
+            const resp = await this.llmRouter.execute({
+                task: 'tool_calling',
+                allowedTiers: ['tier_4_budget', 'tier_3_efficient'],
+                temperature: 0,
+                maxTokens: 200,
+                tenantId,
+                systemPrompt: 'Sos un reranker. Devolvé SOLO un JSON array de índices (enteros) ordenados por relevancia a la consulta, el más relevante primero. Sin texto extra.',
+                messages: [{ role: 'user', content: `Consulta: ${query}\n\nFragmentos:\n${list}` }],
+            });
+            const order: any = JSON.parse((resp.content || '[]').replace(/```json?/gi, '').replace(/```/g, '').trim());
+            if (!Array.isArray(order)) return candidates;
+            const seen = new Set<number>();
+            const reordered: any[] = [];
+            for (const idx of order) {
+                if (Number.isInteger(idx) && idx >= 0 && idx < pool.length && !seen.has(idx)) {
+                    seen.add(idx);
+                    reordered.push(pool[idx]);
+                }
+            }
+            pool.forEach((c, i) => { if (!seen.has(i)) reordered.push(c); }); // append omitted
+            return [...reordered, ...candidates.slice(pool.length)];
+        } catch (e: any) {
+            this.logger.warn(`[KB rerank] failed (non-fatal): ${e.message}`);
+            return candidates;
+        }
     }
 
     // ─── KB Analytics ────────────────────────────────────────────────────────
@@ -968,15 +1033,18 @@ export class KnowledgeService {
         }
 
         await this.ensureKbSearchVector(schema);
+        // Index BM25 with the document's OWN language so stemming matches the query-side
+        // regconfig (instead of always Spanish). Default Spanish for unknown/auto.
+        const docRegconfig = this.pgRegconfig(this.detectLanguage(text));
         for (let i = 0; i < chunks.length; i++) {
             const embedding = await this.generateEmbedding(chunks[i], tenantId);
             const embeddingStr = `[${embedding.join(',')}]`;
             await this.prisma.executeInTenantSchema(
                 schema,
                 `INSERT INTO knowledge_embeddings (document_id, chunk_index, chunk_text, embedding, metadata, search_tsv)
-                 VALUES ($1::uuid, $2, $3, $4::vector, $5::jsonb, to_tsvector('spanish'::regconfig, $3))`,
+                 VALUES ($1::uuid, $2, $3, $4::vector, $5::jsonb, to_tsvector($6::regconfig, $3))`,
                 [documentId, i, chunks[i], embeddingStr,
-                 JSON.stringify({ char_offset: i * (CHUNK_MAX_CHARS - CHUNK_OVERLAP_CHARS) })],
+                 JSON.stringify({ char_offset: i * (CHUNK_MAX_CHARS - CHUNK_OVERLAP_CHARS) }), docRegconfig],
             );
         }
 
@@ -1142,13 +1210,8 @@ export class KnowledgeService {
         // Embeddings currently require OpenAI specifically. Fail with a clear,
         // actionable message instead of an opaque 401 from the SDK when the key
         // is missing (the platform contract only guarantees ≥1 provider of any kind).
-        if (!this.configService.get<string>('OPENAI_API_KEY')) {
-            throw new BadRequestException({
-                error: 'embeddings_unavailable',
-                message: 'La base de conocimiento requiere una API key de OpenAI configurada (se usa para generar los embeddings). Configúrala en el panel de super admin.',
-            });
-        }
-        const response = await this.openai.embeddings.create({
+        const openai = await this.ensureOpenAI();
+        const response = await openai.embeddings.create({
             model: 'text-embedding-3-small',
             input: text,
         });

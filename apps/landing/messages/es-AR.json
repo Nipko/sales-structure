@@ -77,5 +77,17 @@
     "agentFeature4Desc": "Cargá catálogos, PDFs, FAQs y documentos. La IA busca con vectores + keywords y responde con info real, no inventada.",
     "crmFeaturesSubtitle": "Todo lo que necesitás para convertir leads en clientes, sin perder ninguno.",
     "demoTitle": "Mirá cómo funciona"
+  },
+  "verticals": {
+    "salud": { "demo4": "Perfecto ✅ Tu cita queda confirmada para jueves 9:00 AM. Te enviaré un recordatorio el miércoles. ¿Necesitás algo más?" },
+    "restaurantes": { "demo2": "¡Hola! Soy Luca 🍽️ Te paso el menú del día. ¿Querés ver el menú completo o las promociones?" },
+    "inmobiliaria": { "demo4": "Tengo 5 aptos en ese rango. Te paso las fichas con fotos. ¿Querés agendar visita para este sábado?" },
+    "belleza": { "demo4": "Sábado tenemos 10am y 2pm con Camila (especialista en color). ¿Cuál preferís?" },
+    "gimnasios": { "demo2": "¡Hola! Soy Coach 💪 Tenemos mensual $89k, trimestral $240k (ahorrás $27k). ¿Te agendo una visita?" },
+    "educacion": { "demo2": "¡Hola! Soy Ana 📚 Tenemos cursos A1-C2, presencial y virtual. ¿Sabés tu nivel actual?" },
+    "automotriz": { "demo2": "¡Hola! Soy Mech 🚗 La revisión de frenos cuesta $85k (incluye diagnóstico). ¿Qué vehículo tenés?" },
+    "servicios-profesionales": { "demo2": "¡Hola! ¿En qué área necesitás apoyo: laboral, societario, tributario?" },
+    "tecnologia": { "demo2": "¡Hola! ¿Es un problema técnico o querés info sobre planes y servicios?" },
+    "otro": { "demo4": "Perfecto. Te paso las opciones disponibles. ¿Preferís que te agende una llamada?" }
   }
 }

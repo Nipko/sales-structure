@@ -122,6 +122,8 @@
     "latamBadge": "🇨🇴 🇲🇽 🇦🇷 🇨🇱 🇵🇪 LatAm"
   },
   "verticals": {
+    "demoRespondsIn": "responds in seconds",
+    "demoRespondedIn": "Replied in 3 seconds",
     "solutionsOmnichannel": "Omnichannel Solutions",
     "recommendedAgent": "Recommended AI Agent",
     "preConfigured": "Pre-configured",
@@ -133,6 +135,10 @@
     "clusterProfessional": "Professional & Finance",
     "clusterLifestyle": "Lifestyle & Creatives",
     "salud": {
+      "demo1": "Hi, I need an appointment with the dentist",
+      "demo2": "Hi! I'm Sofía, the clinic's assistant. We have openings tomorrow Thursday at 9am and 3pm. Which works best for you?",
+      "demo3": "Thursday 9am please",
+      "demo4": "Perfect ✅ Your appointment is confirmed for Thursday 9:00 AM. I'll send you a reminder on Wednesday. Anything else?",
       "name": "Healthcare",
       "subtitle": "Clinics · Practices · Dental",
       "agentName": "Sofia",
@@ -143,6 +149,10 @@
       "feature4": "Google Calendar sync"
     },
     "veterinaria": {
+      "demo1": "My puppy needs vaccines",
+      "demo2": "Hi! I'm Toby 🐾 What breed and age? That way I can check the vaccination schedule.",
+      "demo3": "Golden Retriever, 3 months",
+      "demo4": "He's due for the DHPP and parvovirus shots. We have a slot tomorrow at 11am. Shall I book it?",
       "name": "Veterinary",
       "subtitle": "Clinics · Pet grooming · Daycare",
       "agentName": "Toby",
@@ -153,6 +163,10 @@
       "feature4": "Daycare and grooming bookings"
     },
     "restaurantes": {
+      "demo1": "I want to order delivery",
+      "demo2": "Hi! I'm Luca 🍽️ Here's today's menu. Want to see the full menu or the deals?",
+      "demo3": "The deals",
+      "demo4": "🔥 Today: 2-for-1 burgers + free drink on orders over $35k. Can I take your order?",
       "name": "Restaurants",
       "subtitle": "Delivery · Reservations · Bars",
       "agentName": "Luca",
@@ -163,6 +177,10 @@
       "feature4": "Kitchen notification sound"
     },
     "gimnasios": {
+      "demo1": "Hi, info about memberships",
+      "demo2": "Hi! I'm Coach 💪 We have monthly $89k, quarterly $240k (you save $27k). Shall I book you a visit?",
+      "demo3": "Yes, tomorrow works",
+      "demo4": "Booked you tomorrow at 10am for a tour + free trial class ✅",
       "name": "Gyms",
       "subtitle": "Fitness · Yoga · CrossFit",
       "agentName": "Coach",
@@ -173,6 +191,10 @@
       "feature4": "Fill rate by class and time slot"
     },
     "inmobiliaria": {
+      "demo1": "Hi, I'm looking for an apartment to rent in Chapinero",
+      "demo2": "Hi! I'm Carlos, your real estate advisor. We have 12 options in Chapinero. What's your monthly budget?",
+      "demo3": "Between 2 and 3 million",
+      "demo4": "I have 5 apartments in that range. I'll send you the listings with photos. Want to schedule a visit this Saturday?",
       "name": "Real Estate",
       "subtitle": "Sale · Rent · Agents",
       "agentName": "Carlos",
@@ -183,6 +205,10 @@
       "feature4": "Automatic lead qualification"
     },
     "turismo": {
+      "demo1": "Hi, we're looking for a 4-night package to Cartagena",
+      "demo2": "Hi! I'm Maya ✈️ I have 3 options. How many people and what dates?",
+      "demo3": "2 adults, July 15 to 19",
+      "demo4": "Available 🙌 Hotel Caribe: $2.4M pp all-inclusive. Hotel Playa: $1.8M pp with breakfast. Interested in either?",
       "name": "Tourism",
       "subtitle": "Tours · Packages · Vacation rentals",
       "agentName": "Maya",
@@ -193,6 +219,10 @@
       "feature4": "Check-in instructions to guests"
     },
     "educacion": {
+      "demo1": "I want info about English courses",
+      "demo2": "Hi! I'm Ana 📚 We have A1-C2 courses, in-person and online. Do you know your current level?",
+      "demo3": "No, I've never taken a test",
+      "demo4": "I'll give you a quick assessment right here (5 questions). Shall we start? First: How would you describe your daily routine?",
       "name": "Education",
       "subtitle": "Schools · Languages · Coaching",
       "agentName": "Ana",
@@ -203,6 +233,10 @@
       "feature4": "Payment tracking per enrollment"
     },
     "seguros": {
+      "demo1": "I need a car insurance quote",
+      "demo2": "Hi! I'm Roberto 🛡️ Happy to quote you. Make, model and year of the vehicle?",
+      "demo3": "Mazda CX-5 2023",
+      "demo4": "I have 3 options: Basic $89k/mo, Full $145k/mo, Premium $210k/mo (comprehensive). Which interests you?",
       "name": "Insurance",
       "subtitle": "Health · Auto · Home · Life",
       "agentName": "Roberto",
@@ -213,6 +247,10 @@
       "feature4": "Renewal reminders"
     },
     "hogar": {
+      "demo1": "My drain is clogged, it's urgent",
+      "demo2": "Got it 🚨 I'm Iván. Address to send a technician?",
+      "demo3": "50th Street #15-20",
+      "demo4": "Carlos arrives in 35min. I'll let you know when he's on his way. Estimated cost: $60k-$120k.",
       "name": "Home services",
       "subtitle": "Plumbing · Electricity · Cleaning",
       "agentName": "Iván",
@@ -223,6 +261,10 @@
       "feature4": "Statuses: pending → quoted → completed"
     },
     "fotografia": {
+      "demo1": "I saw your work, how much is a wedding session?",
+      "demo2": "Thanks! I'm Diego 📸 We have 3 packages: Gold $3.5M, Premium $5.2M, Luxury $8M. When's the date?",
+      "demo3": "June 15",
+      "demo4": "Available 🙌 I'll send you the portfolio and details right here.",
       "name": "Photography",
       "subtitle": "Weddings · Products · Events",
       "agentName": "Diego",
@@ -233,6 +275,10 @@
       "feature4": "Direct link to Pixieset/Pic-Time"
     },
     "belleza": {
+      "demo1": "Hi! I saw your work, I want balayage highlights",
+      "demo2": "Hi! I'm Luna 💇‍♀️ Thanks for reaching out. Balayage highlights from $180k. When would you like to come in?",
+      "demo3": "This Saturday if possible",
+      "demo4": "Saturday we have 10am and 2pm with Camila (color specialist). Which do you prefer?",
       "name": "Beauty & Spa",
       "subtitle": "Salons · Aesthetic · Barbershops",
       "agentName": "Camila",
@@ -243,6 +289,10 @@
       "feature4": "Promotions and packages"
     },
     "automotriz": {
+      "demo1": "Hi, I need a brake inspection",
+      "demo2": "Hi! I'm Mech 🚗 The brake inspection costs $85k (diagnosis included). What vehicle do you have?",
+      "demo3": "Renault Sandero 2021",
+      "demo4": "I have a slot tomorrow at 2pm. Takes about 1h. Shall I book it?",
       "name": "Automotive",
       "subtitle": "Workshops · Dealerships · Parts",
       "agentName": "Mech",
@@ -253,6 +303,10 @@
       "feature4": "Parts inventory and availability"
     },
     "finanzas": {
+      "demo1": "Hi, I need investment advice",
+      "demo2": "Hi! I'm Alex 💰 What's your profile: conservative, moderate or aggressive? And roughly how much?",
+      "demo3": "Moderate, around 20 million",
+      "demo4": "I have 3 options for your profile. Shall I book a call with a certified advisor?",
       "name": "Finance",
       "subtitle": "Advisory · Investments · Accounting",
       "agentName": "Alex",
@@ -263,6 +317,10 @@
       "feature4": "Payment and due date reminders"
     },
     "servicios-profesionales": {
+      "demo1": "I need legal advice for my company",
+      "demo2": "Hi! What area do you need help with: labor, corporate, tax?",
+      "demo3": "Tax",
+      "demo4": "I have availability for a consultation this week. Shall I book it?",
       "name": "Professional Services",
       "subtitle": "Legal · Consulting · Accounting",
       "agentName": "Experto",
@@ -273,6 +331,10 @@
       "feature4": "Quotes and proposals by chat"
     },
     "tecnologia": {
+      "demo1": "Hi, I need support with my software",
+      "demo2": "Hi! Is it a technical issue or do you want info about plans and services?",
+      "demo3": "Technical issue, I can't log in",
+      "demo4": "Got it. I'm creating a priority support ticket. A technician will contact you in 15min.",
       "name": "Technology",
       "subtitle": "SaaS · Support · Development",
       "agentName": "Dev",
@@ -283,6 +345,10 @@
       "feature4": "Smart priority-based escalation"
     },
     "retail": {
+      "demo1": "Hi, do you have the t-shirt in size M?",
+      "demo2": "Hi! Yes, we have it in M and L. Any particular color you're after?",
+      "demo3": "Black",
+      "demo4": "Available ✅ $65k with free shipping. Shall I set it aside for you?",
       "name": "Retail",
       "subtitle": "Stores · E-commerce · Boutiques",
       "agentName": "Shop",
@@ -293,6 +359,10 @@
       "feature4": "Automatic promotions and discounts"
     },
     "pet-services": {
+      "demo1": "Hi, I need daycare for my dog",
+      "demo2": "Hi! For what dates and what breed is your furry friend?",
+      "demo3": "Friday to Sunday, he's a Beagle",
+      "demo4": "We have space 🎉 $45k/night includes walks and meals. Shall I book it?",
       "name": "Pet Services",
       "subtitle": "Daycare · Dog walking · Grooming",
       "agentName": "Buddy",
@@ -303,6 +373,10 @@
       "feature4": "Upcoming service reminders"
     },
     "otro": {
+      "demo1": "Hi, I need information about your services",
+      "demo2": "Hi! Happy to help. Which service are you interested in?",
+      "demo3": "I want a quote",
+      "demo4": "Perfect. I'll send you the available options. Would you prefer I book you a call?",
       "name": "Other",
       "subtitle": "Any business · Customizable",
       "agentName": "Assistant",

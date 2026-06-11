@@ -122,6 +122,8 @@
     "latamBadge": "🇨🇴 🇲🇽 🇦🇷 🇨🇱 🇵🇪 LatAm"
   },
   "verticals": {
+    "demoRespondsIn": "répond en quelques secondes",
+    "demoRespondedIn": "A répondu en 3 secondes",
     "solutionsOmnichannel": "Solutions Omnicanal",
     "recommendedAgent": "Agent IA Recommandé",
     "preConfigured": "Pré-configuré",
@@ -133,6 +135,10 @@
     "clusterProfessional": "Professionnel et Finance",
     "clusterLifestyle": "Lifestyle et Créatifs",
     "salud": {
+      "demo1": "Bonjour, j'ai besoin d'un rendez-vous chez le dentiste",
+      "demo2": "Bonjour ! Je suis Sofía, l'assistante de la clinique. Nous avons des créneaux demain jeudi à 9h et 15h. Lequel vous convient le mieux ?",
+      "demo3": "Jeudi 9h s'il vous plaît",
+      "demo4": "Parfait ✅ Votre rendez-vous est confirmé pour jeudi à 9h00. Je vous enverrai un rappel mercredi. Besoin d'autre chose ?",
       "name": "Santé",
       "subtitle": "Cabinets · Cliniques · Dentaire",
       "agentName": "Sofia",
@@ -143,6 +149,10 @@
       "feature4": "Synchronisation Google Calendar"
     },
     "veterinaria": {
+      "demo1": "Mon chiot a besoin de vaccins",
+      "demo2": "Bonjour ! Je suis Toby 🐾 Quelle race et quel âge ? Je vérifie ainsi le calendrier de vaccination.",
+      "demo3": "Golden Retriever, 3 mois",
+      "demo4": "Il doit faire le vaccin polyvalent et la parvovirose. Nous avons un créneau demain à 11h. Je réserve ?",
       "name": "Vétérinaire",
       "subtitle": "Cliniques · Toilettage · Garderie",
       "agentName": "Toby",
@@ -153,6 +163,10 @@
       "feature4": "Réservations garderie et toilettage"
     },
     "restaurantes": {
+      "demo1": "Je veux commander en livraison",
+      "demo2": "Bonjour ! Je suis Luca 🍽️ Voici le menu du jour. Vous voulez voir le menu complet ou les promos ?",
+      "demo3": "Les promos",
+      "demo4": "🔥 Aujourd'hui : 2 burgers pour 1 + boisson offerte dès $35k de commande. Je vous note quelque chose ?",
       "name": "Restaurants",
       "subtitle": "Livraison · Réservations · Bars",
       "agentName": "Luca",
@@ -163,6 +177,10 @@
       "feature4": "Son de notification en cuisine"
     },
     "gimnasios": {
+      "demo1": "Bonjour, des infos sur les abonnements",
+      "demo2": "Bonjour ! Je suis Coach 💪 Nous avons mensuel $89k, trimestriel $240k (vous économisez $27k). Je vous réserve une visite ?",
+      "demo3": "Oui, demain je peux",
+      "demo4": "Je vous ai réservé demain à 10h pour une visite + un cours d'essai gratuit ✅",
       "name": "Salles de sport",
       "subtitle": "Fitness · Yoga · CrossFit",
       "agentName": "Coach",
@@ -173,6 +191,10 @@
       "feature4": "Taux de remplissage par cours et créneau"
     },
     "inmobiliaria": {
+      "demo1": "Bonjour, je cherche un appartement à louer à Chapinero",
+      "demo2": "Bonjour ! Je suis Carlos, votre conseiller immobilier. Nous avons 12 options à Chapinero. Quel est votre budget mensuel ?",
+      "demo3": "Entre 2 et 3 millions",
+      "demo4": "J'ai 5 appartements dans cette gamme. Je vous envoie les fiches avec photos. Vous voulez planifier une visite ce samedi ?",
       "name": "Immobilier",
       "subtitle": "Vente · Location · Agents",
       "agentName": "Carlos",
@@ -183,6 +205,10 @@
       "feature4": "Qualification automatique des leads"
     },
     "turismo": {
+      "demo1": "Bonjour, nous cherchons un forfait de 4 nuits à Carthagène",
+      "demo2": "Bonjour ! Je suis Maya ✈️ J'ai 3 options. Combien de personnes et quelles dates ?",
+      "demo3": "2 adultes, du 15 au 19 juillet",
+      "demo4": "Disponible 🙌 Hôtel Caribe : $2.4M par personne tout compris. Hôtel Playa : $1.8M par personne avec petit-déjeuner. L'un vous intéresse ?",
       "name": "Tourisme",
       "subtitle": "Tours · Forfaits · Location vacances",
       "agentName": "Maya",
@@ -193,6 +219,10 @@
       "feature4": "Instructions de check-in à l'invité"
     },
     "educacion": {
+      "demo1": "Je veux des infos sur les cours d'anglais",
+      "demo2": "Bonjour ! Je suis Ana 📚 Nous avons des cours A1-C2, en présentiel et en ligne. Connaissez-vous votre niveau actuel ?",
+      "demo3": "Non, je n'ai jamais fait de test",
+      "demo4": "Je vous fais un mini-diagnostic ici même (5 questions). On commence ? Première : How would you describe your daily routine?",
       "name": "Éducation",
       "subtitle": "Écoles · Langues · Coaching",
       "agentName": "Ana",
@@ -203,6 +233,10 @@
       "feature4": "Suivi des paiements par inscription"
     },
     "seguros": {
+      "demo1": "J'ai besoin d'un devis d'assurance auto",
+      "demo2": "Bonjour ! Je suis Roberto 🛡️ Avec plaisir, je vous fais un devis. Marque, modèle et année du véhicule ?",
+      "demo3": "Mazda CX-5 2023",
+      "demo4": "J'ai 3 options : Basique $89k/mois, Complète $145k/mois, Premium $210k/mois (tous risques). Laquelle vous intéresse ?",
       "name": "Assurances",
       "subtitle": "Santé · Auto · Maison · Vie",
       "agentName": "Roberto",
@@ -213,6 +247,10 @@
       "feature4": "Rappels de renouvellement"
     },
     "hogar": {
+      "demo1": "Mon évier est bouché, c'est urgent",
+      "demo2": "Compris 🚨 Je suis Iván. Adresse pour envoyer un technicien ?",
+      "demo3": "Rue 50 #15-20",
+      "demo4": "Carlos arrive dans 35min. Je vous préviens quand il part. Coût estimé : $60k-$120k.",
       "name": "Services à domicile",
       "subtitle": "Plomberie · Électricité · Nettoyage",
       "agentName": "Iván",
@@ -223,6 +261,10 @@
       "feature4": "Statuts : en attente → devisé → terminé"
     },
     "fotografia": {
+      "demo1": "J'ai vu votre travail, combien coûte une séance de mariage ?",
+      "demo2": "Merci ! Je suis Diego 📸 Nous avons 3 forfaits : Gold $3.5M, Premium $5.2M, Luxury $8M. Quelle est la date ?",
+      "demo3": "Le 15 juin",
+      "demo4": "Disponible 🙌 Je vous envoie le portfolio et les détails par ici.",
       "name": "Photographie",
       "subtitle": "Mariages · Produits · Événements",
       "agentName": "Diego",
@@ -233,6 +275,10 @@
       "feature4": "Lien direct vers Pixieset/Pic-Time"
     },
     "belleza": {
+      "demo1": "Bonjour ! J'ai vu votre travail, je veux un balayage",
+      "demo2": "Bonjour ! Je suis Luna 💇‍♀️ Merci de nous écrire. Balayage à partir de $180k. Pour quand souhaitez-vous venir ?",
+      "demo3": "Ce samedi si possible",
+      "demo4": "Samedi nous avons 10h et 14h avec Camila (spécialiste couleur). Laquelle préférez-vous ?",
       "name": "Beauté & Spa",
       "subtitle": "Salons · Esthétique · Barbiers",
       "agentName": "Camila",
@@ -243,6 +289,10 @@
       "feature4": "Promotions et forfaits"
     },
     "automotriz": {
+      "demo1": "Bonjour, j'ai besoin d'une révision des freins",
+      "demo2": "Bonjour ! Je suis Mech 🚗 La révision des freins coûte $85k (diagnostic inclus). Quel véhicule avez-vous ?",
+      "demo3": "Renault Sandero 2021",
+      "demo4": "J'ai un créneau demain à 14h. Ça prend environ 1h. Je réserve ?",
       "name": "Automobile",
       "subtitle": "Ateliers · Concessionnaires · Pièces détachées",
       "agentName": "Mech",
@@ -253,6 +303,10 @@
       "feature4": "Inventaire de pièces et disponibilité"
     },
     "finanzas": {
+      "demo1": "Bonjour, j'ai besoin de conseils pour investir",
+      "demo2": "Bonjour ! Je suis Alex 💰 Quel est votre profil : conservateur, modéré ou agressif ? Et quel montant approximatif ?",
+      "demo3": "Modéré, environ 20 millions",
+      "demo4": "J'ai 3 options pour votre profil. Je vous réserve un appel avec un conseiller certifié ?",
       "name": "Finance",
       "subtitle": "Conseil · Investissements · Comptabilité",
       "agentName": "Alex",
@@ -263,6 +317,10 @@
       "feature4": "Rappels d'échéances et de paiements"
     },
     "servicios-profesionales": {
+      "demo1": "J'ai besoin de conseils juridiques pour mon entreprise",
+      "demo2": "Bonjour ! Dans quel domaine avez-vous besoin d'aide : droit du travail, droit des sociétés, fiscalité ?",
+      "demo3": "Fiscalité",
+      "demo4": "J'ai des disponibilités pour une consultation cette semaine. Je réserve ?",
       "name": "Services Professionnels",
       "subtitle": "Juridique · Conseil · Comptabilité",
       "agentName": "Experto",
@@ -273,6 +331,10 @@
       "feature4": "Devis et propositions par chat"
     },
     "tecnologia": {
+      "demo1": "Bonjour, j'ai besoin d'aide avec mon logiciel",
+      "demo2": "Bonjour ! Est-ce un problème technique ou voulez-vous des infos sur les forfaits et services ?",
+      "demo3": "Problème technique, je n'arrive pas à me connecter",
+      "demo4": "Compris. Je crée un ticket de support prioritaire. Un technicien vous contacte dans 15min.",
       "name": "Technologie",
       "subtitle": "SaaS · Support · Développement",
       "agentName": "Dev",
@@ -283,6 +345,10 @@
       "feature4": "Escalade intelligente par priorité"
     },
     "retail": {
+      "demo1": "Bonjour, avez-vous le t-shirt en taille M ?",
+      "demo2": "Bonjour ! Oui, nous l'avons en M et L. Une couleur en particulier ?",
+      "demo3": "Noir",
+      "demo4": "Disponible ✅ $65k avec livraison gratuite. Je vous le mets de côté ?",
       "name": "Retail",
       "subtitle": "Boutiques · E-commerce · Magasins",
       "agentName": "Shop",
@@ -293,6 +359,10 @@
       "feature4": "Promotions et remises automatiques"
     },
     "pet-services": {
+      "demo1": "Bonjour, j'ai besoin d'une garderie pour mon chien",
+      "demo2": "Bonjour ! Pour quelles dates et quelle est la race de votre compagnon ?",
+      "demo3": "Du vendredi au dimanche, c'est un Beagle",
+      "demo4": "Nous avons de la place 🎉 $45k/nuit, promenades et repas inclus. Je réserve ?",
       "name": "Services pour Animaux",
       "subtitle": "Garderie · Promenades · Toilettage",
       "agentName": "Buddy",
@@ -303,6 +373,10 @@
       "feature4": "Rappels des prochains services"
     },
     "otro": {
+      "demo1": "Bonjour, j'ai besoin d'informations sur vos services",
+      "demo2": "Bonjour ! Avec plaisir. Quel service vous intéresse ?",
+      "demo3": "Je veux un devis",
+      "demo4": "Parfait. Je vous envoie les options disponibles. Préférez-vous que je vous réserve un appel ?",
       "name": "Autre",
       "subtitle": "Toute activité · Personnalisable",
       "agentName": "Asistente",

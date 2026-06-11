@@ -602,61 +602,96 @@ export class KnowledgeService {
         const poolSize = Math.max(topK, options?.poolSize ?? topK * 4);
         const similarityThreshold = options?.similarityThreshold ?? 0;
 
-        const queryEmbedding = await this.generateEmbedding(query, tenantId);
+        await this.ensureKbSearchVector(schema);
+        const queryEmbedding = await this.embedQueryCached(query, tenantId);
         const embeddingStr = `[${queryEmbedding.join(',')}]`;
-        const keywordPattern = `%${query}%`;
+        const regconfig = this.pgRegconfig(options?.language);
 
-        const results = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
-                    kd.title AS title, kd.id AS document_id, kd.language AS doc_language,
-                    (ke.embedding <=> $1::vector) AS distance,
-                    CASE WHEN ke.chunk_text ILIKE $2 THEN 1 ELSE 0 END AS keyword_hit
-             FROM knowledge_embeddings ke
-             JOIN knowledge_documents kd ON kd.id = ke.document_id
-             WHERE kd.status = 'ready'
-             ORDER BY ke.embedding <=> $1::vector
-             LIMIT $3`,
-            [embeddingStr, keywordPattern, poolSize],
-        );
+        // Hybrid retrieval: a vector pool (semantic) + a BM25/tsvector pool
+        // (exact-keyword recall the vector misses), fused with Reciprocal Rank
+        // Fusion for ordering. The BM25 pool is best-effort — empty if search_tsv
+        // isn't backfilled yet or the query has no matching lexemes; then RRF
+        // degrades gracefully to vector-only.
+        const [vectorPool, tsPool] = await Promise.all([
+            this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
+                        kd.title AS title, kd.id AS document_id, kd.language AS doc_language,
+                        (ke.embedding <=> $1::vector) AS distance
+                 FROM knowledge_embeddings ke
+                 JOIN knowledge_documents kd ON kd.id = ke.document_id
+                 WHERE kd.status = 'ready'
+                 ORDER BY ke.embedding <=> $1::vector
+                 LIMIT $2`,
+                [embeddingStr, poolSize]),
+            this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
+                        kd.title AS title, kd.id AS document_id, kd.language AS doc_language
+                 FROM knowledge_embeddings ke
+                 JOIN knowledge_documents kd ON kd.id = ke.document_id
+                 WHERE kd.status = 'ready' AND ke.search_tsv @@ plainto_tsquery($1::regconfig, $2)
+                 ORDER BY ts_rank(ke.search_tsv, plainto_tsquery($1::regconfig, $2)) DESC
+                 LIMIT $3`,
+                [regconfig, query, poolSize]).catch(() => [] as any[]),
+        ]);
 
+        const RRF_K = 60;
         const KEYWORD_BOOST = 0.15;
         const LANG_BOOST = 0.1;
         const wantLang = (options?.language || '').slice(0, 2).toLowerCase();
-        // Graded keyword signal: tokens of the query (accent-insensitive, len>3).
-        // Boost is proportional to how many appear in the chunk — far better than
-        // the previous binary "whole query as one ILIKE" which almost never hit
-        // for multi-word queries (a light, no-index step toward BM25/RRF).
+        // Accent-insensitive query tokens for the graded keyword signal (kept so the
+        // analytics `score` scale and partial-keyword recall don't regress).
         const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
         const queryTokens = [...new Set(norm(query).split(/\s+/).filter(w => w.length > 3))];
-        const enriched = results
-            .map((r: any) => {
-                const vectorScore = 1 - Number(r.distance ?? 0);
-                let keywordBoost = r.keyword_hit ? KEYWORD_BOOST : 0;
+
+        // RRF fuse by chunk_id (rank is 0-based position within each pool).
+        const fused = new Map<string, { row: any; rrf: number; vecSim: number; inTs: boolean }>();
+        vectorPool.forEach((r: any, i: number) => {
+            const c = fused.get(r.chunk_id) || { row: r, rrf: 0, vecSim: 0, inTs: false };
+            c.rrf += 1 / (RRF_K + i);
+            c.vecSim = 1 - Number(r.distance ?? 0);
+            c.row = { ...r, ...c.row };
+            fused.set(r.chunk_id, c);
+        });
+        tsPool.forEach((r: any, i: number) => {
+            const c = fused.get(r.chunk_id) || { row: r, rrf: 0, vecSim: 0, inTs: false };
+            c.rrf += 1 / (RRF_K + i);
+            c.inTs = true;
+            c.row = { ...c.row, ...r };
+            fused.set(r.chunk_id, c);
+        });
+
+        const enriched = [...fused.values()]
+            .map(({ row, rrf, vecSim, inTs }) => {
+                let keywordBoost = inTs ? KEYWORD_BOOST : 0;
                 if (queryTokens.length) {
-                    const chunkNorm = norm(r.chunk_text || '');
+                    const chunkNorm = norm(row.chunk_text || '');
                     const hits = queryTokens.filter(t => chunkNorm.includes(t)).length;
                     if (hits > 0) keywordBoost = Math.max(keywordBoost, KEYWORD_BOOST * (hits / queryTokens.length));
                 }
-                // Soft boost (not a hard filter — would empty monolingual KBs) for
-                // chunks whose document language matches the conversation language.
-                const langBoost = wantLang && (r.doc_language || '').slice(0, 2).toLowerCase() === wantLang ? LANG_BOOST : 0;
-                const score = Math.min(1, Math.max(0, vectorScore + keywordBoost + langBoost));
+                const langBoost = wantLang && (row.doc_language || '').slice(0, 2).toLowerCase() === wantLang ? LANG_BOOST : 0;
+                // `score` stays the vector-similarity-based scale for analytics
+                // continuity (trackRetrieval compares it to KB_USE_THRESHOLD);
+                // ordering is by RRF.
+                const score = Math.min(1, Math.max(0, vecSim + keywordBoost + langBoost));
                 return {
-                    id: r.chunk_id,
-                    document_id: r.document_id,
-                    title: r.title,
-                    chunk_text: r.chunk_text,
-                    chunk_index: r.chunk_index,
-                    metadata: r.metadata,
-                    similarity: vectorScore,
-                    keywordHit: !!r.keyword_hit,
+                    id: row.chunk_id,
+                    document_id: row.document_id,
+                    title: row.title,
+                    chunk_text: row.chunk_text,
+                    chunk_index: row.chunk_index,
+                    metadata: row.metadata,
+                    similarity: vecSim,
+                    keywordHit: inTs || keywordBoost > 0,
                     score,
+                    _rrf: rrf,
                 };
             })
-            .filter(r => r.score >= similarityThreshold)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, topK);
+            // Keep a chunk if it clears the relevance bar OR it's a keyword match
+            // (the BM25 win the pure-vector path would have dropped on threshold).
+            .filter(r => r.score >= similarityThreshold || r.keywordHit)
+            .sort((a, b) => b._rrf - a._rrf || b.score - a.score)
+            .slice(0, topK)
+            .map(({ _rrf, ...rest }) => rest);
 
         // Fire-and-forget analytics tracking
         this.trackRetrieval(schema, tenantId, query, enriched, similarityThreshold, options?.conversationId).catch(() => {});
@@ -932,13 +967,14 @@ export class KnowledgeService {
             }
         }
 
+        await this.ensureKbSearchVector(schema);
         for (let i = 0; i < chunks.length; i++) {
             const embedding = await this.generateEmbedding(chunks[i], tenantId);
             const embeddingStr = `[${embedding.join(',')}]`;
             await this.prisma.executeInTenantSchema(
                 schema,
-                `INSERT INTO knowledge_embeddings (document_id, chunk_index, chunk_text, embedding, metadata)
-                 VALUES ($1::uuid, $2, $3, $4::vector, $5::jsonb)`,
+                `INSERT INTO knowledge_embeddings (document_id, chunk_index, chunk_text, embedding, metadata, search_tsv)
+                 VALUES ($1::uuid, $2, $3, $4::vector, $5::jsonb, to_tsvector('spanish'::regconfig, $3))`,
                 [documentId, i, chunks[i], embeddingStr,
                  JSON.stringify({ char_offset: i * (CHUNK_MAX_CHARS - CHUNK_OVERLAP_CHARS) })],
             );
@@ -1100,7 +1136,9 @@ export class KnowledgeService {
 
     // ─── Embedding ───────────────────────────────────────────────────────────
 
-    private async generateEmbedding(text: string, tenantId?: string): Promise<number[]> {
+    // Public so other services (e.g. CustomerMemoryService) can reuse the same
+    // embedding pipeline + usage tracking instead of building a second OpenAI client.
+    async generateEmbedding(text: string, tenantId?: string): Promise<number[]> {
         // Embeddings currently require OpenAI specifically. Fail with a clear,
         // actionable message instead of an opaque 401 from the SDK when the key
         // is missing (the platform contract only guarantees ≥1 provider of any kind).
@@ -1136,6 +1174,53 @@ export class KnowledgeService {
             }).catch(() => {});
         }
         return response.data[0].embedding;
+    }
+
+    /** Query-embedding cache (Redis) — the same question shouldn't re-hit OpenAI. */
+    private async embedQueryCached(query: string, tenantId?: string): Promise<number[]> {
+        const h = crypto.createHash('sha256').update(query.trim().toLowerCase()).digest('hex').slice(0, 32);
+        const key = `kb:qemb:${tenantId || 'g'}:${h}`;
+        try {
+            const cached = await this.redis.getJson<number[]>(key);
+            if (cached && cached.length) return cached;
+        } catch { /* fall through and compute */ }
+        const emb = await this.generateEmbedding(query, tenantId);
+        this.redis.setJson(key, emb, 3600).catch(() => {});
+        return emb;
+    }
+
+    /** Postgres text-search config for a language (default Spanish — LatAm market). */
+    private pgRegconfig(lang?: string): 'spanish' | 'english' | 'portuguese' | 'french' {
+        switch ((lang || '').slice(0, 2).toLowerCase()) {
+            case 'en': return 'english';
+            case 'pt': return 'portuguese';
+            case 'fr': return 'french';
+            default: return 'spanish';
+        }
+    }
+
+    /**
+     * Lazily add the tsvector column + GIN index for BM25 search and backfill it.
+     * Cached per-schema in Redis like the other ensure* helpers. The one-time
+     * backfill is best-effort: on big KBs it may hit the tx timeout — that's fine,
+     * un-backfilled rows just don't match the BM25 pool (the vector pool still
+     * returns them) until they're re-ingested.
+     */
+    private async ensureKbSearchVector(schema: string): Promise<void> {
+        const cacheKey = `kb_search_tsv:${schema}`;
+        try { if (await this.redis.get(cacheKey)) return; } catch { /* check fresh */ }
+        try {
+            await this.prisma.executeInTenantSchema(schema,
+                `ALTER TABLE knowledge_embeddings ADD COLUMN IF NOT EXISTS search_tsv tsvector`);
+            await this.prisma.executeInTenantSchema(schema,
+                `CREATE INDEX IF NOT EXISTS idx_ke_tsv ON knowledge_embeddings USING gin (search_tsv)`);
+            await this.prisma.executeInTenantSchema(schema,
+                `UPDATE knowledge_embeddings SET search_tsv = to_tsvector('spanish'::regconfig, chunk_text) WHERE search_tsv IS NULL`)
+                .catch(() => {});
+        } catch (e: any) {
+            if (!/already exists|duplicate|23505|42P07/i.test(e?.message || '')) this.logger.warn(`[KB tsv] ensure failed: ${e.message}`);
+        }
+        this.redis.set(cacheKey, '1', 86400).catch(() => {});
     }
 
     // ─── Public Knowledge Base ────────────────────────────────────────────────

@@ -3,6 +3,18 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AgentTestService } from '../conversations/agent-test.service';
 import { QualityService } from '../quality/quality.service';
 
+export type ActionAssertionType = 'row_exists' | 'row_count' | 'no_row';
+
+/** A declarative assertion about a DB side-effect the agent should (or shouldn't) cause. */
+export interface ExpectedAction {
+    type: ActionAssertionType;
+    table: string;                  // must be in VERIFIABLE_TABLES
+    /** column → expected value, or { op:'eq'|'ilike'|'date_eq'|'time_eq', value }. */
+    where?: Record<string, any>;
+    count?: number;                 // for row_count
+    description?: string;
+}
+
 export interface EvalScenarioInput {
     key: string;
     title: string;
@@ -12,6 +24,8 @@ export interface EvalScenarioInput {
     messages: string[];
     /** Free-text description of what a correct handling looks like (judged). */
     criteria?: string;
+    /** τ²-style: DB side-effects to assert after the run (tools ON, sandbox contact). */
+    expectedActions?: ExpectedAction[];
 }
 
 export interface EvalGateResult {
@@ -24,6 +38,14 @@ export interface EvalGateResult {
 
 const DEFAULT_THRESHOLD = 7;     // overall (0-10) the suite must average to pass
 const MAX_SCENARIO_MESSAGES = 8;
+const MAX_K = 5;
+// Fixed sandbox contact (valid UUID, hex-only) used for action verification. All
+// writes/asserts/cleanup are scoped to it so an eval never touches real customer data.
+const EVAL_SANDBOX_CONTACT_ID = '00000000-0000-4000-8000-00000000eba1';
+// Tables verifyActions may read + cleanupSandbox may delete from. Limited to writers
+// whose tool path was audited for evalMode (suppresses outbound side-effects). Add a
+// table here ONLY after its writer honours evalMode.
+const VERIFIABLE_TABLES = new Set(['appointments']);
 
 /**
  * Evals as a deploy gate (#2). Runs a CURATED golden set of conversations through
@@ -61,6 +83,23 @@ export class EvalService {
                     criteria TEXT,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                  )`);
+            await this.prisma.executeInTenantSchema(schema,
+                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS expected_actions JSONB NOT NULL DEFAULT '[]'::jsonb`);
+            await this.prisma.executeInTenantSchema(schema,
+                `CREATE TABLE IF NOT EXISTS eval_runs (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    agent_id UUID,
+                    k INT NOT NULL DEFAULT 1,
+                    threshold NUMERIC,
+                    passed BOOLEAN,
+                    avg_score NUMERIC,
+                    eval_activable BOOLEAN NOT NULL DEFAULT false,
+                    results JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    trigger TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                 )`);
+            await this.prisma.executeInTenantSchema(schema,
+                `CREATE INDEX IF NOT EXISTS idx_eval_runs_agent ON eval_runs (agent_id)`);
             this.ensured.add(schema);
         } catch (e: any) {
             if (/already exists|duplicate|23505|42P07/i.test(e?.message || '')) this.ensured.add(schema);
@@ -81,11 +120,12 @@ export class EvalService {
 
     private async fetch(schema: string): Promise<any[]> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, key, title, vertical, language, messages, criteria FROM eval_scenarios ORDER BY created_at`);
+            `SELECT id, key, title, vertical, language, messages, criteria, expected_actions FROM eval_scenarios ORDER BY created_at`);
         return (rows || []).map(r => ({
             id: r.id, key: r.key, title: r.title, vertical: r.vertical, language: r.language,
             messages: Array.isArray(r.messages) ? r.messages : [],
             criteria: r.criteria || undefined,
+            expectedActions: Array.isArray(r.expected_actions) ? r.expected_actions : [],
         }));
     }
 
@@ -96,12 +136,14 @@ export class EvalService {
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTable(schema);
         await this.prisma.executeInTenantSchema(schema,
-            `INSERT INTO eval_scenarios (key, title, vertical, language, messages, criteria)
-             VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+            `INSERT INTO eval_scenarios (key, title, vertical, language, messages, criteria, expected_actions)
+             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb)
              ON CONFLICT (key) DO UPDATE SET title = EXCLUDED.title, vertical = EXCLUDED.vertical,
-                 language = EXCLUDED.language, messages = EXCLUDED.messages, criteria = EXCLUDED.criteria`,
+                 language = EXCLUDED.language, messages = EXCLUDED.messages, criteria = EXCLUDED.criteria,
+                 expected_actions = EXCLUDED.expected_actions`,
             [def.key, def.title, def.vertical || null, def.language || 'es',
-             JSON.stringify(def.messages.slice(0, MAX_SCENARIO_MESSAGES)), def.criteria || null]);
+             JSON.stringify(def.messages.slice(0, MAX_SCENARIO_MESSAGES)), def.criteria || null,
+             JSON.stringify(Array.isArray(def.expectedActions) ? def.expectedActions : [])]);
     }
 
     async deleteScenario(tenantId: string, id: string): Promise<void> {
@@ -153,6 +195,171 @@ export class EvalService {
             resolved: !!judge.resolved,
             flags: judge.flags || [],
         };
+    }
+
+    /**
+     * τ²-style gate (Fase-2): runs the golden set with action verification + pass^k.
+     * Scenarios with expectedActions run with TOOLS ENABLED against a sandbox contact
+     * in evalMode (the writer suppresses outbound side-effects but still does the local
+     * INSERT), then the DB is asserted and cleaned up. Manual trigger (no BullMQ auto-run).
+     */
+    async runGateV2(
+        tenantId: string,
+        agentId: string,
+        opts?: { threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number; trigger?: string },
+    ): Promise<any> {
+        if (!agentId) throw new BadRequestException('agentId is required');
+        const schema = await this.prisma.getTenantSchemaName(tenantId);
+        await this.ensureTable(schema);
+        await this.ensureSandboxContact(schema);
+
+        const scenarios = await this.listScenarios(tenantId);
+        const threshold = opts?.threshold ?? DEFAULT_THRESHOLD;
+        const k = Math.max(1, Math.min(opts?.k ?? 1, MAX_K));
+        const passPolicy = opts?.passPolicy ?? 'all';
+
+        const out: any[] = [];
+        for (const sc of scenarios) {
+            try {
+                const hasActions = Array.isArray(sc.expectedActions) && sc.expectedActions.length > 0;
+                out.push(await this.runPassK(tenantId, agentId, schema, sc, k, passPolicy, threshold, hasActions));
+            } catch (e: any) {
+                this.logger.warn(`[Eval] scenario ${sc.key} failed: ${e.message}`);
+                out.push({ key: sc.key, title: sc.title, k, passes: 0, passed: false, score: 0, error: e.message });
+            }
+        }
+
+        const scored = out.filter(r => !r.error);
+        const avgScore = scored.length ? Math.round((scored.reduce((s, r) => s + r.score, 0) / scored.length) * 100) / 100 : 0;
+        const passed = out.length > 0 && out.every(r => !r.error && r.passed);
+        const evalActivable = passed && avgScore >= (opts?.activationThreshold ?? threshold);
+        const result = { passed, avgScore, threshold, k, passPolicy, total: out.length, scenarios: out, evalActivable };
+        await this.persistRun(schema, agentId, result, opts?.trigger || 'manual');
+        return result;
+    }
+
+    /** Run a scenario k times; pass per the policy (all / majority). */
+    private async runPassK(tenantId: string, agentId: string, schema: string, sc: any, k: number, passPolicy: 'all' | 'majority', threshold: number, hasActions: boolean) {
+        const runs: Array<{ score: number; passed: boolean; actionChecks?: any[] }> = [];
+        for (let i = 0; i < k; i++) runs.push(await this.runScenarioWithActions(tenantId, agentId, schema, sc, threshold, hasActions));
+        const passes = runs.filter(r => r.passed).length;
+        const required = passPolicy === 'all' ? k : Math.ceil(k / 2);
+        return {
+            key: sc.key,
+            title: sc.title,
+            k,
+            passes,
+            passed: passes >= required,
+            score: Math.round((runs.reduce((s, r) => s + r.score, 0) / k) * 100) / 100,
+            actionChecks: runs[runs.length - 1]?.actionChecks,
+        };
+    }
+
+    /** One scenario run: judge score + (if expectedActions) verified DB side-effects. */
+    private async runScenarioWithActions(tenantId: string, agentId: string, schema: string, sc: any, threshold: number, hasActions: boolean) {
+        if (hasActions) await this.cleanupSandbox(schema); // start from a clean slate
+        const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+        const lines: string[] = [];
+        for (const msg of (sc.messages || []).slice(0, MAX_SCENARIO_MESSAGES)) {
+            const res = await this.agentTest.test(
+                tenantId, agentId,
+                { message: msg, conversationHistory: [...history], channelType: 'whatsapp' as any },
+                hasActions
+                    ? { disableTools: false, evalMode: true, sandboxContactId: EVAL_SANDBOX_CONTACT_ID }
+                    : { disableTools: true },
+            );
+            const reply = res?.reply || '';
+            lines.push(`Cliente: ${msg}`, `Agente: ${reply}`);
+            history.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
+        }
+        let transcript = lines.join('\n');
+        if (sc.criteria) transcript += `\n\n[Criterio esperado para esta conversación: ${sc.criteria}]`;
+        const judge = await this.quality.judgeTranscript(tenantId, transcript);
+        const score = typeof judge.overall === 'number' ? judge.overall : 0;
+
+        let actionsPassed = true;
+        let actionChecks: any[] | undefined;
+        if (hasActions) {
+            const v = await this.verifyActions(schema, sc.expectedActions, EVAL_SANDBOX_CONTACT_ID);
+            actionsPassed = v.passed;
+            actionChecks = v.checks;
+            await this.cleanupSandbox(schema); // rollback — no residue in the tenant DB
+        }
+        return { score, passed: score >= threshold && actionsPassed, actionChecks };
+    }
+
+    /** Assert each expected DB side-effect, scoped strictly to the sandbox contact. */
+    private async verifyActions(schema: string, expected: ExpectedAction[], contactId: string): Promise<{ passed: boolean; checks: any[] }> {
+        const checks: any[] = [];
+        for (const a of expected || []) {
+            if (!VERIFIABLE_TABLES.has(a.table)) {
+                checks.push({ ok: false, description: a.description || a.table, detail: 'tabla no permitida' });
+                continue;
+            }
+            const conds = ['contact_id = $1::uuid'];
+            const params: any[] = [contactId];
+            for (const [col, raw] of Object.entries(a.where || {})) {
+                if (!/^[a-z_][a-z0-9_]*$/i.test(col)) continue; // safe identifier only (no injection)
+                const m: any = (raw && typeof raw === 'object' && 'op' in (raw as any)) ? raw : { op: 'eq', value: raw };
+                const i = params.length + 1;
+                switch (m.op) {
+                    case 'ilike': conds.push(`${col} ILIKE $${i}`); params.push(m.value); break;
+                    case 'date_eq': conds.push(`DATE(${col}) = $${i}::date`); params.push(m.value); break;
+                    case 'time_eq': conds.push(`to_char(${col}, 'HH24:MI') = $${i}`); params.push(m.value); break;
+                    default: conds.push(`${col} = $${i}`); params.push(m.value);
+                }
+            }
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS cnt FROM "${schema}".${a.table} WHERE ${conds.join(' AND ')}`, params)
+                .catch(() => [{ cnt: 0 }]);
+            const cnt = Number(rows?.[0]?.cnt || 0);
+            let ok: boolean;
+            if (a.type === 'no_row') ok = cnt === 0;
+            else if (a.type === 'row_count') ok = cnt === (a.count ?? 1);
+            else ok = cnt >= 1;
+            checks.push({ ok, description: a.description || `${a.type} ${a.table}`, detail: `cnt=${cnt}` });
+        }
+        return { passed: checks.every(c => c.ok), checks };
+    }
+
+    private async ensureSandboxContact(schema: string): Promise<void> {
+        await this.prisma.executeInTenantSchema(schema,
+            `INSERT INTO contacts (id, name, phone, channel_type, created_at, updated_at)
+             VALUES ($1::uuid, 'Eval Sandbox', 'eval-sandbox-0000', 'web_widget', NOW(), NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [EVAL_SANDBOX_CONTACT_ID]).catch(() => {});
+    }
+
+    /** Delete the sandbox contact's rows from the verifiable tables (deterministic rollback). */
+    private async cleanupSandbox(schema: string): Promise<void> {
+        for (const t of VERIFIABLE_TABLES) {
+            await this.prisma.executeInTenantSchema(schema,
+                `DELETE FROM "${schema}".${t} WHERE contact_id = $1::uuid`, [EVAL_SANDBOX_CONTACT_ID]).catch(() => {});
+        }
+    }
+
+    private async persistRun(schema: string, agentId: string, result: any, trigger: string): Promise<void> {
+        try {
+            await this.prisma.executeInTenantSchema(schema,
+                `INSERT INTO eval_runs (agent_id, k, threshold, passed, avg_score, eval_activable, results, trigger, created_at)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb, $8, NOW())`,
+                [agentId, result.k, result.threshold, result.passed, result.avgScore, result.evalActivable, JSON.stringify(result.scenarios), trigger]);
+        } catch (e: any) {
+            this.logger.warn(`[Eval] persist run failed: ${e.message}`);
+        }
+    }
+
+    /** Recent eval runs (for the dashboard). */
+    async listRuns(tenantId: string, agentId?: string): Promise<any[]> {
+        const schema = await this.prisma.getTenantSchemaName(tenantId);
+        await this.ensureTable(schema);
+        const cols = `id, agent_id, k, threshold, passed, avg_score, eval_activable, trigger, created_at`;
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            agentId
+                ? `SELECT ${cols} FROM eval_runs WHERE agent_id = $1::uuid ORDER BY created_at DESC LIMIT 50`
+                : `SELECT ${cols} FROM eval_runs ORDER BY created_at DESC LIMIT 50`,
+            agentId ? [agentId] : []);
+        return rows || [];
     }
 
     /** Seed a few generic, vertical-agnostic scenarios so the gate is usable out of the box. */

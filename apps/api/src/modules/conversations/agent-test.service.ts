@@ -57,7 +57,7 @@ export class AgentTestService {
         tenantId: string,
         agentId: string,
         req: TestAgentRequest,
-        options?: { disableTools?: boolean },
+        options?: { disableTools?: boolean; evalMode?: boolean; sandboxContactId?: string },
     ): Promise<TestAgentResponse> {
         const startedAt = Date.now();
 
@@ -208,7 +208,8 @@ export class AgentTestService {
                     const args = this.safeJsonParse(tc.function.arguments);
                     const tStart = Date.now();
                     const result = await this.toolExecutor.execute(
-                        schemaName, tenantId, TEST_CONTACT_ID, tc.function.name, args,
+                        schemaName, tenantId, options?.sandboxContactId || TEST_CONTACT_ID, tc.function.name, args,
+                        undefined, { evalMode: options?.evalMode },
                     );
                     const dur = Date.now() - tStart;
                     toolCalls.push({

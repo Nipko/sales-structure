@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -38,5 +38,21 @@ export class EvalController {
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async run(@Param('tenantId') tenantId: string, @Body() body: { agentId: string; threshold?: number }) {
         return { success: true, data: await this.evals.runGate(tenantId, body.agentId, body.threshold) };
+    }
+
+    /** τ²-style gate: action verification (sandbox + evalMode) + pass^k. Manual trigger. */
+    @Post(':tenantId/run-actions')
+    @Roles('super_admin', 'tenant_admin')
+    async runActions(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { agentId: string; threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number },
+    ) {
+        return { success: true, data: await this.evals.runGateV2(tenantId, body.agentId, body) };
+    }
+
+    @Get(':tenantId/runs')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async runs(@Param('tenantId') tenantId: string, @Query('agentId') agentId?: string) {
+        return { success: true, data: await this.evals.listRuns(tenantId, agentId) };
     }
 }

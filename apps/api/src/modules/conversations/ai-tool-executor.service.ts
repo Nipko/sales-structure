@@ -62,6 +62,7 @@ export class AIToolExecutorService {
         toolName: string,
         args: Record<string, any>,
         conversationId?: string,
+        opts?: { evalMode?: boolean },
     ): Promise<any> {
         this.logger.log(`[Tool] Executing: ${toolName} args=${JSON.stringify(args)}`);
 
@@ -79,7 +80,7 @@ export class AIToolExecutorService {
                     return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId);
 
                 case 'create_appointment':
-                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId);
+                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode);
 
                 case 'cancel_appointment':
                     return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason);
@@ -1111,6 +1112,7 @@ export class AIToolExecutorService {
         schema: string, tenantId: string, contactId: string,
         args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string },
         conversationId?: string,
+        evalMode?: boolean,
     ): Promise<any> {
         // Resolve serviceId — LLM may pass name instead of UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(args.serviceId);
@@ -1212,9 +1214,10 @@ export class AIToolExecutorService {
         const isOnline = svc.location_type === 'online';
         const location = (svc.location_type === 'in_person' && svc.location_address) ? svc.location_address : undefined;
 
-        // Sync to Google/Microsoft Calendar if any active integration exists
+        // Sync to Google/Microsoft Calendar if any active integration exists.
+        // Skipped in evalMode so an eval never writes to the tenant's real calendar.
         let meetingUrl: string | undefined;
-        try {
+        if (!evalMode) try {
             const calUsers: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT user_id FROM "${schema}".calendar_integrations WHERE is_active = true LIMIT 1`,
             );
@@ -1261,8 +1264,10 @@ export class AIToolExecutorService {
             } catch {}
         }
 
-        // Emit event so notifications (WhatsApp confirmation, email, calendar) are triggered
-        this.eventEmitter.emit('appointment.created', {
+        // Emit event so notifications (WhatsApp confirmation, email, calendar) are
+        // triggered. In evalMode the INSERT above still happens (so verifyActions can
+        // assert it) but NO outbound side-effect fires (no message/email/webhook/calendar).
+        if (!evalMode) this.eventEmitter.emit('appointment.created', {
             schemaName: schema,
             appointment: {
                 id: apt.id,

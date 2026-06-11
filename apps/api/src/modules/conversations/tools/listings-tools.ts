@@ -56,4 +56,15 @@ export const LISTINGS_TOOLS: ToolDefinition[] = [
             required: ['listingId'],
         },
     },
+    {
+        name: 'send_listing_image',
+        description: 'Send the customer a real photo of a specific listing. Use when showing/recommending a property would benefit from a visual. Only call with a listingId you got from search_listings.',
+        parameters: {
+            type: 'object',
+            properties: {
+                listingId: { type: 'string', description: 'Listing UUID returned by search_listings' },
+            },
+            required: ['listingId'],
+        },
+    },
 ];

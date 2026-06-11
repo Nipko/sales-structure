@@ -108,6 +108,12 @@ export class AIToolExecutorService {
                 case 'send_product_image':
                     return this.sendProductImage(schemaName, args.productId);
 
+                case 'send_property_image':
+                    return this.sendPropertyImage(schemaName, args.propertyId);
+
+                case 'send_listing_image':
+                    return this.sendListingImage(schemaName, args.listingId);
+
                 case 'search_faqs':
                     return this.searchFaqs(tenantId, args.query, args.limit);
 
@@ -449,6 +455,38 @@ export class AIToolExecutorService {
         // `_mediaToSend` is consumed by ConversationsService (which has the channel
         // routing) and stripped before the result reaches the LLM.
         return { success: true, productName: product.name, _mediaToSend: { url, caption: product.name || undefined } };
+    }
+
+    /** Send a vacation-rental property's real photo (URL from the DB, never the LLM). */
+    private async sendPropertyImage(schema: string, propertyId: string): Promise<any> {
+        try {
+            const p = await this.propertiesService.getById(schema, propertyId);
+            if (!p) return { error: 'Property not found' };
+            const url = Array.isArray(p.images) && p.images.length ? p.images[0] : null;
+            if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+                return { error: 'Esa propiedad no tiene una imagen disponible.' };
+            }
+            return { success: true, propertyName: p.name, _mediaToSend: { url, caption: p.name || undefined } };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] send_property_image failed: ${e.message}`);
+            return { error: 'No se pudo enviar la imagen de la propiedad.' };
+        }
+    }
+
+    /** Send a real-estate listing's real photo (URL from the DB, never the LLM). */
+    private async sendListingImage(schema: string, listingId: string): Promise<any> {
+        try {
+            const l = await this.listingsService.getById(schema, listingId);
+            if (!l) return { error: 'listing_not_found' };
+            const url = Array.isArray(l.images) && l.images.length ? l.images[0] : null;
+            if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+                return { error: 'Ese inmueble no tiene una imagen disponible.' };
+            }
+            return { success: true, listingName: l.name, _mediaToSend: { url, caption: l.name || undefined } };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] send_listing_image failed: ${e.message}`);
+            return { error: 'No se pudo enviar la imagen del inmueble.' };
+        }
     }
 
     private async checkStock(schema: string, productIdOrName: string): Promise<any> {

@@ -87,4 +87,15 @@ export const VACATION_RENTAL_TOOLS: ToolDefinition[] = [
         description: 'List all property bookings for the current guest. Use before cancel_property_booking so the guest can identify which booking to cancel.',
         parameters: { type: 'object', properties: {} },
     },
+    {
+        name: 'send_property_image',
+        description: 'Send the guest a real photo of a specific property. Use when showing/recommending a property would benefit from a visual (e.g. the guest asks to see it). Only call with a propertyId you got from list_properties.',
+        parameters: {
+            type: 'object',
+            properties: {
+                propertyId: { type: 'string', description: 'Property UUID (retrieve it by calling list_properties first; do NOT pass the property name)' },
+            },
+            required: ['propertyId'],
+        },
+    },
 ];

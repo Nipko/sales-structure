@@ -183,6 +183,9 @@
       "feature4": "Kitchen notification sound"
     },
     "gimnasios": {
+      "pain1": "Prospects asking about plans who don't get a reply in time.",
+      "pain2": "Classes with empty spots you could fill with a timely nudge.",
+      "pain3": "Renewals that lapse because no one follows up.",
       "demo1": "Hi, info about memberships",
       "demo2": "Hi! I'm Coach 💪 We have monthly $89k, quarterly $240k (you save $27k). Shall I book you a visit?",
       "demo3": "Yes, tomorrow works",
@@ -214,6 +217,9 @@
       "feature4": "Automatic lead qualification"
     },
     "turismo": {
+      "pain1": "Package inquiries that come in at night and go cold without a reply.",
+      "pain2": "Quoting the same thing over and over eats up hours each week.",
+      "pain3": "Bookings and dates that get confused across chats and emails.",
       "demo1": "Hi, we're looking for a 4-night package to Cartagena",
       "demo2": "Hi! I'm Maya ✈️ I have 3 options. How many people and what dates?",
       "demo3": "2 adults, July 15 to 19",
@@ -228,6 +234,9 @@
       "feature4": "Check-in instructions to guests"
     },
     "educacion": {
+      "pain1": "Prospective students who ask and never get a follow-up.",
+      "pain2": "Enrollments lost because questions aren't answered in time.",
+      "pain3": "Booking level tests and classes by hand drains the team.",
       "demo1": "I want info about English courses",
       "demo2": "Hi! I'm Ana 📚 We have A1-C2 courses, in-person and online. Do you know your current level?",
       "demo3": "No, I've never taken a test",
@@ -242,6 +251,9 @@
       "feature4": "Payment tracking per enrollment"
     },
     "seguros": {
+      "pain1": "Quotes that take too long and the client goes to another insurer.",
+      "pain2": "Renewals that lapse for lack of timely follow-up.",
+      "pain3": "Answering the same coverage questions over and over.",
       "demo1": "I need a car insurance quote",
       "demo2": "Hi! I'm Roberto 🛡️ Happy to quote you. Make, model and year of the vehicle?",
       "demo3": "Mazda CX-5 2023",

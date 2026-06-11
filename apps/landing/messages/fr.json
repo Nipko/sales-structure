@@ -183,6 +183,9 @@
       "feature4": "Son de notification en cuisine"
     },
     "gimnasios": {
+      "pain1": "Des prospects qui demandent les abonnements sans réponse à temps.",
+      "pain2": "Des cours avec des places vides qu'on pourrait remplir en prévenant à temps.",
+      "pain3": "Des renouvellements qui expirent faute de suivi.",
       "demo1": "Bonjour, des infos sur les abonnements",
       "demo2": "Bonjour ! Je suis Coach 💪 Nous avons mensuel $89k, trimestriel $240k (vous économisez $27k). Je vous réserve une visite ?",
       "demo3": "Oui, demain je peux",
@@ -214,6 +217,9 @@
       "feature4": "Qualification automatique des leads"
     },
     "turismo": {
+      "pain1": "Des demandes de forfaits qui arrivent la nuit et se refroidissent sans réponse.",
+      "pain2": "Refaire le même devis encore et encore prend des heures chaque semaine.",
+      "pain3": "Des réservations et des dates qui se mélangent entre chats et e-mails.",
       "demo1": "Bonjour, nous cherchons un forfait de 4 nuits à Carthagène",
       "demo2": "Bonjour ! Je suis Maya ✈️ J'ai 3 options. Combien de personnes et quelles dates ?",
       "demo3": "2 adultes, du 15 au 19 juillet",
@@ -228,6 +234,9 @@
       "feature4": "Instructions de check-in à l'invité"
     },
     "educacion": {
+      "pain1": "Des intéressés par les cours qui demandent et n'ont jamais de suivi.",
+      "pain2": "Des inscriptions perdues faute de réponse à temps.",
+      "pain3": "Planifier les tests de niveau et les cours à la main épuise l'équipe.",
       "demo1": "Je veux des infos sur les cours d'anglais",
       "demo2": "Bonjour ! Je suis Ana 📚 Nous avons des cours A1-C2, en présentiel et en ligne. Connaissez-vous votre niveau actuel ?",
       "demo3": "Non, je n'ai jamais fait de test",
@@ -242,6 +251,9 @@
       "feature4": "Suivi des paiements par inscription"
     },
     "seguros": {
+      "pain1": "Des devis trop lents et le client part chez un autre assureur.",
+      "pain2": "Des renouvellements qui expirent faute de suivi à temps.",
+      "pain3": "Répondre sans cesse aux mêmes questions de couverture.",
       "demo1": "J'ai besoin d'un devis d'assurance auto",
       "demo2": "Bonjour ! Je suis Roberto 🛡️ Avec plaisir, je vous fais un devis. Marque, modèle et année du véhicule ?",
       "demo3": "Mazda CX-5 2023",

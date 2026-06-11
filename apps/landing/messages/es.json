@@ -169,6 +169,9 @@
       "feature4": "Sonido de notificación en cocina"
     },
     "gimnasios": {
+      "pain1": "Prospectos que piden info de planes y no reciben respuesta a tiempo.",
+      "pain2": "Clases con cupos vacíos que se podrían llenar avisando a tiempo.",
+      "pain3": "Renovaciones que se vencen sin que nadie haga seguimiento.",
       "name": "Gimnasios",
       "subtitle": "Fitness · Yoga · CrossFit",
       "agentName": "Coach",
@@ -192,6 +195,9 @@
       "feature4": "Calificación automática de leads"
     },
     "turismo": {
+      "pain1": "Consultas de paquetes que llegan de noche y se enfrían sin respuesta.",
+      "pain2": "Cotizar lo mismo una y otra vez consume horas cada semana.",
+      "pain3": "Reservas y fechas que se confunden entre chats y correos.",
       "name": "Turismo",
       "subtitle": "Tours · Paquetes · Alquiler vacacional",
       "agentName": "Maya",
@@ -202,6 +208,9 @@
       "feature4": "Instrucciones de check-in al huésped"
     },
     "educacion": {
+      "pain1": "Interesados en cursos que preguntan y nunca reciben seguimiento.",
+      "pain2": "Matrículas que se caen por no resolver dudas a tiempo.",
+      "pain3": "Agendar pruebas de nivel y clases a mano consume al equipo.",
       "name": "Educación",
       "subtitle": "Escuelas · Idiomas · Coaching",
       "agentName": "Ana",
@@ -212,6 +221,9 @@
       "feature4": "Tracking de pagos por inscripción"
     },
     "seguros": {
+      "pain1": "Cotizaciones que se demoran y el cliente se va con otra aseguradora.",
+      "pain2": "Renovaciones que se vencen por falta de seguimiento oportuno.",
+      "pain3": "Responder las mismas preguntas de coberturas una y otra vez.",
       "name": "Seguros",
       "subtitle": "Salud · Auto · Hogar · Vida",
       "agentName": "Roberto",

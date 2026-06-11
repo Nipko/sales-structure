@@ -183,6 +183,9 @@
       "feature4": "Som de notificação na cozinha"
     },
     "gimnasios": {
+      "pain1": "Prospects que pedem info de planos e não recebem resposta a tempo.",
+      "pain2": "Aulas com vagas vazias que dariam para preencher avisando a tempo.",
+      "pain3": "Renovações que vencem sem que ninguém faça o acompanhamento.",
       "demo1": "Olá, info sobre planos",
       "demo2": "Olá! Sou o Coach 💪 Temos mensal $89k, trimestral $240k (você economiza $27k). Agendo uma visita?",
       "demo3": "Sim, amanhã posso",
@@ -214,6 +217,9 @@
       "feature4": "Qualificação automática de leads"
     },
     "turismo": {
+      "pain1": "Consultas de pacotes que chegam à noite e esfriam sem resposta.",
+      "pain2": "Cotar a mesma coisa repetidamente consome horas toda semana.",
+      "pain3": "Reservas e datas que se confundem entre chats e e-mails.",
       "demo1": "Olá, procuramos pacote para Cartagena 4 noites",
       "demo2": "Olá! Sou a Maya ✈️ Tenho 3 opções. Quantas pessoas e quais datas?",
       "demo3": "2 adultos, de 15 a 19 de julho",
@@ -228,6 +234,9 @@
       "feature4": "Instruções de check-in ao hóspede"
     },
     "educacion": {
+      "pain1": "Interessados em cursos que perguntam e nunca recebem acompanhamento.",
+      "pain2": "Matrículas que caem por não responder dúvidas a tempo.",
+      "pain3": "Agendar testes de nível e aulas na mão consome a equipe.",
       "demo1": "Quero info sobre cursos de inglês",
       "demo2": "Olá! Sou a Ana 📚 Temos cursos A1-C2, presencial e online. Você sabe o seu nível atual?",
       "demo3": "Não, nunca fiz teste",
@@ -242,6 +251,9 @@
       "feature4": "Tracking de pagamentos por matrícula"
     },
     "seguros": {
+      "pain1": "Cotações que demoram e o cliente vai para outra seguradora.",
+      "pain2": "Renovações que vencem por falta de acompanhamento oportuno.",
+      "pain3": "Responder as mesmas perguntas de cobertura repetidamente.",
       "demo1": "Preciso de cotação de seguro auto",
       "demo2": "Olá! Sou o Roberto 🛡️ Com prazer te coto. Marca, modelo e ano do veículo?",
       "demo3": "Mazda CX-5 2023",

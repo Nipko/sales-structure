@@ -802,6 +802,8 @@ export class ConversationsService {
             channelAccountId: msg.channelAccountId,
             to: msg.contactId,
             content: { type: 'text', text },
+            // Keep e2e latency coverage consistent with sendResponse/sendMedia.
+            metadata: { inboundTs: this.inboundTs(msg) },
         };
 
         const accessToken = await this.resolveAccessToken(tenantId, msg.channelType);
@@ -897,8 +899,8 @@ export class ConversationsService {
             channelAccountId: inboundMsg.channelAccountId,
             to: inboundMsg.contactId,
             content: { type: 'text', text },
-            // Webhook-receipt marker → lets the outbound processor measure end-to-end
-            // (webhook → customer) latency on send.
+            // Customer-message timestamp → lets the outbound processor measure
+            // customer→reply latency on send (approximate; see inboundTs()).
             metadata: { inboundTs: this.inboundTs(inboundMsg) },
         };
 
@@ -922,7 +924,13 @@ export class ConversationsService {
         await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
     }
 
-    /** Epoch ms of the inbound webhook receipt (for end-to-end latency measurement). */
+    /**
+     * Epoch ms of the customer's inbound message, used as the start point for the
+     * customer→reply latency metric. NOTE: for Meta/Telegram this is the PROVIDER's
+     * timestamp (second granularity, their clock), not our webhook-receipt time — so
+     * the metric mixes clocks (bounded; NTP-synced) and is approximate observability,
+     * not a precise SLA. A server-side receivedAt would remove the skew (follow-up).
+     */
     private inboundTs(inboundMsg: NormalizedMessage): number {
         const t = inboundMsg.timestamp as any;
         return t instanceof Date ? t.getTime() : new Date(t).getTime();
@@ -1765,6 +1773,10 @@ export class ConversationsService {
                  WHERE id = $1::uuid`,
                 [conversation.id],
             );
+
+            // Trace failed turns too — they're the most valuable for debugging/evals.
+            turnTrace.add('decision', 'error', { error: e?.message });
+            try { this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
 
             return ERROR_FALLBACK_MSG;
         }

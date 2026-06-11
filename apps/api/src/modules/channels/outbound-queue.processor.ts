@@ -65,12 +65,14 @@ export class OutboundQueueProcessor extends WorkerHost {
         // Count the quota only on a SUCCESSFUL send (not on every check/retry).
         await this.throttle.recordUsage(outbound.tenantId, 'outbound').catch(() => {});
 
-        // End-to-end latency (webhook receipt → customer) for observability.
+        // Customer→reply latency (customer's message time → our reply sent) for
+        // observability. Approximate: inboundTs is the provider's timestamp for Meta/
+        // Telegram, so it mixes clocks (bounded). The guard drops skew/absurd values.
         const inboundTs = Number((outbound.metadata as any)?.inboundTs);
         if (Number.isFinite(inboundTs) && inboundTs > 0) {
             const e2eMs = Date.now() - inboundTs;
             this.recordE2e(outbound.channelType, e2eMs).catch(() => {});
-            this.logger.log(`[Outbound] e2e webhook→customer ${e2eMs}ms channel=${outbound.channelType}`);
+            this.logger.log(`[Outbound] customer→reply ${e2eMs}ms channel=${outbound.channelType}`);
         }
 
         const durationMs = Date.now() - startTime;

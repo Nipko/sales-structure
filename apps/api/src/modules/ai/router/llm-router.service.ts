@@ -82,7 +82,11 @@ export class LLMRouterService {
     private readonly TTFT_RESERVOIR = 50;          // max samples kept per provider
     private readonly TTFT_WINDOW_SEC = 300;
     private readonly TTFT_P95_THRESHOLD_MS = 8000; // sustained p95 over this ⇒ degrade
-    private readonly TTFT_MIN_SAMPLES = 8;         // don't judge on too few samples
+    // Min samples before the p95 is trustworthy. MUST be ≥20: below that, the p95 index
+    // (ceil(0.95*n)-1) lands on the MAX sample, so a single slow first-token would
+    // degrade the provider globally (the key is per-provider, fed only by the widget
+    // stream). At n≥20 it takes ≥2 slow samples — a real sustained-slowness signal.
+    private readonly TTFT_MIN_SAMPLES = 20;
 
     constructor(
         @Inject('LLM_PROVIDERS') private providers: ILLMProvider[],

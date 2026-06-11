@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { AgentTestService } from '../conversations/agent-test.service';
 import { QualityService } from '../quality/quality.service';
 
@@ -67,6 +68,7 @@ export class EvalService {
         private readonly prisma: PrismaService,
         private readonly agentTest: AgentTestService,
         private readonly quality: QualityService,
+        private readonly redis: RedisService,
     ) {}
 
     private async ensureTable(schema: string): Promise<void> {
@@ -209,33 +211,49 @@ export class EvalService {
         opts?: { threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number; trigger?: string },
     ): Promise<any> {
         if (!agentId) throw new BadRequestException('agentId is required');
-        const schema = await this.prisma.getTenantSchemaName(tenantId);
-        await this.ensureTable(schema);
-        await this.ensureSandboxContact(schema);
 
-        const scenarios = await this.listScenarios(tenantId);
-        const threshold = opts?.threshold ?? DEFAULT_THRESHOLD;
-        const k = Math.max(1, Math.min(opts?.k ?? 1, MAX_K));
-        const passPolicy = opts?.passPolicy ?? 'all';
-
-        const out: any[] = [];
-        for (const sc of scenarios) {
-            try {
-                const hasActions = Array.isArray(sc.expectedActions) && sc.expectedActions.length > 0;
-                out.push(await this.runPassK(tenantId, agentId, schema, sc, k, passPolicy, threshold, hasActions));
-            } catch (e: any) {
-                this.logger.warn(`[Eval] scenario ${sc.key} failed: ${e.message}`);
-                out.push({ key: sc.key, title: sc.title, k, passes: 0, passed: false, score: 0, error: e.message });
-            }
+        // Serialize gate runs per tenant: all agents share one sandbox contact, so two
+        // concurrent runs (two agents, or a manual run racing an auto-run) would have
+        // one's cleanupSandbox wipe the other's rows before its verifyActions. Fail-open
+        // on a Redis hiccup (don't block the gate). Lock TTL is a safety net if we crash.
+        const lockKey = `eval-gate-run:${tenantId}`;
+        const gotLock = await this.redis.acquireLock(lockKey, 600).catch(() => true);
+        if (!gotLock) {
+            this.logger.warn(`[Eval] gate run skipped for ${tenantId} — another run in progress`);
+            return { skipped: true, reason: 'gate_already_running' };
         }
 
-        const scored = out.filter(r => !r.error);
-        const avgScore = scored.length ? Math.round((scored.reduce((s, r) => s + r.score, 0) / scored.length) * 100) / 100 : 0;
-        const passed = out.length > 0 && out.every(r => !r.error && r.passed);
-        const evalActivable = passed && avgScore >= (opts?.activationThreshold ?? threshold);
-        const result = { passed, avgScore, threshold, k, passPolicy, total: out.length, scenarios: out, evalActivable };
-        await this.persistRun(schema, agentId, result, opts?.trigger || 'manual');
-        return result;
+        try {
+            const schema = await this.prisma.getTenantSchemaName(tenantId);
+            await this.ensureTable(schema);
+            await this.ensureSandboxContact(schema);
+
+            const scenarios = await this.listScenarios(tenantId);
+            const threshold = opts?.threshold ?? DEFAULT_THRESHOLD;
+            const k = Math.max(1, Math.min(opts?.k ?? 1, MAX_K));
+            const passPolicy = opts?.passPolicy ?? 'all';
+
+            const out: any[] = [];
+            for (const sc of scenarios) {
+                try {
+                    const hasActions = Array.isArray(sc.expectedActions) && sc.expectedActions.length > 0;
+                    out.push(await this.runPassK(tenantId, agentId, schema, sc, k, passPolicy, threshold, hasActions));
+                } catch (e: any) {
+                    this.logger.warn(`[Eval] scenario ${sc.key} failed: ${e.message}`);
+                    out.push({ key: sc.key, title: sc.title, k, passes: 0, passed: false, score: 0, error: e.message });
+                }
+            }
+
+            const scored = out.filter(r => !r.error);
+            const avgScore = scored.length ? Math.round((scored.reduce((s, r) => s + r.score, 0) / scored.length) * 100) / 100 : 0;
+            const passed = out.length > 0 && out.every(r => !r.error && r.passed);
+            const evalActivable = passed && avgScore >= (opts?.activationThreshold ?? threshold);
+            const result = { passed, avgScore, threshold, k, passPolicy, total: out.length, scenarios: out, evalActivable };
+            await this.persistRun(schema, agentId, result, opts?.trigger || 'manual');
+            return result;
+        } finally {
+            await this.redis.releaseLock(lockKey).catch(() => {});
+        }
     }
 
     /** Run a scenario k times; pass per the policy (all / majority). */

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useTranslations } from "next-intl";
 import { VERTICALS, CLUSTER_LABELS, getVerticalsByCluster, VerticalCluster } from "../../data/verticals";
 import { VerticalChatDemo } from "../demos/VerticalChatDemo";
+import { MiniChannelDemo, CHANNEL_SCENARIOS } from "./MultiChannelShowcase";
 import { Section } from "../ui/Section";
 import { Icon, getVerticalIcon } from "../ui/Icon";
 
@@ -22,6 +23,8 @@ const CLUSTERS: VerticalCluster[] = [
 
 export function VerticalsShowcase() {
   const t = useTranslations("verticals");
+  const tChannels = useTranslations("channels");
+  const [view, setView] = useState<"industry" | "channel">("industry");
   const [activeCluster, setActiveCluster] = useState<VerticalCluster>("salud-bienestar");
   
   const clusterVerticals = getVerticalsByCluster(activeCluster);
@@ -60,6 +63,31 @@ export function VerticalsShowcase() {
           {t("subtitle")}
         </p>
       </div>
+
+      {/* View tabs: por industria (las 18) / por canal */}
+      <div className="flex justify-center gap-1.5 p-1 bg-surface-light/40 border border-border/40 rounded-2xl max-w-xs mx-auto mb-8 backdrop-blur-xl">
+        {(["industry", "channel"] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={`relative flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl transition-all cursor-pointer ${
+              view === v ? "text-white" : "text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            {view === v && (
+              <motion.span
+                layoutId="active-view-bg"
+                className="absolute inset-0 bg-white/10 border border-white/10 rounded-xl shadow-lg shadow-white/5"
+                transition={{ type: "spring", stiffness: 380, damping: 30 }}
+              />
+            )}
+            <span className="relative z-10">{v === "industry" ? t("tabIndustry") : t("tabChannel")}</span>
+          </button>
+        ))}
+      </div>
+
+      {view === "industry" ? (
+      <>
 
       {/* Cluster Navigation (Premium Segmented Tabs with glassmorphic look) */}
       <div className="relative flex flex-wrap md:flex-nowrap gap-1.5 p-1 bg-surface-light/40 border border-border/40 rounded-2xl max-w-4xl mx-auto mb-8 backdrop-blur-xl shadow-inner shadow-white/5">
@@ -262,6 +290,27 @@ export function VerticalsShowcase() {
           </motion.div>
         </AnimatePresence>
       </div>
+      </>
+      ) : (
+        <div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {CHANNEL_SCENARIOS.map((s, i) => (
+              <motion.div
+                key={s.channel}
+                initial={{ opacity: 0, y: 25 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-50px" }}
+                transition={{ delay: i * 0.1, duration: 0.5 }}
+              >
+                <MiniChannelDemo scenario={s} delay={400 + i * 300} />
+              </motion.div>
+            ))}
+          </div>
+          <p className="text-center text-xs text-text-muted mt-8 max-w-2xl mx-auto">
+            {tChannels("note")}
+          </p>
+        </div>
+      )}
     </Section>
   );
 }

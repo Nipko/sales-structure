@@ -5,7 +5,6 @@ import { ProblemSection } from "../../components/sections/ProblemSection";
 import { ResultsBand } from "../../components/sections/ResultsBand";
 import { TrustRow } from "../../components/sections/TrustRow";
 import { VerticalsShowcase } from "../../components/sections/VerticalsShowcase";
-import { MultiChannelShowcase } from "../../components/sections/MultiChannelShowcase";
 import { ToolsShowcase } from "../../components/sections/ToolsShowcase";
 import { HowItWorks } from "../../components/sections/HowItWorks";
 import { FeaturesGrid } from "../../components/sections/FeaturesGrid";
@@ -28,7 +27,6 @@ export default function HomePage() {
       <ResultsBand />
       <HowItWorks />
       <VerticalsShowcase />
-      <MultiChannelShowcase />
       <ToolsShowcase />
       <FeaturesGrid />
       <ComparisonTable />

@@ -122,6 +122,8 @@
     "latamBadge": "🇨🇴 🇲🇽 🇦🇷 🇨🇱 🇵🇪 LatAm"
   },
   "verticals": {
+    "tabIndustry": "Par industrie",
+    "tabChannel": "Par canal",
     "demoRespondsIn": "répond en quelques secondes",
     "demoRespondedIn": "A répondu en 3 secondes",
     "solutionsOmnichannel": "Solutions Omnicanal",

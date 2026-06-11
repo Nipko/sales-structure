@@ -10,7 +10,7 @@ import { Section } from "../ui/Section";
 /*  Scenario data (inline, industry-specific per channel)              */
 /* ------------------------------------------------------------------ */
 
-interface ChannelScenario {
+export interface ChannelScenario {
   channel: ChannelKey;
   emoji: string;
   agentName: string;
@@ -18,7 +18,7 @@ interface ChannelScenario {
   messages: { from: "customer" | "ai"; text: string }[];
 }
 
-const CHANNEL_SCENARIOS: ChannelScenario[] = [
+export const CHANNEL_SCENARIOS: ChannelScenario[] = [
   {
     channel: "whatsapp",
     emoji: "\u{1FA7A}",
@@ -28,7 +28,7 @@ const CHANNEL_SCENARIOS: ChannelScenario[] = [
       { from: "customer", text: "Quiero agendar limpieza dental" },
       {
         from: "ai",
-        text: "¡Hola! Tengo jueves 10am o viernes 9am. ¿Cuál preferís?",
+        text: "¡Hola! Tengo jueves 10am o viernes 9am. ¿Cuál prefieres?",
       },
       { from: "customer", text: "Jueves 10am" },
       { from: "ai", text: "Confirmado ✅ Te recuerdo el miércoles." },
@@ -64,7 +64,7 @@ const CHANNEL_SCENARIOS: ChannelScenario[] = [
       { from: "customer", text: "Hola, info sobre membresías" },
       {
         from: "ai",
-        text: "¡Hola! Mensual $89k, trimestral $240k (ahorrás $27k). ¿Visitamos?",
+        text: "¡Hola! Mensual $89k, trimestral $240k (ahorras $27k). ¿Visitamos?",
       },
       { from: "customer", text: "Sí, mañana puedo" },
       { from: "ai", text: "Te agendo a las 10am ✅" },
@@ -112,7 +112,7 @@ const CHANNEL_SCENARIOS: ChannelScenario[] = [
 /*  MiniChannelDemo — compact animated chat for one channel            */
 /* ------------------------------------------------------------------ */
 
-function MiniChannelDemo({
+export function MiniChannelDemo({
   scenario,
   delay,
 }: {

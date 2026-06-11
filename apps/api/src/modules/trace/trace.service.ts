@@ -224,4 +224,23 @@ export class TraceService {
             createdAt: r.created_at,
         }));
     }
+
+    /**
+     * Delete turn traces older than `days` for one tenant. Step-by-step traces are
+     * voluminous (one row per turn) so retention is short. Best-effort — tolerates
+     * a missing table (tenant never traced) and never throws.
+     */
+    async pruneTurnTraces(schemaName: string, days = 30): Promise<void> {
+        try {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `DELETE FROM turn_traces WHERE created_at < NOW() - ($1 || ' days')::interval`,
+                [String(days)],
+            );
+        } catch (err: any) {
+            if (!/does not exist|42P01/i.test(err?.message || '')) {
+                this.logger.warn(`pruneTurnTraces failed for ${schemaName}: ${err.message}`);
+            }
+        }
+    }
 }

@@ -271,7 +271,7 @@ export class ConversationsService {
         }
 
         // 4. Save User Message
-        await this.saveMessage(tenantId, conversation.id, normalizedMsg);
+        const inboundMessageId = await this.saveMessage(tenantId, conversation.id, normalizedMsg);
         this.logger.log(`[Pipeline] Message saved for conversation ${conversation.id}`);
 
         // 4.2 Check if this is a response to an appointment reminder template (Confirm/Reschedule buttons)
@@ -446,7 +446,7 @@ export class ConversationsService {
         this.logger.log(`[Pipeline] Generating AI response...`);
         const complexity = this.llmRouter.analyzeComplexity(content?.text || '');
         const sentiment = this.llmRouter.analyzeSentiment(content?.text || '');
-        const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead, previousMessageAt, bizHours);
+        const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead, previousMessageAt, bizHours, inboundMessageId);
         this.logger.log(`[Pipeline] AI response generated: ${response ? response.substring(0, 80) + '...' : 'NULL/EMPTY'}`);
 
         // Track AI response event + increment monthly quota counter — but NOT for
@@ -810,7 +810,7 @@ export class ConversationsService {
         await this.outboundQueue.enqueue(outbound, accessToken);
     }
 
-    private async saveMessage(tenantId: string, conversationId: string, msg: NormalizedMessage) {
+    private async saveMessage(tenantId: string, conversationId: string, msg: NormalizedMessage): Promise<string | undefined> {
         const schemaName = await this.tenantSchema(tenantId);
         const metadataJson = JSON.stringify(msg.metadata || {});
 
@@ -852,6 +852,8 @@ export class ConversationsService {
             messageType: msg.content.type,
             text: msg.content.text,
         });
+
+        return result[0]?.id as string | undefined;
     }
 
     private async saveAiMessage(tenantId: string, conversationId: string, text: string, channelType?: string) {
@@ -956,7 +958,7 @@ export class ConversationsService {
      * Orchestrate the LLM call using the Router and Persona System Prompt.
      * Includes smart history truncation to stay within context window limits.
      */
-    private async generateResponse(tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig, contact?: any, lead?: any, previousMessageAt?: any, bizHours?: any): Promise<string> {
+    private async generateResponse(tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig, contact?: any, lead?: any, previousMessageAt?: any, bizHours?: any, inboundMessageId?: string): Promise<string> {
         let userText = msg.content.text || '';
 
         // ── Media processing: transcribe audio / describe images ──
@@ -1052,7 +1054,7 @@ export class ConversationsService {
 
         // Step-by-step turn trace (WS5 #1) — accumulated in memory, persisted
         // fire-and-forget at the end. Never affects the turn's behaviour or latency.
-        const turnTrace = new TurnTraceContext({ tenantId, conversationId: conversation.id });
+        const turnTrace = new TurnTraceContext({ tenantId, conversationId: conversation.id, messageId: inboundMessageId });
 
         const turnContext: TurnContext = {
             language: userLanguage,

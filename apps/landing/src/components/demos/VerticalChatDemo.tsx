@@ -69,7 +69,7 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
             {vertical.slug}
           </p>
           <p className="text-white/80 text-[11px]">
-            {skin.statusText} · {t("demoRespondsIn", { defaultValue: "responde en segundos" })}
+            {skin.statusText} · {t.has("demoRespondsIn") ? t("demoRespondsIn") : "responde en segundos"}
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -116,7 +116,7 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
                         : skin.incomingText,
                   }}
                 >
-                  {t(`${vertical.slug}.demo${i + 1}`, { defaultValue: msg.text })}
+                  {t.has(`${vertical.slug}.demo${i + 1}`) ? t(`${vertical.slug}.demo${i + 1}`) : msg.text}
                 </div>
               </motion.div>
             )}
@@ -150,7 +150,7 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
             className="text-[11px] font-medium"
             style={{ color: vertical.color }}
           >
-            {t("demoRespondedIn", { defaultValue: "Respondió en 3 segundos" })}
+            {t.has("demoRespondedIn") ? t("demoRespondedIn") : "Respondió en 3 segundos"}
           </span>
         </div>
       </div>

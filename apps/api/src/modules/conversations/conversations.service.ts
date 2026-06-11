@@ -61,6 +61,34 @@ const ERROR_FALLBACK_MSG = 'Disculpa, tuve un problema procesando tu mensaje. ¿
 // Per-tool execution ceiling — a single tool (esp. an external MCP server) must
 // never hang the whole conversational turn.
 const TOOL_TIMEOUT_MS = 25_000;
+// Tools with write side-effects. When the LLM requests more than one of these in
+// the SAME turn we fall back to sequential execution: two writers can race on the
+// same resource (e.g. two create_appointment / create_*_booking on the same slot →
+// double booking, or two place_order). Read-only tools (everything not listed
+// here, incl. checks/searches/list_*) are always safe to run concurrently.
+// External MCP tools (mcp__*) are treated as writers (unknown side-effects).
+const WRITE_TOOLS = new Set<string>([
+    // appointments / calendar
+    'create_appointment', 'cancel_appointment', 'reschedule_appointment',
+    // vacation rental
+    'create_property_booking', 'cancel_property_booking',
+    // tours
+    'create_tour_booking', 'cancel_tour_booking',
+    // restaurants / ecommerce orders
+    'place_order', 'cancel_order',
+    // gyms
+    'book_class', 'freeze_membership', 'cancel_class_booking',
+    // education
+    'enroll_student', 'cancel_enrollment',
+    // insurance
+    'file_claim', 'cancel_quote',
+    // home services
+    'create_service_request', 'cancel_service_request',
+    // pets / photography
+    'register_pet', 'update_pet', 'request_photo_quote', 'cancel_photo_session',
+]);
+/** A tool call mutates state (or is an opaque external MCP tool) → must not run concurrently with other writers. */
+const isWriteTool = (name: string): boolean => name.startsWith('mcp__') || WRITE_TOOLS.has(name);
 // Burst debounce window: WhatsApp users send a thought across several quick
 // messages. We wait this long for follow-ups and process the batch as one turn.
 const DEBOUNCE_MS = 800;
@@ -1661,12 +1689,21 @@ export class ConversationsService {
                         toolCalls: response.toolCalls,
                     });
 
-                    // Execute each tool. Sequential on purpose — parallelizing tools
-                    // with side effects (booking/orders) would race. Each tool is
-                    // isolated (bad args / a hung external MCP tool can't kill the
-                    // turn) and bounded by a per-tool timeout.
+                    // Execute the turn's tools. Read-only tools run concurrently via
+                    // Promise.all (each isolated + per-tool timeout). Tools with write
+                    // side-effects can race (double booking, two orders), so when the
+                    // LLM asks for >1 writer in the same turn we serialize ALL of them
+                    // and run them sequentially — never two writers in flight at once.
+                    // Tool RESULT order in currentMessages is preserved regardless of
+                    // completion order: we collect into a fixed-index array (matched by
+                    // toolCallId) and push in the original toolCalls order afterwards.
                     const contactId = conversation.contact_id || '';
-                    for (const tc of response.toolCalls) {
+                    const toolCalls = response.toolCalls;
+
+                    // Run a single tool call: parse args, timeout-guard, isolate errors,
+                    // emit its trace, and capture any _mediaToSend marker. Returns the
+                    // sanitized result (media marker stripped) for the tool message.
+                    const runTool = async (tc: any): Promise<any> => {
                         let result: any;
                         try {
                             const args = typeof tc.function.arguments === 'string'
@@ -1688,19 +1725,42 @@ export class ConversationsService {
                             error: result?.error,
                         });
 
-                        // Capture any media the tool wants sent (e.g. a product
-                        // image) and strip the marker so it never reaches the LLM.
+                        // Capture any media the tool wants sent (e.g. a product image)
+                        // and strip the marker so it never reaches the LLM. mediaToSend
+                        // is only mutated AFTER the awaited result resolves — one push
+                        // per tool, no interleaved access, so it's safe under Promise.all.
                         if (result && result._mediaToSend?.url) {
                             mediaToSend.push({ url: result._mediaToSend.url, caption: result._mediaToSend.caption });
                             delete result._mediaToSend;
                         }
+                        return result;
+                    };
 
+                    // Decide concurrency: parallelize unless >1 writer would be in flight.
+                    const writerCount = toolCalls.filter((tc: any) => isWriteTool(tc.function.name)).length;
+                    const runSequential = writerCount > 1;
+
+                    let results: any[];
+                    if (runSequential) {
+                        this.logger.warn(`[Pipeline] ${writerCount} write-tools this turn — running all ${toolCalls.length} tool(s) sequentially to avoid write races`);
+                        results = [];
+                        for (const tc of toolCalls) {
+                            results.push(await runTool(tc));
+                        }
+                    } else {
+                        // 0 or 1 writer + any number of reads → all concurrent.
+                        results = await Promise.all(toolCalls.map((tc: any) => runTool(tc)));
+                    }
+
+                    // Append tool results in the ORIGINAL toolCalls order (matched by
+                    // index → toolCallId), independent of completion order above.
+                    toolCalls.forEach((tc: any, i: number) => {
                         currentMessages.push({
                             role: 'tool',
                             toolCallId: tc.id,
-                            content: JSON.stringify(result),
+                            content: JSON.stringify(results[i]),
                         });
-                    }
+                    });
 
                     continue; // Loop back for another LLM call with tool results
                 }

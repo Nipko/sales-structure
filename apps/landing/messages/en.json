@@ -135,6 +135,9 @@
     "clusterProfessional": "Professional & Finance",
     "clusterLifestyle": "Lifestyle & Creatives",
     "salud": {
+      "pain1": "Patients who call after hours and find no one to help them.",
+      "pain2": "No-shows that leave gaps in the schedule with no warning.",
+      "pain3": "Reception overwhelmed booking by phone instead of attending the room.",
       "demo1": "Hi, I need an appointment with the dentist",
       "demo2": "Hi! I'm Sofía, the clinic's assistant. We have openings tomorrow Thursday at 9am and 3pm. Which works best for you?",
       "demo3": "Thursday 9am please",
@@ -163,6 +166,9 @@
       "feature4": "Daycare and grooming bookings"
     },
     "restaurantes": {
+      "pain1": "Orders lost at rush hour because no one can answer in time.",
+      "pain2": "Reservations and delivery mixed across WhatsApp, Instagram and calls.",
+      "pain3": "Promos that don't go out in time and empty tables midweek.",
       "demo1": "I want to order delivery",
       "demo2": "Hi! I'm Luca 🍽️ Here's today's menu. Want to see the full menu or the deals?",
       "demo3": "The deals",
@@ -191,6 +197,9 @@
       "feature4": "Fill rate by class and time slot"
     },
     "inmobiliaria": {
+      "pain1": "Prospects who ask about a property and go cold with no reply.",
+      "pain2": "Viewings booked wrong or that fall through without confirmation.",
+      "pain3": "Scattered chats per agent: no one knows who replied to whom.",
       "demo1": "Hi, I'm looking for an apartment to rent in Chapinero",
       "demo2": "Hi! I'm Carlos, your real estate advisor. We have 12 options in Chapinero. What's your monthly budget?",
       "demo3": "Between 2 and 3 million",
@@ -275,6 +284,9 @@
       "feature4": "Direct link to Pixieset/Pic-Time"
     },
     "belleza": {
+      "pain1": "Clients who message late at night on Instagram and go to a competitor.",
+      "pain2": "Gaps in the schedule from appointments no one confirmed or reminded.",
+      "pain3": "Answering prices and availability over and over takes time from the salon.",
       "demo1": "Hi! I saw your work, I want balayage highlights",
       "demo2": "Hi! I'm Luna 💇‍♀️ Thanks for reaching out. Balayage highlights from $180k. When would you like to come in?",
       "demo3": "This Saturday if possible",

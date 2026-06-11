@@ -133,6 +133,9 @@
     "clusterProfessional": "Profesional y Finanzas",
     "clusterLifestyle": "Lifestyle y Creativos",
     "salud": {
+      "pain1": "Pacientes que llaman fuera de horario y no encuentran quién los atienda.",
+      "pain2": "Inasistencias que dejan la agenda con huecos y sin aviso previo.",
+      "pain3": "Recepción saturada agendando por teléfono en vez de atender en sala.",
       "name": "Salud",
       "subtitle": "Consultorios · Clínicas · Dental",
       "agentName": "Sofía",
@@ -153,6 +156,9 @@
       "feature4": "Reservas de daycare y peluquería"
     },
     "restaurantes": {
+      "pain1": "Pedidos que se pierden en hora pico porque nadie alcanza a responder.",
+      "pain2": "Reservas y domicilios mezclados entre WhatsApp, Instagram y llamadas.",
+      "pain3": "Promociones que no llegan a tiempo y mesas vacías entre semana.",
       "name": "Restaurantes",
       "subtitle": "Delivery · Reservas · Bares",
       "agentName": "Luca",
@@ -173,6 +179,9 @@
       "feature4": "Tasa de fill por clase y horario"
     },
     "inmobiliaria": {
+      "pain1": "Interesados que preguntan por una propiedad y se enfrían sin respuesta.",
+      "pain2": "Visitas mal agendadas o que se caen por falta de confirmación.",
+      "pain3": "Chats sueltos por asesor: nadie sabe a quién se le respondió qué.",
       "name": "Inmobiliaria",
       "subtitle": "Venta · Arriendo · Asesores",
       "agentName": "Carlos",
@@ -233,6 +242,9 @@
       "feature4": "Link directo a Pixieset/Pic-Time"
     },
     "belleza": {
+      "pain1": "Clientas que escriben de madrugada por Instagram y se van con la competencia.",
+      "pain2": "Huecos en la agenda por citas que nadie confirmó ni recordó.",
+      "pain3": "Responder precios y disponibilidad una y otra vez quita tiempo del salón.",
       "name": "Belleza & Spa",
       "subtitle": "Salones · Estética · Barberías",
       "agentName": "Camila",

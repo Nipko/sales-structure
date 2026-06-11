@@ -135,6 +135,9 @@
     "clusterProfessional": "Professionnel et Finance",
     "clusterLifestyle": "Lifestyle et Créatifs",
     "salud": {
+      "pain1": "Des patients qui appellent en dehors des heures et ne trouvent personne.",
+      "pain2": "Des absences qui laissent des trous dans l'agenda sans prévenir.",
+      "pain3": "Une réception débordée à prendre les rendez-vous par téléphone au lieu d'accueillir.",
       "demo1": "Bonjour, j'ai besoin d'un rendez-vous chez le dentiste",
       "demo2": "Bonjour ! Je suis Sofía, l'assistante de la clinique. Nous avons des créneaux demain jeudi à 9h et 15h. Lequel vous convient le mieux ?",
       "demo3": "Jeudi 9h s'il vous plaît",
@@ -163,6 +166,9 @@
       "feature4": "Réservations garderie et toilettage"
     },
     "restaurantes": {
+      "pain1": "Des commandes perdues à l'heure de pointe faute de réponse à temps.",
+      "pain2": "Réservations et livraisons mélangées entre WhatsApp, Instagram et appels.",
+      "pain3": "Des promos qui ne partent pas à temps et des tables vides en semaine.",
       "demo1": "Je veux commander en livraison",
       "demo2": "Bonjour ! Je suis Luca 🍽️ Voici le menu du jour. Vous voulez voir le menu complet ou les promos ?",
       "demo3": "Les promos",
@@ -191,6 +197,9 @@
       "feature4": "Taux de remplissage par cours et créneau"
     },
     "inmobiliaria": {
+      "pain1": "Des prospects qui demandent un bien et se refroidissent sans réponse.",
+      "pain2": "Des visites mal planifiées ou annulées faute de confirmation.",
+      "pain3": "Des conversations éparpillées par agent : personne ne sait qui a répondu à qui.",
       "demo1": "Bonjour, je cherche un appartement à louer à Chapinero",
       "demo2": "Bonjour ! Je suis Carlos, votre conseiller immobilier. Nous avons 12 options à Chapinero. Quel est votre budget mensuel ?",
       "demo3": "Entre 2 et 3 millions",
@@ -275,6 +284,9 @@
       "feature4": "Lien direct vers Pixieset/Pic-Time"
     },
     "belleza": {
+      "pain1": "Des clientes qui écrivent tard le soir sur Instagram et vont à la concurrence.",
+      "pain2": "Des trous dans l'agenda à cause de rendez-vous non confirmés ni rappelés.",
+      "pain3": "Répondre sans cesse aux prix et disponibilités prend du temps au salon.",
       "demo1": "Bonjour ! J'ai vu votre travail, je veux un balayage",
       "demo2": "Bonjour ! Je suis Luna 💇‍♀️ Merci de nous écrire. Balayage à partir de $180k. Pour quand souhaitez-vous venir ?",
       "demo3": "Ce samedi si possible",

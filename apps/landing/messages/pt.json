@@ -135,6 +135,9 @@
     "clusterProfessional": "Profissional e Finanças",
     "clusterLifestyle": "Lifestyle e Criativos",
     "salud": {
+      "pain1": "Pacientes que ligam fora do horário e não encontram quem os atenda.",
+      "pain2": "Faltas que deixam a agenda com buracos e sem aviso prévio.",
+      "pain3": "Recepção sobrecarregada agendando por telefone em vez de atender na sala.",
       "demo1": "Olá, preciso de uma consulta com o dentista",
       "demo2": "Olá! Sou a Sofía, assistente da clínica. Temos horários amanhã quinta às 9h e 15h. Qual fica melhor para você?",
       "demo3": "Quinta 9h por favor",
@@ -163,6 +166,9 @@
       "feature4": "Reservas de daycare e banho/tosa"
     },
     "restaurantes": {
+      "pain1": "Pedidos perdidos no horário de pico porque ninguém consegue responder.",
+      "pain2": "Reservas e entregas misturadas entre WhatsApp, Instagram e ligações.",
+      "pain3": "Promoções que não saem a tempo e mesas vazias durante a semana.",
       "demo1": "Quero pedir para entrega",
       "demo2": "Olá! Sou o Luca 🍽️ Te mando o cardápio do dia. Quer ver o cardápio completo ou as promoções?",
       "demo3": "As promoções",
@@ -191,6 +197,9 @@
       "feature4": "Taxa de ocupação por aula e horário"
     },
     "inmobiliaria": {
+      "pain1": "Interessados que perguntam por um imóvel e esfriam sem resposta.",
+      "pain2": "Visitas mal agendadas ou que caem por falta de confirmação.",
+      "pain3": "Chats soltos por corretor: ninguém sabe quem respondeu a quem.",
       "demo1": "Olá, procuro apartamento para alugar em Chapinero",
       "demo2": "Olá! Sou o Carlos, seu consultor imobiliário. Temos 12 opções em Chapinero. Qual é o seu orçamento mensal?",
       "demo3": "Entre 2 e 3 milhões",
@@ -275,6 +284,9 @@
       "feature4": "Link direto para Pixieset/Pic-Time"
     },
     "belleza": {
+      "pain1": "Clientes que escrevem de madrugada no Instagram e vão para a concorrência.",
+      "pain2": "Buracos na agenda por horários que ninguém confirmou nem lembrou.",
+      "pain3": "Responder preços e disponibilidade sempre tira tempo do salão.",
       "demo1": "Oi! Vi o seu trabalho, quero mechas balayage",
       "demo2": "Olá! Sou a Luna 💇‍♀️ Obrigada por escrever. Mechas balayage a partir de $180k. Para quando você gostaria?",
       "demo3": "Neste sábado se tiver",

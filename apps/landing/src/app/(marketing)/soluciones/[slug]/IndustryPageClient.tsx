@@ -142,8 +142,8 @@ export default function IndustryPageClient() {
         </div>
       </section>
 
-      {/* Pain Points (Tier 1-2) */}
-      {vertical.tier <= 2 && (
+      {/* Pain Points — per-industry copy with fallback to the generic set */}
+      {(
         <Section>
           <h2 className="text-3xl font-bold text-center mb-10">
             {t("industryPage.painTitle", { industry: industryName })}
@@ -161,7 +161,7 @@ export default function IndustryPageClient() {
                 <div className="w-10 h-10 rounded-xl bg-danger/10 text-danger flex items-center justify-center mb-4">
                   {Icon.zap("w-5 h-5")}
                 </div>
-                <p className="text-text-secondary leading-relaxed">{t(`industryPage.pain${n}`)}</p>
+                <p className="text-text-secondary leading-relaxed">{t(`verticals.${slug}.pain${n}`, { defaultValue: t(`industryPage.pain${n}`) })}</p>
               </motion.div>
             ))}
           </div>

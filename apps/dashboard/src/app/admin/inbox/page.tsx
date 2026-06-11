@@ -306,6 +306,8 @@ export default function InboxPage() {
     const [showTrace, setShowTrace] = useState(false);
     const [traceData, setTraceData] = useState<any[]>([]);
     const [traceLoading, setTraceLoading] = useState(false);
+    const [turnTraceData, setTurnTraceData] = useState<any[]>([]);
+    const [traceTab, setTraceTab] = useState<"summary" | "steps">("summary");
 
     // --- Assign State ---
     const [assignLoading, setAssignLoading] = useState(false);
@@ -1093,13 +1095,36 @@ export default function InboxPage() {
         setShowTrace(true);
         setTraceLoading(true);
         try {
-            const res: any = await api.getConversationTrace(activeTenantId, selectedConv.id);
+            const [res, turnsRes]: any[] = await Promise.all([
+                api.getConversationTrace(activeTenantId, selectedConv.id),
+                api.getConversationTurnTraces(activeTenantId, selectedConv.id),
+            ]);
             setTraceData(res?.success && Array.isArray(res.data) ? res.data : []);
+            setTurnTraceData(turnsRes?.success && Array.isArray(turnsRes.data) ? turnsRes.data : []);
         } catch {
             setTraceData([]);
+            setTurnTraceData([]);
         } finally {
             setTraceLoading(false);
         }
+    };
+
+    const TRACE_STEP_COLORS: Record<string, string> = {
+        reasoning: "bg-indigo-500/10 text-indigo-500",
+        tool_call: "bg-amber-500/10 text-amber-500",
+        tool_result: "bg-amber-500/10 text-amber-500",
+        kb_retrieval: "bg-blue-500/10 text-blue-500",
+        guardrail: "bg-rose-500/10 text-rose-500",
+        decision: "bg-emerald-500/10 text-emerald-500",
+        media: "bg-purple-500/10 text-purple-500",
+        intent: "bg-cyan-500/10 text-cyan-500",
+        booking: "bg-teal-500/10 text-teal-500",
+        procedure: "bg-violet-500/10 text-violet-500",
+    };
+    // Localized step-type label; falls back to the raw type if no i18n key exists.
+    const traceStepLabel = (type: string) => {
+        const k = `traceStepTypes.${type}`;
+        return t.has(k) ? t(k) : type;
     };
 
     // ---- Interactive functions ----
@@ -1507,11 +1532,23 @@ export default function InboxPage() {
                                             <X size={18} />
                                         </button>
                                     </div>
+                                    {/* Tabs: per-LLM-call rollup vs step-by-step turn trace */}
+                                    <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted/50 text-xs">
+                                        <button
+                                            onClick={() => setTraceTab("summary")}
+                                            className={`flex-1 py-1.5 rounded-md font-medium transition-colors ${traceTab === "summary" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                                        >{t("traceTabSummary")}</button>
+                                        <button
+                                            onClick={() => setTraceTab("steps")}
+                                            className={`flex-1 py-1.5 rounded-md font-medium transition-colors ${traceTab === "steps" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                                        >{t("traceTabSteps")}</button>
+                                    </div>
                                     {traceLoading ? (
                                         <div className="flex justify-center py-10"><Loader2 size={20} className="animate-spin text-muted-foreground" /></div>
-                                    ) : traceData.length === 0 ? (
-                                        <p className="text-xs text-muted-foreground text-center py-10">{t("traceEmpty")}</p>
-                                    ) : (
+                                    ) : traceTab === "summary" ? (
+                                        traceData.length === 0 ? (
+                                            <p className="text-xs text-muted-foreground text-center py-10">{t("traceEmpty")}</p>
+                                        ) : (
                                         <div className="space-y-3">
                                             {traceData.map((tr: any, i: number) => (
                                                 <div key={i} className="rounded-xl border border-border bg-muted/30 p-3 text-[12px]">
@@ -1537,6 +1574,38 @@ export default function InboxPage() {
                                                 </div>
                                             ))}
                                         </div>
+                                        )
+                                    ) : (
+                                        turnTraceData.length === 0 ? (
+                                            <p className="text-xs text-muted-foreground text-center py-10">{t("traceStepsEmpty")}</p>
+                                        ) : (
+                                        <div className="space-y-3">
+                                            {turnTraceData.map((turn: any, ti: number) => (
+                                                <div key={ti} className="rounded-xl border border-border bg-muted/30 p-3 text-[12px]">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="font-semibold text-foreground">{t("traceTurn")} {turnTraceData.length - ti}</span>
+                                                        <span className="text-[10px] text-muted-foreground">{turn.totalDurationMs}ms · {turn.stepCount} {t("traceStepsLabel")}</span>
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        {(turn.steps || []).map((s: any, si: number) => (
+                                                            <div key={si} className="flex items-start gap-2">
+                                                                <span className={`mt-0.5 text-[9px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${TRACE_STEP_COLORS[s.type] || "bg-muted text-muted-foreground"}`}>{traceStepLabel(s.type)}</span>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex items-center justify-between gap-2">
+                                                                        <span className="text-foreground truncate">{s.label || s.type}</span>
+                                                                        {typeof s.durationMs === "number" && <span className="text-[10px] text-muted-foreground shrink-0">{s.durationMs}ms</span>}
+                                                                    </div>
+                                                                    {s.metadata && Object.keys(s.metadata).length > 0 && (
+                                                                        <div className="mt-0.5 text-[10px] text-muted-foreground font-mono break-all">{JSON.stringify(s.metadata)}</div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        )
                                     )}
                                 </div>
                             </div>

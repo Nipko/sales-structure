@@ -848,6 +848,10 @@ export const api = {
     getConversationTrace: (tenantId: string, conversationId: string) =>
         apiGet(`/trace/${tenantId}/${conversationId}`),
 
+    // Step-by-step turn traces (WS5 #1 — reasoning→tool→result→decision)
+    getConversationTurnTraces: (tenantId: string, conversationId: string, limit?: number) =>
+        apiGet(`/trace/${tenantId}/${conversationId}/turns${limit ? `?limit=${limit}` : ''}`),
+
     // Agent simulation pre-deploy (T2.13)
     runAgentSimulation: (
         tenantId: string,

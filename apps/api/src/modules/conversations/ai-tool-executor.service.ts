@@ -507,11 +507,14 @@ export class AIToolExecutorService {
             let idx = 1;
             if (args?.make) { conditions.push(`make ILIKE $${idx++}`); params.push(`%${args.make}%`); }
             // budgetMax is given in the major currency unit; vehicles.price_cents is in cents.
-            if (args?.budgetMax) { conditions.push(`price_cents <= $${idx++}`); params.push(Math.round(Number(args.budgetMax) * 100)); }
+            // Guard against a non-numeric value from the LLM (NaN would throw at the DB).
+            const budgetMax = Number(args?.budgetMax);
+            if (Number.isFinite(budgetMax) && budgetMax > 0) { conditions.push(`price_cents <= $${idx++}`); params.push(Math.round(budgetMax * 100)); }
             if (args?.category) { conditions.push(`category = $${idx++}`); params.push(args.category); }
             if (args?.fuelType) { conditions.push(`fuel_type = $${idx++}`); params.push(args.fuelType); }
             if (args?.condition) { conditions.push(`condition = $${idx++}`); params.push(args.condition); }
-            if (args?.year) { conditions.push(`year >= $${idx++}`); params.push(Number(args.year)); }
+            const year = Number(args?.year);
+            if (Number.isFinite(year) && year > 0) { conditions.push(`year >= $${idx++}`); params.push(Math.round(year)); }
 
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT id, make, model, year, trim_level, color, fuel_type, transmission,

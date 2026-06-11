@@ -8,7 +8,7 @@ import {
   Scale, BookOpen, Sliders, Tag, Package, UserCircle,
   Home, Compass, HeartPulse, Building2, Stethoscope,
   UtensilsCrossed, Dumbbell, GraduationCap, ShieldCheck,
-  Wrench, Scissors, Camera, Star, Sparkles, Store, Headset, Handshake,
+  Wrench, Scissors, Camera, Car, Star, Sparkles, Store, Headset, Handshake,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { PersonaConfig } from "../_types";
@@ -34,6 +34,7 @@ const VERTICAL_TOOLS: { key: ToolKey; industries: string[]; icon: any }[] = [
   { key: "homeServices", industries: ["servicios_hogar"],                    icon: Wrench },
   { key: "petServices",  industries: ["pet_services", "servicios_mascotas"], icon: Scissors },
   { key: "photography",  industries: ["fotografia"],                         icon: Camera },
+  { key: "vehicles",     industries: ["automotriz"],                         icon: Car },
 ];
 
 export function CapabilitiesSection({ config, onChange, apptReadiness }: CapabilitiesSectionProps) {
@@ -329,6 +330,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             offers: "",
             crm: "",
             ecommerce: "",
+            vehicles: "",
             orders: "order_confirmation"
           };
           const templateSlug = slugMap[key];

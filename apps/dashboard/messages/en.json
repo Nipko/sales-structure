@@ -2780,6 +2780,8 @@
       "vt_petServices_desc": "List grooming, daycare and walking services, check availability",
       "vt_photography_title": "Photography",
       "vt_photography_desc": "Show photo packages, check available dates and request quotes",
+      "vt_vehicles_title": "Vehicles",
+      "vt_vehicles_desc": "Search the vehicle inventory, view details and send car photos",
       "skillsetTitle": "Agent skillset",
       "skillsetDesc": "Define whether the agent sells, supports, or both.",
       "skillset_sales": "Sales",

@@ -2780,6 +2780,8 @@
       "vt_petServices_desc": "Lister les services de toilettage, garderie et promenades, vérifier la disponibilité",
       "vt_photography_title": "Photographie",
       "vt_photography_desc": "Afficher les forfaits photo, vérifier les dates disponibles et demander un devis",
+      "vt_vehicles_title": "Véhicules",
+      "vt_vehicles_desc": "Rechercher dans l'inventaire de véhicules, voir les détails et envoyer des photos",
       "skillsetTitle": "Compétences de l'agent",
       "skillsetDesc": "Définissez si l'agent vend, assiste, ou les deux.",
       "skillset_sales": "Ventes",

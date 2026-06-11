@@ -91,7 +91,7 @@ export class CustomerMemoryService {
      * (e.g. for the extractor's "previous memory" input). Returns null when nothing
      * is known.
      */
-    async getMemory(schema: string, contactId: string, query?: string): Promise<CustomerMemory | null> {
+    async getMemory(schema: string, contactId: string, query?: string, tenantId?: string): Promise<CustomerMemory | null> {
         if (!contactId) return null;
         try {
             const memRows = await this.prisma.executeInTenantSchema<any[]>(schema,
@@ -104,7 +104,7 @@ export class CustomerMemoryService {
 
             let facts: string[];
             if (query && query.trim()) {
-                facts = await this.retrieveFacts(schema, contactId, query.trim());
+                facts = await this.retrieveFacts(schema, contactId, query.trim(), tenantId);
                 if (!facts.length) facts = mergedFacts; // fall back to the merged view
             } else {
                 facts = mergedFacts;
@@ -118,26 +118,30 @@ export class CustomerMemoryService {
     }
 
     /** Semantic top-K facts for the owner; falls back to most-recent when embeddings are off. */
-    private async retrieveFacts(schema: string, contactId: string, query: string): Promise<string[]> {
+    private async retrieveFacts(schema: string, contactId: string, query: string, tenantId?: string): Promise<string[]> {
         try {
             const owner = await this.resolveOwner(schema, contactId);
             let emb: number[] | null = null;
-            try { emb = await this.knowledge.generateEmbedding(query.slice(0, 1000)); } catch { emb = null; }
+            try { emb = await this.knowledge.generateEmbedding(query.slice(0, 1000), tenantId); } catch { emb = null; }
+            // Match the resolved owner OR the raw contact — facts saved before identity
+            // resolution are keyed by contact and would otherwise be orphaned once the
+            // profile is created. (When owner IS the contact, both clauses coincide.)
+            const ownerFilter = `((owner_kind = $1 AND owner_id = $2::uuid) OR (owner_kind = 'contact' AND owner_id = $3::uuid))`;
             if (emb) {
                 const embStr = `[${emb.join(',')}]`;
                 const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
                     `SELECT fact_text FROM customer_memory_facts
-                      WHERE owner_kind = $1 AND owner_id = $2::uuid AND embedding IS NOT NULL
-                      ORDER BY embedding <=> $3::vector LIMIT $4`,
-                    [owner.kind, owner.id, embStr, RETRIEVE_K]);
-                return (rows || []).map(r => r.fact_text).filter((f: any) => typeof f === 'string');
+                      WHERE ${ownerFilter} AND embedding IS NOT NULL
+                      ORDER BY embedding <=> $4::vector LIMIT $5`,
+                    [owner.kind, owner.id, contactId, embStr, RETRIEVE_K]);
+                return [...new Set((rows || []).map(r => r.fact_text).filter((f: any) => typeof f === 'string'))];
             }
             const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT fact_text FROM customer_memory_facts
-                  WHERE owner_kind = $1 AND owner_id = $2::uuid
-                  ORDER BY last_seen_at DESC LIMIT $3`,
-                [owner.kind, owner.id, MEMORY_BLOCK_FACTS]);
-            return (rows || []).map(r => r.fact_text).filter((f: any) => typeof f === 'string');
+                  WHERE ${ownerFilter}
+                  ORDER BY last_seen_at DESC LIMIT $4`,
+                [owner.kind, owner.id, contactId, MEMORY_BLOCK_FACTS]);
+            return [...new Set((rows || []).map(r => r.fact_text).filter((f: any) => typeof f === 'string'))];
         } catch {
             return [];
         }
@@ -162,7 +166,7 @@ export class CustomerMemoryService {
                 .join('\n');
 
             await this.ensureTable(schema);
-            const existing = await this.getMemory(schema, contactId);
+            const existing = await this.getMemory(schema, contactId, undefined, tenantId);
 
             const prompt = `Sos un sistema de memoria de cliente. A partir de la memoria previa y el historial reciente, ` +
                 `devolvé un JSON {"facts": string[], "summary": string}:\n` +
@@ -199,7 +203,7 @@ export class CustomerMemoryService {
                 [contactId, JSON.stringify(facts), summary]);
 
             // Semantic layer (Phase-2) — per-fact embedding + dedup for retrieval.
-            await this.upsertFactsSemantic(schema, contactId, facts).catch(() => {});
+            await this.upsertFactsSemantic(schema, contactId, facts, tenantId).catch(() => {});
 
             this.logger.log(`[Memory] Updated memory for contact ${contactId} (${facts.length} facts)`);
         } catch (e: any) {
@@ -208,13 +212,13 @@ export class CustomerMemoryService {
     }
 
     /** Embed each fact and upsert it semantically (cosine dedup) under the owner. */
-    private async upsertFactsSemantic(schema: string, contactId: string, facts: string[]): Promise<void> {
+    private async upsertFactsSemantic(schema: string, contactId: string, facts: string[], tenantId?: string): Promise<void> {
         const owner = await this.resolveOwner(schema, contactId);
         for (const fact of facts) {
             const text = (fact || '').trim().slice(0, 300);
             if (!text) continue;
             let emb: number[] | null = null;
-            try { emb = await this.knowledge.generateEmbedding(text); } catch { emb = null; }
+            try { emb = await this.knowledge.generateEmbedding(text, tenantId); } catch { emb = null; }
 
             if (!emb) {
                 // No embeddings — only guard against exact-duplicate inserts.

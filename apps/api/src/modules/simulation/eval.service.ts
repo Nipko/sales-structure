@@ -309,9 +309,17 @@ export class EvalService {
                     default: conds.push(`${col} = $${i}`); params.push(m.value);
                 }
             }
-            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT COUNT(*)::int AS cnt FROM "${schema}".${a.table} WHERE ${conds.join(' AND ')}`, params)
-                .catch(() => [{ cnt: 0 }]);
+            // A failing verification query (e.g. a column that doesn't exist) must NOT
+            // silently become cnt=0 — that would turn a `no_row` assertion into a false
+            // pass. Mark the check failed with the error instead.
+            let rows: any[] | null;
+            try {
+                rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                    `SELECT COUNT(*)::int AS cnt FROM "${schema}".${a.table} WHERE ${conds.join(' AND ')}`, params);
+            } catch (e: any) {
+                checks.push({ ok: false, description: a.description || `${a.type} ${a.table}`, detail: `query error: ${e.message}` });
+                continue;
+            }
             const cnt = Number(rows?.[0]?.cnt || 0);
             let ok: boolean;
             if (a.type === 'no_row') ok = cnt === 0;
@@ -323,11 +331,19 @@ export class EvalService {
     }
 
     private async ensureSandboxContact(schema: string): Promise<void> {
-        await this.prisma.executeInTenantSchema(schema,
-            `INSERT INTO contacts (id, name, phone, channel_type, created_at, updated_at)
-             VALUES ($1::uuid, 'Eval Sandbox', 'eval-sandbox-0000', 'web_widget', NOW(), NOW())
-             ON CONFLICT (id) DO NOTHING`,
-            [EVAL_SANDBOX_CONTACT_ID]).catch(() => {});
+        // contacts.external_id is NOT NULL (unique per channel_type); omitting it makes
+        // the INSERT fail (23502) → the sandbox contact never exists → appointments FK
+        // violation → the whole action-verification gate becomes a no-op. Provide a
+        // dedicated (channel_type, external_id) pair and surface failures (don't swallow).
+        try {
+            await this.prisma.executeInTenantSchema(schema,
+                `INSERT INTO contacts (id, external_id, channel_type, name, phone, created_at, updated_at)
+                 VALUES ($1::uuid, 'eval-sandbox', 'web_widget', 'Eval Sandbox', 'eval-sandbox-0000', NOW(), NOW())
+                 ON CONFLICT (id) DO NOTHING`,
+                [EVAL_SANDBOX_CONTACT_ID]);
+        } catch (e: any) {
+            this.logger.warn(`[Eval] ensureSandboxContact failed: ${e.message}`);
+        }
     }
 
     /** Delete the sandbox contact's rows from the verifiable tables (deterministic rollback). */

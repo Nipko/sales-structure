@@ -1217,10 +1217,18 @@ export class KnowledgeService {
             await this.prisma.executeInTenantSchema(schema,
                 `UPDATE knowledge_embeddings SET search_tsv = to_tsvector('spanish'::regconfig, chunk_text) WHERE search_tsv IS NULL`)
                 .catch(() => {});
+            // Column + index are in place → cache so we skip this next time.
+            this.redis.set(cacheKey, '1', 86400).catch(() => {});
         } catch (e: any) {
-            if (!/already exists|duplicate|23505|42P07/i.test(e?.message || '')) this.logger.warn(`[KB tsv] ensure failed: ${e.message}`);
+            // Cache only on a benign "already exists" (column/index present). On any other
+            // error do NOT cache — else a transient DDL failure silently disables BM25 for
+            // this tenant for 24h (search degrades to vector-only via the tsPool .catch).
+            if (/already exists|duplicate|23505|42P07/i.test(e?.message || '')) {
+                this.redis.set(cacheKey, '1', 86400).catch(() => {});
+            } else {
+                this.logger.warn(`[KB tsv] ensure failed: ${e.message}`);
+            }
         }
-        this.redis.set(cacheKey, '1', 86400).catch(() => {});
     }
 
     // ─── Public Knowledge Base ────────────────────────────────────────────────

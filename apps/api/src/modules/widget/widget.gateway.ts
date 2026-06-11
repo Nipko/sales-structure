@@ -119,41 +119,45 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         client.emit('widget:typing', { isTyping: true });
         const messageId = randomUUID();
         let full = '';
+        let started = false; // only emit stream_start once the first chunk actually arrives
 
         try {
-            client.emit('widget:stream_start', { messageId, role: 'assistant', timestamp: new Date().toISOString() });
-
             for await (const chunk of this.conversations.streamWidgetMessage(
                 tenantId, schemaName, conversationId, contactId, data.content,
             )) {
+                if (!chunk) continue;
+                if (!started) {
+                    started = true;
+                    client.emit('widget:stream_start', { messageId, role: 'assistant', timestamp: new Date().toISOString() });
+                }
                 full += chunk;
                 client.emit('widget:stream_chunk', { messageId, delta: chunk });
             }
 
-            // Persist the full outbound once the stream closes (same insert as before).
-            if (full.trim()) {
+            // Nothing streamed (no persona, conversation handled by a human, or empty
+            // reply) → stay silent: no bubble, no sound, no persisted message.
+            if (started && full.trim()) {
                 await this.prisma.executeInTenantSchema(schemaName,
                     `INSERT INTO messages (conversation_id, direction, content_text, metadata, created_at)
                      VALUES ($1::uuid, 'outbound', $2, '{"channel":"web_widget","ai":true}'::jsonb, NOW())`,
                     [conversationId, full],
                 );
-            }
-            client.emit('widget:stream_end', { messageId, content: full, timestamp: new Date().toISOString() });
-            // Back-compat: cached loaders that only listen for widget:message still render.
-            if (full.trim()) {
+                client.emit('widget:stream_end', { messageId, content: full, timestamp: new Date().toISOString() });
+                // Back-compat: cached loaders that only listen for widget:message still render.
                 client.emit('widget:message', { content: full, role: 'assistant', timestamp: new Date().toISOString() });
             }
         } catch (err: any) {
             this.logger.warn(`Widget AI stream failed: ${err.message}`);
-            // Persist whatever streamed before the error so history stays coherent.
-            if (full.trim()) {
+            // Only surface an error if a stream had actually started (otherwise the loader
+            // has no bubble to fail). Persist the partial so history stays coherent.
+            if (started && full.trim()) {
                 await this.prisma.executeInTenantSchema(schemaName,
                     `INSERT INTO messages (conversation_id, direction, content_text, metadata, created_at)
                      VALUES ($1::uuid, 'outbound', $2, '{"channel":"web_widget","ai":true,"partial":true}'::jsonb, NOW())`,
                     [conversationId, full],
                 ).catch(() => {});
+                client.emit('widget:stream_error', { messageId, message: 'Failed to process message', partial: full });
             }
-            client.emit('widget:stream_error', { messageId, message: 'Failed to process message', partial: full });
         } finally {
             client.emit('widget:typing', { isTyping: false });
         }

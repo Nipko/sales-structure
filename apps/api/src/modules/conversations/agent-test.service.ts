@@ -159,6 +159,22 @@ export class AgentTestService {
         if (cfgTools?.petServices?.enabled === true) tools.push(...PET_SERVICES_TOOLS);
         if (cfgTools?.photography?.enabled === true) tools.push(...PHOTOGRAPHY_TOOLS);
 
+        if (options?.evalMode) {
+            // Only create_appointment honours the evalMode no-outbound guard. Default-deny
+            // the rest so an eval run can't invoke an UNAUDITED writer (property/tour/food
+            // booking, reschedule/cancel, send_booking_link, send_*_image, etc.) that would
+            // fire real messages/events/rows during the eval. Read-only tools stay.
+            const EVAL_SAFE_TOOL_NAMES = new Set([
+                'create_appointment',
+                'list_services', 'check_availability', 'list_customer_appointments', 'get_appointment_details',
+                'search_faqs', 'search_knowledge', 'get_policy', 'get_policies', 'list_offers', 'get_customer_context',
+                'list_products', 'get_product', 'check_stock',
+            ]);
+            const safe = tools.filter((t: any) => EVAL_SAFE_TOOL_NAMES.has(t?.name));
+            tools.length = 0;
+            tools.push(...safe);
+        }
+
         // 5. Assemble the FULL system prompt (Layer 1 + 2 + 3).
         const systemPrompt = this.promptAssembler.assemble(config, turnContext);
 

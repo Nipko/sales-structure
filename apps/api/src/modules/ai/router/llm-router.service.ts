@@ -295,8 +295,10 @@ export class LLMRouterService {
                     }
 
                     this.logger.log(`[LLM] ${options.task} via ${candidate.provider} (${candidate.id}) in ${durationMs}ms`);
-                    // Remember this provider+model for the conversation's next turn (cache warmth).
-                    this.setAffinity(convId, candidate.provider, candidate.id).catch(() => {});
+                    // Remember this provider+model for the conversation's next turn (cache
+                    // warmth) — but NOT when it was an out-of-plan escalation, or the sticky
+                    // would keep pinning a premium model ahead of healthy in-plan ones.
+                    if (!escalated) this.setAffinity(convId, candidate.provider, candidate.id).catch(() => {});
                     this.trackStats(options.tenantId, candidate, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
                     this.emitTurnTrace(options, candidate, durationMs, response, escalated, options.task);
 

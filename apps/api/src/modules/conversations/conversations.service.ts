@@ -111,6 +111,11 @@ export class ConversationsService {
         const { tenantId, contactId, channelType, content } = normalizedMsg;
         this.logger.log(`Processing inbound message from ${contactId} on ${channelType} for tenant ${tenantId}`);
 
+        // Server-clock receipt time (transient, not persisted) for the customer→reply
+        // latency metric — avoids mixing the provider's clock (msg.timestamp) with the
+        // worker's clock at send time. Same VPS for API + worker → negligible skew.
+        (normalizedMsg as any).receivedAt = Date.now();
+
         // 0. Debounce bursts: WhatsApp users often send one thought as 3-5 short
         // messages. Buffer them and process the batch as ONE turn (less LLM cost,
         // no interleaved/double replies, better intent). Returns the combined text
@@ -901,8 +906,8 @@ export class ConversationsService {
             channelAccountId: inboundMsg.channelAccountId,
             to: inboundMsg.contactId,
             content: { type: 'text', text },
-            // Customer-message timestamp → lets the outbound processor measure
-            // customer→reply latency on send (approximate; see inboundTs()).
+            // Server-receipt time (see inboundTs) → the outbound processor computes the
+            // customer→reply latency on send, both ends on the server clock.
             metadata: { inboundTs: this.inboundTs(inboundMsg) },
         };
 
@@ -927,13 +932,15 @@ export class ConversationsService {
     }
 
     /**
-     * Epoch ms of the customer's inbound message, used as the start point for the
-     * customer→reply latency metric. NOTE: for Meta/Telegram this is the PROVIDER's
-     * timestamp (second granularity, their clock), not our webhook-receipt time — so
-     * the metric mixes clocks (bounded; NTP-synced) and is approximate observability,
-     * not a precise SLA. A server-side receivedAt would remove the skew (follow-up).
+     * Epoch ms used as the start of the customer→reply latency metric. Prefers the
+     * server-clock receipt time (`receivedAt`, stamped at pipeline entry) so it matches
+     * the worker's clock at send time — no cross-clock skew. Falls back to the provider's
+     * message timestamp (Meta/Telegram clock, second granularity) only when receivedAt is
+     * absent (e.g. a path that didn't go through processIncomingMessage).
      */
     private inboundTs(inboundMsg: NormalizedMessage): number {
+        const received = (inboundMsg as any).receivedAt;
+        if (typeof received === 'number' && received > 0) return received;
         const t = inboundMsg.timestamp as any;
         return t instanceof Date ? t.getTime() : new Date(t).getTime();
     }

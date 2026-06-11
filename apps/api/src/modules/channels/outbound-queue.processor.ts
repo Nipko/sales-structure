@@ -65,9 +65,9 @@ export class OutboundQueueProcessor extends WorkerHost {
         // Count the quota only on a SUCCESSFUL send (not on every check/retry).
         await this.throttle.recordUsage(outbound.tenantId, 'outbound').catch(() => {});
 
-        // Customer→reply latency (customer's message time → our reply sent) for
-        // observability. Approximate: inboundTs is the provider's timestamp for Meta/
-        // Telegram, so it mixes clocks (bounded). The guard drops skew/absurd values.
+        // Customer→reply latency (server-receipt of the inbound → our reply sent). Both
+        // ends use the server clock (receivedAt stamped at pipeline entry), so there's no
+        // cross-clock skew; the guard still drops absurd values defensively.
         const inboundTs = Number((outbound.metadata as any)?.inboundTs);
         if (Number.isFinite(inboundTs) && inboundTs > 0) {
             const e2eMs = Date.now() - inboundTs;

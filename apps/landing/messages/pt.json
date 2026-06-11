@@ -152,6 +152,9 @@
       "feature4": "Sincronização com Google Calendar"
     },
     "veterinaria": {
+      "pain1": "Donos que escrevem por uma urgência e não recebem resposta a tempo.",
+      "pain2": "Esquemas de vacinação que atrasam sem lembretes.",
+      "pain3": "Agenda de consultas e banhos misturada em chats e ligações.",
       "demo1": "Meu cachorrinho precisa de vacinas",
       "demo2": "Olá! Sou o Toby 🐾 Qual a raça e idade? Assim verifico o esquema de vacinação.",
       "demo3": "Golden Retriever, 3 meses",
@@ -268,6 +271,9 @@
       "feature4": "Lembretes de renovação"
     },
     "hogar": {
+      "pain1": "Urgências que chegam a qualquer hora e ficam sem resposta.",
+      "pain2": "Técnicos mal coordenados e visitas que se cruzam.",
+      "pain3": "Cotações e acompanhamentos perdidos entre ligações.",
       "demo1": "Meu ralo entupiu, é urgente",
       "demo2": "Entendido 🚨 Sou o Iván. Endereço para enviar o técnico?",
       "demo3": "Rua 50 #15-20",
@@ -282,6 +288,9 @@
       "feature4": "Estados: pendente → cotado → concluído"
     },
     "fotografia": {
+      "pain1": "Consultas por sessões que chegam pelo Instagram e esfriam sem resposta.",
+      "pain2": "Cotar pacotes repetidamente tira tempo da produção.",
+      "pain3": "Datas e reservas que se confundem entre mensagens.",
       "demo1": "Vi o seu trabalho, quanto custa uma sessão de casamento?",
       "demo2": "Obrigado! Sou o Diego 📸 Temos 3 pacotes: Gold $3.5M, Premium $5.2M, Luxury $8M. Qual a data?",
       "demo3": "15 de junho",
@@ -313,6 +322,9 @@
       "feature4": "Promoções e pacotes"
     },
     "automotriz": {
+      "pain1": "Clientes que pedem cotação de um serviço e não recebem resposta a tempo.",
+      "pain2": "Agendamentos da oficina marcados errado ou perdidos.",
+      "pain3": "Lembretes de manutenção que ninguém envia e clientes que não voltam.",
       "demo1": "Olá, preciso de revisão de freios",
       "demo2": "Olá! Sou o Mech 🚗 A revisão de freios custa $85k (inclui diagnóstico). Qual veículo você tem?",
       "demo3": "Renault Sandero 2021",
@@ -327,6 +339,9 @@
       "feature4": "Estoque de peças e disponibilidade"
     },
     "finanzas": {
+      "pain1": "Prospects que pedem assessoria e não recebem acompanhamento a tempo.",
+      "pain2": "Reuniões com assessores agendadas na mão que caem.",
+      "pain3": "As mesmas perguntas de produtos respondidas repetidamente.",
       "demo1": "Olá, preciso de assessoria para investir",
       "demo2": "Olá! Sou o Alex 💰 Qual é o seu perfil: conservador, moderado ou agressivo? E o valor aproximado?",
       "demo3": "Moderado, uns 20 milhões",
@@ -341,6 +356,9 @@
       "feature4": "Lembretes de vencimentos e pagamentos"
     },
     "servicios-profesionales": {
+      "pain1": "Consultas que chegam fora do horário e esfriam sem resposta.",
+      "pain2": "Agendar reuniões na mão consome horas da equipe.",
+      "pain3": "Acompanhamentos de casos perdidos entre e-mails e chats.",
       "demo1": "Preciso de assessoria jurídica para minha empresa",
       "demo2": "Olá! Em que área você precisa de apoio: trabalhista, societário, tributário?",
       "demo3": "Tributário",
@@ -355,6 +373,9 @@
       "feature4": "Cotações e propostas por chat"
     },
     "tecnologia": {
+      "pain1": "Tickets de suporte que se acumulam sem primeira resposta.",
+      "pain2": "Consultas de planos e preços que ninguém atende a tempo.",
+      "pain3": "Clientes que repetem o problema porque não há contexto.",
       "demo1": "Olá, preciso de suporte com meu software",
       "demo2": "Olá! É um problema técnico ou você quer info sobre planos e serviços?",
       "demo3": "Problema técnico, não consigo entrar",
@@ -369,6 +390,9 @@
       "feature4": "Escalamento inteligente por prioridade"
     },
     "retail": {
+      "pain1": "Clientes que perguntam por estoque e vão embora sem resposta.",
+      "pain2": "Pedidos e envios misturados entre WhatsApp e Instagram.",
+      "pain3": "Carrinhos abandonados que ninguém recupera.",
       "demo1": "Olá, têm a camiseta no tamanho M?",
       "demo2": "Olá! Sim, temos em M e L. Tem interesse em alguma cor específica?",
       "demo3": "Preta",
@@ -383,6 +407,9 @@
       "feature4": "Promoções e descontos automáticos"
     },
     "pet-services": {
+      "pain1": "Reservas de creche ou passeio que chegam tarde e se perdem.",
+      "pain2": "Disponibilidade por datas difícil de gerenciar na mão.",
+      "pain3": "Lembretes de próximos serviços que ninguém envia.",
       "demo1": "Olá, preciso de creche para meu cachorro",
       "demo2": "Olá! Para quais datas e qual a raça do seu peludo?",
       "demo3": "De sexta a domingo, é um Beagle",
@@ -397,6 +424,9 @@
       "feature4": "Lembretes de próximos serviços"
     },
     "otro": {
+      "pain1": "Clientes que escrevem fora do horário e não recebem resposta.",
+      "pain2": "Mensagens espalhadas entre canais sem um único lugar.",
+      "pain3": "Acompanhamentos que se perdem e vendas que não fecham.",
       "demo1": "Olá, preciso de informações sobre seus serviços",
       "demo2": "Olá! Com prazer te ajudo. Qual serviço te interessa?",
       "demo3": "Quero cotar",

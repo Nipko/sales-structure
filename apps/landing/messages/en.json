@@ -152,6 +152,9 @@
       "feature4": "Google Calendar sync"
     },
     "veterinaria": {
+      "pain1": "Owners messaging about an emergency who don't get a timely reply.",
+      "pain2": "Vaccination schedules that fall behind without reminders.",
+      "pain3": "Appointments and grooming mixed across chats and calls.",
       "demo1": "My puppy needs vaccines",
       "demo2": "Hi! I'm Toby 🐾 What breed and age? That way I can check the vaccination schedule.",
       "demo3": "Golden Retriever, 3 months",
@@ -268,6 +271,9 @@
       "feature4": "Renewal reminders"
     },
     "hogar": {
+      "pain1": "Emergencies that come in at any hour and go unanswered.",
+      "pain2": "Poorly coordinated technicians and overlapping visits.",
+      "pain3": "Quotes and follow-ups lost across calls.",
       "demo1": "My drain is clogged, it's urgent",
       "demo2": "Got it 🚨 I'm Iván. Address to send a technician?",
       "demo3": "50th Street #15-20",
@@ -282,6 +288,9 @@
       "feature4": "Statuses: pending → quoted → completed"
     },
     "fotografia": {
+      "pain1": "Session inquiries that come in on Instagram and go cold without a reply.",
+      "pain2": "Quoting packages over and over takes time away from shooting.",
+      "pain3": "Dates and bookings that get confused across messages.",
       "demo1": "I saw your work, how much is a wedding session?",
       "demo2": "Thanks! I'm Diego 📸 We have 3 packages: Gold $3.5M, Premium $5.2M, Luxury $8M. When's the date?",
       "demo3": "June 15",
@@ -313,6 +322,9 @@
       "feature4": "Promotions and packages"
     },
     "automotriz": {
+      "pain1": "Customers asking for a service quote who don't get a timely reply.",
+      "pain2": "Workshop appointments booked wrong or lost.",
+      "pain3": "Maintenance reminders no one sends and customers who don't return.",
       "demo1": "Hi, I need a brake inspection",
       "demo2": "Hi! I'm Mech 🚗 The brake inspection costs $85k (diagnosis included). What vehicle do you have?",
       "demo3": "Renault Sandero 2021",
@@ -327,6 +339,9 @@
       "feature4": "Parts inventory and availability"
     },
     "finanzas": {
+      "pain1": "Prospects asking for advice who don't get timely follow-up.",
+      "pain2": "Advisor meetings booked by hand that fall through.",
+      "pain3": "The same product questions answered over and over.",
       "demo1": "Hi, I need investment advice",
       "demo2": "Hi! I'm Alex 💰 What's your profile: conservative, moderate or aggressive? And roughly how much?",
       "demo3": "Moderate, around 20 million",
@@ -341,6 +356,9 @@
       "feature4": "Payment and due date reminders"
     },
     "servicios-profesionales": {
+      "pain1": "Inquiries that arrive after hours and go cold without a reply.",
+      "pain2": "Booking meetings by hand eats up the team's hours.",
+      "pain3": "Case follow-ups lost across emails and chats.",
       "demo1": "I need legal advice for my company",
       "demo2": "Hi! What area do you need help with: labor, corporate, tax?",
       "demo3": "Tax",
@@ -355,6 +373,9 @@
       "feature4": "Quotes and proposals by chat"
     },
     "tecnologia": {
+      "pain1": "Support tickets piling up without a first reply.",
+      "pain2": "Plan and pricing questions no one answers in time.",
+      "pain3": "Customers repeating their issue because there's no context.",
       "demo1": "Hi, I need support with my software",
       "demo2": "Hi! Is it a technical issue or do you want info about plans and services?",
       "demo3": "Technical issue, I can't log in",
@@ -369,6 +390,9 @@
       "feature4": "Smart priority-based escalation"
     },
     "retail": {
+      "pain1": "Customers asking about stock who leave without a reply.",
+      "pain2": "Orders and shipping mixed across WhatsApp and Instagram.",
+      "pain3": "Abandoned carts no one recovers.",
       "demo1": "Hi, do you have the t-shirt in size M?",
       "demo2": "Hi! Yes, we have it in M and L. Any particular color you're after?",
       "demo3": "Black",
@@ -383,6 +407,9 @@
       "feature4": "Automatic promotions and discounts"
     },
     "pet-services": {
+      "pain1": "Daycare or walking bookings that arrive late and get lost.",
+      "pain2": "Date availability that's hard to manage by hand.",
+      "pain3": "Reminders for upcoming services no one sends.",
       "demo1": "Hi, I need daycare for my dog",
       "demo2": "Hi! For what dates and what breed is your furry friend?",
       "demo3": "Friday to Sunday, he's a Beagle",
@@ -397,6 +424,9 @@
       "feature4": "Upcoming service reminders"
     },
     "otro": {
+      "pain1": "Customers who write after hours and get no reply.",
+      "pain2": "Messages scattered across channels with no single place.",
+      "pain3": "Follow-ups that slip and sales that don't close.",
       "demo1": "Hi, I need information about your services",
       "demo2": "Hi! Happy to help. Which service are you interested in?",
       "demo3": "I want a quote",

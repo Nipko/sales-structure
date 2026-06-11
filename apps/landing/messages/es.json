@@ -146,6 +146,9 @@
       "feature4": "Sincronización con Google Calendar"
     },
     "veterinaria": {
+      "pain1": "Dueños que escriben por una urgencia y no reciben respuesta a tiempo.",
+      "pain2": "Esquemas de vacunación que se atrasan sin recordatorios.",
+      "pain3": "Agenda de consultas y baños mezclada en chats y llamadas.",
       "name": "Veterinaria",
       "subtitle": "Clínicas · Estética canina · Daycare",
       "agentName": "Toby",
@@ -234,6 +237,9 @@
       "feature4": "Recordatorios de renovación"
     },
     "hogar": {
+      "pain1": "Urgencias que llegan a cualquier hora y se quedan sin respuesta.",
+      "pain2": "Técnicos mal coordinados y visitas que se cruzan.",
+      "pain3": "Cotizaciones y seguimientos que se pierden entre llamadas.",
       "name": "Servicios del hogar",
       "subtitle": "Plomería · Electricidad · Limpieza",
       "agentName": "Iván",
@@ -244,6 +250,9 @@
       "feature4": "Estados: pendiente → cotizado → completado"
     },
     "fotografia": {
+      "pain1": "Consultas por sesiones que llegan por Instagram y se enfrían sin respuesta.",
+      "pain2": "Cotizar paquetes una y otra vez resta tiempo de producción.",
+      "pain3": "Fechas y reservas que se confunden entre mensajes.",
       "name": "Fotografía",
       "subtitle": "Bodas · Productos · Eventos",
       "agentName": "Diego",
@@ -267,6 +276,9 @@
       "feature4": "Promociones y paquetes"
     },
     "automotriz": {
+      "pain1": "Clientes que piden cotización de un servicio y no reciben respuesta a tiempo.",
+      "pain2": "Citas de taller que se agendan mal o se pierden.",
+      "pain3": "Recordatorios de mantenimiento que nadie hace y clientes que no vuelven.",
       "name": "Automotriz",
       "subtitle": "Talleres · Concesionarios · Repuestos",
       "agentName": "Mech",
@@ -277,6 +289,9 @@
       "feature4": "Inventario de repuestos y disponibilidad"
     },
     "finanzas": {
+      "pain1": "Prospectos que piden asesoría y no reciben seguimiento a tiempo.",
+      "pain2": "Citas con asesores que se agendan a mano y se caen.",
+      "pain3": "Las mismas preguntas de productos respondidas una y otra vez.",
       "name": "Finanzas",
       "subtitle": "Asesoría · Inversiones · Contabilidad",
       "agentName": "Alex",
@@ -287,6 +302,9 @@
       "feature4": "Recordatorios de vencimientos y pagos"
     },
     "servicios-profesionales": {
+      "pain1": "Consultas que llegan fuera de horario y se enfrían sin respuesta.",
+      "pain2": "Agendar reuniones a mano consume horas del equipo.",
+      "pain3": "Seguimientos de casos que se pierden entre correos y chats.",
       "name": "Servicios Profesionales",
       "subtitle": "Legal · Consultoría · Contabilidad",
       "agentName": "Experto",
@@ -297,6 +315,9 @@
       "feature4": "Cotizaciones y propuestas por chat"
     },
     "tecnologia": {
+      "pain1": "Tickets de soporte que se acumulan sin primera respuesta.",
+      "pain2": "Consultas de planes y precios que nadie atiende a tiempo.",
+      "pain3": "Clientes que repiten su problema porque no hay contexto.",
       "name": "Tecnología",
       "subtitle": "SaaS · Soporte · Desarrollo",
       "agentName": "Dev",
@@ -307,6 +328,9 @@
       "feature4": "Escalamiento inteligente por prioridad"
     },
     "retail": {
+      "pain1": "Clientes que preguntan por stock y se van sin respuesta.",
+      "pain2": "Pedidos y envíos mezclados entre WhatsApp e Instagram.",
+      "pain3": "Carritos abandonados que nadie recupera.",
       "name": "Retail",
       "subtitle": "Tiendas · E-commerce · Boutiques",
       "agentName": "Shop",
@@ -317,6 +341,9 @@
       "feature4": "Promociones y descuentos automáticos"
     },
     "pet-services": {
+      "pain1": "Reservas de guardería o paseo que llegan tarde y se pierden.",
+      "pain2": "Disponibilidad por fechas difícil de gestionar a mano.",
+      "pain3": "Recordatorios de próximos servicios que nadie envía.",
       "name": "Servicios para Mascotas",
       "subtitle": "Guardería · Paseos · Grooming",
       "agentName": "Buddy",
@@ -327,6 +354,9 @@
       "feature4": "Recordatorios de próximos servicios"
     },
     "otro": {
+      "pain1": "Clientes que escriben fuera de horario y no reciben respuesta.",
+      "pain2": "Mensajes repartidos entre canales sin un solo lugar.",
+      "pain3": "Seguimientos que se pierden y ventas que no se cierran.",
       "name": "Otro",
       "subtitle": "Cualquier negocio · Personalizable",
       "agentName": "Asistente",

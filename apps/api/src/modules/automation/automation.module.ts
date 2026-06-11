@@ -19,6 +19,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { PersonaModule } from '../persona/persona.module';
 import { AIModule } from '../ai/ai.module';
 import { ChannelsModule } from '../channels/channels.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
     imports: [
@@ -27,6 +28,7 @@ import { ChannelsModule } from '../channels/channels.module';
         PersonaModule,
         AIModule,
         forwardRef(() => ChannelsModule),
+        AnalyticsModule,
         HttpModule.register({ timeout: 10_000 }),
         BullModule.registerQueue({ name: NURTURING_QUEUE }),
         BullModule.registerQueue({ name: AUTOMATION_JOBS_QUEUE }),

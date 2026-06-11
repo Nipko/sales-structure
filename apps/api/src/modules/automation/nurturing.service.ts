@@ -8,6 +8,7 @@ import { PersonaService } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
+import { ComplianceService } from '../analytics/compliance.service';
 import { OutboundMessage } from '@parallext/shared';
 
 export const NURTURING_QUEUE = 'nurturing';
@@ -48,6 +49,7 @@ export class NurturingService {
         private readonly llmRouter: LLMRouterService,
         private readonly outboundQueue: OutboundQueueService,
         private readonly channelToken: ChannelTokenService,
+        private readonly compliance: ComplianceService,
     ) {}
 
     // ─── Public API ──────────────────────────────────────────────────
@@ -393,12 +395,15 @@ export class NurturingService {
         if (!contact) return;
 
         const text = await this.generateBookingFollowUpText(tenantId, contact, bookingState);
-        // Reuse the generic sender — it enforces the 24h window, opt-out/allowed
-        // channels, the once-per-day cap, and persists the message.
-        await this.sendFollowUpText(tenantId, schemaName, conversationId, contact, text);
+        // Reuse the generic sender — it enforces opt-out, the 24h window, allowed
+        // channels, the once-per-day cap, and persists the message. Returns whether it
+        // actually sent.
+        const sent = await this.sendFollowUpText(tenantId, schemaName, conversationId, contact, text);
 
-        // Mark this abandonment cycle as nudged so we don't re-send until the
-        // booking advances (bookingStateUpdatedAt moves past bookingFollowUpAt).
+        // Mark this abandonment cycle as nudged ONLY if we actually sent — otherwise a
+        // skip (opt-out / outside window / cap) would "burn" the follow-up without
+        // delivering it, and a later tick (e.g. once the window reopens) could retry.
+        if (!sent) return;
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE conversations
              SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{bookingFollowUpAt}', to_jsonb(NOW()::text))
@@ -604,11 +609,19 @@ export class NurturingService {
         conversationId: string,
         contact: any,
         text: string,
-    ): Promise<void> {
+    ): Promise<boolean> {
         const phone = contact?.external_id || contact?.phone;
         if (!phone) {
             this.logger.warn(`No phone for contact — cannot send follow-up`);
-            return;
+            return false;
+        }
+
+        // Opt-out gate (compliance): NEVER send a proactive message to a contact who
+        // confirmed opt-out. isBlocked has a Redis fast-path (~0 cost) and applies to
+        // BOTH the free-form and the WhatsApp-template path below.
+        if (await this.compliance.isBlocked(tenantId, phone)) {
+            this.logger.log(`[Nurturing] Contact opted-out — skipping proactive follow-up for conv ${conversationId}`);
+            return false;
         }
 
         const conversation = await this.getConversation(schemaName, conversationId);
@@ -620,7 +633,7 @@ export class NurturingService {
         if (config.allowedChannels && config.allowedChannels.length > 0) {
             if (!config.allowedChannels.includes(channelType)) {
                 this.logger.debug(`[Nurturing] Channel ${channelType} not in allowed list — skipping`);
-                return;
+                return false;
             }
         }
 
@@ -628,7 +641,7 @@ export class NurturingService {
         const alreadySentToday = await this.hasNurturingSentToday(schemaName, conversationId);
         if (alreadySentToday) {
             this.logger.debug(`[Nurturing] Already sent nurturing message today for conv ${conversationId} — skipping`);
-            return;
+            return false;
         }
 
         // 24h messaging window applies to ALL channels (WhatsApp, IG, Messenger)
@@ -640,7 +653,7 @@ export class NurturingService {
                 this.logger.warn(
                     `[Nurturing] Skipping ${channelType} for conv ${conversationId} — outside 24h window, no template option`,
                 );
-                return;
+                return false;
             }
 
             // WhatsApp: can ONLY send approved template (HSM)
@@ -649,15 +662,15 @@ export class NurturingService {
                     this.logger.warn(
                         `[Nurturing] Outside 24h window for conv ${conversationId} — no WhatsApp template configured, skipping`,
                     );
-                    return;
+                    return false;
                 }
                 await this.sendWhatsAppTemplate(tenantId, schemaName, conversationId, contact, config.whatsappTemplateName);
-                return;
+                return true;
             }
 
             // Other channels outside window: skip
             this.logger.warn(`[Nurturing] Outside 24h window for ${channelType} conv ${conversationId} — skipping`);
-            return;
+            return false;
         }
 
         // Within 24h window: send free-form text
@@ -673,6 +686,7 @@ export class NurturingService {
 
         await this.outboundQueue.enqueue(outbound, accessToken);
         await this.saveOutboundMessage(schemaName, conversationId, text);
+        return true;
     }
 
     /**

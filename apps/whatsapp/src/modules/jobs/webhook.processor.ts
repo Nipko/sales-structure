@@ -487,6 +487,24 @@ export class WebhookProcessor extends WorkerHost {
       case 'button':
         return { type: 'text', text: message.button?.text || '' };
       case 'interactive':
+        // WhatsApp Flow completion (opt-in one-step booking): forward the submitted
+        // fields so the booking engine can fast-forward to confirm. Mirrors the API's
+        // whatsapp.adapter parseMessageContent — sentinel text + interactiveReply.data.
+        if (message.interactive?.type === 'nfm_reply') {
+          let flowData: Record<string, unknown> = {};
+          try {
+            flowData = JSON.parse(message.interactive.nfm_reply?.response_json || '{}');
+          } catch { /* malformed Flow payload → empty → text fallback downstream */ }
+          return {
+            type: 'text',
+            text: '__flow_response__',
+            interactiveReply: {
+              type: 'flow_response',
+              flowToken: (flowData as any)?.flow_token || message.interactive.nfm_reply?.flow_token,
+              data: flowData,
+            },
+          };
+        }
         return { type: 'text', text: message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '' };
       default:
         return { type: 'text', text: `[${message.type}]` };

@@ -305,7 +305,7 @@ export class IntentInterpreterService {
             // with 'p', so "a las 3 de la tarde" was parsed as 03:00 instead of 15:00.
             // Prefixes for es/pt/fr/en ("a las", "às", "at", "à") + multilingual
             // period qualifiers, so "amanhã às 15h" / "at 3 pm" / "à 15h" parse.
-            const hourMatch = t.match(/(?:a las |las |às |as |at |à )(\d{1,2})(?::(\d{2}))?\s*(am|pm|de la tarde|de la noche|de la mañana|de la manana|de la madrugada|tarde|noche|mañana|manana|madrugada|da tarde|da noite|da manha|du soir|du matin|de l'apres-midi|in the afternoon|in the evening|in the morning|a\.?m|p\.?m|h|hs|hrs?)?/i);
+            const hourMatch = t.match(/(?:a las |las |às |as |at |à )(\d{1,2})(?:[:h]\s*(\d{2}))?\s*(am|pm|de la tarde|de la noche|de la mañana|de la manana|de la madrugada|tarde|noche|mañana|manana|madrugada|da tarde|da noite|da manha|du soir|du matin|de l'apres-midi|in the afternoon|in the evening|in the morning|a\.?m|p\.?m|h|hs|hrs?)?/i);
             if (hourMatch) {
                 let h = parseInt(hourMatch[1]);
                 const min = hourMatch[2] || '00';
@@ -317,12 +317,19 @@ export class IntentInterpreterService {
                 base.timeMentioned = `${String(h).padStart(2, '0')}:${min}`;
             } else {
                 // Bare "15h" / "15hs" / "15hrs" (common in pt/fr) without a prefix.
-                const hMatch = t.match(/\b(\d{1,2})\s*h(?:s|rs?)?\b/i);
+                const hMatch = t.match(/\b(\d{1,2})\s*h\s*(\d{2})?(?:s|rs?)?\b/i);
                 if (hMatch) {
                     const h = parseInt(hMatch[1]);
-                    if (h >= 0 && h <= 23) base.timeMentioned = `${String(h).padStart(2, '0')}:00`;
+                    const min = hMatch[2] || '00';
+                    if (h >= 0 && h <= 23) base.timeMentioned = `${String(h).padStart(2, '0')}:${min}`;
                 }
             }
+        }
+
+        // ── Noon / midnight shortcuts (es/pt/fr/en) ──
+        if (!base.timeMentioned) {
+            if (/\b(mediod[ií]a|meio[-\s]?dia|midi|noon)\b/i.test(t)) base.timeMentioned = '12:00';
+            else if (/\b(medianoche|meia[-\s]?noite|minuit|midnight)\b/i.test(t)) base.timeMentioned = '00:00';
         }
 
         // ── Detect booking intent ──

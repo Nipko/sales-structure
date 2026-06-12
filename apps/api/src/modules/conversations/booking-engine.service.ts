@@ -368,13 +368,14 @@ export class BookingEngineService {
                 state.time = undefined;
                 state.step = 'ask_date';
 
-                // Return a friendly feedback message to explain the past date error
-                const pastDateMsgs = [
-                    `Disculpa, el ${intent.dateMentioned} ya pasó. 🗓️ ¿Qué otra fecha futura te gustaría seleccionar?`,
-                    `Esa fecha ya ha pasado. Por favor, selecciona una fecha a partir de hoy para tu cita.`,
-                    `Parece que el ${intent.dateMentioned} es una fecha del pasado. ¿Qué otro día te queda mejor?`
-                ];
-                const text = pastDateMsgs[Math.floor(Math.random() * pastDateMsgs.length)];
+                // Friendly past-date feedback, localized (deterministic layer).
+                const PD: Record<string, (d: string) => string> = {
+                    es: d => `Disculpa, el ${d} ya pasó. 🗓️ ¿Qué otra fecha futura te gustaría seleccionar?`,
+                    en: d => `Sorry, ${d} has already passed. 🗓️ What other future date works for you?`,
+                    pt: d => `Desculpa, ${d} já passou. 🗓️ Que outra data futura você prefere?`,
+                    fr: d => `Désolé, ${d} est déjà passé. 🗓️ Quelle autre date future préférez-vous ?`,
+                };
+                const text = (PD[(language || 'es').slice(0, 2)] || PD.es)(intent.dateMentioned);
                 return { handled: true, state, text };
             } else {
                 // Date changed → clear slots so availability is re-checked
@@ -602,9 +603,17 @@ export class BookingEngineService {
             state.step = 'ask_email';
             return { handled: true, state, text: msg(lang, 'askEmail', { name: state.customerName }) };
         }
-        // All info collected → confirmation
+        // All info collected → confirmation. Localized labels so the summary doesn't
+        // mix English ("on"/"at"/"Name") into an otherwise translated prompt.
+        const SL: Record<string, { on: string; at: string; name: string; email: string }> = {
+            es: { on: 'el', at: 'a las', name: 'Nombre', email: 'Email' },
+            en: { on: 'on', at: 'at', name: 'Name', email: 'Email' },
+            pt: { on: 'em', at: 'às', name: 'Nome', email: 'Email' },
+            fr: { on: 'le', at: 'à', name: 'Nom', email: 'Email' },
+        };
+        const sl = SL[(lang || 'es').slice(0, 2)] || SL.es;
         state.step = 'confirm';
-        const summary = `${state.serviceName} on ${state.date} at ${state.time}\nName: ${state.customerName}\nEmail: ${state.customerEmail}`;
+        const summary = `${state.serviceName} ${sl.on} ${state.date} ${sl.at} ${state.time}\n${sl.name}: ${state.customerName}\n${sl.email}: ${state.customerEmail}`;
         return {
             handled: true, state,
             text: msg(lang, 'confirmPrompt', { summary }),

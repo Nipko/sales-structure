@@ -58,6 +58,41 @@ const MAX_HISTORY_CHARS = 12_000;
 // Returned when the LLM pipeline errors out. Sent to the customer but NOT counted
 // as a successful AI response (no monthly-quota increment, no message_sent event).
 const ERROR_FALLBACK_MSG = 'Disculpa, tuve un problema procesando tu mensaje. ¿Podrías repetirlo?';
+
+// Handoff messages, localized — deterministic layer (not persona copy) so it must be
+// i18n'd here. Keyed by 2-letter language; falls back to Spanish.
+const HANDOFF_MSG: Record<string, {
+    withAgent: (n: string) => string;
+    queueHead: string;
+    queueN: (p: number) => string;
+    transferring: string;
+}> = {
+    es: {
+        withAgent: n => `Entiendo tu solicitud. Te estoy transfiriendo con *${n}* de nuestro equipo. Te responderá en un momento. 🙋`,
+        queueHead: 'Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve. 🙋',
+        queueN: p => `Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Eres el #${p} en cola. Un agente te atenderá lo antes posible. 🙋`,
+        transferring: 'Te voy a transferir con un agente de nuestro equipo.',
+    },
+    en: {
+        withAgent: n => `Got it. I'm transferring you to *${n}* from our team. They'll reply shortly. 🙋`,
+        queueHead: `Got it. I'm transferring you to our support team. An agent will reply shortly. 🙋`,
+        queueN: p => `Got it. I'm transferring you to our support team. You're #${p} in the queue. An agent will assist you as soon as possible. 🙋`,
+        transferring: `I'll transfer you to an agent from our team.`,
+    },
+    pt: {
+        withAgent: n => `Entendi. Estou te transferindo para *${n}* da nossa equipe. Em breve responderá. 🙋`,
+        queueHead: 'Entendi. Estou te transferindo para nossa equipe de atendimento. Um atendente responderá em breve. 🙋',
+        queueN: p => `Entendi. Estou te transferindo para nossa equipe. Você é o #${p} na fila. Um atendente vai te atender o quanto antes. 🙋`,
+        transferring: 'Vou te transferir para um atendente da nossa equipe.',
+    },
+    fr: {
+        withAgent: n => `Compris. Je vous transfère à *${n}* de notre équipe. Il/elle vous répondra dans un instant. 🙋`,
+        queueHead: 'Compris. Je vous transfère à notre équipe support. Un agent vous répondra sous peu. 🙋',
+        queueN: p => `Compris. Je vous transfère à notre équipe. Vous êtes #${p} dans la file. Un agent vous répondra dès que possible. 🙋`,
+        transferring: 'Je vais vous transférer à un agent de notre équipe.',
+    },
+};
+const handoffText = (lang?: string) => HANDOFF_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || HANDOFF_MSG.es;
 // Per-tool execution ceiling — a single tool (esp. an external MCP server) must
 // never hang the whole conversational turn.
 const TOOL_TIMEOUT_MS = 25_000;
@@ -429,9 +464,11 @@ export class ConversationsService {
             }).catch(() => {});
             const handoffResult = await this.handoffService.executeHandoff(tenantId, conversation.id, normalizedMsg, handoffReason);
             const agentName = handoffResult.assignedTo ? (handoffResult as any).assignedAgentName : null;
+            // Handoff runs before userLanguage is computed — derive it from this message.
+            const hl = handoffText(this.languageDetector.detect(content?.text || '', config.language || 'es'));
             let handoffMsg: string;
             if (agentName) {
-                handoffMsg = `Entiendo tu solicitud. Te estoy transfiriendo con *${agentName}* de nuestro equipo. Te responderá en un momento. 🙋`;
+                handoffMsg = hl.withAgent(agentName);
             } else {
                 // Count how many conversations are in queue to give a position
                 const queueCount = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -439,9 +476,7 @@ export class ConversationsService {
                     [],
                 ).catch(() => [{ cnt: 0 }]);
                 const position = Number(queueCount?.[0]?.cnt || 1);
-                handoffMsg = position <= 1
-                    ? `Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve. 🙋`
-                    : `Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Eres el #${position} en cola. Un agente te atenderá lo antes posible. 🙋`;
+                handoffMsg = position <= 1 ? hl.queueHead : hl.queueN(position);
             }
             await this.sendResponse(tenantId, handoffMsg, normalizedMsg);
             await this.saveAiMessage(tenantId, conversation.id, handoffMsg, normalizedMsg.channelType);
@@ -1341,7 +1376,7 @@ export class ConversationsService {
                     tools = [];
                     if (procResult.text) engineProducedText = procResult.text;
                     if (procResult.handoff) {
-                        if (!engineProducedText) engineProducedText = 'Te voy a transferir con un agente de nuestro equipo.';
+                        if (!engineProducedText) engineProducedText = handoffText(userLanguage).transferring;
                         try {
                             await this.handoffService.executeHandoff(
                                 tenantId, conversation.id, msg, procResult.handoffReason || `Procedimiento: ${procResult.procedureName || ''}`,
@@ -2207,7 +2242,7 @@ export class ConversationsService {
                 tenantId, conversationId, contactId, channelType: 'web_widget',
                 content: { type: 'text', text },
             } as any, handoffReason);
-            return 'Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve.';
+            return handoffText(this.languageDetector.detect(text, config.language || 'es')).queueHead;
         }
 
         if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {
@@ -2301,7 +2336,7 @@ export class ConversationsService {
                     tenantId, conversationId, contactId, channelType: 'web_widget',
                     content: { type: 'text', text },
                 } as any, handoffReason);
-                yield 'Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve.';
+                yield handoffText(this.languageDetector.detect(text, config.language || 'es')).queueHead;
                 return;
             }
             if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {

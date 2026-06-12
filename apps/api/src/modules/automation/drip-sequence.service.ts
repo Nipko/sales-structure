@@ -6,6 +6,10 @@ import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
+import { PersonaService } from '../persona/persona.service';
+import { LLMRouterService } from '../ai/router/llm-router.service';
+import { ComplianceService } from '../analytics/compliance.service';
+import { SegmentsService } from '../crm/services/segments/segments.service';
 import { NURTURING_QUEUE } from './nurturing.service';
 import { OutboundMessage } from '@parallext/shared';
 
@@ -44,6 +48,10 @@ export class DripSequenceService {
         private readonly throttle: TenantThrottleService,
         private readonly outboundQueue: OutboundQueueService,
         private readonly channelToken: ChannelTokenService,
+        private readonly personaService: PersonaService,
+        private readonly llmRouter: LLMRouterService,
+        private readonly compliance: ComplianceService,
+        private readonly segmentsService: SegmentsService,
     ) {}
 
     // ─── Lazy Table Migration ────────────────────────────────────
@@ -228,21 +236,85 @@ export class DripSequenceService {
         const steps = (typeof sequence.steps === 'string' ? JSON.parse(sequence.steps) : sequence.steps) as DripStep[];
         if (!steps.length) throw new BadRequestException('Sequence has no steps');
 
+        // Opt-out gate — proactive outreach must respect opt-outs.
+        const contact = await this.getContact(schemaName, contactId);
+        const phone = contact?.external_id || contact?.phone;
+        if (phone && await this.compliance.isBlocked(tenantId, phone)) {
+            throw new BadRequestException('Contact has opted out — cannot enroll in a sequence');
+        }
+
+        const enrollment = await this.enrollOne(tenantId, schemaName, sequenceId, contactId, steps, conversationId || null);
+        if (!enrollment) throw new BadRequestException('Contact is already enrolled in this sequence');
+
+        this.logger.log(`Enrolled contact ${contactId} in sequence ${sequenceId}`);
+        return enrollment;
+    }
+
+    /**
+     * Bulk-enroll a CRM SEGMENT into a (prospecting) sequence — the agent opens, the
+     * console closes. Resolves the segment's leads, skips opted-out and already-enrolled
+     * contacts, and pre-creates a conversation so the opener threads and the reply lands
+     * in the inbox. Hard-capped to avoid runaway outreach.
+     */
+    async enrollSegment(
+        tenantId: string,
+        sequenceId: string,
+        segmentId: string,
+        opts?: { cap?: number },
+    ): Promise<{ matched: number; enrolled: number; skippedOptOut: number; skippedDuplicate: number; skippedNoContact: number; capped: boolean }> {
+        const schemaName = await this.tenantSchema(tenantId);
+        await this.ensureDripTables(schemaName);
+
+        const sequence = await this.getSequence(tenantId, sequenceId);
+        if (!sequence.is_active) throw new BadRequestException('Cannot enroll into an inactive sequence');
+        const steps = (typeof sequence.steps === 'string' ? JSON.parse(sequence.steps) : sequence.steps) as DripStep[];
+        if (!steps.length) throw new BadRequestException('Sequence has no steps');
+
+        const cap = Math.max(1, Math.min(opts?.cap ?? 500, 1000));
+        // getSegmentContacts returns `leads` rows (with contact_id + phone). Fetch cap+1
+        // to detect truncation.
+        const leads = await this.segmentsService.getSegmentContacts(tenantId, segmentId, 1, cap + 1);
+        const capped = leads.length > cap;
+        const targets = leads.slice(0, cap);
+
+        const { accountId } = await this.resolveChannelCredentials(tenantId, 'whatsapp');
+
+        let enrolled = 0, skippedOptOut = 0, skippedDuplicate = 0, skippedNoContact = 0;
+        for (const lead of targets) {
+            const contactId = lead.contact_id;
+            const phone = lead.external_id || lead.phone;
+            if (!contactId || !phone) { skippedNoContact++; continue; }
+            if (await this.compliance.isBlocked(tenantId, phone)) { skippedOptOut++; continue; }
+            const convId = await this.resolveOrCreateConversation(schemaName, contactId, 'whatsapp', accountId);
+            const enrollment = await this.enrollOne(tenantId, schemaName, sequenceId, contactId, steps, convId);
+            if (enrollment) enrolled++; else skippedDuplicate++;
+        }
+
+        this.logger.log(`[Prospecting] Segment ${segmentId} → seq ${sequenceId}: ${enrolled} enrolled / ${skippedOptOut} opt-out / ${skippedDuplicate} dup / ${skippedNoContact} no-contact${capped ? ' (capped)' : ''}`);
+        return { matched: leads.length, enrolled, skippedOptOut, skippedDuplicate, skippedNoContact, capped };
+    }
+
+    /** Insert one enrollment (dedup via the active unique index) and schedule its first
+     *  step. Returns the enrollment row, or null if the contact was already enrolled. */
+    private async enrollOne(
+        tenantId: string,
+        schemaName: string,
+        sequenceId: string,
+        contactId: string,
+        steps: DripStep[],
+        conversationId: string | null,
+    ): Promise<any | null> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO drip_enrollments (sequence_id, contact_id, conversation_id, current_step, status)
              VALUES ($1::uuid, $2::uuid, $3::uuid, 0, 'active')
              ON CONFLICT ON CONSTRAINT uidx_drip_enrollments_active DO NOTHING
              RETURNING *`,
-            [sequenceId, contactId, conversationId || null],
+            [sequenceId, contactId, conversationId],
         );
-
-        if (!rows?.length) {
-            throw new BadRequestException('Contact is already enrolled in this sequence');
-        }
+        if (!rows?.length) return null;
 
         const enrollment = rows[0];
-
         const firstStep = steps[0];
         const delayMs = (firstStep.delay_seconds || 0) * 1000;
 
@@ -260,8 +332,39 @@ export class DripSequenceService {
             removeOnFail: { age: 86400 },
         });
 
-        this.logger.log(`Enrolled contact ${contactId} in sequence ${sequenceId}, first step in ${delayMs / 1000}s`);
         return enrollment;
+    }
+
+    /** Reuse the contact's active conversation, or create one so the prospecting opener
+     *  threads and the customer's reply lands in the same inbox conversation. */
+    private async resolveOrCreateConversation(
+        schemaName: string,
+        contactId: string,
+        channelType: string,
+        accountId: string,
+    ): Promise<string | null> {
+        try {
+            const existing = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id FROM conversations
+                 WHERE contact_id = $1::uuid AND channel_type = $2
+                   AND status IN ('active', 'waiting_human', 'with_human')
+                 ORDER BY created_at DESC LIMIT 1`,
+                [contactId, channelType],
+            );
+            if (existing?.length) return existing[0].id;
+
+            const created = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `INSERT INTO conversations (contact_id, channel_type, channel_account_id, status, stage)
+                 VALUES ($1::uuid, $2, $3, 'active', 'greeting') RETURNING id`,
+                [contactId, channelType, accountId || ''],
+            );
+            return created?.[0]?.id || null;
+        } catch (e: any) {
+            this.logger.warn(`resolveOrCreateConversation failed for ${contactId}: ${e.message}`);
+            return null; // enroll still proceeds with a null conversation
+        }
     }
 
     async unenrollContact(tenantId: string, sequenceId: string, contactId: string): Promise<void> {
@@ -397,6 +500,20 @@ export class DripSequenceService {
             }
         }
 
+        // Opt-out gate — proactive outreach must never reach a contact who opted out.
+        // Checked every step (an opt-out can land mid-sequence) and stops the enrollment.
+        const optoutContact = await this.getContact(schemaName, enrollment.contact_id);
+        const optoutKey = optoutContact?.external_id || optoutContact?.phone;
+        if (optoutKey && await this.compliance.isBlocked(tenantId, optoutKey)) {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE drip_enrollments SET status = 'stopped_optout', stop_reason = 'opted_out', completed_at = NOW() WHERE id = $1::uuid`,
+                [enrollmentId],
+            );
+            this.logger.log(`Drip enrollment ${enrollmentId} stopped — contact opted out`);
+            return;
+        }
+
         try {
             await this.executeStepAction(tenantId, schemaName, enrollment, step);
         } catch (e: any) {
@@ -513,7 +630,51 @@ export class DripSequenceService {
             await this.outboundQueue.enqueue(outbound, accessToken);
             await this.saveOutboundMessage(schemaName, enrollment.conversation_id, personalizedText);
         } else if (step.message_type === 'ai_generated') {
-            this.logger.debug(`ai_generated drip step — not yet implemented`);
+            // The agent "opens" the prospecting conversation with a personalized message
+            // in the tenant's persona voice. step.content (optional) is the angle/reason.
+            const text = await this.generateOpener(tenantId, contact, step.content);
+            if (!text) {
+                this.logger.warn(`AI opener returned empty — skipping drip step`);
+                return;
+            }
+            const outbound: OutboundMessage = {
+                tenantId,
+                channelType,
+                channelAccountId: accountId,
+                to: phone,
+                content: { type: 'text', text },
+            };
+            await this.outboundQueue.enqueue(outbound, accessToken);
+            await this.saveOutboundMessage(schemaName, enrollment.conversation_id, text);
+        }
+    }
+
+    /** AI-written prospecting opener in the agent's persona voice, with a safe fallback. */
+    private async generateOpener(tenantId: string, contact: any, angle?: string): Promise<string> {
+        const name = contact?.name ? ` ${String(contact.name).split(' ')[0]}` : '';
+        const fallback = `¡Hola${name}! 👋 Te escribo del equipo. ¿Tenés un minuto para que te cuente cómo podemos ayudarte?`;
+        try {
+            const persona = await this.personaService.getActivePersona(tenantId);
+            if (!persona) return fallback;
+            const angleLine = angle && angle.trim()
+                ? ` El motivo/ángulo del primer contacto es: "${angle.trim()}".`
+                : '';
+            const response = await this.llmRouter.execute({
+                task: 'conversation',
+                messages: [{
+                    role: 'user',
+                    content: `Escribí un mensaje de PRIMER CONTACTO (prospección) breve, cálido y natural para ` +
+                        `${name ? `un cliente llamado${name}` : 'un posible cliente'}.${angleLine} ` +
+                        `Presentate de parte del negocio, generá interés en 1-2 líneas y terminá con una pregunta abierta y sin presión. ` +
+                        `No inventes datos, precios ni promociones que no te dieron. Devolvé SOLO el mensaje.`,
+                }],
+                systemPrompt: this.personaService.buildSystemPrompt(persona),
+                temperature: 0.8,
+                tenantId,
+            });
+            return response.content?.trim() || fallback;
+        } catch {
+            return fallback;
         }
     }
 

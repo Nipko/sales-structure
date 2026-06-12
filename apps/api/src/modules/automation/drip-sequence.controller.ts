@@ -94,6 +94,20 @@ export class DripSequenceController {
         return { success: true, data };
     }
 
+    @Post(':tenantId/:sequenceId/enroll-segment')
+    @Roles('super_admin', 'tenant_admin')
+    @ApiOperation({ summary: 'Bulk-enroll a CRM segment into a prospecting sequence' })
+    async enrollSegment(
+        @Param('tenantId') tenantId: string,
+        @Param('sequenceId') sequenceId: string,
+        @Body() body: { segmentId: string; cap?: number },
+    ) {
+        const data = await this.dripService.enrollSegment(
+            tenantId, sequenceId, body.segmentId, { cap: body.cap },
+        );
+        return { success: true, data };
+    }
+
     @Post(':tenantId/:sequenceId/unenroll')
     @Roles('super_admin', 'tenant_admin')
     @ApiOperation({ summary: 'Unenroll a contact from a drip sequence' })

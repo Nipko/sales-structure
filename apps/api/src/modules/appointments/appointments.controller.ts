@@ -370,6 +370,23 @@ export class AppointmentsController {
         return { success: true, data };
     }
 
+    @Get(':tenantId/booking-flows-config')
+    @ApiOperation({ summary: 'Get WhatsApp Flows (booking) settings' })
+    async getBookingFlowsConfig(@Param('tenantId') tenantId: string) {
+        const data = await this.service.getBookingFlowsConfig(tenantId);
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/booking-flows-config')
+    @ApiOperation({ summary: 'Update WhatsApp Flows (booking) settings' })
+    async updateBookingFlowsConfig(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { enabled?: boolean; flowId?: string; flowCta?: string; flowMode?: 'published' | 'draft' },
+    ) {
+        const data = await this.service.updateBookingFlowsConfig(tenantId, body);
+        return { success: true, data };
+    }
+
     // ── Dynamic routes AFTER static ones ─────────────────────────
 
     @Get(':tenantId')

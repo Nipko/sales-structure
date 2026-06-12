@@ -93,6 +93,65 @@ export class AppointmentsService {
         return merged;
     }
 
+    // ── WhatsApp Flows (booking) Settings ─────────────────────
+    // Opt-in: when enabled + a published Flow ID is set, the WhatsApp booking flow
+    // sends an interactive Meta Flow (one-step form) instead of the step-by-step
+    // text/buttons. OFF by default; everything falls back to text if disabled.
+
+    private readonly BOOKING_FLOWS_DEFAULTS = {
+        enabled: false,
+        flowId: '',
+        flowCta: 'Agendar',
+        flowMode: 'published' as 'published' | 'draft',
+    };
+
+    async getBookingFlowsConfig(tenantId: string): Promise<{
+        enabled: boolean; flowId: string; flowCta: string;
+        flowMode: 'published' | 'draft';
+    }> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        const saved = (tenant?.settings as any)?.bookingFlows;
+        return { ...this.BOOKING_FLOWS_DEFAULTS, ...saved };
+    }
+
+    async updateBookingFlowsConfig(tenantId: string, input: Partial<{
+        enabled: boolean; flowId: string; flowCta: string;
+        flowMode: 'published' | 'draft';
+    }>): Promise<typeof this.BOOKING_FLOWS_DEFAULTS> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        const currentSettings = (tenant?.settings as any) || {};
+        const merged = {
+            ...this.BOOKING_FLOWS_DEFAULTS,
+            ...(currentSettings.bookingFlows || {}),
+            ...input,
+        };
+
+        // A Meta Flow ID is a numeric string; require it when enabling so we never
+        // ship a 400 to Meta at send time (the engine would then fall back to text).
+        if (merged.enabled && !/^\d{6,}$/.test(String(merged.flowId || ''))) {
+            throw new BadRequestException(
+                'A valid published Flow ID (numeric) is required to enable WhatsApp Flows',
+            );
+        }
+
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: {
+                settings: {
+                    ...currentSettings,
+                    bookingFlows: merged,
+                } as any,
+            },
+        });
+        return merged;
+    }
+
     // ── Appointments CRUD ─────────────────────────────────────
 
     async list(schemaName: string, filters?: {

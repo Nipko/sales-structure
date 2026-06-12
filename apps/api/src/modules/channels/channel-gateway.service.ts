@@ -14,6 +14,23 @@ export interface IChannelAdapter {
     verifyWebhook(query: any): string | null;
     /** Optional — best-effort "typing…" indicator. SMS/email don't implement it. */
     sendTypingIndicator?(channelAccountId: string, to: string, accessToken: string): Promise<void>;
+    /** Optional — interactive WhatsApp Flow message (opt-in one-step booking). WhatsApp only. */
+    sendFlowMessage?(
+        to: string,
+        channelAccountId: string,
+        accessToken: string,
+        flowId: string,
+        flowToken: string,
+        body: string,
+        opts?: {
+            headerText?: string;
+            footerText?: string;
+            flowCta?: string;
+            mode?: 'published' | 'draft';
+            initialScreen?: string;
+            initialData?: Record<string, unknown>;
+        },
+    ): Promise<string>;
 }
 
 @Injectable()
@@ -85,6 +102,28 @@ export class ChannelGatewayService {
         }
 
         try {
+            // Opt-in WhatsApp Flow: routed by metadata.flowId. If the adapter can't send
+            // it (non-WhatsApp), fall through to the text body so the booking never stalls.
+            const meta = outbound.metadata as any;
+            if (meta?.flowId && adapter.sendFlowMessage) {
+                return await adapter.sendFlowMessage(
+                    outbound.to,
+                    outbound.channelAccountId,
+                    accessToken,
+                    String(meta.flowId),
+                    String(meta.flowToken || ''),
+                    outbound.content.text || '',
+                    {
+                        headerText: meta.headerText,
+                        footerText: meta.footerText,
+                        flowCta: meta.flowCta,
+                        mode: meta.flowMode,
+                        initialScreen: meta.initialScreen,
+                        initialData: meta.initialData,
+                    },
+                );
+            }
+
             if (outbound.content.type === 'text' && outbound.content.text) {
                 return await adapter.sendTextMessage(
                     outbound.to,

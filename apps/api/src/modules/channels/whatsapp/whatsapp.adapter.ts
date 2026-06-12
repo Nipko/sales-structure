@@ -298,6 +298,27 @@ export class WhatsAppAdapter implements IChannelAdapter {
                         },
                     };
                 }
+                // Completion of a WhatsApp Flow (the opt-in one-step booking form).
+                // The submitted fields arrive as a JSON string in nfm_reply.response_json;
+                // a sentinel text lets the booking pipeline detect it without changing the
+                // shared MessageContentType. Malformed JSON → empty data → falls back to text.
+                if (message.interactive?.type === 'nfm_reply') {
+                    let flowData: Record<string, unknown> = {};
+                    try {
+                        flowData = JSON.parse(message.interactive.nfm_reply?.response_json || '{}');
+                    } catch { /* malformed Flow payload → empty → text fallback downstream */ }
+                    return {
+                        type: 'text' as const,
+                        text: '__flow_response__',
+                        interactiveReply: {
+                            type: 'flow_response',
+                            // The token we minted round-trips inside response_json when the
+                            // Flow echoes it; best-effort anti-replay, never blocks booking.
+                            flowToken: (flowData as any)?.flow_token || message.interactive.nfm_reply?.flow_token,
+                            data: flowData,
+                        },
+                    };
+                }
                 return { type: 'text' as const, text: '[Interactive message]' };
 
             default:
@@ -392,6 +413,76 @@ export class WhatsAppAdapter implements IChannelAdapter {
         if (!response.ok) {
             this.logger.error(`WhatsApp button message failed: ${JSON.stringify(data)}`);
             throw new Error(data.error?.message || 'Button message failed');
+        }
+        return data.messages?.[0]?.id || '';
+    }
+
+    /**
+     * Send an interactive WhatsApp Flow message (opt-in one-step booking form).
+     *
+     * Uses a STATIC published Flow (no data-exchange endpoint): the available
+     * services travel in `flow_action_payload.data` (navigate), and the user's
+     * submitted fields come back in the `nfm_reply.response_json` of the next
+     * inbound webhook. `flowToken` is a server-minted correlation id (not Meta's
+     * short-lived token), so there's nothing to expire. Caller catches failures
+     * and falls back to the text flow.
+     */
+    async sendFlowMessage(
+        to: string,
+        phoneNumberId: string,
+        accessToken: string,
+        flowId: string,
+        flowToken: string,
+        body: string,
+        opts?: {
+            headerText?: string;
+            footerText?: string;
+            flowCta?: string;
+            mode?: 'published' | 'draft';
+            initialScreen?: string;
+            initialData?: Record<string, unknown>;
+        },
+    ): Promise<string> {
+        const url = `${this.apiUrl}/${phoneNumberId}/messages`;
+        const interactive: any = {
+            type: 'flow',
+            body: { text: (body || '').slice(0, 1024) },
+            action: {
+                name: 'flow',
+                parameters: {
+                    flow_message_version: '3',
+                    flow_token: flowToken,
+                    flow_id: flowId,
+                    flow_cta: (opts?.flowCta || 'Agendar').slice(0, 30),
+                    mode: opts?.mode || 'published',
+                    flow_action: 'navigate',
+                    flow_action_payload: {
+                        screen: opts?.initialScreen || 'SERVICE_SELECTION',
+                        data: opts?.initialData || {},
+                    },
+                },
+            },
+        };
+        if (opts?.headerText) interactive.header = { type: 'text', text: opts.headerText.slice(0, 60) };
+        if (opts?.footerText) interactive.footer = { text: opts.footerText.slice(0, 60) };
+
+        this.logger.log(`[WhatsApp] Sending Flow message (flow_id=${flowId})`);
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to,
+                type: 'interactive',
+                interactive,
+            }),
+            signal: AbortSignal.timeout(10_000),
+        });
+        const data = await response.json() as any;
+        if (!response.ok) {
+            this.logger.error(`WhatsApp Flow message failed: ${JSON.stringify(data)}`);
+            throw new Error(data.error?.message || 'Flow message failed');
         }
         return data.messages?.[0]?.id || '';
     }

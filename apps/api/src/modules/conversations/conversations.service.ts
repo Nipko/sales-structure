@@ -680,7 +680,12 @@ export class ConversationsService {
             const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
 
             lead = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `INSERT INTO leads (contact_id, first_name, last_name, phone, stage, score) VALUES ($1::uuid, $2, $3, $4, 'nuevo', 10) RETURNING *`,
+                // Seed score=1 (the lead-scoring service's own neutral default, see
+                // lead-scoring.service defaultResult). A brand-new lead has zero
+                // behavioral signal — seeding 10 (the hottest) wrongly flagged every new
+                // lead as "ready" and, via value-routing, inflated ticketValue to max.
+                // The scoring cron recalculates on the next message.
+                `INSERT INTO leads (contact_id, first_name, last_name, phone, stage, score) VALUES ($1::uuid, $2, $3, $4, 'nuevo', 1) RETURNING *`,
                 [contactIdStr, firstName, lastName, contactId],
             ).then(res => res[0]);
             isNewLead = true;

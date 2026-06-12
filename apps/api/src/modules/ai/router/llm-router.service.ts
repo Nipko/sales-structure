@@ -338,11 +338,17 @@ export class LLMRouterService {
             // tier not present in `candidates` is a no-op.
             const composite = this.scoreFactors(options.routingFactors);
             const targetTier = this.targetTierForScore(composite, allowedTiers);
-            const tIdx = candidates.findIndex(c => c.tier === targetTier);
-            if (tIdx > 0) {
-                const [picked] = candidates.splice(tIdx, 1);
-                candidates.unshift(picked);
-                this.logger.debug(`[LLM] Value-routing composite=${composite} → ${targetTier} (${picked.id})`);
+            // Only ACT on the score when the caller actually supplied routing factors.
+            // Callers that omit them (nurturing drip, customer-memory extraction) get a
+            // neutral composite (50 → tier_3) which is NOT their chain's natural head, so
+            // reordering would silently bias them toward gemini-flash. Keep their order.
+            if (options.routingFactors) {
+                const tIdx = candidates.findIndex(c => c.tier === targetTier);
+                if (tIdx > 0) {
+                    const [picked] = candidates.splice(tIdx, 1);
+                    candidates.unshift(picked);
+                    this.logger.debug(`[LLM] Value-routing composite=${composite} → ${targetTier} (${picked.id})`);
+                }
             }
 
             // Sticky routing: bias the (already filtered: configured + healthy +

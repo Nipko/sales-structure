@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -1010,6 +1011,56 @@ export class ConversationsService {
     }
 
     /**
+     * Read the opt-in WhatsApp Flows config (tenant.settings.bookingFlows). Fetched
+     * fresh per WhatsApp booking turn so a toggle takes effect immediately; the
+     * global Tenant table is a PK lookup, so the cost is negligible.
+     */
+    private async getBookingFlowsCfg(tenantId: string): Promise<{ enabled: boolean; flowId: string; flowCta: string; flowMode: 'published' | 'draft' } | null> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+            const saved = (tenant?.settings as any)?.bookingFlows || {};
+            return { enabled: false, flowId: '', flowCta: 'Agendar', flowMode: 'published', ...saved };
+        } catch (e: any) {
+            this.logger.debug(`bookingFlows config read failed (non-fatal): ${e.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * Enqueue an opt-in WhatsApp Flow message (one-step booking form). The gateway
+     * routes it by `metadata.flowId`; `content.text` is the fallback body delivered
+     * if the Flow can't render. Uses the same BullMQ outbound path as every reply.
+     */
+    private async sendFlow(
+        tenantId: string,
+        inboundMsg: NormalizedMessage,
+        flow: { headerText?: string; body: string; footerText?: string; flowCta?: string; initialScreen?: string; initialData?: Record<string, unknown> },
+        cfg: { flowId: string; flowCta: string; flowMode: 'published' | 'draft' },
+        flowToken: string,
+    ) {
+        const outbound: OutboundMessage = {
+            tenantId,
+            channelType: inboundMsg.channelType,
+            channelAccountId: inboundMsg.channelAccountId,
+            to: inboundMsg.contactId,
+            content: { type: 'text', text: flow.body },
+            metadata: {
+                flowId: cfg.flowId,
+                flowToken,
+                flowCta: flow.flowCta || cfg.flowCta,
+                flowMode: cfg.flowMode,
+                headerText: flow.headerText,
+                footerText: flow.footerText,
+                initialScreen: flow.initialScreen,
+                initialData: flow.initialData,
+                inboundTs: this.inboundTs(inboundMsg),
+            },
+        };
+        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType);
+        await this.outboundQueue.enqueue(outbound, accessToken);
+    }
+
+    /**
      * Epoch ms used as the start of the customer→reply latency metric. Prefers the
      * server-clock receipt time (`receivedAt`, stamped at pipeline entry) so it matches
      * the worker's clock at send time — no cross-clock skew. Falls back to the provider's
@@ -1045,6 +1096,14 @@ export class ConversationsService {
      */
     private async generateResponse(tenantId: string, conversation: any, msg: NormalizedMessage, config: TenantConfig, contact?: any, lead?: any, previousMessageAt?: any, bizHours?: any, inboundMessageId?: string): Promise<string> {
         let userText = msg.content.text || '';
+
+        // Opt-in WhatsApp Flow completion: the adapter sets content.text to the
+        // '__flow_response__' sentinel and stashes the submitted fields on
+        // interactiveReply.data — surface them for the booking engine fast-forward.
+        const flowResponseData: Record<string, unknown> | undefined =
+            (msg.content as any)?.interactiveReply?.type === 'flow_response'
+                ? (msg.content as any).interactiveReply.data
+                : undefined;
 
         // ── Media processing: transcribe audio / describe images ──
         if (msg.content.type === 'audio' || msg.content.type === 'image') {
@@ -1329,6 +1388,15 @@ export class ConversationsService {
                 phone: contact?.phone,
             };
 
+            // Opt-in WhatsApp Flows: capability = flag ON + Flow ID set + WhatsApp channel.
+            // Only read the config for WhatsApp booking turns (negligible PK lookup).
+            let flowCfg: { enabled: boolean; flowId: string; flowCta: string; flowMode: 'published' | 'draft' } | null = null;
+            let flowCapable = false;
+            if (msg.channelType === 'whatsapp') {
+                flowCfg = await this.getBookingFlowsCfg(tenantId);
+                flowCapable = !!flowCfg?.enabled && !!flowCfg?.flowId;
+            }
+
             // ═══ PHASE 1: INTERPRET — extract structured intent ═══
             const serviceNames = bookingState.services?.map(s => s.name) || [];
             const upcoming = turnContext.upcomingDays || [];
@@ -1358,6 +1426,7 @@ export class ConversationsService {
                 const engineResult = await this.bookingEngine.process(
                     schemaName, tenantId, conversation.contact_id || '',
                     intent, userText, bookingState, customerProfile, todayISO, userLanguage,
+                    flowCapable, flowResponseData,
                 );
 
                 bookingState = engineResult.state;
@@ -1365,6 +1434,21 @@ export class ConversationsService {
 
                 if (engineResult.handled) {
                     this.logger.log(`[Pipeline] Booking engine handled (step: ${bookingState.step})`);
+
+                    // Opt-in WhatsApp Flow: send the interactive one-step form directly,
+                    // bypassing the LLM express phase. The gateway routes by metadata.flowId;
+                    // on any send failure the engine resets waiting_flow→idle next turn and
+                    // resumes the text flow. Persist + save for history, then short-circuit.
+                    if (engineResult.flowMessage && flowCapable && flowCfg) {
+                        await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+                        const flowToken = randomUUID();
+                        await this.redis.set(`flow:token:${conversation.id}`, flowToken, 3600).catch(() => {});
+                        await this.sendFlow(tenantId, msg, engineResult.flowMessage, flowCfg, flowToken);
+                        await this.saveAiMessage(tenantId, conversation.id, engineResult.flowMessage.body, msg.channelType);
+                        this.throttle.incrementAiMessageCount(tenantId).catch(() => {});
+                        this.logger.log(`[Pipeline] WhatsApp Flow sent (flow_id=${flowCfg.flowId}) — bypassing LLM`);
+                        return ''; // Flow already enqueued; caller sends no extra text.
+                    }
 
                     // ═══ PHASE 3: EXPRESS — LLM voices the engine's output naturally ═══
                     engineProducedText = engineResult.text || null;

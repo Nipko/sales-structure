@@ -58,6 +58,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         whichEmail: '¿Cuál es tu correo electrónico?',
         minutes: 'minutos',
         flexibleTime: 'horario libre',
+        flowHeader: 'Agenda tu cita',
+        flowBody: 'Toca el botón para elegir servicio, fecha y hora en un solo paso.',
+        flowCta: 'Agendar',
     },
     en: {
         serviceSelected: '{service} selected. What date works for you?',
@@ -82,6 +85,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         whichEmail: 'What is your email address?',
         minutes: 'minutes',
         flexibleTime: 'flexible time',
+        flowHeader: 'Book your appointment',
+        flowBody: 'Tap the button to pick a service, date and time in one step.',
+        flowCta: 'Book',
     },
     pt: {
         serviceSelected: '{service} selecionado. Qual data funciona para você?',
@@ -106,6 +112,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         whichEmail: 'Qual é seu e-mail?',
         minutes: 'minutos',
         flexibleTime: 'horário livre',
+        flowHeader: 'Agende seu horário',
+        flowBody: 'Toque no botão para escolher serviço, data e horário em um só passo.',
+        flowCta: 'Agendar',
     },
     fr: {
         serviceSelected: '{service} sélectionné. Quelle date vous convient ?',
@@ -130,6 +139,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         whichEmail: 'Quel est votre e-mail ?',
         minutes: 'minutes',
         flexibleTime: 'horaire libre',
+        flowHeader: 'Réservez votre rendez-vous',
+        flowBody: 'Touchez le bouton pour choisir service, date et heure en une étape.',
+        flowCta: 'Réserver',
     },
 };
 
@@ -154,7 +166,7 @@ function msg(lang: string, key: string, vars: Record<string, string> = {}): stri
 }
 
 export interface BookingState {
-    step: 'idle' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_name' | 'ask_email' | 'confirm' | 'booked';
+    step: 'idle' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_name' | 'ask_email' | 'confirm' | 'booked' | 'waiting_flow';
     services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number; currency: string }>;
     serviceId?: string;
     serviceName?: string;
@@ -164,6 +176,8 @@ export interface BookingState {
     customerName?: string;
     customerEmail?: string;
     customerPhone?: string;
+    /** ISO timestamp set when a WhatsApp Flow was sent; used to expire stale Flows (>1h). */
+    flowStartedAt?: string;
 }
 
 export interface EngineResult {
@@ -178,6 +192,19 @@ export interface EngineResult {
     buttonMessage?: {
         body: string;
         buttons: Array<{ id: string; title: string }>;
+    };
+    /**
+     * Opt-in WhatsApp Flow to send instead of the text flow (one-step booking form).
+     * Additive: `text` is ALWAYS populated too, so a disabled flag / non-WhatsApp
+     * channel / send failure degrades to the text flow without any extra branching.
+     */
+    flowMessage?: {
+        headerText?: string;
+        body: string;
+        footerText?: string;
+        flowCta?: string;
+        initialScreen?: string;
+        initialData?: Record<string, unknown>;
     };
 }
 
@@ -204,6 +231,11 @@ export class BookingEngineService {
         customerProfile: { name?: string; email?: string; phone?: string },
         todayDate: string,
         language: string = 'es',
+        // Opt-in WhatsApp Flows: the caller decides capability (flag ON + flowId set +
+        // channel is WhatsApp). The engine stays pure (doesn't read tenant.settings),
+        // same principle as `language`. `flowData` carries the parsed nfm_reply fields.
+        flowCapable: boolean = false,
+        flowData?: Record<string, unknown>,
     ): Promise<EngineResult> {
         const state = { ...currentState };
         const L = language; // shorthand for msg() calls
@@ -240,6 +272,50 @@ export class BookingEngineService {
             // Keep previous state.services as last resort — better than crashing
         }
 
+        // ── Incoming WhatsApp Flow completion (opt-in) ──
+        // The customer submitted the one-step Flow form; its fields arrived parsed in
+        // `flowData`. Hydrate the state and reuse the SAME createBooking() path as the
+        // text flow (the double-booking guard is included there). Missing/expired/
+        // malformed data abandons the Flow and resumes the text flow gracefully.
+        let flowJustAbandoned = false;
+        if (state.step === 'waiting_flow') {
+            const expired = !!state.flowStartedAt
+                && (Date.now() - Date.parse(state.flowStartedAt)) > 3_600_000;
+            if (rawText === '__flow_response__' && flowData && !expired) {
+                const pick = (...keys: string[]): string => {
+                    for (const k of keys) {
+                        const v = (flowData as any)[k];
+                        if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+                    }
+                    return '';
+                };
+                const svcId = pick('service_id', 'serviceId', 'service');
+                const svc = state.services?.find(s => s.id === svcId);
+                state.serviceId = svcId || state.serviceId;
+                state.serviceName = svc?.name || pick('service_name', 'serviceName') || state.serviceName;
+                state.date = pick('date', 'booking_date', 'appointment_date');
+                state.time = pick('time', 'booking_time', 'appointment_time');
+                state.customerName = pick('customer_name', 'name', 'full_name') || customerProfile.name || '';
+                state.customerEmail = pick('customer_email', 'email') || customerProfile.email || '';
+                state.customerPhone = customerProfile.phone;
+                const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(state.date || '');
+                const timeOk = /^\d{2}:\d{2}$/.test(state.time || '');
+                if (state.serviceId && dateOk && timeOk && state.customerName && state.customerEmail) {
+                    state.step = 'confirm';
+                    state.flowStartedAt = undefined;
+                    return this.createBooking(schemaName, tenantId, contactId, state, L);
+                }
+                // Flow returned incomplete/invalid data → restart cleanly in text mode.
+                this.logger.warn('[Engine] Flow response incomplete/invalid — falling back to text flow');
+                Object.assign(state, { step: 'idle', flowStartedAt: undefined });
+                return this.showServices(state, L);
+            }
+            // User typed text instead of completing the Flow (or it expired) → resume the
+            // text flow this turn and do NOT re-offer the Flow (avoid a frustrating loop).
+            Object.assign(state, { step: 'idle', flowStartedAt: undefined });
+            flowJustAbandoned = true;
+        }
+
         // ── Re-booking after a completed booking ──
         // step='booked' is a terminal state; without this a fresh booking intent
         // would never be handled by the engine again (it returns handled:false
@@ -253,6 +329,42 @@ export class BookingEngineService {
             if (wantsNewBooking) {
                 Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
                 this.logger.log('[Decide] New booking intent after a completed booking — resetting to idle');
+            }
+        }
+
+        // ── Opt-in WhatsApp Flow: offer the one-step form at the START of booking ──
+        // Only when step is idle (booking start) so we never yank a customer out of an
+        // in-progress text flow, and only on a real booking intent. `text` is populated
+        // as the fallback body, so a send failure / disabled flag degrades to text.
+        if (flowCapable && !flowJustAbandoned && state.step === 'idle' && state.services?.length) {
+            const wantsBooking = intent.intent === 'ask_availability'
+                || intent.intent === 'select_service'
+                || !!intent.serviceMentioned
+                || !!intent.dateMentioned;
+            if (wantsBooking) {
+                state.step = 'waiting_flow';
+                state.flowStartedAt = new Date().toISOString();
+                return {
+                    handled: true,
+                    state,
+                    text: msg(L, 'flowBody'),
+                    flowMessage: {
+                        headerText: msg(L, 'flowHeader'),
+                        body: msg(L, 'flowBody'),
+                        flowCta: msg(L, 'flowCta'),
+                        initialScreen: 'SERVICE_SELECTION',
+                        initialData: {
+                            available_services: state.services.map(s => ({
+                                id: s.id,
+                                name: s.name,
+                                duration: String(s.durationMinutes ?? ''),
+                                price: String(s.price ?? ''),
+                                currency: s.currency ?? '',
+                            })),
+                            language: L,
+                        },
+                    },
+                };
             }
         }
 

@@ -54,7 +54,16 @@ import { MediaProcessingService } from '../media-processing/media-processing.ser
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
-const MAX_HISTORY_CHARS = 12_000;
+// History budget in TOKENS (not chars), measured against the smallest context window
+// reachable by ANY plan: every plan's allowedTiers includes tier_4_budget, whose chain
+// entry deepseek-chat has maxContextTokens=64_000. We reserve room for the system prompt
+// + the reply, and cap the history so very long conversations don't blow up cost.
+const MIN_MODEL_CONTEXT_TOKENS = 64_000;
+const SYSTEM_PROMPT_RESERVE_TOKENS = 6_000;     // fallback when systemPrompt length unknown
+const DEFAULT_RESPONSE_RESERVE_TOKENS = 1_500;  // when persona doesn't pin maxTokens
+const HISTORY_SAFETY_MARGIN_TOKENS = 2_000;     // chars/4 underestimates JSON/emoji/non-latin
+const HISTORY_MAX_TOKENS = 8_000;               // cap: ~32k chars (~2.6× the old 12k-char budget)
+const CHARS_PER_TOKEN = 4;                       // repo-wide token estimator (chars/4)
 // Returned when the LLM pipeline errors out. Sent to the customer but NOT counted
 // as a successful AI response (no monthly-quota increment, no message_sent event).
 const ERROR_FALLBACK_MSG = 'Disculpa, tuve un problema procesando tu mensaje. ¿Podrías repetirlo?';
@@ -1653,6 +1662,10 @@ export class ConversationsService {
         // better OpenAI auto-cache hit-rate). Only the <turn> block changes.
         const { systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, bizHours);
 
+        // Hoisted (also used inside the tool loop): the agent's reply-token cap, if pinned.
+        const personaMaxTokens = typeof config.llm?.maxTokens === 'number' && config.llm.maxTokens > 0
+            ? config.llm.maxTokens : undefined;
+
         let messages: Array<{ role: string; content: string }>;
         if (engineProducedText) {
             // Directive-based: send MINIMAL context. The directive in <turn> tells
@@ -1670,7 +1683,7 @@ export class ConversationsService {
             messages = [{ role: 'user', content: userText }];
             this.logger.log(`[Pipeline] New session: sending only current message (discarded ${history?.length || 0} old messages)`);
         } else {
-            messages = this.truncateHistory(history || [], userText);
+            messages = this.truncateHistory(history || [], userText, systemPrompt, personaMaxTokens);
         }
 
         // 4. Execute LLM Call using Router (with tool execution loop)
@@ -1692,8 +1705,6 @@ export class ConversationsService {
                 // ignored). Tool-calling stays deterministic (0.3) regardless, since
                 // a high temperature degrades tool-argument accuracy.
                 const personaTemp = typeof config.llm?.temperature === 'number' ? config.llm.temperature : 0.8;
-                const personaMaxTokens = typeof config.llm?.maxTokens === 'number' && config.llm.maxTokens > 0
-                    ? config.llm.maxTokens : undefined;
                 const response = await this.llmRouter.execute({
                     task: hasTools ? 'tool_calling' : 'conversation',
                     messages: currentMessages,
@@ -1898,7 +1909,8 @@ export class ConversationsService {
     }
 
     /**
-     * Truncate conversation history to stay within MAX_HISTORY_CHARS.
+     * Truncate conversation history to a dynamic TOKEN budget (vs the model's context
+     * window minus the system prompt + reply reserve, capped at HISTORY_MAX_TOKENS).
      * Keeps the most recent messages and always includes the current user message.
      */
     /**
@@ -2093,15 +2105,30 @@ export class ConversationsService {
         ]);
     }
 
-    private truncateHistory(history: any[], currentMessage: string): Array<{ role: string; content: string }> {
-        const messages: Array<{ role: string; content: string }> = [];
-        let totalChars = currentMessage.length;
+    private truncateHistory(
+        history: any[],
+        currentMessage: string,
+        systemPrompt = '',
+        responseMaxTokens?: number,
+    ): Array<{ role: string; content: string }> {
+        // Token budget left for history after reserving the system prompt + the reply,
+        // floored at the smallest reachable context window and capped so very long
+        // conversations don't inflate cost. Estimator is chars/4 (repo-wide).
+        const systemTokens = Math.ceil((systemPrompt.length || 0) / CHARS_PER_TOKEN) || SYSTEM_PROMPT_RESERVE_TOKENS;
+        const responseTokens = (typeof responseMaxTokens === 'number' && responseMaxTokens > 0)
+            ? responseMaxTokens : DEFAULT_RESPONSE_RESERVE_TOKENS;
+        const dynamicBudget = MIN_MODEL_CONTEXT_TOKENS - systemTokens - responseTokens - HISTORY_SAFETY_MARGIN_TOKENS;
+        const historyBudgetTokens = Math.max(0, Math.min(dynamicBudget, HISTORY_MAX_TOKENS));
+        const maxHistoryChars = historyBudgetTokens * CHARS_PER_TOKEN;
 
-        // Build from newest to oldest, then reverse
+        const messages: Array<{ role: string; content: string }> = [];
+        let totalChars = currentMessage.length; // the current message always counts and is never dropped
+
+        // Build from newest to oldest, then reverse — keeps the MOST RECENT context.
         for (let i = history.length - 1; i >= 0; i--) {
             const h = history[i];
             const content = h.content_text || '';
-            if (totalChars + content.length > MAX_HISTORY_CHARS) break;
+            if (totalChars + content.length > maxHistoryChars) break;
             totalChars += content.length;
             messages.unshift({
                 role: h.direction === 'inbound' ? 'user' : 'assistant',
@@ -2109,7 +2136,7 @@ export class ConversationsService {
             });
         }
 
-        // Add current message
+        // Add current message (always included even if it alone exceeds the budget).
         messages.push({ role: 'user', content: currentMessage });
 
         return messages;

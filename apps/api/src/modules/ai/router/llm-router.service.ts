@@ -274,6 +274,36 @@ export class LLMRouterService {
         return [...primary, ...escalation];
     }
 
+    // Value-based routing weights (sum ≈ 1). Hot leads / closing stages / high complexity
+    // bias toward a higher tier within the plan; small talk biases toward the cheapest.
+    private readonly ROUTING_WEIGHTS = { ticketValue: 0.30, complexity: 0.30, conversationStage: 0.20, sentiment: 0.10, intentType: 0.10 };
+
+    /** Composite 0-100 from the turn's factors. undefined ⇒ 50 (neutral, no bias). */
+    private scoreFactors(f?: RoutingFactors): number {
+        if (!f) return 50;
+        const w = this.ROUTING_WEIGHTS;
+        const raw = f.ticketValue * w.ticketValue + f.complexity * w.complexity
+            + f.conversationStage * w.conversationStage + f.sentiment * w.sentiment
+            + f.intentType * w.intentType;
+        return Math.max(0, Math.min(100, Math.round(raw)));
+    }
+
+    /** Desired tier for a composite score, clamped to what the plan allows (never escalates out of plan). */
+    private targetTierForScore(score: number, allowedTiers: ModelTier[]): ModelTier {
+        const RANK: ModelTier[] = ['tier_1_premium', 'tier_2_standard', 'tier_3_efficient', 'tier_4_budget'];
+        const desired: ModelTier =
+            score >= 85 ? 'tier_1_premium' :
+            score >= 65 ? 'tier_2_standard' :
+            score >= 40 ? 'tier_3_efficient' : 'tier_4_budget';
+        // Best allowed tier that does NOT exceed the desired (plan-gating + "don't over-escalate").
+        for (let i = RANK.indexOf(desired); i < RANK.length; i++) {
+            if (allowedTiers.includes(RANK[i])) return RANK[i];
+        }
+        // Plan only has higher tiers than desired → cheapest allowed.
+        for (let i = RANK.length - 1; i >= 0; i--) if (allowedTiers.includes(RANK[i])) return RANK[i];
+        return 'tier_4_budget';
+    }
+
     async execute(options: Omit<LLMRequestOptions, 'model'> & {
         model?: string;
         task?: TaskType;
@@ -299,6 +329,20 @@ export class LLMRouterService {
             if (fitting.length && fitting.length < candidates.length) {
                 this.logger.warn(`[LLM] Prompt ~${estTokens} tokens — excluding ${candidates.length - fitting.length} candidate(s) with smaller context`);
                 candidates = fitting;
+            }
+
+            // Value-based routing: bias the tier toward the turn's value (hot lead /
+            // closing stage / complexity → higher tier within the plan; small talk →
+            // cheapest). Pure reorder of the already-filtered list, run BEFORE the sticky
+            // bias so sticky keeps the final say (cache warmth). Plan-gating intact: a
+            // tier not present in `candidates` is a no-op.
+            const composite = this.scoreFactors(options.routingFactors);
+            const targetTier = this.targetTierForScore(composite, allowedTiers);
+            const tIdx = candidates.findIndex(c => c.tier === targetTier);
+            if (tIdx > 0) {
+                const [picked] = candidates.splice(tIdx, 1);
+                candidates.unshift(picked);
+                this.logger.debug(`[LLM] Value-routing composite=${composite} → ${targetTier} (${picked.id})`);
             }
 
             // Sticky routing: bias the (already filtered: configured + healthy +
@@ -356,9 +400,9 @@ export class LLMRouterService {
                             supportsTools: candidate.supportsTools,
                             supportsVision: candidate.tier === 'tier_1_premium',
                         },
-                        compositeScore: 0,
-                        factors: { ticketValue: 0, complexity: 0, conversationStage: 0, sentiment: 0, intentType: 0 },
-                        reasoning: `task:${options.task} → ${candidate.id} (${candidate.provider})`,
+                        compositeScore: composite,
+                        factors: options.routingFactors ?? { ticketValue: 0, complexity: 0, conversationStage: 0, sentiment: 0, intentType: 0 },
+                        reasoning: `task:${options.task} → ${candidate.id} (${candidate.provider}) | composite=${composite} target=${targetTier}`,
                     };
 
                     return { ...response, routingDecision: decision };

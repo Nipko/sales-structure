@@ -15,7 +15,7 @@ import { LeadScoringService } from '../crm/services/lead-scoring/lead-scoring.se
 import { PipelineService } from '../pipeline/pipeline.service';
 import { NurturingService } from '../automation/nurturing.service';
 import { DripSequenceService } from '../automation/drip-sequence.service';
-import { NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem, ModelTier } from '@parallext/shared';
+import { NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem, ModelTier, RoutingFactors } from '@parallext/shared';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { ResponseValidatorService } from './response-validator.service';
@@ -1084,6 +1084,16 @@ export class ConversationsService {
 
         this.logger.log(`Routing Factors - Complexity: ${complexity}, Sentiment: ${sentiment}, Stage: ${stageScore}`);
 
+        // Value-based routing (#8): bias the model tier by the turn's value — hot lead /
+        // closing stage / complexity → higher tier within the plan; small talk → cheapest.
+        const routingFactors: RoutingFactors = {
+            ticketValue: this.computeTicketValue(lead),
+            complexity,
+            conversationStage: stageScore,
+            sentiment,
+            intentType: this.computeIntentType(complexity),
+        };
+
         // 2. Resolve schema + new-session detection (must happen before engine/tools)
         const schemaName = await this.tenantSchema(tenantId);
 
@@ -1665,6 +1675,7 @@ export class ConversationsService {
         // Hoisted (also used inside the tool loop): the agent's reply-token cap, if pinned.
         const personaMaxTokens = typeof config.llm?.maxTokens === 'number' && config.llm.maxTokens > 0
             ? config.llm.maxTokens : undefined;
+        const personaTemp = typeof config.llm?.temperature === 'number' ? config.llm.temperature : 0.8;
 
         let messages: Array<{ role: string; content: string }>;
         if (engineProducedText) {
@@ -1704,7 +1715,6 @@ export class ConversationsService {
                 // Honor the agent's configured temperature/maxTokens (previously
                 // ignored). Tool-calling stays deterministic (0.3) regardless, since
                 // a high temperature degrades tool-argument accuracy.
-                const personaTemp = typeof config.llm?.temperature === 'number' ? config.llm.temperature : 0.8;
                 const response = await this.llmRouter.execute({
                     task: hasTools ? 'tool_calling' : 'conversation',
                     messages: currentMessages,
@@ -1712,6 +1722,7 @@ export class ConversationsService {
                     cacheableSystemPromptChars: cachePrefixChars,
                     temperature: hasTools ? 0.3 : personaTemp,
                     maxTokens: personaMaxTokens,
+                    routingFactors,
                     tools: hasTools ? tools : undefined,
                     allowedTiers,
                     tenantId,
@@ -1827,7 +1838,9 @@ export class ConversationsService {
                         task: 'conversation',
                         messages: currentMessages,
                         systemPrompt,
-                        temperature: 0.7,
+                        temperature: personaTemp,
+                        maxTokens: personaMaxTokens,
+                        routingFactors,
                         allowedTiers,
                         tenantId,
                         traceContext: { conversationId: conversation.id, stage: 'conversation' },
@@ -1906,6 +1919,19 @@ export class ConversationsService {
 
             return ERROR_FALLBACK_MSG;
         }
+    }
+
+    /** CRM lead score → 0-100 ticket value (defensively normalizes a 1-10 scale to 0-100). */
+    private computeTicketValue(lead?: any): number {
+        let s = Number(lead?.score);
+        if (!Number.isFinite(s)) return 10;
+        if (s > 0 && s <= 10) s *= 10; // some scorers emit 1-10; scale to 0-100
+        return Math.max(0, Math.min(100, Math.round(s)));
+    }
+
+    /** Intent-type signal for value routing — derived from complexity (no explicit intent here). */
+    private computeIntentType(complexity: number): number {
+        return Math.round(complexity * 0.5) + 25;
     }
 
     /**

@@ -106,22 +106,28 @@ export class ChannelGatewayService {
             // it (non-WhatsApp), fall through to the text body so the booking never stalls.
             const meta = outbound.metadata as any;
             if (meta?.flowId && adapter.sendFlowMessage) {
-                return await adapter.sendFlowMessage(
-                    outbound.to,
-                    outbound.channelAccountId,
-                    accessToken,
-                    String(meta.flowId),
-                    String(meta.flowToken || ''),
-                    outbound.content.text || '',
-                    {
-                        headerText: meta.headerText,
-                        footerText: meta.footerText,
-                        flowCta: meta.flowCta,
-                        mode: meta.flowMode,
-                        initialScreen: meta.initialScreen,
-                        initialData: meta.initialData,
-                    },
-                );
+                try {
+                    return await adapter.sendFlowMessage(
+                        outbound.to,
+                        outbound.channelAccountId,
+                        accessToken,
+                        String(meta.flowId),
+                        String(meta.flowToken || ''),
+                        outbound.content.text || '',
+                        {
+                            headerText: meta.headerText,
+                            footerText: meta.footerText,
+                            flowCta: meta.flowCta,
+                            mode: meta.flowMode,
+                            initialScreen: meta.initialScreen,
+                            initialData: meta.initialData,
+                        },
+                    );
+                } catch (e: any) {
+                    // Flow rejected by Meta (draft/unpublished/bad id) — don't leave the
+                    // customer with nothing: fall through to the text body below.
+                    this.logger.warn(`Flow send failed (${e?.message}); falling back to text`);
+                }
             }
 
             if (outbound.content.type === 'text' && outbound.content.text) {

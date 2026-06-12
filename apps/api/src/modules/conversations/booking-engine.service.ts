@@ -291,7 +291,7 @@ export class BookingEngineService {
                 };
                 const svcId = pick('service_id', 'serviceId', 'service');
                 const svc = state.services?.find(s => s.id === svcId);
-                state.serviceId = svcId || state.serviceId;
+                state.serviceId = svc?.id || svcId || state.serviceId;
                 state.serviceName = svc?.name || pick('service_name', 'serviceName') || state.serviceName;
                 state.date = pick('date', 'booking_date', 'appointment_date');
                 state.time = pick('time', 'booking_time', 'appointment_time');
@@ -300,20 +300,51 @@ export class BookingEngineService {
                 state.customerPhone = customerProfile.phone;
                 const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(state.date || '');
                 const timeOk = /^\d{2}:\d{2}$/.test(state.time || '');
-                if (state.serviceId && dateOk && timeOk && state.customerName && state.customerEmail) {
-                    state.step = 'confirm';
+                // Require: a service that resolves to a REAL one (svc), valid date/time
+                // FORMAT, a non-past date, and contact info. A stale/unknown service_id
+                // would otherwise reach createBooking and yield a hard "service not found".
+                if (svc && dateOk && timeOk && (state.date as string) >= todayDate && state.customerName && state.customerEmail) {
+                    // The static Flow's date/time pickers are UNCONSTRAINED, so re-validate
+                    // the chosen slot against REAL availability (business hours, blocked
+                    // dates, staff schedule) — the same guard the text flow applies at
+                    // show_slots. Without this, a closed/out-of-hours slot books blindly.
+                    const avail = await this.toolExecutor.execute(schemaName, tenantId, contactId, 'check_availability', {
+                        date: state.date, serviceId: state.serviceId,
+                    });
+                    const realSlots: Array<{ time: string; endTime: string }> = (avail?.available && avail.slots?.length) ? avail.slots : [];
+                    if (realSlots.some(s => s.time === state.time)) {
+                        state.step = 'confirm';
+                        state.flowStartedAt = undefined;
+                        return this.createBooking(schemaName, tenantId, contactId, state, L);
+                    }
+                    // The picked slot isn't actually bookable → show the real availability
+                    // in text so the customer chooses a valid one (or is asked for a new date).
+                    this.logger.warn(`[Engine] Flow slot ${state.date} ${state.time} not available — showing real slots`);
                     state.flowStartedAt = undefined;
-                    return this.createBooking(schemaName, tenantId, contactId, state, L);
+                    return this.checkAvailability(schemaName, tenantId, contactId, state, L);
                 }
-                // Flow returned incomplete/invalid data → restart cleanly in text mode.
+                // Flow returned incomplete/invalid/past/unknown-service data → restart in text.
                 this.logger.warn('[Engine] Flow response incomplete/invalid — falling back to text flow');
                 Object.assign(state, { step: 'idle', flowStartedAt: undefined });
                 return this.showServices(state, L);
             }
-            // User typed text instead of completing the Flow (or it expired) → resume the
-            // text flow this turn and do NOT re-offer the Flow (avoid a frustrating loop).
+            // The sentinel arrived but the Flow expired (>1h) → recover in text rather than
+            // leaking '__flow_response__' to the LLM. If instead the user typed real text,
+            // resume the text flow and don't re-offer the Flow this turn (avoid a loop).
+            if (rawText === '__flow_response__') {
+                Object.assign(state, { step: 'idle', flowStartedAt: undefined });
+                return this.showServices(state, L);
+            }
             Object.assign(state, { step: 'idle', flowStartedAt: undefined });
             flowJustAbandoned = true;
+        }
+
+        // Safety net: a Flow response whose booking state was already lost (both the
+        // Redis and PG backups expired, >1h) skips the waiting_flow branch entirely;
+        // recover in text instead of forwarding the raw sentinel to the LLM.
+        if (rawText === '__flow_response__' && state.step !== 'waiting_flow') {
+            Object.assign(state, { step: 'idle', flowStartedAt: undefined });
+            return this.showServices(state, L);
         }
 
         // ── Re-booking after a completed booking ──

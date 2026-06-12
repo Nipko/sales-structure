@@ -453,12 +453,16 @@ export class WhatsAppAdapter implements IChannelAdapter {
                     flow_message_version: '3',
                     flow_token: flowToken,
                     flow_id: flowId,
-                    flow_cta: (opts?.flowCta || 'Agendar').slice(0, 30),
+                    flow_cta: (opts?.flowCta || 'Agendar').slice(0, 20),
                     mode: opts?.mode || 'published',
                     flow_action: 'navigate',
                     flow_action_payload: {
                         screen: opts?.initialScreen || 'SERVICE_SELECTION',
-                        data: opts?.initialData || {},
+                        // Meta rejects an empty data object ({}) with a 400 — only attach
+                        // data when there's something to send.
+                        ...(opts?.initialData && Object.keys(opts.initialData).length
+                            ? { data: opts.initialData }
+                            : {}),
                     },
                 },
             },

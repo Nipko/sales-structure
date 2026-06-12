@@ -1163,7 +1163,10 @@ export class ConversationsService {
 
         const lastMsgTime = previousMessageAt || conversation.updated_at || conversation.created_at;
         const timeSinceLastMessage = Date.now() - new Date(lastMsgTime).getTime();
-        const isNewSession = timeSinceLastMessage > 30 * 60 * 1000; // 30 minutes
+        // A WhatsApp Flow completion always continues an in-progress booking (the engine
+        // expires it on its own after 1h), so it must NOT be treated as a new session —
+        // otherwise the waiting_flow state is wiped and the submitted booking is lost.
+        const isNewSession = timeSinceLastMessage > 30 * 60 * 1000 && !flowResponseData; // 30 minutes
 
         if (isNewSession) {
             this.logger.log(`[Pipeline] New session detected (${Math.round(timeSinceLastMessage / 60000)} min gap) — clearing stale context`);
@@ -1441,8 +1444,10 @@ export class ConversationsService {
                     // resumes the text flow. Persist + save for history, then short-circuit.
                     if (engineResult.flowMessage && flowCapable && flowCfg) {
                         await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+                        // Correlation id Meta echoes back in nfm_reply. Idempotency is
+                        // already covered by webhook dedup + the duplicate-appointment guard,
+                        // so we don't persist/validate it (that would be a no-op anti-replay).
                         const flowToken = randomUUID();
-                        await this.redis.set(`flow:token:${conversation.id}`, flowToken, 3600).catch(() => {});
                         await this.sendFlow(tenantId, msg, engineResult.flowMessage, flowCfg, flowToken);
                         await this.saveAiMessage(tenantId, conversation.id, engineResult.flowMessage.body, msg.channelType);
                         this.throttle.incrementAiMessageCount(tenantId).catch(() => {});
@@ -2039,6 +2044,9 @@ export class ConversationsService {
      * holding the latest sequence drains the buffer (atomic Lua check+drain+del).
      */
     private async debounceBurst(msg: NormalizedMessage): Promise<string | null | undefined> {
+        // A WhatsApp Flow completion is a structured turn (sentinel + interactiveReply.data);
+        // never debounce/combine it or the strict sentinel match breaks and the booking is lost.
+        if ((msg.content as any)?.interactiveReply?.type === 'flow_response') return undefined;
         const text = msg.content?.type === 'text' ? (msg.content?.text || '') : '';
         if (!text) return undefined; // media/buttons are distinct turns — no debounce
 

@@ -1015,6 +1015,11 @@ export const api = {
     updateReminderSettings: (tenantId: string, data: Record<string, boolean>) =>
         apiPost(`/appointments/${tenantId}/reminder-settings`, data),
 
+    getBookingFlowsConfig: (tenantId: string) =>
+        apiGet(`/appointments/${tenantId}/booking-flows-config`),
+    updateBookingFlowsConfig: (tenantId: string, data: Record<string, unknown>) =>
+        apiPost(`/appointments/${tenantId}/booking-flows-config`, data),
+
     getFinancialsForecast: (monthsAhead = 6, monthsHistory = 6) =>
         apiGet(`/financials/forecast?monthsAhead=${monthsAhead}&monthsHistory=${monthsHistory}`),
 

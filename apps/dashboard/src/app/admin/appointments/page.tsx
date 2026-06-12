@@ -164,6 +164,11 @@ export default function AppointmentsPage() {
     reminder24h: boolean; reminder2h: boolean; attendanceCheck: boolean; autoComplete: boolean;
   }>({ reminder24h: true, reminder2h: true, attendanceCheck: true, autoComplete: true });
 
+  // ---- WhatsApp Flows (booking, opt-in) ----
+  const [bookingFlowsConfig, setBookingFlowsConfig] = useState<{
+    enabled: boolean; flowId: string; flowCta?: string; flowMode?: "published" | "draft";
+  }>({ enabled: false, flowId: "", flowCta: "Agendar", flowMode: "published" });
+
   // ---- Service modal ----
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -405,6 +410,29 @@ export default function AppointmentsPage() {
     } catch { /* revert on error */ }
   }, [activeTenantId]);
 
+  const loadBookingFlowsConfig = useCallback(async () => {
+    if (!activeTenantId) return;
+    try {
+      const res = await api.getBookingFlowsConfig(activeTenantId);
+      if (res?.success && res.data) setBookingFlowsConfig(res.data);
+    } catch { /* ignore */ }
+  }, [activeTenantId]);
+
+  const handleUpdateBookingFlows = useCallback(async (update: Record<string, unknown>) => {
+    if (!activeTenantId) return;
+    try {
+      const res = await api.updateBookingFlowsConfig(activeTenantId, update);
+      if (res?.success && res.data) {
+        setBookingFlowsConfig(res.data);
+        showToast(t("configSection.flowSaved"));
+      }
+    } catch {
+      // Enabling without a valid Flow ID is rejected server-side — revert to truth.
+      showToast(t("configSection.flowSaveError"));
+      loadBookingFlowsConfig();
+    }
+  }, [activeTenantId, showToast, loadBookingFlowsConfig, t]);
+
   // Tab-dependent loads
   useEffect(() => {
     if (activeTab === "config") {
@@ -412,8 +440,9 @@ export default function AppointmentsPage() {
       loadBlockedDates();
       loadCalendarIntegrations();
       loadReminderSettings();
+      loadBookingFlowsConfig();
     }
-  }, [activeTab, loadAvailability, loadBlockedDates, loadCalendarIntegrations, loadReminderSettings]);
+  }, [activeTab, loadAvailability, loadBlockedDates, loadCalendarIntegrations, loadReminderSettings, loadBookingFlowsConfig]);
 
   useEffect(() => {
     if (activeTab === "services") loadServices();
@@ -1021,6 +1050,8 @@ export default function AppointmentsPage() {
             services={services.map(s => ({ id: s.id, name: s.name }))}
             reminderSettings={reminderSettings}
             onUpdateReminderSettings={handleUpdateReminderSettings}
+            bookingFlowsConfig={bookingFlowsConfig}
+            onUpdateBookingFlows={handleUpdateBookingFlows}
           />
         )}
 

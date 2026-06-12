@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import {
     Clock, Calendar, Link2, Ban, Bell, Users, Settings2,
     Plus, Trash2, CheckCircle2, AlertTriangle, ChevronDown,
-    Pencil, X, Check,
+    Pencil, X, Check, MessageSquare,
 } from "lucide-react";
 
 interface AvailabilitySlot {
@@ -54,6 +54,13 @@ interface ReminderSettings {
     autoComplete: boolean;
 }
 
+interface BookingFlowsConfig {
+    enabled: boolean;
+    flowId: string;
+    flowCta?: string;
+    flowMode?: "published" | "draft";
+}
+
 interface ConfigTabProps {
     activeTenantId: string;
     availabilitySlots: AvailabilitySlot[];
@@ -73,6 +80,8 @@ interface ConfigTabProps {
     maxCalendars?: number;
     reminderSettings?: ReminderSettings;
     onUpdateReminderSettings?: (settings: Partial<ReminderSettings>) => void;
+    bookingFlowsConfig?: BookingFlowsConfig;
+    onUpdateBookingFlows?: (cfg: Partial<BookingFlowsConfig>) => void;
 }
 
 const DAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
@@ -212,6 +221,7 @@ export default function ConfigTab({
     onAddBlockedDate, onDeleteBlockedDate, onRefresh, showToast,
     services = [], maxCalendars = 5,
     reminderSettings, onUpdateReminderSettings,
+    bookingFlowsConfig, onUpdateBookingFlows,
 }: ConfigTabProps) {
     const t = useTranslations("appointments");
     const { user } = useAuth();
@@ -225,6 +235,20 @@ export default function ConfigTab({
 
     const handleReminderToggle = (key: keyof ReminderSettings, value: boolean) => {
         onUpdateReminderSettings?.({ [key]: value });
+    };
+
+    // WhatsApp Flows (opt-in): local state so the user can toggle + paste the Flow ID
+    // before persisting together (enabling requires a valid Flow ID server-side).
+    const [flowsEnabled, setFlowsEnabled] = useState(bookingFlowsConfig?.enabled ?? false);
+    const [flowIdDraft, setFlowIdDraft] = useState(bookingFlowsConfig?.flowId ?? "");
+    useEffect(() => {
+        setFlowsEnabled(bookingFlowsConfig?.enabled ?? false);
+        setFlowIdDraft(bookingFlowsConfig?.flowId ?? "");
+    }, [bookingFlowsConfig?.enabled, bookingFlowsConfig?.flowId]);
+
+    const saveBookingFlows = (nextEnabled: boolean) => {
+        // Disabling never needs a Flow ID; enabling persists the pasted ID too.
+        onUpdateBookingFlows?.({ enabled: nextEnabled, flowId: flowIdDraft.trim() });
     };
 
     // ── Assignment selection for new calendar ──
@@ -568,6 +592,60 @@ export default function ConfigTab({
                         <p className="text-xs text-emerald-700 dark:text-emerald-300">
                             {t('configSection.reminderNote')}
                         </p>
+                    </div>
+                </div>
+            </ConfigCard>
+
+            {/* ── 3b. WhatsApp Flows (booking, opt-in) ── */}
+            <ConfigCard
+                icon={MessageSquare}
+                iconColor="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                title={t("configSection.whatsappFlows")}
+                description={t("configSection.whatsappFlowsDesc")}
+                badge="Beta"
+            >
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 dark:border-neutral-700">
+                        <div>
+                            <p className="text-sm font-medium text-foreground">{t("configSection.whatsappFlowsEnable")}</p>
+                            <p className="text-xs text-muted-foreground">{t("configSection.whatsappFlowsEnableDesc")}</p>
+                        </div>
+                        <Toggle
+                            enabled={flowsEnabled}
+                            onChange={(v) => {
+                                setFlowsEnabled(v);
+                                if (!v) saveBookingFlows(false); // disabling persists immediately
+                            }}
+                            label={flowsEnabled ? t("configSection.reminderEnabled") : t("configSection.reminderDisabled")}
+                        />
+                    </div>
+
+                    {flowsEnabled && (
+                        <div className="p-3 rounded-xl border border-neutral-200 dark:border-neutral-700 space-y-2.5">
+                            <label className="text-sm font-medium text-foreground block">{t("configSection.flowId")}</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={flowIdDraft}
+                                    onChange={(e) => setFlowIdDraft(e.target.value)}
+                                    placeholder={t("configSection.flowIdPlaceholder")}
+                                    className={inputCls}
+                                />
+                                <button
+                                    onClick={() => saveBookingFlows(true)}
+                                    className="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 transition-colors cursor-pointer border-none shrink-0"
+                                >
+                                    {t("actions.confirm")}
+                                </button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{t("configSection.flowIdHint")}</p>
+                        </div>
+                    )}
+
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20">
+                        <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-emerald-700 dark:text-emerald-300">{t("configSection.flowNote")}</p>
                     </div>
                 </div>
             </ConfigCard>

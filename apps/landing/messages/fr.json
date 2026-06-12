@@ -64,7 +64,58 @@
   "channels": {
     "title": "Fonctionne sur tous vos canaux",
     "subtitle": "WhatsApp, Instagram DM, Messenger, Telegram et Email. Votre agent IA opère avec la même personnalité, les mêmes données et la même base de connaissances partout — le client choisit son préféré.",
-    "note": "Chaque client a un profil unique peu importe le canal utilisé. Identité cross-canal automatique."
+    "note": "Chaque client a un profil unique peu importe le canal utilisé. Identité cross-canal automatique.",
+    "respondingLabel": "IA répond",
+    "status": {
+      "whatsapp": "en ligne",
+      "instagram": "Actif",
+      "messenger": "Actif",
+      "telegram": "en ligne",
+      "email": "Connexion sécurisée"
+    },
+    "scenarios": {
+      "dental": {
+        "business": "Clinique Dentaire",
+        "m1": "Je veux réserver un détartrage",
+        "m2": "Bonjour ! J'ai jeudi 10h ou vendredi 9h. Lequel préférez-vous ?",
+        "m3": "Jeudi 10h",
+        "m4": "Confirmé ✅ Je vous rappelle mercredi."
+      },
+      "photo": {
+        "business": "Studio Photo",
+        "m1": "J'ai vu votre travail, combien coûte une séance mariage ?",
+        "m2": "Merci ! Nous avons 3 forfaits. Quelle est la date ?",
+        "m3": "15 juin",
+        "m4": "Disponible 🙌 Je vous envoie les options ici."
+      },
+      "gym": {
+        "business": "FitPro Gym",
+        "m1": "Bonjour, infos sur les abonnements",
+        "m2": "Bonjour ! Mensuel 89€, trimestriel 240€ (économisez 27€). On se voit ?",
+        "m3": "Oui, demain je peux",
+        "m4": "Réservé pour 10h ✅"
+      },
+      "service": {
+        "business": "ServicioYA",
+        "m1": "Mon évier est bouché, urgent",
+        "m2": "Je marque en priorité haute 🚨 Adresse svp",
+        "m3": "50 Rue #15-20",
+        "m4": "Carlos arrive dans 35min. Je vous préviens à son départ."
+      },
+      "support": {
+        "business": "Support Parallly",
+        "m1": "Bonjour, l'IA s'intègre-t-elle à mon CRM HubSpot ?",
+        "m2": "Bonjour ! Oui, intégration native. Nous synchronisons contacts et affaires en temps réel.",
+        "m3": "Super, je veux une démo",
+        "m4": "J'ai envoyé le lien dans votre boîte pour mardi 15h. À bientôt !"
+      }
+    }
+  },
+  "vibeSelling": {
+    "eyebrow": "Pas un chatbot de plus",
+    "lead": "Ce n'est pas un chatbot à flux rigides ni un CRM avec un bot collé dessus.",
+    "punch": "C'est un vendeur IA qui sait déjà vendre dans votre secteur.",
+    "sub": "Il comprend votre client, répond avec vos informations et conclut la vente — dès le premier message."
   },
   "tools": {
     "title": "Voyez tout ce que vous pouvez faire",

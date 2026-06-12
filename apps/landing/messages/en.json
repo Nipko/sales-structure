@@ -64,7 +64,58 @@
   "channels": {
     "title": "Works across all your channels",
     "subtitle": "WhatsApp, Instagram DM, Messenger, Telegram and Email. Your AI agent operates with the same personality, data and knowledge base on all of them — your customer picks their favorite.",
-    "note": "Every customer has a single profile no matter which channel they message you on. Automatic cross-channel identity."
+    "note": "Every customer has a single profile no matter which channel they message you on. Automatic cross-channel identity.",
+    "respondingLabel": "AI replying",
+    "status": {
+      "whatsapp": "online",
+      "instagram": "Active now",
+      "messenger": "Active",
+      "telegram": "online",
+      "email": "Secure connection"
+    },
+    "scenarios": {
+      "dental": {
+        "business": "Dental Clinic",
+        "m1": "I'd like to book a dental cleaning",
+        "m2": "Hi! I have Thursday 10am or Friday 9am. Which works?",
+        "m3": "Thursday 10am",
+        "m4": "Confirmed ✅ I'll remind you on Wednesday."
+      },
+      "photo": {
+        "business": "Photo Studio",
+        "m1": "Saw your work, how much is a wedding session?",
+        "m2": "Thanks! We have 3 packages. When's the date?",
+        "m3": "June 15th",
+        "m4": "Available 🙌 I'll send you options here."
+      },
+      "gym": {
+        "business": "FitPro Gym",
+        "m1": "Hi, info on memberships",
+        "m2": "Hi! Monthly $89, quarterly $240 (save $27). Want to visit?",
+        "m3": "Yes, I can tomorrow",
+        "m4": "Booked you for 10am ✅"
+      },
+      "service": {
+        "business": "ServicioYA",
+        "m1": "My drain's clogged, urgent",
+        "m2": "Marking as high priority 🚨 Address please",
+        "m3": "50 St #15-20",
+        "m4": "Carlos arrives in 35 min. I'll let you know when he leaves."
+      },
+      "support": {
+        "business": "Parallly Support",
+        "m1": "Hi, does the AI integrate with my HubSpot CRM?",
+        "m2": "Hi! Yes, we integrate natively. We sync contacts and deals in real time.",
+        "m3": "Great, I'd like a demo",
+        "m4": "I sent the link to your inbox for Tuesday at 3pm. See you!"
+      }
+    }
+  },
+  "vibeSelling": {
+    "eyebrow": "Not another chatbot",
+    "lead": "It's not a rigid flow chatbot or a CRM with a bot bolted on top.",
+    "punch": "It's an AI seller that already knows how to sell in your industry.",
+    "sub": "It understands your customer, answers with your information and closes the sale — from the very first message."
   },
   "tools": {
     "title": "See everything you can do",

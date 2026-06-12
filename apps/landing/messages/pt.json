@@ -64,7 +64,58 @@
   "channels": {
     "title": "Funciona em todos os seus canais",
     "subtitle": "WhatsApp, Instagram DM, Messenger, Telegram e Email. Seu agente IA opera com a mesma personalidade, dados e base de conhecimento em todos — o cliente escolhe seu preferido.",
-    "note": "Cada cliente tem um único perfil independente do canal que use. Identidade cross-canal automática."
+    "note": "Cada cliente tem um único perfil independente do canal que use. Identidade cross-canal automática.",
+    "respondingLabel": "IA respondendo",
+    "status": {
+      "whatsapp": "online",
+      "instagram": "Ativo agora",
+      "messenger": "Ativo",
+      "telegram": "online",
+      "email": "Conexão segura"
+    },
+    "scenarios": {
+      "dental": {
+        "business": "Clínica Odontológica",
+        "m1": "Quero agendar limpeza dental",
+        "m2": "Olá! Tenho quinta 10h ou sexta 9h. Qual prefere?",
+        "m3": "Quinta 10h",
+        "m4": "Confirmado ✅ Te lembro na quarta."
+      },
+      "photo": {
+        "business": "Foto Studio",
+        "m1": "Vi seu trabalho, quanto custa uma sessão de casamento?",
+        "m2": "Obrigado! Temos 3 pacotes. Quando é a data?",
+        "m3": "15 de junho",
+        "m4": "Disponível 🙌 Te passo as opções por aqui."
+      },
+      "gym": {
+        "business": "FitPro Gym",
+        "m1": "Oi, info sobre planos",
+        "m2": "Olá! Mensal R$89, trimestral R$240 (economiza R$27). Vamos visitar?",
+        "m3": "Sim, amanhã posso",
+        "m4": "Agendei às 10h ✅"
+      },
+      "service": {
+        "business": "ServicioYA",
+        "m1": "Meu ralo entupiu, urgente",
+        "m2": "Marco como prioridade alta 🚨 Endereço por favor",
+        "m3": "Rua 50 #15-20",
+        "m4": "Carlos chega em 35min. Te aviso quando ele sair."
+      },
+      "support": {
+        "business": "Suporte Parallly",
+        "m1": "Oi, a IA integra com meu CRM HubSpot?",
+        "m2": "Olá! Sim, integramos nativamente. Sincronizamos contatos e negócios em tempo real.",
+        "m3": "Ótimo, quero uma demo",
+        "m4": "Enviei o link pra sua caixa para terça às 15h. Até logo!"
+      }
+    }
+  },
+  "vibeSelling": {
+    "eyebrow": "Não é mais um chatbot",
+    "lead": "Não é um chatbot de fluxos rígidos nem um CRM com um bot colado por cima.",
+    "punch": "É um vendedor com IA que já sabe vender no seu setor.",
+    "sub": "Entende seu cliente, responde com a sua informação e fecha a venda — desde a primeira mensagem."
   },
   "tools": {
     "title": "Veja tudo o que você pode fazer",

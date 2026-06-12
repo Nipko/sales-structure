@@ -5,6 +5,7 @@ import { ProblemSection } from "../../components/sections/ProblemSection";
 import { ResultsBand } from "../../components/sections/ResultsBand";
 import { TrustRow } from "../../components/sections/TrustRow";
 import { VerticalsShowcase } from "../../components/sections/VerticalsShowcase";
+import { VibeSellingBand } from "../../components/sections/VibeSellingBand";
 import { ToolsShowcase } from "../../components/sections/ToolsShowcase";
 import { HowItWorks } from "../../components/sections/HowItWorks";
 import { FeaturesGrid } from "../../components/sections/FeaturesGrid";
@@ -28,6 +29,7 @@ export default function HomePage() {
       <ResultsBand />
       <HowItWorks />
       <VerticalsShowcase />
+      <VibeSellingBand />
       <ToolsShowcase />
       <FeaturesGrid />
       <AiControlSection />

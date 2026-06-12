@@ -12,6 +12,8 @@ import { Section } from "../ui/Section";
 
 export interface ChannelScenario {
   channel: ChannelKey;
+  /** i18n key under `channels.scenarios.*` — text below is the es fallback. */
+  key: string;
   emoji: string;
   agentName: string;
   business: string;
@@ -21,6 +23,7 @@ export interface ChannelScenario {
 export const CHANNEL_SCENARIOS: ChannelScenario[] = [
   {
     channel: "whatsapp",
+    key: "dental",
     emoji: "\u{1FA7A}",
     agentName: "Sofía",
     business: "Clínica Dental",
@@ -36,6 +39,7 @@ export const CHANNEL_SCENARIOS: ChannelScenario[] = [
   },
   {
     channel: "instagram",
+    key: "photo",
     emoji: "📸",
     agentName: "Diego",
     business: "Foto Studio",
@@ -57,6 +61,7 @@ export const CHANNEL_SCENARIOS: ChannelScenario[] = [
   },
   {
     channel: "messenger",
+    key: "gym",
     emoji: "💪",
     agentName: "Coach",
     business: "FitPro Gym",
@@ -72,6 +77,7 @@ export const CHANNEL_SCENARIOS: ChannelScenario[] = [
   },
   {
     channel: "telegram",
+    key: "service",
     emoji: "🔧",
     agentName: "Iván",
     business: "ServicioYA",
@@ -90,6 +96,7 @@ export const CHANNEL_SCENARIOS: ChannelScenario[] = [
   },
   {
     channel: "email",
+    key: "support",
     emoji: "✉️",
     agentName: "Clara",
     business: "Soporte Parallly",
@@ -120,6 +127,17 @@ export function MiniChannelDemo({
   delay: number;
 }) {
   const skin = CHANNELS[scenario.channel];
+  const t = useTranslations("channels");
+  // Localized text with the inline es content as fallback (next-intl t.has guard —
+  // {defaultValue} is interpolation-only and would render the raw key if missing).
+  const L = (field: string, fallback: string) => {
+    const k = `scenarios.${scenario.key}.${field}`;
+    return t.has(k) ? t(k) : fallback;
+  };
+  const business = L("business", scenario.business);
+  const messages = scenario.messages.map((m, i) => ({ ...m, text: L(`m${i + 1}`, m.text) }));
+  const statusText = t.has(`status.${scenario.channel}`) ? t(`status.${scenario.channel}`) : skin.statusText;
+  const respondingLabel = t.has("respondingLabel") ? t("respondingLabel") : "IA respondiendo";
   const [visibleCount, setVisibleCount] = useState(0);
   const [cycle, setCycle] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
@@ -164,10 +182,10 @@ export function MiniChannelDemo({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-white text-xs font-semibold truncate">
-            {scenario.business}
+            {business}
           </p>
           <p className="text-white/75 text-[10px] truncate">
-            {skin.statusText}
+            {statusText}
           </p>
         </div>
         {skin.logoSrc && (
@@ -183,7 +201,7 @@ export function MiniChannelDemo({
         className="p-3 min-h-[200px] flex flex-col gap-1.5"
         style={{ backgroundColor: skin.bodyBg }}
       >
-        {scenario.messages.map((msg, i) => (
+        {messages.map((msg, i) => (
           <AnimatePresence key={`${cycle}-${i}`}>
             {i < visibleCount && (
               <motion.div
@@ -222,7 +240,7 @@ export function MiniChannelDemo({
         >
           {skin.name}
         </span>
-        <span className="text-[9px] text-text-muted">IA respondiendo</span>
+        <span className="text-[9px] text-text-muted">{respondingLabel}</span>
       </div>
     </div>
   );

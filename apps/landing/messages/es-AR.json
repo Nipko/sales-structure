@@ -9,6 +9,13 @@
     "card2": "Cada cliente queda en un chat diferente. No sabés quién es quién ni qué le dijiste.",
     "card3": "No tenés datos. No sabés qué canal vende más ni cuánto te cuesta cada cliente."
   },
+  "channels": {
+    "scenarios": {
+      "dental": {
+        "m2": "¡Hola! Tengo jueves 10am o viernes 9am. ¿Cuál preferís?"
+      }
+    }
+  },
   "tools": {
     "title": "Mirá todo lo que podés hacer",
     "subtitle": "Estas son algunas de las herramientas que vienen incluidas. Todas funcionan automáticamente — vos solo configurás una vez al inicio."

@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
+import { useTranslations } from "next-intl";
 
 interface IdentityMergeWidgetProps {
   active: boolean;
@@ -10,19 +11,22 @@ interface IdentityMergeWidgetProps {
 }
 
 export function IdentityMergeWidget({ active, color, verticalSlug, step }: IdentityMergeWidgetProps) {
+  const t = useTranslations("widgets");
+  const L = (k: string, fb: string) => (t.has(k) ? t(k) : fb);
+
   const getInitials = () => {
     switch (verticalSlug) {
       case "salud":
       case "belleza":
-        return "CR";
+        return L("identity.initials.salud", "CR");
       case "restaurantes":
-        return "SR";
+        return L("identity.initials.restaurantes", "SR");
       case "inmobiliaria":
-        return "MG";
+        return L("identity.initials.inmobiliaria", "MG");
       case "turismo":
-        return "SS";
+        return L("identity.initials.turismo", "SS");
       default:
-        return "JP";
+        return L("identity.initials.default", "JP");
     }
   };
 
@@ -42,11 +46,11 @@ export function IdentityMergeWidget({ active, color, verticalSlug, step }: Ident
             <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
           </svg>
           <span className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">
-            Omnicanalidad
+            {L("identity.header", "Omnicanalidad")}
           </span>
         </div>
         {hasMerged && (
-          <span className="text-[8px] text-emerald-400 font-bold font-mono">Fusión OK</span>
+          <span className="text-[8px] text-emerald-400 font-bold font-mono">{L("identity.mergeOk", "Fusión OK")}</span>
         )}
       </div>
 
@@ -112,12 +116,14 @@ export function IdentityMergeWidget({ active, color, verticalSlug, step }: Ident
         {/* Status description */}
         <div className="text-center w-full">
           <p className="text-[10px] text-white font-semibold">
-            {hasMerged ? "Perfil Único Integrado" : "Buscando Duplicados..."}
+            {hasMerged
+              ? L("identity.statusMerged", "Perfil Único Integrado")
+              : L("identity.statusSearching", "Buscando Duplicados...")}
           </p>
           <p className="text-[8px] text-text-muted mt-0.5 leading-tight">
             {hasMerged
-              ? "WhatsApp + Instagram unificados por coincidencia de teléfono"
-              : "Contacto detectado en WhatsApp e Instagram DM separado"}
+              ? L("identity.descMerged", "WhatsApp + Instagram unificados por coincidencia de teléfono")
+              : L("identity.descSearching", "Contacto detectado en WhatsApp e Instagram DM separado")}
           </p>
         </div>
       </div>

@@ -887,7 +887,6 @@
     "hubBenefit3": "Métricas em tempo real",
     "hubBenefit3Desc": "Dashboards com conversão por canal, tempo de resposta, ranking de agentes e mais.",
     "breadcrumbProduct": "Produto",
-
     "agentTitle": "Agente IA",
     "agentDesc": "Personalização total: tom, regras, multi-agente e 18 templates por indústria.",
     "agentBadge": "Inteligência Artificial",
@@ -916,7 +915,6 @@
     "agentUseCase2Desc": "Luca recebe pedidos por WhatsApp, pergunta endereço e forma de pagamento. A equipe recebe o pedido pronto.",
     "agentUseCase3": "Imobiliária",
     "agentUseCase3Desc": "Carlos filtra imóveis por orçamento, agenda visitas e qualifica o comprador antes de falar com um corretor.",
-
     "channelsTitle": "Canais",
     "channelsDesc": "WhatsApp, Instagram, Messenger, Telegram e SMS em uma única caixa de entrada.",
     "channelsBadge": "Comunicação omnicanal",
@@ -945,7 +943,6 @@
     "channelsUseCase2Desc": "Cotações chegam por WhatsApp e Instagram. Roberto qualifica e unifica os perfis automaticamente.",
     "channelsUseCase3": "Escola de idiomas",
     "channelsUseCase3Desc": "Alunos perguntam pelo Messenger, se matriculam por WhatsApp e recebem materiais pelo Telegram.",
-
     "bookingTitle": "Reservas",
     "bookingDesc": "Agendamento por chat com Google Calendar, anti-double-booking e lembretes.",
     "bookingBadge": "Agendamento inteligente",
@@ -974,7 +971,6 @@
     "bookingUseCase2Desc": "Coach gerencia 3 calendários para yoga, CrossFit e funcional. As vagas se atualizam em tempo real.",
     "bookingUseCase3": "Restaurante",
     "bookingUseCase3Desc": "Reserva de mesa para 4 no sábado às 20h. Luca verifica disponibilidade e envia confirmação com endereço.",
-
     "crmTitle": "CRM",
     "crmDesc": "Pipeline visual, scoring automático, automação e campanhas broadcast.",
     "crmBadge": "Gestão de vendas",
@@ -1003,10 +999,150 @@
     "crmUseCase2Desc": "Roberto registra cada cotação, programa follow-ups automáticos e alerta o corretor quando o lead está quente.",
     "crmUseCase3": "Varejo",
     "crmUseCase3Desc": "Segmenta clientes por histórico de compra, envia promoções por WhatsApp e mede conversão por campanha.",
-
     "backToProduct": "← Produto",
     "demoTitle": "Veja como funciona",
     "useCasesTitle": "Casos de uso reais",
     "tryFree": "Testar grátis 7 dias"
+  },
+  "widgets": {
+    "booking": {
+      "calendar": "Calendário",
+      "today": "Hoje",
+      "available": "Disponível",
+      "teamMeeting": "Reunião de Equipe",
+      "slot": {
+        "salud": {
+          "title": "Consulta Odontológica - Sofia",
+          "desc": "Dr. Mendoza"
+        },
+        "restaurantes": {
+          "title": "Mesa 4 - Lucas (2p)",
+          "desc": "Confirmado por Chat"
+        },
+        "inmobiliaria": {
+          "title": "Visita Apto Centro",
+          "desc": "Corretor Carlos"
+        },
+        "belleza": {
+          "title": "Balayage - Camila",
+          "desc": "Especialista Luna"
+        },
+        "gimnasios": {
+          "title": "Aula Experimental - Coach",
+          "desc": "Tour Completo"
+        },
+        "turismo": {
+          "title": "Tour Cartagena (2p)",
+          "desc": "Maya Guides"
+        },
+        "educacion": {
+          "title": "Teste de Nível de Inglês",
+          "desc": "Avaliadora Ana"
+        },
+        "seguros": {
+          "title": "Ligação de Cotação",
+          "desc": "Roberto Seguros"
+        },
+        "default": {
+          "title": "Agendamento Confirmado",
+          "desc": "Agente IA Parallly"
+        }
+      }
+    },
+    "crm": {
+      "nameSalud": "Camila Ribeiro",
+      "nameRestaurantes": "Tiago Ribeiro",
+      "nameInmobiliaria": "Mateus Gomes",
+      "nameTurismo": "Sofia Silva",
+      "nameDefault": "João Pereira",
+      "statusEntrante": "Entrante",
+      "statusInteresado": "Interessado",
+      "statusCitaAgendada": "Consulta Agendada",
+      "statusCalificado": "Qualificado",
+      "scoreLabel": "Score do Lead",
+      "insightWaiting": "Aguardando dados...",
+      "insightInterested": "Alto interesse em agendar",
+      "insightConfirmed": "Consulta confirmada no Google Calendar, enviando lembrete",
+      "insightPending": "Dados coletados, agendamento pendente"
+    },
+    "identity": {
+      "header": "Omnicanal",
+      "mergeOk": "Fusão OK",
+      "statusMerged": "Perfil Único Integrado",
+      "statusSearching": "Procurando Duplicados...",
+      "descMerged": "WhatsApp + Instagram unificados por correspondência de telefone",
+      "descSearching": "Contato detectado no WhatsApp e no Instagram DM separadamente",
+      "initials": {
+        "salud": "CR",
+        "restaurantes": "SR",
+        "inmobiliaria": "MS",
+        "turismo": "SS",
+        "default": "JS"
+      }
+    }
+  },
+  "demos": {
+    "pipeline": {
+      "stageNew": "Novo",
+      "stageQualified": "Qualificado",
+      "stageWon": "Ganho",
+      "cardName": "Maria Gonçalves",
+      "cardLabel": "Pediatria · WA",
+      "cardScore": "Score 87"
+    },
+    "calendar": {
+      "dateHeader": "Quinta-feira, 15 de maio",
+      "confirmed": "Agendamento confirmado",
+      "confirmedDetail": "11:00 · Maria Silva"
+    },
+    "analytics": {
+      "thisWeek": "Esta semana",
+      "conversations": "conversas",
+      "day0": "S",
+      "day1": "T",
+      "day2": "Q",
+      "day3": "Q",
+      "day4": "S",
+      "day5": "S",
+      "day6": "D"
+    },
+    "agentConfig": {
+      "sliderToneLabel": "Tom",
+      "sliderToneValue": "Empático",
+      "sliderModelLabel": "Modelo de IA",
+      "sliderChannelLabel": "Canal",
+      "agentName": "Sofia · Assistente médica",
+      "templateLabel": "Modelo: Saúde · Odontologia",
+      "statusActive": "Ativa · 24/7"
+    },
+    "kb": {
+      "title": "Base de conhecimento",
+      "customerAsks": "Cliente pergunta:",
+      "question": "Vocês aceitam cartão Sodexo?",
+      "searching": "Buscando na KB...",
+      "foundIn": "Encontrado em politicas.pdf",
+      "answer": "Sim, aceitamos cartões Sodexo, Big Pass e Edenred. Pagamento no local, sem acúmulo de pontos."
+    },
+    "inbox": {
+      "title": "Caixa de entrada unificada",
+      "unread": "não lidas",
+      "item1": {
+        "name": "Carlos R.",
+        "msg": "Olá, vocês têm apartamento para alugar em Chapinero?",
+        "time": "agora"
+      },
+      "item2": {
+        "name": "@valeria.foto",
+        "msg": "Vi o seu trabalho, informações sobre casamentos?"
+      },
+      "item3": {
+        "name": "Daniel M.",
+        "msg": "Informações sobre planos mensais"
+      },
+      "item4": {
+        "name": "Telegram · Anita",
+        "msg": "Preciso de um encanador com urgência"
+      }
+    }
   }
 }

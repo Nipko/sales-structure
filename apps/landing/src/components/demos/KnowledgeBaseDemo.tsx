@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useInView } from "motion/react";
+import { useTranslations } from "next-intl";
 
 export function KnowledgeBaseDemo() {
+  const t = useTranslations("demos");
+  const L = (k: string, fb: string) => (t.has(k) ? t(k) : fb);
   const [step, setStep] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { margin: "-50px" });
@@ -40,17 +43,17 @@ export function KnowledgeBaseDemo() {
           />
         </svg>
         <span className="text-xs font-semibold text-text-primary">
-          Base de conocimiento
+          {L("kb.title", "Base de conocimiento")}
         </span>
       </div>
 
       {/* Question */}
       <div className="bg-surface rounded-lg p-2.5 mb-2 border border-border">
         <p className="text-[11px] text-text-secondary mb-1">
-          Cliente pregunta:
+          {L("kb.customerAsks", "Cliente pregunta:")}
         </p>
         <p className="text-[12px] text-text-primary">
-          ¿Aceptan tarjeta sodexo?
+          {L("kb.question", "¿Aceptan tarjeta sodexo?")}
         </p>
       </div>
 
@@ -67,7 +70,7 @@ export function KnowledgeBaseDemo() {
               animate={{ opacity: [1, 0.3, 1] }}
               transition={{ duration: 1, repeat: 3 }}
             />
-            <span>Buscando en KB...</span>
+            <span>{L("kb.searching", "Buscando en KB...")}</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -82,11 +85,13 @@ export function KnowledgeBaseDemo() {
             className="bg-accent/10 border border-accent/30 rounded-lg p-2.5"
           >
             <p className="text-[10px] text-accent font-semibold uppercase tracking-wider mb-1">
-              Encontrado en políticas.pdf
+              {L("kb.foundIn", "Encontrado en políticas.pdf")}
             </p>
             <p className="text-[11px] text-text-primary leading-snug">
-              Sí, aceptamos tarjetas Sodexo, Big Pass y Edenred. Pago en sitio,
-              no acumulan puntos.
+              {L(
+                "kb.answer",
+                "Sí, aceptamos tarjetas Sodexo, Big Pass y Edenred. Pago en sitio, no acumulan puntos.",
+              )}
             </p>
           </motion.div>
         )}

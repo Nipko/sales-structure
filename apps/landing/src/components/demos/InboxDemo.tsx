@@ -2,9 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, useInView } from "motion/react";
+import { useTranslations } from "next-intl";
 import { Icon } from "../ui/Icon";
 
 export function InboxDemo() {
+  const t = useTranslations("demos");
+  const L = (k: string, fb: string) => (t.has(k) ? t(k) : fb);
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { margin: "-50px" });
   const [count, setCount] = useState(0);
@@ -26,26 +29,26 @@ export function InboxDemo() {
   const items = [
     {
       logo: "/logos/whatsapp.svg",
-      name: "Carlos R.",
-      msg: "Hola, tienen apto en arriendo en Chapinero?",
-      time: "ahora",
+      name: L("inbox.item1.name", "Carlos R."),
+      msg: L("inbox.item1.msg", "Hola, tienen apto en arriendo en Chapinero?"),
+      time: L("inbox.item1.time", "ahora"),
     },
     {
       logo: "/logos/instagram.svg",
-      name: "@valeria.foto",
-      msg: "Vi su trabajo, info de bodas?",
+      name: L("inbox.item2.name", "@valeria.foto"),
+      msg: L("inbox.item2.msg", "Vi su trabajo, info de bodas?"),
       time: "1m",
     },
     {
       logo: "/logos/messenger.svg",
-      name: "Daniel M.",
-      msg: "Información de membresías mensuales",
+      name: L("inbox.item3.name", "Daniel M."),
+      msg: L("inbox.item3.msg", "Información de membresías mensuales"),
       time: "2m",
     },
     {
       logo: "",
-      name: "Telegram · Anita",
-      msg: "Necesito plomero urgente",
+      name: L("inbox.item4.name", "Telegram · Anita"),
+      msg: L("inbox.item4.msg", "Necesito plomero urgente"),
       time: "3m",
     },
   ];
@@ -57,9 +60,11 @@ export function InboxDemo() {
     >
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-semibold text-text-primary">
-          Bandeja unificada
+          {L("inbox.title", "Bandeja unificada")}
         </span>
-        <span className="text-[10px] text-text-muted">{count} sin leer</span>
+        <span className="text-[10px] text-text-muted">
+          {count} {L("inbox.unread", "sin leer")}
+        </span>
       </div>
       <div className="space-y-1.5">
         {items.slice(0, count).map((item, i) => (

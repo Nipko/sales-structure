@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
+import { useTranslations } from "next-intl";
 
 interface BookingLiveWidgetProps {
   active: boolean;
@@ -9,36 +10,77 @@ interface BookingLiveWidgetProps {
 }
 
 export function BookingLiveWidget({ active, color, verticalSlug }: BookingLiveWidgetProps) {
+  const t = useTranslations("widgets");
+  const L = (k: string, fb: string) => (t.has(k) ? t(k) : fb);
+
   const getSlotDetails = () => {
     switch (verticalSlug) {
       case "salud":
-        return { time: "09:00 AM", title: "Cita Dental - Sofía", desc: "Dr. Mendoza" };
+        return {
+          time: "09:00 AM",
+          title: L("booking.slot.salud.title", "Cita Dental - Sofía"),
+          desc: L("booking.slot.salud.desc", "Dr. Mendoza"),
+        };
       case "restaurantes":
-        return { time: "08:30 PM", title: "Mesa 4 - Luca (2p)", desc: "Confirmado por Chat" };
+        return {
+          time: "08:30 PM",
+          title: L("booking.slot.restaurantes.title", "Mesa 4 - Luca (2p)"),
+          desc: L("booking.slot.restaurantes.desc", "Confirmado por Chat"),
+        };
       case "inmobiliaria":
-        return { time: "10:30 AM", title: "Visita Apto Chapinero", desc: "Asesor Carlos" };
+        return {
+          time: "10:30 AM",
+          title: L("booking.slot.inmobiliaria.title", "Visita Apto Chapinero"),
+          desc: L("booking.slot.inmobiliaria.desc", "Asesor Carlos"),
+        };
       case "belleza":
-        return { time: "10:00 AM", title: "Balayage - Camila", desc: "Especialista Luna" };
+        return {
+          time: "10:00 AM",
+          title: L("booking.slot.belleza.title", "Balayage - Camila"),
+          desc: L("booking.slot.belleza.desc", "Especialista Luna"),
+        };
       case "gimnasios":
-        return { time: "10:00 AM", title: "Clase de Prueba - Coach", desc: "Tour Completo" };
+        return {
+          time: "10:00 AM",
+          title: L("booking.slot.gimnasios.title", "Clase de Prueba - Coach"),
+          desc: L("booking.slot.gimnasios.desc", "Tour Completo"),
+        };
       case "turismo":
-        return { time: "09:00 AM", title: "Tour Cartagena (2p)", desc: "Maya Guides" };
+        return {
+          time: "09:00 AM",
+          title: L("booking.slot.turismo.title", "Tour Cartagena (2p)"),
+          desc: L("booking.slot.turismo.desc", "Maya Guides"),
+        };
       case "educacion":
-        return { time: "04:00 PM", title: "Prueba Nivel Inglés", desc: "Evaluador Ana" };
+        return {
+          time: "04:00 PM",
+          title: L("booking.slot.educacion.title", "Prueba Nivel Inglés"),
+          desc: L("booking.slot.educacion.desc", "Evaluador Ana"),
+        };
       case "seguros":
-        return { time: "11:00 AM", title: "Llamada Cotización", desc: "Roberto Seguros" };
+        return {
+          time: "11:00 AM",
+          title: L("booking.slot.seguros.title", "Llamada Cotización"),
+          desc: L("booking.slot.seguros.desc", "Roberto Seguros"),
+        };
       default:
-        return { time: "09:00 AM", title: "Cita Confirmada", desc: "Agente IA Parallly" };
+        return {
+          time: "09:00 AM",
+          title: L("booking.slot.default.title", "Cita Confirmada"),
+          desc: L("booking.slot.default.desc", "Agente IA Parallly"),
+        };
     }
   };
 
   const slot = getSlotDetails();
 
+  const availableLabel = L("booking.available", "Disponible");
+
   const slots = [
-    { time: "08:00 AM", label: "Disponible", isBooked: false },
-    { time: slot.time, label: active ? slot.title : "Disponible", isBooked: active },
-    { time: "10:00 AM", label: "Reunión de Equipo", isBooked: false, isBusy: true },
-    { time: "11:30 AM", label: "Disponible", isBooked: false },
+    { time: "08:00 AM", label: availableLabel, isBooked: false },
+    { time: slot.time, label: active ? slot.title : availableLabel, isBooked: active },
+    { time: "10:00 AM", label: L("booking.teamMeeting", "Reunión de Equipo"), isBooked: false, isBusy: true },
+    { time: "11:30 AM", label: availableLabel, isBooked: false },
   ];
 
   return (
@@ -52,10 +94,10 @@ export function BookingLiveWidget({ active, color, verticalSlug }: BookingLiveWi
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">
-            Calendario
+            {L("booking.calendar", "Calendario")}
           </span>
         </div>
-        <span className="text-[9px] text-text-muted font-mono font-medium">Hoy</span>
+        <span className="text-[9px] text-text-muted font-mono font-medium">{L("booking.today", "Hoy")}</span>
       </div>
 
       <div className="space-y-2">

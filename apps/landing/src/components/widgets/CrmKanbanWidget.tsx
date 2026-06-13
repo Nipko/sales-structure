@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
+import { useTranslations } from "next-intl";
 
 interface CrmKanbanWidgetProps {
   active: boolean;
@@ -10,19 +11,22 @@ interface CrmKanbanWidgetProps {
 }
 
 export function CrmKanbanWidget({ active, color, verticalSlug, step }: CrmKanbanWidgetProps) {
+  const t = useTranslations("widgets");
+  const L = (k: string, fb: string) => (t.has(k) ? t(k) : fb);
+
   const getCustomerName = () => {
     switch (verticalSlug) {
       case "salud":
       case "belleza":
-        return "Camila Restrepo";
+        return L("crm.nameSalud", "Camila Restrepo");
       case "restaurantes":
-        return "Santiago Restrepo";
+        return L("crm.nameRestaurantes", "Santiago Restrepo");
       case "inmobiliaria":
-        return "Mateo Gómez";
+        return L("crm.nameInmobiliaria", "Mateo Gómez");
       case "turismo":
-        return "Sofía Silva";
+        return L("crm.nameTurismo", "Sofía Silva");
       default:
-        return "Juan Pérez";
+        return L("crm.nameDefault", "Juan Pérez");
     }
   };
 
@@ -30,16 +34,18 @@ export function CrmKanbanWidget({ active, color, verticalSlug, step }: CrmKanban
 
   // Dynamic values depending on step
   let score = 25;
-  let status = "Entrante";
+  let status = L("crm.statusEntrante", "Entrante");
   let statusColor = "rgba(255, 255, 255, 0.4)";
 
   if (step === 2) {
     score = 55;
-    status = "Interesado";
+    status = L("crm.statusInteresado", "Interesado");
     statusColor = "rgba(56, 151, 240, 0.6)"; // Meta blue
   } else if (step >= 3) {
     score = active ? 95 : 75;
-    status = active ? "Cita Agendada" : "Calificado";
+    status = active
+      ? L("crm.statusCitaAgendada", "Cita Agendada")
+      : L("crm.statusCalificado", "Calificado");
     statusColor = active ? color : "rgba(16, 185, 129, 0.8)"; // Success green
   }
 
@@ -81,7 +87,7 @@ export function CrmKanbanWidget({ active, color, verticalSlug, step }: CrmKanban
         {/* Dynamic scoring indicator */}
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[8px] font-semibold text-text-secondary">
-            <span>Score de Lead</span>
+            <span>{L("crm.scoreLabel", "Score de Lead")}</span>
             <motion.span
               key={score}
               initial={{ scale: 0.8, opacity: 0.5 }}
@@ -112,12 +118,12 @@ export function CrmKanbanWidget({ active, color, verticalSlug, step }: CrmKanban
             AI Insight
           </span>
           {step <= 1
-            ? "Esperando datos..."
+            ? L("crm.insightWaiting", "Esperando datos...")
             : step === 2
-            ? "Interés alto en agenda"
+            ? L("crm.insightInterested", "Interés alto en agenda")
             : active
-            ? "Cita confirmada en Google Calendar, enviando recordatorio"
-            : "Datos recolectados, agendamiento pendiente"}
+            ? L("crm.insightConfirmed", "Cita confirmada en Google Calendar, enviando recordatorio")
+            : L("crm.insightPending", "Datos recolectados, agendamiento pendiente")}
         </div>
       </div>
     </motion.div>

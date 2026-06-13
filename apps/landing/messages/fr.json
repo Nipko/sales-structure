@@ -915,7 +915,6 @@
     "agentUseCase2Desc": "Luca prend les commandes par WhatsApp, demande l'adresse et le mode de paiement. L'équipe reçoit la commande prête.",
     "agentUseCase3": "Immobilier",
     "agentUseCase3Desc": "Carlos filtre les biens par budget, planifie les visites et qualifie l'acheteur avant qu'il parle à un agent.",
-
     "channelsTitle": "Canaux",
     "channelsDesc": "WhatsApp, Instagram, Messenger, Telegram et SMS dans une seule boîte de réception.",
     "channelsBadge": "Communication omnicanale",
@@ -944,7 +943,6 @@
     "channelsUseCase2Desc": "Les devis arrivent par WhatsApp et Instagram. Roberto qualifie et unifie les profils automatiquement.",
     "channelsUseCase3": "Académie de langues",
     "channelsUseCase3Desc": "Les étudiants posent des questions par Messenger, s'inscrivent par WhatsApp et reçoivent les supports par Telegram.",
-
     "bookingTitle": "Réservations",
     "bookingDesc": "Planification par chat avec Google Calendar, anti-double-booking et rappels.",
     "bookingBadge": "Planification intelligente",
@@ -973,7 +971,6 @@
     "bookingUseCase2Desc": "Coach gère 3 calendriers pour yoga, CrossFit et fonctionnel. Les places se mettent à jour en temps réel.",
     "bookingUseCase3": "Restaurant",
     "bookingUseCase3Desc": "Réservation d'une table pour 4 le samedi à 20h. Luca vérifie la disponibilité et envoie la confirmation avec l'adresse.",
-
     "crmTitle": "CRM",
     "crmDesc": "Pipeline visuel, scoring automatique, automatisation et campagnes broadcast.",
     "crmBadge": "Gestion des ventes",
@@ -1002,10 +999,150 @@
     "crmUseCase2Desc": "Roberto enregistre chaque devis, programme des follow-ups automatiques et alerte le conseiller quand le lead est chaud.",
     "crmUseCase3": "Retail",
     "crmUseCase3Desc": "Segmentez les clients par historique d'achat, envoyez des promos par WhatsApp et mesurez la conversion par campagne.",
-
     "backToProduct": "← Produit",
     "demoTitle": "Voyez comment ça fonctionne",
     "useCasesTitle": "Cas d'utilisation réels",
     "tryFree": "Essai gratuit 7 jours"
+  },
+  "widgets": {
+    "booking": {
+      "calendar": "Calendrier",
+      "today": "Aujourd'hui",
+      "available": "Disponible",
+      "teamMeeting": "Réunion d'équipe",
+      "slot": {
+        "salud": {
+          "title": "Rendez-vous dentaire - Sophie",
+          "desc": "Dr Mendoza"
+        },
+        "restaurantes": {
+          "title": "Table 4 - Luc (2p)",
+          "desc": "Confirmé par chat"
+        },
+        "inmobiliaria": {
+          "title": "Visite appart Centre",
+          "desc": "Conseiller Charles"
+        },
+        "belleza": {
+          "title": "Balayage - Camille",
+          "desc": "Spécialiste Luna"
+        },
+        "gimnasios": {
+          "title": "Cours d'essai - Coach",
+          "desc": "Visite complète"
+        },
+        "turismo": {
+          "title": "Tour Carthagène (2p)",
+          "desc": "Maya Guides"
+        },
+        "educacion": {
+          "title": "Test de niveau d'anglais",
+          "desc": "Évaluatrice Anne"
+        },
+        "seguros": {
+          "title": "Appel de devis",
+          "desc": "Robert Assurances"
+        },
+        "default": {
+          "title": "Rendez-vous confirmé",
+          "desc": "Agent IA Parallly"
+        }
+      }
+    },
+    "crm": {
+      "nameSalud": "Camille Laurent",
+      "nameRestaurantes": "Lucas Moreau",
+      "nameInmobiliaria": "Mathis Garnier",
+      "nameTurismo": "Sophie Dubois",
+      "nameDefault": "Jean Dupont",
+      "statusEntrante": "Entrant",
+      "statusInteresado": "Intéressé",
+      "statusCitaAgendada": "Rendez-vous pris",
+      "statusCalificado": "Qualifié",
+      "scoreLabel": "Score du Lead",
+      "insightWaiting": "En attente de données...",
+      "insightInterested": "Fort intérêt pour la prise de rendez-vous",
+      "insightConfirmed": "Rendez-vous confirmé dans Google Calendar, envoi du rappel",
+      "insightPending": "Données collectées, prise de rendez-vous en attente"
+    },
+    "identity": {
+      "header": "Omnicanal",
+      "mergeOk": "Fusion OK",
+      "statusMerged": "Profil unique intégré",
+      "statusSearching": "Recherche de doublons...",
+      "descMerged": "WhatsApp + Instagram unifiés par correspondance du téléphone",
+      "descSearching": "Contact détecté sur WhatsApp et Instagram DM séparément",
+      "initials": {
+        "salud": "CR",
+        "restaurantes": "SM",
+        "inmobiliaria": "MD",
+        "turismo": "SS",
+        "default": "JD"
+      }
+    }
+  },
+  "demos": {
+    "pipeline": {
+      "stageNew": "Nouveau",
+      "stageQualified": "Qualifié",
+      "stageWon": "Gagné",
+      "cardName": "Marie Dubois",
+      "cardLabel": "Pédiatrie · WA",
+      "cardScore": "Score 87"
+    },
+    "calendar": {
+      "dateHeader": "Jeudi 15 mai",
+      "confirmed": "Rendez-vous confirmé",
+      "confirmedDetail": "11:00 · Marie Dupont"
+    },
+    "analytics": {
+      "thisWeek": "Cette semaine",
+      "conversations": "conversations",
+      "day0": "L",
+      "day1": "M",
+      "day2": "M",
+      "day3": "J",
+      "day4": "V",
+      "day5": "S",
+      "day6": "D"
+    },
+    "agentConfig": {
+      "sliderToneLabel": "Ton",
+      "sliderToneValue": "Empathique",
+      "sliderModelLabel": "Modèle IA",
+      "sliderChannelLabel": "Canal",
+      "agentName": "Sophie · Assistante médicale",
+      "templateLabel": "Modèle : Santé · Dentaire",
+      "statusActive": "Active · 24/7"
+    },
+    "kb": {
+      "title": "Base de connaissances",
+      "customerAsks": "Le client demande :",
+      "question": "Acceptez-vous la carte Sodexo ?",
+      "searching": "Recherche dans la KB...",
+      "foundIn": "Trouvé dans politiques.pdf",
+      "answer": "Oui, nous acceptons les cartes Sodexo, Big Pass et Edenred. Paiement sur place, sans cumul de points."
+    },
+    "inbox": {
+      "title": "Boîte de réception unifiée",
+      "unread": "non lus",
+      "item1": {
+        "name": "Lucas M.",
+        "msg": "Bonjour, avez-vous un appartement à louer à Chapinero ?",
+        "time": "à l'instant"
+      },
+      "item2": {
+        "name": "@valeria.foto",
+        "msg": "J'ai vu votre travail, des infos sur les mariages ?"
+      },
+      "item3": {
+        "name": "Daniel M.",
+        "msg": "Informations sur les abonnements mensuels"
+      },
+      "item4": {
+        "name": "Telegram · Anita",
+        "msg": "J'ai besoin d'un plombier en urgence"
+      }
+    }
   }
 }

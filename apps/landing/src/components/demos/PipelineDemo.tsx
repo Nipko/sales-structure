@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useInView } from "motion/react";
+import { useTranslations } from "next-intl";
 
 export function PipelineDemo() {
+  const t = useTranslations("demos");
+  const L = (k: string, fb: string) => (t.has(k) ? t(k) : fb);
   const [stage, setStage] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { margin: "-50px" });
@@ -22,9 +25,9 @@ export function PipelineDemo() {
   }, [isInView]);
 
   const stages = [
-    { name: "Nuevo", color: "#3b82f6" },
-    { name: "Calificado", color: "#f59e0b" },
-    { name: "Ganado", color: "#10b981" },
+    { name: L("pipeline.stageNew", "Nuevo"), color: "#3b82f6" },
+    { name: L("pipeline.stageQualified", "Calificado"), color: "#f59e0b" },
+    { name: L("pipeline.stageWon", "Ganado"), color: "#10b981" },
   ];
 
   return (
@@ -60,14 +63,16 @@ export function PipelineDemo() {
                 style={{ borderColor: s.color }}
               >
                 <p className="text-[11px] font-semibold text-text-primary truncate">
-                  María González
+                  {L("pipeline.cardName", "María González")}
                 </p>
                 <p className="text-[10px] text-text-secondary truncate">
-                  Pediatría · WA
+                  {L("pipeline.cardLabel", "Pediatría · WA")}
                 </p>
                 <div className="flex items-center gap-1 mt-1.5">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-[9px] text-text-muted">Score 87</span>
+                  <span className="text-[9px] text-text-muted">
+                    {L("pipeline.cardScore", "Score 87")}
+                  </span>
                 </div>
               </motion.div>
             )}

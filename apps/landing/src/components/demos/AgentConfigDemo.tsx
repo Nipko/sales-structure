@@ -2,15 +2,33 @@
 
 import { useRef } from "react";
 import { motion, useInView } from "motion/react";
+import { useTranslations } from "next-intl";
 
 export function AgentConfigDemo() {
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { margin: "-50px" });
+  const t = useTranslations("demos");
+  const L = (k: string, fb: string) => (t.has(k) ? t(k) : fb);
 
   const sliders = [
-    { label: "Tono", value: "Empático", color: "#10b981", width: "85%" },
-    { label: "Modelo IA", value: "Claude Opus", color: "#a855f7", width: "100%" },
-    { label: "Canal", value: "WhatsApp", color: "#25D366", width: "70%" },
+    {
+      label: L("agentConfig.sliderToneLabel", "Tono"),
+      value: L("agentConfig.sliderToneValue", "Empático"),
+      color: "#10b981",
+      width: "85%",
+    },
+    {
+      label: L("agentConfig.sliderModelLabel", "Modelo IA"),
+      value: "Claude Opus",
+      color: "#a855f7",
+      width: "100%",
+    },
+    {
+      label: L("agentConfig.sliderChannelLabel", "Canal"),
+      value: "WhatsApp",
+      color: "#25D366",
+      width: "70%",
+    },
   ];
 
   return (
@@ -24,10 +42,10 @@ export function AgentConfigDemo() {
         </div>
         <div>
           <p className="text-xs font-semibold text-text-primary">
-            Sofía · Asistente médica
+            {L("agentConfig.agentName", "Sofía · Asistente médica")}
           </p>
           <p className="text-[10px] text-text-muted">
-            Plantilla: Salud · Dental
+            {L("agentConfig.templateLabel", "Plantilla: Salud · Dental")}
           </p>
         </div>
       </div>
@@ -64,7 +82,7 @@ export function AgentConfigDemo() {
       <div className="mt-3 flex items-center gap-2">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
         <span className="text-[10px] text-emerald-400 font-semibold">
-          Activa · 24/7
+          {L("agentConfig.statusActive", "Activa · 24/7")}
         </span>
       </div>
     </div>

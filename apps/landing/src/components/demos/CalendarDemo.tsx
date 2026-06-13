@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useInView } from "motion/react";
+import { useTranslations } from "next-intl";
 
 export function CalendarDemo() {
+  const t = useTranslations("demos");
+  const L = (k: string, fb: string) => (t.has(k) ? t(k) : fb);
   const [step, setStep] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { margin: "-50px" });
@@ -31,7 +34,7 @@ export function CalendarDemo() {
     >
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-semibold text-text-primary">
-          Jueves 15 de mayo
+          {L("calendar.dateHeader", "Jueves 15 de mayo")}
         </span>
         <svg
           className="w-4 h-4 text-text-muted"
@@ -90,10 +93,10 @@ export function CalendarDemo() {
             </svg>
             <div className="flex-1 min-w-0">
               <p className="text-[11px] font-semibold text-emerald-400">
-                Cita confirmada
+                {L("calendar.confirmed", "Cita confirmada")}
               </p>
               <p className="text-[10px] text-text-secondary truncate">
-                11:00 · María González
+                {L("calendar.confirmedDetail", "11:00 · María González")}
               </p>
             </div>
           </motion.div>

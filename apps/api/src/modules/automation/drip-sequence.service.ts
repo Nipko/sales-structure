@@ -10,6 +10,7 @@ import { PersonaService } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { ComplianceService } from '../analytics/compliance.service';
 import { SegmentsService } from '../crm/services/segments/segments.service';
+import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
 import { NURTURING_QUEUE } from './nurturing.service';
 import { OutboundMessage } from '@parallext/shared';
 
@@ -52,6 +53,7 @@ export class DripSequenceService {
         private readonly llmRouter: LLMRouterService,
         private readonly compliance: ComplianceService,
         private readonly segmentsService: SegmentsService,
+        private readonly whatsappMessaging: WhatsappMessagingService,
     ) {}
 
     // ─── Lazy Table Migration ────────────────────────────────────
@@ -262,6 +264,7 @@ export class DripSequenceService {
         segmentId: string,
         opts?: { cap?: number },
     ): Promise<{ matched: number; enrolled: number; skippedOptOut: number; skippedDuplicate: number; skippedNoContact: number; capped: boolean }> {
+        if (!segmentId) throw new BadRequestException('segmentId is required');
         const schemaName = await this.tenantSchema(tenantId);
         await this.ensureDripTables(schemaName);
 
@@ -269,29 +272,50 @@ export class DripSequenceService {
         if (!sequence.is_active) throw new BadRequestException('Cannot enroll into an inactive sequence');
         const steps = (typeof sequence.steps === 'string' ? JSON.parse(sequence.steps) : sequence.steps) as DripStep[];
         if (!steps.length) throw new BadRequestException('Sequence has no steps');
+        // WhatsApp only allows APPROVED TEMPLATES to open a cold conversation (24h window).
+        // A prospecting sequence's first step MUST be a template — a free-form opener
+        // (custom/ai_generated) is rejected by Meta for contacts who never wrote first.
+        if (steps[0]?.message_type !== 'template') {
+            throw new BadRequestException('For WhatsApp prospecting the first step must be an approved template — cold contacts can only be reached via templates.');
+        }
 
-        const cap = Math.max(1, Math.min(opts?.cap ?? 500, 1000));
-        // getSegmentContacts returns `leads` rows (with contact_id + phone). Fetch cap+1
-        // to detect truncation.
+        // No point enrolling against missing credentials — every send would fail silently.
+        const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId, 'whatsapp');
+        if (!accessToken || !accountId) {
+            throw new BadRequestException('Connect WhatsApp before prospecting.');
+        }
+
+        const cap = Math.max(1, Math.min(opts?.cap ?? 300, 500));
+        // getSegmentContacts returns `leads` rows (with contact_id, phone, opted_out).
+        // Fetch cap+1 to detect truncation.
         const leads = await this.segmentsService.getSegmentContacts(tenantId, segmentId, 1, cap + 1);
         const capped = leads.length > cap;
         const targets = leads.slice(0, cap);
+        const matched = capped ? cap : leads.length;
 
-        const { accountId } = await this.resolveChannelCredentials(tenantId, 'whatsapp');
-
+        const phoneRe = /^\+?\d{7,15}$/;
         let enrolled = 0, skippedOptOut = 0, skippedDuplicate = 0, skippedNoContact = 0;
         for (const lead of targets) {
-            const contactId = lead.contact_id;
-            const phone = lead.external_id || lead.phone;
-            if (!contactId || !phone) { skippedNoContact++; continue; }
-            if (await this.compliance.isBlocked(tenantId, phone)) { skippedOptOut++; continue; }
-            const convId = await this.resolveOrCreateConversation(schemaName, contactId, 'whatsapp', accountId);
-            const enrollment = await this.enrollOne(tenantId, schemaName, sequenceId, contactId, steps, convId);
-            if (enrollment) enrolled++; else skippedDuplicate++;
+            try {
+                const contactId = lead.contact_id;
+                const phone = String(lead.phone || '');
+                if (!contactId || !phoneRe.test(phone)) { skippedNoContact++; continue; }
+                // Skip opt-outs: both the confirmed opt_out_records (isBlocked) AND the
+                // leads.opted_out flag set by the public-form unsubscribe (which isBlocked
+                // doesn't see, and which also sidesteps E.164 +/no-+ mismatches).
+                if (lead.opted_out === true || await this.compliance.isBlocked(tenantId, phone)) { skippedOptOut++; continue; }
+                const convId = await this.resolveOrCreateConversation(schemaName, contactId, 'whatsapp', accountId);
+                const enrollment = await this.enrollOne(tenantId, schemaName, sequenceId, contactId, steps, convId);
+                if (enrollment) enrolled++; else skippedDuplicate++;
+            } catch (e: any) {
+                // A single bad lead must never abort the whole batch.
+                this.logger.warn(`[Prospecting] enroll failed for lead ${lead?.id}: ${e.message}`);
+                skippedNoContact++;
+            }
         }
 
-        this.logger.log(`[Prospecting] Segment ${segmentId} → seq ${sequenceId}: ${enrolled} enrolled / ${skippedOptOut} opt-out / ${skippedDuplicate} dup / ${skippedNoContact} no-contact${capped ? ' (capped)' : ''}`);
-        return { matched: leads.length, enrolled, skippedOptOut, skippedDuplicate, skippedNoContact, capped };
+        this.logger.log(`[Prospecting] Segment ${segmentId} → seq ${sequenceId}: ${enrolled} enrolled / ${skippedOptOut} opt-out / ${skippedDuplicate} dup / ${skippedNoContact} skipped${capped ? ' (capped)' : ''}`);
+        return { matched, enrolled, skippedOptOut, skippedDuplicate, skippedNoContact, capped };
     }
 
     /** Insert one enrollment (dedup via the active unique index) and schedule its first
@@ -570,9 +594,16 @@ export class DripSequenceService {
             return;
         }
 
-        const phone = contact.external_id || contact.phone;
+        // The drip sends via WhatsApp, so the recipient MUST be an E.164 phone. For a
+        // WhatsApp contact external_id IS the phone; for other channels it's a PSID, so
+        // prefer the phone column and require a phone-shaped value — never send to a
+        // cross-channel id (it would fail or hit the wrong person).
+        const phoneRe = /^\+?\d{7,15}$/;
+        const phone = phoneRe.test(String(contact.phone || ''))
+            ? String(contact.phone)
+            : (phoneRe.test(String(contact.external_id || '')) ? String(contact.external_id) : '');
         if (!phone) {
-            this.logger.warn(`No phone for contact ${enrollment.contact_id} — skipping drip step`);
+            this.logger.warn(`No WhatsApp phone for contact ${enrollment.contact_id} — skipping drip step`);
             return;
         }
 
@@ -580,34 +611,20 @@ export class DripSequenceService {
         const { accessToken, accountId } = await this.resolveChannelCredentials(tenantId, channelType);
 
         if (step.message_type === 'template') {
+            // Approved Meta template — the ONLY compliant way to open a cold conversation
+            // outside the 24h window. Sends the real template via WhatsappMessagingService
+            // (the broadcast/automation path); the old literal "[Template: x]" never delivered.
             const templateName = step.template_name || 'follow_up';
-            const outbound: OutboundMessage = {
-                tenantId,
-                channelType,
-                channelAccountId: accountId,
-                to: phone,
-                content: {
-                    type: 'text',
-                    text: `[Template: ${templateName}]`,
-                },
-                metadata: {
-                    isTemplate: true,
-                    templateName,
-                    templateLanguage: step.template_language || 'es',
-                    templateComponents: [
-                        {
-                            type: 'body',
-                            parameters: [
-                                { type: 'text', text: contact.name || 'cliente' },
-                            ],
-                        },
-                    ],
-                },
-            };
-
-            await this.outboundQueue.enqueue(outbound, accessToken);
-            await this.saveOutboundMessage(schemaName, enrollment.conversation_id,
-                `[Drip — Plantilla: ${templateName}] Enviado a ${contact.name || 'cliente'}`);
+            const language = step.template_language || 'es';
+            const components = [
+                { type: 'body', parameters: [{ type: 'text', text: contact.name || 'cliente' }] },
+            ];
+            try {
+                await this.whatsappMessaging.sendTemplate(schemaName, phone, templateName, language, components);
+                await this.saveOutboundMessage(schemaName, enrollment.conversation_id, `[Plantilla: ${templateName}]`);
+            } catch (e: any) {
+                this.logger.error(`Drip template send failed (${templateName}) for ${phone}: ${e.message}`);
+            }
         } else if (step.message_type === 'custom') {
             const text = step.content || '';
             if (!text) {

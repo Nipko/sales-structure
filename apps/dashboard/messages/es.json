@@ -7618,6 +7618,7 @@
       "title": "Prospectar desde el CRM",
       "desc": "Inscribe un segmento de leads en esta secuencia. El agente abre la conversación; tu equipo cierra desde el inbox.",
       "mustBeActive": "Activá la secuencia para poder prospectar.",
+      "firstStepTemplate": "El primer paso debe ser una plantilla aprobada (WhatsApp solo permite plantillas para iniciar conversación en frío).",
       "selectSegment": "Elegí un segmento…",
       "enrollBtn": "Inscribir segmento",
       "enrolling": "Inscribiendo…",

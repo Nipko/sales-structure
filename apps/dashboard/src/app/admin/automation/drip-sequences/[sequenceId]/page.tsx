@@ -140,7 +140,8 @@ export default function DripSequenceEditorPage() {
         const d = res.data;
         showToast(t("prospecting.enrolledToast", { enrolled: d.enrolled, optout: d.skippedOptOut, dup: d.skippedDuplicate }));
       } else {
-        showToast(t("prospecting.enrollError"));
+        // Surface the backend reason (e.g. first step must be a template / WhatsApp not connected).
+        showToast(res.error || t("prospecting.enrollError"));
       }
     } catch {
       showToast(t("prospecting.enrollError"));
@@ -727,6 +728,9 @@ export default function DripSequenceEditorPage() {
                 {!isActive && (
                   <p className="text-[11px] text-amber-600 dark:text-amber-400">{t("prospecting.mustBeActive")}</p>
                 )}
+                {steps[0]?.message_type !== "template" && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400">{t("prospecting.firstStepTemplate")}</p>
+                )}
                 <select
                   value={selectedSegmentId}
                   onChange={e => setSelectedSegmentId(e.target.value)}
@@ -741,10 +745,10 @@ export default function DripSequenceEditorPage() {
                 </select>
                 <Button
                   onClick={handleEnrollSegment}
-                  disabled={enrolling || !selectedSegmentId || !isActive}
+                  disabled={enrolling || !selectedSegmentId || !isActive || steps[0]?.message_type !== "template"}
                   className={cn(
                     "w-full gap-2 transition-colors duration-200",
-                    selectedSegmentId && isActive
+                    selectedSegmentId && isActive && steps[0]?.message_type === "template"
                       ? "bg-indigo-600 hover:bg-indigo-700 text-white"
                       : "bg-neutral-200 dark:bg-neutral-700 text-muted-foreground cursor-not-allowed"
                   )}

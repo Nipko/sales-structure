@@ -7618,6 +7618,7 @@
       "title": "Prospect from the CRM",
       "desc": "Enroll a segment of leads into this sequence. The agent opens the conversation; your team closes from the inbox.",
       "mustBeActive": "Activate the sequence to start prospecting.",
+      "firstStepTemplate": "The first step must be an approved template (WhatsApp only allows templates to start a cold conversation).",
       "selectSegment": "Pick a segment…",
       "enrollBtn": "Enroll segment",
       "enrolling": "Enrolling…",

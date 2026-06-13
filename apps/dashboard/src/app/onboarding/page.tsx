@@ -10,6 +10,7 @@ import {
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { TIMEZONE_GROUPS } from "@parallext/shared";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import MpCardForm from "@/components/billing/MpCardForm";
 
@@ -807,19 +808,11 @@ export default function OnboardingPage() {
                                     className={cn(selectClasses, "pr-8")}
                                     style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239898b0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
                                 >
-                                    <option value="America/Bogota">Bogota, Lima, Quito (UTC-5)</option>
-                                    <option value="America/Mexico_City">Mexico City (UTC-6)</option>
-                                    <option value="America/Santiago">Santiago (UTC-3)</option>
-                                    <option value="America/Argentina/Buenos_Aires">Buenos Aires (UTC-3)</option>
-                                    <option value="America/Sao_Paulo">São Paulo (UTC-3)</option>
-                                    <option value="America/Caracas">Caracas (UTC-4)</option>
-                                    <option value="America/Panama">Panama (UTC-5)</option>
-                                    <option value="America/Guayaquil">Guayaquil (UTC-5)</option>
-                                    <option value="America/Costa_Rica">Costa Rica (UTC-6)</option>
-                                    <option value="America/New_York">New York (UTC-5/4)</option>
-                                    <option value="America/Los_Angeles">Los Angeles (UTC-8/7)</option>
-                                    <option value="Europe/Madrid">Madrid (UTC+1/2)</option>
-                                    <option value="Europe/London">London (UTC+0/1)</option>
+                                    {TIMEZONE_GROUPS.map((g) => (
+                                        <optgroup key={g.region} label={g.region}>
+                                            {g.zones.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+                                        </optgroup>
+                                    ))}
                                 </select>
                             </div>
                         </div>

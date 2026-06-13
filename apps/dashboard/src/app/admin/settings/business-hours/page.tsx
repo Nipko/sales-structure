@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Clock, Save, CheckCircle, AlertCircle, Globe } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { TIMEZONE_GROUPS, DEFAULT_TIMEZONE, normalizeTimezone } from "@parallext/shared";
 
 interface DaySchedule {
     enabled: boolean;
@@ -24,22 +25,6 @@ interface BusinessHoursConfig {
 
 const DAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
-const TIMEZONES = [
-    "America/Bogota",
-    "America/Mexico_City",
-    "America/Lima",
-    "America/Santiago",
-    "America/Buenos_Aires",
-    "America/Sao_Paulo",
-    "America/New_York",
-    "America/Chicago",
-    "America/Denver",
-    "America/Los_Angeles",
-    "Europe/Madrid",
-    "Europe/London",
-    "UTC",
-];
-
 const defaultSchedule: Record<string, DaySchedule> = {
     monday: { enabled: true, open: "08:00", close: "18:00" },
     tuesday: { enabled: true, open: "08:00", close: "18:00" },
@@ -52,7 +37,7 @@ const defaultSchedule: Record<string, DaySchedule> = {
 
 const defaultConfig: BusinessHoursConfig = {
     is247: false,
-    timezone: "America/Bogota",
+    timezone: DEFAULT_TIMEZONE,
     schedule: defaultSchedule,
     afterHoursMessage: "",
 };
@@ -79,7 +64,7 @@ export default function BusinessHoursPage() {
                     const bh = s.businessHours;
                     setConfig({
                         is247: bh.is247 ?? false,
-                        timezone: bh.timezone || "America/Bogota",
+                        timezone: normalizeTimezone(bh.timezone || DEFAULT_TIMEZONE),
                         schedule: bh.schedule || defaultSchedule,
                         afterHoursMessage: bh.afterHoursMessage ?? s.outOfHoursMessage ?? "",
                     });
@@ -189,12 +174,14 @@ export default function BusinessHoursPage() {
                     {t("timezoneDesc")}
                 </p>
                 <select
-                    value={config.timezone}
+                    value={normalizeTimezone(config.timezone)}
                     onChange={(e) => setConfig(prev => ({ ...prev, timezone: e.target.value }))}
                     className="h-9 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 transition-colors"
                 >
-                    {TIMEZONES.map(tz => (
-                        <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+                    {TIMEZONE_GROUPS.map((g) => (
+                        <optgroup key={g.region} label={g.region}>
+                            {g.zones.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+                        </optgroup>
                     ))}
                 </select>
             </div>

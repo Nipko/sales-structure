@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Settings, Save, CheckCircle } from "lucide-react";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { TIMEZONE_GROUPS } from "@parallext/shared";
 import MaintenanceModeCard from "./_MaintenanceModeCard";
 
 export default function PlatformPage() {
@@ -118,9 +119,11 @@ function PlatformContent() {
                             onChange={e => setValues(prev => ({ ...prev, "general.default_timezone": e.target.value }))}
                             className={selectClasses}
                         >
-                            {["America/Bogota", "America/Mexico_City", "America/Lima", "America/New_York", "Europe/Madrid", "America/Sao_Paulo"].map(tz =>
-                                <option key={tz} value={tz}>{tz}</option>
-                            )}
+                            {TIMEZONE_GROUPS.map((g) => (
+                                <optgroup key={g.region} label={g.region}>
+                                    {g.zones.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+                                </optgroup>
+                            ))}
                         </select>
                     </div>
                 </div>

@@ -8,20 +8,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Globe, DollarSign, Calendar, Clock, Save, CheckCircle, AlertCircle } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
-
-const TIMEZONES = [
-    { value: "America/Bogota", label: "Colombia (GMT-5)" },
-    { value: "America/Mexico_City", label: "Mexico City (GMT-6)" },
-    { value: "America/Lima", label: "Peru (GMT-5)" },
-    { value: "America/Santiago", label: "Chile (GMT-4)" },
-    { value: "America/Argentina/Buenos_Aires", label: "Argentina (GMT-3)" },
-    { value: "America/Sao_Paulo", label: "Brasil (GMT-3)" },
-    { value: "America/New_York", label: "US Eastern (GMT-5)" },
-    { value: "America/Chicago", label: "US Central (GMT-6)" },
-    { value: "America/Los_Angeles", label: "US Pacific (GMT-8)" },
-    { value: "Europe/Madrid", label: "Spain (GMT+1)" },
-    { value: "Europe/London", label: "UK (GMT+0)" },
-];
+import { TIMEZONE_GROUPS, normalizeTimezone } from "@parallext/shared";
 
 const CURRENCIES = [
     { value: "COP", label: "COP - Peso colombiano ($)" },
@@ -154,8 +141,12 @@ export default function LocalizationPage() {
                     <label className="mb-1.5 flex items-center gap-2 text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
                         <Clock size={14} className="text-neutral-400" /> Timezone
                     </label>
-                    <select value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} className={selectClasses}>
-                        {TIMEZONES.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+                    <select value={normalizeTimezone(form.timezone)} onChange={(e) => setForm({ ...form, timezone: e.target.value })} className={selectClasses}>
+                        {TIMEZONE_GROUPS.map((g) => (
+                            <optgroup key={g.region} label={g.region}>
+                                {g.zones.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+                            </optgroup>
+                        ))}
                     </select>
                 </div>
 

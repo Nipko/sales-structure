@@ -2,6 +2,9 @@
 // Parallext Engine - Shared Types
 // ===================================
 
+// ---- Timezones (worldwide curated IANA list) ----
+export * from './timezones';
+
 // ---- Channel Types ----
 export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email';
 

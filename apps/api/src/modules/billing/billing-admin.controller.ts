@@ -37,6 +37,16 @@ class CompPlanDto {
     reason!: string;
 }
 
+class SetTenantPlanDto {
+    @IsString()
+    @IsIn(['emprendedor', 'starter', 'pro', 'enterprise', 'custom'])
+    planSlug!: string;
+
+    @IsOptional()
+    @IsString()
+    reason?: string;
+}
+
 class UpdatePlanDto {
     @IsOptional() @IsString() name?: string;
     @IsOptional() @IsInt() @Min(0) priceUsdCents?: number;
@@ -204,5 +214,42 @@ export class BillingAdminController {
             actorUserId: req.user?.sub,
         });
         return { success: true };
+    }
+
+    // ── Permanent plan change (super_admin) ─────────────────────────
+    // Unlike comp-plan (time-boxed gift), this sets the tenant's billing plan
+    // outright. Updates tenant.plan, invalidates the throttle/feature caches so
+    // the new entitlements apply immediately, and records an audit entry. Does
+    // NOT touch the payment subscription — it's an admin entitlement override.
+    @Put('tenants/:tenantId/plan')
+    async setTenantPlan(
+        @Param('tenantId') tenantId: string,
+        @Body() body: SetTenantPlanDto,
+        @Req() req: any,
+    ) {
+        const plan = await this.prisma.billingPlan.findUnique({ where: { slug: body.planSlug } });
+        if (!plan) throw new NotFoundException('Plan not found');
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { id: true, plan: true },
+        });
+        if (!tenant) throw new NotFoundException('Tenant not found');
+
+        await this.prisma.tenant.update({ where: { id: tenantId }, data: { plan: body.planSlug } });
+        // Invalidate cached plan/features so the new entitlements take effect now.
+        await this.throttle.invalidatePlanCacheForSlug(body.planSlug);
+        if (tenant.plan && tenant.plan !== body.planSlug) {
+            await this.throttle.invalidatePlanCacheForSlug(tenant.plan);
+        }
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId,
+                userId: req.user?.sub,
+                action: 'tenant_plan_changed',
+                resource: `tenants/${tenantId}`,
+                details: { from: tenant.plan, to: body.planSlug, reason: body.reason ?? null },
+            },
+        });
+        return { success: true, data: { from: tenant.plan, to: body.planSlug } };
     }
 }

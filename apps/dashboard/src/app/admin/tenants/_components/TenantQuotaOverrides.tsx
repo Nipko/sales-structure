@@ -1,15 +1,15 @@
 "use client";
 
 /**
- * Per-tenant quota override panel for super_admin. Shows the current
- * usage vs effective limit for each rate-limited action and lets the
- * operator bump (or remove) the limit independently of the plan.
- *
- * Pattern modeled after Stripe's "Custom limits" override on enterprise
- * accounts — useful for tenants with traffic spikes who shouldn't have
- * to upgrade tier just to handle a one-off campaign.
+ * Per-tenant quota override panel for super_admin. Shows current usage vs
+ * effective limit for the rate-limited actions, and lets the operator bump
+ * (or remove) any overridable plan limit independently of the plan — so a
+ * one-off concession doesn't require moving the tenant to a custom plan.
  *
  * Empty input = use plan default. -1 = unlimited.
+ *
+ * The set of overridable keys mirrors the backend OVERRIDABLE_QUOTA_KEYS
+ * (TenantThrottleService); feature labels are reused from plansPage.features.
  */
 
 import { useEffect, useState } from "react";
@@ -28,20 +28,8 @@ interface UsageRow {
 }
 
 interface OverrideData {
-    overrides: {
-        automation?: number;
-        outbound?: number;
-        broadcast?: number;
-        maxAgents?: number;
-        maxCalendars?: number;
-        knowledgeArticles?: number;
-        knowledgeMaxCharsPerDoc?: number;
-        knowledgeEmbeddingsPerMonth?: number;
-        reason?: string;
-        setBy?: string;
-        setAt?: string;
-    };
-    features: { maxAgents: number; maxCalendars: number; knowledgeArticles: number; knowledgeMaxCharsPerDoc: number; knowledgeEmbeddingsPerMonth: number; templates: boolean; customPrompt: boolean };
+    overrides: Record<string, any>;
+    features: Record<string, any>;
     usage: { automation: UsageRow; outbound: UsageRow; broadcast: UsageRow };
 }
 
@@ -51,16 +39,45 @@ const HOURLY_QUOTAS = [
     { key: "broadcast" as const, labelKey: "broadcastLabel", helpKey: "broadcastHelp" },
 ];
 
-const FEATURE_QUOTAS = [
-    { key: "maxAgents" as const, labelKey: "maxAgentsLabel" },
-    { key: "maxCalendars" as const, labelKey: "maxCalendarsLabel" },
-    { key: "knowledgeArticles" as const, labelKey: "knowledgeArticlesLabel" },
-    { key: "knowledgeMaxCharsPerDoc" as const, labelKey: "knowledgeMaxCharsLabel" },
-    { key: "knowledgeEmbeddingsPerMonth" as const, labelKey: "knowledgeEmbeddingsLabel" },
+// All overridable feature/limit keys. `source` says where the plan default is
+// read from (top-level feature vs nested rateLimits). Labels come from the
+// plansPage.features namespace (tf).
+const FEATURE_OVERRIDES: { key: string; labelKey: string; source: "feature" | "rate" }[] = [
+    { key: "maxAgents", labelKey: "maxAgents", source: "feature" },
+    { key: "maxAiMessages", labelKey: "maxAiMessages", source: "feature" },
+    { key: "maxCalendars", labelKey: "maxCalendars", source: "feature" },
+    { key: "maxContacts", labelKey: "maxContacts", source: "feature" },
+    { key: "maxProperties", labelKey: "maxProperties", source: "feature" },
+    { key: "appointmentsServices", labelKey: "appointmentsServices", source: "feature" },
+    { key: "customAttributes", labelKey: "customAttributes", source: "feature" },
+    { key: "emailTemplates", labelKey: "emailTemplates", source: "feature" },
+    { key: "pipelineStages", labelKey: "pipelineStages", source: "feature" },
+    { key: "maxPipelines", labelKey: "maxPipelines", source: "feature" },
+    { key: "segments", labelKey: "segments", source: "feature" },
+    { key: "mediaStorageMb", labelKey: "mediaStorageMb", source: "feature" },
+    { key: "automationRules", labelKey: "automationRules", source: "feature" },
+    { key: "maxDripSequences", labelKey: "maxDripSequences", source: "feature" },
+    { key: "broadcastCampaigns", labelKey: "broadcastCampaigns", source: "feature" },
+    { key: "outboundWebhooks", labelKey: "outboundWebhooks", source: "feature" },
+    { key: "maxWebhookSubscriptions", labelKey: "maxWebhookSubscriptions", source: "feature" },
+    { key: "externalCrm", labelKey: "externalCrm", source: "feature" },
+    { key: "widgetTriggers", labelKey: "widgetTriggers", source: "feature" },
+    { key: "knowledgeArticles", labelKey: "knowledgeArticles", source: "feature" },
+    { key: "knowledgeMaxCharsPerDoc", labelKey: "knowledgeMaxCharsPerDoc", source: "feature" },
+    { key: "knowledgeEmbeddingsPerMonth", labelKey: "knowledgeEmbeddingsPerMonth", source: "feature" },
+    { key: "knowledgeCrawlPages", labelKey: "knowledgeCrawlPages", source: "feature" },
+    { key: "publicApiKeys", labelKey: "publicApiKeys", source: "feature" },
+    { key: "publicApiRateLimit", labelKey: "publicApiRateLimit", source: "feature" },
+    { key: "llmCostBudgetUsdCents", labelKey: "llmCostBudgetUsdCents", source: "feature" },
+    { key: "priority", labelKey: "rateLimitsPriority", source: "rate" },
+    { key: "maxPendingJobs", labelKey: "rateLimitsMaxPendingJobs", source: "rate" },
 ];
+
+const ALL_NUMERIC_KEYS = ["automation", "outbound", "broadcast", ...FEATURE_OVERRIDES.map(f => f.key)];
 
 export default function TenantQuotaOverrides({ tenantId }: { tenantId: string }) {
     const t = useTranslations("tenantQuota");
+    const tf = useTranslations("plansPage.features");
     const tc = useTranslations("common");
 
     const [data, setData] = useState<OverrideData | null>(null);
@@ -69,17 +86,12 @@ export default function TenantQuotaOverrides({ tenantId }: { tenantId: string })
     const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
     // Form state — string so we can distinguish empty (use default) from 0
-    const [form, setForm] = useState<Record<string, string>>({
-        automation: "",
-        outbound: "",
-        broadcast: "",
-        maxAgents: "",
-        maxCalendars: "",
-        knowledgeArticles: "",
-        knowledgeMaxCharsPerDoc: "",
-        knowledgeEmbeddingsPerMonth: "",
-        reason: "",
-    });
+    const emptyForm = (): Record<string, string> => {
+        const f: Record<string, string> = { reason: "" };
+        for (const k of ALL_NUMERIC_KEYS) f[k] = "";
+        return f;
+    };
+    const [form, setForm] = useState<Record<string, string>>(emptyForm());
 
     async function load() {
         setLoading(true);
@@ -87,18 +99,11 @@ export default function TenantQuotaOverrides({ tenantId }: { tenantId: string })
             const res = await api.getTenantQuotaOverrides(tenantId);
             if (res.success && res.data) {
                 setData(res.data);
-                const o = res.data.overrides || {};
-                setForm({
-                    automation: o.automation !== undefined ? String(o.automation) : "",
-                    outbound: o.outbound !== undefined ? String(o.outbound) : "",
-                    broadcast: o.broadcast !== undefined ? String(o.broadcast) : "",
-                    maxAgents: o.maxAgents !== undefined ? String(o.maxAgents) : "",
-                    maxCalendars: o.maxCalendars !== undefined ? String(o.maxCalendars) : "",
-                    knowledgeArticles: o.knowledgeArticles !== undefined ? String(o.knowledgeArticles) : "",
-                    knowledgeMaxCharsPerDoc: o.knowledgeMaxCharsPerDoc !== undefined ? String(o.knowledgeMaxCharsPerDoc) : "",
-                    knowledgeEmbeddingsPerMonth: o.knowledgeEmbeddingsPerMonth !== undefined ? String(o.knowledgeEmbeddingsPerMonth) : "",
-                    reason: o.reason || "",
-                });
+                const o: Record<string, any> = res.data.overrides || {};
+                const f = emptyForm();
+                for (const k of ALL_NUMERIC_KEYS) f[k] = o[k] !== undefined ? String(o[k]) : "";
+                f.reason = o.reason || "";
+                setForm(f);
             }
         } catch (e: any) {
             setFeedback({ type: "error", text: e?.message || tc("connectionError") });
@@ -113,7 +118,7 @@ export default function TenantQuotaOverrides({ tenantId }: { tenantId: string })
         setSaving(true);
         setFeedback(null);
         const payload: any = { reason: form.reason || undefined };
-        for (const k of ["automation", "outbound", "broadcast", "maxAgents", "maxCalendars", "knowledgeArticles", "knowledgeMaxCharsPerDoc", "knowledgeEmbeddingsPerMonth"]) {
+        for (const k of ALL_NUMERIC_KEYS) {
             const v = form[k]?.trim();
             if (v === "" || v === undefined) continue;  // empty = use plan default
             const n = parseInt(v, 10);
@@ -162,10 +167,14 @@ export default function TenantQuotaOverrides({ tenantId }: { tenantId: string })
 
     if (!data) return null;
 
-    const formatLimit = (n: number) => n === -1 ? t("unlimited") : n.toLocaleString();
+    const formatLimit = (n: number) => n === -1 ? t("unlimited") : Number(n).toLocaleString();
     const usagePct = (current: number, limit: number) => {
         if (limit === -1 || limit === 0) return 0;
         return Math.min(100, Math.round((current / limit) * 100));
+    };
+    const planValueFor = (row: { key: string; source: "feature" | "rate" }): number => {
+        const v = row.source === "rate" ? data.features?.rateLimits?.[row.key] : data.features?.[row.key];
+        return typeof v === "number" ? v : 0;
     };
 
     return (
@@ -197,7 +206,7 @@ export default function TenantQuotaOverrides({ tenantId }: { tenantId: string })
             )}
 
             <div className="p-4 space-y-4">
-                {/* Hourly action limits */}
+                {/* Hourly action limits (with live usage bars) */}
                 <div className="space-y-3">
                     <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">{t("hourlyQuotas")}</h4>
                     {HOURLY_QUOTAS.map(q => {
@@ -247,27 +256,29 @@ export default function TenantQuotaOverrides({ tenantId }: { tenantId: string })
                     })}
                 </div>
 
-                {/* Feature quotas */}
+                {/* Feature & limit overrides (all overridable plan keys) */}
                 <div className="space-y-2 border-t border-border pt-4">
                     <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">{t("featureQuotas")}</h4>
-                    {FEATURE_QUOTAS.map(q => {
-                        const planValue = data.features[q.key];
-                        return (
-                            <div key={q.key} className="flex items-center justify-between gap-3 flex-wrap">
-                                <label className="text-sm font-medium flex-1 min-w-[200px]">{t(q.labelKey as any)}</label>
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="number"
-                                        placeholder={String(planValue)}
-                                        value={form[q.key]}
-                                        onChange={e => setForm({ ...form, [q.key]: e.target.value })}
-                                        className="w-28 bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-right"
-                                    />
-                                    <span className="text-xs text-muted-foreground w-16">{t("currentLimit", { value: planValue })}</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                        {FEATURE_OVERRIDES.map(q => {
+                            const planValue = planValueFor(q);
+                            return (
+                                <div key={q.key} className="flex items-center justify-between gap-3">
+                                    <label className="text-sm font-medium flex-1 min-w-0 truncate">{tf(q.labelKey as any)}</label>
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                        <input
+                                            type="number"
+                                            placeholder={planValue === -1 ? "∞" : String(planValue)}
+                                            value={form[q.key]}
+                                            onChange={e => setForm({ ...form, [q.key]: e.target.value })}
+                                            className="w-24 bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-right"
+                                        />
+                                        <span className="text-[10px] text-muted-foreground w-10 text-right">{formatLimit(planValue)}</span>
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                    </div>
                 </div>
 
                 {/* Reason */}

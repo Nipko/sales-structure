@@ -7083,6 +7083,11 @@
     "compPlanReasonPlaceholder": "e.g. demo account, strategic partner, incident compensation",
     "compPlanConfirm": "Grant for {days} days",
     "compPlanGranted": "Plan gifted successfully",
+    "changePlan": "Change plan",
+    "changePlanTitle": "Change billing plan",
+    "changePlanWarning": "This changes the tenant's entitlements immediately (limits, channels, features). It does not modify the payment subscription.",
+    "changePlanConfirm": "Change plan",
+    "changePlanSuccess": "Plan changed successfully",
     "compPlanDaysInvalid": "Days must be between 1 and 3650",
     "compPlanReasonRequired": "Reason is required for audit"
   },
@@ -7549,10 +7554,13 @@
       "operational": "Operational",
       "enterprise": "Enterprise",
       "modules": "Modules",
-      "rateLimits": "Rate Limits"
+      "rateLimits": "Rate Limits",
+      "media": "Media processing"
     },
     "features": {
       "seats": "Users",
+      "maxAgents": "AI agents",
+      "maxAiMessages": "AI messages/mo",
       "maxCalendars": "Calendars",
       "maxContacts": "Contacts",
       "maxProperties": "Properties",
@@ -7591,7 +7599,30 @@
       "rateLimitsOutbound": "Rate: Outbound/hr",
       "rateLimitsBroadcast": "Rate: Broadcast/hr",
       "rateLimitsPriority": "Queue Priority",
-      "rateLimitsMaxPendingJobs": "Max Pending Jobs"
+      "rateLimitsMaxPendingJobs": "Max Pending Jobs",
+      "maxDripSequences": "Drip sequences",
+      "maxPipelines": "Pipelines",
+      "maxWebhookSubscriptions": "Webhook subscriptions",
+      "knowledgeMaxCharsPerDoc": "Max chars per document",
+      "knowledgeEmbeddingsPerMonth": "Embeddings per month",
+      "knowledgeCrawlPages": "Crawl pages",
+      "knowledgeAnalytics": "Knowledge analytics",
+      "llmCostBudgetUsdCents": "LLM cost cap (USD cents)",
+      "publicApi": "Public API",
+      "publicApiKeys": "Public API keys",
+      "publicApiRateLimit": "API rate limit (rpm)",
+      "salesLed": "Sales-led",
+      "multiTenantSubAccounts": "Multi-tenant sub-accounts",
+      "httpRequestAction": "HTTP request action",
+      "abTestBroadcasts": "A/B test broadcasts",
+      "widgetTriggers": "Widget triggers",
+      "mediaAudioPerMonth": "Audio per month",
+      "mediaImagePerMonth": "Images per month",
+      "mediaMaxAudioDurationSec": "Max audio duration (sec)",
+      "mediaPerContactPerDay": "Per contact/day",
+      "mediaPerConvPer5min": "Per conversation/5min",
+      "mediaPerTenantPerHour": "Per tenant/hour",
+      "mediaDailyBudgetCentsUsd": "Daily budget (USD cents)"
     }
   },
   "reportBuilder": {

@@ -299,6 +299,7 @@ export default function TenantDetailPage() {
               slug: tenant.slug,
               isActive: tenant.isActive,
               subscriptionStatus: tenant.subscriptionStatus,
+              plan: tenant.plan,
             }}
             onChange={() => {
               // Refetch tenant detail after status change

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import {
@@ -23,37 +23,48 @@ type Plan = {
     isActive: boolean;
     sortOrder: number;
     tenantCount: number;
+    unknownFeatureKeys?: string[];
 };
 
-const RESOURCE_KEYS = [
-    "seats", "maxCalendars", "maxContacts", "maxProperties",
-    "automationRules", "broadcastCampaigns", "appointmentsServices",
-    "knowledgeArticles", "customAttributes", "emailTemplates",
-    "pipelineStages", "segments", "mediaStorageMb",
-    "externalCrm", "outboundWebhooks",
-] as const;
+type FeatureType = "boolean" | "number" | "string" | "array" | "object";
+type FeatureDef = { key: string; type: FeatureType; category: string };
 
-const AI_KEYS = ["llmTier", "customPrompt", "customTemplates", "aiInsights", "recall"] as const;
+// Order + i18n label key (plansPage.categories.*) for each registry category.
+const CATEGORY_ORDER = ["resource", "channel", "ai", "operational", "enterprise", "module", "rate", "media"] as const;
+const CATEGORY_I18N: Record<string, string> = {
+    resource: "resources",
+    channel: "channels",
+    ai: "ai",
+    operational: "operational",
+    enterprise: "enterprise",
+    module: "modules",
+    rate: "rateLimits",
+    media: "media",
+};
 
-const OPERATIONAL_KEYS = ["scheduledReports", "dataRetentionDays", "whatsappCreditUsdCents"] as const;
+// Nested config objects render their inner numeric keys as sub-rows. These inner
+// key sets mirror the backend RATE_LIMIT_KEYS / MEDIA_PROCESSING_KEYS.
+const NESTED_INNER: Record<string, { key: string; label: string }[]> = {
+    rateLimits: [
+        { key: "automation", label: "rateLimitsAutomation" },
+        { key: "outbound", label: "rateLimitsOutbound" },
+        { key: "broadcast", label: "rateLimitsBroadcast" },
+        { key: "priority", label: "rateLimitsPriority" },
+        { key: "maxPendingJobs", label: "rateLimitsMaxPendingJobs" },
+    ],
+    mediaProcessing: [
+        { key: "audioPerMonth", label: "mediaAudioPerMonth" },
+        { key: "imagePerMonth", label: "mediaImagePerMonth" },
+        { key: "maxAudioDurationSec", label: "mediaMaxAudioDurationSec" },
+        { key: "perContactPerDay", label: "mediaPerContactPerDay" },
+        { key: "perConvPer5min", label: "mediaPerConvPer5min" },
+        { key: "perTenantPerHour", label: "mediaPerTenantPerHour" },
+        { key: "dailyBudgetCentsUsd", label: "mediaDailyBudgetCentsUsd" },
+    ],
+};
+const CATEGORY_TO_NESTED: Record<string, string> = { rate: "rateLimits", media: "mediaProcessing" };
 
-const MODULE_KEYS = [
-    "staffScheduling", "vehicleInventory", "ecommerce", "channelManager", "widget",
-] as const;
-
-const ENTERPRISE_KEYS = [
-    "sso", "auditLog", "biApi", "customDomainKb", "whiteLabel", "prioritySupport",
-] as const;
-
-const RATE_LIMIT_DISPLAY_KEYS = [
-    { path: "automation", label: "rateLimitsAutomation" },
-    { path: "outbound", label: "rateLimitsOutbound" },
-    { path: "broadcast", label: "rateLimitsBroadcast" },
-    { path: "priority", label: "rateLimitsPriority" },
-    { path: "maxPendingJobs", label: "rateLimitsMaxPendingJobs" },
-] as const;
-
-const CHANNEL_OPTIONS = ["whatsapp", "instagram", "messenger", "telegram", "sms"];
+const CHANNEL_OPTIONS = ["whatsapp", "instagram", "messenger", "telegram", "sms", "email"];
 
 const LLM_TIERS = ["tier_1", "tier_2", "tier_3", "tier_4"];
 
@@ -64,6 +75,7 @@ export default function PlansPage() {
     const tHelp = useTranslations("help");
 
     const [plans, setPlans] = useState<Plan[]>([]);
+    const [registry, setRegistry] = useState<FeatureDef[]>([]);
     const [loading, setLoading] = useState(true);
     const [editSlug, setEditSlug] = useState<string | null>(null);
     const [editBuffer, setEditBuffer] = useState<Plan | null>(null);
@@ -73,8 +85,12 @@ export default function PlansPage() {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await api.getAdminPlans();
-            if (res.success) setPlans(res.data);
+            const [plansRes, regRes] = await Promise.all([
+                api.getAdminPlans(),
+                api.getFeatureRegistry(),
+            ]);
+            if (plansRes.success) setPlans(plansRes.data);
+            if (regRes.success) setRegistry(regRes.data);
         } catch { /* ignore */ }
         setLoading(false);
     }, []);
@@ -139,17 +155,17 @@ export default function PlansPage() {
         });
     };
 
-    const getRateLimit = (plan: Plan, path: string): number => {
-        return plan.features?.rateLimits?.[path] ?? 0;
+    const getNested = (plan: Plan, objKey: string, path: string): number => {
+        return plan.features?.[objKey]?.[path] ?? 0;
     };
 
-    const updateRateLimit = (path: string, val: number) => {
+    const updateNested = (objKey: string, path: string, val: number) => {
         if (!editBuffer) return;
-        const rl = { ...(editBuffer.features.rateLimits || {}) };
-        rl[path] = val;
+        const obj = { ...(editBuffer.features[objKey] || {}) };
+        obj[path] = val;
         setEditBuffer({
             ...editBuffer,
-            features: { ...editBuffer.features, rateLimits: rl },
+            features: { ...editBuffer.features, [objKey]: obj },
         });
     };
 
@@ -162,6 +178,13 @@ export default function PlansPage() {
 
     const fmtPrice = (cents: number) => `$${(cents / 100).toFixed(0)}`;
     const fmtNum = (v: number) => v === -1 ? t("unlimited") : v.toLocaleString();
+
+    const cellTypeFor = (def: FeatureDef): "number" | "boolean" | "select" | "channels" | "text" => {
+        if (def.type === "boolean") return "boolean";
+        if (def.type === "array") return "channels";
+        if (def.type === "string") return def.key === "llmTier" ? "select" : "text";
+        return "number";
+    };
 
     const sectionCls = "rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900";
     const thCls = "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400";
@@ -177,7 +200,7 @@ export default function PlansPage() {
         );
     }
 
-    const renderCell = (plan: Plan, key: string, type: "number" | "boolean" | "select" | "channels") => {
+    const renderCell = (plan: Plan, key: string, type: "number" | "boolean" | "select" | "channels" | "text") => {
         const isEditing = editSlug === plan.slug && editBuffer;
         const val = isEditing ? editBuffer.features[key] : plan.features[key];
 
@@ -203,6 +226,13 @@ export default function PlansPage() {
                         <option key={tier} value={tier}>{tier}</option>
                     ))}
                 </select>
+            );
+        }
+
+        if (type === "text") {
+            if (!isEditing) return <span className="text-xs">{val || "—"}</span>;
+            return (
+                <input type="text" className={inputCls} value={val || ""} onChange={e => updateFeature(key, e.target.value)} />
             );
         }
 
@@ -249,6 +279,15 @@ export default function PlansPage() {
                 value={numVal}
                 onChange={e => updateFeature(key, parseInt(e.target.value) || 0)}
             />
+        );
+    };
+
+    const renderNestedCell = (plan: Plan, objKey: string, path: string) => {
+        const isEditing = editSlug === plan.slug && editBuffer;
+        const val = isEditing ? getNested(editBuffer, objKey, path) : getNested(plan, objKey, path);
+        if (!isEditing) return <span className="font-mono text-xs">{fmtNum(val)}</span>;
+        return (
+            <input type="number" className={inputCls} value={val} onChange={e => updateNested(objKey, path, parseInt(e.target.value) || 0)} />
         );
     };
 
@@ -315,6 +354,14 @@ export default function PlansPage() {
                                             }`}>
                                                 {p.isActive ? t("active") : t("inactive")}
                                             </span>
+                                            {!!p.unknownFeatureKeys?.length && (
+                                                <span
+                                                    title={p.unknownFeatureKeys.join(", ")}
+                                                    className="ml-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                                                >
+                                                    <AlertCircle size={10} /> {p.unknownFeatureKeys.length}
+                                                </span>
+                                            )}
                                             <div className="flex items-center gap-1 mt-0.5 text-[10px] text-neutral-400 font-normal normal-case">
                                                 <Users size={10} /> {p.tenantCount} {t("tenants")}
                                             </div>
@@ -440,85 +487,32 @@ export default function PlansPage() {
                             {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "maxAiMessages", "")}</td>)}
                         </tr>
 
-                        {/* Resources */}
-                        <tr><td colSpan={plans.length + 1} className={catCls}>{tc("resources")}</td></tr>
-                        {RESOURCE_KEYS.map(key => (
-                            <tr key={key} className="border-b border-neutral-100 dark:border-neutral-800">
-                                <td className={`${tdCls} font-medium`}>{tf(key)}</td>
-                                {plans.map(p => <td key={p.slug} className={tdCls}>{renderCell(p, key, "number")}</td>)}
-                            </tr>
-                        ))}
-
-                        {/* Channels */}
-                        <tr><td colSpan={plans.length + 1} className={catCls}>{tc("channels")}</td></tr>
-                        <tr className="border-b border-neutral-100 dark:border-neutral-800">
-                            <td className={`${tdCls} font-medium`}>{tf("channels")}</td>
-                            {plans.map(p => <td key={p.slug} className={tdCls}>{renderCell(p, "channels", "channels")}</td>)}
-                        </tr>
-
-                        {/* AI */}
-                        <tr><td colSpan={plans.length + 1} className={catCls}>{tc("ai")}</td></tr>
-                        {AI_KEYS.map(key => (
-                            <tr key={key} className="border-b border-neutral-100 dark:border-neutral-800">
-                                <td className={`${tdCls} font-medium`}>{tf(key)}</td>
-                                {plans.map(p => (
-                                    <td key={p.slug} className={tdCls}>
-                                        {renderCell(p, key, key === "llmTier" ? "select" : "boolean")}
-                                    </td>
-                                ))}
-                            </tr>
-                        ))}
-
-                        {/* Operational */}
-                        <tr><td colSpan={plans.length + 1} className={catCls}>{tc("operational")}</td></tr>
-                        {OPERATIONAL_KEYS.map(key => (
-                            <tr key={key} className="border-b border-neutral-100 dark:border-neutral-800">
-                                <td className={`${tdCls} font-medium`}>{tf(key)}</td>
-                                {plans.map(p => (
-                                    <td key={p.slug} className={tdCls}>
-                                        {renderCell(p, key, key === "scheduledReports" ? "boolean" : "number")}
-                                    </td>
-                                ))}
-                            </tr>
-                        ))}
-
-                        {/* Modules */}
-                        <tr><td colSpan={plans.length + 1} className={catCls}>{tc("modules")}</td></tr>
-                        {MODULE_KEYS.map(key => (
-                            <tr key={key} className="border-b border-neutral-100 dark:border-neutral-800">
-                                <td className={`${tdCls} font-medium`}>{tf(key)}</td>
-                                {plans.map(p => <td key={p.slug} className={tdCls}>{renderCell(p, key, "boolean")}</td>)}
-                            </tr>
-                        ))}
-
-                        {/* Enterprise */}
-                        <tr><td colSpan={plans.length + 1} className={catCls}>{tc("enterprise")}</td></tr>
-                        {ENTERPRISE_KEYS.map(key => (
-                            <tr key={key} className="border-b border-neutral-100 dark:border-neutral-800">
-                                <td className={`${tdCls} font-medium`}>{tf(key)}</td>
-                                {plans.map(p => <td key={p.slug} className={tdCls}>{renderCell(p, key, "boolean")}</td>)}
-                            </tr>
-                        ))}
-
-                        {/* Rate Limits */}
-                        <tr><td colSpan={plans.length + 1} className={catCls}>{tc("rateLimits")}</td></tr>
-                        {RATE_LIMIT_DISPLAY_KEYS.map(({ path, label }) => (
-                            <tr key={path} className="border-b border-neutral-100 dark:border-neutral-800">
-                                <td className={`${tdCls} font-medium`}>{tf(label)}</td>
-                                {plans.map(p => {
-                                    const isEditing = editSlug === p.slug && editBuffer;
-                                    const val = isEditing ? getRateLimit(editBuffer, path) : getRateLimit(p, path);
-                                    if (!isEditing) {
-                                        return <td key={p.slug} className={tdCls}><span className="font-mono text-xs">{fmtNum(val)}</span></td>;
-                                    }
-                                    return (
-                                        <td key={p.slug} className={tdCls}>
-                                            <input type="number" className={inputCls} value={val} onChange={e => updateRateLimit(path, parseInt(e.target.value) || 0)} />
-                                        </td>
-                                    );
-                                })}
-                            </tr>
-                        ))}
+                        {/* Feature categories (registry-driven) */}
+                        {CATEGORY_ORDER.map(cat => {
+                            const nestedKey = CATEGORY_TO_NESTED[cat];
+                            const featureDefs = nestedKey
+                                ? []
+                                : registry.filter(d => d.category === cat && !CATEGORY_TO_NESTED[d.category]);
+                            const nestedRows = nestedKey ? NESTED_INNER[nestedKey] : [];
+                            if (!featureDefs.length && !nestedRows.length) return null;
+                            return (
+                                <Fragment key={cat}>
+                                    <tr><td colSpan={plans.length + 1} className={catCls}>{tc(CATEGORY_I18N[cat])}</td></tr>
+                                    {featureDefs.map(def => (
+                                        <tr key={def.key} className="border-b border-neutral-100 dark:border-neutral-800">
+                                            <td className={`${tdCls} font-medium`}>{tf(def.key)}</td>
+                                            {plans.map(p => <td key={p.slug} className={tdCls}>{renderCell(p, def.key, cellTypeFor(def))}</td>)}
+                                        </tr>
+                                    ))}
+                                    {nestedRows.map(({ key, label }) => (
+                                        <tr key={`${nestedKey}.${key}`} className="border-b border-neutral-100 dark:border-neutral-800">
+                                            <td className={`${tdCls} font-medium`}>{tf(label)}</td>
+                                            {plans.map(p => <td key={p.slug} className={tdCls}>{renderNestedCell(p, nestedKey, key)}</td>)}
+                                        </tr>
+                                    ))}
+                                </Fragment>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>

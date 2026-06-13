@@ -18,7 +18,7 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-    Clock, AlertTriangle, RefreshCw, Power, Trash2, X, Loader2, CheckCircle, XCircle, Gift,
+    Clock, AlertTriangle, RefreshCw, Power, Trash2, X, Loader2, CheckCircle, XCircle, Gift, ArrowLeftRight,
 } from "lucide-react";
 
 interface TenantSummary {
@@ -27,6 +27,7 @@ interface TenantSummary {
     slug: string;
     isActive: boolean;
     subscriptionStatus?: string;
+    plan?: string;
 }
 
 interface Props {
@@ -43,6 +44,7 @@ export default function TenantAdminActions({ tenant, onChange }: Props) {
     const [showExtendTrial, setShowExtendTrial] = useState(false);
     const [showPurge, setShowPurge] = useState(false);
     const [showCompPlan, setShowCompPlan] = useState(false);
+    const [showChangePlan, setShowChangePlan] = useState(false);
     const [busy, setBusy] = useState<string | null>(null);
     const [feedback, setFeedback] = useState<ActionResult>(null);
 
@@ -176,6 +178,14 @@ export default function TenantAdminActions({ tenant, onChange }: Props) {
                         <Gift className="h-4 w-4" /> {t("compPlan")}
                     </button>
 
+                    {/* Change plan — set the tenant's billing plan permanently */}
+                    <button
+                        onClick={() => setShowChangePlan(true)}
+                        className="flex items-center gap-2 px-3 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 rounded-lg text-sm font-medium transition"
+                    >
+                        <ArrowLeftRight className="h-4 w-4" /> {t("changePlan")}
+                    </button>
+
                     {/* Purge — destructive */}
                     <button
                         onClick={() => setShowPurge(true)}
@@ -227,6 +237,18 @@ export default function TenantAdminActions({ tenant, onChange }: Props) {
                     onSuccess={() => {
                         setShowCompPlan(false);
                         setFeedback({ type: "success", text: t("compPlanGranted") });
+                        onChange?.();
+                    }}
+                />
+            )}
+
+            {showChangePlan && (
+                <ChangePlanModal
+                    tenant={tenant}
+                    onClose={() => setShowChangePlan(false)}
+                    onSuccess={() => {
+                        setShowChangePlan(false);
+                        setFeedback({ type: "success", text: t("changePlanSuccess") });
                         onChange?.();
                     }}
                 />
@@ -512,6 +534,93 @@ function CompPlanModal({
                     >
                         {busy && <Loader2 className="h-4 w-4 animate-spin" />}
                         {t("compPlanConfirm", { days })}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Change Plan Modal — set the tenant's billing plan permanently
+// ──────────────────────────────────────────────────────────────────────
+
+function ChangePlanModal({
+    tenant, onClose, onSuccess,
+}: { tenant: TenantSummary; onClose: () => void; onSuccess: () => void }) {
+    const t = useTranslations("tenantAdminActions");
+    const tc = useTranslations("common");
+    const [planSlug, setPlanSlug] = useState<string>(tenant.plan || "pro");
+    const [reason, setReason] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    async function handleSubmit() {
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await api.setTenantPlan(tenant.id, { planSlug, reason: reason.trim() || undefined });
+            if (res.success) onSuccess();
+            else setError((res as any).error || tc("connectionError"));
+        } catch (e: any) {
+            setError(e?.message || tc("connectionError"));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+            <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-5 border-b border-border">
+                    <div>
+                        <h3 className="text-base font-semibold flex items-center gap-2">
+                            <ArrowLeftRight className="h-4 w-4 text-indigo-500" />
+                            {t("changePlanTitle")}
+                        </h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">{tenant.name}</p>
+                    </div>
+                    <button onClick={onClose} className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"><X className="h-4 w-4" /></button>
+                </div>
+                <div className="p-5 space-y-4">
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-700 dark:text-amber-300">
+                        {t("changePlanWarning")}
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">{t("compPlanLabel")}</label>
+                        <select
+                            value={planSlug}
+                            onChange={e => setPlanSlug(e.target.value)}
+                            className="w-full bg-card border border-border rounded-lg px-3 py-2"
+                        >
+                            <option value="emprendedor">Emprendedor</option>
+                            <option value="starter">Starter</option>
+                            <option value="pro">Pro</option>
+                            <option value="enterprise">Enterprise</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">{t("compPlanReason")}</label>
+                        <input
+                            type="text"
+                            value={reason}
+                            onChange={e => setReason(e.target.value)}
+                            placeholder={t("compPlanReasonPlaceholder")}
+                            className="w-full bg-card border border-border rounded-lg px-3 py-2"
+                        />
+                    </div>
+                    {error && <p className="text-sm text-red-600 bg-red-500/10 p-2 rounded">{error}</p>}
+                </div>
+                <div className="flex justify-end gap-2 p-4 border-t border-border">
+                    <button onClick={onClose} disabled={busy} className="px-3 py-1.5 hover:bg-muted rounded-lg text-sm text-foreground border border-border disabled:opacity-50">{tc("cancel")}</button>
+                    <button
+                        onClick={handleSubmit}
+                        disabled={busy}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg text-sm font-medium inline-flex items-center gap-2"
+                    >
+                        {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {t("changePlanConfirm")}
                     </button>
                 </div>
             </div>

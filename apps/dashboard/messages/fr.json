@@ -7054,6 +7054,11 @@
     "compPlanReasonPlaceholder": "Ex. compte démo, partenaire stratégique, compensation incident",
     "compPlanConfirm": "Accorder pour {days} jours",
     "compPlanGranted": "Plan offert avec succès",
+    "changePlan": "Changer de plan",
+    "changePlanTitle": "Changer le plan de facturation",
+    "changePlanWarning": "Cela modifie immédiatement les droits du tenant (limites, canaux, fonctionnalités). Cela ne modifie pas l'abonnement de paiement.",
+    "changePlanConfirm": "Changer de plan",
+    "changePlanSuccess": "Plan changé avec succès",
     "compPlanDaysInvalid": "Les jours doivent être entre 1 et 3650",
     "compPlanReasonRequired": "Le motif est obligatoire pour audit"
   },
@@ -7520,10 +7525,13 @@
       "operational": "Opérationnel",
       "enterprise": "Enterprise",
       "modules": "Modules",
-      "rateLimits": "Limites de débit"
+      "rateLimits": "Limites de débit",
+      "media": "Traitement multimédia"
     },
     "features": {
       "seats": "Utilisateurs",
+      "maxAgents": "Agents IA",
+      "maxAiMessages": "Messages IA/mois",
       "maxCalendars": "Calendriers",
       "maxContacts": "Contacts",
       "maxProperties": "Propriétés",
@@ -7562,7 +7570,30 @@
       "rateLimitsOutbound": "Débit : Sortant/h",
       "rateLimitsBroadcast": "Débit : Broadcast/h",
       "rateLimitsPriority": "Priorité de file",
-      "rateLimitsMaxPendingJobs": "Max tâches en attente"
+      "rateLimitsMaxPendingJobs": "Max tâches en attente",
+      "maxDripSequences": "Séquences de relance",
+      "maxPipelines": "Pipelines",
+      "maxWebhookSubscriptions": "Abonnements webhook",
+      "knowledgeMaxCharsPerDoc": "Caractères max par document",
+      "knowledgeEmbeddingsPerMonth": "Embeddings par mois",
+      "knowledgeCrawlPages": "Pages d'exploration",
+      "knowledgeAnalytics": "Analytique des connaissances",
+      "llmCostBudgetUsdCents": "Plafond de coût LLM (cents USD)",
+      "publicApi": "API publique",
+      "publicApiKeys": "Clés d'API publique",
+      "publicApiRateLimit": "Limite de débit API (rpm)",
+      "salesLed": "Vente assistée (sales-led)",
+      "multiTenantSubAccounts": "Sous-comptes multi-tenant",
+      "httpRequestAction": "Action requête HTTP",
+      "abTestBroadcasts": "Tests A/B des diffusions",
+      "widgetTriggers": "Déclencheurs du widget",
+      "mediaAudioPerMonth": "Audios par mois",
+      "mediaImagePerMonth": "Images par mois",
+      "mediaMaxAudioDurationSec": "Durée audio max (sec)",
+      "mediaPerContactPerDay": "Par contact/jour",
+      "mediaPerConvPer5min": "Par conversation/5min",
+      "mediaPerTenantPerHour": "Par tenant/heure",
+      "mediaDailyBudgetCentsUsd": "Budget quotidien (cents USD)"
     }
   },
   "reportBuilder": {

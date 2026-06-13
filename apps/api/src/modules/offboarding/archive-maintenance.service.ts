@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
@@ -16,6 +17,7 @@ export class ArchiveMaintenanceService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly configService: ConfigService,
+        private readonly throttle: TenantThrottleService,
     ) {
         this.storagePath = this.configService.get<string>('MEDIA_STORAGE_PATH', '/data/media');
     }
@@ -75,7 +77,7 @@ export class ArchiveMaintenanceService {
      * Archive old resolved/archived messages for a single tenant
      */
     private async archiveTenantMessages(tenantId: string, schemaName: string, plan: string): Promise<number> {
-        const thresholdDays = this.getPlanRetentionDays(plan);
+        const thresholdDays = await this.getPlanRetentionDays(tenantId);
         if (thresholdDays === Number.POSITIVE_INFINITY) {
             this.logger.log(`Tenant ${tenantId} (${plan}) has infinite retention. Skipping archiving.`);
             return 0;
@@ -231,21 +233,18 @@ export class ArchiveMaintenanceService {
     }
 
     /**
-     * Map tenant billing plan to retention cutoff days
+     * Resolve the retention cutoff (in days) from the tenant plan's
+     * `dataRetentionDays` feature — the billing_plans/seed single source of
+     * truth (emprendedor=90, starter=180, pro=365, enterprise=730, custom=-1).
+     * -1 means keep indefinitely. A missing/invalid value FAILS SAFE to
+     * infinite retention so a plan misconfiguration never deletes customer
+     * data prematurely.
      */
-    private getPlanRetentionDays(plan: string): number {
-        const lowerPlan = plan?.toLowerCase() || 'starter';
-        switch (lowerPlan) {
-            case 'emprendedor':
-            case 'starter':
-                return 90; // 3 months
-            case 'pro':
-                return 180; // 6 months
-            case 'enterprise':
-            case 'custom':
-                return Number.POSITIVE_INFINITY; // Keep live indefinitely
-            default:
-                return 90; // Default safety fallback
-        }
+    private async getPlanRetentionDays(tenantId: string): Promise<number> {
+        const features = await this.throttle.getPlanFeatures(tenantId);
+        const raw = features?.dataRetentionDays;
+        if (raw === -1) return Number.POSITIVE_INFINITY;
+        if (typeof raw === 'number' && raw > 0) return raw;
+        return Number.POSITIVE_INFINITY; // fail-safe: never auto-delete on misconfig
     }
 }

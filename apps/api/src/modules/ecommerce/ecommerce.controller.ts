@@ -1,38 +1,28 @@
-import { Controller, Get, Post, Put, Body, Query, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { CurrentUser, CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { EcommerceService, EcommerceConfig } from './ecommerce.service';
-import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @ApiTags('ecommerce')
 @Controller('ecommerce')
-@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard, FeatureGuard)
+@RequireFeature('ecommerce')
 @ApiBearerAuth()
 export class EcommerceController {
     constructor(
         private readonly ecommerce: EcommerceService,
-        private readonly throttle: TenantThrottleService,
     ) {}
-
-    private async ensureFeatureEnabled(tenantId: string) {
-        if (!await this.throttle.isFeatureEnabled(tenantId, 'ecommerce')) {
-            throw new ForbiddenException({
-                error: 'feature_not_available',
-                feature: 'ecommerce',
-                message: 'E-commerce no está disponible en tu plan actual. Actualiza tu plan para acceder.',
-            });
-        }
-    }
 
     @Get('config')
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Get e-commerce integration config' })
     async getConfig(@CurrentUser() user: any) {
-        await this.ensureFeatureEnabled(user.tenantId);
         const config = await this.ecommerce.getConfig(user.tenantId);
         return {
             success: true,

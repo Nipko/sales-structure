@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { invitationEmail, welcomeTeamMemberEmail } from '../email/email-layouts';
 import { validateEmailDomain } from '../../common/utils/email.util';
 
@@ -17,6 +18,7 @@ export class InvitationsService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly email: EmailService,
+        private readonly throttle: TenantThrottleService,
     ) {}
 
     // ── Admin operations (require auth + tenant ownership) ─────────
@@ -67,6 +69,17 @@ export class InvitationsService {
                 invitationId: pending.id,
             });
         }
+
+        // Enforce the plan's seat limit: active users + outstanding (non-expired,
+        // non-revoked) invitations both count toward the cap so an admin can't
+        // over-provision the team beyond what the plan allows.
+        const [activeUsers, pendingInvites] = await Promise.all([
+            this.prisma.user.count({ where: { tenantId: input.tenantId, isActive: true } }),
+            this.prisma.tenantInvitation.count({
+                where: { tenantId: input.tenantId, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+            }),
+        ]);
+        await this.throttle.enforcePlanLimit(input.tenantId, 'seats', activeUsers + pendingInvites, 'usuarios');
 
         const token = randomBytes(TOKEN_BYTES).toString('base64url');
         const expiresAt = new Date(Date.now() + DEFAULT_TTL_DAYS * 86_400_000);
@@ -239,6 +252,13 @@ export class InvitationsService {
                 message: 'An account already exists for this email. Sign in to your existing account.',
             });
         }
+
+        // Backstop seat enforcement at the moment a seat is actually consumed
+        // (the invite may have been created before a plan downgrade).
+        const activeUsers = await this.prisma.user.count({
+            where: { tenantId: invitation.tenantId, isActive: true },
+        });
+        await this.throttle.enforcePlanLimit(invitation.tenantId, 'seats', activeUsers, 'usuarios');
 
         const password = await bcrypt.hash(input.password, 12);
         const user = await this.prisma.user.create({

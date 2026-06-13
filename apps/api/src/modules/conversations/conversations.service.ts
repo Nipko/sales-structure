@@ -1801,7 +1801,27 @@ export class ConversationsService {
             const mediaToSend: Array<{ url: string; caption?: string }> = [];
 
             const planFeatures = await this.throttle.getPlanFeatures(tenantId);
-            const allowedTiers = this.mapLlmTierToAllowed(planFeatures.llmTier);
+            let allowedTiers = this.mapLlmTierToAllowed(planFeatures.llmTier);
+
+            // LLM cost circuit breaker: once month-to-date LLM spend exceeds the
+            // plan's budget, clamp routing to budget models (tier_3/tier_4) so a
+            // tenant on a premium tier can't run the plan into a loss via
+            // value-routing escalation or tool-call multiplication. The agent
+            // keeps replying — just on cheaper models — until the month rolls over.
+            const llmBudgetUsdCents = typeof planFeatures.llmCostBudgetUsdCents === 'number'
+                ? planFeatures.llmCostBudgetUsdCents : -1;
+            if (llmBudgetUsdCents > 0) {
+                const spentUsdCents = await this.throttle.getLlmSpendUsdCents(tenantId);
+                if (spentUsdCents >= llmBudgetUsdCents) {
+                    const clamped = allowedTiers.filter(t => t === 'tier_3_efficient' || t === 'tier_4_budget');
+                    allowedTiers = clamped.length ? clamped : ['tier_4_budget'];
+                    this.logger.warn(
+                        `[LLM budget] tenant ${tenantId} over monthly LLM budget ` +
+                        `($${(spentUsdCents / 100).toFixed(2)}/$${(llmBudgetUsdCents / 100).toFixed(2)}) — ` +
+                        `clamping tiers to ${allowedTiers.join(',')}`,
+                    );
+                }
+            }
 
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 const hasTools = tools.length > 0;
@@ -2532,6 +2552,8 @@ export class ConversationsService {
                 return ['tier_1_premium', 'tier_2_standard', 'tier_3_efficient', 'tier_4_budget'];
             case 'tier_2':
                 return ['tier_2_standard', 'tier_3_efficient', 'tier_4_budget'];
+            case 'tier_4':
+                return ['tier_4_budget'];
             case 'tier_3':
             default:
                 return ['tier_3_efficient', 'tier_4_budget'];

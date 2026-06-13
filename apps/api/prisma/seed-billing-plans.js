@@ -81,6 +81,11 @@ const PLANS = [
             // ── Operational ──
             scheduledReports: false,
             dataRetentionDays: 90,
+            // Monthly LLM spend ceiling (USD cents). Once month-to-date LLM cost
+            // exceeds this, routing is clamped to budget models (tier_3/tier_4) to
+            // protect margin — the agent keeps replying, just on cheaper models.
+            // -1 = no cap. Read by conversations.service routing + TenantThrottleService.
+            llmCostBudgetUsdCents: 800,
             whatsappCreditUsdCents: 500,
 
             // ── Enterprise features ──
@@ -175,6 +180,7 @@ const PLANS = [
             // ── Operational ──
             scheduledReports: false,
             dataRetentionDays: 180,
+            llmCostBudgetUsdCents: 2500,
             whatsappCreditUsdCents: 1000,
 
             // ── Enterprise features ──
@@ -269,6 +275,7 @@ const PLANS = [
             // ── Operational ──
             scheduledReports: true,
             dataRetentionDays: 365,
+            llmCostBudgetUsdCents: 6000,
             whatsappCreditUsdCents: 2500,
 
             // ── Enterprise features ──
@@ -363,6 +370,7 @@ const PLANS = [
             // ── Operational ──
             scheduledReports: true,
             dataRetentionDays: 730,
+            llmCostBudgetUsdCents: 10000,
             whatsappCreditUsdCents: 0,
 
             // ── Enterprise features ──
@@ -454,6 +462,7 @@ const PLANS = [
             // ── Operational ──
             scheduledReports: true,
             dataRetentionDays: -1,
+            llmCostBudgetUsdCents: -1,
             whatsappCreditUsdCents: 0,
 
             // ── Enterprise features ──

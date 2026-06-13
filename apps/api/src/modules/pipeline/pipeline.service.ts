@@ -287,6 +287,14 @@ export class PipelineService {
             posParams.push(data.pipelineId);
         }
 
+        // Plan gate: cap stages per pipeline (tenant-wide when no pipelineId).
+        // -1 (unlimited) resolves to Infinity inside enforcePlanLimit.
+        const stageCount = await this.prisma.executeInTenantSchema<any[]>(
+            schema, `SELECT COUNT(*)::int AS c FROM pipeline_stages ${pipelineCondition}`,
+            posParams,
+        );
+        await this.throttle.enforcePlanLimit(tenantId, 'pipelineStages', stageCount?.[0]?.c || 0, 'etapas de pipeline');
+
         const maxPos = await this.prisma.executeInTenantSchema<any[]>(
             schema, `SELECT COALESCE(MAX(position), 0) + 1 as next_pos FROM pipeline_stages ${pipelineCondition}`,
             posParams,

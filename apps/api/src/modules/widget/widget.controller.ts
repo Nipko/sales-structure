@@ -1,38 +1,28 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Logger, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Logger, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { WidgetService } from './widget.service';
-import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @ApiTags('widgets')
 @Controller('widgets')
-@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard, FeatureGuard)
+@RequireFeature('widget')
 @ApiBearerAuth()
 export class WidgetController {
     private readonly logger = new Logger(WidgetController.name);
 
     constructor(
         private readonly widgetService: WidgetService,
-        private readonly throttle: TenantThrottleService,
     ) {}
-
-    private async ensureFeatureEnabled(tenantId: string) {
-        if (!await this.throttle.isFeatureEnabled(tenantId, 'widget')) {
-            throw new ForbiddenException({
-                error: 'feature_not_available',
-                feature: 'widget',
-                message: 'Web Chat Widget no está disponible en tu plan actual. Actualiza tu plan para acceder.',
-            });
-        }
-    }
 
     @Get(':tenantId')
     @ApiOperation({ summary: 'List widgets for tenant' })
     async list(@Param('tenantId') tenantId: string) {
-        await this.ensureFeatureEnabled(tenantId);
         const widgets = await this.widgetService.listWidgets(tenantId);
         return { success: true, data: widgets };
     }

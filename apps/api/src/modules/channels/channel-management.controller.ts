@@ -120,6 +120,23 @@ export class ChannelManagementController {
     // Telegram-specific (MUST be before :channelType params)
     // ==========================================
 
+    /**
+     * Gate channel connection behind the plan's `channels` allow-list.
+     * emprendedor=whatsapp-only; starter adds ig/messenger/email; pro+ adds telegram/sms.
+     * WhatsApp is in every plan, so its connect path doesn't need this.
+     */
+    private async assertChannelAllowed(tenantId: string, channelType: string): Promise<void> {
+        const features = await this.throttle.getPlanFeatures(tenantId);
+        const channels: string[] = features.channels || [];
+        if (!channels.includes(channelType)) {
+            throw new ForbiddenException({
+                error: 'channel_not_available',
+                channel: channelType,
+                message: `El canal ${channelType} no está disponible en tu plan actual. Actualizá tu plan para conectarlo.`,
+            });
+        }
+    }
+
     @Post('telegram/connect')
     @ApiOperation({ summary: 'Connect a Telegram bot — validates token, sets webhook, stores credentials' })
     async connectTelegram(
@@ -128,6 +145,7 @@ export class ChannelManagementController {
     ) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
+        await this.assertChannelAllowed(tenantId, 'telegram');
 
         const { botToken, displayName } = body;
         if (!botToken) throw new BadRequestException('botToken is required');
@@ -307,6 +325,7 @@ export class ChannelManagementController {
     ) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
+        await this.assertChannelAllowed(tenantId, 'messenger');
 
         const userAccessToken = body.userAccessToken;
         if (!userAccessToken) throw new BadRequestException('User access token is required');
@@ -638,6 +657,7 @@ export class ChannelManagementController {
     ) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
+        await this.assertChannelAllowed(tenantId, 'instagram');
 
         const code = body.code;
         if (!code) throw new BadRequestException('OAuth code is required');
@@ -880,11 +900,7 @@ export class ChannelManagementController {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
 
-        const features = await this.throttle.getPlanFeatures(tenantId);
-        const channels: string[] = features.channels || [];
-        if (!channels.includes('sms')) {
-            throw new ForbiddenException('El canal SMS no está disponible en tu plan actual. Mejora a Enterprise para acceder.');
-        }
+        await this.assertChannelAllowed(tenantId, 'sms');
 
         const { accountSid, authToken, phoneNumber, displayName } = body;
         if (!accountSid || !authToken || !phoneNumber) {
@@ -1095,6 +1111,7 @@ export class ChannelManagementController {
     ) {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
+        await this.assertChannelAllowed(tenantId, channelType);
 
         const { accountId, displayName, accessToken, metadata } = body;
         if (!accountId || !accessToken) throw new BadRequestException('accountId and accessToken are required');

@@ -5,6 +5,7 @@ import { Queue } from 'bullmq';
 import { OnEvent } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { CrmCryptoService } from './crm-crypto.service';
 import { CrmAdapterFactory } from './crm-adapter.factory';
 import type {
@@ -16,15 +17,6 @@ import type {
 } from './types/crm.types';
 
 export const CRM_SYNC_QUEUE = 'crm-sync';
-
-// Plan-gated max concurrent connections per tenant.
-// starter sin CRM externo, pro 1, enterprise 3, custom unlimited.
-const MAX_CONNECTIONS_BY_PLAN: Record<string, number> = {
-    starter: 0,
-    pro: 1,
-    enterprise: 3,
-    custom: 999,
-};
 
 export interface CrmSyncJob {
     tenantId: string;
@@ -44,6 +36,7 @@ export class ExternalCrmService {
         private readonly config: ConfigService,
         private readonly crypto: CrmCryptoService,
         private readonly factory: CrmAdapterFactory,
+        private readonly throttle: TenantThrottleService,
         @InjectQueue(CRM_SYNC_QUEUE) private readonly queue: Queue<CrmSyncJob>,
     ) {}
 
@@ -292,10 +285,12 @@ export class ExternalCrmService {
     }
 
     private async assertCanAddConnection(tenantId: string, provider: string) {
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } });
-        const plan = tenant?.plan ?? 'starter';
-        const limit = MAX_CONNECTIONS_BY_PLAN[plan] ?? 0;
-        if (limit === 0) {
+        // Read the plan's externalCrm limit from billing_plans (the seed/matrix
+        // single source of truth): emprendedor/starter=0, pro=1, enterprise/custom=-1.
+        // getPlanLimit maps -1 to Infinity and a missing key to 0 (fail-closed).
+        const limit = await this.throttle.getPlanLimit(tenantId, 'externalCrm');
+        if (limit <= 0) {
+            const plan = await this.throttle.getTenantPlan(tenantId);
             throw new ForbiddenException(`Plan "${plan}" does not include external CRM integrations`);
         }
         const existing = await this.prisma.crmConnection.findMany({
@@ -305,7 +300,7 @@ export class ExternalCrmService {
         // Reconnecting the same provider is always allowed (replace the row).
         if (existing.some((c: any) => c.provider === provider)) return;
         if (existing.length >= limit) {
-            throw new ForbiddenException(`Plan "${plan}" allows at most ${limit} active CRM connection(s)`);
+            throw new ForbiddenException(`Plan allows at most ${Number.isFinite(limit) ? limit : '∞'} active CRM connection(s)`);
         }
     }
 

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
+import { TenantThrottleService } from '../../../throttle/tenant-throttle.service';
 import { normalizePhoneE164 } from '../../../../common/utils/phone.util';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class ImportExportService {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
+        private throttle: TenantThrottleService,
     ) {}
 
     private async getTenantSchema(tenantId: string): Promise<string | null> {
@@ -33,6 +35,18 @@ export class ImportExportService {
     ): Promise<{ imported: number; skipped: number; errors: string[] }> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant not found');
+
+        // Plan contact cap — enforced incrementally so the bulk import can't
+        // bypass the per-plan limit the way single-create (crm.controller) is gated.
+        // -1 (unlimited) resolves to Infinity; count uses the same active-stage
+        // filter as the single-create gate for consistency.
+        const maxContacts = await this.throttle.getPlanLimit(tenantId, 'maxContacts');
+        let liveContactCount = 0;
+        if (Number.isFinite(maxContacts)) {
+            const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS c FROM leads WHERE stage NOT IN ('perdido', 'no_interesado')`);
+            liveContactCount = cnt?.[0]?.c || 0;
+        }
 
         const lines = csvContent.trim().split('\n');
         if (lines.length < 2) {
@@ -274,6 +288,11 @@ export class ImportExportService {
                     );
                     imported++;
                 } else {
+                    if (Number.isFinite(maxContacts) && liveContactCount >= maxContacts) {
+                        errors.push(`Fila ${i + 1}: se alcanzó el límite de contactos del plan (${maxContacts}). Actualizá tu plan para importar más.`);
+                        skipped++;
+                        continue;
+                    }
                     const metadata = {
                         source: row.source || 'csv_import',
                         company: companyName || null,
@@ -304,6 +323,7 @@ export class ImportExportService {
                         ],
                     );
                     imported++;
+                    liveContactCount++;
                 }
             } catch (err: any) {
                 errors.push(`Fila ${i + 1}: ${err.message}`);

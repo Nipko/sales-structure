@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import * as crypto from 'crypto';
 
 export const ZAPIER_HOOK_EVENTS = [
@@ -33,6 +34,7 @@ export class WebhookSubscriptionService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly httpService: HttpService,
+        private readonly throttle: TenantThrottleService,
     ) {}
 
     // ── Lazy table creation ───────────────────────────────────────────
@@ -101,6 +103,14 @@ export class WebhookSubscriptionService {
         }
 
         await this.ensureTable();
+
+        // Plan gate: cap active webhook subscriptions per the tenant's plan
+        // (emprendedor/starter=0, pro=10, enterprise/custom=-1 unlimited).
+        const countRows = await this.prisma.$queryRawUnsafe(
+            `SELECT COUNT(*)::int AS c FROM public.webhook_subscriptions WHERE tenant_id = $1::uuid AND is_active = true`,
+            tenantId,
+        ) as any[];
+        await this.throttle.enforcePlanLimit(tenantId, 'maxWebhookSubscriptions', countRows?.[0]?.c || 0, 'suscripciones de webhook');
 
         const secret = crypto.randomBytes(32).toString('hex');
 

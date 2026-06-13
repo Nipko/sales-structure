@@ -180,6 +180,13 @@ export class SamlService {
             || email.split('@')[0];
         const lastName = samlProfile.lastName || '';
 
+        // Enforce the plan's seat limit on JIT provisioning (enterprise/custom
+        // currently have unlimited seats, so this is a future-proof backstop).
+        const activeUsers = await this.prisma.user.count({
+            where: { tenantId, isActive: true },
+        });
+        await this.throttle.enforcePlanLimit(tenantId, 'seats', activeUsers, 'usuarios');
+
         user = await this.prisma.user.create({
             data: {
                 email,

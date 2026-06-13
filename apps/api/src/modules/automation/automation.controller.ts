@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Logger, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Logger, UseGuards, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { AutomationService } from './automation.service';
@@ -27,6 +27,23 @@ export class AutomationController {
         return this.prisma.getTenantSchemaName(tenantId);
     }
 
+    /**
+     * Gate the `http_request` automation action behind the plan's
+     * httpRequestAction flag (pro+). The action is identified at runtime by
+     * action.type === 'http_request' (see ActionExecutorService).
+     */
+    private async assertActionsAllowed(tenantId: string, payload: any): Promise<void> {
+        const actions = Array.isArray(payload?.actions_json) ? payload.actions_json : [];
+        const usesHttpRequest = actions.some((a: any) => a?.type === 'http_request');
+        if (usesHttpRequest && !(await this.throttle.isFeatureEnabled(tenantId, 'httpRequestAction'))) {
+            throw new ForbiddenException({
+                error: 'feature_not_available',
+                feature: 'httpRequestAction',
+                message: 'La acción de solicitud HTTP no está disponible en tu plan actual. Actualizá tu plan para usarla.',
+            });
+        }
+    }
+
     @Get('rules/:tenantId')
     @ApiOperation({ summary: 'List all automation rules for a tenant' })
     async getRules(@Param('tenantId') tenantId: string) {
@@ -49,6 +66,7 @@ export class AutomationController {
             ? existing.filter((r: any) => r.active !== false).length
             : 0;
         await this.throttle.enforcePlanLimit(tenantId, 'automationRules', activeCount, 'reglas de automatización');
+        await this.assertActionsAllowed(tenantId, payload);
 
         const created = await this.automationService.createRule(schemaName, { ...payload, tenant_id: tenantId });
         return { success: true, data: created };
@@ -74,6 +92,7 @@ export class AutomationController {
         @Body() payload: any,
     ) {
         const schemaName = await this.schemaFor(tenantId);
+        await this.assertActionsAllowed(tenantId, payload);
         const updated = await this.automationService.updateRule(schemaName, ruleId, payload);
         return { success: true, data: updated };
     }

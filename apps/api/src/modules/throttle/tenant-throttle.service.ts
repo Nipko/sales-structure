@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { FEATURE_OVERRIDE_KEYS, OVERRIDABLE_QUOTA_KEYS, isOverridableQuotaKey } from './plan-features.registry';
 
 /**
  * Plan-based rate limiting and feature gating for multi-tenant fairness.
@@ -23,19 +24,20 @@ interface PlanLimits {
 }
 
 export interface QuotaOverrides {
+    // Rate-limit overrides (consumed in resolveLimits) — kept as explicit typed
+    // fields so the numeric dot-access there stays type-safe.
     automation?: number;
     outbound?: number;
     broadcast?: number;
     priority?: number;
     maxPendingJobs?: number;
-    maxAgents?: number;
-    maxCalendars?: number;
-    knowledgeArticles?: number;
-    knowledgeMaxCharsPerDoc?: number;
-    knowledgeEmbeddingsPerMonth?: number;
+    // Metadata
     reason?: string;
     setBy?: string;
     setAt?: string;
+    // Any other overridable numeric feature key (validated against the registry
+    // in setQuotaOverrides; applied generically in applyOverrides).
+    [key: string]: number | string | undefined;
 }
 
 const FALLBACK_LIMITS: PlanLimits = {
@@ -179,14 +181,14 @@ export class TenantThrottleService {
     }
 
     private applyOverrides(base: Record<string, any>, overrides: QuotaOverrides): Record<string, any> {
-        return {
-            ...base,
-            maxAgents: overrides.maxAgents ?? base.maxAgents,
-            maxCalendars: overrides.maxCalendars ?? base.maxCalendars,
-            knowledgeArticles: overrides.knowledgeArticles ?? base.knowledgeArticles,
-            knowledgeMaxCharsPerDoc: overrides.knowledgeMaxCharsPerDoc ?? base.knowledgeMaxCharsPerDoc,
-            knowledgeEmbeddingsPerMonth: overrides.knowledgeEmbeddingsPerMonth ?? base.knowledgeEmbeddingsPerMonth,
-        };
+        const merged: Record<string, any> = { ...base };
+        // Apply every overridable flat feature/limit key present as a number.
+        // (Rate-limit keys are applied separately in resolveLimits.)
+        for (const key of FEATURE_OVERRIDE_KEYS) {
+            const ov = (overrides as Record<string, any>)[key];
+            if (typeof ov === 'number') merged[key] = ov;
+        }
+        return merged;
     }
 
     /**
@@ -214,6 +216,19 @@ export class TenantThrottleService {
     }
 
     async setQuotaOverrides(tenantId: string, overrides: QuotaOverrides, setBy?: string): Promise<QuotaOverrides> {
+        // Reject unknown keys instead of silently storing a no-op (the old
+        // behavior persisted any key but only ever read a fixed subset).
+        const META = new Set(['reason', 'setBy', 'setAt']);
+        const unknown = Object.keys(overrides).filter(k => !META.has(k) && !isOverridableQuotaKey(k));
+        if (unknown.length) {
+            const { BadRequestException } = await import('@nestjs/common');
+            throw new BadRequestException({
+                error: 'invalid_override_keys',
+                unknownKeys: unknown,
+                message: `Estas claves no se pueden overridear por tenant: ${unknown.join(', ')}.`,
+            });
+        }
+
         const existing = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
             select: { settings: true },
@@ -224,9 +239,10 @@ export class TenantThrottleService {
             setBy: setBy || 'super_admin',
             setAt: new Date().toISOString(),
         };
-        for (const k of ['automation', 'outbound', 'broadcast', 'priority', 'maxPendingJobs', 'maxAgents', 'maxCalendars', 'knowledgeArticles', 'knowledgeMaxCharsPerDoc', 'knowledgeEmbeddingsPerMonth'] as const) {
-            if (stamped[k] === null || stamped[k] === undefined || (typeof stamped[k] === 'number' && Number.isNaN(stamped[k] as any))) {
-                delete stamped[k];
+        for (const k of OVERRIDABLE_QUOTA_KEYS) {
+            const v = (stamped as Record<string, any>)[k];
+            if (v === null || v === undefined || (typeof v === 'number' && Number.isNaN(v))) {
+                delete (stamped as Record<string, any>)[k];
             }
         }
         settings.quotaOverrides = stamped;
@@ -302,7 +318,10 @@ export class TenantThrottleService {
             where: { slug: plan },
             select: { maxAiMessages: true },
         });
-        const rawLimit = planRow?.maxAiMessages ?? 0;
+        const overrides = await this.getQuotaOverrides(tenantId);
+        const rawLimit = typeof overrides.maxAiMessages === 'number'
+            ? overrides.maxAiMessages
+            : (planRow?.maxAiMessages ?? 0);
         const limit = rawLimit === -1 ? Number.POSITIVE_INFINITY : rawLimit;
         const remaining = Number.isFinite(limit) ? Math.max(0, (limit as number) - used) : null;
         const percent = Number.isFinite(limit) && (limit as number) > 0
@@ -324,6 +343,19 @@ export class TenantThrottleService {
         const { used, limit } = await this.getAiMessageUsage(tenantId);
         if (!Number.isFinite(limit)) return true;
         return used < (limit as number);
+    }
+
+    // ── LLM cost circuit breaker ───────────────────────────────────
+
+    /**
+     * Month-to-date LLM spend for a tenant, in USD cents.
+     * The LLM router writes `llm:cost:{tenantId}:{YYYY-MM}` in centi-USD
+     * (USD*10000) per call; we divide by 100 to return USD cents (USD*100),
+     * matching the unit of the plan's `llmCostBudgetUsdCents` feature.
+     */
+    async getLlmSpendUsdCents(tenantId: string): Promise<number> {
+        const raw = Number((await this.redis.get(`llm:cost:${tenantId}:${this.currentMonthKey()}`)) || 0);
+        return raw / 100;
     }
 
     private currentMonthKey(): string {

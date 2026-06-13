@@ -485,6 +485,7 @@ export class LLMRouterService {
     ): Promise<void> {
         if (!tenantId) return;
         const date = new Date().toISOString().slice(0, 10);
+        const monthKey = date.slice(0, 7); // YYYY-MM (UTC) — matches TenantThrottleService.currentMonthKey
         const baseKey = `llm:stats:${tenantId}:${date}:${modelConfig.provider}`;
         const tokensIn = usage?.promptTokens || 0;
         const tokensOut = usage?.completionTokens || 0;
@@ -501,6 +502,9 @@ export class LLMRouterService {
             this.redis.incrBy(`${baseKey}:tokens_in`, tokensIn),
             this.redis.incrBy(`${baseKey}:tokens_out`, tokensOut),
             this.redis.incrBy(`${baseKey}:cost_centi_usd`, costCentiUsd),
+            // Monthly per-tenant LLM spend accumulator (centi-USD = USD*10000),
+            // consumed by the cost circuit breaker (TenantThrottleService.getLlmSpendUsdCents).
+            this.redis.incrBy(`llm:cost:${tenantId}:${monthKey}`, costCentiUsd),
             this.redis.incrBy(`${baseKey}:latency_sum_ms`, latencyMs),
             this.redis.sadd('llm:stats:dates', date),
             this.redis.sadd(`llm:stats:tenants:${date}`, tenantId),
@@ -515,6 +519,7 @@ export class LLMRouterService {
             this.redis.expire(`${baseKey}:tokens_out`, ttl),
             this.redis.expire(`${baseKey}:cost_centi_usd`, ttl),
             this.redis.expire(`${baseKey}:latency_sum_ms`, ttl),
+            this.redis.expire(`llm:cost:${tenantId}:${monthKey}`, 40 * 24 * 3600),
         ]);
     }
 

@@ -6,6 +6,12 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { BillingService } from './billing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import {
+    PLAN_FEATURE_REGISTRY,
+    NESTED_OBJECT_KEYS,
+    validatePlanFeatures,
+    unknownFeatureKeys,
+} from '../throttle/plan-features.registry';
 
 class RefundPaymentDto {
     @IsOptional()
@@ -70,8 +76,17 @@ export class BillingAdminController {
         );
         return {
             success: true,
-            data: plans.map((p: any) => ({ ...p, tenantCount: countMap[p.slug] || 0 })),
+            data: plans.map((p: any) => ({
+                ...p,
+                tenantCount: countMap[p.slug] || 0,
+                unknownFeatureKeys: unknownFeatureKeys(p.features as any),
+            })),
         };
+    }
+
+    @Get('feature-registry')
+    listFeatureRegistry() {
+        return { success: true, data: PLAN_FEATURE_REGISTRY };
     }
 
     @Get('plans/:slug')
@@ -81,7 +96,7 @@ export class BillingAdminController {
         const tenantCount = await this.prisma.tenant.count({
             where: { plan: slug, isActive: true },
         });
-        return { success: true, data: { ...plan, tenantCount } };
+        return { success: true, data: { ...plan, tenantCount, unknownFeatureKeys: unknownFeatureKeys(plan.features as any) } };
     }
 
     @Put('plans/:slug')
@@ -96,6 +111,23 @@ export class BillingAdminController {
             ? { ...((existing.priceLocalOverrides as any) ?? {}), ...body.priceLocalOverrides }
             : (existing.priceLocalOverrides as any);
 
+        // Validate the incoming features against the canonical registry and MERGE
+        // into the stored object (instead of replacing it), so a partial payload
+        // can't silently wipe omitted keys and a typo can't create a dead key.
+        let mergedFeatures = existing.features as any;
+        if (body.features) {
+            const { unknownKeys, typeErrors } = validatePlanFeatures(body.features);
+            if (unknownKeys.length || typeErrors.length) {
+                throw new BadRequestException({
+                    error: 'invalid_features',
+                    unknownKeys,
+                    typeErrors,
+                    message: 'El objeto features contiene claves desconocidas o tipos inválidos. Consultá GET /billing-admin/feature-registry.',
+                });
+            }
+            mergedFeatures = this.mergeFeatures((existing.features as any) ?? {}, body.features);
+        }
+
         const updated = await this.prisma.billingPlan.update({
             where: { slug },
             data: {
@@ -105,7 +137,7 @@ export class BillingAdminController {
                 requiresCardForTrial: body.requiresCardForTrial ?? existing.requiresCardForTrial,
                 maxAgents: body.maxAgents ?? existing.maxAgents,
                 maxAiMessages: body.maxAiMessages ?? existing.maxAiMessages,
-                features: body.features ?? (existing.features as any),
+                features: mergedFeatures,
                 priceLocalOverrides: mergedOverrides,
                 isActive: body.isActive ?? existing.isActive,
             },
@@ -114,6 +146,21 @@ export class BillingAdminController {
         const invalidated = await this.throttle.invalidatePlanCacheForSlug(slug);
 
         return { success: true, data: updated, invalidatedTenants: invalidated };
+    }
+
+    /** Shallow merge with 1-level deep-merge for nested config objects. */
+    private mergeFeatures(existing: Record<string, any>, incoming: Record<string, any>): Record<string, any> {
+        const merged: Record<string, any> = { ...existing };
+        const nested = new Set<string>(NESTED_OBJECT_KEYS as readonly string[]);
+        for (const [k, v] of Object.entries(incoming)) {
+            if (nested.has(k) && v && typeof v === 'object' && !Array.isArray(v)
+                && existing[k] && typeof existing[k] === 'object') {
+                merged[k] = { ...existing[k], ...v };
+            } else {
+                merged[k] = v;
+            }
+        }
+        return merged;
     }
 
     @Post('plans/:slug/invalidate-cache')

@@ -592,15 +592,15 @@ export default function OnboardingPage() {
                     {/* Step 1: Company */}
                     {step === 0 && (
                         <div>
-                            <h2 className="text-xl font-semibold text-foreground mb-1">Tu empresa</h2>
+                            <h2 className="text-xl font-semibold text-foreground mb-1">{t('step1Title')}</h2>
                             <p className="text-muted-foreground text-sm mb-6">
-                                Tell us about your business
+                                {t('step1Subtitle')}
                             </p>
 
                             {/* Company Name */}
                             <div className="mb-4">
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                    Nombre de la empresa *
+                                    {t('companyName')} *
                                 </label>
                                 <div className="relative">
                                     <Building2 size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
@@ -608,7 +608,7 @@ export default function OnboardingPage() {
                                         type="text"
                                         value={companyName}
                                         onChange={(e) => setCompanyName(e.target.value)}
-                                        placeholder="My Company LLC"
+                                        placeholder={t('companyNamePlaceholder')}
                                         className={inputWithIconClasses}
                                     />
                                 </div>
@@ -688,7 +688,7 @@ export default function OnboardingPage() {
                             {/* Social Media */}
                             <div className="mb-4">
                                 <label className="block text-[13px] text-muted-foreground mb-2 font-medium">
-                                    Redes sociales
+                                    {t('socialMedia')}
                                 </label>
                                 <div className="space-y-2.5">
                                     <div className="relative">
@@ -697,7 +697,7 @@ export default function OnboardingPage() {
                                             type="url"
                                             value={instagram}
                                             onChange={(e) => setInstagram(e.target.value)}
-                                            placeholder="Instagram URL"
+                                            placeholder={t('instagramUrl')}
                                             className={inputWithIconClasses}
                                         />
                                     </div>
@@ -707,7 +707,7 @@ export default function OnboardingPage() {
                                             type="url"
                                             value={facebook}
                                             onChange={(e) => setFacebook(e.target.value)}
-                                            placeholder="Facebook URL"
+                                            placeholder={t('facebookUrl')}
                                             className={inputWithIconClasses}
                                         />
                                     </div>
@@ -717,7 +717,7 @@ export default function OnboardingPage() {
                                             type="url"
                                             value={linkedin}
                                             onChange={(e) => setLinkedin(e.target.value)}
-                                            placeholder="LinkedIn URL"
+                                            placeholder={t('linkedinUrl')}
                                             className={inputWithIconClasses}
                                         />
                                     </div>
@@ -727,7 +727,7 @@ export default function OnboardingPage() {
                                             type="url"
                                             value={tiktok}
                                             onChange={(e) => setTiktok(e.target.value)}
-                                            placeholder="TikTok URL"
+                                            placeholder={t('tiktokUrl')}
                                             className={inputWithIconClasses}
                                         />
                                     </div>
@@ -758,7 +758,7 @@ export default function OnboardingPage() {
                             {SUB_TYPES[industry] && (
                                 <div className="mb-4">
                                     <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                        Tipo de negocio
+                                        {t('businessType')}
                                     </label>
                                     <select
                                         value={subType}
@@ -766,7 +766,7 @@ export default function OnboardingPage() {
                                         className={cn(selectClasses, "pr-8")}
                                         style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239898b0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
                                     >
-                                        <option value="">Seleccionar...</option>
+                                        <option value="">{t('select')}</option>
                                         {SUB_TYPES[industry].map((st) => (
                                             <option key={st.key} value={st.key} className="bg-white dark:bg-[#1a1a2e] text-foreground">
                                                 {st.label}
@@ -1045,7 +1045,7 @@ export default function OnboardingPage() {
                                 onClick={() => setStep(step - 1)}
                                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-white/10 bg-transparent text-sm font-medium text-foreground hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
                             >
-                                <ChevronLeft size={16} /> Back
+                                <ChevronLeft size={16} /> {t('back')}
                             </button>
                         ) : (
                             <div />
@@ -1065,13 +1065,13 @@ export default function OnboardingPage() {
                             {isSubmitting ? (
                                 <>
                                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    Creating...
+                                    {t('creating')}
                                 </>
                             ) : step === 4 ? (
-                                "Create my account"
+                                t('createAccount')
                             ) : (
                                 <>
-                                    Next <ChevronRight size={16} />
+                                    {t('next')} <ChevronRight size={16} />
                                 </>
                             )}
                         </button>
@@ -1079,7 +1079,7 @@ export default function OnboardingPage() {
                 </div>
 
                 {/* Footer */}
-                <p className="text-center text-xs text-neutral-400 mt-6">Powered by <a href="https://parallext.com" target="_blank" className="text-indigo-500 hover:text-indigo-400">Parallext.com</a></p>
+                <p className="text-center text-xs text-neutral-400 mt-6">{t('poweredBy')} <a href="https://parallext.com" target="_blank" className="text-indigo-500 hover:text-indigo-400">Parallext.com</a></p>
             </div>
         </div>
     );

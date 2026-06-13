@@ -7584,6 +7584,17 @@
     "upgrade": {
       "title": "Mise à niveau requise",
       "description": "Mettez à niveau votre plan pour créer plus de séquences"
+    },
+    "prospecting": {
+      "title": "Prospecter depuis le CRM",
+      "desc": "Inscrivez un segment de leads dans cette séquence. L'agent ouvre la conversation ; votre équipe conclut depuis la boîte de réception.",
+      "mustBeActive": "Activez la séquence pour prospecter.",
+      "selectSegment": "Choisissez un segment…",
+      "enrollBtn": "Inscrire le segment",
+      "enrolling": "Inscription…",
+      "enrolledToast": "{enrolled} inscrits · {optout} désinscrits · {dup} déjà inscrits",
+      "enrollError": "Impossible d'inscrire le segment.",
+      "hint": "Respecte les désinscriptions et ne double pas les inscriptions. Limite de 500 par envoi."
     }
   },
   "knowledgeGap": {

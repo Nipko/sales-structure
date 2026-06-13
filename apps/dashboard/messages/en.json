@@ -7613,6 +7613,17 @@
     "upgrade": {
       "title": "Upgrade required",
       "description": "Upgrade your plan to create more sequences"
+    },
+    "prospecting": {
+      "title": "Prospect from the CRM",
+      "desc": "Enroll a segment of leads into this sequence. The agent opens the conversation; your team closes from the inbox.",
+      "mustBeActive": "Activate the sequence to start prospecting.",
+      "selectSegment": "Pick a segment…",
+      "enrollBtn": "Enroll segment",
+      "enrolling": "Enrolling…",
+      "enrolledToast": "{enrolled} enrolled · {optout} opted-out · {dup} already in",
+      "enrollError": "Couldn't enroll the segment.",
+      "hint": "Respects opt-outs and never double-enrolls. Cap of 500 per run."
     }
   },
   "knowledgeGap": {

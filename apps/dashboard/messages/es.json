@@ -7613,6 +7613,17 @@
     "upgrade": {
       "title": "Upgrade requerido",
       "description": "Mejora tu plan para crear más secuencias"
+    },
+    "prospecting": {
+      "title": "Prospectar desde el CRM",
+      "desc": "Inscribe un segmento de leads en esta secuencia. El agente abre la conversación; tu equipo cierra desde el inbox.",
+      "mustBeActive": "Activá la secuencia para poder prospectar.",
+      "selectSegment": "Elegí un segmento…",
+      "enrollBtn": "Inscribir segmento",
+      "enrolling": "Inscribiendo…",
+      "enrolledToast": "{enrolled} inscritos · {optout} opt-out · {dup} ya inscritos",
+      "enrollError": "No se pudo inscribir el segmento.",
+      "hint": "Respeta opt-outs y no duplica inscripciones. Tope de 500 por envío."
     }
   },
   "knowledgeGap": {

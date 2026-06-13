@@ -266,6 +266,8 @@ export const api = {
         apiPost(`/automation/drip-sequences/${tenantId}/${id}/toggle`, { isActive }),
     enrollDripContact: (tenantId: string, id: string, data: { contactId: string; conversationId?: string }) =>
         apiPost(`/automation/drip-sequences/${tenantId}/${id}/enroll`, data),
+    enrollDripSegment: (tenantId: string, id: string, data: { segmentId: string; cap?: number }) =>
+        apiPost(`/automation/drip-sequences/${tenantId}/${id}/enroll-segment`, data),
     unenrollDripContact: (tenantId: string, id: string, contactId: string) =>
         apiPost(`/automation/drip-sequences/${tenantId}/${id}/unenroll`, { contactId }),
     getDripEnrollments: (tenantId: string, id: string, status?: string) =>

@@ -32,6 +32,8 @@ import {
   GripVertical,
   X,
   Check,
+  Users,
+  Send,
 } from "lucide-react";
 
 interface DripStep {
@@ -114,11 +116,38 @@ export default function DripSequenceEditorPage() {
   const [triggerConditionTag, setTriggerConditionTag] = useState("");
   const [triggerConditionStage, setTriggerConditionStage] = useState("");
 
+  // Prospect-from-CRM (bulk-enroll a segment into this sequence)
+  const [segments, setSegments] = useState<Array<{ id: string; name: string; contact_count?: number }>>([]);
+  const [selectedSegmentId, setSelectedSegmentId] = useState("");
+  const [enrolling, setEnrolling] = useState(false);
+
   useEffect(() => {
     if (!isNew && activeTenantId) {
       loadSequence();
+      api.getSegments(activeTenantId).then((res: any) => {
+        const list = res?.data ?? res ?? [];
+        if (Array.isArray(list)) setSegments(list);
+      }).catch(() => {});
     }
   }, [activeTenantId, sequenceId]);
+
+  async function handleEnrollSegment() {
+    if (!activeTenantId || !selectedSegmentId) return;
+    setEnrolling(true);
+    try {
+      const res = await api.enrollDripSegment(activeTenantId, sequenceId, { segmentId: selectedSegmentId });
+      if (res.success && res.data) {
+        const d = res.data;
+        showToast(t("prospecting.enrolledToast", { enrolled: d.enrolled, optout: d.skippedOptOut, dup: d.skippedDuplicate }));
+      } else {
+        showToast(t("prospecting.enrollError"));
+      }
+    } catch {
+      showToast(t("prospecting.enrollError"));
+    } finally {
+      setEnrolling(false);
+    }
+  }
 
   async function loadSequence() {
     if (!activeTenantId) return;
@@ -684,6 +713,49 @@ export default function DripSequenceEditorPage() {
               </Button>
             </CardContent>
           </Card>
+
+          {!isNew && (
+            <Card className="border-border bg-card">
+              <CardContent className="p-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Users size={16} className="text-indigo-500" />
+                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                    {t("prospecting.title")}
+                  </h3>
+                </div>
+                <p className="text-xs text-muted-foreground">{t("prospecting.desc")}</p>
+                {!isActive && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400">{t("prospecting.mustBeActive")}</p>
+                )}
+                <select
+                  value={selectedSegmentId}
+                  onChange={e => setSelectedSegmentId(e.target.value)}
+                  className="w-full p-2 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
+                >
+                  <option value="">{t("prospecting.selectSegment")}</option>
+                  {segments.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}{typeof s.contact_count === "number" ? ` (${s.contact_count})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  onClick={handleEnrollSegment}
+                  disabled={enrolling || !selectedSegmentId || !isActive}
+                  className={cn(
+                    "w-full gap-2 transition-colors duration-200",
+                    selectedSegmentId && isActive
+                      ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                      : "bg-neutral-200 dark:bg-neutral-700 text-muted-foreground cursor-not-allowed"
+                  )}
+                >
+                  <Send size={15} />
+                  {enrolling ? t("prospecting.enrolling") : t("prospecting.enrollBtn")}
+                </Button>
+                <p className="text-[11px] text-muted-foreground">{t("prospecting.hint")}</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 

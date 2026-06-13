@@ -10,10 +10,10 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-    { key: "overview", label: "Overview" },
-    { key: "agents", label: "Agents" },
-    { key: "channels", label: "Channels" },
-    { key: "csat", label: "CSAT" },
+    { key: "overview" },
+    { key: "agents" },
+    { key: "channels" },
+    { key: "csat" },
 ];
 
 const CHANNEL_COLORS: Record<string, string> = {
@@ -48,7 +48,7 @@ function formatDuration(seconds: number): string {
 type SortDir = "asc" | "desc";
 
 export default function AgentAnalyticsPage() {
-    const t = useTranslations('analytics');
+    const t = useTranslations("agentAnalytics");
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const [activeTab, setActiveTab] = useState("overview");
@@ -123,10 +123,10 @@ export default function AgentAnalyticsPage() {
             {/* KPI Cards */}
             <div className="grid grid-cols-4 gap-4 mb-6">
                 {[
-                    { title: "Conversations", value: totals.conversations ?? 0, color: "#3498db" },
-                    { title: "Avg Response Time", value: totals.avgFirstResponse ?? "0s", color: "#f39c12" },
-                    { title: "Resolution Rate", value: totals.resolved && totals.conversations ? `${Math.round((totals.resolved / totals.conversations) * 100)}%` : "0%", color: "#27ae60" },
-                    { title: "Average CSAT", value: totals.csatAvg ? totals.csatAvg.toFixed(1) : "0.0", color: "#9b59b6" },
+                    { title: t("kpi.conversations"), value: totals.conversations ?? 0, color: "#3498db" },
+                    { title: t("kpi.avgResponseTime"), value: totals.avgFirstResponse ?? "0s", color: "#f39c12" },
+                    { title: t("kpi.resolutionRate"), value: totals.resolved && totals.conversations ? `${Math.round((totals.resolved / totals.conversations) * 100)}%` : "0%", color: "#27ae60" },
+                    { title: t("kpi.averageCsat"), value: totals.csatAvg ? totals.csatAvg.toFixed(1) : "0.0", color: "#9b59b6" },
                 ].map((card) => (
                     <div key={card.title} className="rounded-xl border border-border bg-[var(--bg-secondary)] px-5 py-[18px] flex flex-col gap-2">
                         <span className="text-xs text-[var(--text-secondary)] font-semibold uppercase tracking-wide">{card.title}</span>
@@ -137,9 +137,9 @@ export default function AgentAnalyticsPage() {
 
             {/* Daily Bar Chart */}
             <div className="rounded-xl border border-border bg-[var(--bg-secondary)] p-5">
-                <h3 className="m-0 mb-4 text-[15px] font-semibold">Daily Conversation Volume</h3>
+                <h3 className="m-0 mb-4 text-[15px] font-semibold">{t("overview.dailyVolumeTitle")}</h3>
                 {series.length === 0 ? (
-                    <div className="text-center py-10 text-[var(--text-secondary)]">No data for the selected range</div>
+                    <div className="text-center py-10 text-[var(--text-secondary)]">{t("overview.noDataRange")}</div>
                 ) : (
                     <div className="flex items-end gap-0.5 h-[180px] px-1">
                         {series.map((s: any, i: number) => {
@@ -167,11 +167,11 @@ export default function AgentAnalyticsPage() {
 
     const renderAgents = () => {
         const columns: { key: string; label: string }[] = [
-            { key: "agentName", label: "Agent" },
-            { key: "totalConversations", label: "Conversations" },
-            { key: "resolvedConversations", label: "Resolved" },
-            { key: "avgFirstResponseSecs", label: "Response Time" },
-            { key: "csatAvg", label: "CSAT" },
+            { key: "agentName", label: t("agents.colAgent") },
+            { key: "totalConversations", label: t("agents.colConversations") },
+            { key: "resolvedConversations", label: t("agents.colResolved") },
+            { key: "avgFirstResponseSecs", label: t("agents.colResponseTime") },
+            { key: "csatAvg", label: t("agents.colCsat") },
         ];
 
         return (
@@ -195,7 +195,7 @@ export default function AgentAnalyticsPage() {
                     </thead>
                     <tbody>
                         {sortedAgents.length === 0 ? (
-                            <tr><td colSpan={5} className="py-8 text-center text-[var(--text-secondary)]">No agent data</td></tr>
+                            <tr><td colSpan={5} className="py-8 text-center text-[var(--text-secondary)]">{t("agents.noData")}</td></tr>
                         ) : sortedAgents.map((agent: any) => (
                             <tr key={agent.agentId} className="border-b border-border">
                                 <td className="px-4 py-2.5 font-semibold">
@@ -203,11 +203,11 @@ export default function AgentAnalyticsPage() {
                                         <span>{agent.agentName}</span>
                                         {agent.isAi ? (
                                             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                                                IA
+                                                {t("agents.badgeAi")}
                                             </span>
                                         ) : (
                                             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                                Humano
+                                                {t("agents.badgeHuman")}
                                             </span>
                                         )}
                                     </div>
@@ -240,7 +240,7 @@ export default function AgentAnalyticsPage() {
     const renderChannels = () => (
         <div className="grid grid-cols-3 gap-4">
             {channelsData.length === 0 ? (
-                <div className="col-span-full text-center py-10 text-[var(--text-secondary)]">No channel data</div>
+                <div className="col-span-full text-center py-10 text-[var(--text-secondary)]">{t("channels.noData")}</div>
             ) : channelsData.map((ch: any) => {
                 const color = CHANNEL_COLORS[ch.channel] || "#95a5a6";
                 const label = CHANNEL_LABELS[ch.channel] || ch.channel;
@@ -255,11 +255,11 @@ export default function AgentAnalyticsPage() {
                             </div>
                             <div>
                                 <div className="text-[15px] font-semibold">{label}</div>
-                                <div className="text-xs text-[var(--text-secondary)]">{ch.percentage}% del total</div>
+                                <div className="text-xs text-[var(--text-secondary)]">{t("channels.percentOfTotal", { percentage: ch.percentage })}</div>
                             </div>
                         </div>
                         <div className="text-[32px] font-semibold" style={{ color }}>{ch.count}</div>
-                        <div className="text-xs text-[var(--text-secondary)]">conversations</div>
+                        <div className="text-xs text-[var(--text-secondary)]">{t("channels.conversations")}</div>
                         {/* Percentage bar */}
                         <div className="h-1.5 rounded-full bg-[var(--bg-tertiary)]">
                             <div className="h-full rounded-full" style={{ width: `${ch.percentage}%`, background: color }} />
@@ -283,7 +283,7 @@ export default function AgentAnalyticsPage() {
                 {/* Big Average */}
                 <div className="rounded-xl border border-border bg-[var(--bg-secondary)] px-6 py-8 text-center mb-6">
                     <div className="text-sm text-[var(--text-secondary)] font-semibold uppercase tracking-wide mb-2">
-                        Average CSAT
+                        {t("csat.averageTitle")}
                     </div>
                     <div
                         className="text-[56px] font-semibold"
@@ -292,13 +292,13 @@ export default function AgentAnalyticsPage() {
                         {avg ? avg.toFixed(1) : "\u2014"}
                     </div>
                     <div className="text-[13px] text-[var(--text-secondary)] mt-1">
-                        {total} {total === 1 ? "response" : "responses"}
+                        {t("csat.responses", { count: total })}
                     </div>
                 </div>
 
                 {/* Rating Bars */}
                 <div className="rounded-xl border border-border bg-[var(--bg-secondary)] p-5 mb-6">
-                    <h3 className="m-0 mb-4 text-[15px] font-semibold">Distribution by Stars</h3>
+                    <h3 className="m-0 mb-4 text-[15px] font-semibold">{t("csat.distributionTitle")}</h3>
                     {[5, 4, 3, 2, 1].map((rating) => {
                         const count = dist[rating] || 0;
                         const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -318,7 +318,7 @@ export default function AgentAnalyticsPage() {
                 {/* Recent Feedback */}
                 {feedback.length > 0 && (
                     <div className="rounded-xl border border-border bg-[var(--bg-secondary)] p-5">
-                        <h3 className="m-0 mb-4 text-[15px] font-semibold">Recent Feedback</h3>
+                        <h3 className="m-0 mb-4 text-[15px] font-semibold">{t("csat.recentFeedbackTitle")}</h3>
                         <div className="flex flex-col gap-3">
                             {feedback.map((f: any) => (
                                 <div key={f.id} className="p-3 rounded-lg border border-border bg-[var(--bg-primary)]">
@@ -374,7 +374,7 @@ export default function AgentAnalyticsPage() {
                         onChange={(e) => setStartDate(e.target.value)}
                         className="px-2.5 py-1.5 rounded-lg border border-border bg-[var(--bg-secondary)] text-foreground text-[13px]"
                     />
-                    <span className="text-[var(--text-secondary)] text-[13px]">to</span>
+                    <span className="text-[var(--text-secondary)] text-[13px]">{t("dateRangeTo")}</span>
                     <input
                         type="date"
                         value={endDate}
@@ -405,7 +405,7 @@ export default function AgentAnalyticsPage() {
                                 : "bg-transparent text-[var(--text-secondary)] font-normal"
                         )}
                     >
-                        {tab.label}
+                        {t(`tabs.${tab.key}`)}
                     </button>
                 ))}
             </div>

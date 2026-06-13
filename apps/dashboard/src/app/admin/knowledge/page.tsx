@@ -532,7 +532,7 @@ export default function KnowledgePage() {
         }
     };
 
-    const langLabels: Record<string, string> = { es: "Español", en: "English", pt: "Português", fr: "Français", auto: t("language.auto") };
+    const langLabels: Record<string, string> = { es: tc("languages.es"), en: tc("languages.en"), pt: tc("languages.pt"), fr: tc("languages.fr"), auto: t("language.auto") };
 
     const totalDocs = documents.length + resources.length;
 

@@ -68,7 +68,13 @@
     "email": "Email",
     "phone": "Phone",
     "dismiss": "Dismiss",
-    "createdAt": "Created"
+    "createdAt": "Created",
+    "languages": {
+      "es": "Español",
+      "en": "English",
+      "pt": "Português",
+      "fr": "Français"
+    }
   },
   "nav": {
     "platformConsole": "Platform console",
@@ -452,7 +458,36 @@
       "stageCol": "Stage (Optional)",
       "stageColDesc": "Valid stage values: nuevo (new), contactado (contacted), respondio (replied), calificado (qualified), tibio (warm), caliente (hot), listo_cierre (ready_to_close), ganado (won), perdido (lost), no_interesado (not_interested).",
       "exampleHeader": "Direct paste example (semicolon delimited):",
-      "exampleBody": "name;phone;email;stage;company;is_vip\nJohn Smith;15551234567;john@smith.com;hot;Acme S.A.;si\nMaria Gomez;+15557654321;maria@gomez.com;new;;no"
+      "exampleBody": "name;phone;email;stage;company;is_vip\nJohn Smith;15551234567;john@smith.com;hot;Acme S.A.;si\nMaria Gomez;+15557654321;maria@gomez.com;new;;no",
+      "dropzoneTitle": "Drag your Excel (.xlsx, .xls) or CSV file here",
+      "dropzoneHint": "Or click to browse your files",
+      "columnsHeader": "Supported columns and synonyms",
+      "required": "REQUIRED",
+      "optional": "OPTIONAL",
+      "synonyms": "Synonyms:",
+      "fields": "Fields:",
+      "col": {
+        "phoneLabel": "Phone / Mobile",
+        "phoneDesc": "Unique contact identifier. Spaces are stripped and it is automatically normalized to the E.164 standard.",
+        "nameLabel": "First and last name",
+        "nameDesc": "First name and last name for the contact profile.",
+        "stageLabel": "CRM stage / status",
+        "stageDesc": "Valid stages:",
+        "companyLabel": "Company",
+        "companyDesc": "Name of the organization linked to the contact. It will be created automatically in the system if it does not exist.",
+        "emailLabel": "Email",
+        "emailDesc": "Unique and valid email address of the lead.",
+        "vipLabel": "Mark as VIP",
+        "vipDesc": "Tag as a preferred customer. Accepted values:",
+        "channelLabel": "Contact channel",
+        "channelDesc": "Preferred communication channel:",
+        "utmLabel": "Campaign attributes (UTM)",
+        "utmDesc": "Standard attributes for tracking advertising campaigns."
+      },
+      "pasteDivider": "Or copy and paste your cells directly",
+      "successTitle": "Import completed successfully!",
+      "errorsFound": "{count} errors found.",
+      "moreErrors": "... and {count} more errors."
     },
     "advancedFilters": "Advanced filters",
     "scoreRange": "Score range",
@@ -635,16 +670,16 @@
     "traceStepsLabel": "steps",
     "traceStepsEmpty": "No step-by-step traces for this conversation yet",
     "traceStepTypes": {
-        "reasoning": "reasoning",
-        "tool_call": "tool",
-        "tool_result": "result",
-        "kb_retrieval": "knowledge",
-        "guardrail": "guardrail",
-        "decision": "decision",
-        "media": "media",
-        "intent": "intent",
-        "booking": "booking",
-        "procedure": "procedure"
+      "reasoning": "reasoning",
+      "tool_call": "tool",
+      "tool_result": "result",
+      "kb_retrieval": "knowledge",
+      "guardrail": "guardrail",
+      "decision": "decision",
+      "media": "media",
+      "intent": "intent",
+      "booking": "booking",
+      "procedure": "procedure"
     },
     "noNotes": "No notes for this conversation",
     "addNotePlaceholder": "Add internal note...",
@@ -2248,7 +2283,9 @@
       "splitLabel": "Send split",
       "testConfig": "A/B test configuration",
       "toggle": "Test two variants (A/B)",
-      "toast": { "winnerSelected": "Winning variant selected" }
+      "toast": {
+        "winnerSelected": "Winning variant selected"
+      }
     }
   },
   "channels": {
@@ -3911,34 +3948,112 @@
       "copilotCardDesc": "Not sure how to set something up? Ask it: channels, CRM, appointments, automations and more.",
       "openCopilot": "Open copilot",
       "tools": {
-        "knowledge": { "name": "Knowledge base", "desc": "Upload your website, documents and policies so the agent answers with real data." },
-        "faqs": { "name": "FAQs", "desc": "Instantly answer your customers' most common questions." },
-        "businessInfo": { "name": "Business info", "desc": "Name, contact, location and description the agent uses as context." },
-        "hours": { "name": "Business hours", "desc": "Set when you're open; the agent respects it in its replies." },
-        "persona": { "name": "Personality & rules", "desc": "Adjust the tone, rules and topics the agent should or shouldn't handle." },
-        "procedures": { "name": "Procedures", "desc": "Teach the agent how to act step by step (refunds, complaints and more)." },
-        "appointments": { "name": "Services & scheduling", "desc": "Set up your services so the agent can inform and book appointments." },
-        "catalog": { "name": "Product catalog", "desc": "Upload your products so the agent recommends and sells them." },
-        "menu": { "name": "Menu", "desc": "Set up your menu so the agent takes orders and answers questions." },
-        "listings": { "name": "Properties", "desc": "Publish your listings so the agent shows them and books visits." },
-        "inventory": { "name": "Inventory", "desc": "Upload your stock so the agent reports availability and prices." },
-        "treatments": { "name": "Treatments & plans", "desc": "Set up treatments and plans so the agent informs options and prices." },
-        "classes": { "name": "Classes & schedule", "desc": "Add your classes so the agent shares schedules and books spots." },
-        "memberships": { "name": "Memberships & plans", "desc": "Define your plans so the agent explains prices and benefits." },
-        "pets": { "name": "Pets & patients", "desc": "Register pets to give follow-up and context in replies." },
-        "tours": { "name": "Tours & packages", "desc": "Upload your tours and packages so the agent shows and books them." },
-        "properties": { "name": "Properties", "desc": "Publish your listings so the agent shows them and books visits." },
-        "courses": { "name": "Courses & programs", "desc": "Set up your courses so the agent informs and enrolls students." },
-        "insurance": { "name": "Policies & coverage", "desc": "Define your products so the agent explains coverage and quotes." },
-        "serviceRequests": { "name": "Service requests", "desc": "Manage service requests so the agent coordinates and schedules." },
-        "photoSessions": { "name": "Photo sessions", "desc": "Set up your packages so the agent informs and books sessions." },
-        "orders": { "name": "Orders", "desc": "Manage orders so the agent reports status and takes new ones." },
-        "crm": { "name": "CRM & contacts" },
-        "analytics": { "name": "Analytics" },
-        "broadcast": { "name": "Campaigns" },
-        "automation": { "name": "Automations" },
-        "inbox": { "name": "Inbox" },
-        "team": { "name": "Team" }
+        "knowledge": {
+          "name": "Knowledge base",
+          "desc": "Upload your website, documents and policies so the agent answers with real data."
+        },
+        "faqs": {
+          "name": "FAQs",
+          "desc": "Instantly answer your customers' most common questions."
+        },
+        "businessInfo": {
+          "name": "Business info",
+          "desc": "Name, contact, location and description the agent uses as context."
+        },
+        "hours": {
+          "name": "Business hours",
+          "desc": "Set when you're open; the agent respects it in its replies."
+        },
+        "persona": {
+          "name": "Personality & rules",
+          "desc": "Adjust the tone, rules and topics the agent should or shouldn't handle."
+        },
+        "procedures": {
+          "name": "Procedures",
+          "desc": "Teach the agent how to act step by step (refunds, complaints and more)."
+        },
+        "appointments": {
+          "name": "Services & scheduling",
+          "desc": "Set up your services so the agent can inform and book appointments."
+        },
+        "catalog": {
+          "name": "Product catalog",
+          "desc": "Upload your products so the agent recommends and sells them."
+        },
+        "menu": {
+          "name": "Menu",
+          "desc": "Set up your menu so the agent takes orders and answers questions."
+        },
+        "listings": {
+          "name": "Properties",
+          "desc": "Publish your listings so the agent shows them and books visits."
+        },
+        "inventory": {
+          "name": "Inventory",
+          "desc": "Upload your stock so the agent reports availability and prices."
+        },
+        "treatments": {
+          "name": "Treatments & plans",
+          "desc": "Set up treatments and plans so the agent informs options and prices."
+        },
+        "classes": {
+          "name": "Classes & schedule",
+          "desc": "Add your classes so the agent shares schedules and books spots."
+        },
+        "memberships": {
+          "name": "Memberships & plans",
+          "desc": "Define your plans so the agent explains prices and benefits."
+        },
+        "pets": {
+          "name": "Pets & patients",
+          "desc": "Register pets to give follow-up and context in replies."
+        },
+        "tours": {
+          "name": "Tours & packages",
+          "desc": "Upload your tours and packages so the agent shows and books them."
+        },
+        "properties": {
+          "name": "Properties",
+          "desc": "Publish your listings so the agent shows them and books visits."
+        },
+        "courses": {
+          "name": "Courses & programs",
+          "desc": "Set up your courses so the agent informs and enrolls students."
+        },
+        "insurance": {
+          "name": "Policies & coverage",
+          "desc": "Define your products so the agent explains coverage and quotes."
+        },
+        "serviceRequests": {
+          "name": "Service requests",
+          "desc": "Manage service requests so the agent coordinates and schedules."
+        },
+        "photoSessions": {
+          "name": "Photo sessions",
+          "desc": "Set up your packages so the agent informs and books sessions."
+        },
+        "orders": {
+          "name": "Orders",
+          "desc": "Manage orders so the agent reports status and takes new ones."
+        },
+        "crm": {
+          "name": "CRM & contacts"
+        },
+        "analytics": {
+          "name": "Analytics"
+        },
+        "broadcast": {
+          "name": "Campaigns"
+        },
+        "automation": {
+          "name": "Automations"
+        },
+        "inbox": {
+          "name": "Inbox"
+        },
+        "team": {
+          "name": "Team"
+        }
       }
     },
     "step1Title": "Choose your agent",
@@ -7075,6 +7190,36 @@
       "full": "Full",
       "cancelled": "Cancelled",
       "finished": "Finished"
+    },
+    "catalog": {
+      "modalities": {
+        "inPerson": "In-person",
+        "virtual": "Virtual",
+        "hybrid": "Hybrid"
+      },
+      "title": "Courses",
+      "registeredCount": "{count} registered courses",
+      "newCourse": "New course",
+      "emptyState": "No courses in the catalog yet",
+      "stats": {
+        "total": "Total",
+        "active": "Active",
+        "averagePrice": "Average price"
+      },
+      "fields": {
+        "name": "Name",
+        "slug": "Slug (URL)",
+        "description": "Description",
+        "price": "Price",
+        "durationHours": "Duration (hours)",
+        "brochureUrl": "Brochure URL",
+        "modality": "Modality"
+      },
+      "placeholders": {
+        "name": "Digital Marketing Diploma",
+        "slug": "marketing-diploma (auto-generated)",
+        "description": "Short course description"
+      }
     }
   },
   "memberships": {
@@ -8148,5 +8293,47 @@
     "status_at_risk": "At risk",
     "status_breached": "Breached",
     "status_unknown": "No data"
+  },
+  "agentAnalytics": {
+    "title": "Agent Analytics",
+    "subtitle": "Executive metrics and performance",
+    "dateRangeTo": "to",
+    "tabs": {
+      "overview": "Overview",
+      "agents": "Agents",
+      "channels": "Channels",
+      "csat": "CSAT"
+    },
+    "kpi": {
+      "conversations": "Conversations",
+      "avgResponseTime": "Avg Response Time",
+      "resolutionRate": "Resolution Rate",
+      "averageCsat": "Average CSAT"
+    },
+    "overview": {
+      "dailyVolumeTitle": "Daily Conversation Volume",
+      "noDataRange": "No data for the selected range"
+    },
+    "agents": {
+      "colAgent": "Agent",
+      "colConversations": "Conversations",
+      "colResolved": "Resolved",
+      "colResponseTime": "Response Time",
+      "colCsat": "CSAT",
+      "noData": "No agent data",
+      "badgeAi": "AI",
+      "badgeHuman": "Human"
+    },
+    "channels": {
+      "noData": "No channel data",
+      "percentOfTotal": "{percentage}% of total",
+      "conversations": "conversations"
+    },
+    "csat": {
+      "averageTitle": "Average CSAT",
+      "responses": "{count, plural, one {# response} other {# responses}}",
+      "distributionTitle": "Distribution by Stars",
+      "recentFeedbackTitle": "Recent Feedback"
+    }
   }
 }

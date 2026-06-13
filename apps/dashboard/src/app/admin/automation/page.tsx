@@ -809,9 +809,9 @@ export default function AutomationPage() {
                                                             onChange={e => updateActionConfig(idx, "language", e.target.value)}
                                                             className="w-full p-2.5 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
                                                         >
-                                                            <option value="es">Spanish</option>
-                                                            <option value="en">English</option>
-                                                            <option value="pt">Português</option>
+                                                            <option value="es">{tc("languages.es")}</option>
+                                                            <option value="en">{tc("languages.en")}</option>
+                                                            <option value="pt">{tc("languages.pt")}</option>
                                                         </select>
                                                     </div>
                                                 </>

@@ -68,7 +68,13 @@
     "email": "Correo",
     "phone": "Teléfono",
     "dismiss": "Descartar",
-    "createdAt": "Creado"
+    "createdAt": "Creado",
+    "languages": {
+      "es": "Español",
+      "en": "English",
+      "pt": "Português",
+      "fr": "Français"
+    }
   },
   "nav": {
     "platformConsole": "Consola de plataforma",
@@ -452,7 +458,36 @@
       "stageCol": "Etapa (Opcional)",
       "stageColDesc": "Etapas válidas: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
       "exampleHeader": "Ejemplo de pegado directo (delimitador por punto y coma):",
-      "exampleBody": "nombre;telefono;email;etapa;empresa;es_vip\nJuan Perez;3001234567;juan@perez.com;caliente;Acme S.A.;sí\nMaria Gomez;+573119876543;maria@gomez.com;nuevo;;no"
+      "exampleBody": "nombre;telefono;email;etapa;empresa;es_vip\nJuan Perez;3001234567;juan@perez.com;caliente;Acme S.A.;sí\nMaria Gomez;+573119876543;maria@gomez.com;nuevo;;no",
+      "dropzoneTitle": "Arrastra tu archivo de Excel (.xlsx, .xls) o CSV aquí",
+      "dropzoneHint": "O haz clic para buscar en tus archivos",
+      "columnsHeader": "Columnas soportadas y sinónimos",
+      "required": "REQUERIDO",
+      "optional": "OPCIONAL",
+      "synonyms": "Sinónimos:",
+      "fields": "Campos:",
+      "col": {
+        "phoneLabel": "Teléfono / Celular",
+        "phoneDesc": "Identificador único de contacto. Se limpia de espacios y normaliza automáticamente al estándar E.164.",
+        "nameLabel": "Nombres y apellidos",
+        "nameDesc": "Primer nombre y apellidos para el perfil del contacto.",
+        "stageLabel": "Etapa / Estado CRM",
+        "stageDesc": "Etapas válidas:",
+        "companyLabel": "Empresa / Compañía",
+        "companyDesc": "Nombre de la organización vinculada al contacto. Se creará automáticamente en el sistema si no existe.",
+        "emailLabel": "Correo electrónico",
+        "emailDesc": "Dirección de correo electrónico única y válida del lead.",
+        "vipLabel": "Marcar como VIP",
+        "vipDesc": "Etiquetar como cliente preferente. Valores admitidos:",
+        "channelLabel": "Canal de contacto",
+        "channelDesc": "Canal de comunicación de preferencia:",
+        "utmLabel": "Atributos de campañas (UTM)",
+        "utmDesc": "Atributos estándar para tracking de campañas de publicidad."
+      },
+      "pasteDivider": "O copia y pega tus celdas directamente",
+      "successTitle": "¡Importación completada con éxito!",
+      "errorsFound": "{count} errores encontrados.",
+      "moreErrors": "... y {count} errores más."
     },
     "advancedFilters": "Filtros avanzados",
     "scoreRange": "Rango de score",
@@ -635,16 +670,16 @@
     "traceStepsLabel": "pasos",
     "traceStepsEmpty": "Aún no hay trazas paso-a-paso para esta conversación",
     "traceStepTypes": {
-        "reasoning": "razonamiento",
-        "tool_call": "herramienta",
-        "tool_result": "resultado",
-        "kb_retrieval": "conocimiento",
-        "guardrail": "guardarraíl",
-        "decision": "decisión",
-        "media": "multimedia",
-        "intent": "intención",
-        "booking": "reserva",
-        "procedure": "procedimiento"
+      "reasoning": "razonamiento",
+      "tool_call": "herramienta",
+      "tool_result": "resultado",
+      "kb_retrieval": "conocimiento",
+      "guardrail": "guardarraíl",
+      "decision": "decisión",
+      "media": "multimedia",
+      "intent": "intención",
+      "booking": "reserva",
+      "procedure": "procedimiento"
     },
     "noNotes": "No hay notas para esta conversacion",
     "addNotePlaceholder": "Agregar nota interna...",
@@ -2248,7 +2283,9 @@
       "splitLabel": "División del envío",
       "testConfig": "Configuración de la prueba A/B",
       "toggle": "Probar dos variantes (A/B)",
-      "toast": { "winnerSelected": "Variante ganadora seleccionada" }
+      "toast": {
+        "winnerSelected": "Variante ganadora seleccionada"
+      }
     }
   },
   "channels": {
@@ -3911,34 +3948,112 @@
       "copilotCardDesc": "¿Dudas de cómo configurar algo? Pregúntale: canales, CRM, citas, automatizaciones y más.",
       "openCopilot": "Abrir copiloto",
       "tools": {
-        "knowledge": { "name": "Base de conocimiento", "desc": "Sube tu web, documentos y políticas para que el agente responda con datos reales." },
-        "faqs": { "name": "Preguntas frecuentes", "desc": "Responde al instante las dudas más comunes de tus clientes." },
-        "businessInfo": { "name": "Información del negocio", "desc": "Nombre, contacto, ubicación y descripción que el agente usa como contexto." },
-        "hours": { "name": "Horarios de atención", "desc": "Define cuándo atiendes; el agente lo respeta en sus respuestas." },
-        "persona": { "name": "Personalidad y reglas", "desc": "Ajusta el tono, las reglas y los temas que el agente debe o no tratar." },
-        "procedures": { "name": "Procedimientos", "desc": "Enseña al agente cómo actuar paso a paso (reembolsos, reclamos y más)." },
-        "appointments": { "name": "Servicios y agenda", "desc": "Configura tus servicios para que el agente informe y agende citas." },
-        "catalog": { "name": "Catálogo de productos", "desc": "Carga tus productos para que el agente los recomiende y venda." },
-        "menu": { "name": "Menú", "desc": "Configura tu menú para que el agente tome pedidos y responda dudas." },
-        "listings": { "name": "Propiedades", "desc": "Publica tus inmuebles para que el agente los muestre y agende visitas." },
-        "inventory": { "name": "Inventario", "desc": "Carga tu stock para que el agente informe disponibilidad y precios." },
-        "treatments": { "name": "Tratamientos y planes", "desc": "Configura tratamientos y planes para que el agente informe opciones y precios." },
-        "classes": { "name": "Clases y horarios", "desc": "Carga tus clases para que el agente informe horarios y agende cupos." },
-        "memberships": { "name": "Membresías y planes", "desc": "Define tus planes para que el agente explique precios y beneficios." },
-        "pets": { "name": "Mascotas y pacientes", "desc": "Registra mascotas para dar seguimiento y contexto en las respuestas." },
-        "tours": { "name": "Tours y paquetes", "desc": "Carga tus tours y paquetes para que el agente los muestre y reserve." },
-        "properties": { "name": "Propiedades", "desc": "Publica tus inmuebles para que el agente los muestre y agende visitas." },
-        "courses": { "name": "Cursos y programas", "desc": "Configura tus cursos para que el agente informe e inscriba alumnos." },
-        "insurance": { "name": "Pólizas y coberturas", "desc": "Define tus productos para que el agente explique coberturas y cotice." },
-        "serviceRequests": { "name": "Solicitudes de servicio", "desc": "Gestiona pedidos de servicio para que el agente coordine y agende." },
-        "photoSessions": { "name": "Sesiones de fotos", "desc": "Configura tus paquetes para que el agente informe y reserve sesiones." },
-        "orders": { "name": "Pedidos", "desc": "Gestiona pedidos para que el agente informe estados y tome nuevos." },
-        "crm": { "name": "CRM y contactos" },
-        "analytics": { "name": "Analíticas" },
-        "broadcast": { "name": "Campañas" },
-        "automation": { "name": "Automatizaciones" },
-        "inbox": { "name": "Bandeja de entrada" },
-        "team": { "name": "Equipo" }
+        "knowledge": {
+          "name": "Base de conocimiento",
+          "desc": "Sube tu web, documentos y políticas para que el agente responda con datos reales."
+        },
+        "faqs": {
+          "name": "Preguntas frecuentes",
+          "desc": "Responde al instante las dudas más comunes de tus clientes."
+        },
+        "businessInfo": {
+          "name": "Información del negocio",
+          "desc": "Nombre, contacto, ubicación y descripción que el agente usa como contexto."
+        },
+        "hours": {
+          "name": "Horarios de atención",
+          "desc": "Define cuándo atiendes; el agente lo respeta en sus respuestas."
+        },
+        "persona": {
+          "name": "Personalidad y reglas",
+          "desc": "Ajusta el tono, las reglas y los temas que el agente debe o no tratar."
+        },
+        "procedures": {
+          "name": "Procedimientos",
+          "desc": "Enseña al agente cómo actuar paso a paso (reembolsos, reclamos y más)."
+        },
+        "appointments": {
+          "name": "Servicios y agenda",
+          "desc": "Configura tus servicios para que el agente informe y agende citas."
+        },
+        "catalog": {
+          "name": "Catálogo de productos",
+          "desc": "Carga tus productos para que el agente los recomiende y venda."
+        },
+        "menu": {
+          "name": "Menú",
+          "desc": "Configura tu menú para que el agente tome pedidos y responda dudas."
+        },
+        "listings": {
+          "name": "Propiedades",
+          "desc": "Publica tus inmuebles para que el agente los muestre y agende visitas."
+        },
+        "inventory": {
+          "name": "Inventario",
+          "desc": "Carga tu stock para que el agente informe disponibilidad y precios."
+        },
+        "treatments": {
+          "name": "Tratamientos y planes",
+          "desc": "Configura tratamientos y planes para que el agente informe opciones y precios."
+        },
+        "classes": {
+          "name": "Clases y horarios",
+          "desc": "Carga tus clases para que el agente informe horarios y agende cupos."
+        },
+        "memberships": {
+          "name": "Membresías y planes",
+          "desc": "Define tus planes para que el agente explique precios y beneficios."
+        },
+        "pets": {
+          "name": "Mascotas y pacientes",
+          "desc": "Registra mascotas para dar seguimiento y contexto en las respuestas."
+        },
+        "tours": {
+          "name": "Tours y paquetes",
+          "desc": "Carga tus tours y paquetes para que el agente los muestre y reserve."
+        },
+        "properties": {
+          "name": "Propiedades",
+          "desc": "Publica tus inmuebles para que el agente los muestre y agende visitas."
+        },
+        "courses": {
+          "name": "Cursos y programas",
+          "desc": "Configura tus cursos para que el agente informe e inscriba alumnos."
+        },
+        "insurance": {
+          "name": "Pólizas y coberturas",
+          "desc": "Define tus productos para que el agente explique coberturas y cotice."
+        },
+        "serviceRequests": {
+          "name": "Solicitudes de servicio",
+          "desc": "Gestiona pedidos de servicio para que el agente coordine y agende."
+        },
+        "photoSessions": {
+          "name": "Sesiones de fotos",
+          "desc": "Configura tus paquetes para que el agente informe y reserve sesiones."
+        },
+        "orders": {
+          "name": "Pedidos",
+          "desc": "Gestiona pedidos para que el agente informe estados y tome nuevos."
+        },
+        "crm": {
+          "name": "CRM y contactos"
+        },
+        "analytics": {
+          "name": "Analíticas"
+        },
+        "broadcast": {
+          "name": "Campañas"
+        },
+        "automation": {
+          "name": "Automatizaciones"
+        },
+        "inbox": {
+          "name": "Bandeja de entrada"
+        },
+        "team": {
+          "name": "Equipo"
+        }
       }
     },
     "step1Title": "Elige tu agente",
@@ -7075,6 +7190,36 @@
       "full": "Llena",
       "cancelled": "Cancelada",
       "finished": "Finalizada"
+    },
+    "catalog": {
+      "modalities": {
+        "inPerson": "Presencial",
+        "virtual": "Virtual",
+        "hybrid": "Híbrido"
+      },
+      "title": "Cursos",
+      "registeredCount": "{count} cursos registrados",
+      "newCourse": "Nuevo curso",
+      "emptyState": "Aún no hay cursos en el catálogo",
+      "stats": {
+        "total": "Total",
+        "active": "Activos",
+        "averagePrice": "Precio promedio"
+      },
+      "fields": {
+        "name": "Nombre",
+        "slug": "Slug (URL)",
+        "description": "Descripción",
+        "price": "Precio",
+        "durationHours": "Duración (horas)",
+        "brochureUrl": "URL del brochure",
+        "modality": "Modalidad"
+      },
+      "placeholders": {
+        "name": "Diplomado en Marketing Digital",
+        "slug": "diplomado-marketing (se genera automáticamente)",
+        "description": "Breve descripción del curso"
+      }
     }
   },
   "memberships": {
@@ -8148,5 +8293,47 @@
     "status_at_risk": "En riesgo",
     "status_breached": "Incumple",
     "status_unknown": "Sin datos"
+  },
+  "agentAnalytics": {
+    "title": "Analitica de agentes",
+    "subtitle": "Metricas ejecutivas y rendimiento",
+    "dateRangeTo": "a",
+    "tabs": {
+      "overview": "Resumen",
+      "agents": "Agentes",
+      "channels": "Canales",
+      "csat": "CSAT"
+    },
+    "kpi": {
+      "conversations": "Conversaciones",
+      "avgResponseTime": "Tiempo prom. de respuesta",
+      "resolutionRate": "Tasa de resolucion",
+      "averageCsat": "CSAT promedio"
+    },
+    "overview": {
+      "dailyVolumeTitle": "Volumen diario de conversaciones",
+      "noDataRange": "No hay datos para el rango seleccionado"
+    },
+    "agents": {
+      "colAgent": "Agente",
+      "colConversations": "Conversaciones",
+      "colResolved": "Resueltas",
+      "colResponseTime": "Tiempo de respuesta",
+      "colCsat": "CSAT",
+      "noData": "Sin datos de agentes",
+      "badgeAi": "IA",
+      "badgeHuman": "Humano"
+    },
+    "channels": {
+      "noData": "Sin datos de canales",
+      "percentOfTotal": "{percentage}% del total",
+      "conversations": "conversaciones"
+    },
+    "csat": {
+      "averageTitle": "CSAT promedio",
+      "responses": "{count, plural, one {# respuesta} other {# respuestas}}",
+      "distributionTitle": "Distribucion por estrellas",
+      "recentFeedbackTitle": "Comentarios recientes"
+    }
   }
 }

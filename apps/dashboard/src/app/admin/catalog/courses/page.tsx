@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 export default function CoursesPage() {
+    const t = useTranslations("courses.catalog");
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
@@ -58,7 +59,7 @@ export default function CoursesPage() {
         } finally { setSaving(false); }
     };
 
-    const modalityLabel: Record<string, string> = { presencial: "In-person", virtual: "Virtual", hibrido: "Hybrid" };
+    const modalityLabel: Record<string, string> = { presencial: t("modalities.inPerson"), virtual: t("modalities.virtual"), hibrido: t("modalities.hybrid") };
 
     return (
         <>
@@ -67,12 +68,12 @@ export default function CoursesPage() {
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
-                            <BookOpen size={28} className="text-primary" /> Course Catalog
+                            <BookOpen size={28} className="text-primary" /> {t("title")}
                         </h1>
-                        <p className="text-muted-foreground mt-1">{courses.length} registered courses</p>
+                        <p className="text-muted-foreground mt-1">{t("registeredCount", { count: courses.length })}</p>
                     </div>
                     <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer">
-                        <Plus size={18} /> New Course
+                        <Plus size={18} /> {t("newCourse")}
                     </button>
                 </div>
 
@@ -86,9 +87,9 @@ export default function CoursesPage() {
                 {/* Stats */}
                 <div className="grid grid-cols-3 gap-3 mb-6">
                     {[
-                        { icon: BookOpen, color: "#3498db", label: "Total", value: courses.length },
-                        { icon: Power, color: "#2ecc71", label: "Active", value: courses.filter(c => c.is_active).length },
-                        { icon: DollarSign, color: "#f1c40f", label: "Average Price", value: courses.length > 0 ? `$${(courses.reduce((s, c) => s + parseFloat(c.price || 0), 0) / courses.length).toFixed(0)}` : "$0" },
+                        { icon: BookOpen, color: "#3498db", label: t("stats.total"), value: courses.length },
+                        { icon: Power, color: "#2ecc71", label: t("stats.active"), value: courses.filter(c => c.is_active).length },
+                        { icon: DollarSign, color: "#f1c40f", label: t("stats.averagePrice"), value: courses.length > 0 ? `$${(courses.reduce((s, c) => s + parseFloat(c.price || 0), 0) / courses.length).toFixed(0)}` : "$0" },
                     ].map((s, i) => {
                         const Icon = s.icon;
                         return (
@@ -127,7 +128,7 @@ export default function CoursesPage() {
                         </div>
                     ))}
                     {courses.length === 0 && (
-                        <div className="text-center py-10 text-muted-foreground">No courses registered yet.</div>
+                        <div className="text-center py-10 text-muted-foreground">{t("emptyState")}</div>
                     )}
                 </div>
             </div>
@@ -137,16 +138,16 @@ export default function CoursesPage() {
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[480px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0">New Course</h2>
+                            <h2 className="text-xl font-semibold m-0">{t("newCourse")}</h2>
                             <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         {[
-                            { label: "Name", key: "name", placeholder: "e.g.: Digital Marketing Diploma" },
-                            { label: "Slug (URL)", key: "slug", placeholder: "marketing-digital" },
-                            { label: "Description", key: "description", placeholder: "Brief course description..." },
-                            { label: "Price", key: "price", placeholder: "2500000", type: "number" },
-                            { label: "Duration (hours)", key: "duration_hours", placeholder: "120", type: "number" },
-                            { label: "Brochure URL", key: "brochure_url", placeholder: "https://..." },
+                            { label: t("fields.name"), key: "name", placeholder: t("placeholders.name") },
+                            { label: t("fields.slug"), key: "slug", placeholder: t("placeholders.slug") },
+                            { label: t("fields.description"), key: "description", placeholder: t("placeholders.description") },
+                            { label: t("fields.price"), key: "price", placeholder: "2500000", type: "number" },
+                            { label: t("fields.durationHours"), key: "duration_hours", placeholder: "120", type: "number" },
+                            { label: t("fields.brochureUrl"), key: "brochure_url", placeholder: "https://..." },
                         ].map(f => (
                             <div key={f.key} className="mb-3">
                                 <label className="block text-xs font-semibold text-muted-foreground mb-1">{f.label}</label>
@@ -160,15 +161,15 @@ export default function CoursesPage() {
                             </div>
                         ))}
                         <div className="mb-3">
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Modality</label>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">{t("fields.modality")}</label>
                             <select value={form.modality} onChange={e => setForm(p => ({ ...p, modality: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border">
-                                <option value="presencial">In-person</option>
-                                <option value="virtual">Virtual</option>
-                                <option value="hibrido">Hybrid</option>
+                                <option value="presencial">{t("modalities.inPerson")}</option>
+                                <option value="virtual">{t("modalities.virtual")}</option>
+                                <option value="hibrido">{t("modalities.hybrid")}</option>
                             </select>
                         </div>
                         <div className="flex gap-2.5 mt-5">
-                            <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancel</button>
+                            <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">{tc("cancel")}</button>
                             <button onClick={handleCreate} disabled={saving || !form.name} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : tc("create")}</button>
                         </div>
                     </div>

@@ -952,10 +952,10 @@ export default function ContactsPage() {
                                 <UploadCloud size={22} />
                             </div>
                             <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
-                                Arrastra tu archivo de Excel (.xlsx, .xls) o CSV aquí
+                                {t('importModal.dropzoneTitle')}
                             </span>
                             <span className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-2 font-normal">
-                                O haz clic para buscar en tus archivos
+                                {t('importModal.dropzoneHint')}
                             </span>
                         </div>
 
@@ -988,20 +988,20 @@ export default function ContactsPage() {
                                     
                                     <div className="max-h-[320px] overflow-y-auto pr-1 mt-3 space-y-2.5 scrollbar-thin scrollbar-thumb-neutral-200 dark:scrollbar-thumb-neutral-800">
                                         <div className="text-[10px] uppercase font-bold text-neutral-400 dark:text-neutral-500 tracking-wider mb-2">
-                                            Columnas Soportadas y Sinónimos
+                                            {t('importModal.columnsHeader')}
                                         </div>
                                         
                                         {/* Phone Column - Required */}
                                         <div className="p-3 rounded-xl border border-indigo-100 dark:border-indigo-950/40 bg-indigo-50/20 dark:bg-indigo-950/5 border-l-4 border-l-indigo-500">
                                             <div className="flex items-center justify-between mb-1">
-                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">📞 Teléfono / Celular</span>
-                                                <span className="text-[9px] px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold rounded">REQUERIDO</span>
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">📞 {t('importModal.col.phoneLabel')}</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold rounded">{t('importModal.required')}</span>
                                             </div>
                                             <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
-                                                Identificador único de contacto. Se limpia de espacios y normaliza automáticamente al estándar E.164.
+                                                {t('importModal.col.phoneDesc')}
                                             </p>
                                             <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
-                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> phone, telefono, celular, móvil, whatsapp, teléfono, movil.
+                                                <span className="font-semibold text-neutral-500">{t('importModal.synonyms')}</span> phone, telefono, celular, móvil, whatsapp, teléfono, movil.
                                             </div>
                                             <div className="mt-1 text-[10px] font-mono bg-indigo-100/50 dark:bg-indigo-950/30 px-1.5 py-0.5 rounded inline-block text-indigo-600 dark:text-indigo-400 font-bold">+573001234567</div>
                                         </div>
@@ -1009,14 +1009,14 @@ export default function ContactsPage() {
                                         {/* Name Columns */}
                                         <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
                                             <div className="flex items-center justify-between mb-1">
-                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">👤 Nombres y Apellidos</span>
-                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">👤 {t('importModal.col.nameLabel')}</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">{t('importModal.optional')}</span>
                                             </div>
                                             <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
-                                                Primer nombre y apellidos para el perfil del contacto.
+                                                {t('importModal.col.nameDesc')}
                                             </p>
                                             <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
-                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> first_name, nombre, nombres, last_name, apellido, apellidos.
+                                                <span className="font-semibold text-neutral-500">{t('importModal.synonyms')}</span> first_name, nombre, nombres, last_name, apellido, apellidos.
                                             </div>
                                             <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">Juan Pérez</div>
                                         </div>
@@ -1024,14 +1024,14 @@ export default function ContactsPage() {
                                         {/* Stage Column */}
                                         <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
                                             <div className="flex items-center justify-between mb-1">
-                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">⚡ Etapa / Estado CRM</span>
-                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">⚡ {t('importModal.col.stageLabel')}</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">{t('importModal.optional')}</span>
                                             </div>
                                             <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
-                                                Etapas válidas: <span className="font-semibold text-indigo-500 dark:text-indigo-400">nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado</span>.
+                                                {t('importModal.col.stageDesc')} <span className="font-semibold text-indigo-500 dark:text-indigo-400">nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado</span>.
                                             </p>
                                             <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
-                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> stage, etapa, estado, fase.
+                                                <span className="font-semibold text-neutral-500">{t('importModal.synonyms')}</span> stage, etapa, estado, fase.
                                             </div>
                                             <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">caliente</div>
                                         </div>
@@ -1039,14 +1039,14 @@ export default function ContactsPage() {
                                         {/* Company Column */}
                                         <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
                                             <div className="flex items-center justify-between mb-1">
-                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">🏢 Empresa / Compañía</span>
-                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">🏢 {t('importModal.col.companyLabel')}</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">{t('importModal.optional')}</span>
                                             </div>
                                             <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
-                                                Nombre de la organización vinculada al contacto. Se creará automáticamente en el sistema si no existe.
+                                                {t('importModal.col.companyDesc')}
                                             </p>
                                             <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
-                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> company, empresa, compañía, compania.
+                                                <span className="font-semibold text-neutral-500">{t('importModal.synonyms')}</span> company, empresa, compañía, compania.
                                             </div>
                                             <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">Acme S.A.</div>
                                         </div>
@@ -1054,14 +1054,14 @@ export default function ContactsPage() {
                                         {/* Email Column */}
                                         <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
                                             <div className="flex items-center justify-between mb-1">
-                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">📧 Correo Electrónico</span>
-                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">📧 {t('importModal.col.emailLabel')}</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">{t('importModal.optional')}</span>
                                             </div>
                                             <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
-                                                Dirección de correo electrónico única y válida del lead.
+                                                {t('importModal.col.emailDesc')}
                                             </p>
                                             <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
-                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> email, correo, correo_electronico, correo electrónico, mail.
+                                                <span className="font-semibold text-neutral-500">{t('importModal.synonyms')}</span> email, correo, correo_electronico, correo electrónico, mail.
                                             </div>
                                             <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">juan@perez.com</div>
                                         </div>
@@ -1069,14 +1069,14 @@ export default function ContactsPage() {
                                         {/* VIP Column */}
                                         <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
                                             <div className="flex items-center justify-between mb-1">
-                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">👑 Marcar como VIP</span>
-                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">👑 {t('importModal.col.vipLabel')}</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">{t('importModal.optional')}</span>
                                             </div>
                                             <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
-                                                Etiquetar como cliente preferente. Valores admitidos: <span className="font-mono">sí, no, verdadero, falso, true, false, 1, 0</span>.
+                                                {t('importModal.col.vipDesc')} <span className="font-mono">sí, no, verdadero, falso, true, false, 1, 0</span>.
                                             </p>
                                             <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
-                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> is_vip, vip, es_vip.
+                                                <span className="font-semibold text-neutral-500">{t('importModal.synonyms')}</span> is_vip, vip, es_vip.
                                             </div>
                                             <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">sí</div>
                                         </div>
@@ -1084,14 +1084,14 @@ export default function ContactsPage() {
                                         {/* Preferred Channel Column */}
                                         <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
                                             <div className="flex items-center justify-between mb-1">
-                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">💬 Canal de Contacto</span>
-                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">💬 {t('importModal.col.channelLabel')}</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">{t('importModal.optional')}</span>
                                             </div>
                                             <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
-                                                Canal de comunicación de preferencia: <span className="font-mono">whatsapp, instagram, messenger, telegram, sms</span>.
+                                                {t('importModal.col.channelDesc')} <span className="font-mono">whatsapp, instagram, messenger, telegram, sms</span>.
                                             </p>
                                             <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
-                                                <span className="font-semibold text-neutral-500">Sinónimos:</span> preferred_contact, preferred_channel, contacto_preferido, canal_preferido.
+                                                <span className="font-semibold text-neutral-500">{t('importModal.synonyms')}</span> preferred_contact, preferred_channel, contacto_preferido, canal_preferido.
                                             </div>
                                             <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">whatsapp</div>
                                         </div>
@@ -1099,14 +1099,14 @@ export default function ContactsPage() {
                                         {/* Marketing UTMs */}
                                         <div className="p-3 rounded-xl border border-neutral-200/50 dark:border-neutral-800/60 bg-white dark:bg-neutral-900 border-l-4 border-l-neutral-400">
                                             <div className="flex items-center justify-between mb-1">
-                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">📈 Atributos de Campañas (UTM)</span>
-                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">OPCIONAL</span>
+                                                <span className="font-bold text-neutral-800 dark:text-neutral-200">📈 {t('importModal.col.utmLabel')}</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">{t('importModal.optional')}</span>
                                             </div>
                                             <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
-                                                Atributos estándar para tracking de campañas de publicidad.
+                                                {t('importModal.col.utmDesc')}
                                             </p>
                                             <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
-                                                <span className="font-semibold text-neutral-500">Campos:</span> utm_source, utm_medium, utm_campaign.
+                                                <span className="font-semibold text-neutral-500">{t('importModal.fields')}</span> utm_source, utm_medium, utm_campaign.
                                             </div>
                                             <div className="mt-1 text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800/80 px-1.5 py-0.5 rounded inline-block text-neutral-600 dark:text-neutral-300">facebook / cpc / cybermonday</div>
                                         </div>
@@ -1128,7 +1128,7 @@ export default function ContactsPage() {
                         <div className="flex items-center my-4">
                             <div className="flex-grow border-t border-neutral-100 dark:border-neutral-800" />
                             <span className="flex-shrink mx-3.5 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider select-none">
-                                O copia y pega tus celdas directamente
+                                {t('importModal.pasteDivider')}
                             </span>
                             <div className="flex-grow border-t border-neutral-100 dark:border-neutral-800" />
                         </div>
@@ -1150,11 +1150,11 @@ export default function ContactsPage() {
                             )}>
                                 {importResult.success ? (
                                     <div>
-                                        <strong>¡Importación completada con éxito!</strong>
+                                        <strong>{t('importModal.successTitle')}</strong>
                                         <div className="mt-1.5 text-neutral-600 dark:text-neutral-300 space-y-0.5">
                                             <div>✅ {t('importModal.imported')}: {importResult.imported ?? 0}</div>
                                             <div>⏭️ {t('importModal.skipped')}: {importResult.skipped ?? 0}</div>
-                                            <div>⚠️ {(importResult.errors && importResult.errors.length) || 0} errores encontrados.</div>
+                                            <div>⚠️ {t('importModal.errorsFound', { count: (importResult.errors && importResult.errors.length) || 0 })}</div>
                                         </div>
                                         {importResult.errors && importResult.errors.length > 0 && (
                                             <ul className="mt-2.5 list-disc pl-4 text-[10px] text-red-500 space-y-1">
@@ -1162,7 +1162,7 @@ export default function ContactsPage() {
                                                     <li key={idx}>{err}</li>
                                                 ))}
                                                 {importResult.errors.length > 5 && (
-                                                    <li className="list-none font-semibold text-neutral-400 mt-1">... y {importResult.errors.length - 5} errores más.</li>
+                                                    <li className="list-none font-semibold text-neutral-400 mt-1">{t('importModal.moreErrors', { count: importResult.errors.length - 5 })}</li>
                                                 )}
                                             </ul>
                                         )}

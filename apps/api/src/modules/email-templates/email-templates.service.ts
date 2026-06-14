@@ -12,12 +12,17 @@ export interface EmailTemplate {
     bodyJson: Record<string, any>;
     variables: string[];
     isActive: boolean;
+    /** BCP-47-ish short code (es/en/pt/fr). Defaults to 'es'. */
+    language: string;
     createdAt: string;
     updatedAt: string;
 }
 
-// Default templates seeded on first access
-const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'createdAt' | 'updatedAt'>[] = [
+// Default templates seeded on first access. These are the canonical Spanish
+// (language = 'es') templates — content is NOT translated here. Translations
+// live in TEMPLATE_TRANSLATIONS (see seedDefaults) and are seeded as separate
+// (slug, language) rows once provided.
+const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'language' | 'createdAt' | 'updatedAt'>[] = [
     {
         name: 'Confirmacion de cita',
         slug: 'appointment_confirmation',
@@ -993,8 +998,9 @@ export class EmailTemplatesService {
      * List all templates for a tenant (seeds defaults on first call)
      */
     async list(schemaName: string): Promise<EmailTemplate[]> {
+        await this.ensureTemplateLanguage(schemaName);
         const rows = await this.prisma.executeInTenantSchema(schemaName,
-            `SELECT id, name, slug, subject, body_html, body_json, variables, is_active, created_at, updated_at
+            `SELECT id, name, slug, subject, body_html, body_json, variables, is_active, language, created_at, updated_at
              FROM email_templates ORDER BY created_at ASC`,
             [],
         );
@@ -1008,8 +1014,9 @@ export class EmailTemplatesService {
     }
 
     async getById(schemaName: string, templateId: string): Promise<EmailTemplate> {
+        await this.ensureTemplateLanguage(schemaName);
         const rows = await this.prisma.executeInTenantSchema(schemaName,
-            `SELECT id, name, slug, subject, body_html, body_json, variables, is_active, created_at, updated_at
+            `SELECT id, name, slug, subject, body_html, body_json, variables, is_active, language, created_at, updated_at
              FROM email_templates WHERE id = $1::uuid`,
             [templateId],
         );
@@ -1018,27 +1025,57 @@ export class EmailTemplatesService {
         return this.mapRow(row);
     }
 
-    async getBySlug(schemaName: string, slug: string): Promise<EmailTemplate | null> {
+    async getBySlug(schemaName: string, slug: string, lang: string = 'es'): Promise<EmailTemplate | null> {
+        await this.ensureTemplateLanguage(schemaName);
+
+        // 1) Preferred language
         const rows = await this.prisma.executeInTenantSchema(schemaName,
-            `SELECT id, name, slug, subject, body_html, body_json, variables, is_active, created_at, updated_at
-             FROM email_templates WHERE slug = $1 AND is_active = true`,
-            [slug],
+            `SELECT id, name, slug, subject, body_html, body_json, variables, is_active, language, created_at, updated_at
+             FROM email_templates WHERE slug = $1 AND language = $2 AND is_active = true`,
+            [slug, lang],
         );
         const row = (rows as any[])[0];
-        return row ? this.mapRow(row) : null;
+        if (row) return this.mapRow(row);
+
+        // 2) Fallback to Spanish (the canonical base language) when the
+        //    requested language has no row yet. ES behaviour is unchanged.
+        if (lang !== 'es') {
+            const esRows = await this.prisma.executeInTenantSchema(schemaName,
+                `SELECT id, name, slug, subject, body_html, body_json, variables, is_active, language, created_at, updated_at
+                 FROM email_templates WHERE slug = $1 AND language = 'es' AND is_active = true`,
+                [slug],
+            );
+            const esRow = (esRows as any[])[0];
+            if (esRow) return this.mapRow(esRow);
+        }
+
+        return null;
     }
 
     async create(schemaName: string, data: {
         name: string; slug: string; subject: string;
-        bodyHtml: string; bodyJson?: any; variables?: string[];
+        bodyHtml: string; bodyJson?: any; variables?: string[]; language?: string;
     }): Promise<EmailTemplate> {
+        await this.ensureTemplateLanguage(schemaName);
         const id = randomUUID();
+        const language = data.language || 'es';
         await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO email_templates (id, name, slug, subject, body_html, body_json, variables, created_at, updated_at)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7, NOW(), NOW())`,
-            [id, data.name, data.slug, data.subject, data.bodyHtml, JSON.stringify(data.bodyJson || {}), data.variables || []],
+            `INSERT INTO email_templates (id, name, slug, subject, body_html, body_json, variables, language, created_at, updated_at)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7, $8, NOW(), NOW())
+             ON CONFLICT (slug, language) DO UPDATE SET name = EXCLUDED.name, subject = EXCLUDED.subject,
+               body_html = EXCLUDED.body_html, body_json = EXCLUDED.body_json, variables = EXCLUDED.variables, updated_at = NOW()`,
+            [id, data.name, data.slug, data.subject, data.bodyHtml, JSON.stringify(data.bodyJson || {}), data.variables || [], language],
         );
-        return this.getById(schemaName, id);
+        // The row that now owns (slug, language) may pre-exist (ON CONFLICT update
+        // keeps the original id), so resolve by the unique (slug, language) pair
+        // — not the freshly generated id, which may not have been inserted.
+        const rows = await this.prisma.executeInTenantSchema(schemaName,
+            `SELECT id, name, slug, subject, body_html, body_json, variables, is_active, language, created_at, updated_at
+             FROM email_templates WHERE slug = $1 AND language = $2`,
+            [data.slug, language],
+        );
+        const row = (rows as any[])[0];
+        return row ? this.mapRow(row) : this.getById(schemaName, id);
     }
 
     async update(schemaName: string, templateId: string, data: {
@@ -1080,11 +1117,12 @@ export class EmailTemplatesService {
         slug: string,
         to: string,
         variables: Record<string, string>,
+        lang: string = 'es',
     ): Promise<boolean> {
-        let template = await this.getBySlug(schemaName, slug);
+        let template = await this.getBySlug(schemaName, slug, lang);
         if (!template) {
             await this.seedDefaults(schemaName);
-            template = await this.getBySlug(schemaName, slug);
+            template = await this.getBySlug(schemaName, slug, lang);
         }
         if (!template) {
             this.logger.warn(`Template "${slug}" not found after seeding — email not sent`);
@@ -1254,15 +1292,58 @@ export class EmailTemplatesService {
 
     private readonly platformRefreshed = new Set<string>();
 
+    // Per-schema flag so the lazy multi-language migration runs at most once per
+    // process lifetime per tenant. Each statement is idempotent regardless, so a
+    // cold cache (e.g. after restart) is harmless — just a few cheap no-ops.
+    private readonly languageMigrated = new Set<string>();
+
+    /**
+     * Lazy, idempotent migration that makes `email_templates` multi-language.
+     * Adds a `language` column (default 'es') and swaps the single-column UNIQUE
+     * index on (slug) for a composite UNIQUE on (slug, language).
+     *
+     * Existing rows fall to language='es' via the column default, so (slug,'es')
+     * stays unique and current Spanish behaviour is completely unchanged.
+     *
+     * Each statement runs in its OWN executeInTenantSchema call — PgBouncer is in
+     * transaction mode, so multi-statement DDL in a single call is not safe.
+     */
+    private async ensureTemplateLanguage(schemaName: string): Promise<void> {
+        if (this.languageMigrated.has(schemaName)) return;
+        try {
+            // (a) Add the column (idempotent).
+            await this.prisma.executeInTenantSchema(schemaName,
+                `ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'es'`,
+                [],
+            );
+            // (b) Drop the legacy single-column unique index.
+            await this.prisma.executeInTenantSchema(schemaName,
+                `DROP INDEX IF EXISTS et_slug_idx`,
+                [],
+            );
+            // (c) Create the composite unique index (slug, language).
+            await this.prisma.executeInTenantSchema(schemaName,
+                `CREATE UNIQUE INDEX IF NOT EXISTS et_slug_lang_idx ON email_templates (slug, language)`,
+                [],
+            );
+            this.languageMigrated.add(schemaName);
+        } catch (err: any) {
+            // Do not poison the cache on failure — let the next call retry. The
+            // statements are individually idempotent so partial application is fine.
+            this.logger.warn(`ensureTemplateLanguage failed for ${schemaName}: ${err?.message}`);
+        }
+    }
+
     async refreshPlatformTemplates(schemaName: string): Promise<void> {
         if (this.platformRefreshed.has(schemaName)) return;
+        await this.ensureTemplateLanguage(schemaName);
         const billingTpls = DEFAULT_TEMPLATES.filter(t => t.slug.startsWith('billing_'));
         for (const tpl of billingTpls) {
             const id = randomUUID();
             await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO email_templates (id, name, slug, subject, body_html, body_json, variables, is_active, created_at, updated_at)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7, $8, NOW(), NOW())
-                 ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, subject = EXCLUDED.subject,
+                `INSERT INTO email_templates (id, name, slug, subject, body_html, body_json, variables, is_active, language, created_at, updated_at)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7, $8, 'es', NOW(), NOW())
+                 ON CONFLICT (slug, language) DO UPDATE SET name = EXCLUDED.name, subject = EXCLUDED.subject,
                    body_html = EXCLUDED.body_html, variables = EXCLUDED.variables, updated_at = NOW()`,
                 [id, tpl.name, tpl.slug, tpl.subject, tpl.bodyHtml, JSON.stringify(tpl.bodyJson), tpl.variables, tpl.isActive],
             );
@@ -1272,20 +1353,44 @@ export class EmailTemplatesService {
 
     private async seedDefaults(schemaName: string): Promise<void> {
         this.logger.log(`Seeding default email templates for ${schemaName}`);
+        await this.ensureTemplateLanguage(schemaName);
+
+        // Canonical Spanish templates (language = 'es'). Content unchanged.
         for (const tpl of DEFAULT_TEMPLATES) {
             const id = randomUUID();
             const isBilling = tpl.slug.startsWith('billing_');
             const conflict = isBilling
-                ? `ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, subject = EXCLUDED.subject,
+                ? `ON CONFLICT (slug, language) DO UPDATE SET name = EXCLUDED.name, subject = EXCLUDED.subject,
                      body_html = EXCLUDED.body_html, variables = EXCLUDED.variables, updated_at = NOW()`
-                : `ON CONFLICT (slug) DO NOTHING`;
+                : `ON CONFLICT (slug, language) DO NOTHING`;
             await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO email_templates (id, name, slug, subject, body_html, body_json, variables, is_active, created_at, updated_at)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7, $8, NOW(), NOW())
+                `INSERT INTO email_templates (id, name, slug, subject, body_html, body_json, variables, is_active, language, created_at, updated_at)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7, $8, 'es', NOW(), NOW())
                  ${conflict}`,
                 [id, tpl.name, tpl.slug, tpl.subject, tpl.bodyHtml, JSON.stringify(tpl.bodyJson), tpl.variables, tpl.isActive],
             );
         }
+
+        // TODO(i18n): seed en/pt/fr rows once translated content exists.
+        // Drop a `TEMPLATE_TRANSLATIONS: Record<lang, Record<slug, {subject, bodyHtml}>>`
+        // map at module scope and uncomment the loop below. Until then ONLY 'es'
+        // rows are seeded and getBySlug falls back to 'es' for other languages, so
+        // no email is ever missing.
+        //
+        // for (const [lang, bySlug] of Object.entries(TEMPLATE_TRANSLATIONS)) {
+        //     for (const tpl of DEFAULT_TEMPLATES) {
+        //         const tr = bySlug[tpl.slug];
+        //         if (!tr) continue; // no translation yet → 'es' fallback covers it
+        //         const id = randomUUID();
+        //         await this.prisma.executeInTenantSchema(schemaName,
+        //             `INSERT INTO email_templates (id, name, slug, subject, body_html, body_json, variables, is_active, language, created_at, updated_at)
+        //              VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, NOW(), NOW())
+        //              ON CONFLICT (slug, language) DO UPDATE SET name = EXCLUDED.name, subject = EXCLUDED.subject,
+        //                body_html = EXCLUDED.body_html, variables = EXCLUDED.variables, updated_at = NOW()`,
+        //             [id, tpl.name, tpl.slug, tr.subject, tr.bodyHtml, JSON.stringify(tpl.bodyJson), tpl.variables, tpl.isActive, lang],
+        //         );
+        //     }
+        // }
     }
 
     private mapRow(row: any): EmailTemplate {
@@ -1298,6 +1403,7 @@ export class EmailTemplatesService {
             bodyJson: row.body_json || {},
             variables: row.variables || [],
             isActive: row.is_active,
+            language: row.language || 'es',
             createdAt: row.created_at,
             updatedAt: row.updated_at,
         };

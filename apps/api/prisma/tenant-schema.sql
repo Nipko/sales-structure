@@ -1235,10 +1235,15 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."email_templates" (
     "body_json" JSONB DEFAULT '{}',
     "variables" TEXT[] DEFAULT '{}',
     "is_active" BOOLEAN DEFAULT true,
+    "language" VARCHAR(10) DEFAULT 'es',
     "created_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "et_slug_idx" ON "{{SCHEMA_NAME}}"."email_templates" ("slug");
+-- Multi-language: templates are unique per (slug, language). Spanish ('es') is
+-- the canonical base; other languages fall back to 'es' at read time.
+ALTER TABLE "{{SCHEMA_NAME}}"."email_templates" ADD COLUMN IF NOT EXISTS "language" VARCHAR(10) DEFAULT 'es';
+DROP INDEX IF EXISTS "{{SCHEMA_NAME}}"."et_slug_idx";
+CREATE UNIQUE INDEX IF NOT EXISTS "et_slug_lang_idx" ON "{{SCHEMA_NAME}}"."email_templates" ("slug", "language");
 ALTER TABLE "{{SCHEMA_NAME}}"."email_templates" ADD COLUMN IF NOT EXISTS "subject" VARCHAR(500);
 ALTER TABLE "{{SCHEMA_NAME}}"."email_templates" ADD COLUMN IF NOT EXISTS "body_html" TEXT;
 ALTER TABLE "{{SCHEMA_NAME}}"."email_templates" ADD COLUMN IF NOT EXISTS "body_json" JSONB DEFAULT '{}';

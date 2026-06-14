@@ -280,6 +280,9 @@ export class PropertiesService {
                 }
 
                 if (emailConfirmationsEnabled) {
+                    // TODO(i18n): this is a guest-facing email — pass the guest's
+                    // detected/preferred language as the trailing `lang` arg once
+                    // it's captured. Defaults to 'es' (unchanged behaviour).
                     await this.emailTemplates.renderAndSend(schemaName, 'property_booking_confirmation', data.guestEmail, {
                         guest_name: data.guestName || 'Huésped',
                         property_name: property?.name || '',

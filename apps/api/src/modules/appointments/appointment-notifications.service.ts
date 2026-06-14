@@ -84,13 +84,18 @@ export class AppointmentNotificationsService {
                     }
 
                     if (emailConfirmationsEnabled) {
+                        // Resolve the tenant's configured language for the template
+                        // (falls back to 'es'). Per-customer detected-language is a
+                        // future improvement — TODO: thread the conversation's
+                        // detected language through to here when available.
+                        const lang = await this.getTenantLanguage(tenantId);
                         await this.emailTemplates.renderAndSend(schemaName, 'appointment_confirmation_email', contact.email, {
                             customer_name: contact.name || 'Cliente',
                             service_name: appointment.serviceName,
                             appointment_date: new Date(appointment.startAt).toLocaleDateString('es-CO'),
                             appointment_time: new Date(appointment.startAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
                             location: appointment.location || '',
-                        });
+                        }, lang);
                     }
                 }
             } catch { /* non-critical — channel notification already sent */ }
@@ -154,6 +159,23 @@ export class AppointmentNotificationsService {
             SELECT id FROM tenants WHERE schema_name = ${schemaName} LIMIT 1
         `;
         return rows?.[0]?.id || null;
+    }
+
+    /**
+     * Tenant's configured language as a short code (es/en/pt/fr), falling back
+     * to 'es'. `tenant.language` is stored as a full locale (e.g. 'es-CO'), so
+     * we strip the region — matching the convention in persona.service.
+     */
+    private async getTenantLanguage(tenantId: string): Promise<string> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { language: true },
+            });
+            return (tenant?.language || 'es-CO').split('-')[0];
+        } catch {
+            return 'es';
+        }
     }
 
     private async sendMessage(

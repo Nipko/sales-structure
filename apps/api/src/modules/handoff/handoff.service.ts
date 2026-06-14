@@ -123,6 +123,11 @@ export class HandoffService {
         reason: string,
     ): Promise<HandoffResult> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        // Tenant language drives the email template variant (fallback 'es').
+        // These are agent/admin-facing notifications, so tenant language is the
+        // right choice. TODO(i18n): for customer-facing emails use the
+        // conversation's detected language instead.
+        const lang = await this.getTenantLanguage(tenantId);
 
         // 1. Build AI summary from recent messages
         const recentMessages = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -242,7 +247,7 @@ export class HandoffService {
                     reason,
                     last_message: lastMessage,
                     inbox_url: 'https://admin.parallly-chat.cloud/admin/inbox',
-                });
+                }, lang);
                 if (!sent) throw new Error('Template not found or inactive');
             } catch (e: any) {
                 // Fallback to direct email if template is not yet seeded
@@ -305,7 +310,7 @@ export class HandoffService {
                         reason,
                         last_message: lastMessage,
                         inbox_url: 'https://admin.parallly-chat.cloud/admin/inbox',
-                    });
+                    }, lang);
                     if (!sent) throw new Error('Template not found or inactive');
                 } catch (e: any) {
                     // Fallback to direct email
@@ -365,6 +370,23 @@ export class HandoffService {
         this.eventEmitter.emit('handoff.completed', { tenantId, conversationId });
 
         this.logger.log(`Handoff completed for conversation ${conversationId}, returned to AI`);
+    }
+
+    /**
+     * Tenant's configured language as a short code (es/en/pt/fr), falling back
+     * to 'es'. `tenant.language` is stored as a full locale (e.g. 'es-CO'), so
+     * we strip the region — matching the convention in persona.service.
+     */
+    private async getTenantLanguage(tenantId: string): Promise<string> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { language: true },
+            });
+            return (tenant?.language || 'es-CO').split('-')[0];
+        } catch {
+            return 'es';
+        }
     }
 
     /**

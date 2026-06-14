@@ -339,6 +339,9 @@ export class ToursService {
                 }
 
                 if (emailConfirmationsEnabled) {
+                    // TODO(i18n): this is a guest-facing email — pass the guest's
+                    // detected/preferred language as the trailing `lang` arg once
+                    // it's captured. Defaults to 'es' (unchanged behaviour).
                     await this.emailTemplates.renderAndSend(schemaName, 'tour_booking_confirmation', guestEmail, {
                         guest_name: data.guestName || 'Huésped',
                         package_name: pkg.name,

@@ -67,7 +67,21 @@ const HISTORY_MAX_TOKENS = 8_000;               // cap: ~32k chars (~2.6× the o
 const CHARS_PER_TOKEN = 4;                       // repo-wide token estimator (chars/4)
 // Returned when the LLM pipeline errors out. Sent to the customer but NOT counted
 // as a successful AI response (no monthly-quota increment, no message_sent event).
-const ERROR_FALLBACK_MSG = 'Disculpa, tuve un problema procesando tu mensaje. ¿Podrías repetirlo?';
+// i18n'd like HANDOFF_MSG — errorFallbackText(lang) picks the customer's language.
+// CRITICAL: the gating checks (quota at ~534, draft-mode at ~549, RAG-grounding at
+// ~2177) must recognise this sentinel in ANY language, so they test membership via
+// isErrorFallback() instead of a single-string === comparison.
+const ERROR_FALLBACK_MSG: Record<string, string> = {
+    es: 'Disculpa, tuve un problema procesando tu mensaje. ¿Podrías repetirlo?',
+    en: 'Sorry, I ran into a problem processing your message. Could you say that again?',
+    pt: 'Desculpe, tive um problema ao processar sua mensagem. Você poderia repetir?',
+    fr: "Désolé, j'ai rencontré un problème en traitant votre message. Pourriez-vous le répéter ?",
+};
+const errorFallbackText = (lang?: string) =>
+    ERROR_FALLBACK_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || ERROR_FALLBACK_MSG.es;
+const ERROR_FALLBACK_VALUES = new Set(Object.values(ERROR_FALLBACK_MSG));
+/** True when a pipeline result IS the error fallback (in any supported language). */
+const isErrorFallback = (text?: string | null): boolean => !!text && ERROR_FALLBACK_VALUES.has(text);
 
 // Handoff messages, localized — deterministic layer (not persona copy) so it must be
 // i18n'd here. Keyed by 2-letter language; falls back to Spanish.
@@ -103,6 +117,46 @@ const HANDOFF_MSG: Record<string, {
     },
 };
 const handoffText = (lang?: string) => HANDOFF_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || HANDOFF_MSG.es;
+
+// Deterministic replies to appointment reminder / attendance buttons (not persona
+// copy) — i18n'd here like HANDOFF_MSG. Keyed by 2-letter language; falls back to es.
+const APPOINTMENT_REPLIES: Record<string, {
+    confirmed: (service: string) => string;
+    rescheduleLink: (link: string) => string;
+    rescheduleNoLink: string;
+    attendanceThanks: (service: string) => string;
+    noShow: (service: string) => string;
+}> = {
+    es: {
+        confirmed: s => `¡Perfecto! Tu cita de *${s}* ha sido confirmada. ¡Te esperamos!`,
+        rescheduleLink: l => `¡Claro! Puedes reagendar tu cita aquí: ${l}\n\nSi prefieres, dime el día y hora que te convenga y te ayudo.`,
+        rescheduleNoLink: `¡Claro! Dime el día y hora que te convenga y te ayudo a reagendar tu cita.`,
+        attendanceThanks: s => `¡Excelente! Gracias por confirmar tu asistencia a *${s}*. ¿Hay algo más en lo que pueda ayudarte?`,
+        noShow: s => `Entendido. Lamentamos que no hayas podido asistir a *${s}*. ¿Te gustaría agendar una nueva cita?`,
+    },
+    en: {
+        confirmed: s => `Perfect! Your *${s}* appointment is confirmed. We look forward to seeing you!`,
+        rescheduleLink: l => `Sure! You can reschedule your appointment here: ${l}\n\nOr just tell me the day and time that work for you and I'll help.`,
+        rescheduleNoLink: `Sure! Just tell me the day and time that work for you and I'll help you reschedule.`,
+        attendanceThanks: s => `Great! Thanks for confirming you attended *${s}*. Is there anything else I can help you with?`,
+        noShow: s => `Got it. Sorry you couldn't make it to *${s}*. Would you like to book a new appointment?`,
+    },
+    pt: {
+        confirmed: s => `Perfeito! Seu agendamento de *${s}* foi confirmado. Esperamos por você!`,
+        rescheduleLink: l => `Claro! Você pode remarcar seu agendamento aqui: ${l}\n\nOu me diga o dia e horário que preferir e eu ajudo.`,
+        rescheduleNoLink: `Claro! Me diga o dia e horário que preferir e eu ajudo a remarcar seu agendamento.`,
+        attendanceThanks: s => `Excelente! Obrigado por confirmar sua presença em *${s}*. Posso ajudar em algo mais?`,
+        noShow: s => `Entendido. Lamentamos que não tenha podido comparecer a *${s}*. Gostaria de agendar um novo horário?`,
+    },
+    fr: {
+        confirmed: s => `Parfait ! Votre rendez-vous *${s}* est confirmé. Nous avons hâte de vous voir !`,
+        rescheduleLink: l => `Bien sûr ! Vous pouvez reprogrammer votre rendez-vous ici : ${l}\n\nOu dites-moi le jour et l'heure qui vous conviennent et je vous aide.`,
+        rescheduleNoLink: `Bien sûr ! Dites-moi le jour et l'heure qui vous conviennent et je vous aide à reprogrammer votre rendez-vous.`,
+        attendanceThanks: s => `Excellent ! Merci d'avoir confirmé votre présence à *${s}*. Puis-je vous aider pour autre chose ?`,
+        noShow: s => `Entendu. Nous sommes désolés que vous n'ayez pas pu venir à *${s}*. Souhaitez-vous prendre un nouveau rendez-vous ?`,
+    },
+};
+const apptReplies = (lang?: string) => APPOINTMENT_REPLIES[(lang || 'es').slice(0, 2).toLowerCase()] || APPOINTMENT_REPLIES.es;
 // Per-tool execution ceiling — a single tool (esp. an external MCP server) must
 // never hang the whole conversational turn.
 const TOOL_TIMEOUT_MS = 25_000;
@@ -353,6 +407,11 @@ export class ConversationsService {
         const inboundMessageId = await this.saveMessage(tenantId, conversation.id, normalizedMsg);
         this.logger.log(`[Pipeline] Message saved for conversation ${conversation.id}`);
 
+        // Customer language for the deterministic appointment-button replies below:
+        // the language detected on prior turns (persisted on the conversation), then
+        // the tenant default, then Spanish.
+        const apptReplyLang = (conversation.metadata as any)?.detectedLanguage || config.language || 'es';
+
         // 4.2 Check if this is a response to an appointment reminder template (Confirm/Reschedule buttons)
         if (content?.text) {
             const btnText = content.text.toLowerCase().trim();
@@ -376,7 +435,7 @@ export class ConversationsService {
                                 [upcomingAppt[0].id],
                             );
                             this.logger.log(`[Reminder] Client confirmed appointment ${upcomingAppt[0].id}`);
-                            const confirmMsg = `¡Perfecto! Tu cita de *${upcomingAppt[0].service_name}* ha sido confirmada. ¡Te esperamos!`;
+                            const confirmMsg = apptReplies(apptReplyLang).confirmed(upcomingAppt[0].service_name);
                             await this.sendResponse(tenantId, confirmMsg, normalizedMsg);
                             await this.saveAiMessage(tenantId, conversation.id, confirmMsg, normalizedMsg.channelType);
                         } else {
@@ -387,9 +446,8 @@ export class ConversationsService {
                             const slug = tenantRows?.[0]?.slug;
                             const dashboardUrl = process.env.NEXT_PUBLIC_DASHBOARD_URL || 'https://admin.parallly-chat.cloud';
                             const bookingLink = slug ? `${dashboardUrl}/book/${slug}` : '';
-                            const rescheduleMsg = bookingLink
-                                ? `¡Claro! Puedes reagendar tu cita aquí: ${bookingLink}\n\nSi prefieres, dime el día y hora que te convenga y te ayudo.`
-                                : `¡Claro! Dime el día y hora que te convenga y te ayudo a reagendar tu cita.`;
+                            const R = apptReplies(apptReplyLang);
+                            const rescheduleMsg = bookingLink ? R.rescheduleLink(bookingLink) : R.rescheduleNoLink;
                             await this.sendResponse(tenantId, rescheduleMsg, normalizedMsg);
                             await this.saveAiMessage(tenantId, conversation.id, rescheduleMsg, normalizedMsg.channelType);
                         }
@@ -428,7 +486,7 @@ export class ConversationsService {
                                 [apptId],
                             );
                             this.logger.log(`[Attendance] Client confirmed attendance for appointment ${apptId}`);
-                            const thankYou = `¡Excelente! Gracias por confirmar tu asistencia a *${pendingAppt[0].service_name}*. ¿Hay algo más en lo que pueda ayudarte?`;
+                            const thankYou = apptReplies(apptReplyLang).attendanceThanks(pendingAppt[0].service_name);
                             await this.sendResponse(tenantId, thankYou, normalizedMsg);
                             await this.saveAiMessage(tenantId, conversation.id, thankYou, normalizedMsg.channelType);
                         } else {
@@ -437,7 +495,7 @@ export class ConversationsService {
                                 [apptId],
                             );
                             this.logger.log(`[Attendance] Client confirmed no-show for appointment ${apptId}`);
-                            const noShowMsg = `Entendido. Lamentamos que no hayas podido asistir a *${pendingAppt[0].service_name}*. ¿Te gustaría agendar una nueva cita?`;
+                            const noShowMsg = apptReplies(apptReplyLang).noShow(pendingAppt[0].service_name);
                             await this.sendResponse(tenantId, noShowMsg, normalizedMsg);
                             await this.saveAiMessage(tenantId, conversation.id, noShowMsg, normalizedMsg.channelType);
                         }
@@ -531,7 +589,7 @@ export class ConversationsService {
         // Track AI response event + increment monthly quota counter — but NOT for
         // the error fallback (it isn't a real AI answer; counting it inflates the
         // monthly quota and emits a spurious message_sent event).
-        if (response && response !== ERROR_FALLBACK_MSG) {
+        if (response && !isErrorFallback(response)) {
             this.throttle.incrementAiMessageCount(tenantId).catch(() => {});
             this.analyticsService.trackEvent({
                 tenantId, eventType: 'message_sent',
@@ -546,7 +604,7 @@ export class ConversationsService {
         // (broadcasts, automations, reminders) — not to conversation replies.
         if (response) {
             const draftMode = (config.behavior as any)?.draftMode === true;
-            if (draftMode && response !== ERROR_FALLBACK_MSG) {
+            if (draftMode && !isErrorFallback(response)) {
                 // Draft-for-approval (WS3 #6): a human reviews/edits/sends in the
                 // console instead of the AI replying directly. Store the suggestion
                 // and notify the inbox; the customer gets nothing until approval.
@@ -2031,7 +2089,7 @@ export class ConversationsService {
             turnTrace.add('decision', 'error', { error: e?.message });
             try { this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
 
-            return ERROR_FALLBACK_MSG;
+            return errorFallbackText(userLanguage);
         }
     }
 
@@ -2174,7 +2232,7 @@ export class ConversationsService {
         tenantId: string,
         conversationId: string,
     ): Promise<string> {
-        if (!response || response === ERROR_FALLBACK_MSG) return response;
+        if (!response || isErrorFallback(response)) return response;
 
         const corpus = systemPrompt + '\n' + (currentMessages || [])
             .map(m => (typeof m?.content === 'string' ? m.content : '')).join('\n');

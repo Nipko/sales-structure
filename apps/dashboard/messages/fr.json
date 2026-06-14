@@ -584,6 +584,42 @@
       "aiInsights": "AI Insights",
       "insightError": "Impossible de generer l'insight",
       "insightUnavailable": "Aucun insight disponible"
+    },
+    "importTemplate": {
+      "fileName": "modele_contacts",
+      "requiredLabel": "OUI (Obligatoire)",
+      "optionalLabel": "NON (Facultatif)",
+      "sheets": {
+        "contacts": "Contacts",
+        "instructions": "Instructions et Aide"
+      },
+      "headers": {
+        "column": "Colonne",
+        "required": "Requis ?",
+        "description": "Description / Valeurs autorisées",
+        "example": "Exemple"
+      },
+      "rows": {
+        "phone": "Identifiant unique du contact. Les espaces sont supprimés et il est automatiquement normalisé au standard E.164.",
+        "firstName": "Prénom du contact.",
+        "lastName": "Nom de famille du contact.",
+        "email": "Adresse e-mail du contact.",
+        "stage": "Étape du CRM. Valeurs valides : nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
+        "company": "Nom de l'entreprise. Elle sera créée automatiquement si elle n'existe pas dans le système.",
+        "source": "Canal ou source d'acquisition du prospect (ex. whatsapp, facebook, instagram).",
+        "vip": "Indiquer s'il est VIP. Valeurs valides : sí, no, verdadero, falso, true, false.",
+        "preferredChannel": "Canal préféré pour communiquer : whatsapp, instagram, messenger, telegram, sms.",
+        "utmSource": "Source de la campagne marketing (ex. google, facebook).",
+        "utmMedium": "Support de la campagne marketing (ex. cpc, email).",
+        "utmCampaign": "Nom de la campagne marketing (ex. cybermonday)."
+      },
+      "toasts": {
+        "fileLoaded": "Fichier chargé avec succès",
+        "parseError": "Erreur lors du traitement du fichier Excel",
+        "exportSuccess": "Exporté avec succès vers Excel",
+        "templateSuccess": "Modèle Excel généré avec succès",
+        "templateError": "Erreur lors du téléchargement du modèle"
+      }
     }
   },
   "inbox": {
@@ -740,7 +776,29 @@
     "errorMacro": "Echec de l'execution de la macro. Veuillez reessayer.",
     "errorAssign": "Echec de l'attribution de la conversation. Veuillez reessayer.",
     "viewerSingle": "{name} consulte cette conversation",
-    "viewerMultiple": "{count} agents consultent cette conversation"
+    "viewerMultiple": "{count} agents consultent cette conversation",
+    "heading": "Inbox",
+    "liveBadge": "LIVE",
+    "connectionLost": "Connexion perdue — reconnexion...",
+    "humanAttention": {
+      "title": "Intervention humaine requise",
+      "subtitle": "L'assistant IA a été mis en pause. Le client attend une réponse humaine.",
+      "action": "Prendre la conversation"
+    },
+    "snooze": "Reporter",
+    "snooze1h": "1 heure",
+    "snooze3h": "3 heures",
+    "macros": "Macros",
+    "draft": {
+      "title": "Brouillon IA — relisez et envoyez",
+      "use": "Utiliser le brouillon",
+      "discard": "Ignorer"
+    },
+    "suggestion": {
+      "loading": "Génération de la suggestion IA...",
+      "refresh": "Régénérer"
+    },
+    "save": "Enregistrer"
   },
   "slackIntegration": {
     "title": "Slack",
@@ -2305,7 +2363,13 @@
     "httpVariableDeal": "Affaire",
     "httpVariableConversation": "Conversation",
     "httpVariableLead": "Lead",
-    "httpVariableTrigger": "Déclencheur"
+    "httpVariableTrigger": "Déclencheur",
+    "actionConfig": {
+      "actionType": "Type d'action",
+      "taskDescriptionPlaceholder": "Faire le suivi du lead",
+      "hoursLimit": "Limite d'heures",
+      "selectStage": "Sélectionner l'étape"
+    }
   },
   "broadcast": {
     "title": "Campagnes",
@@ -8477,5 +8541,83 @@
       "distributionTitle": "Repartition par etoiles",
       "recentFeedbackTitle": "Commentaires recents"
     }
+  },
+  "campaigns": {
+    "title": "Campagnes",
+    "summary": "{active} actives · {total} au total",
+    "newCampaign": "Nouvelle campagne",
+    "empty": "Aucune campagne enregistrée.",
+    "status": {
+      "draft": "Brouillon",
+      "active": "Active",
+      "paused": "En pause",
+      "finished": "Terminée"
+    },
+    "list": {
+      "channel": "Canal",
+      "course": "Cours",
+      "template": "Modèle",
+      "source": "Source"
+    },
+    "form": {
+      "name": "Nom",
+      "mainCourse": "Cours principal",
+      "noCourse": "— Aucun cours —",
+      "channel": "Canal",
+      "waTemplate": "Modèle WhatsApp",
+      "entrySource": "Source d'entrée",
+      "fallbackEmail": "Activer le repli par email si WhatsApp échoue"
+    },
+    "channels": {
+      "email": "Email",
+      "mixed": "Mixte"
+    },
+    "sources": {
+      "landing": "Page de destination",
+      "csv": "Import CSV",
+      "api": "API externe",
+      "metaAds": "Meta Lead Ads"
+    }
+  },
+  "conversations": {
+    "title": "Conversations",
+    "subtitle": "{count} conversations · {messages} messages au total",
+    "stats": {
+      "total": "Total",
+      "active": "Actives",
+      "waiting": "En attente",
+      "resolved": "Résolues"
+    },
+    "filters": {
+      "all": "Toutes",
+      "active": "Actives",
+      "waiting": "En attente",
+      "resolved": "Résolues"
+    },
+    "sort": {
+      "recent": "Récentes",
+      "mostMessages": "Plus de messages"
+    },
+    "columns": {
+      "contact": "Contact",
+      "lastMessage": "Dernier message",
+      "messages": "Messages",
+      "status": "Statut",
+      "agent": "Agent",
+      "sentiment": "Sentiment",
+      "date": "Date"
+    },
+    "status": {
+      "active": "Active",
+      "waiting": "En attente",
+      "resolved": "Résolue",
+      "handoff": "Transférée"
+    },
+    "sentiment": {
+      "positive": "Positif",
+      "neutral": "Neutre",
+      "negative": "Négatif"
+    },
+    "mostUsedTags": "Étiquettes les plus utilisées"
   }
 }

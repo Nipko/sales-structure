@@ -584,6 +584,42 @@
       "aiInsights": "AI Insights",
       "insightError": "No se pudo generar el insight",
       "insightUnavailable": "No hay insight disponible"
+    },
+    "importTemplate": {
+      "fileName": "plantilla_contactos",
+      "requiredLabel": "SÍ (Obligatorio)",
+      "optionalLabel": "NO (Opcional)",
+      "sheets": {
+        "contacts": "Contactos",
+        "instructions": "Instrucciones y Ayuda"
+      },
+      "headers": {
+        "column": "Columna",
+        "required": "¿Requerido?",
+        "description": "Descripción / Valores permitidos",
+        "example": "Ejemplo"
+      },
+      "rows": {
+        "phone": "Identificador único del contacto. Se limpia de espacios y normaliza automáticamente al estándar E.164.",
+        "firstName": "Primer nombre del contacto.",
+        "lastName": "Apellidos del contacto.",
+        "email": "Correo electrónico de contacto.",
+        "stage": "Etapa del CRM. Valores válidos: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
+        "company": "Nombre de la empresa. Se creará automáticamente si no existe en el sistema.",
+        "source": "Canal o fuente de adquisición del lead (ej. whatsapp, facebook, instagram).",
+        "vip": "Indicar si es VIP. Valores válidos: sí, no, verdadero, falso, true, false.",
+        "preferredChannel": "Canal preferido para comunicarse: whatsapp, instagram, messenger, telegram, sms.",
+        "utmSource": "Fuente de la campaña de marketing (ej. google, facebook).",
+        "utmMedium": "Medio de la campaña de marketing (ej. cpc, email).",
+        "utmCampaign": "Nombre de la campaña de marketing (ej. cybermonday)."
+      },
+      "toasts": {
+        "fileLoaded": "Archivo cargado con éxito",
+        "parseError": "Error al procesar el archivo Excel",
+        "exportSuccess": "Exportado correctamente en Excel",
+        "templateSuccess": "Plantilla Excel generada correctamente",
+        "templateError": "Error al descargar la plantilla"
+      }
     }
   },
   "inbox": {
@@ -740,7 +776,29 @@
     "errorMacro": "No se pudo ejecutar la macro. Intenta de nuevo.",
     "errorAssign": "No se pudo asignar la conversacion. Intenta de nuevo.",
     "viewerSingle": "{name} está viendo esta conversación",
-    "viewerMultiple": "{count} agentes están viendo esta conversación"
+    "viewerMultiple": "{count} agentes están viendo esta conversación",
+    "heading": "Inbox",
+    "liveBadge": "LIVE",
+    "connectionLost": "Conexión perdida — reconectando...",
+    "humanAttention": {
+      "title": "Atención humana requerida",
+      "subtitle": "El asistente de IA ha sido pausado. El cliente está esperando respuesta de un humano.",
+      "action": "Atender conversación"
+    },
+    "snooze": "Posponer",
+    "snooze1h": "1 hora",
+    "snooze3h": "3 horas",
+    "macros": "Macros",
+    "draft": {
+      "title": "Borrador de IA — revisá y enviá",
+      "use": "Usar borrador",
+      "discard": "Descartar"
+    },
+    "suggestion": {
+      "loading": "Generando sugerencia de IA...",
+      "refresh": "Regenerar"
+    },
+    "save": "Guardar"
   },
   "slackIntegration": {
     "title": "Slack",
@@ -2305,7 +2363,13 @@
     "httpVariableDeal": "Negocio",
     "httpVariableConversation": "Conversación",
     "httpVariableLead": "Lead",
-    "httpVariableTrigger": "Disparador"
+    "httpVariableTrigger": "Disparador",
+    "actionConfig": {
+      "actionType": "Tipo de acción",
+      "taskDescriptionPlaceholder": "Hacer seguimiento al lead",
+      "hoursLimit": "Límite de horas",
+      "selectStage": "Seleccionar etapa"
+    }
   },
   "broadcast": {
     "title": "Campañas",
@@ -8506,5 +8570,83 @@
       "distributionTitle": "Distribucion por estrellas",
       "recentFeedbackTitle": "Comentarios recientes"
     }
+  },
+  "campaigns": {
+    "title": "Campañas",
+    "summary": "{active} activas · {total} en total",
+    "newCampaign": "Nueva campaña",
+    "empty": "No hay campañas registradas.",
+    "status": {
+      "draft": "Borrador",
+      "active": "Activa",
+      "paused": "Pausada",
+      "finished": "Finalizada"
+    },
+    "list": {
+      "channel": "Canal",
+      "course": "Curso",
+      "template": "Plantilla",
+      "source": "Origen"
+    },
+    "form": {
+      "name": "Nombre",
+      "mainCourse": "Curso principal",
+      "noCourse": "— Sin curso —",
+      "channel": "Canal",
+      "waTemplate": "Plantilla de WhatsApp",
+      "entrySource": "Origen de entrada",
+      "fallbackEmail": "Activar respaldo por email si falla WhatsApp"
+    },
+    "channels": {
+      "email": "Email",
+      "mixed": "Mixto"
+    },
+    "sources": {
+      "landing": "Landing page",
+      "csv": "Importación CSV",
+      "api": "API externa",
+      "metaAds": "Meta Lead Ads"
+    }
+  },
+  "conversations": {
+    "title": "Conversaciones",
+    "subtitle": "{count} conversaciones · {messages} mensajes en total",
+    "stats": {
+      "total": "Total",
+      "active": "Activas",
+      "waiting": "En espera",
+      "resolved": "Resueltas"
+    },
+    "filters": {
+      "all": "Todas",
+      "active": "Activas",
+      "waiting": "En espera",
+      "resolved": "Resueltas"
+    },
+    "sort": {
+      "recent": "Recientes",
+      "mostMessages": "Más mensajes"
+    },
+    "columns": {
+      "contact": "Contacto",
+      "lastMessage": "Último mensaje",
+      "messages": "Mensajes",
+      "status": "Estado",
+      "agent": "Agente",
+      "sentiment": "Sentimiento",
+      "date": "Fecha"
+    },
+    "status": {
+      "active": "Activa",
+      "waiting": "En espera",
+      "resolved": "Resuelta",
+      "handoff": "Derivada"
+    },
+    "sentiment": {
+      "positive": "Positivo",
+      "neutral": "Neutral",
+      "negative": "Negativo"
+    },
+    "mostUsedTags": "Etiquetas más usadas"
   }
 }

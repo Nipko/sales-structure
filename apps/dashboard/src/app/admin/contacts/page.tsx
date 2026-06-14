@@ -220,10 +220,10 @@ export default function ContactsPage() {
                 // Convert the sheet to CSV string
                 const csv = XLSX.utils.sheet_to_csv(worksheet);
                 setCsvContent(csv);
-                showToast("Archivo cargado con éxito");
+                showToast(t('importTemplate.toasts.fileLoaded'));
             } catch (err) {
                 console.error("Failed to parse Excel file:", err);
-                showToast("Error al procesar el archivo Excel");
+                showToast(t('importTemplate.toasts.parseError'));
             }
         };
         reader.readAsArrayBuffer(file);
@@ -246,8 +246,9 @@ export default function ContactsPage() {
             
             // If the worksheet exists, set title beautifully
             if (worksheet) {
-                workbook.SheetNames[0] = "Contactos";
-                workbook.Sheets["Contactos"] = worksheet;
+                const contactsSheetName = t('importTemplate.sheets.contacts');
+                workbook.SheetNames[0] = contactsSheetName;
+                workbook.Sheets[contactsSheetName] = worksheet;
                 delete workbook.Sheets[originalSheetName];
             }
 
@@ -261,7 +262,7 @@ export default function ContactsPage() {
             a.download = `contactos_${new Date().toISOString().slice(0, 10)}.xlsx`;
             a.click();
             URL.revokeObjectURL(url);
-            showToast("Exportado correctamente en Excel");
+            showToast(t('importTemplate.toasts.exportSuccess'));
         } catch (err) {
             console.error("Export failed:", err);
             showToast(tc("errorSaving"));
@@ -281,27 +282,29 @@ export default function ContactsPage() {
             const wsContacts = XLSX.utils.aoa_to_sheet(contactsData);
 
             // Build second sheet: Instrucciones y Ayuda
+            const tReq = t('importTemplate.requiredLabel');
+            const tOpt = t('importTemplate.optionalLabel');
             const instructionsData = [
-                ['Columna', '¿Requerido?', 'Descripción / Valores permitidos', 'Ejemplo'],
-                ['telefono', 'SÍ (Obligatorio)', 'Identificador único del contacto. Se limpia de espacios y normaliza automáticamente al estándar E.164.', '+573001234567'],
-                ['nombre', 'NO (Opcional)', 'Primer nombre del contacto.', 'Juan'],
-                ['apellido', 'NO (Opcional)', 'Apellidos del contacto.', 'Pérez'],
-                ['correo', 'NO (Opcional)', 'Correo electrónico de contacto.', 'juan@perez.com'],
-                ['etapa', 'NO (Opcional)', 'Etapa del CRM. Valores válidos: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.', 'caliente'],
-                ['empresa', 'NO (Opcional)', 'Nombre de la empresa. Se creará automáticamente si no existe en el sistema.', 'Acme S.A.'],
-                ['origen', 'NO (Opcional)', 'Canal o fuente de adquisición del lead (ej. whatsapp, facebook, instagram).', 'facebook'],
-                ['es_vip', 'NO (Opcional)', 'Indicar si es VIP. Valores válidos: sí, no, verdadero, falso, true, false.', 'sí'],
-                ['canal_preferido', 'NO (Opcional)', 'Canal preferido para comunicarse: whatsapp, instagram, messenger, telegram, sms.', 'whatsapp'],
-                ['utm_source', 'NO (Opcional)', 'Fuente de la campaña de marketing (ej. google, facebook).', 'google'],
-                ['utm_medium', 'NO (Opcional)', 'Medio de la campaña de marketing (ej. cpc, email).', 'cpc'],
-                ['utm_campaign', 'NO (Opcional)', 'Nombre de la campaña de marketing (ej. cybermonday).', 'cybermonday']
+                [t('importTemplate.headers.column'), t('importTemplate.headers.required'), t('importTemplate.headers.description'), t('importTemplate.headers.example')],
+                ['telefono', tReq, t('importTemplate.rows.phone'), '+573001234567'],
+                ['nombre', tOpt, t('importTemplate.rows.firstName'), 'Juan'],
+                ['apellido', tOpt, t('importTemplate.rows.lastName'), 'Pérez'],
+                ['correo', tOpt, t('importTemplate.rows.email'), 'juan@perez.com'],
+                ['etapa', tOpt, t('importTemplate.rows.stage'), 'caliente'],
+                ['empresa', tOpt, t('importTemplate.rows.company'), 'Acme S.A.'],
+                ['origen', tOpt, t('importTemplate.rows.source'), 'facebook'],
+                ['es_vip', tOpt, t('importTemplate.rows.vip'), 'sí'],
+                ['canal_preferido', tOpt, t('importTemplate.rows.preferredChannel'), 'whatsapp'],
+                ['utm_source', tOpt, t('importTemplate.rows.utmSource'), 'google'],
+                ['utm_medium', tOpt, t('importTemplate.rows.utmMedium'), 'cpc'],
+                ['utm_campaign', tOpt, t('importTemplate.rows.utmCampaign'), 'cybermonday']
             ];
             const wsInstructions = XLSX.utils.aoa_to_sheet(instructionsData);
 
             // Create workbook and append sheets
             const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, wsContacts, "Contactos");
-            XLSX.utils.book_append_sheet(workbook, wsInstructions, "Instrucciones y Ayuda");
+            XLSX.utils.book_append_sheet(workbook, wsContacts, t('importTemplate.sheets.contacts'));
+            XLSX.utils.book_append_sheet(workbook, wsInstructions, t('importTemplate.sheets.instructions'));
 
             // Write to buffer and trigger download
             const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
@@ -310,13 +313,13 @@ export default function ContactsPage() {
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = "plantilla_contactos.xlsx";
+            a.download = `${t('importTemplate.fileName')}.xlsx`;
             a.click();
             URL.revokeObjectURL(url);
-            showToast("Plantilla Excel generada correctamente");
+            showToast(t('importTemplate.toasts.templateSuccess'));
         } catch (err) {
             console.error("Template download failed:", err);
-            showToast("Error al descargar la plantilla");
+            showToast(t('importTemplate.toasts.templateError'));
         }
     };
 

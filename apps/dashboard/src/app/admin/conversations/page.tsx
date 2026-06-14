@@ -14,20 +14,21 @@ import {
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 
-const statusConfig: Record<string, { label: string; color: string }> = {
-    active: { label: "Active", color: "#2ecc71" },
-    waiting: { label: "Waiting", color: "#f39c12" },
-    resolved: { label: "Resolved", color: "#95a5a6" },
-    handoff: { label: "Handoff", color: "#e74c3c" },
+const statusConfig: Record<string, { labelKey: string; color: string }> = {
+    active: { labelKey: "status.active", color: "#2ecc71" },
+    waiting: { labelKey: "status.waiting", color: "#f39c12" },
+    resolved: { labelKey: "status.resolved", color: "#95a5a6" },
+    handoff: { labelKey: "status.handoff", color: "#e74c3c" },
 };
 
-const sentimentConfig: Record<string, { label: string; emoji: string }> = {
-    positive: { label: "Positive", emoji: "😊" },
-    neutral: { label: "Neutral", emoji: "😐" },
-    negative: { label: "Negative", emoji: "😞" },
+const sentimentConfig: Record<string, { labelKey: string; emoji: string }> = {
+    positive: { labelKey: "sentiment.positive", emoji: "😊" },
+    neutral: { labelKey: "sentiment.neutral", emoji: "😐" },
+    negative: { labelKey: "sentiment.negative", emoji: "😞" },
 };
 
 export default function ConversationsPage() {
+    const t = useTranslations("conversations");
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
     const { user } = useAuth();
@@ -71,10 +72,10 @@ export default function ConversationsPage() {
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
-                        <MessageSquare size={28} className="text-primary" /> Conversations
+                        <MessageSquare size={28} className="text-primary" /> {t("title")}
                         <DataSourceBadge isLive={isLive} />
                     </h1>
-                    <p className="text-muted-foreground mt-1">{stats.total} conversaciones · {stats.totalMessages} total messages</p>
+                    <p className="text-muted-foreground mt-1">{t("subtitle", { count: stats.total, messages: stats.totalMessages })}</p>
                 </div>
             </div>
 
@@ -87,10 +88,10 @@ export default function ConversationsPage() {
 
             <div className="grid grid-cols-4 gap-4 mb-6">
                 {[
-                    { label: "Total", value: stats.total, color: "#6c5ce7", icon: MessageSquare },
-                    { label: "Active", value: stats.active, color: "#2ecc71", icon: CheckCircle2 },
-                    { label: "Waiting", value: stats.waiting, color: "#f39c12", icon: Clock },
-                    { label: "Resolved", value: stats.resolved, color: "#95a5a6", icon: CheckCircle2 },
+                    { label: t("stats.total"), value: stats.total, color: "#6c5ce7", icon: MessageSquare },
+                    { label: t("stats.active"), value: stats.active, color: "#2ecc71", icon: CheckCircle2 },
+                    { label: t("stats.waiting"), value: stats.waiting, color: "#f39c12", icon: Clock },
+                    { label: t("stats.resolved"), value: stats.resolved, color: "#95a5a6", icon: CheckCircle2 },
                 ].map(stat => (
                     <div key={stat.label} className="p-5 rounded-[14px] bg-card border border-border">
                         <div className="flex justify-between items-center">
@@ -112,13 +113,13 @@ export default function ConversationsPage() {
                     <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder={tc("search") + "..."} className="w-full py-2.5 pl-9 pr-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none box-border" />
                 </div>
                 <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-sm outline-none">
-                    <option value="all">All</option>
-                    <option value="active">Active</option>
-                    <option value="waiting">Waiting</option>
-                    <option value="resolved">Resolved</option>
+                    <option value="all">{t("filters.all")}</option>
+                    <option value="active">{t("filters.active")}</option>
+                    <option value="waiting">{t("filters.waiting")}</option>
+                    <option value="resolved">{t("filters.resolved")}</option>
                 </select>
                 <button onClick={() => setSortBy(s => s === "recent" ? "messages" : "recent")} className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-[10px] border border-border bg-card text-foreground text-[13px] cursor-pointer">
-                    <ArrowUpDown size={14} /> {sortBy === "recent" ? "Recent" : "Most messages"}
+                    <ArrowUpDown size={14} /> {sortBy === "recent" ? t("sort.recent") : t("sort.mostMessages")}
                 </button>
             </div>
 
@@ -126,8 +127,16 @@ export default function ConversationsPage() {
                 <table className="w-full border-collapse">
                     <thead>
                         <tr className="bg-card">
-                            {["Contact", "Last message", "Messages", "Status", "Agent", "Sentiment", "Date"].map(h => (
-                                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">{h}</th>
+                            {[
+                                { key: "contact", label: t("columns.contact") },
+                                { key: "lastMessage", label: t("columns.lastMessage") },
+                                { key: "messages", label: t("columns.messages") },
+                                { key: "status", label: t("columns.status") },
+                                { key: "agent", label: t("columns.agent") },
+                                { key: "sentiment", label: t("columns.sentiment") },
+                                { key: "date", label: t("columns.date") },
+                            ].map(h => (
+                                <th key={h.key} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">{h.label}</th>
                             ))}
                         </tr>
                     </thead>
@@ -155,10 +164,10 @@ export default function ConversationsPage() {
                                         </span>
                                     </td>
                                     <td className="px-4 py-3">
-                                        <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: `${sc.color}15`, color: sc.color }}>{sc.label}</span>
+                                        <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold" style={{ background: `${sc.color}15`, color: sc.color }}>{t(sc.labelKey)}</span>
                                     </td>
                                     <td className="px-4 py-3 text-[13px] text-muted-foreground">{conv.assignedAgent}</td>
-                                    <td className="px-4 py-3"><span title={sm.label}>{sm.emoji}</span></td>
+                                    <td className="px-4 py-3"><span title={t(sm.labelKey)}>{sm.emoji}</span></td>
                                     <td className="px-4 py-3 text-xs text-muted-foreground">{conv.lastMessageAt}</td>
                                 </tr>
                             );
@@ -169,7 +178,7 @@ export default function ConversationsPage() {
 
             <div className="mt-5 p-4 rounded-[14px] bg-card border border-border">
                 <div className="text-[13px] font-semibold mb-2.5 flex items-center gap-1.5">
-                    <Tag size={14} className="text-primary" /> Most used tags
+                    <Tag size={14} className="text-primary" /> {t("mostUsedTags")}
                 </div>
                 <div className="flex gap-2 flex-wrap">
                     {Array.from(new Set(conversations.flatMap(c => c.tags))).filter(Boolean).map(tag => {

@@ -772,7 +772,7 @@ export default function AutomationPage() {
                                     <div key={idx} className="p-4 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-border">
                                         <div className="flex justify-between items-start mb-3">
                                             <div className="flex-1 mr-3">
-                                                <Label className="text-xs font-semibold text-muted-foreground mb-1">Action type</Label>
+                                                <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("actionConfig.actionType")}</Label>
                                                 <select
                                                     value={action.type}
                                                     onChange={e => {
@@ -819,16 +819,16 @@ export default function AutomationPage() {
                                             {action.type === "create_task" && (
                                                 <>
                                                     <div className="flex-1 min-w-[200px]">
-                                                        <Label className="text-xs font-semibold text-muted-foreground mb-1">Task description</Label>
+                                                        <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("taskDescription")}</Label>
                                                         <Input
                                                             value={action.config.task_description || ""}
                                                             onChange={e => updateActionConfig(idx, "task_description", e.target.value)}
-                                                            placeholder="Follow up with lead"
+                                                            placeholder={t("actionConfig.taskDescriptionPlaceholder")}
                                                             className="bg-background border-border"
                                                         />
                                                     </div>
                                                     <div className="min-w-[120px]">
-                                                        <Label className="text-xs font-semibold text-muted-foreground mb-1">Hours limit</Label>
+                                                        <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("actionConfig.hoursLimit")}</Label>
                                                         <Input
                                                             type="number"
                                                             value={action.config.task_due_hours ?? 24}
@@ -846,7 +846,7 @@ export default function AutomationPage() {
                                                         onChange={e => updateActionConfig(idx, "stage", e.target.value)}
                                                         className="w-full p-2.5 px-3 rounded-lg border border-border bg-background text-foreground text-sm outline-none"
                                                     >
-                                                        <option value="" disabled>Seleccionar etapa</option>
+                                                        <option value="" disabled>{t("actionConfig.selectStage")}</option>
                                                         {STAGES.map(s => <option key={s.value} value={s.value}>{t(s.i18n)}</option>)}
                                                     </select>
                                                 </div>

@@ -18,6 +18,7 @@ const statusColors: Record<string, { bg: string; text: string; label: string }> 
 };
 
 export default function CampaignsPage() {
+    const t = useTranslations("campaigns");
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
@@ -73,12 +74,12 @@ export default function CampaignsPage() {
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-[28px] font-semibold m-0 flex items-center gap-2.5">
-                            <Megaphone size={28} className="text-primary" /> Campaigns
+                            <Megaphone size={28} className="text-primary" /> {t("title")}
                         </h1>
-                        <p className="text-muted-foreground mt-1">{activeCount} active · {campaigns.length} total</p>
+                        <p className="text-muted-foreground mt-1">{t("summary", { active: activeCount, total: campaigns.length })}</p>
                     </div>
                     <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-[10px] border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer">
-                        <Plus size={18} /> New Campaign
+                        <Plus size={18} /> {t("newCampaign")}
                     </button>
                 </div>
 
@@ -100,7 +101,7 @@ export default function CampaignsPage() {
                                 </div>
                                 <div>
                                     <div className="text-lg font-semibold">{count}</div>
-                                    <div className="text-xs text-muted-foreground">{config.label}</div>
+                                    <div className="text-xs text-muted-foreground">{t(`status.${key}`)}</div>
                                 </div>
                             </div>
                         );
@@ -116,13 +117,13 @@ export default function CampaignsPage() {
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2">
                                         <span className="font-semibold text-[15px]">{camp.name}</span>
-                                        <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold" style={{ background: s.bg, color: s.text }}>{s.label}</span>
+                                        <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold" style={{ background: s.bg, color: s.text }}>{t(`status.${camp.status || "draft"}`)}</span>
                                     </div>
                                     <div className="flex gap-4 mt-1.5 text-xs text-muted-foreground">
-                                        <span>Channel: {camp.channel}</span>
-                                        {camp.course_name && <span>Course: {camp.course_name}</span>}
-                                        {camp.wa_template_name && <span>Template: {camp.wa_template_name}</span>}
-                                        <span>Source: {camp.source_type || "landing"}</span>
+                                        <span>{t("list.channel")}: {camp.channel}</span>
+                                        {camp.course_name && <span>{t("list.course")}: {camp.course_name}</span>}
+                                        {camp.wa_template_name && <span>{t("list.template")}: {camp.wa_template_name}</span>}
+                                        <span>{t("list.source")}: {camp.source_type || "landing"}</span>
                                     </div>
                                 </div>
                                 <button className="bg-transparent border-none text-muted-foreground cursor-pointer p-1"><Edit2 size={16} /></button>
@@ -131,7 +132,7 @@ export default function CampaignsPage() {
                     })}
                     {campaigns.length === 0 && (
                         <div className="text-center py-10 text-muted-foreground">
-                            No campaigns registered.
+                            {t("empty")}
                         </div>
                     )}
                 </div>
@@ -142,15 +143,15 @@ export default function CampaignsPage() {
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)}>
                     <div onClick={e => e.stopPropagation()} className="w-[480px] p-7 rounded-[18px] bg-card border border-border shadow-2xl">
                         <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0">New Campaign</h2>
+                            <h2 className="text-xl font-semibold m-0">{t("newCampaign")}</h2>
                             <button onClick={() => setShowModal(false)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
                         {[
-                            { label: "Name", key: "name", el: "input" },
-                            { label: "Main Course", key: "course_id", el: "select", options: [{ value: "", label: "— No course —" }, ...courses.map(c => ({ value: c.id, label: c.name }))] },
-                            { label: "Channel", key: "channel", el: "select", options: [{ value: "whatsapp", label: "WhatsApp" }, { value: "email", label: "Email" }, { value: "mixed", label: "Mixed" }] },
-                            { label: "WhatsApp Template", key: "wa_template_name", el: "input" },
-                            { label: "Entry Source", key: "source_type", el: "select", options: [{ value: "landing", label: "Landing Page" }, { value: "csv", label: "CSV Import" }, { value: "api", label: "External API" }, { value: "meta_ads", label: "Meta Lead Ads" }] },
+                            { label: t("form.name"), key: "name", el: "input" },
+                            { label: t("form.mainCourse"), key: "course_id", el: "select", options: [{ value: "", label: t("form.noCourse") }, ...courses.map(c => ({ value: c.id, label: c.name }))] },
+                            { label: t("form.channel"), key: "channel", el: "select", options: [{ value: "whatsapp", label: "WhatsApp" }, { value: "email", label: t("channels.email") }, { value: "mixed", label: t("channels.mixed") }] },
+                            { label: t("form.waTemplate"), key: "wa_template_name", el: "input" },
+                            { label: t("form.entrySource"), key: "source_type", el: "select", options: [{ value: "landing", label: t("sources.landing") }, { value: "csv", label: t("sources.csv") }, { value: "api", label: t("sources.api") }, { value: "meta_ads", label: t("sources.metaAds") }] },
                         ].map(f => (
                             <div key={f.key} className="mb-3">
                                 <label className="block text-xs font-semibold text-muted-foreground mb-1">{f.label}</label>
@@ -165,10 +166,10 @@ export default function CampaignsPage() {
                         ))}
                         <div className="mb-3 flex items-center gap-2">
                             <input type="checkbox" checked={form.fallback_email} onChange={e => setForm(p => ({ ...p, fallback_email: e.target.checked }))} id="fallback" />
-                            <label htmlFor="fallback" className="text-[13px] text-muted-foreground">Enable email fallback if WhatsApp fails</label>
+                            <label htmlFor="fallback" className="text-[13px] text-muted-foreground">{t("form.fallbackEmail")}</label>
                         </div>
                         <div className="flex gap-2.5 mt-5">
-                            <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">Cancel</button>
+                            <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-[10px] border border-border bg-transparent text-foreground text-sm cursor-pointer">{tc("cancel")}</button>
                             <button onClick={handleCreate} disabled={saving || !form.name} className={cn("flex-1 py-2.5 rounded-[10px] border-none text-white text-sm font-semibold", saving ? "bg-muted cursor-wait" : "bg-primary cursor-pointer")}>{saving ? tc("saving") : tc("create")}</button>
                         </div>
                     </div>

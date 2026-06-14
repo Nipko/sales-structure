@@ -1264,11 +1264,11 @@ export default function InboxPage() {
                 <div className="px-4 pt-4 pb-3 border-b border-border">
                     <div className="flex justify-between items-center mb-3">
                         <div className="flex items-center gap-2.5">
-                            <h2 className="text-lg font-semibold m-0">Inbox</h2>
+                            <h2 className="text-lg font-semibold m-0">{t("heading")}</h2>
                             {isLive && (
                                 <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                    LIVE
+                                    {t("liveBadge")}
                                 </span>
                             )}
                         </div>
@@ -1336,7 +1336,7 @@ export default function InboxPage() {
                 {!socketConnected && (
                     <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 animate-in fade-in slide-in-from-top-1">
                         <Loader2 size={12} className="animate-spin flex-shrink-0" />
-                        <span>Conexion perdida — reconectando...</span>
+                        <span>{t("connectionLost")}</span>
                     </div>
                 )}
 
@@ -1488,8 +1488,8 @@ export default function InboxPage() {
                                         <AlertCircle size={18} className="text-white" />
                                     </div>
                                     <div>
-                                        <h4 className="text-[13px] font-bold m-0 leading-tight">Atención Humana Requerida</h4>
-                                        <p className="text-[11px] text-white/80 m-0 mt-0.5">El asistente de IA ha sido pausado. El cliente está esperando respuesta de un humano.</p>
+                                        <h4 className="text-[13px] font-bold m-0 leading-tight">{t("humanAttention.title")}</h4>
+                                        <p className="text-[11px] text-white/80 m-0 mt-0.5">{t("humanAttention.subtitle")}</p>
                                     </div>
                                 </div>
                                 <button
@@ -1498,7 +1498,7 @@ export default function InboxPage() {
                                     className="py-1.5 px-4 rounded-lg border-none bg-white text-orange-600 hover:bg-orange-50 transition-colors text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-75"
                                 >
                                     {assignLoading ? <Loader2 size={13} className="animate-spin" /> : <UserCheck size={13} />}
-                                    Atender Conversación
+                                    {t("humanAttention.action")}
                                 </button>
                             </div>
                         )}
@@ -1722,16 +1722,16 @@ export default function InboxPage() {
                                                     onClick={() => setShowSnoozeMenu(!showSnoozeMenu)}
                                                     className="flex items-center gap-2 w-full py-2 px-3 border-none rounded-lg bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted transition-colors"
                                                 >
-                                                    <Clock size={14} className="text-muted-foreground" /> Snooze
+                                                    <Clock size={14} className="text-muted-foreground" /> {t("snooze")}
                                                 </button>
                                                 {showSnoozeMenu && (
                                                     <div className="pl-6 pb-1">
                                                         {[
-                                                            { key: "1h", label: "1 hora" },
-                                                            { key: "3h", label: "3 horas" },
+                                                            { key: "1h", label: t("snooze1h") },
+                                                            { key: "3h", label: t("snooze3h") },
                                                             { key: "tomorrow", label: t("snoozeTomorrow") },
                                                             { key: "monday", label: t("snoozeMonday") },
-                                                        ].map(opt => (
+                                                        ].map((opt) => (
                                                             <button
                                                                 key={opt.key}
                                                                 onClick={() => { handleSnooze(opt.key); setShowMoreMenu(false); }}
@@ -1749,7 +1749,7 @@ export default function InboxPage() {
                                                     onClick={() => setShowMacrosMenu(!showMacrosMenu)}
                                                     className="flex items-center gap-2 w-full py-2 px-3 border-none rounded-lg bg-transparent text-foreground text-[13px] cursor-pointer text-left hover:bg-muted transition-colors"
                                                 >
-                                                    <Zap size={14} className="text-muted-foreground" /> Macros
+                                                    <Zap size={14} className="text-muted-foreground" /> {t("macros")}
                                                 </button>
                                                 {showMacrosMenu && (
                                                     <div className="pl-6 pb-1 max-h-40 overflow-y-auto">
@@ -1951,20 +1951,20 @@ export default function InboxPage() {
                                 <div className="px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500/[0.08] to-teal-500/[0.08] border border-emerald-500/20 flex gap-2.5 items-start mt-3">
                                     <Sparkles size={16} className="text-emerald-500 mt-0.5 flex-shrink-0" />
                                     <div className="flex-1">
-                                        <div className="text-[11px] font-semibold text-emerald-500 mb-1">Borrador de IA — revisá y enviá</div>
+                                        <div className="text-[11px] font-semibold text-emerald-500 mb-1">{t("draft.title")}</div>
                                         <div className="text-[13px] text-muted-foreground leading-relaxed">&quot;{draftsByConv[selectedConv.id]}&quot;</div>
                                         <div className="flex gap-2 mt-2">
                                             <button
                                                 onClick={() => { setMessageInput(draftsByConv[selectedConv.id]); messageInputRef.current?.focus(); }}
                                                 className="py-1 px-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-500 text-xs cursor-pointer flex gap-1.5 items-center hover:bg-emerald-500/20 transition-colors font-medium"
                                             >
-                                                <Zap size={12} /> Usar borrador
+                                                <Zap size={12} /> {t("draft.use")}
                                             </button>
                                             <button
                                                 onClick={() => setDraftsByConv(prev => { const n = { ...prev }; delete n[selectedConv.id]; return n; })}
                                                 className="py-1 px-3 rounded-lg border border-border bg-transparent text-muted-foreground text-xs cursor-pointer flex gap-1.5 items-center hover:bg-muted transition-colors"
                                             >
-                                                Descartar
+                                                {t("draft.discard")}
                                             </button>
                                         </div>
                                     </div>
@@ -1977,7 +1977,7 @@ export default function InboxPage() {
                                     <div className="px-4 py-3 rounded-xl bg-gradient-to-r from-purple-500/[0.08] to-indigo-500/[0.08] border border-purple-500/20 flex gap-2.5 items-center mt-3">
                                         <Loader2 size={16} className="text-purple-500 animate-spin flex-shrink-0" />
                                         <div className="text-[13px] text-muted-foreground">
-                                            Generando sugerencia de IA...
+                                            {t("suggestion.loading")}
                                         </div>
                                     </div>
                                 ) : aiSuggestion ? (
@@ -1985,7 +1985,7 @@ export default function InboxPage() {
                                         <Sparkles size={16} className="text-purple-500 mt-0.5 flex-shrink-0" />
                                         <div className="flex-1">
                                             <div className="text-[11px] font-semibold text-purple-500 mb-1 flex items-center gap-1">
-                                                <span>Sugerencia IA</span>
+                                                <span>{t("aiSuggestion")}</span>
                                             </div>
                                             <div className="text-[13px] text-muted-foreground leading-relaxed">
                                                 &quot;{aiSuggestion}&quot;
@@ -1998,13 +1998,13 @@ export default function InboxPage() {
                                                     }}
                                                     className="py-1 px-3 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-500 text-xs cursor-pointer flex gap-1.5 items-center hover:bg-purple-500/20 transition-colors font-medium"
                                                 >
-                                                    <Zap size={12} /> Usar sugerencia
+                                                    <Zap size={12} /> {t("useSuggestion")}
                                                 </button>
                                                 <button
                                                     onClick={() => fetchAiSuggestion()}
                                                     className="py-1 px-3 rounded-lg border border-border bg-transparent text-muted-foreground text-xs cursor-pointer flex gap-1.5 items-center hover:bg-muted transition-colors"
                                                 >
-                                                    <RefreshCw size={12} /> Actualizar
+                                                    <RefreshCw size={12} /> {t("suggestion.refresh")}
                                                 </button>
                                             </div>
                                         </div>
@@ -2023,7 +2023,7 @@ export default function InboxPage() {
                         {showNotes && (
                             <div className="border-t border-border px-4 md:px-5 py-3 bg-amber-500/5 max-h-[200px] overflow-auto">
                                 <div className="text-xs font-semibold text-amber-500 mb-2.5 flex gap-1.5 items-center">
-                                    <StickyNote size={14} /> Notas internas
+                                    <StickyNote size={14} /> {t("contact.notes")}
                                 </div>
                                 {notes.length > 0 ? notes.map(note => (
                                     <div key={note.id} className="px-3 py-2 rounded-xl bg-card border border-border/50 mb-2 text-[13px]">
@@ -2044,7 +2044,7 @@ export default function InboxPage() {
                                         onClick={handleAddNote}
                                         className="py-2 px-4 rounded-xl border-none bg-amber-500 text-white text-xs font-semibold cursor-pointer hover:bg-amber-600 transition-colors"
                                     >
-                                        Guardar
+                                        {t("save")}
                                     </button>
                                 </div>
                             </div>
@@ -2133,7 +2133,7 @@ export default function InboxPage() {
                                 {showCannedMenu && filteredCanned.length > 0 && (
                                     <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-xl shadow-lg max-h-[220px] overflow-auto z-50">
                                         <div className="px-3 py-2 text-[11px] font-semibold text-muted-foreground border-b border-border flex gap-1.5 items-center">
-                                            <Zap size={12} className="text-indigo-500" /> Respuestas rapidas
+                                            <Zap size={12} className="text-indigo-500" /> {t("cannedResponses")}
                                         </div>
                                         {filteredCanned.map((cr, idx) => (
                                             <div

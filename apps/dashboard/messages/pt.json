@@ -1822,7 +1822,8 @@
       "newTagPlaceholder": "Nova etiqueta...",
       "confirmDelete": "Excluir esta imagem?",
       "couldNotLoad": "Não foi possível carregar a imagem"
-    }
+    },
+    "imageUnavailable": "Sem imagem"
   },
   "appointments": {
     "title": "Agendamentos",

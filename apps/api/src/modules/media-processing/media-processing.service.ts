@@ -8,6 +8,18 @@ import { MediaService } from '../media/media.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { NormalizedMessage, MediaProcessingResult } from '@parallext/shared';
 
+// Agent-facing annotation injected into the conversation (and saved to history)
+// when a customer sends voice/image. i18n'd by the tenant's language so agents read
+// it in their language; the transcription/description is the customer's own words.
+// (Runs before per-turn language detection, so we key off tenant.language.)
+const MEDIA_ANNOT: Record<string, { audio: (cap: string, txt: string) => string; image: (cap: string, txt: string) => string }> = {
+    es: { audio: (c, t) => `[El cliente envió un mensaje de voz${c ? ` (descripción: "${c}")` : ''}: "${t}"]`, image: (c, t) => `[El cliente envió una imagen${c ? ` (descripción: "${c}")` : ''}: ${t}]` },
+    en: { audio: (c, t) => `[The customer sent a voice message${c ? ` (caption: "${c}")` : ''}: "${t}"]`, image: (c, t) => `[The customer sent an image${c ? ` (caption: "${c}")` : ''}: ${t}]` },
+    pt: { audio: (c, t) => `[O cliente enviou uma mensagem de voz${c ? ` (legenda: "${c}")` : ''}: "${t}"]`, image: (c, t) => `[O cliente enviou uma imagem${c ? ` (legenda: "${c}")` : ''}: ${t}]` },
+    fr: { audio: (c, t) => `[Le client a envoyé un message vocal${c ? ` (légende : "${c}")` : ''} : "${t}"]`, image: (c, t) => `[Le client a envoyé une image${c ? ` (légende : "${c}")` : ''} : ${t}]` },
+};
+const mediaAnnot = (lang?: string) => MEDIA_ANNOT[(lang || 'es').slice(0, 2).toLowerCase()] || MEDIA_ANNOT.es;
+
 @Injectable()
 export class MediaProcessingService {
     private readonly logger = new Logger(MediaProcessingService.name);
@@ -21,6 +33,18 @@ export class MediaProcessingService {
         private readonly media: MediaService,
         private readonly prisma: PrismaService,
     ) {}
+
+    /** Tenant's UI language (2-char), cached 10min — for agent-facing media annotations. */
+    private async getTenantLang(tenantId: string): Promise<string> {
+        try {
+            const cached = await this.redis.get(`tenant:${tenantId}:lang`);
+            if (cached) return cached;
+            const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { language: true } });
+            const lang = (tenant?.language || 'es').slice(0, 2).toLowerCase();
+            await this.redis.set(`tenant:${tenantId}:lang`, lang, 600);
+            return lang;
+        } catch { return 'es'; }
+    }
 
     /**
      * Persist an inbound voice note (already downloaded for transcription) to media
@@ -115,15 +139,13 @@ export class MediaProcessingService {
             // 4. Track stats for observability
             await this.trackMediaStats(tenantId, mediaType, result).catch(() => {});
 
-            // 5. Format for conversation injection
-            const caption = content.caption ? ` (caption: "${content.caption}")` : '';
-            let text: string;
-
-            if (mediaType === 'audio') {
-                text = `[El cliente envió un mensaje de voz${caption}: "${result.text}"]`;
-            } else {
-                text = `[El cliente envió una imagen${caption}: ${result.text}]`;
-            }
+            // 5. Format for conversation injection — agent-facing wrapper i18n'd by
+            // the tenant's language (the transcription/description is the customer's words).
+            const annotLang = await this.getTenantLang(tenantId);
+            const cap = content.caption || '';
+            const text = mediaType === 'audio'
+                ? mediaAnnot(annotLang).audio(cap, result.text)
+                : mediaAnnot(annotLang).image(cap, result.text);
 
             this.logger.log(`[MediaProcessing] ${mediaType} processed for tenant ${tenantId}: ${result.text.substring(0, 80)}...`);
             return { text, result };

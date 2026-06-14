@@ -1822,7 +1822,8 @@
       "newTagPlaceholder": "Nueva etiqueta...",
       "confirmDelete": "¿Eliminar esta imagen?",
       "couldNotLoad": "No se pudo cargar la imagen"
-    }
+    },
+    "imageUnavailable": "Sin imagen"
   },
   "appointments": {
     "title": "Citas y Agendamiento",

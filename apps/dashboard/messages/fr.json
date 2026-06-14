@@ -1822,7 +1822,8 @@
       "newTagPlaceholder": "Nouvelle étiquette...",
       "confirmDelete": "Supprimer cette image ?",
       "couldNotLoad": "Impossible de charger l'image"
-    }
+    },
+    "imageUnavailable": "Pas d’image"
   },
   "appointments": {
     "title": "Rendez-vous et planification",

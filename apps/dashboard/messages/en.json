@@ -1822,7 +1822,8 @@
       "newTagPlaceholder": "New tag...",
       "confirmDelete": "Delete this image?",
       "couldNotLoad": "Could not load image"
-    }
+    },
+    "imageUnavailable": "No image"
   },
   "appointments": {
     "title": "Appointments & Scheduling",

@@ -1,9 +1,14 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Put, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Put, Query, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import type { Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { FiscalStorageService } from './fiscal-storage.service';
+import { FiscalPdfService, BrandedInvoiceData } from './fiscal-pdf.service';
+import { FiscalConfigService } from './fiscal-config.service';
+import { FactusAdapter } from './adapters/factus.adapter';
 import { computeNitDv } from './nit.util';
 
 /** Acquirer fiscal profile saved on Tenant.settings.fiscalData. */
@@ -43,7 +48,13 @@ class FiscalDataDto {
 @Controller('fiscal')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class FiscalController {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly storage: FiscalStorageService,
+        private readonly pdf: FiscalPdfService,
+        private readonly config: FiscalConfigService,
+        private readonly factus: FactusAdapter,
+    ) {}
 
     @Get(':tenantId/data')
     async getFiscalData(@Param('tenantId') tenantId: string) {
@@ -126,5 +137,80 @@ export class FiscalController {
             },
         });
         return { success: true, data: invoices };
+    }
+
+    @Get(':tenantId/invoices/:id/pdf')
+    async getInvoicePdf(
+        @Param('tenantId') tenantId: string,
+        @Param('id') id: string,
+        @Query('format') format: string,
+        @Res() res: Response,
+    ): Promise<void> {
+        const inv = await this.prisma.fiscalInvoice.findFirst({ where: { id, tenantId } });
+        if (!inv) throw new NotFoundException({ error: 'invoice_not_found' });
+
+        let buffer: Buffer | null = null;
+        if (format === 'branded') {
+            const cfg = await this.config.getConfig();
+            buffer = await this.pdf.render(this.buildBranded(inv, cfg));
+        } else {
+            // Official: stored copy → fetch from Factus on demand → branded fallback.
+            buffer = this.storage.read(tenantId, inv.id, 'pdf');
+            if (!buffer && inv.provider === 'factus' && inv.invoiceNumber) {
+                buffer = await this.factus.downloadPdf(inv.invoiceNumber).catch(() => null);
+                if (buffer) this.storage.save(tenantId, inv.id, 'pdf', buffer);
+            }
+            if (!buffer) {
+                const cfg = await this.config.getConfig();
+                buffer = await this.pdf.render(this.buildBranded(inv, cfg));
+            }
+        }
+        if (!buffer) throw new NotFoundException({ error: 'pdf_unavailable' });
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `inline; filename="parallly-${inv.invoiceNumber || inv.id.slice(0, 8)}.pdf"`,
+        });
+        res.send(buffer);
+    }
+
+    @Get(':tenantId/invoices/:id/xml')
+    async getInvoiceXml(
+        @Param('tenantId') tenantId: string,
+        @Param('id') id: string,
+        @Res() res: Response,
+    ): Promise<void> {
+        const inv = await this.prisma.fiscalInvoice.findFirst({ where: { id, tenantId } });
+        if (!inv) throw new NotFoundException({ error: 'invoice_not_found' });
+        let buffer = this.storage.read(tenantId, inv.id, 'xml');
+        if (!buffer && inv.provider === 'factus' && inv.invoiceNumber) {
+            buffer = await this.factus.downloadXml(inv.invoiceNumber).catch(() => null);
+            if (buffer) this.storage.save(tenantId, inv.id, 'xml', buffer);
+        }
+        if (!buffer) throw new NotFoundException({ error: 'xml_unavailable' });
+        res.set({
+            'Content-Type': 'application/xml',
+            'Content-Disposition': `attachment; filename="parallly-${inv.invoiceNumber || inv.id.slice(0, 8)}.xml"`,
+        });
+        res.send(buffer);
+    }
+
+    private buildBranded(inv: any, cfg: any): BrandedInvoiceData {
+        const snap = (inv.acquirerSnapshot as any) || {};
+        return {
+            type: inv.type,
+            invoiceNumber: inv.invoiceNumber || String(inv.id).slice(0, 8).toUpperCase(),
+            cufe: inv.cufe,
+            qrUrl: inv.qrUrl,
+            issuedAt: inv.issuedAt,
+            amountCents: inv.amountCents,
+            taxCents: inv.taxCents,
+            currency: inv.currency,
+            itemDescription: cfg.itemDescription,
+            issuerName: cfg.mode === 'US_REMOTE' ? cfg.usIssuer?.legalName || 'Parallly' : 'Parallly',
+            issuerNit: cfg.mode === 'US_REMOTE' ? cfg.usIssuer?.taxId ?? null : null,
+            acquirerName: snap.businessName || snap.names || null,
+            acquirerDoc: snap.documentId ? `${snap.documentType || ''} ${snap.documentId}`.trim() : null,
+            acquirerEmail: snap.email || null,
+        };
     }
 }

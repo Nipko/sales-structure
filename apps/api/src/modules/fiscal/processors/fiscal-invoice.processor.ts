@@ -5,6 +5,8 @@ import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FiscalConfigService } from '../fiscal-config.service';
 import { FiscalProviderFactory } from '../fiscal-provider.factory';
+import { FactusAdapter } from '../adapters/factus.adapter';
+import { FiscalStorageService } from '../fiscal-storage.service';
 import { FISCAL_MAX_ATTEMPTS, FISCAL_QUEUE, FiscalJobData } from '../fiscal.constants';
 import { FiscalAcquirer, FiscalIssueResult } from '../interfaces/fiscal-provider.interface';
 
@@ -22,6 +24,8 @@ export class FiscalInvoiceProcessor extends WorkerHost {
         private readonly prisma: PrismaService,
         private readonly config: FiscalConfigService,
         private readonly factory: FiscalProviderFactory,
+        private readonly factus: FactusAdapter,
+        private readonly storage: FiscalStorageService,
     ) {
         super();
     }
@@ -91,7 +95,7 @@ export class FiscalInvoiceProcessor extends WorkerHost {
                     originalProviderRef: original.providerRef,
                     amountCents: copAmountCents ?? inv.amountCents,
                     currency: provider.name === 'factus' ? 'COP' : inv.currency,
-                    description: 'Reembolso suscripción Parallly',
+                    description: `${cfg.itemDescription} — Reembolso`,
                     acquirer: acq,
                     ivaTreatment,
                     reason: 'Reembolso',
@@ -103,7 +107,7 @@ export class FiscalInvoiceProcessor extends WorkerHost {
                     amountCents: inv.amountCents,
                     copAmountCents,
                     currency: inv.currency,
-                    description: 'Suscripción Parallly',
+                    description: await this.buildDescription(inv.paymentId, cfg.itemDescription),
                     acquirer: acq,
                     ivaTreatment,
                 });
@@ -132,6 +136,24 @@ export class FiscalInvoiceProcessor extends WorkerHost {
         }
 
         const fiscalCurrency = provider.name === 'factus' ? 'COP' : inv.currency;
+
+        // Archive the official PDF/XML for the 5-year legal retention and expose
+        // our own authenticated endpoints as the canonical document URLs.
+        let pdfUrl: string | undefined = result.pdfUrl ?? undefined; // fallback: provider public_url
+        let xmlUrl: string | undefined = result.xmlUrl ?? undefined;
+        if (provider.name === 'factus' && result.invoiceNumber) {
+            try {
+                const pdfBuf = await this.factus.downloadPdf(result.invoiceNumber);
+                if (pdfBuf) this.storage.save(inv.tenantId, inv.id, 'pdf', pdfBuf);
+                const xmlBuf = await this.factus.downloadXml(result.invoiceNumber);
+                if (xmlBuf) this.storage.save(inv.tenantId, inv.id, 'xml', xmlBuf);
+            } catch (e: any) {
+                this.logger.warn(`[Fiscal] Could not archive PDF/XML for ${inv.id}: ${e?.message}`);
+            }
+            pdfUrl = `/fiscal/${inv.tenantId}/invoices/${inv.id}/pdf`;
+            xmlUrl = `/fiscal/${inv.tenantId}/invoices/${inv.id}/xml`;
+        }
+
         await this.prisma.fiscalInvoice.update({
             where: { id: inv.id },
             data: {
@@ -140,8 +162,8 @@ export class FiscalInvoiceProcessor extends WorkerHost {
                 invoiceNumber: result.invoiceNumber ?? undefined,
                 cufe: result.cufe ?? undefined,
                 qrUrl: result.qrUrl ?? undefined,
-                pdfUrl: result.pdfUrl ?? undefined,
-                xmlUrl: result.xmlUrl ?? undefined,
+                pdfUrl,
+                xmlUrl,
                 taxCents: result.taxCents ?? 0,
                 currency: fiscalCurrency,
                 issuedAt: new Date(),
@@ -149,6 +171,7 @@ export class FiscalInvoiceProcessor extends WorkerHost {
                 metadata: {
                     ...(inv.metadata as object),
                     trmApplied: trmApplied ?? null,
+                    factusPublicUrl: result.pdfUrl ?? null,
                     raw: result.raw,
                 } as any,
             },
@@ -159,7 +182,7 @@ export class FiscalInvoiceProcessor extends WorkerHost {
             await this.prisma.billingPayment
                 .update({
                     where: { id: inv.paymentId },
-                    data: { invoiceNumber: result.invoiceNumber, invoicePdfUrl: result.pdfUrl ?? undefined },
+                    data: { invoiceNumber: result.invoiceNumber, invoicePdfUrl: pdfUrl ?? undefined },
                 })
                 .catch(() => undefined);
         }
@@ -186,6 +209,16 @@ export class FiscalInvoiceProcessor extends WorkerHost {
         Sentry.captureException(new Error(`Fiscal invoice ${id} failed: ${reason}`), {
             tags: { module: 'fiscal', tenantId },
         });
+    }
+
+    /** Compose the invoice line description: config base + plan name when available. */
+    private async buildDescription(paymentId: string | null, base: string): Promise<string> {
+        if (!paymentId) return base;
+        const pay = await this.prisma.billingPayment
+            .findUnique({ where: { id: paymentId }, include: { subscription: { include: { plan: true } } } })
+            .catch(() => null);
+        const planName = (pay as any)?.subscription?.plan?.name;
+        return planName ? `${base} — ${planName}` : base;
     }
 
     private async latestRate(from: string, to: string): Promise<number | null> {

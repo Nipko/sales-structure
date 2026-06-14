@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { FiscalConfigService } from '../fiscal-config.service';
+import { FiscalConfigService, FiscalConfig } from '../fiscal-config.service';
 import {
     CreditNoteData,
     FiscalAcquirer,
@@ -54,7 +54,6 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
     private readonly PAYMENT_METHOD_CODE = '48';
     private readonly DOCUMENT_TYPE = '01'; // factura electrónica de venta
     private readonly OPERATION_TYPE = '10'; // estándar
-    private readonly ITEM_CODE_REFERENCE = 'PARALLLY-SUB';
 
     constructor(private readonly config: FiscalConfigService) {}
 
@@ -220,14 +219,14 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         description: string,
         grossCents: number,
         iva: IvaTreatment,
-        cfg: { defaultUnitMeasureId: string; defaultStandardCodeId: string; defaultProductTributeId: string },
+        cfg: FiscalConfig,
     ): { item: Record<string, unknown> } {
         const excluded = iva === 'excluido';
         const netCents = excluded ? grossCents : Math.round(grossCents / 1.19);
         const price = +(netCents / 100).toFixed(2);
         return {
             item: {
-                code_reference: this.ITEM_CODE_REFERENCE,
+                code_reference: cfg.itemCodeReference,
                 name: description.slice(0, 200),
                 quantity: 1,
                 discount_rate: 0,
@@ -310,5 +309,67 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             return Object.entries(errs).map(([k, v]) => `${k}: ${v}`).join('; ').slice(0, 500);
         }
         return (json?.message || json?.data?.message || 'unknown error').toString().slice(0, 500);
+    }
+
+    // -------------------------------------------------------------------------
+    // Document download (PDF/XML) — base64 from Factus, decoded to Buffer
+    // -------------------------------------------------------------------------
+
+    /** Download the official Factus PDF (graphic representation) for an invoice number. */
+    async downloadPdf(number: string): Promise<Buffer | null> {
+        return this.downloadDocument(`/v2/bills/download-pdf/${encodeURIComponent(number)}`);
+    }
+
+    /** Download the DIAN-signed XML for an invoice number. */
+    async downloadXml(number: string): Promise<Buffer | null> {
+        return this.downloadDocument(`/v2/bills/download-xml/${encodeURIComponent(number)}`);
+    }
+
+    private async downloadDocument(apiPath: string): Promise<Buffer | null> {
+        const res = await this.authedFetch(apiPath, { method: 'GET' });
+        if (!res.ok) {
+            this.logger.warn(`Factus download ${apiPath} failed (${res.status})`);
+            return null;
+        }
+        const json: any = await res.json().catch(() => ({}));
+        const b64 =
+            json?.data?.pdf_base64_encoded ??
+            json?.data?.xml_base64_encoded ??
+            json?.data?.file ??
+            json?.data?.content;
+        if (!b64 || typeof b64 !== 'string') {
+            this.logger.warn(`Factus download ${apiPath} returned no base64 payload`);
+            return null;
+        }
+        try {
+            return Buffer.from(b64, 'base64');
+        } catch {
+            return null;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Admin helpers — connection test + numbering ranges
+    // -------------------------------------------------------------------------
+
+    /** Verify Factus credentials by requesting a token. */
+    async testConnection(): Promise<{ ok: boolean; message: string }> {
+        try {
+            await this.getToken();
+            return { ok: true, message: `Conectado a ${this.baseUrl}` };
+        } catch (err: any) {
+            return { ok: false, message: err?.message || 'auth_failed' };
+        }
+    }
+
+    /** List the issuer's numbering ranges so the admin can pick numbering_range_id. */
+    async listNumberingRanges(): Promise<any[]> {
+        const res = await this.authedFetch('/v2/numbering-ranges', { method: 'GET' });
+        const json: any = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(`Factus numbering-ranges failed (${res.status}): ${this.formatErrors(json)}`);
+        }
+        const data = json?.data;
+        return Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
     }
 }

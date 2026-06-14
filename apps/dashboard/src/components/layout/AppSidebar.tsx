@@ -64,6 +64,7 @@ import {
   Shield,
   Lightbulb,
   Sparkles,
+  Receipt,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -192,6 +193,7 @@ const platformSections: NavSectionDef[] = [
     items: [
       { labelKey: "tenants", href: "/admin/tenants", icon: Building2, shortcut: "⌘ 1", accent: "text-blue-500 dark:text-blue-400" },
       { labelKey: "financials", href: "/admin/financials", icon: DollarSign, accent: "text-emerald-500 dark:text-emerald-400" },
+      { labelKey: "fiscalAdmin", href: "/admin/fiscal", icon: Receipt, accent: "text-teal-500 dark:text-teal-400" },
       { labelKey: "managed", href: "/admin/managed", icon: ShieldCheck, accent: "text-indigo-500 dark:text-indigo-400" },
       { labelKey: "platformUsage", href: "/admin/usage", icon: TrendingUp },
       { labelKey: "platformHealth", href: "/admin/health", icon: Activity, accent: "text-rose-500 dark:text-rose-400" },
@@ -252,6 +254,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const roleCtx = useRole();
   const tNav = useTranslations('nav');
   const tRoles = useTranslations('roles');
+  const tTopbar = useTranslations('topbar');
   const locale = useLocale();
 
   // Decide which navigation tree to render. super_admin without
@@ -466,7 +469,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="p-1.5 rounded-md text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors hidden md:inline-flex"
-          title={collapsed ? "Expand" : "Collapse"}
+          title={collapsed ? tNav("expandSidebar") : tNav("collapseSidebar")}
         >
           {collapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
         </button>
@@ -537,7 +540,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                             )}>
                               <Sparkles size={14} className="animate-pulse" />
                             </div>
-                            <span className="text-[13px] font-semibold truncate">Novedades</span>
+                            <span className="text-[13px] font-semibold truncate">{tNav("novedades")}</span>
                           </div>
                           {hasUnreadChangelog && (
                             <span className="relative flex h-2 w-2">
@@ -568,7 +571,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                             </div>
                           </TooltipTrigger>
                           <TooltipContent side="right">
-                            <span className="font-semibold">Novedades</span>
+                            <span className="font-semibold">{tNav("novedades")}</span>
                           </TooltipContent>
                         </Tooltip>
                       )}
@@ -799,7 +802,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
           showCloseButton={true}
           className="w-[240px] p-0 bg-white dark:bg-neutral-950 flex flex-col"
         >
-          <SheetTitle className="sr-only">Menu</SheetTitle>
+          <SheetTitle className="sr-only">{tTopbar("menu")}</SheetTitle>
           {sidebarContent}
         </SheetContent>
       </Sheet>

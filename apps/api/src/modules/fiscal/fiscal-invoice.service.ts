@@ -160,6 +160,19 @@ export class FiscalInvoiceService {
         }
     }
 
+    /** Re-enqueue a failed/pending invoice for another issuance attempt (super admin retry). */
+    async requeue(fiscalInvoiceId: string): Promise<boolean> {
+        const inv = await this.prisma.fiscalInvoice.findUnique({ where: { id: fiscalInvoiceId } });
+        if (!inv || inv.status === 'issued') return false;
+        await this.prisma.fiscalInvoice.update({
+            where: { id: fiscalInvoiceId },
+            data: { status: 'pending', failureReason: null },
+        });
+        await this.enqueue({ fiscalInvoiceId, kind: inv.type === 'credit_note' ? 'credit_note' : 'issue' });
+        this.logger.log(`[Fiscal] Re-queued ${inv.type} ${fiscalInvoiceId} for retry`);
+        return true;
+    }
+
     private async enqueue(data: FiscalJobData): Promise<void> {
         await this.queue.add(data.kind, data, {
             attempts: FISCAL_MAX_ATTEMPTS,

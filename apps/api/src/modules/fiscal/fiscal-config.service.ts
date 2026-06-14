@@ -38,6 +38,9 @@ export interface FiscalConfig {
     defaultProductTributeId: string;
     /** Fallback municipality_id when the acquirer has none. */
     defaultMunicipalityId: string | null;
+    /** Invoice line item: base description (plan name is appended) and SKU/code. */
+    itemDescription: string;
+    itemCodeReference: string;
     /** Issuer details for US_REMOTE mode. */
     usIssuer: UsIssuerConfig;
 }
@@ -52,6 +55,8 @@ const DEFAULTS: FiscalConfig = {
     defaultStandardCodeId: '1', // adopción del contribuyente
     defaultProductTributeId: '1', // IVA (product tribute)
     defaultMunicipalityId: null,
+    itemDescription: 'Suscripción Parallly',
+    itemCodeReference: 'PARALLLY-SUB',
     usIssuer: {},
 };
 
@@ -106,6 +111,8 @@ export class FiscalConfigService {
             defaultStandardCodeId: get('fiscal.default_standard_code_id') || DEFAULTS.defaultStandardCodeId,
             defaultProductTributeId: get('fiscal.default_product_tribute_id') || DEFAULTS.defaultProductTributeId,
             defaultMunicipalityId: get('fiscal.default_municipality_id') ?? DEFAULTS.defaultMunicipalityId,
+            itemDescription: get('fiscal.item_description') || DEFAULTS.itemDescription,
+            itemCodeReference: get('fiscal.item_code_reference') || DEFAULTS.itemCodeReference,
             usIssuer,
         };
 
@@ -131,6 +138,8 @@ export class FiscalConfigService {
         if (patch.defaultProductTributeId) updates['fiscal.default_product_tribute_id'] = patch.defaultProductTributeId;
         if (patch.defaultMunicipalityId !== undefined)
             updates['fiscal.default_municipality_id'] = patch.defaultMunicipalityId ?? '';
+        if (patch.itemDescription) updates['fiscal.item_description'] = patch.itemDescription;
+        if (patch.itemCodeReference) updates['fiscal.item_code_reference'] = patch.itemCodeReference;
         if (patch.usIssuer) updates['fiscal.issuer_us'] = JSON.stringify(patch.usIssuer);
 
         for (const [key, value] of Object.entries(updates)) {

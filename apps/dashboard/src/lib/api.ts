@@ -1102,9 +1102,39 @@ export const api = {
     updateFiscalData: (tenantId: string, data: Record<string, any>) =>
         apiPut(`/fiscal/${tenantId}/data`, data),
     getFiscalInvoices: (tenantId: string) => apiGet(`/fiscal/${tenantId}/invoices`),
+    downloadFiscalInvoice: async (tenantId: string, id: string, kind: "pdf" | "xml" = "pdf", format?: "official" | "branded") => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+        const qs = kind === "pdf" && format ? `?format=${format}` : "";
+        const res = await fetch(`${BASE_URL}/fiscal/${tenantId}/invoices/${id}/${kind}${qs}`, {
+            method: "GET",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `parallly-${id.slice(0, 8)}.${kind}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        return { success: true };
+    },
     // super_admin only
     getFiscalConfig: () => apiGet(`/fiscal-admin/config`),
     updateFiscalConfig: (data: Record<string, any>) => apiPut(`/fiscal-admin/config`, data),
+    getFiscalAdminInvoices: (params?: { status?: string; tenantId?: string; page?: number }) => {
+        const qs = new URLSearchParams();
+        if (params?.status) qs.set("status", params.status);
+        if (params?.tenantId) qs.set("tenantId", params.tenantId);
+        if (params?.page) qs.set("page", String(params.page));
+        const q = qs.toString();
+        return apiGet(`/fiscal-admin/invoices${q ? `?${q}` : ""}`);
+    },
+    retryFiscalInvoice: (id: string) => apiPost(`/fiscal-admin/invoices/${id}/retry`, {}),
+    getFactusHealth: () => apiGet(`/fiscal-admin/factus/health`),
+    getFactusNumberingRanges: () => apiGet(`/fiscal-admin/factus/numbering-ranges`),
 
     // --- WA Template creation ---
     createWhatsAppTemplate: (data: { name: string; language: string; category: string; components: any[] }) =>

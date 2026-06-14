@@ -1,10 +1,12 @@
-import { BadRequestException, Body, Controller, Get, Put, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsIn, IsObject, IsOptional, IsString } from 'class-validator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { FiscalConfigService, FiscalConfig } from './fiscal-config.service';
+import { FiscalInvoiceService } from './fiscal-invoice.service';
+import { FactusAdapter } from './adapters/factus.adapter';
 
 class FiscalConfigDto {
     @IsOptional() @IsIn(['CO_LOCAL', 'US_REMOTE']) mode?: 'CO_LOCAL' | 'US_REMOTE';
@@ -32,6 +34,8 @@ export class FiscalAdminController {
     constructor(
         private readonly config: FiscalConfigService,
         private readonly prisma: PrismaService,
+        private readonly fiscalService: FiscalInvoiceService,
+        private readonly factus: FactusAdapter,
     ) {}
 
     @Get('config')
@@ -83,5 +87,63 @@ export class FiscalAdminController {
 
         const updated = await this.config.getConfig();
         return { success: true, data: updated };
+    }
+
+    // ── Global invoice management ───────────────────────────────
+
+    @Get('invoices')
+    async listInvoices(
+        @Query('status') status?: string,
+        @Query('tenantId') tenantId?: string,
+        @Query('page') page?: string,
+    ) {
+        const where: Record<string, unknown> = {};
+        if (status) where.status = status;
+        if (tenantId) where.tenantId = tenantId;
+        const take = 50;
+        const skip = page && Number(page) > 1 ? (Number(page) - 1) * take : 0;
+
+        const [rows, total] = await Promise.all([
+            this.prisma.fiscalInvoice.findMany({ where, orderBy: { createdAt: 'desc' }, take, skip }),
+            this.prisma.fiscalInvoice.count({ where }),
+        ]);
+        const tenantIds = [...new Set(rows.map((r) => r.tenantId))];
+        const tenants = await this.prisma.tenant.findMany({
+            where: { id: { in: tenantIds } },
+            select: { id: true, name: true },
+        });
+        const nameMap = Object.fromEntries(tenants.map((t) => [t.id, t.name]));
+        return {
+            success: true,
+            total,
+            data: rows.map((r) => ({ ...r, tenantName: nameMap[r.tenantId] || r.tenantId })),
+        };
+    }
+
+    @Post('invoices/:id/retry')
+    async retryInvoice(@Param('id') id: string) {
+        const ok = await this.fiscalService.requeue(id);
+        if (!ok) {
+            throw new BadRequestException({ error: 'cannot_retry', message: 'La factura no existe o ya está emitida.' });
+        }
+        return { success: true };
+    }
+
+    // ── Factus connection helpers ───────────────────────────────
+
+    @Get('factus/health')
+    async factusHealth() {
+        const result = await this.factus.testConnection();
+        return { success: true, data: result };
+    }
+
+    @Get('factus/numbering-ranges')
+    async numberingRanges() {
+        try {
+            const ranges = await this.factus.listNumberingRanges();
+            return { success: true, data: ranges };
+        } catch (err: any) {
+            return { success: false, error: err?.message || 'failed' };
+        }
     }
 }

@@ -32,6 +32,21 @@ jobs:
       contents: read
       packages: write
 
+    # Redis for the DI bootstrap smoke test below. RedisService/BullMQ open an
+    # ioredis connection eagerly in their constructors, so the module graph needs
+    # a reachable Redis to compile cleanly (Postgres is NOT needed — PrismaService
+    # only $connect()s in onModuleInit, which the bootstrap test does not run).
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -50,6 +65,27 @@ jobs:
 
       - name: TypeScript check (WhatsApp)
         run: cd apps/whatsapp && npx tsc --noEmit
+
+      # NestJS DI smoke test: compiles the full AppModule graph to catch DI errors
+      # (missing providers, circular deps) that tsc cannot see. Runs here on Linux
+      # x64 — where bcrypt's prebuilt binding exists — so it gates the deploy before
+      # the Docker build, instead of surfacing as a crash-on-boot during the rolling
+      # restart. Dummy env: ConfigModule has no validation schema and Prisma never
+      # connects at .compile(), so these only need to be present/well-formed.
+      - name: NestJS DI bootstrap check (API)
+        run: cd apps/api && npm run test:bootstrap
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+          DIRECT_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+          REDIS_HOST: localhost
+          REDIS_PORT: '6379'
+          JWT_SECRET: ci-dummy-jwt-secret
+          JWT_REFRESH_SECRET: ci-dummy-jwt-refresh-secret
+          INTERNAL_JWT_SECRET: ci-dummy-internal-jwt-secret
+          INTERNAL_API_KEY: ci-dummy-internal-api-key
+          ENCRYPTION_KEY: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+          OPENAI_API_KEY: sk-ci-dummy-key
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -242,6 +278,14 @@ jobs:
           PROD_MP_ACCESS_TOKEN: ${{ secrets.MP_ACCESS_TOKEN }}
           PROD_MP_WEBHOOK_SECRET: ${{ secrets.MP_WEBHOOK_SECRET }}
           PROD_MP_PUBLIC_KEY: ${{ secrets.MP_PUBLIC_KEY }}
+          # Factus (DIAN electronic invoicing — Colombia). Credentials from the
+          # Factus admin. FACTUS_BASE_URL = https://api-sandbox.factus.com.co
+          # until production go-live.
+          PROD_FACTUS_BASE_URL: ${{ secrets.FACTUS_BASE_URL }}
+          PROD_FACTUS_CLIENT_ID: ${{ secrets.FACTUS_CLIENT_ID }}
+          PROD_FACTUS_CLIENT_SECRET: ${{ secrets.FACTUS_CLIENT_SECRET }}
+          PROD_FACTUS_USERNAME: ${{ secrets.FACTUS_USERNAME }}
+          PROD_FACTUS_PASSWORD: ${{ secrets.FACTUS_PASSWORD }}
           # Optional — comma separated list of ISO codes for which to sync
           # plans with MP on every deploy. Defaults to CO. Add more once you
           # have an MP account per country. Example secret value: "CO,AR,MX"
@@ -282,6 +326,7 @@ jobs:
             PROD_MS_AUTH_CLIENT_ID,PROD_MS_AUTH_CLIENT_SECRET,
             PROD_MS_CLIENT_ID,PROD_MS_CLIENT_SECRET,
             PROD_MP_ACCESS_TOKEN,PROD_MP_WEBHOOK_SECRET,PROD_MP_PUBLIC_KEY,
+            PROD_FACTUS_BASE_URL,PROD_FACTUS_CLIENT_ID,PROD_FACTUS_CLIENT_SECRET,PROD_FACTUS_USERNAME,PROD_FACTUS_PASSWORD,
             PROD_MP_SYNC_COUNTRIES,
             PROD_MP_FX_CO,PROD_MP_FX_AR,PROD_MP_FX_MX,PROD_MP_FX_CL,PROD_MP_FX_PE,PROD_MP_FX_UY,PROD_MP_FX_BR,
             PROD_HUBSPOT_CLIENT_ID,PROD_HUBSPOT_CLIENT_SECRET,
@@ -381,6 +426,12 @@ jobs:
             echo "MP_WEBHOOK_SECRET=${PROD_MP_WEBHOOK_SECRET}" >> .env
             echo "MP_PUBLIC_KEY=${PROD_MP_PUBLIC_KEY}" >> .env
             echo "MP_WEBHOOK_URL=https://api.parallly-chat.cloud/api/v1/billing/webhook/mercadopago" >> .env
+            echo "# Factus (DIAN electronic invoicing — Colombia)" >> .env
+            echo "FACTUS_BASE_URL=${PROD_FACTUS_BASE_URL:-https://api-sandbox.factus.com.co}" >> .env
+            echo "FACTUS_CLIENT_ID=${PROD_FACTUS_CLIENT_ID}" >> .env
+            echo "FACTUS_CLIENT_SECRET=${PROD_FACTUS_CLIENT_SECRET}" >> .env
+            echo "FACTUS_USERNAME=${PROD_FACTUS_USERNAME}" >> .env
+            echo "FACTUS_PASSWORD=${PROD_FACTUS_PASSWORD}" >> .env
             echo "# External CRM integrations" >> .env
             echo "HUBSPOT_CLIENT_ID=${PROD_HUBSPOT_CLIENT_ID}" >> .env
             echo "HUBSPOT_CLIENT_SECRET=${PROD_HUBSPOT_CLIENT_SECRET}" >> .env

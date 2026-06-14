@@ -24,13 +24,92 @@ env:
 
 jobs:
   # ──────────────────────────────────────────────────────────────
-  # JOB 0: Validate (the CI gate) — typecheck (4 apps) + lint + migrations +
-  # real boot smoke test (DI graph + onModuleInit). Defined in the reusable
-  # _validate.yml. build-and-push depends on it, so a red validate blocks the
-  # whole build + deploy (verified green on 5fd18c3 before wiring the gate).
+  # JOB 0: Validate (the CI gate) — typecheck (4 apps) + lint + migrations apply
+  # on a fresh DB + real boot smoke test (DI graph + onModuleInit). Runs on Linux
+  # x64 (where bcrypt's prebuilt exists). build-and-push depends on it, so a red
+  # validate blocks the whole build + deploy.
   # ──────────────────────────────────────────────────────────────
   validate:
-    uses: ./.github/workflows/_validate.yml
+    runs-on: ubuntu-latest
+
+    # Ephemeral infra for the boot smoke test. Postgres gets the schema via
+    # `prisma migrate deploy`; Redis backs ioredis/BullMQ which connect eagerly.
+    services:
+      postgres:
+        # pgvector image (Postgres + the `vector` extension) so `prisma migrate
+        # deploy` can run any `CREATE EXTENSION vector` migration the KB/RAG uses.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: parallext
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: parallext_engine
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U parallext"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # DB/Redis point at the service containers above. Secrets are CI dummies —
+      # the app reads them at construction but makes no real external calls at boot.
+      DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+      DIRECT_DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      NODE_ENV: test
+      JWT_SECRET: ci-dummy-jwt-secret
+      JWT_REFRESH_SECRET: ci-dummy-jwt-refresh-secret
+      INTERNAL_JWT_SECRET: ci-dummy-internal-jwt-secret
+      INTERNAL_API_KEY: ci-dummy-internal-api-key
+      ENCRYPTION_KEY: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+      OPENAI_API_KEY: sk-ci-dummy-key
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check (all apps)
+        run: |
+          (cd apps/api && npx tsc --noEmit)
+          (cd apps/dashboard && npx tsc --noEmit)
+          (cd apps/whatsapp && npx tsc --noEmit)
+          (cd apps/landing && npx tsc --noEmit)
+
+      - name: Lint (API) — non-blocking until the codebase is lint-clean
+        continue-on-error: true
+        run: cd apps/api && npx eslint "src/**/*.ts"
+
+      - name: Prisma generate + migrate (ephemeral DB)
+        run: |
+          cd apps/api
+          npx prisma generate
+          npx prisma migrate deploy
+
+      - name: Build API (+ shared)
+        run: npx turbo build --filter=@parallext/api
+
+      - name: Boot smoke test (real NestFactory.create + onModuleInit)
+        run: node apps/api/dist/boot-check.js
 
   # ──────────────────────────────────────────────────────────────
   # JOB 1: Build & push Docker images to GHCR

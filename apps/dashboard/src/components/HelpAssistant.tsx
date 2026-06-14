@@ -76,7 +76,7 @@ export function HelpAssistant() {
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([
     {
       role: 'assistant',
-      content: '¡Hola! 👋 Soy tu copiloto de ayuda de Parallly. Estoy aquí para responder tus preguntas funcionales sobre la plataforma: configuración de canales, CRM, automatizaciones, citas y más. ¿En qué puedo ayudarte hoy?'
+      content: t("chat.welcome")
     }
   ]);
   const [chatInput, setChatInput] = useState("");
@@ -154,7 +154,7 @@ export function HelpAssistant() {
         context: {
           page: pathname,
           tenantId: user?.tenantId,
-          userName: user?.firstName || 'Usuario',
+          userName: user?.firstName || t("chat.defaultUserName"),
           userRole: user?.role || 'agent'
         },
         history: chatHistory
@@ -164,14 +164,14 @@ export function HelpAssistant() {
         const replyContent = response.data.reply;
         setMessages(prev => [...prev, { role: 'assistant', content: replyContent }]);
       } else {
-        const errorMsg = response?.error || 'No he recibido una respuesta válida. ¿Podrías intentar nuevamente?';
+        const errorMsg = response?.error || t("chat.invalidResponse");
         setMessages(prev => [...prev, { role: 'assistant', content: errorMsg }]);
       }
     } catch (error) {
       console.error('Error calling copilotChat API:', error);
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: 'Lo siento, ha ocurrido un error al conectar con mi cerebro de IA. Por favor, asegúrate de que tu suscripción esté activa y tus proveedores de IA estén configurados en la plataforma.'
+        content: t("chat.connectionError")
       }]);
     } finally {
       setIsSending(false);
@@ -534,24 +534,24 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
   // Define general FAQs for searching
   const generalFaqs = [
     {
-      question: "¿Cómo funciona la IA para responder?",
-      answer: "El agente IA analiza los mensajes de los clientes usando la Base de Conocimientos (RAG++) para responder preguntas frecuentes sobre precios, políticas, y agendar citas automáticamente. Si detecta intención de hablar con un humano o se frustra, inicia un Handoff.",
-      category: "Agente IA"
+      question: t("faqs.aiHowItWorks.question"),
+      answer: t("faqs.aiHowItWorks.answer"),
+      category: t("faqs.aiHowItWorks.category")
     },
     {
-      question: "¿Cómo se activa la sincronización del calendario?",
-      answer: "Ve a la sección Citas -> Configuración de Calendario y haz clic en 'Conectar Google Calendar' o 'Conectar Microsoft Outlook'. El sistema validará tus slots ocupados y evitará colisiones automáticamente.",
-      category: "Citas"
+      question: t("faqs.calendarSync.question"),
+      answer: t("faqs.calendarSync.answer"),
+      category: t("faqs.calendarSync.category")
     },
     {
-      question: "¿Dónde configuro el horario comercial de atención?",
-      answer: "En Configuración -> Horarios de Empresa puedes registrar el huso horario de tu negocio y la ventana semanal activa. El agente IA respetará estas horas y aplicará flujos fuera de servicio si es necesario.",
-      category: "Empresa"
+      question: t("faqs.businessHours.question"),
+      answer: t("faqs.businessHours.answer"),
+      category: t("faqs.businessHours.category")
     },
     {
-      question: "¿Qué es el Lead Score y cómo lo personalizo?",
-      answer: "El scoring de leads asigna puntos en tiempo real a tus contactos según sus acciones (etiquetas recibidas, mensajes enviados, etapa en el pipeline). Configura las ponderaciones en Configuración -> CRM -> Scoring de Leads.",
-      category: "CRM"
+      question: t("faqs.leadScore.question"),
+      answer: t("faqs.leadScore.answer"),
+      category: t("faqs.leadScore.category")
     }
   ];
 
@@ -562,25 +562,25 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
       case "vacation_rentals":
       case "properties":
         return {
-          prompt: `Eres un conserje de hospitalidad premium para nuestros apartamentos vacacionales. Tu objetivo es ayudar a los huéspedes a coordinar el check-in, explicar las amenidades, y agendar reservas. Siempre transmite calidez, confort y profesionalismo.`,
-          example: "Preguntas de ejemplo: '¿Cómo obtengo el código de acceso?', '¿Tienen cunas disponibles?'"
+          prompt: t("industryAdvice.hospitality.prompt"),
+          example: t("industryAdvice.hospitality.example")
         };
       case "gyms":
       case "fitness":
         return {
-          prompt: `Eres un asesor de membresía y coach motivacional para nuestro centro de bienestar. Tu objetivo es resolver dudas de precios, clases disponibles y agendar una sesión de prueba gratuita en la agenda. Sé enérgico, inspirador y servicial.`,
-          example: "Preguntas de ejemplo: '¿Qué clases tienen los lunes?', '¿Cuánto cuesta el pase mensual?'"
+          prompt: t("industryAdvice.fitness.prompt"),
+          example: t("industryAdvice.fitness.example")
         };
       case "restaurants":
       case "food":
         return {
-          prompt: `Eres el host y camarero digital de nuestro prestigioso restaurante. Muestra el menú de hoy, recomienda especialidades del chef, aclara ingredientes alérgicos y gestiona reservaciones de mesa. Mantén un tono elegante y apetecible.`,
-          example: "Preguntas de ejemplo: '¿Tienen opciones veganas?', '¿Puedo reservar para 4 personas hoy a las 8pm?'"
+          prompt: t("industryAdvice.restaurants.prompt"),
+          example: t("industryAdvice.restaurants.example")
         };
       default:
         return {
-          prompt: `Eres el agente inteligente y consultor de soporte principal del negocio. Tu misión es resolver las dudas frecuentes utilizando la base de conocimiento y guiar de manera fluida y educada al usuario a registrar una cita de asesoría.`,
-          example: "Preguntas de ejemplo: '¿Cuáles son sus servicios?', '¿Cómo puedo agendar una llamada?'"
+          prompt: t("industryAdvice.default.prompt"),
+          example: t("industryAdvice.default.example")
         };
     }
   };
@@ -602,10 +602,10 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
 
   // Quick suggestion chips for Asistente IA Chat
   const chatSuggestions = [
-    "¿Cómo conecto WhatsApp?",
-    "¿Cómo funciona el Lead Scoring?",
-    "¿Cómo configuro el RAG++?",
-    "¿Cómo sincronizo mi calendario?"
+    t("chat.suggestions.connectWhatsApp"),
+    t("chat.suggestions.leadScoring"),
+    t("chat.suggestions.configureRag"),
+    t("chat.suggestions.syncCalendar")
   ];
 
   return (
@@ -651,7 +651,7 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
               }`}
             >
               <BookOpen className="size-3.5" />
-              Guías & FAQs
+              {t("tabs.guides")}
             </button>
             <button
               onClick={() => setActiveTab('chat')}
@@ -662,7 +662,7 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
               }`}
             >
               <Sparkles className="size-3.5 animate-pulse text-indigo-500" />
-              Asistente IA
+              {t("tabs.chat")}
             </button>
           </div>
 
@@ -790,7 +790,7 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
                 <div className="flex items-center gap-2 border-b border-purple-500/10 pb-2">
                   <Lightbulb className="size-4 text-purple-500" />
                   <h3 className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                    {t("industryTitle", { industry: vt.industry === "otro" ? "General" : vt.industry })}
+                    {t("industryTitle", { industry: vt.industry === "otro" ? t("industryGeneral") : vt.industry })}
                   </h3>
                 </div>
                 
@@ -804,7 +804,7 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
                   <div className="space-y-2 pl-1">
                     <div className="relative group/advice bg-white/50 dark:bg-neutral-900/50 p-3 rounded-lg border border-neutral-200/50 dark:border-neutral-800/50">
                       <span className="text-[10px] font-bold tracking-wider text-purple-500 uppercase flex items-center gap-1">
-                        <Code className="size-3" /> Prompt del Sistema
+                        <Code className="size-3" /> {t("industryAdvice.systemPromptLabel")}
                       </span>
                       <p className="text-[11px] text-neutral-700 dark:text-neutral-300 leading-relaxed italic mt-1 font-mono">
                         "{industryAdvice.prompt}"
@@ -823,7 +823,7 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
 
                     <div className="bg-white/30 dark:bg-neutral-900/30 p-3 rounded-lg border border-neutral-200/30 dark:border-neutral-800/30">
                       <span className="text-[10px] font-bold tracking-wider text-indigo-500 uppercase flex items-center gap-1">
-                        <Terminal className="size-3" /> Casos de Ejemplo
+                        <Terminal className="size-3" /> {t("industryAdvice.examplesLabel")}
                       </span>
                       <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-1 leading-relaxed">
                         {industryAdvice.example}
@@ -839,7 +839,7 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
               <div className="flex items-center gap-2 border-b border-neutral-200/50 dark:border-neutral-800/50 pb-2">
                 <BookOpen className="size-4 text-neutral-500" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-800 dark:text-neutral-300">
-                  {searchQuery ? `Resultados (${filteredGuides.length + filteredFaqs.length})` : t("faqTitle")}
+                  {searchQuery ? t("searchResults", { count: filteredGuides.length + filteredFaqs.length }) : t("faqTitle")}
                 </h3>
               </div>
 
@@ -938,7 +938,7 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
                   <span className="size-1.5 rounded-full bg-indigo-500/80 animate-bounce" style={{ animationDelay: '150ms' }} />
                   <span className="size-1.5 rounded-full bg-indigo-500/80 animate-bounce" style={{ animationDelay: '300ms' }} />
                   <span className="ml-1 text-[10px] text-neutral-400 dark:text-neutral-500 animate-pulse">
-                    Copilot está escribiendo...
+                    {t("chat.typing")}
                   </span>
                 </div>
               )}
@@ -975,7 +975,7 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   disabled={isSending}
-                  placeholder="Pregúntame sobre la plataforma..."
+                  placeholder={t("chat.inputPlaceholder")}
                   className="w-full pl-4 pr-12 py-2.5 text-xs bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 text-neutral-900 dark:text-white transition-all disabled:opacity-50 placeholder-neutral-400"
                 />
                 <button
@@ -1005,7 +1005,7 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
             rel="noopener noreferrer"
             className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
           >
-            Soporte Técnico <ChevronRight className="size-2.5" />
+            {t("footer.support")} <ChevronRight className="size-2.5" />
           </a>
         </div>
       </SheetContent>

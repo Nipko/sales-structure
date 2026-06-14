@@ -14,6 +14,7 @@ import { HelpPanel } from "@/components/ui/help-panel";
 export default function LandingsPage() {
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
+    const t = useTranslations("landings");
     const { activeTenantId } = useTenant();
     const router = useRouter();
 
@@ -78,16 +79,16 @@ export default function LandingsPage() {
                 {/* Header */}
                 <div className="mb-8 flex items-end justify-between">
                     <div>
-                        <h1 className="text-3xl font-light text-foreground">Landing Pages</h1>
+                        <h1 className="text-3xl font-light text-foreground">{t("title")}</h1>
                         <p className="mt-2 text-muted-foreground font-light">
-                            Manage public lead capture and registration pages.
+                            {t("subtitle")}
                         </p>
                     </div>
                     <button
                         onClick={() => setShowCreateModal(true)}
                         className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 shadow-md"
                     >
-                        <Plus size={16} /> New Landing
+                        <Plus size={16} /> {t("newLanding")}
                     </button>
                 </div>
 
@@ -124,8 +125,8 @@ export default function LandingsPage() {
                         <div className="h-16 w-16 mb-4 rounded-full bg-background flex items-center justify-center">
                             <LayoutTemplate className="text-muted-foreground" size={32} />
                         </div>
-                        <h3 className="text-lg text-foreground font-medium mb-1">No pages created</h3>
-                        <p className="text-muted-foreground text-sm">Create your first landing page to start capturing leads.</p>
+                        <h3 className="text-lg text-foreground font-medium mb-1">{t("empty.title")}</h3>
+                        <p className="text-muted-foreground text-sm">{t("empty.description")}</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -154,21 +155,21 @@ export default function LandingsPage() {
                                     <div className="space-y-3 mt-6">
                                         <div className="flex items-center text-sm text-muted-foreground">
                                             <FileText size={14} className="mr-2" />
-                                            Course: {landing.course_name || "None"}
+                                            {t("card.course")}: {landing.course_name || t("card.none")}
                                         </div>
                                         <div className="flex items-center text-sm text-muted-foreground">
                                             <Settings size={14} className="mr-2" />
-                                            Campaign: {landing.campaign_name || "None"}
+                                            {t("card.campaign")}: {landing.campaign_name || t("card.none")}
                                         </div>
                                     </div>
 
                                     <div className="mt-6 flex items-center justify-between border-t border-border pt-4">
                                         <div className="flex items-center gap-2">
                                             <span className={cn("h-2 w-2 rounded-full", landing.status === 'published' ? 'bg-green-500' : 'bg-yellow-500')} />
-                                            <span className="text-xs uppercase font-medium text-muted-foreground tracking-wider">{landing.status}</span>
+                                            <span className="text-xs uppercase font-medium text-muted-foreground tracking-wider">{landing.status === 'published' ? t("status.published") : t("status.draft")}</span>
                                         </div>
                                         <a href={`/l/${landing.slug}`} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
-                                            View Landing <ExternalLink size={12} />
+                                            {t("viewLanding")} <ExternalLink size={12} />
                                         </a>
                                     </div>
                                 </div>
@@ -188,26 +189,26 @@ export default function LandingsPage() {
             {showCreateModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
                     <div className="w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-2xl">
-                        <h2 className="mb-1 text-xl font-medium text-foreground">New Landing Page</h2>
-                        <p className="mb-6 text-sm text-muted-foreground">Define the landing page basics.</p>
+                        <h2 className="mb-1 text-xl font-medium text-foreground">{t("modal.title")}</h2>
+                        <p className="mb-6 text-sm text-muted-foreground">{t("modal.subtitle")}</p>
 
                         <form onSubmit={handleCreate} className="space-y-4">
                             <div>
-                                <label className="mb-1 block text-sm text-muted-foreground">Page Title</label>
-                                <input required type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full rounded-xl border border-border bg-card px-4 py-2 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="e.g.: B2B Sales Masterclass" />
+                                <label className="mb-1 block text-sm text-muted-foreground">{t("modal.pageTitle")}</label>
+                                <input required type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full rounded-xl border border-border bg-card px-4 py-2 text-sm text-foreground focus:border-primary focus:outline-none" placeholder={t("modal.pageTitlePlaceholder")} />
                             </div>
                             <div>
-                                <label className="mb-1 block text-sm text-muted-foreground">Slug (URL)</label>
-                                <input type="text" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} className="w-full rounded-xl border border-border bg-card px-4 py-2 text-sm text-foreground focus:border-primary focus:outline-none" placeholder="ej: masterclass-ventas-b2b" />
-                                <p className="text-xs text-muted-foreground mt-1">Auto-generated if left empty.</p>
+                                <label className="mb-1 block text-sm text-muted-foreground">{t("modal.slug")}</label>
+                                <input type="text" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} className="w-full rounded-xl border border-border bg-card px-4 py-2 text-sm text-foreground focus:border-primary focus:outline-none" placeholder={t("modal.slugPlaceholder")} />
+                                <p className="text-xs text-muted-foreground mt-1">{t("modal.slugHint")}</p>
                             </div>
 
                             <div className="mt-6 flex justify-end gap-3 border-t border-border pt-6">
                                 <button type="button" onClick={() => setShowCreateModal(false)} className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-card">
-                                    Cancel
+                                    {tc("cancel")}
                                 </button>
                                 <button type="submit" className="rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground shadow-md hover:opacity-90">
-                                    Create Page
+                                    {t("modal.createButton")}
                                 </button>
                             </div>
                         </form>

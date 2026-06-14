@@ -1937,7 +1937,8 @@
       "addStaff": "Atribuir profissional",
       "primary": "Principal",
       "noStaff": "Sem profissionais atribuídos"
-    }
+    },
+    "errorUpdatingLabel": "Erro ao atualizar o rótulo"
   },
   "compliance": {
     "title": "Compliance & Auditoria",
@@ -2459,7 +2460,8 @@
       "toast": {
         "winnerSelected": "Variante vencedora selecionada"
       }
-    }
+    },
+    "resourceLabel": "campanhas de transmissão"
   },
   "channels": {
     "title": "Canais",
@@ -3066,7 +3068,16 @@
     "agentCreated": "Agente criado",
     "changeTemplate": "Trocar modelo",
     "changeTemplateDesc": "Aplique outro modelo a este agente (substitui a configuração base).",
-    "templateApplied": "Modelo aplicado"
+    "templateApplied": "Modelo aplicado",
+    "templateNames": {
+      "salesAdvisor": "Consultor de Vendas",
+      "supportAgent": "Agente de Suporte",
+      "faqAssistant": "Assistente de Perguntas Frequentes",
+      "schedulingAssistant": "Assistente de Agendamento",
+      "qualificationAssistant": "Assistente de Qualificação",
+      "blankAgent": "Agente em Branco",
+      "defaultAgent": "Agente Padrão"
+    }
   },
   "knowledge": {
     "title": "Base de Conhecimento",
@@ -3393,7 +3404,10 @@
       "lastNamePlaceholder": "Silva",
       "phone": "Telefone",
       "jobTitle": "Cargo / Função",
-      "status": "Status da conta"
+      "status": "Status da conta",
+      "jobTitlePlaceholder": "Consultor de Vendas",
+      "roleSelfLockHint": "Você não pode alterar seu próprio papel de administrador.",
+      "statusHint": "Determina se o usuário pode fazer login."
     },
     "toast": {
       "skillsSaved": "Habilidades atualizadas",
@@ -6582,6 +6596,71 @@
       "sub1Desc": "Revise os contadores mensais acumulados de conversas automáticas processadas pela IA e interações de transmissão.",
       "sub2Title": "Limites do Plano",
       "sub2Desc": "Verifique seus limites de agentes (Starter: 1, Pro: 3, Enterprise: 10) e calendários vinculados a qualquer momento."
+    },
+    "chat": {
+      "welcome": "Olá! 👋 Sou seu copiloto de ajuda da Parallly. Estou aqui para responder suas dúvidas funcionais sobre a plataforma: configuração de canais, CRM, automações, agendamentos e muito mais. Como posso ajudar você hoje?",
+      "defaultUserName": "Usuário",
+      "invalidResponse": "Não recebi uma resposta válida. Você poderia tentar novamente?",
+      "connectionError": "Desculpe, ocorreu um erro ao conectar com meu cérebro de IA. Por favor, verifique se sua assinatura está ativa e se seus provedores de IA estão configurados na plataforma.",
+      "typing": "Copilot está digitando...",
+      "inputPlaceholder": "Pergunte-me sobre a plataforma...",
+      "suggestions": {
+        "connectWhatsApp": "Como conecto o WhatsApp?",
+        "leadScoring": "Como funciona o Lead Scoring?",
+        "configureRag": "Como configuro o RAG++?",
+        "syncCalendar": "Como sincronizo meu calendário?"
+      }
+    },
+    "faqs": {
+      "aiHowItWorks": {
+        "question": "Como a IA funciona para responder?",
+        "answer": "O agente de IA analisa as mensagens dos clientes usando a Base de Conhecimento (RAG++) para responder perguntas frequentes sobre preços, políticas e agendar compromissos automaticamente. Se detectar a intenção de falar com um humano ou frustração, inicia um Handoff.",
+        "category": "Agente IA"
+      },
+      "calendarSync": {
+        "question": "Como ativo a sincronização do calendário?",
+        "answer": "Vá até a seção Agendamentos -> Configuração de Calendário e clique em 'Conectar Google Calendar' ou 'Conectar Microsoft Outlook'. O sistema validará seus horários ocupados e evitará conflitos automaticamente.",
+        "category": "Agendamentos"
+      },
+      "businessHours": {
+        "question": "Onde configuro o horário comercial de atendimento?",
+        "answer": "Em Configurações -> Horários da Empresa você pode registrar o fuso horário do seu negócio e a janela semanal ativa. O agente de IA respeitará esses horários e aplicará fluxos de fora de expediente quando necessário.",
+        "category": "Empresa"
+      },
+      "leadScore": {
+        "question": "O que é o Lead Score e como personalizo?",
+        "answer": "O scoring de leads atribui pontos em tempo real aos seus contatos com base em suas ações (etiquetas recebidas, mensagens enviadas, etapa no pipeline). Configure os pesos em Configurações -> CRM -> Scoring de Leads.",
+        "category": "CRM"
+      }
+    },
+    "industryAdvice": {
+      "hospitality": {
+        "prompt": "Você é um concierge de hospitalidade premium para nossos apartamentos de temporada. Seu objetivo é ajudar os hóspedes a coordenar o check-in, explicar as comodidades e agendar reservas. Sempre transmita acolhimento, conforto e profissionalismo.",
+        "example": "Perguntas de exemplo: 'Como obtenho o código de acesso?', 'Vocês têm berços disponíveis?'"
+      },
+      "fitness": {
+        "prompt": "Você é um consultor de associação e coach motivacional para o nosso centro de bem-estar. Seu objetivo é esclarecer dúvidas sobre preços, aulas disponíveis e agendar uma sessão de avaliação gratuita na agenda. Seja enérgico, inspirador e prestativo.",
+        "example": "Perguntas de exemplo: 'Quais aulas vocês têm às segundas-feiras?', 'Quanto custa o passe mensal?'"
+      },
+      "restaurants": {
+        "prompt": "Você é o anfitrião e garçom digital do nosso prestigiado restaurante. Mostre o cardápio do dia, recomende as especialidades do chef, esclareça ingredientes alergênicos e gerencie reservas de mesa. Mantenha um tom elegante e apetitoso.",
+        "example": "Perguntas de exemplo: 'Vocês têm opções veganas?', 'Posso reservar para 4 pessoas hoje às 20h?'"
+      },
+      "default": {
+        "prompt": "Você é o agente inteligente e consultor de suporte principal do negócio. Sua missão é resolver as dúvidas frequentes usando a base de conhecimento e orientar de forma fluida e educada o usuário a agendar um compromisso de consultoria.",
+        "example": "Perguntas de exemplo: 'Quais são os seus serviços?', 'Como posso agendar uma ligação?'"
+      },
+      "systemPromptLabel": "Prompt do Sistema",
+      "examplesLabel": "Casos de Exemplo"
+    },
+    "tabs": {
+      "guides": "Guias & FAQs",
+      "chat": "Assistente IA"
+    },
+    "searchResults": "Resultados ({count})",
+    "industryGeneral": "Geral",
+    "footer": {
+      "support": "Suporte Técnico"
     }
   },
   "tours": {
@@ -6724,6 +6803,15 @@
       "completed": "Concluída",
       "cancelled": "Cancelada",
       "no_show": "Não compareceu"
+    },
+    "planTypes": {
+      "ortodoncia": "Ortodontia",
+      "blanqueamiento": "Clareamento",
+      "limpieza_serie": "Série de limpezas",
+      "fisioterapia": "Fisioterapia",
+      "estetica": "Tratamento estético",
+      "psicologia": "Terapia psicológica",
+      "otro": "Outro"
     }
   },
   "petsCard": {
@@ -8619,5 +8707,34 @@
       "negative": "Negativo"
     },
     "mostUsedTags": "Tags mais usadas"
+  },
+  "landings": {
+    "title": "Landing Pages",
+    "subtitle": "Gerencie as páginas públicas de captação e registro de leads.",
+    "newLanding": "Nova landing",
+    "empty": {
+      "title": "Nenhuma página criada",
+      "description": "Crie sua primeira landing page para começar a captar leads."
+    },
+    "card": {
+      "course": "Curso",
+      "campaign": "Campanha",
+      "none": "Nenhum"
+    },
+    "status": {
+      "published": "Publicada",
+      "draft": "Rascunho"
+    },
+    "viewLanding": "Ver landing",
+    "modal": {
+      "title": "Nova landing page",
+      "subtitle": "Defina os dados básicos da landing page.",
+      "pageTitle": "Título da página",
+      "pageTitlePlaceholder": "ex.: Masterclass de Vendas B2B",
+      "slug": "Slug (URL)",
+      "slugPlaceholder": "ex: masterclass-vendas-b2b",
+      "slugHint": "Gerado automaticamente se deixado em branco.",
+      "createButton": "Criar página"
+    }
   }
 }

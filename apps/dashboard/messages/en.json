@@ -1937,7 +1937,8 @@
       "addStaff": "Assign professional",
       "primary": "Primary",
       "noStaff": "No professionals assigned"
-    }
+    },
+    "errorUpdatingLabel": "Error updating label"
   },
   "compliance": {
     "title": "Compliance & Audit",
@@ -2459,7 +2460,8 @@
       "toast": {
         "winnerSelected": "Winning variant selected"
       }
-    }
+    },
+    "resourceLabel": "broadcast campaigns"
   },
   "channels": {
     "title": "Channels",
@@ -3066,7 +3068,16 @@
     "agentCreated": "Agent created",
     "changeTemplate": "Change template",
     "changeTemplateDesc": "Apply a different template to this agent (replaces its base configuration).",
-    "templateApplied": "Template applied"
+    "templateApplied": "Template applied",
+    "templateNames": {
+      "salesAdvisor": "Sales Advisor",
+      "supportAgent": "Support Agent",
+      "faqAssistant": "FAQ Assistant",
+      "schedulingAssistant": "Scheduling Assistant",
+      "qualificationAssistant": "Qualification Assistant",
+      "blankAgent": "Blank Agent",
+      "defaultAgent": "Default Agent"
+    }
   },
   "knowledge": {
     "title": "Knowledge Base",
@@ -3393,7 +3404,10 @@
       "lastNamePlaceholder": "Doe",
       "phone": "Phone",
       "jobTitle": "Job Title",
-      "status": "Account status"
+      "status": "Account status",
+      "jobTitlePlaceholder": "Sales Advisor",
+      "roleSelfLockHint": "You can't change your own administrator role.",
+      "statusHint": "Determines whether the user can sign in."
     },
     "toast": {
       "skillsSaved": "Skills updated",
@@ -6611,6 +6625,71 @@
       "sub1Desc": "Review monthly counters of automatic conversations processed by AI and outbound campaign interactions.",
       "sub2Title": "Plan Limits",
       "sub2Desc": "Check your agent limits (Starter: 1, Pro: 3, Enterprise: 10) and connected calendars at any time."
+    },
+    "chat": {
+      "welcome": "Hi! 👋 I'm your Parallly help copilot. I'm here to answer your functional questions about the platform: channel setup, CRM, automations, appointments and more. How can I help you today?",
+      "defaultUserName": "User",
+      "invalidResponse": "I didn't receive a valid response. Could you try again?",
+      "connectionError": "Sorry, an error occurred while connecting to my AI brain. Please make sure your subscription is active and your AI providers are configured on the platform.",
+      "typing": "Copilot is typing...",
+      "inputPlaceholder": "Ask me about the platform...",
+      "suggestions": {
+        "connectWhatsApp": "How do I connect WhatsApp?",
+        "leadScoring": "How does Lead Scoring work?",
+        "configureRag": "How do I configure RAG++?",
+        "syncCalendar": "How do I sync my calendar?"
+      }
+    },
+    "faqs": {
+      "aiHowItWorks": {
+        "question": "How does the AI work to respond?",
+        "answer": "The AI agent analyzes customer messages using the Knowledge Base (RAG++) to answer frequently asked questions about pricing, policies, and to book appointments automatically. If it detects intent to talk to a human or that the customer is frustrated, it triggers a Handoff.",
+        "category": "AI Agent"
+      },
+      "calendarSync": {
+        "question": "How do I enable calendar synchronization?",
+        "answer": "Go to the Appointments section -> Calendar Settings and click 'Connect Google Calendar' or 'Connect Microsoft Outlook'. The system will validate your busy slots and avoid collisions automatically.",
+        "category": "Appointments"
+      },
+      "businessHours": {
+        "question": "Where do I configure business hours?",
+        "answer": "Under Settings -> Business Hours you can set your business time zone and the active weekly window. The AI agent will respect these hours and apply out-of-office flows when needed.",
+        "category": "Business"
+      },
+      "leadScore": {
+        "question": "What is the Lead Score and how do I customize it?",
+        "answer": "Lead scoring assigns points to your contacts in real time based on their actions (tags received, messages sent, pipeline stage). Configure the weights under Settings -> CRM -> Lead Scoring.",
+        "category": "CRM"
+      }
+    },
+    "industryAdvice": {
+      "hospitality": {
+        "prompt": "You are a premium hospitality concierge for our vacation apartments. Your goal is to help guests coordinate check-in, explain the amenities, and book reservations. Always convey warmth, comfort and professionalism.",
+        "example": "Example questions: 'How do I get the access code?', 'Do you have cribs available?'"
+      },
+      "fitness": {
+        "prompt": "You are a membership advisor and motivational coach for our wellness center. Your goal is to answer questions about pricing and available classes, and to book a free trial session on the calendar. Be energetic, inspiring and helpful.",
+        "example": "Example questions: 'What classes do you have on Mondays?', 'How much is the monthly pass?'"
+      },
+      "restaurants": {
+        "prompt": "You are the digital host and waiter for our prestigious restaurant. Show today's menu, recommend the chef's specialties, clarify allergenic ingredients and handle table reservations. Keep an elegant and appetizing tone.",
+        "example": "Example questions: 'Do you have vegan options?', 'Can I book for 4 people today at 8pm?'"
+      },
+      "default": {
+        "prompt": "You are the intelligent agent and primary support consultant for the business. Your mission is to answer frequently asked questions using the knowledge base and smoothly, politely guide the user to book a consultation appointment.",
+        "example": "Example questions: 'What are your services?', 'How can I schedule a call?'"
+      },
+      "systemPromptLabel": "System Prompt",
+      "examplesLabel": "Example Cases"
+    },
+    "tabs": {
+      "guides": "Guides & FAQs",
+      "chat": "AI Assistant"
+    },
+    "searchResults": "Results ({count})",
+    "industryGeneral": "General",
+    "footer": {
+      "support": "Technical Support"
     }
   },
   "tours": {
@@ -6753,6 +6832,15 @@
       "completed": "Completed",
       "cancelled": "Cancelled",
       "no_show": "No-show"
+    },
+    "planTypes": {
+      "ortodoncia": "Orthodontics",
+      "blanqueamiento": "Whitening",
+      "limpieza_serie": "Cleaning series",
+      "fisioterapia": "Physiotherapy",
+      "estetica": "Aesthetic treatment",
+      "psicologia": "Psychological therapy",
+      "otro": "Other"
     }
   },
   "petsCard": {
@@ -8648,5 +8736,34 @@
       "negative": "Negative"
     },
     "mostUsedTags": "Most used tags"
+  },
+  "landings": {
+    "title": "Landing Pages",
+    "subtitle": "Manage public lead capture and registration pages.",
+    "newLanding": "New Landing",
+    "empty": {
+      "title": "No pages created",
+      "description": "Create your first landing page to start capturing leads."
+    },
+    "card": {
+      "course": "Course",
+      "campaign": "Campaign",
+      "none": "None"
+    },
+    "status": {
+      "published": "Published",
+      "draft": "Draft"
+    },
+    "viewLanding": "View Landing",
+    "modal": {
+      "title": "New Landing Page",
+      "subtitle": "Define the landing page basics.",
+      "pageTitle": "Page Title",
+      "pageTitlePlaceholder": "e.g.: B2B Sales Masterclass",
+      "slug": "Slug (URL)",
+      "slugPlaceholder": "e.g.: b2b-sales-masterclass",
+      "slugHint": "Auto-generated if left empty.",
+      "createButton": "Create Page"
+    }
   }
 }

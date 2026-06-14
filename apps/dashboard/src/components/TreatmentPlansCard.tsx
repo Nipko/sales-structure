@@ -40,14 +40,14 @@ interface TreatmentSession {
     notes?: string;
 }
 
-const PLAN_TYPES = [
-    { key: "ortodoncia", label: "Ortodoncia" },
-    { key: "blanqueamiento", label: "Blanqueamiento" },
-    { key: "limpieza_serie", label: "Serie de limpiezas" },
-    { key: "fisioterapia", label: "Fisioterapia" },
-    { key: "estetica", label: "Tratamiento estético" },
-    { key: "psicologia", label: "Terapia psicológica" },
-    { key: "otro", label: "Otro" },
+const PLAN_TYPE_KEYS = [
+    "ortodoncia",
+    "blanqueamiento",
+    "limpieza_serie",
+    "fisioterapia",
+    "estetica",
+    "psicologia",
+    "otro",
 ];
 
 export function TreatmentPlansCard({
@@ -373,7 +373,7 @@ function CreatePlanModal({
                         <div>
                             <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("planType")}</label>
                             <select value={form.planType} onChange={e => setForm({ ...form, planType: e.target.value })} className={inputCls}>
-                                {PLAN_TYPES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                                {PLAN_TYPE_KEYS.map(k => <option key={k} value={k}>{t(`planTypes.${k}`)}</option>)}
                             </select>
                         </div>
                         <div>

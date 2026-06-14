@@ -854,7 +854,7 @@ export default function UsersPage() {
                             <input
                                 value={editForm.jobTitle}
                                 onChange={e => setEditForm(p => ({ ...p, jobTitle: e.target.value }))}
-                                placeholder="Asesor de Ventas"
+                                placeholder={t("modal.jobTitlePlaceholder")}
                                 className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
                             />
                         </div>
@@ -874,7 +874,7 @@ export default function UsersPage() {
                                     <option value="tenant_admin">👑 {tRoles("admin")}</option>
                                 </select>
                                 {editForm.id === user?.id && (
-                                    <p className="mt-1 text-[10px] text-muted-foreground">No puedes cambiar tu propio rol administrador.</p>
+                                    <p className="mt-1 text-[10px] text-muted-foreground">{t("modal.roleSelfLockHint")}</p>
                                 )}
                             </div>
                         )}
@@ -882,7 +882,7 @@ export default function UsersPage() {
                         <div className="mb-5 flex items-center justify-between p-3 rounded-lg border border-border bg-background/50">
                             <div>
                                 <span className="block text-xs font-semibold text-foreground">{t("modal.status")}</span>
-                                <span className="text-[11px] text-muted-foreground">Determina si el usuario puede iniciar sesión.</span>
+                                <span className="text-[11px] text-muted-foreground">{t("modal.statusHint")}</span>
                             </div>
                             <input
                                 type="checkbox"

@@ -157,20 +157,20 @@ function AssignmentBadge({ type, label }: { type?: string; label?: string }) {
     if (!type || type === "general") {
         return (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 font-medium">
-                {label || "General"}
+                {label}
             </span>
         );
     }
     if (type === "staff") {
         return (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400 font-medium">
-                <Users size={10} className="inline mr-1" />{label || "Staff"}
+                <Users size={10} className="inline mr-1" />{label}
             </span>
         );
     }
     return (
         <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium">
-            {label || "Service"}
+            {label}
         </span>
     );
 }
@@ -322,7 +322,7 @@ export default function ConfigTab({
             await api.updateCalendarAssignment(activeTenantId, integrationId, { label });
             onRefresh();
         } catch {
-            showToast("Error updating label");
+            showToast(t("errorUpdatingLabel"));
         }
     };
 

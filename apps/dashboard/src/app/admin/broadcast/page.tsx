@@ -316,7 +316,7 @@ export default function BroadcastPage() {
                 <UpgradeBanner
                     current={campaigns.length}
                     limit={getLimit("broadcastCampaigns")}
-                    resourceLabel="campañas de broadcast"
+                    resourceLabel={t("resourceLabel")}
                 />
 
                 {/* Campaign List */}

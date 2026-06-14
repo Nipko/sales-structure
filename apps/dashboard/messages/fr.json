@@ -1937,7 +1937,8 @@
       "addStaff": "Assigner un professionnel",
       "primary": "Principal",
       "noStaff": "Aucun professionnel assigné"
-    }
+    },
+    "errorUpdatingLabel": "Erreur lors de la mise à jour de l'étiquette"
   },
   "compliance": {
     "title": "Conformité et audit",
@@ -2459,7 +2460,8 @@
       "toast": {
         "winnerSelected": "Variante gagnante sélectionnée"
       }
-    }
+    },
+    "resourceLabel": "campagnes de diffusion"
   },
   "channels": {
     "title": "Canaux",
@@ -3066,7 +3068,16 @@
     "agentCreated": "Agent créé",
     "changeTemplate": "Changer de modèle",
     "changeTemplateDesc": "Appliquez un autre modèle à cet agent (remplace sa configuration de base).",
-    "templateApplied": "Modèle appliqué"
+    "templateApplied": "Modèle appliqué",
+    "templateNames": {
+      "salesAdvisor": "Conseiller commercial",
+      "supportAgent": "Agent de support",
+      "faqAssistant": "Assistant FAQ",
+      "schedulingAssistant": "Assistant de planification",
+      "qualificationAssistant": "Assistant de qualification",
+      "blankAgent": "Agent vierge",
+      "defaultAgent": "Agent par défaut"
+    }
   },
   "knowledge": {
     "title": "Base de connaissances",
@@ -3393,7 +3404,10 @@
       "lastNamePlaceholder": "Dupont",
       "phone": "Téléphone",
       "jobTitle": "Poste / Titre",
-      "status": "Statut du compte"
+      "status": "Statut du compte",
+      "jobTitlePlaceholder": "Conseiller commercial",
+      "roleSelfLockHint": "Vous ne pouvez pas modifier votre propre rôle d'administrateur.",
+      "statusHint": "Détermine si l'utilisateur peut se connecter."
     },
     "toast": {
       "skillsSaved": "Compétences mises à jour",
@@ -6582,6 +6596,71 @@
       "sub1Desc": "Consultez les compteurs mensuels cumulés de conversations automatiques traitées par l'IA et d'interactions sortantes.",
       "sub2Title": "Limites du Plan",
       "sub2Desc": "Vérifiez à tout moment vos limites d'agents (Starter: 1, Pro: 3, Enterprise: 10) et de calendriers connectés."
+    },
+    "chat": {
+      "welcome": "Bonjour ! 👋 Je suis votre copilote d'aide Parallly. Je suis là pour répondre à vos questions fonctionnelles sur la plateforme : configuration des canaux, CRM, automatisations, rendez-vous et plus encore. Comment puis-je vous aider aujourd'hui ?",
+      "defaultUserName": "Utilisateur",
+      "invalidResponse": "Je n'ai pas reçu de réponse valide. Pourriez-vous réessayer ?",
+      "connectionError": "Désolé, une erreur s'est produite lors de la connexion à mon cerveau IA. Veuillez vérifier que votre abonnement est actif et que vos fournisseurs d'IA sont configurés sur la plateforme.",
+      "typing": "Copilot est en train d'écrire...",
+      "inputPlaceholder": "Posez-moi une question sur la plateforme...",
+      "suggestions": {
+        "connectWhatsApp": "Comment connecter WhatsApp ?",
+        "leadScoring": "Comment fonctionne le Lead Scoring ?",
+        "configureRag": "Comment configurer le RAG++ ?",
+        "syncCalendar": "Comment synchroniser mon calendrier ?"
+      }
+    },
+    "faqs": {
+      "aiHowItWorks": {
+        "question": "Comment l'IA fonctionne-t-elle pour répondre ?",
+        "answer": "L'agent IA analyse les messages des clients à l'aide de la Base de connaissances (RAG++) pour répondre aux questions fréquentes sur les tarifs, les politiques et planifier des rendez-vous automatiquement. S'il détecte l'intention de parler à un humain ou une frustration, il déclenche un Handoff.",
+        "category": "Agent IA"
+      },
+      "calendarSync": {
+        "question": "Comment activer la synchronisation du calendrier ?",
+        "answer": "Accédez à la section Rendez-vous -> Configuration du calendrier et cliquez sur « Connecter Google Calendar » ou « Connecter Microsoft Outlook ». Le système validera vos créneaux occupés et évitera automatiquement les conflits.",
+        "category": "Rendez-vous"
+      },
+      "businessHours": {
+        "question": "Où configurer les heures d'ouverture ?",
+        "answer": "Dans Paramètres -> Heures d'ouverture, vous pouvez définir le fuseau horaire de votre entreprise et la plage hebdomadaire active. L'agent IA respectera ces horaires et appliquera des flux hors service si nécessaire.",
+        "category": "Entreprise"
+      },
+      "leadScore": {
+        "question": "Qu'est-ce que le Lead Score et comment le personnaliser ?",
+        "answer": "Le scoring des leads attribue des points à vos contacts en temps réel selon leurs actions (étiquettes reçues, messages envoyés, étape du pipeline). Configurez les pondérations dans Paramètres -> CRM -> Scoring des leads.",
+        "category": "CRM"
+      }
+    },
+    "industryAdvice": {
+      "hospitality": {
+        "prompt": "Vous êtes un concierge d'hôtellerie haut de gamme pour nos appartements de vacances. Votre objectif est d'aider les clients à organiser leur arrivée, d'expliquer les équipements et de réserver. Transmettez toujours chaleur, confort et professionnalisme.",
+        "example": "Exemples de questions : « Comment obtenir le code d'accès ? », « Avez-vous des lits bébé disponibles ? »"
+      },
+      "fitness": {
+        "prompt": "Vous êtes un conseiller en adhésion et coach motivationnel pour notre centre de bien-être. Votre objectif est de répondre aux questions sur les tarifs et les cours disponibles, et de réserver une séance d'essai gratuite dans l'agenda. Soyez énergique, inspirant et serviable.",
+        "example": "Exemples de questions : « Quels cours proposez-vous le lundi ? », « Combien coûte l'abonnement mensuel ? »"
+      },
+      "restaurants": {
+        "prompt": "Vous êtes l'hôte et le serveur numérique de notre prestigieux restaurant. Présentez le menu du jour, recommandez les spécialités du chef, précisez les ingrédients allergènes et gérez les réservations de table. Gardez un ton élégant et appétissant.",
+        "example": "Exemples de questions : « Avez-vous des options véganes ? », « Puis-je réserver pour 4 personnes aujourd'hui à 20h ? »"
+      },
+      "default": {
+        "prompt": "Vous êtes l'agent intelligent et le consultant de support principal de l'entreprise. Votre mission est de répondre aux questions fréquentes à l'aide de la base de connaissances et de guider l'utilisateur de manière fluide et courtoise vers la prise d'un rendez-vous de conseil.",
+        "example": "Exemples de questions : « Quels sont vos services ? », « Comment puis-je planifier un appel ? »"
+      },
+      "systemPromptLabel": "Invite système",
+      "examplesLabel": "Cas d'exemple"
+    },
+    "tabs": {
+      "guides": "Guides & FAQ",
+      "chat": "Assistant IA"
+    },
+    "searchResults": "Résultats ({count})",
+    "industryGeneral": "Général",
+    "footer": {
+      "support": "Support technique"
     }
   },
   "tours": {
@@ -6724,6 +6803,15 @@
       "completed": "Terminée",
       "cancelled": "Annulée",
       "no_show": "Absence"
+    },
+    "planTypes": {
+      "ortodoncia": "Orthodontie",
+      "blanqueamiento": "Blanchiment",
+      "limpieza_serie": "Série de nettoyages",
+      "fisioterapia": "Physiothérapie",
+      "estetica": "Soin esthétique",
+      "psicologia": "Thérapie psychologique",
+      "otro": "Autre"
     }
   },
   "petsCard": {
@@ -8619,5 +8707,34 @@
       "negative": "Négatif"
     },
     "mostUsedTags": "Étiquettes les plus utilisées"
+  },
+  "landings": {
+    "title": "Landing Pages",
+    "subtitle": "Gérez les pages publiques de capture et d'inscription de prospects.",
+    "newLanding": "Nouvelle landing",
+    "empty": {
+      "title": "Aucune page créée",
+      "description": "Créez votre première landing page pour commencer à capturer des prospects."
+    },
+    "card": {
+      "course": "Cours",
+      "campaign": "Campagne",
+      "none": "Aucun"
+    },
+    "status": {
+      "published": "Publiée",
+      "draft": "Brouillon"
+    },
+    "viewLanding": "Voir la landing",
+    "modal": {
+      "title": "Nouvelle landing page",
+      "subtitle": "Définissez les informations de base de la landing page.",
+      "pageTitle": "Titre de la page",
+      "pageTitlePlaceholder": "ex. : Masterclass de Vente B2B",
+      "slug": "Slug (URL)",
+      "slugPlaceholder": "ex. : masterclass-vente-b2b",
+      "slugHint": "Généré automatiquement si laissé vide.",
+      "createButton": "Créer la page"
+    }
   }
 }

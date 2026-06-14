@@ -259,9 +259,13 @@ export default function AgentListPage() {
   // ── Setup banner check ─────────────────────────────────────
 
   const TEMPLATE_NAMES = [
-    "Sales Advisor", "Support Agent", "FAQ Assistant",
-    "Scheduling Assistant", "Qualification Assistant", "Blank Agent",
-    "Default Agent",
+    t("templateNames.salesAdvisor"),
+    t("templateNames.supportAgent"),
+    t("templateNames.faqAssistant"),
+    t("templateNames.schedulingAssistant"),
+    t("templateNames.qualificationAssistant"),
+    t("templateNames.blankAgent"),
+    t("templateNames.defaultAgent"),
   ];
   const needsPersonalization = agents.length > 0 && agents.every(a => {
     const name = a.name || a.config_json?.persona?.name || "";

@@ -770,7 +770,7 @@ export default function OnboardingPage() {
                                         <option value="">{t('select')}</option>
                                         {SUB_TYPES[industry].map((st) => (
                                             <option key={st.key} value={st.key} className="bg-white dark:bg-[#1a1a2e] text-foreground">
-                                                {st.label}
+                                                {t(`subTypes.${st.key}`)}
                                             </option>
                                         ))}
                                     </select>
@@ -847,7 +847,7 @@ export default function OnboardingPage() {
                                             onChange={() => toggleCheckbox(audiences, setAudiences, audience.key)}
                                             className="w-4 h-4 rounded border-neutral-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
                                         />
-                                        <span className="text-sm text-foreground">{audience.label}</span>
+                                        <span className="text-sm text-foreground">{VERTICAL_AUDIENCES[industry] ? t(`verticalAudiences.${industry}.${audience.key}`) : audience.label}</span>
                                     </label>
                                 ))}
 
@@ -869,7 +869,7 @@ export default function OnboardingPage() {
                         <div>
                             <h2 className="text-xl font-semibold text-foreground mb-1">
                                 {VERTICAL_AGENT_NAMES[industry]
-                                    ? t('step3TitleVertical', { agentName: VERTICAL_AGENT_NAMES[industry], noun: VERTICAL_CUSTOMER_NOUN[industry] ?? t('defaultCustomerNoun') })
+                                    ? t('step3TitleVertical', { agentName: VERTICAL_AGENT_NAMES[industry], noun: VERTICAL_CUSTOMER_NOUN[industry] ? t(`customerNouns.${industry}`) : t('defaultCustomerNoun') })
                                     : t('goalsTitle')}
                             </h2>
                             <p className="text-muted-foreground text-sm mb-6">
@@ -897,7 +897,7 @@ export default function OnboardingPage() {
                                         />
                                         <span className="text-sm text-foreground">
                                             {goal.icon && <span className="mr-1.5">{goal.icon}</span>}
-                                            {goal.label}
+                                            {VERTICAL_GOALS[industry] ? t(`verticalGoals.${industry}.${goal.key}`) : goal.label}
                                         </span>
                                     </label>
                                 ))}

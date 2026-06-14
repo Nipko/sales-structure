@@ -4056,7 +4056,296 @@
     "step2TitleVertical": "¿Quién contactará a {agentName}?",
     "step3TitleVertical": "¿Cómo ayudará {agentName} a tus {noun}?",
     "step3SubtitleVertical": "Selecciona las funciones que {agentName} realizará automáticamente",
-    "defaultCustomerNoun": "clientes"
+    "defaultCustomerNoun": "clientes",
+    "subTypes": {
+      "dental": "Odontología",
+      "medica_general": "Medicina general",
+      "estetica": "Estética y dermatología",
+      "psicologia": "Psicología y terapia",
+      "farmacia": "Farmacia",
+      "clinica_general": "Clínica de pequeñas especies",
+      "hospital_24h": "Hospital veterinario 24h",
+      "exoticos": "Animales exóticos",
+      "peluqueria_canina": "Peluquería canina / felina",
+      "gimnasio_general": "Gimnasio tradicional",
+      "crossfit": "Box CrossFit",
+      "yoga_pilates": "Estudio de yoga / pilates",
+      "cycling": "Cycling / spinning",
+      "martial_arts": "Artes marciales",
+      "broker": "Broker / Corredor",
+      "aseguradora": "Aseguradora",
+      "vida": "Especialista en vida",
+      "auto": "Especialista en auto",
+      "salud": "Especialista en salud",
+      "idiomas": "Escuela de idiomas",
+      "universitaria": "Universidad / Instituto",
+      "online": "Cursos online",
+      "capacitacion": "Capacitación empresarial",
+      "agencia_viajes": "Agencia de viajes",
+      "hotel": "Hotel / Hostal",
+      "tours": "Tours y actividades",
+      "casual_dining": "Restaurante casual",
+      "comida_rapida": "Comida rápida",
+      "cafeteria": "Cafetería",
+      "dark_kitchen": "Dark kitchen / Delivery",
+      "venta": "Venta de inmuebles",
+      "arriendo": "Arriendo",
+      "comercial": "Inmuebles comerciales",
+      "construccion": "Construcción y proyectos",
+      "concesionario": "Concesionario",
+      "taller": "Taller mecánico",
+      "repuestos": "Repuestos y accesorios",
+      "alquiler": "Alquiler de vehículos",
+      "salon_belleza": "Salón de belleza",
+      "barberia": "Barbería",
+      "spa": "Spa y bienestar",
+      "boutique": "Boutique de moda",
+      "seguros": "Seguros",
+      "asesoria": "Asesoría financiera",
+      "fintech": "Fintech",
+      "creditos": "Créditos y préstamos",
+      "abogados": "Abogados",
+      "contadores": "Contadores",
+      "arquitectos": "Arquitectos",
+      "consultores": "Consultores",
+      "moda": "Moda y ropa",
+      "electronica": "Electrónica",
+      "hogar": "Hogar y decoración",
+      "marketplace": "Marketplace / E-commerce",
+      "saas": "SaaS",
+      "consultoria_ti": "Consultoría TI",
+      "desarrollo": "Desarrollo de software",
+      "hardware": "Hardware y redes",
+      "peluqueria": "Peluquería canina / felina",
+      "guarderia": "Guardería y hotel",
+      "paseos": "Paseos y cuidado a domicilio",
+      "entrenamiento": "Entrenamiento y adiestramiento",
+      "tienda": "Tienda de mascotas",
+      "plomeria": "Plomería",
+      "electricidad": "Electricidad",
+      "cerrajeria": "Cerrajería",
+      "limpieza": "Limpieza profesional",
+      "pintura": "Pintura y remodelación",
+      "multiservicio": "Multiservicio / General",
+      "bodas": "Bodas y eventos",
+      "retrato": "Retrato y book",
+      "producto": "Fotografía de producto",
+      "corporativo": "Corporativo y empresas",
+      "inmobiliaria": "Fotografía inmobiliaria"
+    },
+    "verticalGoals": {
+      "salud": {
+        "appointments": "Agendar citas médicas",
+        "faq": "Responder preguntas de pacientes",
+        "support": "Atención y seguimiento post-consulta",
+        "reminders": "Recordatorios de citas y tratamientos"
+      },
+      "veterinaria": {
+        "appointments": "Agendar consultas y vacunaciones",
+        "reminders": "Recordatorios de vacunación",
+        "faq": "Responder preguntas de tutores",
+        "support": "Triage de emergencias"
+      },
+      "gimnasios": {
+        "sales": "Vender membresías",
+        "appointments": "Reservar clases grupales",
+        "faq": "Información de planes y horarios",
+        "reminders": "Recordatorios de renovación"
+      },
+      "seguros": {
+        "sales": "Cotizar y vender pólizas",
+        "support": "Atender reclamos y siniestros",
+        "faq": "Información de planes y coberturas",
+        "reminders": "Recordatorios de renovación"
+      },
+      "moda_belleza": {
+        "appointments": "Reservar citas de servicios",
+        "faq": "Informar sobre servicios y precios",
+        "promotions": "Enviar promociones y ofertas",
+        "sales": "Recomendar y vender productos"
+      },
+      "inmobiliaria": {
+        "lead_qualification": "Calificar interesados (presupuesto, zona)",
+        "appointments": "Agendar visitas a propiedades",
+        "faq": "Informar sobre portafolio y financiación",
+        "sales": "Seguimiento de prospectos"
+      },
+      "restaurantes": {
+        "appointments": "Gestionar reservas de mesa",
+        "faq": "Mostrar menú y recomendaciones",
+        "sales": "Procesar pedidos a domicilio",
+        "promotions": "Enviar ofertas y eventos especiales"
+      },
+      "automotriz": {
+        "lead_qualification": "Calificar prospectos de vehículos",
+        "appointments": "Agendar pruebas de manejo",
+        "faq": "Información de financiamiento y garantías",
+        "sales": "Mostrar inventario de vehículos"
+      },
+      "turismo": {
+        "sales": "Cotizar paquetes de viaje",
+        "appointments": "Gestionar reservas",
+        "faq": "Información de destinos y documentos",
+        "support": "Soporte al viajero"
+      },
+      "education": {
+        "faq": "Informar sobre programas y requisitos",
+        "appointments": "Agendar clases de prueba",
+        "lead_qualification": "Proceso de inscripción",
+        "support": "Soporte académico"
+      },
+      "finanzas": {
+        "lead_qualification": "Pre-calificar solicitudes",
+        "faq": "Informar sobre productos financieros",
+        "appointments": "Agendar asesorías",
+        "support": "Soporte y seguimiento"
+      },
+      "servicios_profesionales": {
+        "appointments": "Agendar consultas",
+        "lead_qualification": "Evaluar tipo de caso",
+        "faq": "Información de servicios y honorarios",
+        "support": "Seguimiento de casos"
+      },
+      "retail": {
+        "sales": "Recomendar y vender productos",
+        "faq": "Consultar stock y precios",
+        "promotions": "Enviar promociones y ofertas",
+        "support": "Soporte postventa y devoluciones"
+      },
+      "technology": {
+        "lead_qualification": "Calificar leads B2B",
+        "appointments": "Agendar demos y reuniones",
+        "support": "Soporte técnico nivel 1",
+        "faq": "FAQ de producto y documentación"
+      },
+      "pet_services": {
+        "appointments": "Agendar peluquería, guardería y paseos",
+        "sales": "Recomendar productos para mascotas",
+        "faq": "Información de servicios y requisitos",
+        "reminders": "Recordatorios de citas y vacunas"
+      },
+      "servicios_hogar": {
+        "sales": "Cotizar servicios y reparaciones",
+        "appointments": "Agendar visitas del técnico",
+        "support": "Seguimiento y garantía postventa",
+        "faq": "Información de coberturas y precios"
+      },
+      "fotografia": {
+        "sales": "Cotizar paquetes y sesiones",
+        "appointments": "Agendar sesiones fotográficas",
+        "support": "Gestionar entregas y galerías",
+        "promotions": "Enviar portafolio y promociones"
+      }
+    },
+    "verticalAudiences": {
+      "salud": {
+        "b2c": "Pacientes particulares",
+        "b2b": "Empresas y convenios",
+        "insurance": "Pacientes con seguro médico"
+      },
+      "veterinaria": {
+        "b2c": "Tutores particulares",
+        "breeders": "Criaderos / refugios",
+        "b2b": "Convenios corporativos"
+      },
+      "gimnasios": {
+        "b2c": "Miembros individuales",
+        "corporate": "Convenios corporativos",
+        "fit_groups": "Grupos / equipos deportivos"
+      },
+      "seguros": {
+        "b2c": "Personas naturales",
+        "b2b": "Empresas y PYMES",
+        "agentes": "Otros agentes / red de ventas"
+      },
+      "moda_belleza": {
+        "b2c": "Clientes individuales",
+        "b2b": "Eventos y grupos",
+        "vip": "Clientes VIP y membresías"
+      },
+      "inmobiliaria": {
+        "buyers": "Compradores",
+        "renters": "Arrendatarios",
+        "investors": "Inversionistas"
+      },
+      "restaurantes": {
+        "b2c": "Comensales individuales",
+        "events": "Eventos corporativos y privados",
+        "delivery": "Clientes de delivery"
+      },
+      "automotriz": {
+        "new_buyers": "Compradores de vehículos nuevos",
+        "used_buyers": "Compradores de vehículos usados",
+        "service": "Clientes de taller y servicio"
+      },
+      "turismo": {
+        "leisure": "Viajeros de ocio",
+        "corporate": "Viajes corporativos",
+        "groups": "Grupos y familias"
+      },
+      "education": {
+        "students": "Estudiantes individuales",
+        "parents": "Padres de familia",
+        "corporate": "Capacitación empresarial"
+      },
+      "finanzas": {
+        "individuals": "Personas naturales",
+        "businesses": "Empresas y PYMES",
+        "investors": "Inversionistas"
+      },
+      "servicios_profesionales": {
+        "individuals": "Personas naturales",
+        "businesses": "Empresas",
+        "legal": "Casos legales/contables"
+      },
+      "retail": {
+        "b2c": "Compradores individuales",
+        "b2b": "Clientes mayoristas / B2B",
+        "online": "Compradores online"
+      },
+      "technology": {
+        "b2b": "Empresas y PYMES",
+        "startups": "Startups",
+        "developers": "Desarrolladores y equipos técnicos"
+      },
+      "pet_services": {
+        "dog_owners": "Dueños de perros",
+        "cat_owners": "Dueños de gatos",
+        "multi_pet": "Dueños de múltiples mascotas",
+        "breeders": "Criadores y refugios"
+      },
+      "servicios_hogar": {
+        "homeowners": "Propietarios de vivienda",
+        "renters": "Arrendatarios",
+        "admins": "Administradores de edificios",
+        "b2b": "Empresas y oficinas"
+      },
+      "fotografia": {
+        "couples": "Novios y parejas",
+        "families": "Familias",
+        "businesses": "Empresas y marcas",
+        "events": "Organizadores de eventos"
+      }
+    },
+    "customerNouns": {
+      "salud": "pacientes",
+      "veterinaria": "tutores",
+      "gimnasios": "miembros",
+      "seguros": "asegurados",
+      "moda_belleza": "clientes",
+      "inmobiliaria": "prospectos",
+      "restaurantes": "comensales",
+      "automotriz": "compradores",
+      "turismo": "viajeros",
+      "education": "estudiantes",
+      "finanzas": "clientes",
+      "servicios_profesionales": "clientes",
+      "retail": "compradores",
+      "technology": "empresas",
+      "pet_services": "tutores",
+      "servicios_hogar": "clientes",
+      "fotografia": "clientes"
+    }
   },
   "analytics": {
     "title": "Analytics",

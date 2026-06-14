@@ -4056,7 +4056,296 @@
     "step2TitleVertical": "Qui contactera {agentName} ?",
     "step3TitleVertical": "Comment {agentName} aidera vos {noun} ?",
     "step3SubtitleVertical": "Sélectionnez les fonctions que {agentName} accomplira automatiquement",
-    "defaultCustomerNoun": "clients"
+    "defaultCustomerNoun": "clients",
+    "subTypes": {
+      "dental": "Dentisterie",
+      "medica_general": "Médecine générale",
+      "estetica": "Esthétique et dermatologie",
+      "psicologia": "Psychologie et thérapie",
+      "farmacia": "Pharmacie",
+      "clinica_general": "Clinique de petits animaux",
+      "hospital_24h": "Hôpital vétérinaire 24h",
+      "exoticos": "Animaux exotiques",
+      "peluqueria_canina": "Toilettage canin / félin",
+      "gimnasio_general": "Salle de sport traditionnelle",
+      "crossfit": "Box CrossFit",
+      "yoga_pilates": "Studio de yoga / pilates",
+      "cycling": "Cycling / spinning",
+      "martial_arts": "Arts martiaux",
+      "broker": "Courtier en assurance",
+      "aseguradora": "Compagnie d'assurance",
+      "vida": "Spécialiste en assurance vie",
+      "auto": "Spécialiste en assurance auto",
+      "salud": "Spécialiste en assurance santé",
+      "idiomas": "École de langues",
+      "universitaria": "Université / Institut",
+      "online": "Cours en ligne",
+      "capacitacion": "Formation en entreprise",
+      "agencia_viajes": "Agence de voyages",
+      "hotel": "Hôtel / Auberge",
+      "tours": "Tours et activités",
+      "casual_dining": "Restaurant décontracté",
+      "comida_rapida": "Restauration rapide",
+      "cafeteria": "Café / Cafétéria",
+      "dark_kitchen": "Dark kitchen / Livraison",
+      "venta": "Vente immobilière",
+      "arriendo": "Location",
+      "comercial": "Immobilier commercial",
+      "construccion": "Construction et projets",
+      "concesionario": "Concessionnaire",
+      "taller": "Atelier mécanique",
+      "repuestos": "Pièces et accessoires",
+      "alquiler": "Location de véhicules",
+      "salon_belleza": "Salon de beauté",
+      "barberia": "Barbier",
+      "spa": "Spa et bien-être",
+      "boutique": "Boutique de mode",
+      "seguros": "Assurances",
+      "asesoria": "Conseil financier",
+      "fintech": "Fintech",
+      "creditos": "Crédits et prêts",
+      "abogados": "Avocats",
+      "contadores": "Comptables",
+      "arquitectos": "Architectes",
+      "consultores": "Consultants",
+      "moda": "Mode et vêtements",
+      "electronica": "Électronique",
+      "hogar": "Maison et décoration",
+      "marketplace": "Marketplace / E-commerce",
+      "saas": "SaaS",
+      "consultoria_ti": "Conseil IT",
+      "desarrollo": "Développement logiciel",
+      "hardware": "Matériel et réseaux",
+      "peluqueria": "Toilettage canin / félin",
+      "guarderia": "Garderie et pension",
+      "paseos": "Promenades et soins à domicile",
+      "entrenamiento": "Dressage et entraînement",
+      "tienda": "Animalerie",
+      "plomeria": "Plomberie",
+      "electricidad": "Services électriques",
+      "cerrajeria": "Serrurerie",
+      "limpieza": "Nettoyage professionnel",
+      "pintura": "Peinture et rénovation",
+      "multiservicio": "Multiservice / Général",
+      "bodas": "Mariages et événements",
+      "retrato": "Portrait et book photo",
+      "producto": "Photographie produit",
+      "corporativo": "Corporate et entreprises",
+      "inmobiliaria": "Photographie immobilière"
+    },
+    "verticalGoals": {
+      "salud": {
+        "appointments": "Planifier des rendez-vous médicaux",
+        "faq": "Répondre aux questions des patients",
+        "support": "Soins et suivi post-consultation",
+        "reminders": "Rappels de rendez-vous et traitements"
+      },
+      "veterinaria": {
+        "appointments": "Planifier des consultations et vaccinations",
+        "reminders": "Rappels de vaccination",
+        "faq": "Répondre aux questions des propriétaires",
+        "support": "Triage des urgences"
+      },
+      "gimnasios": {
+        "sales": "Vendre des abonnements",
+        "appointments": "Réserver des cours collectifs",
+        "faq": "Informations sur les plans et horaires",
+        "reminders": "Rappels de renouvellement"
+      },
+      "seguros": {
+        "sales": "Coter et vendre des polices",
+        "support": "Traiter les sinistres et réclamations",
+        "faq": "Informations sur les plans et couvertures",
+        "reminders": "Rappels de renouvellement"
+      },
+      "moda_belleza": {
+        "appointments": "Réserver des rendez-vous services",
+        "faq": "Informer sur les services et les prix",
+        "promotions": "Envoyer des promotions et offres",
+        "sales": "Recommander et vendre des produits"
+      },
+      "inmobiliaria": {
+        "lead_qualification": "Qualifier les prospects (budget, zone)",
+        "appointments": "Planifier des visites de biens",
+        "faq": "Informer sur le portefeuille et le financement",
+        "sales": "Suivi des prospects"
+      },
+      "restaurantes": {
+        "appointments": "Gérer les réservations de table",
+        "faq": "Afficher le menu et les recommandations",
+        "sales": "Traiter les commandes à domicile",
+        "promotions": "Envoyer des offres et événements spéciaux"
+      },
+      "automotriz": {
+        "lead_qualification": "Qualifier les prospects véhicules",
+        "appointments": "Planifier des essais routiers",
+        "faq": "Informations sur le financement et les garanties",
+        "sales": "Afficher l'inventaire des véhicules"
+      },
+      "turismo": {
+        "sales": "Coter des forfaits de voyage",
+        "appointments": "Gérer les réservations",
+        "faq": "Informations sur les destinations et documents",
+        "support": "Assistance aux voyageurs"
+      },
+      "education": {
+        "faq": "Informer sur les programmes et conditions",
+        "appointments": "Planifier des cours d'essai",
+        "lead_qualification": "Processus d'inscription",
+        "support": "Soutien académique"
+      },
+      "finanzas": {
+        "lead_qualification": "Pré-qualifier les demandes",
+        "faq": "Informer sur les produits financiers",
+        "appointments": "Planifier des consultations financières",
+        "support": "Support et suivi"
+      },
+      "servicios_profesionales": {
+        "appointments": "Planifier des consultations",
+        "lead_qualification": "Évaluer le type de dossier",
+        "faq": "Informations sur les services et honoraires",
+        "support": "Suivi des dossiers"
+      },
+      "retail": {
+        "sales": "Recommander et vendre des produits",
+        "faq": "Consulter le stock et les prix",
+        "promotions": "Envoyer des promotions et offres",
+        "support": "Support après-vente et retours"
+      },
+      "technology": {
+        "lead_qualification": "Qualifier les leads B2B",
+        "appointments": "Planifier des démos et réunions",
+        "support": "Support technique niveau 1",
+        "faq": "FAQ produit et documentation"
+      },
+      "pet_services": {
+        "appointments": "Planifier toilettage, garderie et promenades",
+        "sales": "Recommander des produits pour animaux",
+        "faq": "Informations sur les services et conditions",
+        "reminders": "Rappels de rendez-vous et vaccins"
+      },
+      "servicios_hogar": {
+        "sales": "Devis services et réparations",
+        "appointments": "Planifier des visites de technicien",
+        "support": "Suivi et garantie après-vente",
+        "faq": "Informations sur les couvertures et prix"
+      },
+      "fotografia": {
+        "sales": "Devis forfaits et séances",
+        "appointments": "Planifier des séances photo",
+        "support": "Gérer les livraisons et galeries",
+        "promotions": "Envoyer portefeuille et promotions"
+      }
+    },
+    "verticalAudiences": {
+      "salud": {
+        "b2c": "Patients particuliers",
+        "b2b": "Entreprises et conventions",
+        "insurance": "Patients avec assurance maladie"
+      },
+      "veterinaria": {
+        "b2c": "Propriétaires particuliers",
+        "breeders": "Éleveurs / refuges",
+        "b2b": "Conventions corporatives"
+      },
+      "gimnasios": {
+        "b2c": "Membres individuels",
+        "corporate": "Conventions corporatives",
+        "fit_groups": "Groupes / équipes sportives"
+      },
+      "seguros": {
+        "b2c": "Particuliers",
+        "b2b": "Entreprises et PME",
+        "agentes": "Autres agents / réseau de vente"
+      },
+      "moda_belleza": {
+        "b2c": "Clients individuels",
+        "b2b": "Événements et groupes",
+        "vip": "Clients VIP et abonnements"
+      },
+      "inmobiliaria": {
+        "buyers": "Acheteurs",
+        "renters": "Locataires",
+        "investors": "Investisseurs"
+      },
+      "restaurantes": {
+        "b2c": "Clients individuels",
+        "events": "Événements corporatifs et privés",
+        "delivery": "Clients livraison"
+      },
+      "automotriz": {
+        "new_buyers": "Acheteurs de véhicules neufs",
+        "used_buyers": "Acheteurs de véhicules d'occasion",
+        "service": "Clients atelier et service"
+      },
+      "turismo": {
+        "leisure": "Voyageurs de loisirs",
+        "corporate": "Voyages d'affaires",
+        "groups": "Groupes et familles"
+      },
+      "education": {
+        "students": "Étudiants individuels",
+        "parents": "Parents",
+        "corporate": "Formation en entreprise"
+      },
+      "finanzas": {
+        "individuals": "Particuliers",
+        "businesses": "Entreprises et PME",
+        "investors": "Investisseurs"
+      },
+      "servicios_profesionales": {
+        "individuals": "Particuliers",
+        "businesses": "Entreprises",
+        "legal": "Dossiers juridiques / comptables"
+      },
+      "retail": {
+        "b2c": "Acheteurs individuels",
+        "b2b": "Clients grossistes / B2B",
+        "online": "Acheteurs en ligne"
+      },
+      "technology": {
+        "b2b": "Entreprises et PME",
+        "startups": "Startups",
+        "developers": "Développeurs et équipes techniques"
+      },
+      "pet_services": {
+        "dog_owners": "Propriétaires de chiens",
+        "cat_owners": "Propriétaires de chats",
+        "multi_pet": "Propriétaires de plusieurs animaux",
+        "breeders": "Éleveurs et refuges"
+      },
+      "servicios_hogar": {
+        "homeowners": "Propriétaires de logement",
+        "renters": "Locataires",
+        "admins": "Gestionnaires d'immeubles",
+        "b2b": "Entreprises et bureaux"
+      },
+      "fotografia": {
+        "couples": "Couples et mariés",
+        "families": "Familles",
+        "businesses": "Entreprises et marques",
+        "events": "Organisateurs d'événements"
+      }
+    },
+    "customerNouns": {
+      "salud": "patients",
+      "veterinaria": "propriétaires",
+      "gimnasios": "membres",
+      "seguros": "assurés",
+      "moda_belleza": "clients",
+      "inmobiliaria": "prospects",
+      "restaurantes": "clients",
+      "automotriz": "acheteurs",
+      "turismo": "voyageurs",
+      "education": "étudiants",
+      "finanzas": "clients",
+      "servicios_profesionales": "clients",
+      "retail": "acheteurs",
+      "technology": "entreprises",
+      "pet_services": "propriétaires",
+      "servicios_hogar": "clients",
+      "fotografia": "clients"
+    }
   },
   "analytics": {
     "title": "Analyses",

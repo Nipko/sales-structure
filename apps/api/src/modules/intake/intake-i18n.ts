@@ -25,24 +25,32 @@ const INTAKE_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>> = {
         'form.missingFields': 'Faltan campos requeridos (nombre, email, teléfono).',
         'form.consentRequired': 'El consentimiento es requerido para capturar el lead.',
         'form.invalidPhone': 'El número de teléfono no tiene un formato válido.',
+        'form.thankYou':     '¡Gracias por registrarte!',
+        'form.genericError': 'Se produjo un error al procesar el formulario.',
     },
     en: {
         'form.notFound':     'Form definition not found.',
         'form.missingFields': 'Missing required fields (name, email, phone).',
         'form.consentRequired': 'Consent is required to capture the lead.',
         'form.invalidPhone': 'The phone number format is not valid.',
+        'form.thankYou':     'Thanks for signing up!',
+        'form.genericError': 'An error occurred while processing the form.',
     },
     pt: {
         'form.notFound':     'Definição de formulário não encontrada.',
         'form.missingFields': 'Campos obrigatórios ausentes (nome, e-mail, telefone).',
         'form.consentRequired': 'O consentimento é necessário para capturar o lead.',
         'form.invalidPhone': 'O formato do número de telefone não é válido.',
+        'form.thankYou':     'Obrigado por se cadastrar!',
+        'form.genericError': 'Ocorreu um erro ao processar o formulário.',
     },
     fr: {
         'form.notFound':     'Définition de formulaire introuvable.',
         'form.missingFields': 'Champs obligatoires manquants (nom, e-mail, téléphone).',
         'form.consentRequired': 'Le consentement est requis pour capturer le lead.',
         'form.invalidPhone': 'Le format du numéro de téléphone n\'est pas valide.',
+        'form.thankYou':     'Merci pour votre inscription !',
+        'form.genericError': 'Une erreur s\'est produite lors du traitement du formulaire.',
     },
 };
 
@@ -76,7 +84,7 @@ export function imsg(lang: string | undefined | null, key: string): string {
 /** Single words — each is wrapped in \b…\b word-boundary anchors. */
 const OPT_OUT_WORDS: string[] = [
     // ── Spanish ──────────────────────────────────
-    'stop',           // also shared EN/FR
+    'stop',           // also shared EN/FR (universal SMS opt-out keyword)
     'baja',           // "darme de baja"
     'parar',
     'salir',
@@ -84,19 +92,19 @@ const OPT_OUT_WORDS: string[] = [
     'desuscribir',
     // ── English ──────────────────────────────────
     'unsubscribe',
-    // ── Portuguese ───────────────────────────────
-    'sair',           // "quero sair"
-    'cancelar',       // "cancelar inscrição"
-    'parar',          // already listed — kept for clarity
     // ── French ───────────────────────────────────
-    'arreter',        // "arrêter" without accent for case-insensitive match
     'desabonner',     // "se désabonner"
+    // NOTE: ambiguous bare verbs (cancelar / sair / arreter) are intentionally
+    // NOT single-word triggers — in the live all-channels pipeline they usually
+    // mean "cancel my appointment", "I'm leaving now" or "stop working", not
+    // "stop messaging me". The qualified phrases below ('cancelar inscricao',
+    // 'quero sair da lista', 'arreter les messages', …) capture the real opt-out
+    // intent in each language without those false positives.
 ];
 
 /** Multi-word phrases — matched as literal substrings (case-insensitive). */
 const OPT_OUT_PHRASES: string[] = [
     // ── Spanish ──────────────────────────────────
-    'no quiero',
     'no quiero recibir',
     'no quiero que me contacten',
     'no quiero mensajes',
@@ -123,7 +131,6 @@ const OPT_OUT_PHRASES: string[] = [
     'no more messages',
     'cancel subscription',
     // ── Portuguese ───────────────────────────────
-    'nao quero',               // "não quero" — accent-free for robustness
     'nao me contate',          // "não me contate"
     'nao me envie',            // "não me envie"
     'remover meu cadastro',

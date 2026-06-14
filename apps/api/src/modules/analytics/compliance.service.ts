@@ -1,25 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
-
-// Single words: matched with word boundaries (\b) to avoid false positives
-// e.g. "baja" should NOT match "trabajan", "salir" should NOT match "resalir"
-const OPT_OUT_WORDS = ['stop', 'baja', 'parar', 'salir', 'quitar', 'unsubscribe'];
-
-// Phrases: matched as substring (they're specific enough to avoid false positives)
-const OPT_OUT_PHRASES = [
-    'no quiero recibir', 'no quiero que me contacten', 'no quiero mensajes',
-    'no me contactes', 'no contactar', 'no me escribas', 'no me escriban',
-    'darme de baja', 'cancelar suscripcion', 'quiero salir',
-    'eliminar mis datos', 'borrar mis datos', 'desuscribir', 'desuscribirme',
-    'remove me', 'do not contact', 'opt out', 'stop messaging',
-];
-
-// Build regex patterns once (word-boundary for single words)
-const OPT_OUT_PATTERNS = [
-    ...OPT_OUT_WORDS.map(w => new RegExp(`\\b${w}\\b`, 'i')),
-    ...OPT_OUT_PHRASES.map(p => new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')),
-];
+// Opt-out detection patterns live in a single place (multi-language: es/en/pt/fr).
+// This service runs in the live pipeline (all channels, every inbound message);
+// the intake forms reuse the very same compiled list, so a customer can opt out
+// in any supported language without us having to detect their language first.
+import { isOptOutMessage } from '../intake/intake-i18n';
 
 @Injectable()
 export class ComplianceService {
@@ -45,14 +31,14 @@ export class ComplianceService {
     }
 
     /**
-     * Detect if a message contains an opt-out intent.
-     * Uses word-boundary regex for single words to avoid false positives
-     * like "trabajan" matching "baja" or "resaltar" matching "salir".
+     * Detect if a message contains an opt-out intent, in any supported language.
+     * Delegates to the shared multi-language matcher (intake-i18n): single words
+     * use word boundaries to avoid false positives ("baja" ≠ "trabajan") and
+     * ambiguous bare verbs (cancelar/sair/arreter) are excluded in favour of the
+     * qualified phrases, so an appointment cancellation isn't flagged as opt-out.
      */
     detectOptOut(messageText: string): boolean {
-        if (!messageText) return false;
-        const text = messageText.trim();
-        return OPT_OUT_PATTERNS.some(pattern => pattern.test(text));
+        return isOptOutMessage(messageText);
     }
 
     /**

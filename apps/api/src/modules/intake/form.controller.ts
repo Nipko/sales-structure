@@ -1,6 +1,7 @@
 import { Controller, Post, Param, Body, Headers, Req, HttpCode, HttpStatus, Logger, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { IntakeService } from './intake.service';
+import { imsg } from './intake-i18n';
 import { Request } from 'express';
 
 @ApiTags('public-forms')
@@ -19,8 +20,12 @@ export class FormController {
         @Body() payload: any,
         @Req() req: Request,
         @Headers('x-tenant-id') tenantId?: string,
-        @Headers('x-tenant-slug') tenantSlug?: string
+        @Headers('x-tenant-slug') tenantSlug?: string,
+        @Headers('accept-language') acceptLang?: string,
     ) {
+        // The visitor's browser language (first tag of Accept-Language) drives
+        // the i18n of the public form responses; imsg() normalises + falls back to es.
+        const lang = (acceptLang || '').split(',')[0];
         if (!tenantId && !tenantSlug) {
             this.logger.warn(`Missing tenant header for form submission: ${formDefinitionId}`);
             return { ok: true }; // return OK to avoid leaking info
@@ -41,15 +46,16 @@ export class FormController {
                 originUrl,
                 tenantId: tenantId || tenantSlug || '',
                 schemaName,
+                lang,
             });
-            return { ok: true, message: 'Gracias por registrarte!' };
+            return { ok: true, message: imsg(lang, 'form.thankYou') };
         } catch (error) {
             this.logger.error(`Error processing form submission for ${formDefinitionId}`, error);
             if (error instanceof NotFoundException) {
                 return { ok: false, error: error.message };
             }
             // By default, do not leak error specifics, but mark ok: false
-            return { ok: false, error: 'Se produjo un error al procesar el formulario.' };
+            return { ok: false, error: imsg(lang, 'form.genericError') };
         }
     }
 }

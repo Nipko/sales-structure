@@ -71,11 +71,13 @@ export class FiscalConfigService {
         const cached = await this.redis.getJson<FiscalConfig>(this.CACHE_KEY);
         if (cached) return cached;
 
-        const rows = await this.prisma.$queryRaw<{ key: string; value: string }[]>`
+        // $queryRaw is typed loosely (any[]) like the platform SettingsService —
+        // values are coerced to string so the rest of the config is well-typed.
+        const rows = await this.prisma.$queryRaw<any[]>`
             SELECT key, value FROM platform_settings WHERE key LIKE 'fiscal.%'
         `;
-        const map = new Map(rows.map((r) => [r.key, r.value]));
-        const get = (k: string) => {
+        const map = new Map<string, string>(rows.map((r: any) => [String(r.key), String(r.value)]));
+        const get = (k: string): string | undefined => {
             const v = map.get(k);
             return v && v.trim() !== '' ? v : undefined;
         };

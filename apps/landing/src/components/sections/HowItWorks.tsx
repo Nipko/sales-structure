@@ -44,7 +44,7 @@ export function HowItWorks() {
                 {t(step.tagKey)}
               </span>
             </div>
-            <p className="text-sm font-mono text-text-muted mb-2">PASO {step.num}</p>
+            <p className="text-sm font-mono text-text-muted mb-2">{t("stepLabel")} {step.num}</p>
             <h3 className="text-xl font-bold mb-2.5">{t(step.titleKey)}</h3>
             <p className="text-text-secondary text-sm leading-relaxed">
               {t(step.descKey)}

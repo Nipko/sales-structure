@@ -538,7 +538,9 @@
     "roiStat3Label": "fewer no-shows",
     "pricingTitle": "Pick your plan for {industry}",
     "relatedTitle": "Related solutions",
-    "ctaBanner": "Start automating your {industry} today"
+    "ctaBanner": "Start automating your {industry} today",
+    "breadcrumb": "Solutions",
+    "agentActive": "Active · 24/7"
   },
   "pricingPage": {
     "heroTitle": "Clear pricing, no surprises",
@@ -649,7 +651,8 @@
     "faqQ7": "Is there a refund?",
     "faqA7": "We offer a full refund within the first 7 days after payment. After that, you can cancel and keep access until the end of the period.",
     "faqQ8": "Does the Custom plan have a fixed price?",
-    "faqA8": "No, it's quoted based on your volume, number of agents and special requirements. Contact us for a proposal."
+    "faqA8": "No, it's quoted based on your volume, number of agents and special requirements. Contact us for a proposal.",
+    "quizRetry": "Try again"
   },
   "problem": {
     "title": "How many sales do you lose by not replying in time?",
@@ -673,7 +676,8 @@
     "step2Tag": "3 minutes",
     "step3": "Start selling",
     "step3Desc": "Your AI agent replies 24/7 with your tone, books, qualifies leads and hands off to a human when needed.",
-    "step3Tag": "Immediate"
+    "step3Tag": "Immediate",
+    "stepLabel": "STEP"
   },
   "features": {
     "title": "Everything you need to sell more, in one platform",

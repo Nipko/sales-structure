@@ -466,7 +466,9 @@
     "roiStat3Label": "menos no-shows",
     "pricingTitle": "Elige tu plan para {industry}",
     "relatedTitle": "Soluciones relacionadas",
-    "ctaBanner": "Empieza a automatizar tu {industry} hoy"
+    "ctaBanner": "Empieza a automatizar tu {industry} hoy",
+    "breadcrumb": "Soluciones",
+    "agentActive": "Activo · 24/7"
   },
   "pricingPage": {
     "heroTitle": "Precios claros, sin sorpresas",
@@ -577,7 +579,8 @@
     "faqQ7": "¿Hay reembolso?",
     "faqA7": "Ofrecemos reembolso completo dentro de los primeros 7 días después del pago. Después, puedes cancelar y mantener acceso hasta fin del período.",
     "faqQ8": "¿El plan Custom tiene precio fijo?",
-    "faqA8": "No, se cotiza según tu volumen, número de agentes y requerimientos especiales. Contactanos para una propuesta."
+    "faqA8": "No, se cotiza según tu volumen, número de agentes y requerimientos especiales. Contactanos para una propuesta.",
+    "quizRetry": "Reintentar"
   },
   "problem": {
     "title": "¿Cuántas ventas pierdes por no responder a tiempo?",
@@ -601,7 +604,8 @@
     "step2Tag": "3 minutos",
     "step3": "Empieza a vender",
     "step3Desc": "Tu agente IA responde 24/7 con tu tono, agenda, califica leads y entrega al humano cuando hace falta.",
-    "step3Tag": "Inmediato"
+    "step3Tag": "Inmediato",
+    "stepLabel": "PASO"
   },
   "features": {
     "title": "Todo lo que necesitas para vender más, en una plataforma",

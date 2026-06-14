@@ -301,7 +301,7 @@ export default function PricingPage() {
                 onClick={() => { setQuizStep(0); setQuizScores([0, 0, 0]); }}
                 className="block mx-auto mt-3 text-sm text-text-muted hover:text-text-primary transition-colors cursor-pointer"
               >
-                Reintentar
+                {t("quizRetry")}
               </button>
             </motion.div>
           )}

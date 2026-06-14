@@ -55,7 +55,7 @@ export default function IndustryPageClient() {
                 href="/soluciones"
                 className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text-primary mb-6 transition-colors"
               >
-                {"←"} Soluciones
+                {"←"} {t("industryPage.breadcrumb")}
               </Link>
 
               <span
@@ -133,7 +133,7 @@ export default function IndustryPageClient() {
                 <div className="mt-5 flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: vertical.color }} />
                   <span className="text-xs font-semibold" style={{ color: vertical.color }}>
-                    Activo · 24/7
+                    {t("industryPage.agentActive")}
                   </span>
                 </div>
               </div>

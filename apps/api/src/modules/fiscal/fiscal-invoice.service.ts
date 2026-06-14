@@ -4,7 +4,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { BillingEventType } from '../billing/types/billing-event.enum';
-import { FiscalConfigService } from './fiscal-config.service';
+import { FiscalConfigService, FiscalConfig } from './fiscal-config.service';
 import { FiscalProviderFactory } from './fiscal-provider.factory';
 import { FISCAL_MAX_ATTEMPTS, FISCAL_QUEUE, FiscalJobData } from './fiscal.constants';
 import { FiscalAcquirer } from './interfaces/fiscal-provider.interface';
@@ -61,6 +61,15 @@ export class FiscalInvoiceService {
             const provider = this.factory.resolve(cfg.mode, tenant.billingCountry);
             if (!provider) {
                 this.logger.debug(`[Fiscal] No provider for tenant=${tenantId} — skipping issuance`);
+                return;
+            }
+
+            // Phased rollout: stay dormant until the provider is actually
+            // configured (Factus creds + numbering range). This makes deploying
+            // the fiscal layer before go-live a no-op instead of generating
+            // doomed-to-fail invoices + Sentry noise on real payments.
+            if (!this.isProviderReady(provider.name, cfg)) {
+                this.logger.warn(`[Fiscal] ${provider.name} not configured yet — skipping issuance for tenant ${tenantId}`);
                 return;
             }
 
@@ -123,6 +132,12 @@ export class FiscalInvoiceService {
                 return;
             }
 
+            const cfg = await this.config.getConfig();
+            if (!this.isProviderReady(original.provider, cfg)) {
+                this.logger.warn(`[Fiscal] ${original.provider} not configured — skipping credit note for ${original.id}`);
+                return;
+            }
+
             const refundCents = charge.amountCents ?? original.amountCents;
             const creditNote = await this.prisma.fiscalInvoice.create({
                 data: {
@@ -152,6 +167,20 @@ export class FiscalInvoiceService {
             removeOnComplete: { age: 86_400 },
             removeOnFail: { age: 7 * 86_400 },
         });
+    }
+
+    /**
+     * Is the resolved provider actually usable? Factus needs API credentials
+     * (env) AND a numbering range (config). us_remote has no external deps.
+     * Used to keep the fiscal layer dormant until go-live configuration exists.
+     */
+    private isProviderReady(providerName: string, cfg: FiscalConfig): boolean {
+        if (providerName === 'factus') {
+            const e = process.env;
+            const creds = !!(e.FACTUS_CLIENT_ID && e.FACTUS_CLIENT_SECRET && e.FACTUS_USERNAME && e.FACTUS_PASSWORD);
+            return creds && !!cfg.factusNumberingRangeId;
+        }
+        return true;
     }
 
     /** Map Tenant.settings.fiscalData (JSONB) into a FiscalAcquirer, or null if absent. */

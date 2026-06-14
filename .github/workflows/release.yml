@@ -1,0 +1,32 @@
+# Release management via release-please.
+#
+# On every push to main, release-please opens/updates a single "release PR" that
+# bumps the version (from conventional commits: feat → minor, fix → patch) and
+# regenerates CHANGELOG.md. Merging that PR tags the release (vX.Y.Z) and creates
+# the GitHub Release. Feature work still ships via the normal push-to-main deploy;
+# this only manages versioning + changelog + releases on top.
+#
+# NOTE: requires "Allow GitHub Actions to create and approve pull requests" under
+# Settings → Actions → General → Workflow permissions (otherwise the release PR
+# can't be opened with the default GITHUB_TOKEN).
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release Please
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

@@ -139,7 +139,7 @@ export function Navbar() {
           <button
             className="lg:hidden text-text-secondary cursor-pointer"
             onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label="Menu"
+            aria-label={t("menuAriaLabel")}
           >
             {mobileOpen ? Icon.close("w-6 h-6") : Icon.menu("w-6 h-6")}
           </button>

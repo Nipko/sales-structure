@@ -67,7 +67,7 @@ export default function IndustryPageClient() {
               </span>
 
               <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
-                Parallly para{" "}
+                {t("industryPage.heroTitlePrefix")}{" "}
                 <span style={{ color: vertical.color }}>{industryName}</span>
               </h1>
 

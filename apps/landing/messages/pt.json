@@ -59,7 +59,8 @@
     "footerDataDeletion": "Excluir dados",
     "footerBrandDesc": "A plataforma de IA conversacional para PMEs da América Latina. Feito com ♥ desde Bogotá.",
     "footerMadeBy": "Desenvolvido pela Parallext em Bogotá, Colômbia",
-    "footerCopyright": "© {year} Parallly. Todos os direitos reservados."
+    "footerCopyright": "© {year} Parallly. Todos os direitos reservados.",
+    "menuAriaLabel": "Menu"
   },
   "channels": {
     "title": "Funciona em todos os seus canais",
@@ -540,7 +541,8 @@
     "relatedTitle": "Soluções relacionadas",
     "ctaBanner": "Comece a automatizar seu {industry} hoje",
     "breadcrumb": "Soluções",
-    "agentActive": "Ativo · 24/7"
+    "agentActive": "Ativo · 24/7",
+    "heroTitlePrefix": "Parallly para"
   },
   "pricingPage": {
     "heroTitle": "Preços claros, sem surpresas",
@@ -652,7 +654,9 @@
     "faqA7": "Oferecemos reembolso completo dentro dos primeiros 7 dias após o pagamento. Depois, você pode cancelar e manter acesso até o fim do período.",
     "faqQ8": "O plano Custom tem preço fixo?",
     "faqA8": "Não, é cotado conforme seu volume, número de agentes e requisitos especiais. Entre em contato para uma proposta.",
-    "quizRetry": "Tentar de novo"
+    "quizRetry": "Tentar de novo",
+    "toggleBilling": "Alternar faturamento",
+    "planSubtitle": "{n, plural, one {# agente} other {# agentes}} IA · {msg} msg/mês"
   },
   "problem": {
     "title": "Quantas vendas você perde por não responder a tempo?",
@@ -810,7 +814,8 @@
     "transparencyWhatsapp": "Custos de WhatsApp da Meta sem acréscimo (pass-through transparente)",
     "transparencyNoLockin": "Sem fidelidade — cancele quando quiser",
     "viewAllPlans": "Ver comparação completa de planos →",
-    "fullComparison": "Ver comparação completa →"
+    "fullComparison": "Ver comparação completa →",
+    "toggleBillingCycle": "Alternar ciclo de faturamento"
   },
   "faq": {
     "title": "Perguntas frequentes",

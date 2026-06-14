@@ -59,7 +59,8 @@
     "footerDataDeletion": "Eliminar datos",
     "footerBrandDesc": "La plataforma de IA conversacional para PYMES de LatinoAmérica. Hecho con ♥ desde Bogotá.",
     "footerMadeBy": "Desarrollado por Parallext en Bogotá, Colombia",
-    "footerCopyright": "© {year} Parallly. Todos los derechos reservados."
+    "footerCopyright": "© {year} Parallly. Todos los derechos reservados.",
+    "menuAriaLabel": "Menú"
   },
   "channels": {
     "title": "Funciona en todos tus canales",
@@ -468,7 +469,8 @@
     "relatedTitle": "Soluciones relacionadas",
     "ctaBanner": "Empieza a automatizar tu {industry} hoy",
     "breadcrumb": "Soluciones",
-    "agentActive": "Activo · 24/7"
+    "agentActive": "Activo · 24/7",
+    "heroTitlePrefix": "Parallly para"
   },
   "pricingPage": {
     "heroTitle": "Precios claros, sin sorpresas",
@@ -580,7 +582,9 @@
     "faqA7": "Ofrecemos reembolso completo dentro de los primeros 7 días después del pago. Después, puedes cancelar y mantener acceso hasta fin del período.",
     "faqQ8": "¿El plan Custom tiene precio fijo?",
     "faqA8": "No, se cotiza según tu volumen, número de agentes y requerimientos especiales. Contactanos para una propuesta.",
-    "quizRetry": "Reintentar"
+    "quizRetry": "Reintentar",
+    "toggleBilling": "Cambiar facturación",
+    "planSubtitle": "{n, plural, one {# agente} other {# agentes}} IA · {msg} msg/mes"
   },
   "problem": {
     "title": "¿Cuántas ventas pierdes por no responder a tiempo?",
@@ -738,7 +742,8 @@
     "transparencyWhatsapp": "Costos de WhatsApp de Meta sin recargo (pass-through transparente)",
     "transparencyNoLockin": "Sin permanencia — cancela cuando quieras",
     "viewAllPlans": "Ver comparación completa de planes →",
-    "fullComparison": "Ver comparación completa →"
+    "fullComparison": "Ver comparación completa →",
+    "toggleBillingCycle": "Cambiar ciclo de facturación"
   },
   "faq": {
     "title": "Preguntas frecuentes",

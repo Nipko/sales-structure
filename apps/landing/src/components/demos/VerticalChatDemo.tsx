@@ -13,7 +13,10 @@ interface VerticalChatDemoProps {
 
 export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoProps) {
   const t = useTranslations("verticals");
+  const tChannels = useTranslations("channels");
   const skin = CHANNELS[vertical.channel];
+  const agentName = t.has(`${vertical.slug}.name`) ? t(`${vertical.slug}.name`) : vertical.slug;
+  const statusText = tChannels.has(`status.${vertical.channel}`) ? tChannels(`status.${vertical.channel}`) : skin.statusText;
   const [visibleCount, setVisibleCount] = useState(0);
   const [cycle, setCycle] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -66,10 +69,10 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-white text-sm font-semibold truncate">
-            {vertical.slug}
+            {agentName}
           </p>
           <p className="text-white/80 text-[11px]">
-            {skin.statusText} · {t.has("demoRespondsIn") ? t("demoRespondsIn") : "responde en segundos"}
+            {statusText} · {t.has("demoRespondsIn") ? t("demoRespondsIn") : "responde en segundos"}
           </p>
         </div>
         <div className="flex items-center gap-1.5">

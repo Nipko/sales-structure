@@ -59,7 +59,8 @@
     "footerDataDeletion": "Delete data",
     "footerBrandDesc": "The conversational AI platform for Latin American SMBs. Made with ♥ from Bogotá.",
     "footerMadeBy": "Built by Parallext in Bogotá, Colombia",
-    "footerCopyright": "© {year} Parallly. All rights reserved."
+    "footerCopyright": "© {year} Parallly. All rights reserved.",
+    "menuAriaLabel": "Menu"
   },
   "channels": {
     "title": "Works across all your channels",
@@ -540,7 +541,8 @@
     "relatedTitle": "Related solutions",
     "ctaBanner": "Start automating your {industry} today",
     "breadcrumb": "Solutions",
-    "agentActive": "Active · 24/7"
+    "agentActive": "Active · 24/7",
+    "heroTitlePrefix": "Parallly for"
   },
   "pricingPage": {
     "heroTitle": "Clear pricing, no surprises",
@@ -652,7 +654,9 @@
     "faqA7": "We offer a full refund within the first 7 days after payment. After that, you can cancel and keep access until the end of the period.",
     "faqQ8": "Does the Custom plan have a fixed price?",
     "faqA8": "No, it's quoted based on your volume, number of agents and special requirements. Contact us for a proposal.",
-    "quizRetry": "Try again"
+    "quizRetry": "Try again",
+    "toggleBilling": "Toggle billing",
+    "planSubtitle": "{n, plural, one {# AI agent} other {# AI agents}} · {msg} msg/mo"
   },
   "problem": {
     "title": "How many sales do you lose by not replying in time?",
@@ -810,7 +814,8 @@
     "transparencyWhatsapp": "Meta's WhatsApp fees at cost (transparent pass-through)",
     "transparencyNoLockin": "No lock-in — cancel anytime",
     "viewAllPlans": "See full plan comparison →",
-    "fullComparison": "See full comparison →"
+    "fullComparison": "See full comparison →",
+    "toggleBillingCycle": "Toggle billing cycle"
   },
   "faq": {
     "title": "Frequently Asked Questions",

@@ -190,7 +190,7 @@ export function PricingSection() {
           className={`relative w-12 h-6 rounded-full transition-colors cursor-pointer ${
             annual ? "bg-accent" : "bg-border-light"
           }`}
-          aria-label="Toggle billing cycle"
+          aria-label={t("toggleBillingCycle")}
         >
           <motion.div
             className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow"

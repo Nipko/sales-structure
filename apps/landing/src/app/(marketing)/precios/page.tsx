@@ -93,7 +93,7 @@ export default function PricingPage() {
             <button
               onClick={() => setAnnual(!annual)}
               className={`relative w-12 h-6 rounded-full transition-colors cursor-pointer ${annual ? "bg-accent" : "bg-border-light"}`}
-              aria-label="Toggle billing"
+              aria-label={t("toggleBilling")}
             >
               <motion.div
                 className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow"
@@ -133,7 +133,7 @@ export default function PricingPage() {
               )}
               <h3 className="text-xl font-bold mb-1">{plan.nameKey}</h3>
               <p className="text-text-muted text-sm mb-5">
-                {plan.maxAgents} agente{plan.maxAgents > 1 ? "s" : ""} IA · {plan.maxAiMessages} msg/mes
+                {t("planSubtitle", { n: plan.maxAgents, msg: plan.maxAiMessages })}
               </p>
 
               <div className="mb-6">

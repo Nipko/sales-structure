@@ -59,7 +59,8 @@
     "footerDataDeletion": "Supprimer les données",
     "footerBrandDesc": "La plateforme d'IA conversationnelle pour les PME d'Amérique latine. Fait avec ♥ depuis Bogotá.",
     "footerMadeBy": "Construit par Parallext à Bogotá, Colombie",
-    "footerCopyright": "© {year} Parallly. Tous droits réservés."
+    "footerCopyright": "© {year} Parallly. Tous droits réservés.",
+    "menuAriaLabel": "Menu"
   },
   "channels": {
     "title": "Fonctionne sur tous vos canaux",
@@ -540,7 +541,8 @@
     "relatedTitle": "Solutions associées",
     "ctaBanner": "Commencez à automatiser votre {industry} aujourd'hui",
     "breadcrumb": "Solutions",
-    "agentActive": "Actif · 24/7"
+    "agentActive": "Actif · 24/7",
+    "heroTitlePrefix": "Parallly pour"
   },
   "pricingPage": {
     "heroTitle": "Tarifs clairs, sans surprises",
@@ -652,7 +654,9 @@
     "faqA7": "Nous offrons un remboursement complet dans les 7 premiers jours après le paiement. Ensuite, vous pouvez annuler et conserver l'accès jusqu'à la fin de la période.",
     "faqQ8": "Le plan Custom a-t-il un prix fixe ?",
     "faqA8": "Non, il est établi selon votre volume, nombre d'agents et besoins spécifiques. Contactez-nous pour une proposition.",
-    "quizRetry": "Réessayer"
+    "quizRetry": "Réessayer",
+    "toggleBilling": "Basculer la facturation",
+    "planSubtitle": "{n, plural, one {# agent} other {# agents}} IA · {msg} msg/mois"
   },
   "problem": {
     "title": "Combien de ventes perdez-vous en ne répondant pas à temps ?",
@@ -810,7 +814,8 @@
     "transparencyWhatsapp": "Frais WhatsApp de Meta au coût réel (répercussion transparente)",
     "transparencyNoLockin": "Sans engagement — annulez quand vous voulez",
     "viewAllPlans": "Voir la comparaison complète des plans →",
-    "fullComparison": "Voir la comparaison complète →"
+    "fullComparison": "Voir la comparaison complète →",
+    "toggleBillingCycle": "Basculer le cycle de facturation"
   },
   "faq": {
     "title": "Questions fréquentes",

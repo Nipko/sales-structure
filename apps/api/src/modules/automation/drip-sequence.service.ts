@@ -12,7 +12,19 @@ import { ComplianceService } from '../analytics/compliance.service';
 import { SegmentsService } from '../crm/services/segments/segments.service';
 import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
 import { NURTURING_QUEUE } from './nurturing.service';
+import { LANG_NAME } from './nurturing-i18n';
 import { OutboundMessage } from '@parallext/shared';
+
+// Cold-prospecting opener fallback (customer-facing) used when the LLM is
+// unavailable. Keyed by 2-letter language; falls back to es. A cold prospect has
+// no detected language yet, so the tenant's configured language drives this.
+const OPENER_FALLBACK: Record<string, (name: string) => string> = {
+    es: name => `¡Hola${name}! 👋 Te escribo del equipo. ¿Tienes un minuto para contarte cómo podemos ayudarte?`,
+    en: name => `Hi${name}! 👋 I'm reaching out on behalf of the team. Do you have a minute so I can share how we can help?`,
+    pt: name => `Olá${name}! 👋 Estou entrando em contato pela equipe. Você tem um minuto para eu te contar como podemos ajudar?`,
+    fr: name => `Bonjour${name} ! 👋 Je vous contacte de la part de l'équipe. Avez-vous une minute pour que je vous explique comment nous pouvons vous aider ?`,
+};
+const openerFallback = (lang?: string) => OPENER_FALLBACK[(lang || 'es').slice(0, 2).toLowerCase()] || OPENER_FALLBACK.es;
 
 export interface DripStep {
     delay_seconds: number;
@@ -669,7 +681,15 @@ export class DripSequenceService {
     /** AI-written prospecting opener in the agent's persona voice, with a safe fallback. */
     private async generateOpener(tenantId: string, contact: any, angle?: string): Promise<string> {
         const name = contact?.name ? ` ${String(contact.name).split(' ')[0]}` : '';
-        const fallback = `¡Hola${name}! 👋 Te escribo del equipo. ¿Tenés un minuto para que te cuente cómo podemos ayudarte?`;
+        // Cold prospect: no detected language yet, so the tenant's configured
+        // language drives both the fallback copy and the LLM output language.
+        let lang = 'es';
+        try {
+            const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { language: true } });
+            if (tenant?.language) lang = String(tenant.language).slice(0, 2).toLowerCase();
+        } catch { /* keep es */ }
+        const langName = LANG_NAME[lang as keyof typeof LANG_NAME] || LANG_NAME.es;
+        const fallback = openerFallback(lang)(name);
         try {
             const persona = await this.personaService.getActivePersona(tenantId);
             if (!persona) return fallback;
@@ -683,7 +703,7 @@ export class DripSequenceService {
                     content: `Escribí un mensaje de PRIMER CONTACTO (prospección) breve, cálido y natural para ` +
                         `${name ? `un cliente llamado${name}` : 'un posible cliente'}.${angleLine} ` +
                         `Presentate de parte del negocio, generá interés en 1-2 líneas y terminá con una pregunta abierta y sin presión. ` +
-                        `No inventes datos, precios ni promociones que no te dieron. Devolvé SOLO el mensaje.`,
+                        `No inventes datos, precios ni promociones que no te dieron. Escribí el mensaje en ${langName}. Devolvé SOLO el mensaje.`,
                 }],
                 systemPrompt: this.personaService.buildSystemPrompt(persona),
                 temperature: 0.8,

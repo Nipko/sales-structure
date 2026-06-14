@@ -97,26 +97,24 @@ export class FiscalAdminController {
         @Query('tenantId') tenantId?: string,
         @Query('page') page?: string,
     ) {
-        const where: Record<string, unknown> = {};
+        const where: any = {};
         if (status) where.status = status;
         if (tenantId) where.tenantId = tenantId;
         const take = 50;
         const skip = page && Number(page) > 1 ? (Number(page) - 1) * take : 0;
 
-        const [rows, total] = await Promise.all([
-            this.prisma.fiscalInvoice.findMany({ where, orderBy: { createdAt: 'desc' }, take, skip }),
-            this.prisma.fiscalInvoice.count({ where }),
-        ]);
-        const tenantIds = [...new Set(rows.map((r) => r.tenantId))];
-        const tenants = await this.prisma.tenant.findMany({
+        const rows: any[] = await this.prisma.fiscalInvoice.findMany({ where, orderBy: { createdAt: 'desc' }, take, skip });
+        const total: number = await this.prisma.fiscalInvoice.count({ where });
+        const tenantIds = [...new Set(rows.map((r: any) => r.tenantId))];
+        const tenants: any[] = await this.prisma.tenant.findMany({
             where: { id: { in: tenantIds } },
             select: { id: true, name: true },
         });
-        const nameMap = Object.fromEntries(tenants.map((t) => [t.id, t.name]));
+        const nameMap: Record<string, string> = Object.fromEntries(tenants.map((t: any) => [t.id, t.name]));
         return {
             success: true,
             total,
-            data: rows.map((r) => ({ ...r, tenantName: nameMap[r.tenantId] || r.tenantId })),
+            data: rows.map((r: any) => ({ ...r, tenantName: nameMap[r.tenantId] || r.tenantId })),
         };
     }
 

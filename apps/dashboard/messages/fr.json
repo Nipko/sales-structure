@@ -3952,7 +3952,36 @@
     "toastNameRequired": "Le nom est obligatoire",
     "toastSubjectRequired": "L'objet est obligatoire",
     "toastTestSent": "E-mail de test envoyé à {email}",
-    "resourceLabel": "modèles d'e-mail"
+    "resourceLabel": "modèles d'e-mail",
+    "name": "Nom",
+    "inactive": "Inactif",
+    "cancel": "Annuler",
+    "presets": {
+      "preset_appointment_confirm": {
+        "name": "Confirmation de rendez-vous",
+        "description": "E-mail automatique lors de la prise d'un rendez-vous"
+      },
+      "preset_appointment_reminder": {
+        "name": "Rappel de rendez-vous",
+        "description": "Envoyé automatiquement 24h avant le rendez-vous"
+      },
+      "preset_booking_confirm": {
+        "name": "Confirmation de réservation",
+        "description": "Pour les réservations de logements/hébergements"
+      },
+      "preset_checkin_reminder": {
+        "name": "Rappel d'enregistrement",
+        "description": "Instructions d'arrivée 24h avant"
+      },
+      "preset_welcome": {
+        "name": "Bienvenue",
+        "description": "E-mail de bienvenue pour les nouveaux clients"
+      },
+      "preset_team_notification": {
+        "name": "Notification à l'équipe",
+        "description": "Alerte interne lorsqu'une conversation est transférée"
+      }
+    }
   },
   "changePassword": {
     "title": "Changer le mot de passe",

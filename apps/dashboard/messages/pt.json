@@ -3952,7 +3952,36 @@
     "toastNameRequired": "O nome é obrigatório",
     "toastSubjectRequired": "O assunto é obrigatório",
     "toastTestSent": "E-mail de teste enviado para {email}",
-    "resourceLabel": "modelos de e-mail"
+    "resourceLabel": "modelos de e-mail",
+    "name": "Nome",
+    "inactive": "Inativo",
+    "cancel": "Cancelar",
+    "presets": {
+      "preset_appointment_confirm": {
+        "name": "Confirmação de consulta",
+        "description": "Email automático quando uma consulta é agendada"
+      },
+      "preset_appointment_reminder": {
+        "name": "Lembrete de consulta",
+        "description": "Enviado automaticamente 24h antes da consulta"
+      },
+      "preset_booking_confirm": {
+        "name": "Confirmação de reserva",
+        "description": "Para reservas de propriedades/hospedagem"
+      },
+      "preset_checkin_reminder": {
+        "name": "Lembrete de check-in",
+        "description": "Instruções de chegada 24h antes"
+      },
+      "preset_welcome": {
+        "name": "Boas-vindas",
+        "description": "Email de boas-vindas para novos clientes"
+      },
+      "preset_team_notification": {
+        "name": "Notificação à equipe",
+        "description": "Alerta interno quando uma conversa é escalada"
+      }
+    }
   },
   "changePassword": {
     "title": "Alterar Senha",

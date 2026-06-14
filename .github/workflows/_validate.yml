@@ -1,0 +1,91 @@
+# Reusable validation workflow (the "CI" gate).
+# Called by deploy.yml on push to main (before build/deploy). Kept reusable via
+# workflow_call so a PR-triggered ci.yml can be added later without duplication.
+#
+# Validates, in order: typecheck (all 4 apps) → lint (non-blocking for now) →
+# migrations apply on a fresh DB → the real app boots (DI graph + onModuleInit).
+name: Validate
+
+on:
+  workflow_call:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    # Ephemeral infra for the boot smoke test. Postgres gets the schema via
+    # `prisma migrate deploy`; Redis backs ioredis/BullMQ which connect eagerly.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: parallext
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: parallext_engine
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U parallext"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # DB/Redis point at the service containers above. Secrets are CI dummies —
+      # the app reads them at construction but makes no real external calls at boot.
+      DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+      DIRECT_DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      NODE_ENV: test
+      JWT_SECRET: ci-dummy-jwt-secret
+      JWT_REFRESH_SECRET: ci-dummy-jwt-refresh-secret
+      INTERNAL_JWT_SECRET: ci-dummy-internal-jwt-secret
+      INTERNAL_API_KEY: ci-dummy-internal-api-key
+      ENCRYPTION_KEY: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+      OPENAI_API_KEY: sk-ci-dummy-key
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check (all apps)
+        run: |
+          (cd apps/api && npx tsc --noEmit)
+          (cd apps/dashboard && npx tsc --noEmit)
+          (cd apps/whatsapp && npx tsc --noEmit)
+          (cd apps/landing && npx tsc --noEmit)
+
+      - name: Lint (API) — non-blocking until the codebase is lint-clean
+        continue-on-error: true
+        run: cd apps/api && npx eslint "src/**/*.ts"
+
+      - name: Prisma generate + migrate (ephemeral DB)
+        run: |
+          cd apps/api
+          npx prisma generate
+          npx prisma migrate deploy
+
+      - name: Build API (+ shared)
+        run: npx turbo build --filter=@parallext/api
+
+      - name: Boot smoke test (real NestFactory.create + onModuleInit)
+        run: node apps/api/dist/boot-check.js

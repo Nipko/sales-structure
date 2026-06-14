@@ -17,7 +17,9 @@ jobs:
     # `prisma migrate deploy`; Redis backs ioredis/BullMQ which connect eagerly.
     services:
       postgres:
-        image: postgres:16-alpine
+        # pgvector image (Postgres + the `vector` extension) so `prisma migrate
+        # deploy` can run any `CREATE EXTENSION vector` migration the KB/RAG uses.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: parallext
           POSTGRES_PASSWORD: ci

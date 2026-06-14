@@ -1504,6 +1504,62 @@
         "optionsPlaceholder": "opção1, opção2, opção3",
         "requiredField": "Campo obrigatório"
       }
+    },
+    "macrosPage": {
+      "title": "Macros",
+      "subtitle": "Automatize ações repetitivas com um clique",
+      "newMacro": "Nova macro",
+      "empty": "Nenhuma macro criada",
+      "actionsCount": "{count} ações",
+      "actionNumber": "Ação {number}",
+      "addAction": "Adicionar ação",
+      "toastCreated": "Macro criada",
+      "toastUpdated": "Macro atualizada",
+      "visibility": {
+        "personal": "Pessoal",
+        "team": "Equipe"
+      },
+      "form": {
+        "nameLabel": "Nome *",
+        "namePlaceholder": "Ex.: Escalar para supervisor",
+        "descriptionLabel": "Descrição",
+        "descriptionPlaceholder": "Descrição opcional",
+        "visibilityLabel": "Visibilidade",
+        "actionsLabel": "Ações",
+        "typeLabel": "Tipo"
+      },
+      "actionTypes": {
+        "assign": "Atribuir a agente",
+        "tag": "Adicionar etiqueta",
+        "changeStatus": "Alterar status",
+        "addNote": "Adicionar nota",
+        "sendCanned": "Enviar resposta predefinida"
+      },
+      "statusOptions": {
+        "active": "Ativo",
+        "resolved": "Resolvido",
+        "waitingHuman": "Aguardando agente"
+      },
+      "config": {
+        "agentLabel": "ID ou nome do agente",
+        "tagLabel": "Nome da etiqueta",
+        "tagPlaceholder": "vip, urgente, etc.",
+        "statusLabel": "Novo status",
+        "noteLabel": "Conteúdo da nota",
+        "notePlaceholder": "Nota interna...",
+        "cannedLabel": "Código da resposta predefinida"
+      }
+    },
+    "platform": {
+      "platformName": "Nome da plataforma",
+      "platformNameDesc": "Nome visível no painel",
+      "defaultLanguage": "Idioma padrão",
+      "defaultTimezone": "Fuso horário padrão",
+      "maxConversationsPerTenant": "Máx. de conversas por tenant",
+      "analyticsEnabled": "Analytics ativado",
+      "analyticsEnabledDesc": "Rastreamento de eventos e métricas",
+      "ragEnabled": "RAG ativado",
+      "ragEnabledDesc": "Pesquisa na base de conhecimento"
     }
   },
   "media": {
@@ -1530,6 +1586,14 @@
       "general": "Geral",
       "product": "Produto",
       "course": "Curso"
+    },
+    "mediaPage": {
+      "type": "Tipo:",
+      "uploading": "Enviando... {progress}%",
+      "loadingImages": "Carregando imagens...",
+      "allTagsPill": "Todas",
+      "newTagPlaceholder": "Nova etiqueta...",
+      "confirmDelete": "Excluir esta imagem?"
     }
   },
   "appointments": {
@@ -7444,7 +7508,9 @@
     "previewEmpty": "Adicione campos para ver a pré-visualização",
     "formDisabled": "Formulário desabilitado",
     "clientResponse": "Resposta do cliente...",
-    "saved": "Configuração salva"
+    "saved": "Configuração salva",
+    "exampleEmail": "cliente@email.com",
+    "examplePhone": "+55 11 91234 5678"
   },
   "acceptInvite": {
     "greeting": "Você foi convidado para {tenantName}!",

@@ -91,8 +91,8 @@ function PlatformContent() {
 
             <div className="space-y-5 rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 <div>
-                    <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">Nombre de plataforma</label>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">Nombre visible en el dashboard</p>
+                    <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">{t("platform.platformName")}</label>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">{t("platform.platformNameDesc")}</p>
                     <input
                         type="text"
                         value={values["general.platform_name"]}
@@ -103,7 +103,7 @@ function PlatformContent() {
 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">Idioma por defecto</label>
+                        <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">{t("platform.defaultLanguage")}</label>
                         <select
                             value={values["general.default_language"]}
                             onChange={e => setValues(prev => ({ ...prev, "general.default_language": e.target.value }))}
@@ -113,7 +113,7 @@ function PlatformContent() {
                         </select>
                     </div>
                     <div>
-                        <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">Zona horaria por defecto</label>
+                        <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">{t("platform.defaultTimezone")}</label>
                         <select
                             value={values["general.default_timezone"]}
                             onChange={e => setValues(prev => ({ ...prev, "general.default_timezone": e.target.value }))}
@@ -129,7 +129,7 @@ function PlatformContent() {
                 </div>
 
                 <div>
-                    <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">Max conversaciones por tenant</label>
+                    <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">{t("platform.maxConversationsPerTenant")}</label>
                     <input
                         type="number"
                         value={values["general.max_conversations_per_tenant"]}
@@ -140,8 +140,8 @@ function PlatformContent() {
 
                 {/* Boolean toggles */}
                 {[
-                    { key: "general.enable_analytics", label: "Analytics enabled", desc: "Event and metrics tracking" },
-                    { key: "general.enable_rag", label: "RAG enabled", desc: "Knowledge Base search" },
+                    { key: "general.enable_analytics", label: t("platform.analyticsEnabled"), desc: t("platform.analyticsEnabledDesc") },
+                    { key: "general.enable_rag", label: t("platform.ragEnabled"), desc: t("platform.ragEnabledDesc") },
                 ].map(item => (
                     <div key={item.key} className="flex items-center justify-between rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-800/50">
                         <div>

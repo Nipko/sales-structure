@@ -176,7 +176,7 @@ export default function MediaBankPage() {
   }
 
   async function handleDelete(fileId: string) {
-    if (!tenantId || !confirm("Delete this image?")) return;
+    if (!tenantId || !confirm(t('mediaPage.confirmDelete'))) return;
     try {
       const res = await api.deleteMedia(tenantId, fileId);
       if (res.success) { showToast(t('imageDeleted')); setFiles(prev => prev.filter(f => f.id !== fileId)); }
@@ -236,7 +236,7 @@ export default function MediaBankPage() {
             <h2 className="text-base font-semibold text-foreground m-0">{t('uploadImage')}</h2>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground">Type:</span>
+            <span className="text-xs font-semibold text-muted-foreground">{t('mediaPage.type')}</span>
             <select value={entityType} onChange={e => setEntityType(e.target.value)}
               className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm outline-none w-[140px]">
               {ENTITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -252,7 +252,7 @@ export default function MediaBankPage() {
           {uploading ? (
             <div className="flex flex-col items-center gap-3">
               <Loader2 size={32} className="text-indigo-500 animate-spin" />
-              <p className="text-sm text-muted-foreground">Uploading... {uploadProgress}%</p>
+              <p className="text-sm text-muted-foreground">{t('mediaPage.uploading', { progress: uploadProgress })}</p>
               <div className="w-48 h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
                 <div className="h-full bg-indigo-500 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
               </div>
@@ -297,7 +297,7 @@ export default function MediaBankPage() {
             <button onClick={() => setFilterTag("")}
               className={cn("px-3 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer",
                 !filterTag ? "bg-indigo-500 text-white border-indigo-500" : "bg-background text-muted-foreground border-border hover:border-indigo-400")}>
-              All
+              {t('mediaPage.allTagsPill')}
             </button>
             {allTags.map(t => (
               <button key={t} onClick={() => setFilterTag(filterTag === t ? "" : t)}
@@ -312,7 +312,7 @@ export default function MediaBankPage() {
         {loading ? (
           <div className="p-12 text-center text-muted-foreground">
             <Loader2 size={28} className="animate-spin mx-auto mb-2 opacity-60" />
-            <p className="text-sm">Loading images...</p>
+            <p className="text-sm">{t('mediaPage.loadingImages')}</p>
           </div>
         ) : files.length === 0 ? (
           <div className="p-12 text-center">
@@ -377,7 +377,7 @@ export default function MediaBankPage() {
                             ))}
                           </div>
                           <div className="flex gap-1">
-                            <input value={newTag} onChange={e => setNewTag(e.target.value)} placeholder="New tag..."
+                            <input value={newTag} onChange={e => setNewTag(e.target.value)} placeholder={t('mediaPage.newTagPlaceholder')}
                               onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
                               className="flex-1 px-2 py-1 rounded-md border border-border bg-background text-foreground text-[11px] outline-none" />
                             <button onClick={addTag}
@@ -390,11 +390,11 @@ export default function MediaBankPage() {
                         <div className="flex gap-1.5">
                           <button onClick={saveEdit} disabled={saving}
                             className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-medium cursor-pointer border-none disabled:opacity-60">
-                            {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
+                            {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {tc('save')}
                           </button>
                           <button onClick={() => setEditingId(null)}
                             className="px-2 py-1.5 rounded-md bg-neutral-200 dark:bg-neutral-700 text-foreground text-xs cursor-pointer border-none">
-                            Cancel
+                            {tc('cancel')}
                           </button>
                         </div>
                       </div>
@@ -423,11 +423,11 @@ export default function MediaBankPage() {
                         <div className="flex gap-1.5">
                           <button onClick={() => startEdit(file)}
                             className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 text-xs font-medium cursor-pointer hover:bg-indigo-500/20 transition-colors">
-                            <Pencil size={12} /> Edit
+                            <Pencil size={12} /> {tc('edit')}
                           </button>
                           <button onClick={() => handleDelete(file.id)}
                             className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-medium cursor-pointer hover:bg-red-500/20 transition-colors">
-                            <Trash2 size={12} /> Delete
+                            <Trash2 size={12} /> {tc('delete')}
                           </button>
                         </div>
                       </>

@@ -1504,6 +1504,62 @@
         "optionsPlaceholder": "option1, option2, option3",
         "requiredField": "Champ obligatoire"
       }
+    },
+    "macrosPage": {
+      "title": "Macros",
+      "subtitle": "Automatisez les actions répétitives en un clic",
+      "newMacro": "Nouvelle macro",
+      "empty": "Aucune macro créée",
+      "actionsCount": "{count} actions",
+      "actionNumber": "Action {number}",
+      "addAction": "Ajouter une action",
+      "toastCreated": "Macro créée",
+      "toastUpdated": "Macro mise à jour",
+      "visibility": {
+        "personal": "Personnel",
+        "team": "Équipe"
+      },
+      "form": {
+        "nameLabel": "Nom *",
+        "namePlaceholder": "Ex. : Transférer au superviseur",
+        "descriptionLabel": "Description",
+        "descriptionPlaceholder": "Description facultative",
+        "visibilityLabel": "Visibilité",
+        "actionsLabel": "Actions",
+        "typeLabel": "Type"
+      },
+      "actionTypes": {
+        "assign": "Attribuer à un agent",
+        "tag": "Ajouter une étiquette",
+        "changeStatus": "Changer le statut",
+        "addNote": "Ajouter une note",
+        "sendCanned": "Envoyer une réponse prédéfinie"
+      },
+      "statusOptions": {
+        "active": "Actif",
+        "resolved": "Résolu",
+        "waitingHuman": "En attente d'un agent"
+      },
+      "config": {
+        "agentLabel": "ID ou nom de l'agent",
+        "tagLabel": "Nom de l'étiquette",
+        "tagPlaceholder": "vip, urgent, etc.",
+        "statusLabel": "Nouveau statut",
+        "noteLabel": "Contenu de la note",
+        "notePlaceholder": "Note interne...",
+        "cannedLabel": "Code de réponse prédéfinie"
+      }
+    },
+    "platform": {
+      "platformName": "Nom de la plateforme",
+      "platformNameDesc": "Nom affiché dans le tableau de bord",
+      "defaultLanguage": "Langue par défaut",
+      "defaultTimezone": "Fuseau horaire par défaut",
+      "maxConversationsPerTenant": "Conversations max. par locataire",
+      "analyticsEnabled": "Analytique activée",
+      "analyticsEnabledDesc": "Suivi des événements et des métriques",
+      "ragEnabled": "RAG activé",
+      "ragEnabledDesc": "Recherche dans la base de connaissances"
     }
   },
   "media": {
@@ -1530,6 +1586,14 @@
       "general": "Général",
       "product": "Produit",
       "course": "Cours"
+    },
+    "mediaPage": {
+      "type": "Type :",
+      "uploading": "Téléversement... {progress}%",
+      "loadingImages": "Chargement des images...",
+      "allTagsPill": "Toutes",
+      "newTagPlaceholder": "Nouvelle étiquette...",
+      "confirmDelete": "Supprimer cette image ?"
     }
   },
   "appointments": {
@@ -7444,7 +7508,9 @@
     "previewEmpty": "Ajoutez des champs pour voir l'aperçu",
     "formDisabled": "Formulaire désactivé",
     "clientResponse": "Réponse du client...",
-    "saved": "Configuration sauvegardée"
+    "saved": "Configuration sauvegardée",
+    "exampleEmail": "client@email.com",
+    "examplePhone": "+33 6 12 34 56 78"
   },
   "acceptInvite": {
     "greeting": "Vous avez été invité à {tenantName} !",

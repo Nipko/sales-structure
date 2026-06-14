@@ -281,7 +281,7 @@ export default function PrechatPage() {
                                     </div>
                                     <div className="bg-[#1d282f] rounded-[10px_10px_0_10px] px-3 py-2 max-w-[70%] ml-auto">
                                         <p className="text-[13px] text-[#e9edef]/40 m-0 italic">
-                                            {field.type === "email" ? "client@email.com" : field.type === "phone" ? "+57 300 123 4567" : field.type === "select" ? (field.options.split(",")[0]?.trim() || "...") : t("clientResponse")}
+                                            {field.type === "email" ? t("exampleEmail") : field.type === "phone" ? t("examplePhone") : field.type === "select" ? (field.options.split(",")[0]?.trim() || "...") : t("clientResponse")}
                                         </p>
                                     </div>
                                 </div>

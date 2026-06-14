@@ -46,6 +46,7 @@ const WEEK_STARTS = [
 ];
 
 export default function LocalizationPage() {
+    const t = useTranslations("settings.localizationPage");
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
     const { user } = useAuth();
@@ -116,9 +117,9 @@ export default function LocalizationPage() {
     return (
         <div className="max-w-2xl space-y-6">
             <div>
-                <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Localization</h1>
+                <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("title")}</h1>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    Timezone, currency, date format and workspace language
+                    {t("subtitle")}
                 </p>
             </div>
 
@@ -139,7 +140,7 @@ export default function LocalizationPage() {
                 {/* Timezone */}
                 <div>
                     <label className="mb-1.5 flex items-center gap-2 text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        <Clock size={14} className="text-neutral-400" /> Timezone
+                        <Clock size={14} className="text-neutral-400" /> {t("timezone")}
                     </label>
                     <select value={normalizeTimezone(form.timezone)} onChange={(e) => setForm({ ...form, timezone: e.target.value })} className={selectClasses}>
                         {TIMEZONE_GROUPS.map((g) => (
@@ -153,7 +154,7 @@ export default function LocalizationPage() {
                 {/* Language */}
                 <div>
                     <label className="mb-1.5 flex items-center gap-2 text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        <Globe size={14} className="text-neutral-400" /> Language
+                        <Globe size={14} className="text-neutral-400" /> {t("language")}
                     </label>
                     <select value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value })} className={selectClasses}>
                         {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
@@ -163,7 +164,7 @@ export default function LocalizationPage() {
                 {/* Currency */}
                 <div>
                     <label className="mb-1.5 flex items-center gap-2 text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        <DollarSign size={14} className="text-neutral-400" /> Currency
+                        <DollarSign size={14} className="text-neutral-400" /> {t("currency")}
                     </label>
                     <select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} className={selectClasses}>
                         {CURRENCIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -174,7 +175,7 @@ export default function LocalizationPage() {
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="mb-1.5 flex items-center gap-2 text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                            <Calendar size={14} className="text-neutral-400" /> Date format
+                            <Calendar size={14} className="text-neutral-400" /> {t("dateFormat")}
                         </label>
                         <select value={form.dateFormat} onChange={(e) => setForm({ ...form, dateFormat: e.target.value })} className={selectClasses}>
                             {DATE_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
@@ -182,7 +183,7 @@ export default function LocalizationPage() {
                     </div>
                     <div>
                         <label className="mb-1.5 flex items-center gap-2 text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                            <Clock size={14} className="text-neutral-400" /> Time format
+                            <Clock size={14} className="text-neutral-400" /> {t("timeFormat")}
                         </label>
                         <select value={form.timeFormat} onChange={(e) => setForm({ ...form, timeFormat: e.target.value })} className={selectClasses}>
                             {TIME_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
@@ -193,7 +194,7 @@ export default function LocalizationPage() {
                 {/* Week start */}
                 <div>
                     <label className="mb-1.5 flex items-center gap-2 text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        <Calendar size={14} className="text-neutral-400" /> First day of the week
+                        <Calendar size={14} className="text-neutral-400" /> {t("weekStart")}
                     </label>
                     <select value={form.weekStart} onChange={(e) => setForm({ ...form, weekStart: e.target.value })} className={selectClasses}>
                         {WEEK_STARTS.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}

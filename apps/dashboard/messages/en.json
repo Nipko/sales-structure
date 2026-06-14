@@ -1504,6 +1504,62 @@
         "optionsPlaceholder": "option1, option2, option3",
         "requiredField": "Required field"
       }
+    },
+    "macrosPage": {
+      "title": "Macros",
+      "subtitle": "Automate repetitive actions with one click",
+      "newMacro": "New macro",
+      "empty": "No macros created",
+      "actionsCount": "{count} actions",
+      "actionNumber": "Action {number}",
+      "addAction": "Add action",
+      "toastCreated": "Macro created",
+      "toastUpdated": "Macro updated",
+      "visibility": {
+        "personal": "Personal",
+        "team": "Team"
+      },
+      "form": {
+        "nameLabel": "Name *",
+        "namePlaceholder": "e.g.: Escalate to supervisor",
+        "descriptionLabel": "Description",
+        "descriptionPlaceholder": "Optional description",
+        "visibilityLabel": "Visibility",
+        "actionsLabel": "Actions",
+        "typeLabel": "Type"
+      },
+      "actionTypes": {
+        "assign": "Assign to agent",
+        "tag": "Add tag",
+        "changeStatus": "Change status",
+        "addNote": "Add note",
+        "sendCanned": "Send canned response"
+      },
+      "statusOptions": {
+        "active": "Active",
+        "resolved": "Resolved",
+        "waitingHuman": "Waiting for agent"
+      },
+      "config": {
+        "agentLabel": "Agent ID or name",
+        "tagLabel": "Tag name",
+        "tagPlaceholder": "vip, urgent, etc.",
+        "statusLabel": "New status",
+        "noteLabel": "Note content",
+        "notePlaceholder": "Internal note...",
+        "cannedLabel": "Canned response shortcode"
+      }
+    },
+    "platform": {
+      "platformName": "Platform name",
+      "platformNameDesc": "Name shown in the dashboard",
+      "defaultLanguage": "Default language",
+      "defaultTimezone": "Default timezone",
+      "maxConversationsPerTenant": "Max conversations per tenant",
+      "analyticsEnabled": "Analytics enabled",
+      "analyticsEnabledDesc": "Event and metrics tracking",
+      "ragEnabled": "RAG enabled",
+      "ragEnabledDesc": "Knowledge Base search"
     }
   },
   "media": {
@@ -1530,6 +1586,14 @@
       "general": "General",
       "product": "Product",
       "course": "Course"
+    },
+    "mediaPage": {
+      "type": "Type:",
+      "uploading": "Uploading... {progress}%",
+      "loadingImages": "Loading images...",
+      "allTagsPill": "All",
+      "newTagPlaceholder": "New tag...",
+      "confirmDelete": "Delete this image?"
     }
   },
   "appointments": {
@@ -7473,7 +7537,9 @@
     "previewEmpty": "Add fields to see the preview",
     "formDisabled": "Form disabled",
     "clientResponse": "Client response...",
-    "saved": "Configuration saved"
+    "saved": "Configuration saved",
+    "exampleEmail": "client@email.com",
+    "examplePhone": "+57 300 123 4567"
   },
   "acceptInvite": {
     "greeting": "You've been invited to {tenantName}!",

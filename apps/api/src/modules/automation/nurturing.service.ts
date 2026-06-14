@@ -10,6 +10,7 @@ import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ComplianceService } from '../analytics/compliance.service';
 import { OutboundMessage } from '@parallext/shared';
+import { nurtureMsg, LANG_NAME } from './nurturing-i18n';
 
 export const NURTURING_QUEUE = 'nurturing';
 
@@ -394,7 +395,8 @@ export class NurturingService {
         const contact = await this.getContact(schemaName, conversationId);
         if (!contact) return;
 
-        const text = await this.generateBookingFollowUpText(tenantId, contact, bookingState);
+        const lang = await this.resolveFollowUpLanguage(schemaName, conversationId, tenantId);
+        const text = await this.generateBookingFollowUpText(tenantId, contact, bookingState, lang);
         // Reuse the generic sender — it enforces opt-out, the 24h window, allowed
         // channels, the once-per-day cap, and persists the message. Returns whether it
         // actually sent.
@@ -413,25 +415,27 @@ export class NurturingService {
     }
 
     /** Booking-aware follow-up copy — LLM in the agent's voice, with a safe fallback. */
-    private async generateBookingFollowUpText(tenantId: string, contact: any, bookingState: any): Promise<string> {
+    private async generateBookingFollowUpText(tenantId: string, contact: any, bookingState: any, lang = 'es'): Promise<string> {
         const name = contact?.name ? ` ${String(contact.name).split(' ')[0]}` : '';
         const svc = bookingState?.serviceName;
         const date = bookingState?.date;
         const time = bookingState?.time;
+        const i18n = nurtureMsg(lang);
         const fallback = svc
-            ? `¡Hola${name}! 👋 Vi que estabas por agendar *${svc}*${date ? ` para el ${date}` : ''}${time ? ` a las ${time}` : ''} pero no llegamos a confirmarlo. ¿Querés que lo terminemos de reservar?`
-            : `¡Hola${name}! 👋 Vi que estabas agendando una cita pero quedó a medias. ¿Seguimos? Estoy para ayudarte.`;
+            ? i18n.bookingFollowUpWithService(name, svc, date, time)
+            : i18n.bookingFollowUpNoService(name);
 
         try {
             const persona = await this.personaService.getActivePersona(tenantId);
             if (!persona) return fallback;
             const ctx = [svc && `servicio: ${svc}`, date && `fecha: ${date}`, time && `hora: ${time}`].filter(Boolean).join(', ') || 'sin detalles';
+            const langName = LANG_NAME[lang as keyof typeof LANG_NAME] || LANG_NAME.es;
             const response = await this.llmRouter.execute({
                 task: 'conversation',
                 messages: [{
                     role: 'user',
                     content: `Un cliente${name ? ` (${name.trim()})` : ''} empezó a agendar una cita pero la dejó a medias (${ctx}). ` +
-                        `Genera UN mensaje breve, cálido y en español para invitarlo a retomar y completar la reserva, sin presionar. ` +
+                        `Genera UN mensaje breve, cálido y en ${langName} para invitarlo a retomar y completar la reserva, sin presionar. ` +
                         `Menciona naturalmente el servicio/fecha si los hay. Devuelve SOLO el mensaje.`,
                 }],
                 systemPrompt: this.personaService.buildSystemPrompt(persona),
@@ -456,11 +460,14 @@ export class NurturingService {
         contact: any,
         lastMessages: any[],
     ): Promise<void> {
+        const lang = await this.resolveFollowUpLanguage(schemaName, conversationId, tenantId);
+        const i18n = nurtureMsg(lang);
+
         const personaConfig = await this.personaService.getActivePersona(tenantId);
         if (!personaConfig) {
             this.logger.warn(`No persona config for tenant ${tenantId} — sending default follow-up`);
             await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
-                '¡Hola! Solo quería saber si tienes alguna duda adicional. Estoy aquí para ayudarte.');
+                i18n.attempt1Default);
             return;
         }
 
@@ -469,8 +476,9 @@ export class NurturingService {
             .map(m => `${m.direction === 'inbound' ? 'Cliente' : 'Asistente'}: ${m.content_text}`)
             .join('\n');
 
+        const langName = LANG_NAME[lang as keyof typeof LANG_NAME] || LANG_NAME.es;
         const followUpPrompt = `Eres un asistente de ventas amable y profesional. ` +
-            `Genera un mensaje de seguimiento breve y natural en español para un cliente que no ha respondido. ` +
+            `Genera un mensaje de seguimiento breve y natural en ${langName} para un cliente que no ha respondido. ` +
             `El mensaje debe ser gentil, no agresivo, y ofrecer valor. ` +
             `NO uses frases genéricas como "solo quería saber". Personaliza basándote en la conversación previa.\n\n` +
             `Contexto de la conversación:\n${historyContext}\n\n` +
@@ -493,12 +501,12 @@ export class NurturingService {
                 },
             });
 
-            const followUpText = response.content || '¡Hola! ¿Pudiste revisar la información que te envié? Estoy aquí para resolver cualquier duda.';
+            const followUpText = response.content || i18n.attempt1SuccessFallback;
             await this.sendFollowUpText(tenantId, schemaName, conversationId, contact, followUpText);
         } catch (e: any) {
             this.logger.warn(`LLM follow-up generation failed, using fallback: ${e.message}`);
             await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
-                '¡Hola! ¿Pudiste revisar la información que te envié? Quedo atento a cualquier pregunta.');
+                i18n.attempt1CatchFallback);
         }
     }
 
@@ -517,6 +525,10 @@ export class NurturingService {
             return;
         }
 
+        const lang = await this.resolveFollowUpLanguage(schemaName, conversationId, tenantId);
+        const i18n = nurtureMsg(lang);
+        const displayName = contact?.name || 'estimado cliente';
+
         // Try to send a template. If the tenant has a nurturing template configured, use it.
         // Otherwise, fall back to a text message (if within 24h window).
         try {
@@ -528,23 +540,24 @@ export class NurturingService {
                 to: phone,
                 content: {
                     type: 'text' as any,
-                    text: `Hola ${contact?.name || 'estimado cliente'}, queríamos recordarte que estamos aquí para ayudarte. ¿Tienes alguna pregunta adicional?`,
+                    text: i18n.attempt2TemplateText(displayName),
                 },
             };
 
             await this.outboundQueue.enqueue(outbound, accessToken);
 
-            // Save as outbound message
+            // Save as outbound message — the [Plantilla…] prefix is intentional as a
+            // technical audit marker visible to agents reviewing the conversation log.
+            // It is NOT shown to the customer (the `content.text` above is sent instead).
             await this.saveOutboundMessage(schemaName, conversationId,
-                `[Plantilla de seguimiento enviada] Hola ${contact?.name || 'estimado cliente'}, ¿pudiste revisar nuestra propuesta? Tenemos opciones que pueden interesarte.`);
+                i18n.attempt2SavedText(displayName));
 
             this.logger.log(`Attempt 2: Template sent for conversation ${conversationId}`);
         } catch (e: any) {
             this.logger.warn(`Template send failed for attempt 2, falling back to text: ${e.message}`);
             // Fallback: send text if within 24h window
             await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
-                `Hola ${contact?.name || ''}. Quería compartirte que tenemos opciones especiales disponibles. ` +
-                `¿Te gustaría que te cuente más? Estoy aquí para ayudarte a encontrar lo que necesitas.`);
+                i18n.attempt2CatchFallback(contact?.name || ''));
         }
     }
 
@@ -560,11 +573,12 @@ export class NurturingService {
         contact: any,
         config: NurturingConfig,
     ): Promise<void> {
+        const lang = await this.resolveFollowUpLanguage(schemaName, conversationId, tenantId);
+        const i18n = nurtureMsg(lang);
+
         // Send final "we're here if you need us" message
         await this.sendFollowUpText(tenantId, schemaName, conversationId, contact,
-            `Hola ${contact?.name || ''}. Entendemos que estás ocupado/a. ` +
-            `Si en algún momento necesitas información o tienes alguna pregunta, no dudes en escribirnos. ` +
-            `¡Estamos aquí para ayudarte!`);
+            i18n.attempt3FinalText(contact?.name || ''));
 
         // Create a task for human agent to review
         await this.prisma.executeInTenantSchema(schemaName,
@@ -602,6 +616,42 @@ export class NurturingService {
     }
 
     // ─── Private Helpers ─────────────────────────────────────────────
+
+    /**
+     * Resolve the language to use for customer-facing follow-up messages.
+     *
+     * Priority order:
+     *   1. conversation.metadata->>'detectedLanguage'  (what the customer actually wrote in)
+     *   2. tenant.language                             (fallback: tenant configured language)
+     *   3. 'es'                                        (hard default)
+     */
+    private async resolveFollowUpLanguage(schemaName: string, conversationId: string, tenantId: string): Promise<string> {
+        // 1. Conversation-detected language
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT metadata->>'detectedLanguage' AS lang FROM conversations WHERE id = $1::uuid LIMIT 1`,
+                [conversationId],
+            );
+            const detected = rows?.[0]?.lang;
+            if (detected) return String(detected).slice(0, 2).toLowerCase();
+        } catch {
+            // fall through
+        }
+
+        // 2. Tenant language
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { language: true },
+            });
+            if (tenant?.language) return String(tenant.language).slice(0, 2).toLowerCase();
+        } catch {
+            // fall through
+        }
+
+        return 'es';
+    }
 
     private async sendFollowUpText(
         tenantId: string,

@@ -339,7 +339,7 @@ function TwoFactorSettings() {
                         {t("scanQR")}
                     </p>
                     <div className="flex justify-center">
-                        <img src={qrData.qrCodeDataUrl} alt="QR Code" className="w-48 h-48 rounded-lg border border-neutral-200 dark:border-neutral-700" />
+                        <img src={qrData.qrCodeDataUrl} alt={t("qrCodeAlt")} className="w-48 h-48 rounded-lg border border-neutral-200 dark:border-neutral-700" />
                     </div>
                     <div className="text-center">
                         <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">{t("manualEntry")}</p>
@@ -776,9 +776,9 @@ function SsoSettings() {
                     <label className={labelClasses}>{t("defaultRole")}</label>
                     <select value={defaultRole} onChange={(e) => setDefaultRole(e.target.value)}
                         className={inputClasses}>
-                        <option value="tenant_agent">Agent</option>
-                        <option value="tenant_supervisor">Supervisor</option>
-                        <option value="tenant_admin">Admin</option>
+                        <option value="tenant_agent">{t("roleAgent")}</option>
+                        <option value="tenant_supervisor">{t("roleSupervisor")}</option>
+                        <option value="tenant_admin">{t("roleAdmin")}</option>
                     </select>
                     <p className="mt-1 text-xs text-neutral-400">{t("defaultRoleDesc")}</p>
                 </div>

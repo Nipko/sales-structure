@@ -1237,8 +1237,12 @@
         "saved": "SSO configuration saved",
         "testConnection": "Test connection",
         "configured": "Configured",
-        "notConfigured": "Not configured"
-      }
+        "notConfigured": "Not configured",
+        "roleAgent": "Agent",
+        "roleSupervisor": "Supervisor",
+        "roleAdmin": "Admin"
+      },
+      "qrCodeAlt": "QR Code"
     },
     "notificationsPage": {
       "title": "Notifications",
@@ -1458,6 +1462,47 @@
         "saved": "Information saved",
         "logoUploaded": "Logo updated",
         "logoError": "Error uploading logo"
+      }
+    },
+    "customAttributesPage": {
+      "title": "Custom Attributes",
+      "subtitle": "Define additional fields for your entities",
+      "newAttribute": "New Attribute",
+      "resourceLabel": "custom attributes",
+      "emptyState": "No attributes for this entity",
+      "toastCreated": "Attribute created",
+      "toastUpdated": "Attribute updated",
+      "table": {
+        "key": "Key",
+        "label": "Label",
+        "type": "Type",
+        "required": "Required",
+        "options": "Options",
+        "actions": "Actions"
+      },
+      "entityTypes": {
+        "contact": "Contact",
+        "lead": "Lead",
+        "company": "Company",
+        "conversation": "Conversation"
+      },
+      "dataTypes": {
+        "text": "Text",
+        "number": "Number",
+        "date": "Date",
+        "boolean": "Boolean",
+        "list": "List",
+        "url": "URL"
+      },
+      "form": {
+        "entityType": "Entity type",
+        "label": "Label *",
+        "labelPlaceholder": "e.g.: Birthday",
+        "key": "Key (auto-generated)",
+        "dataType": "Data type",
+        "options": "Options (comma separated)",
+        "optionsPlaceholder": "option1, option2, option3",
+        "requiredField": "Required field"
       }
     }
   },
@@ -3786,7 +3831,15 @@
         "name": "Team notification",
         "description": "Internal alert when a conversation is escalated"
       }
-    }
+    },
+    "toastLoadError": "Error loading template",
+    "toastCreated": "Template created",
+    "toastSaved": "Template saved",
+    "toastDeleted": "Template deleted",
+    "toastNameRequired": "Name is required",
+    "toastSubjectRequired": "Subject is required",
+    "toastTestSent": "Test email sent to {email}",
+    "resourceLabel": "email templates"
   },
   "changePassword": {
     "title": "Change Password",
@@ -3794,7 +3847,28 @@
     "new": "New password",
     "confirm": "Confirm password",
     "changed": "Password changed successfully",
-    "googleNote": "Your account uses Google Sign-In. You can set an additional password."
+    "googleNote": "Your account uses Google Sign-In. You can set an additional password.",
+    "subtitle": "Update your account password",
+    "googleNotice": "Your account uses Google Sign-In. You can set an additional password to also access with email and password.",
+    "cardTitleSet": "Set password",
+    "cardTitleUpdate": "Update password",
+    "currentLabel": "Current password",
+    "currentPlaceholder": "Enter your current password",
+    "newLabel": "New password",
+    "newPlaceholder": "Enter your new password",
+    "confirmLabel": "Confirm new password",
+    "confirmPlaceholder": "Repeat your new password",
+    "mismatch": "Passwords do not match",
+    "requirementsTitle": "Password requirements",
+    "requirements": {
+      "minLength": "Minimum 8 characters",
+      "uppercase": "At least 1 uppercase letter",
+      "lowercase": "At least 1 lowercase letter",
+      "number": "At least 1 number",
+      "special": "At least 1 special character"
+    },
+    "toastSuccess": "Password updated successfully",
+    "toastConnectionError": "Connection error. Please try again."
   },
   "analyticsV2": {
     "title": "Analytics",

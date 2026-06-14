@@ -1237,8 +1237,12 @@
         "saved": "Configuração SSO salva",
         "testConnection": "Testar conexão",
         "configured": "Configurado",
-        "notConfigured": "Não configurado"
-      }
+        "notConfigured": "Não configurado",
+        "roleAgent": "Agente",
+        "roleSupervisor": "Supervisor",
+        "roleAdmin": "Administrador"
+      },
+      "qrCodeAlt": "Código QR"
     },
     "notificationsPage": {
       "title": "Notificações",
@@ -1458,6 +1462,47 @@
         "saved": "Informação salva",
         "logoUploaded": "Logo atualizado",
         "logoError": "Erro ao enviar o logo"
+      }
+    },
+    "customAttributesPage": {
+      "title": "Atributos personalizados",
+      "subtitle": "Defina campos adicionais para suas entidades",
+      "newAttribute": "Novo atributo",
+      "resourceLabel": "atributos personalizados",
+      "emptyState": "Nenhum atributo para esta entidade",
+      "toastCreated": "Atributo criado",
+      "toastUpdated": "Atributo atualizado",
+      "table": {
+        "key": "Chave",
+        "label": "Rótulo",
+        "type": "Tipo",
+        "required": "Obrigatório",
+        "options": "Opções",
+        "actions": "Ações"
+      },
+      "entityTypes": {
+        "contact": "Contato",
+        "lead": "Lead",
+        "company": "Empresa",
+        "conversation": "Conversa"
+      },
+      "dataTypes": {
+        "text": "Texto",
+        "number": "Número",
+        "date": "Data",
+        "boolean": "Booleano",
+        "list": "Lista",
+        "url": "URL"
+      },
+      "form": {
+        "entityType": "Tipo de entidade",
+        "label": "Rótulo *",
+        "labelPlaceholder": "ex.: Aniversário",
+        "key": "Chave (gerada automaticamente)",
+        "dataType": "Tipo de dado",
+        "options": "Opções (separadas por vírgula)",
+        "optionsPlaceholder": "opção1, opção2, opção3",
+        "requiredField": "Campo obrigatório"
       }
     }
   },
@@ -3757,7 +3802,15 @@
     "subjectHint": "— Use {{variable}} para dados dinâmicos",
     "subjectPlaceholder": "Ex.: Olá {{customer_name}}, seu pedido {{order_id}} está pronto",
     "testEmailDesc": "Será enviado um e-mail de teste com dados de exemplo.",
-    "variablesHint": "Clique para inserir no assunto ou no corpo (conforme a posição do cursor)"
+    "variablesHint": "Clique para inserir no assunto ou no corpo (conforme a posição do cursor)",
+    "toastLoadError": "Erro ao carregar o modelo",
+    "toastCreated": "Modelo criado",
+    "toastSaved": "Modelo salvo",
+    "toastDeleted": "Modelo excluído",
+    "toastNameRequired": "O nome é obrigatório",
+    "toastSubjectRequired": "O assunto é obrigatório",
+    "toastTestSent": "E-mail de teste enviado para {email}",
+    "resourceLabel": "modelos de e-mail"
   },
   "changePassword": {
     "title": "Alterar Senha",
@@ -3765,7 +3818,28 @@
     "new": "Nova senha",
     "confirm": "Confirmar senha",
     "changed": "Senha alterada com sucesso",
-    "googleNote": "Sua conta usa Google Sign-In. Você pode definir uma senha adicional."
+    "googleNote": "Sua conta usa Google Sign-In. Você pode definir uma senha adicional.",
+    "subtitle": "Atualize a senha da sua conta",
+    "googleNotice": "Sua conta usa o login com o Google. Você pode definir uma senha adicional para acessar também com e-mail e senha.",
+    "cardTitleSet": "Definir senha",
+    "cardTitleUpdate": "Atualizar senha",
+    "currentLabel": "Senha atual",
+    "currentPlaceholder": "Digite sua senha atual",
+    "newLabel": "Nova senha",
+    "newPlaceholder": "Digite sua nova senha",
+    "confirmLabel": "Confirmar nova senha",
+    "confirmPlaceholder": "Repita sua nova senha",
+    "mismatch": "As senhas não coincidem",
+    "requirementsTitle": "Requisitos da senha",
+    "requirements": {
+      "minLength": "Mínimo de 8 caracteres",
+      "uppercase": "Pelo menos 1 letra maiúscula",
+      "lowercase": "Pelo menos 1 letra minúscula",
+      "number": "Pelo menos 1 número",
+      "special": "Pelo menos 1 caractere especial"
+    },
+    "toastSuccess": "Senha atualizada com sucesso",
+    "toastConnectionError": "Erro de conexão. Tente novamente."
   },
   "analyticsV2": {
     "title": "Analytics",

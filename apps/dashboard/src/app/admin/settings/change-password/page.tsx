@@ -23,16 +23,16 @@ import {
 import { HelpPanel } from "@/components/ui/help-panel";
 
 interface PasswordRequirement {
-    label: string;
+    labelKey: string;
     test: (pw: string) => boolean;
 }
 
 const PASSWORD_REQUIREMENTS: PasswordRequirement[] = [
-    { label: "Minimum 8 characters", test: (pw) => pw.length >= 8 },
-    { label: "At least 1 uppercase letter", test: (pw) => /[A-Z]/.test(pw) },
-    { label: "At least 1 lowercase letter", test: (pw) => /[a-z]/.test(pw) },
-    { label: "At least 1 number", test: (pw) => /[0-9]/.test(pw) },
-    { label: "At least 1 special character", test: (pw) => /[^A-Za-z0-9]/.test(pw) },
+    { labelKey: "requirements.minLength", test: (pw) => pw.length >= 8 },
+    { labelKey: "requirements.uppercase", test: (pw) => /[A-Z]/.test(pw) },
+    { labelKey: "requirements.lowercase", test: (pw) => /[a-z]/.test(pw) },
+    { labelKey: "requirements.number", test: (pw) => /[0-9]/.test(pw) },
+    { labelKey: "requirements.special", test: (pw) => /[^A-Za-z0-9]/.test(pw) },
 ];
 
 export default function ChangePasswordPage() {
@@ -83,7 +83,7 @@ export default function ChangePasswordPage() {
         try {
             const res = await api.changePassword(currentPassword, newPassword);
             if (res.success) {
-                showToast("success", "Password updated successfully");
+                showToast("success", t("toastSuccess"));
                 setCurrentPassword("");
                 setNewPassword("");
                 setConfirmPassword("");
@@ -91,7 +91,7 @@ export default function ChangePasswordPage() {
                 showToast("error", res.error || tc("errorSaving"));
             }
         } catch {
-            showToast("error", "Connection error. Please try again.");
+            showToast("error", t("toastConnectionError"));
         } finally {
             setSaving(false);
         }
@@ -125,7 +125,7 @@ export default function ChangePasswordPage() {
                         {t('title')}
                     </h1>
                     <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
-                        Update your account password
+                        {t('subtitle')}
                     </p>
                 </div>
             </div>
@@ -142,8 +142,7 @@ export default function ChangePasswordPage() {
                 <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 dark:border-blue-500/20 dark:bg-blue-500/10">
                     <Info size={18} className="mt-0.5 shrink-0 text-blue-600 dark:text-blue-400" />
                     <p className="text-sm text-blue-800 dark:text-blue-300">
-                        Your account uses Google Sign-In. You can set an additional password to
-                        also access with email and password.
+                        {t('googleNotice')}
                     </p>
                 </div>
             )}
@@ -153,7 +152,7 @@ export default function ChangePasswordPage() {
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg text-neutral-900 dark:text-neutral-100">
                         <Lock size={18} className="text-amber-500" />
-                        {isGoogleOnly ? "Set password" : "Update password"}
+                        {isGoogleOnly ? t('cardTitleSet') : t('cardTitleUpdate')}
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -162,14 +161,14 @@ export default function ChangePasswordPage() {
                         {!isGoogleOnly && (
                             <div className="flex flex-col gap-1.5">
                                 <Label className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                                    Current password
+                                    {t('currentLabel')}
                                 </Label>
                                 <div className="relative">
                                     <Input
                                         type={showCurrent ? "text" : "password"}
                                         value={currentPassword}
                                         onChange={(e) => setCurrentPassword(e.target.value)}
-                                        placeholder="Enter your current password"
+                                        placeholder={t('currentPlaceholder')}
                                         className="h-10 rounded-lg border-neutral-200 bg-neutral-50 pr-11 text-sm dark:border-neutral-700 dark:bg-neutral-800"
                                     />
                                     <button
@@ -186,14 +185,14 @@ export default function ChangePasswordPage() {
                         {/* New Password */}
                         <div className="flex flex-col gap-1.5">
                             <Label className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                                New password
+                                {t('newLabel')}
                             </Label>
                             <div className="relative">
                                 <Input
                                     type={showNew ? "text" : "password"}
                                     value={newPassword}
                                     onChange={(e) => setNewPassword(e.target.value)}
-                                    placeholder="Enter your new password"
+                                    placeholder={t('newPlaceholder')}
                                     className="h-10 rounded-lg border-neutral-200 bg-neutral-50 pr-11 text-sm dark:border-neutral-700 dark:bg-neutral-800"
                                 />
                                 <button
@@ -209,14 +208,14 @@ export default function ChangePasswordPage() {
                         {/* Confirm Password */}
                         <div className="flex flex-col gap-1.5">
                             <Label className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                                Confirm new password
+                                {t('confirmLabel')}
                             </Label>
                             <div className="relative">
                                 <Input
                                     type={showConfirm ? "text" : "password"}
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
-                                    placeholder="Repeat your new password"
+                                    placeholder={t('confirmPlaceholder')}
                                     className={cn(
                                         "h-10 rounded-lg border-neutral-200 bg-neutral-50 pr-11 text-sm dark:border-neutral-700 dark:bg-neutral-800",
                                         mismatch && "border-red-400 dark:border-red-500",
@@ -232,7 +231,7 @@ export default function ChangePasswordPage() {
                             </div>
                             {mismatch && (
                                 <p className="mt-1 text-xs font-medium text-red-500">
-                                    Passwords do not match
+                                    {t('mismatch')}
                                 </p>
                             )}
                         </div>
@@ -241,11 +240,11 @@ export default function ChangePasswordPage() {
                         {newPassword.length > 0 && (
                             <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-800/50">
                                 <p className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                                    Password requirements
+                                    {t('requirementsTitle')}
                                 </p>
                                 <div className="flex flex-col gap-1.5">
                                     {requirementResults.map((req) => (
-                                        <div key={req.label} className="flex items-center gap-2">
+                                        <div key={req.labelKey} className="flex items-center gap-2">
                                             {req.met ? (
                                                 <CheckCircle size={14} className="shrink-0 text-emerald-500" />
                                             ) : (
@@ -259,7 +258,7 @@ export default function ChangePasswordPage() {
                                                         : "text-neutral-500 dark:text-neutral-400",
                                                 )}
                                             >
-                                                {req.label}
+                                                {t(req.labelKey)}
                                             </span>
                                         </div>
                                     ))}

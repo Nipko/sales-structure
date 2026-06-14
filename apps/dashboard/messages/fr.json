@@ -1237,8 +1237,12 @@
         "saved": "Configuration SSO enregistrée",
         "testConnection": "Tester la connexion",
         "configured": "Configuré",
-        "notConfigured": "Non configuré"
-      }
+        "notConfigured": "Non configuré",
+        "roleAgent": "Agent",
+        "roleSupervisor": "Superviseur",
+        "roleAdmin": "Administrateur"
+      },
+      "qrCodeAlt": "Code QR"
     },
     "notificationsPage": {
       "title": "Notifications",
@@ -1458,6 +1462,47 @@
         "saved": "Informations enregistrées",
         "logoUploaded": "Logo mis à jour",
         "logoError": "Erreur lors du téléchargement du logo"
+      }
+    },
+    "customAttributesPage": {
+      "title": "Attributs personnalisés",
+      "subtitle": "Définissez des champs supplémentaires pour vos entités",
+      "newAttribute": "Nouvel attribut",
+      "resourceLabel": "attributs personnalisés",
+      "emptyState": "Aucun attribut pour cette entité",
+      "toastCreated": "Attribut créé",
+      "toastUpdated": "Attribut mis à jour",
+      "table": {
+        "key": "Clé",
+        "label": "Libellé",
+        "type": "Type",
+        "required": "Obligatoire",
+        "options": "Options",
+        "actions": "Actions"
+      },
+      "entityTypes": {
+        "contact": "Contact",
+        "lead": "Lead",
+        "company": "Entreprise",
+        "conversation": "Conversation"
+      },
+      "dataTypes": {
+        "text": "Texte",
+        "number": "Nombre",
+        "date": "Date",
+        "boolean": "Booléen",
+        "list": "Liste",
+        "url": "URL"
+      },
+      "form": {
+        "entityType": "Type d'entité",
+        "label": "Libellé *",
+        "labelPlaceholder": "ex. : Anniversaire",
+        "key": "Clé (générée automatiquement)",
+        "dataType": "Type de données",
+        "options": "Options (séparées par des virgules)",
+        "optionsPlaceholder": "option1, option2, option3",
+        "requiredField": "Champ obligatoire"
       }
     }
   },
@@ -3757,7 +3802,15 @@
     "subjectHint": "— Utilisez {{variable}} pour les données dynamiques",
     "subjectPlaceholder": "Ex. : Bonjour {{customer_name}}, votre commande {{order_id}} est prête",
     "testEmailDesc": "Un e-mail de test avec des données d'exemple sera envoyé.",
-    "variablesHint": "Cliquez pour insérer dans l'objet ou le corps (selon la position du curseur)"
+    "variablesHint": "Cliquez pour insérer dans l'objet ou le corps (selon la position du curseur)",
+    "toastLoadError": "Erreur lors du chargement du modèle",
+    "toastCreated": "Modèle créé",
+    "toastSaved": "Modèle enregistré",
+    "toastDeleted": "Modèle supprimé",
+    "toastNameRequired": "Le nom est obligatoire",
+    "toastSubjectRequired": "L'objet est obligatoire",
+    "toastTestSent": "E-mail de test envoyé à {email}",
+    "resourceLabel": "modèles d'e-mail"
   },
   "changePassword": {
     "title": "Changer le mot de passe",
@@ -3765,7 +3818,28 @@
     "new": "Nouveau mot de passe",
     "confirm": "Confirmer le mot de passe",
     "changed": "Mot de passe changé avec succès",
-    "googleNote": "Votre compte utilise Google Sign-In. Vous pouvez définir un mot de passe supplémentaire."
+    "googleNote": "Votre compte utilise Google Sign-In. Vous pouvez définir un mot de passe supplémentaire.",
+    "subtitle": "Mettez à jour le mot de passe de votre compte",
+    "googleNotice": "Votre compte utilise la connexion Google. Vous pouvez définir un mot de passe supplémentaire pour accéder également par e-mail et mot de passe.",
+    "cardTitleSet": "Définir le mot de passe",
+    "cardTitleUpdate": "Mettre à jour le mot de passe",
+    "currentLabel": "Mot de passe actuel",
+    "currentPlaceholder": "Saisissez votre mot de passe actuel",
+    "newLabel": "Nouveau mot de passe",
+    "newPlaceholder": "Saisissez votre nouveau mot de passe",
+    "confirmLabel": "Confirmer le nouveau mot de passe",
+    "confirmPlaceholder": "Répétez votre nouveau mot de passe",
+    "mismatch": "Les mots de passe ne correspondent pas",
+    "requirementsTitle": "Exigences du mot de passe",
+    "requirements": {
+      "minLength": "Minimum 8 caractères",
+      "uppercase": "Au moins 1 lettre majuscule",
+      "lowercase": "Au moins 1 lettre minuscule",
+      "number": "Au moins 1 chiffre",
+      "special": "Au moins 1 caractère spécial"
+    },
+    "toastSuccess": "Mot de passe mis à jour avec succès",
+    "toastConnectionError": "Erreur de connexion. Veuillez réessayer."
   },
   "analyticsV2": {
     "title": "Analytics",

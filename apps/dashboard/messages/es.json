@@ -1237,8 +1237,12 @@
         "saved": "Configuración SSO guardada",
         "testConnection": "Probar conexión",
         "configured": "Configurado",
-        "notConfigured": "No configurado"
-      }
+        "notConfigured": "No configurado",
+        "roleAgent": "Agente",
+        "roleSupervisor": "Supervisor",
+        "roleAdmin": "Administrador"
+      },
+      "qrCodeAlt": "Código QR"
     },
     "notificationsPage": {
       "title": "Notificaciones",
@@ -1458,6 +1462,47 @@
         "saved": "Información guardada",
         "logoUploaded": "Logo actualizado",
         "logoError": "Error al subir el logo"
+      }
+    },
+    "customAttributesPage": {
+      "title": "Atributos personalizados",
+      "subtitle": "Define campos adicionales para tus entidades",
+      "newAttribute": "Nuevo atributo",
+      "resourceLabel": "atributos personalizados",
+      "emptyState": "No hay atributos para esta entidad",
+      "toastCreated": "Atributo creado",
+      "toastUpdated": "Atributo actualizado",
+      "table": {
+        "key": "Clave",
+        "label": "Etiqueta",
+        "type": "Tipo",
+        "required": "Requerido",
+        "options": "Opciones",
+        "actions": "Acciones"
+      },
+      "entityTypes": {
+        "contact": "Contacto",
+        "lead": "Lead",
+        "company": "Empresa",
+        "conversation": "Conversación"
+      },
+      "dataTypes": {
+        "text": "Texto",
+        "number": "Número",
+        "date": "Fecha",
+        "boolean": "Booleano",
+        "list": "Lista",
+        "url": "URL"
+      },
+      "form": {
+        "entityType": "Tipo de entidad",
+        "label": "Etiqueta *",
+        "labelPlaceholder": "ej.: Cumpleaños",
+        "key": "Clave (autogenerada)",
+        "dataType": "Tipo de dato",
+        "options": "Opciones (separadas por comas)",
+        "optionsPlaceholder": "opción1, opción2, opción3",
+        "requiredField": "Campo requerido"
       }
     }
   },
@@ -3786,7 +3831,15 @@
         "name": "Notificación al equipo",
         "description": "Alerta interna cuando se escala una conversación"
       }
-    }
+    },
+    "toastLoadError": "Error al cargar la plantilla",
+    "toastCreated": "Plantilla creada",
+    "toastSaved": "Plantilla guardada",
+    "toastDeleted": "Plantilla eliminada",
+    "toastNameRequired": "El nombre es obligatorio",
+    "toastSubjectRequired": "El asunto es obligatorio",
+    "toastTestSent": "Email de prueba enviado a {email}",
+    "resourceLabel": "plantillas de email"
   },
   "changePassword": {
     "title": "Cambiar Contraseña",
@@ -3794,7 +3847,28 @@
     "new": "Nueva contraseña",
     "confirm": "Confirmar contraseña",
     "changed": "Contraseña cambiada exitosamente",
-    "googleNote": "Tu cuenta usa Google Sign-In. Puedes establecer una contraseña adicional."
+    "googleNote": "Tu cuenta usa Google Sign-In. Puedes establecer una contraseña adicional.",
+    "subtitle": "Actualiza la contraseña de tu cuenta",
+    "googleNotice": "Tu cuenta usa el inicio de sesión con Google. Puedes establecer una contraseña adicional para acceder también con correo y contraseña.",
+    "cardTitleSet": "Establecer contraseña",
+    "cardTitleUpdate": "Actualizar contraseña",
+    "currentLabel": "Contraseña actual",
+    "currentPlaceholder": "Ingresa tu contraseña actual",
+    "newLabel": "Nueva contraseña",
+    "newPlaceholder": "Ingresa tu nueva contraseña",
+    "confirmLabel": "Confirmar nueva contraseña",
+    "confirmPlaceholder": "Repite tu nueva contraseña",
+    "mismatch": "Las contraseñas no coinciden",
+    "requirementsTitle": "Requisitos de la contraseña",
+    "requirements": {
+      "minLength": "Mínimo 8 caracteres",
+      "uppercase": "Al menos 1 letra mayúscula",
+      "lowercase": "Al menos 1 letra minúscula",
+      "number": "Al menos 1 número",
+      "special": "Al menos 1 carácter especial"
+    },
+    "toastSuccess": "Contraseña actualizada correctamente",
+    "toastConnectionError": "Error de conexión. Inténtalo de nuevo."
   },
   "analyticsV2": {
     "title": "Analytics",

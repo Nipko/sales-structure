@@ -293,7 +293,7 @@ export default function EmailTemplatesPage() {
         });
       }
     } catch {
-      showToast("Error loading template", true);
+      showToast(t("toastLoadError"), true);
     }
   }
 
@@ -324,7 +324,7 @@ export default function EmailTemplatesPage() {
       };
       const res = await api.createEmailTemplate(activeTenantId, payload);
       if (res?.success && res.data?.id) {
-        showToast("Template created");
+        showToast(t("toastCreated"));
         setShowPresetPicker(false);
         await loadTemplates();
         await selectTemplate(res.data.id);
@@ -392,11 +392,11 @@ export default function EmailTemplatesPage() {
   async function handleSave() {
     if (!activeTenantId) return;
     if (!form.name.trim()) {
-      showToast("Name is required", true);
+      showToast(t("toastNameRequired"), true);
       return;
     }
     if (!form.subject.trim()) {
-      showToast("Subject is required", true);
+      showToast(t("toastSubjectRequired"), true);
       return;
     }
 
@@ -417,7 +417,7 @@ export default function EmailTemplatesPage() {
         res = await api.saveEmailTemplate(activeTenantId, selectedId, payload);
       }
       if (res?.success) {
-        showToast(isCreating ? "Template created" : "Template saved");
+        showToast(isCreating ? t("toastCreated") : t("toastSaved"));
         await loadTemplates();
         if (isCreating && res.data?.id) {
           setSelectedId(res.data.id);
@@ -439,7 +439,7 @@ export default function EmailTemplatesPage() {
     setDeleting(id);
     try {
       await api.deleteEmailTemplate(activeTenantId, id);
-      showToast("Template deleted");
+      showToast(t("toastDeleted"));
       if (selectedId === id) closeEditor();
       await loadTemplates();
     } catch {
@@ -456,7 +456,7 @@ export default function EmailTemplatesPage() {
     try {
       const res = await api.testEmailTemplate(activeTenantId, selectedId, testEmail.trim());
       if (res?.success) {
-        showToast(`Test email sent to ${testEmail}`);
+        showToast(t("toastTestSent", { email: testEmail }));
         setTestModalOpen(false);
         setTestEmail("");
       } else {
@@ -540,7 +540,7 @@ export default function EmailTemplatesPage() {
             editorOpen ? "w-[300px] min-w-[300px]" : "w-full"
           )}
         >
-          <UpgradeBanner current={templates.length} limit={getLimit("emailTemplates")} resourceLabel="plantillas de email" />
+          <UpgradeBanner current={templates.length} limit={getLimit("emailTemplates")} resourceLabel={t("resourceLabel")} />
           {loading ? (
             <div className="p-10 text-center text-muted-foreground">{tc("loading")}</div>
           ) : templates.length === 0 ? (
@@ -774,7 +774,7 @@ export default function EmailTemplatesPage() {
                 <div className="bg-white">
                   <iframe
                     srcDoc={renderPreviewHtml()}
-                    title="Email preview"
+                    title={t("preview")}
                     className="w-full border-none min-h-[400px]"
                     sandbox="allow-same-origin"
                   />

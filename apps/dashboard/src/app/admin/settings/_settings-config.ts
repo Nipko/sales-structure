@@ -16,7 +16,7 @@ import {
     Database, Zap, MessageSquare, Mail, Image as ImageIcon, Brain,
     SlidersHorizontal, Settings, Info, Scale, RotateCcw, Phone,
     BellRing, GitBranch, BarChart2, Plug, CalendarCheck, Webhook, MessageCircle,
-    RefreshCw, Sparkles, Key, Slack, Plug2, Star,
+    RefreshCw, Sparkles, Key, Slack, Plug2, Star, Receipt,
 } from "lucide-react";
 
 export type Role = {
@@ -61,6 +61,7 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
             { key: "businessInfo", href: "/admin/settings/business-info", icon: Building2, iconColor: "text-blue-500", iconBg: "bg-blue-500/10" },
             { key: "policies", href: "/admin/settings/policies", icon: Scale, iconColor: "text-amber-500", iconBg: "bg-amber-500/10" },
             { key: "localization", href: "/admin/settings/localization", icon: Globe, iconColor: "text-emerald-500", iconBg: "bg-emerald-500/10" },
+            { key: "fiscal", href: "/admin/settings/fiscal", icon: Receipt, iconColor: "text-teal-500", iconBg: "bg-teal-500/10", visible: (r) => r.canManageBilling },
             { key: "businessHours", href: "/admin/settings/business-hours", icon: Clock, iconColor: "text-sky-500", iconBg: "bg-sky-500/10" },
         ],
     },

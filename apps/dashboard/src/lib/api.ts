@@ -1097,6 +1097,15 @@ export const api = {
     grantCompPlan: (tenantId: string, data: { planSlug: string; durationDays: number; reason: string }) =>
         apiPost(`/billing-admin/tenants/${tenantId}/comp-plan`, data),
 
+    // --- Fiscal (DIAN electronic invoicing — Colombia) ---
+    getFiscalData: (tenantId: string) => apiGet(`/fiscal/${tenantId}/data`),
+    updateFiscalData: (tenantId: string, data: Record<string, any>) =>
+        apiPut(`/fiscal/${tenantId}/data`, data),
+    getFiscalInvoices: (tenantId: string) => apiGet(`/fiscal/${tenantId}/invoices`),
+    // super_admin only
+    getFiscalConfig: () => apiGet(`/fiscal-admin/config`),
+    updateFiscalConfig: (data: Record<string, any>) => apiPut(`/fiscal-admin/config`, data),
+
     // --- WA Template creation ---
     createWhatsAppTemplate: (data: { name: string; language: string; category: string; components: any[] }) =>
         apiPost('/channels/whatsapp/templates/create', data),

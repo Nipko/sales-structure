@@ -59,6 +59,7 @@ import { MediaModule } from './modules/media/media.module';
 import { EmailTemplatesModule } from './modules/email-templates/email-templates.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { BusinessInfoModule } from './modules/business-info/business-info.module';
 import { FaqsModule } from './modules/faqs/faqs.module';
 import { PoliciesModule } from './modules/policies/policies.module';
@@ -164,6 +165,7 @@ import llmConfig from './config/llm.config';
         BullBoardModule.forFeature({ name: 'crm-sync', adapter: BullMQAdapter }),
         BullBoardModule.forFeature({ name: 'crm-import', adapter: BullMQAdapter }),
         BullBoardModule.forFeature({ name: 'agent-simulation', adapter: BullMQAdapter }),
+        BullBoardModule.forFeature({ name: 'fiscal-invoice', adapter: BullMQAdapter }),
 
         // Core infrastructure
         PrismaModule,
@@ -215,6 +217,7 @@ import llmConfig from './config/llm.config';
         EmailTemplatesModule,
         AppointmentsModule,
         BillingModule,
+        FiscalModule,
         BusinessInfoModule,
         FaqsModule,
         PoliciesModule,

@@ -377,6 +377,44 @@ model BillingPayment {
   @@schema("public")
 }
 
+// ---- Fiscal Invoices (DIAN electronic invoicing — Colombia) ----
+// Dedicated fiscal document lifecycle, decoupled from the payment provider.
+// Created on billing.payment.succeeded (any PSP), issued async via a fiscal
+// provider adapter (Factus today). Holds the legally-relevant fiscal artifacts
+// (CUFE, numbering, signed XML/PDF) plus an immutable acquirer snapshot so
+// historical invoices keep the exact data billed even if the tenant later edits
+// its fiscal profile. status: pending|issued|failed|cancelled.
+model FiscalInvoice {
+  id               String    @id @default(uuid())
+  tenantId         String    @map("tenant_id")
+  paymentId        String?   @unique @map("payment_id") // BillingPayment.id; null for standalone credit notes
+  type             String    @default("invoice") // invoice | credit_note | debit_note
+  status           String    @default("pending") // pending | issued | failed | cancelled
+  provider         String // factus | us_remote | ...
+  providerRef      String?   @map("provider_ref") // Factus internal bill_id (needed for credit notes)
+  cufe             String? // CUFE / CUDE assigned by DIAN
+  invoiceNumber    String?   @map("invoice_number") // prefix + consecutive (e.g. SETP990000001)
+  xmlUrl           String?   @map("xml_url")
+  pdfUrl           String?   @map("pdf_url")
+  qrUrl            String?   @map("qr_url")
+  amountCents      Int       @map("amount_cents")
+  currency         String // COP (fiscal currency); original charge currency kept in metadata
+  taxCents         Int       @default(0) @map("tax_cents") // IVA amount
+  relatedInvoiceId String?   @map("related_invoice_id") // credit note -> original FiscalInvoice.id
+  failureReason    String?   @map("failure_reason")
+  attempts         Int       @default(0)
+  metadata         Json      @default("{}") // trmApplied, paymentProvider, raw provider errors
+  acquirerSnapshot Json?     @map("acquirer_snapshot") // immutable copy of acquirer fiscal data at issue time
+  issuedAt         DateTime? @map("issued_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@index([status])
+  @@index([paymentId])
+  @@map("fiscal_invoices")
+  @@schema("public")
+}
+
 // ---- Billing Coupons ----
 // Promo codes that apply at trial start or upgrade. Three types:
 //   percent_off: percentDiscount (1-100) applies to N billing cycles (or forever)

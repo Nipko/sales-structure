@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FiscalConfigService } from '../fiscal-config.service';
 import { FiscalProviderFactory } from '../fiscal-provider.factory';
@@ -180,17 +181,11 @@ export class FiscalInvoiceProcessor extends WorkerHost {
     /** Permanent failure = silent fiscal non-compliance. Log loudly + Sentry. */
     private escalate(id: string, tenantId: string, reason: string): void {
         this.logger.error(`[FISCAL][ESCALATE] Invoice ${id} (tenant=${tenantId}) failed permanently: ${reason}`);
-        try {
-            // Optional Sentry capture — required-but-via-require so the build does
-            // not hard-depend on the types here.
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const Sentry = require('@sentry/nestjs');
-            Sentry?.captureException?.(new Error(`Fiscal invoice ${id} failed: ${reason}`), {
-                tags: { module: 'fiscal', tenantId },
-            });
-        } catch {
-            /* Sentry optional */
-        }
+        // Sentry is initialized globally in instrument.ts; captureException is a
+        // no-op when it isn't, so this is safe to call unconditionally.
+        Sentry.captureException(new Error(`Fiscal invoice ${id} failed: ${reason}`), {
+            tags: { module: 'fiscal', tenantId },
+        });
     }
 
     private async latestRate(from: string, to: string): Promise<number | null> {

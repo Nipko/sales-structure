@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { invitationEmail, welcomeTeamMemberEmail } from '../email/email-layouts';
+import { emsg } from '../email/email-i18n';
 import { validateEmailDomain } from '../../common/utils/email.util';
 
 const TOKEN_BYTES = 32;
@@ -99,7 +100,7 @@ export class InvitationsService {
         // Send the email but don't block on failure — admin can always resend.
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: input.tenantId },
-            select: { name: true, slug: true, settings: true },
+            select: { name: true, slug: true, settings: true, language: true },
         });
         const tenantLogoUrl = (tenant?.settings as any)?.logoUrl ?? null;
         const inviter = input.invitedByUserId
@@ -119,6 +120,7 @@ export class InvitationsService {
                 : null,
             role: input.role,
             expiresAt,
+            lang: tenant?.language || 'es',
         }).catch((err) => {
             this.logger.error(`[Invitations] Failed to send invitation email to ${email}: ${err.message}`);
         });
@@ -157,7 +159,7 @@ export class InvitationsService {
 
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { name: true, settings: true },
+            select: { name: true, settings: true, language: true },
         });
 
         await this.sendInvitationEmail({
@@ -168,6 +170,7 @@ export class InvitationsService {
             inviterName: null,
             role: invitation.role,
             expiresAt: newExpires,
+            lang: tenant?.language || 'es',
         });
 
         return updated;
@@ -293,12 +296,13 @@ export class InvitationsService {
 
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: invitation.tenantId },
-            select: { name: true },
+            select: { name: true, language: true },
         });
+        const lang = tenant?.language || 'es';
         this.email.send({
             to: invitation.email,
-            subject: `Bienvenido a ${tenant?.name || 'Parallly'}`,
-            html: welcomeTeamMemberEmail(input.firstName, tenant?.name || 'Parallly', this.roleLabel(invitation.role)),
+            subject: emsg(lang, 'teamWelcome.subject', { tenant: tenant?.name || 'Parallly' }),
+            html: welcomeTeamMemberEmail(input.firstName, tenant?.name || 'Parallly', this.roleLabel(invitation.role), lang),
         }).catch((err) => {
             this.logger.error(`[Invitations] Failed to send welcome email to ${invitation.email}: ${err.message}`);
         });
@@ -316,11 +320,14 @@ export class InvitationsService {
         inviterName: string | null;
         role: string;
         expiresAt: Date;
+        lang?: string;
     }) {
+        const lang = input.lang || 'es';
         const dashboardUrl = process.env.DASHBOARD_URL || 'https://admin.parallly-chat.cloud';
         const acceptUrl = `${dashboardUrl}/accept-invite/${input.token}`;
         const roleLabel = this.roleLabel(input.role);
-        const expiresText = input.expiresAt.toLocaleDateString('es-CO', {
+        const localeTag = lang.length >= 5 ? lang : `${lang.substring(0, 2)}-CO`;
+        const expiresText = input.expiresAt.toLocaleDateString(localeTag, {
             day: 'numeric', month: 'long', year: 'numeric',
         });
 
@@ -331,11 +338,11 @@ export class InvitationsService {
             roleLabel,
             acceptUrl,
             expiresText,
-        });
+        }, lang);
 
         await this.email.send({
             to: input.email,
-            subject: `Te invitaron a unirte a ${input.tenantName} en Parallly`,
+            subject: emsg(lang, 'invitation.subject', { tenant: input.tenantName }),
             html,
         });
     }

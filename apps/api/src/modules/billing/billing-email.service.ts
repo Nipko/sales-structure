@@ -11,6 +11,7 @@ import {
     accountSuspendedEmail,
     paymentSucceededEmail,
 } from '../email/email-layouts';
+import { emsg } from '../email/email-i18n';
 
 @Injectable()
 export class BillingEmailService {
@@ -28,35 +29,35 @@ export class BillingEmailService {
         const daysLeft = payload.trialEndsAt
             ? Math.max(0, Math.ceil((new Date(payload.trialEndsAt).getTime() - Date.now()) / 86_400_000))
             : 3;
-        await this.send(ctx.email, 'Tu prueba gratuita termina pronto', trialEndingSoonEmail(ctx.firstName, daysLeft, ctx.planName));
+        await this.send(ctx.email, emsg(ctx.lang, 'trial.endingSubject'), trialEndingSoonEmail(ctx.firstName, daysLeft, ctx.planName, ctx.lang));
     }
 
     @OnEvent(BillingEventType.TRIAL_ENDED)
     async onTrialEnded(payload: { tenantId: string; subscriptionId?: string }) {
         const ctx = await this.resolveContext(payload.tenantId, payload.subscriptionId);
         if (!ctx) return;
-        await this.send(ctx.email, 'Tu prueba gratuita ha terminado', trialEndedEmail(ctx.firstName, ctx.planName));
+        await this.send(ctx.email, emsg(ctx.lang, 'trialEnded.subject'), trialEndedEmail(ctx.firstName, ctx.planName, ctx.lang));
     }
 
     @OnEvent(BillingEventType.PAYMENT_FAILED)
     async onPaymentFailed(payload: { tenantId: string; subscriptionId?: string }) {
         const ctx = await this.resolveContext(payload.tenantId, payload.subscriptionId);
         if (!ctx) return;
-        await this.send(ctx.email, 'Tu pago no pudo procesarse', paymentFailedEmail(ctx.firstName, ctx.planName));
+        await this.send(ctx.email, emsg(ctx.lang, 'paymentFailed.subject'), paymentFailedEmail(ctx.firstName, ctx.planName, ctx.lang));
     }
 
     @OnEvent('billing.subscription.soft_locked')
     async onSoftLocked(payload: { tenantId: string; daysRemaining: number }) {
         const ctx = await this.resolveContext(payload.tenantId);
         if (!ctx) return;
-        await this.send(ctx.email, 'Tu cuenta ha sido restringida', softLockEmail(ctx.firstName, payload.daysRemaining));
+        await this.send(ctx.email, emsg(ctx.lang, 'softLock.subject'), softLockEmail(ctx.firstName, payload.daysRemaining, ctx.lang));
     }
 
     @OnEvent(BillingEventType.SUBSCRIPTION_EXPIRED)
     async onExpired(payload: { tenantId: string }) {
         const ctx = await this.resolveContext(payload.tenantId);
         if (!ctx) return;
-        await this.send(ctx.email, 'Tu cuenta ha sido suspendida', accountSuspendedEmail(ctx.firstName));
+        await this.send(ctx.email, emsg(ctx.lang, 'suspended.subject'), accountSuspendedEmail(ctx.firstName, ctx.lang));
     }
 
     @OnEvent(BillingEventType.PAYMENT_SUCCEEDED)
@@ -67,13 +68,14 @@ export class BillingEmailService {
         const amount = payment
             ? `${(payment.amountCents / 100).toFixed(2)} ${payment.currency || 'USD'}`
             : '';
-        await this.send(ctx.email, 'Pago recibido exitosamente', paymentSucceededEmail(ctx.firstName, ctx.planName, amount));
+        await this.send(ctx.email, emsg(ctx.lang, 'paymentOk.subject'), paymentSucceededEmail(ctx.firstName, ctx.planName, amount, ctx.lang));
     }
 
     private async resolveContext(tenantId: string, subscriptionId?: string): Promise<{
         email: string;
         firstName: string;
         planName: string;
+        lang: string;
     } | null> {
         if (!tenantId) return null;
 
@@ -83,6 +85,7 @@ export class BillingEmailService {
                 select: {
                     billingEmail: true,
                     name: true,
+                    language: true,
                     users: { select: { email: true, firstName: true, role: true }, take: 5 },
                 },
             }),
@@ -107,6 +110,7 @@ export class BillingEmailService {
             email,
             firstName: admin?.firstName || tenant.name,
             planName: (sub as any)?.plan?.name || 'Parallly',
+            lang: tenant.language || 'es',
         };
     }
 

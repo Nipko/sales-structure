@@ -1,7 +1,14 @@
 /**
  * Parallly — Professional Email Layouts
  * Based on respond.io design language: clean, white, centered, with logo header
+ *
+ * i18n: admin/tenant-user facing strings are resolved via emsg(lang, key, vars)
+ * from ./email-i18n. Every exported email-builder takes an optional `lang`
+ * (default "es") so existing callers keep the current Spanish behavior.
+ * Structure, colors, URLs and emoji entities are NOT translated.
  */
+
+import { emsg } from './email-i18n';
 
 const LOGO_URL = process.env.EMAIL_LOGO_URL || 'https://parallly-chat.cloud/parallly-logo.svg';
 const BRAND_COLOR = '#3897f0';
@@ -10,12 +17,18 @@ const SITE_URL = 'https://parallly-chat.cloud';
 const DASHBOARD_URL = process.env.DASHBOARD_URL || 'https://admin.parallly-chat.cloud';
 const SUPPORT_URL = 'mailto:it.executive@parallext.com';
 
+/** Standard "Need help? Contact support" footer line, translated. */
+function supportFooter(lang: string): string {
+    return `<p style="margin:0;font-size:12px;color:#999;">${emsg(lang, 'footer.needHelp', { supportUrl: SUPPORT_URL, brandColor: BRAND_COLOR })}</p>`;
+}
+
 /**
  * Wraps content in the standard Parallly email layout
  */
-export function emailLayout(content: string, footerExtra?: string): string {
+export function emailLayout(content: string, footerExtra?: string, lang: string = 'es'): string {
+    const langCode = (lang || 'es').substring(0, 2).toLowerCase();
     return `<!DOCTYPE html>
-<html lang="es">
+<html lang="${langCode}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -45,7 +58,7 @@ export function emailLayout(content: string, footerExtra?: string): string {
             <td style="padding-top:24px;text-align:center;">
               ${footerExtra || ''}
               <p style="margin:12px 0 0;font-size:12px;color:#999;">
-                &copy; ${new Date().getFullYear()} <a href="${SITE_URL}" style="color:#999;text-decoration:underline;">Parallly</a> &mdash; Automatización conversacional inteligente
+                &copy; ${new Date().getFullYear()} <a href="${SITE_URL}" style="color:#999;text-decoration:underline;">Parallly</a> &mdash; ${emsg(lang, 'footer.tagline')}
               </p>
             </td>
           </tr>
@@ -71,12 +84,12 @@ export function otpBlock(code: string): string {
 /**
  * Security tips section
  */
-export function securityTips(): string {
+export function securityTips(lang: string = 'es'): string {
     return `<div style="margin-top:28px;padding-top:20px;border-top:1px solid #eee;">
-  <p style="margin:0 0 10px;font-size:14px;font-weight:600;color:#111;">&#128274; Mantente seguro</p>
+  <p style="margin:0 0 10px;font-size:14px;font-weight:600;color:#111;">${emsg(lang, 'security.header')}</p>
   <ul style="margin:0;padding:0 0 0 20px;font-size:13px;color:#555;line-height:1.8;">
-    <li>Nunca compartas tu contrasena o codigo de acceso con nadie. El equipo de Parallly <strong>nunca</strong> te pedira tus datos de acceso.</li>
-    <li>Activa la <strong>autenticacion de dos factores (2FA)</strong> en tu perfil para mayor seguridad.</li>
+    <li>${emsg(lang, 'security.tip1')}</li>
+    <li>${emsg(lang, 'security.tip2')}</li>
   </ul>
 </div>`;
 }
@@ -126,119 +139,125 @@ function tipBox(text: string): string {
 
 // ── Pre-built email templates ──────────────────────────────
 
-export function verificationEmail(firstName: string, code: string): string {
+export function verificationEmail(firstName: string, code: string, lang: string = 'es'): string {
     return emailLayout(`
-      <p style="margin:0 0 4px;font-size:15px;color:#333;">Hola ${firstName},</p>
+      <p style="margin:0 0 4px;font-size:15px;color:#333;">${emsg(lang, 'verification.greeting', { name: firstName })}</p>
       <p style="margin:0 0 0;font-size:15px;color:#555;">
-        Usa este codigo para completar tu inicio de sesion en <a href="${SITE_URL}" style="color:${BRAND_COLOR};text-decoration:none;font-weight:600;">Parallly</a>:
+        ${emsg(lang, 'verification.body', { siteUrl: SITE_URL, brandColor: BRAND_COLOR })}
       </p>
       ${otpBlock(code)}
-      <p style="margin:0 0 4px;font-size:13px;color:#555;">Valido por 10 minutos. No compartas este codigo con nadie.</p>
-      <p style="margin:0;font-size:13px;color:#555;">Si no fuiste tu, <a href="${DASHBOARD_URL}/login" style="color:${BRAND_COLOR};">restablece tu contrasena</a> inmediatamente.</p>
-      ${securityTips()}
+      <p style="margin:0 0 4px;font-size:13px;color:#555;">${emsg(lang, 'verification.validity')}</p>
+      <p style="margin:0;font-size:13px;color:#555;">${emsg(lang, 'verification.ifNotYou', { loginUrl: `${DASHBOARD_URL}/login`, brandColor: BRAND_COLOR })}</p>
+      ${securityTips(lang)}
     `,
-    `<p style="margin:0;font-size:12px;color:#999;">Necesitas ayuda? <a href="${SUPPORT_URL}" style="color:${BRAND_COLOR};text-decoration:none;">Contacta a soporte</a></p>`
+    supportFooter(lang),
+    lang,
     );
 }
 
-export function passwordResetEmail(firstName: string, code: string): string {
+export function passwordResetEmail(firstName: string, code: string, lang: string = 'es'): string {
     return emailLayout(`
-      <p style="margin:0 0 4px;font-size:15px;color:#333;">Hola ${firstName},</p>
+      <p style="margin:0 0 4px;font-size:15px;color:#333;">${emsg(lang, 'verification.greeting', { name: firstName })}</p>
       <p style="margin:0 0 0;font-size:15px;color:#555;">
-        Recibimos una solicitud para restablecer tu contrasena en <a href="${SITE_URL}" style="color:${BRAND_COLOR};text-decoration:none;font-weight:600;">Parallly</a>. Usa este codigo:
+        ${emsg(lang, 'passwordReset.body', { siteUrl: SITE_URL, brandColor: BRAND_COLOR })}
       </p>
       ${otpBlock(code)}
-      <p style="margin:0 0 4px;font-size:13px;color:#555;">Valido por 10 minutos. Si no solicitaste esto, ignora este correo.</p>
-      ${tipBox('Despues de restablecer tu contrasena, te recomendamos activar la autenticacion de dos factores (2FA) para mayor proteccion.')}
-      ${securityTips()}
+      <p style="margin:0 0 4px;font-size:13px;color:#555;">${emsg(lang, 'passwordReset.validity')}</p>
+      ${tipBox(emsg(lang, 'passwordReset.tip'))}
+      ${securityTips(lang)}
     `,
-    `<p style="margin:0;font-size:12px;color:#999;">Necesitas ayuda? <a href="${SUPPORT_URL}" style="color:${BRAND_COLOR};text-decoration:none;">Contacta a soporte</a></p>`
+    supportFooter(lang),
+    lang,
     );
 }
 
-export function twoFactorEmail(firstName: string, code: string): string {
+export function twoFactorEmail(firstName: string, code: string, lang: string = 'es'): string {
     return emailLayout(`
-      <p style="margin:0 0 4px;font-size:15px;color:#333;">Hola ${firstName},</p>
+      <p style="margin:0 0 4px;font-size:15px;color:#333;">${emsg(lang, 'verification.greeting', { name: firstName })}</p>
       <p style="margin:0 0 0;font-size:15px;color:#555;">
-        Tu codigo de autenticacion de dos factores para <a href="${SITE_URL}" style="color:${BRAND_COLOR};text-decoration:none;font-weight:600;">Parallly</a> es:
+        ${emsg(lang, 'twoFactor.body', { siteUrl: SITE_URL, brandColor: BRAND_COLOR })}
       </p>
       ${otpBlock(code)}
-      <p style="margin:0 0 4px;font-size:13px;color:#555;">Valido por 5 minutos. Si no intentaste iniciar sesion, cambia tu contrasena inmediatamente.</p>
-      ${securityTips()}
+      <p style="margin:0 0 4px;font-size:13px;color:#555;">${emsg(lang, 'twoFactor.validity')}</p>
+      ${securityTips(lang)}
     `,
-    `<p style="margin:0;font-size:12px;color:#999;">Necesitas ayuda? <a href="${SUPPORT_URL}" style="color:${BRAND_COLOR};text-decoration:none;">Contacta a soporte</a></p>`
+    supportFooter(lang),
+    lang,
     );
 }
 
-export function welcomeEmail(firstName: string, companyName: string): string {
+export function welcomeEmail(firstName: string, companyName: string, lang: string = 'es'): string {
     return emailLayout(`
       <div style="text-align:center;margin-bottom:20px;">
         <p style="margin:0;font-size:28px;">&#127881;</p>
       </div>
-      <h1 style="margin:0 0 8px;font-size:22px;color:#111;text-align:center;">Bienvenido a Parallly</h1>
+      <h1 style="margin:0 0 8px;font-size:22px;color:#111;text-align:center;">${emsg(lang, 'welcome.title')}</h1>
       <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
-        Tu cuenta para <strong>${companyName}</strong> ha sido creada exitosamente.
+        ${emsg(lang, 'welcome.subtitle', { companyName })}
       </p>
       ${featureHighlights([
-          { icon: '&#128172;', title: 'Conecta tus canales', desc: 'WhatsApp, Instagram, Messenger, Telegram y SMS en un solo lugar.' },
-          { icon: '&#129302;', title: 'Configura tu agente de IA', desc: 'Personaliza respuestas, horarios y personalidad para automatizar ventas.' },
-          { icon: '&#128202;', title: 'Pipeline de ventas', desc: 'Gestiona contactos, oportunidades y seguimiento desde el CRM integrado.' },
-          { icon: '&#128197;', title: 'Agenda citas', desc: 'Booking automatizado con Google Calendar y confirmacion por chat.' },
+          { icon: '&#128172;', title: emsg(lang, 'welcome.feat1.title'), desc: emsg(lang, 'welcome.feat1.desc') },
+          { icon: '&#129302;', title: emsg(lang, 'welcome.feat2.title'), desc: emsg(lang, 'welcome.feat2.desc') },
+          { icon: '&#128202;', title: emsg(lang, 'welcome.feat3.title'), desc: emsg(lang, 'welcome.feat3.desc') },
+          { icon: '&#128197;', title: emsg(lang, 'welcome.feat4.title'), desc: emsg(lang, 'welcome.feat4.desc') },
       ])}
-      ${actionButton('Ir al Dashboard', `${DASHBOARD_URL}/admin`)}
-      ${tipBox('Comienza conectando tu primer canal de comunicacion. El agente IA puede empezar a responder en minutos.')}
-      <p style="margin:16px 0 0;font-size:13px;color:#999;text-align:center;">Si necesitas ayuda, estamos para ti.</p>
+      ${actionButton(emsg(lang, 'welcome.cta'), `${DASHBOARD_URL}/admin`)}
+      ${tipBox(emsg(lang, 'welcome.tip'))}
+      <p style="margin:16px 0 0;font-size:13px;color:#999;text-align:center;">${emsg(lang, 'welcome.closing')}</p>
     `,
-    `<p style="margin:0;font-size:12px;color:#999;">Necesitas ayuda? <a href="${SUPPORT_URL}" style="color:${BRAND_COLOR};text-decoration:none;">Contacta a soporte</a></p>`
+    supportFooter(lang),
+    lang,
     );
 }
 
-export function passwordChangedEmail(firstName: string): string {
+export function passwordChangedEmail(firstName: string, lang: string = 'es'): string {
     return emailLayout(`
       <div style="text-align:center;margin-bottom:16px;">
         <div style="display:inline-block;width:48px;height:48px;background-color:#dcfce7;border-radius:50%;line-height:48px;font-size:22px;">&#9989;</div>
       </div>
-      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Contrasena actualizada</h1>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">${emsg(lang, 'passwordChanged.title')}</h1>
       <p style="margin:0 0 16px;font-size:15px;color:#555;text-align:center;">
-        Hola ${firstName}, tu contrasena en <a href="${SITE_URL}" style="color:${BRAND_COLOR};text-decoration:none;font-weight:600;">Parallly</a> ha sido cambiada exitosamente.
+        ${emsg(lang, 'passwordChanged.body', { name: firstName, siteUrl: SITE_URL, brandColor: BRAND_COLOR })}
       </p>
       <div style="margin:20px 0;padding:16px;background-color:#fef3c7;border-radius:8px;border-left:3px solid #f59e0b;">
         <p style="margin:0;font-size:13px;color:#92400e;line-height:1.6;">
-          <strong>&#9888;&#65039; Si no realizaste este cambio</strong>, alguien podria tener acceso a tu cuenta. <a href="${DASHBOARD_URL}/forgot-password" style="color:${BRAND_COLOR};font-weight:600;">Restablece tu contrasena</a> y contacta a soporte inmediatamente.
+          ${emsg(lang, 'passwordChanged.warning', { resetUrl: `${DASHBOARD_URL}/forgot-password`, brandColor: BRAND_COLOR })}
         </p>
       </div>
-      ${securityTips()}
+      ${securityTips(lang)}
     `,
-    `<p style="margin:0;font-size:12px;color:#999;">Necesitas ayuda? <a href="${SUPPORT_URL}" style="color:${BRAND_COLOR};text-decoration:none;">Contacta a soporte</a></p>`
+    supportFooter(lang),
+    lang,
     );
 }
 
-export function newTrustedDeviceEmail(firstName: string, deviceName: string, ipAddress: string, dateStr: string): string {
+export function newTrustedDeviceEmail(firstName: string, deviceName: string, ipAddress: string, dateStr: string, lang: string = 'es'): string {
     return emailLayout(`
       <div style="text-align:center;margin-bottom:16px;">
         <div style="display:inline-block;width:48px;height:48px;background-color:#dbeafe;border-radius:50%;line-height:48px;font-size:22px;">&#128274;</div>
       </div>
-      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Nuevo dispositivo de confianza</h1>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">${emsg(lang, 'trustedDevice.title')}</h1>
       <p style="margin:0 0 16px;font-size:15px;color:#555;text-align:center;">
-        Hola ${firstName}, se agrego un nuevo dispositivo de confianza a tu cuenta de <a href="${SITE_URL}" style="color:${BRAND_COLOR};text-decoration:none;font-weight:600;">Parallly</a>.
+        ${emsg(lang, 'trustedDevice.body', { name: firstName, siteUrl: SITE_URL, brandColor: BRAND_COLOR })}
       </p>
       <div style="margin:16px 0;padding:16px;background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr><td style="padding:4px 0;font-size:13px;color:#64748b;">Dispositivo</td><td style="padding:4px 0;font-size:13px;color:#1e293b;text-align:right;font-weight:600;">${deviceName}</td></tr>
-          <tr><td style="padding:4px 0;font-size:13px;color:#64748b;">Direccion IP</td><td style="padding:4px 0;font-size:13px;color:#1e293b;text-align:right;">${ipAddress}</td></tr>
-          <tr><td style="padding:4px 0;font-size:13px;color:#64748b;">Fecha</td><td style="padding:4px 0;font-size:13px;color:#1e293b;text-align:right;">${dateStr}</td></tr>
+          <tr><td style="padding:4px 0;font-size:13px;color:#64748b;">${emsg(lang, 'trustedDevice.labelDevice')}</td><td style="padding:4px 0;font-size:13px;color:#1e293b;text-align:right;font-weight:600;">${deviceName}</td></tr>
+          <tr><td style="padding:4px 0;font-size:13px;color:#64748b;">${emsg(lang, 'trustedDevice.labelIp')}</td><td style="padding:4px 0;font-size:13px;color:#1e293b;text-align:right;">${ipAddress}</td></tr>
+          <tr><td style="padding:4px 0;font-size:13px;color:#64748b;">${emsg(lang, 'trustedDevice.labelDate')}</td><td style="padding:4px 0;font-size:13px;color:#1e293b;text-align:right;">${dateStr}</td></tr>
         </table>
       </div>
       <p style="margin:16px 0 0;font-size:13px;color:#555;text-align:center;">
-        Este dispositivo podra iniciar sesion sin verificacion de dos factores por 30 dias.
+        ${emsg(lang, 'trustedDevice.note')}
       </p>
       <div style="margin:20px 0;padding:16px;background-color:#fef3c7;border-radius:8px;border-left:3px solid #f59e0b;">
         <p style="margin:0;font-size:13px;color:#92400e;line-height:1.6;">
-          <strong>&#9888;&#65039; Si no fuiste tu</strong>, ve a <a href="${DASHBOARD_URL}/admin/settings/security" style="color:${BRAND_COLOR};font-weight:600;">Configuracion de seguridad</a> y revoca todos los dispositivos de confianza. Luego cambia tu contrasena.
+          ${emsg(lang, 'trustedDevice.warning', { securityUrl: `${DASHBOARD_URL}/admin/settings/security`, brandColor: BRAND_COLOR })}
         </p>
       </div>
     `,
-    `<p style="margin:0;font-size:12px;color:#999;">Necesitas ayuda? <a href="${SUPPORT_URL}" style="color:${BRAND_COLOR};text-decoration:none;">Contacta a soporte</a></p>`
+    supportFooter(lang),
+    lang,
     );
 }
 
@@ -253,10 +272,10 @@ export function invitationEmail(input: {
     roleLabel: string;
     acceptUrl: string;
     expiresText: string;
-}): string {
+}, lang: string = 'es'): string {
     const intro = input.inviterName
-        ? `<strong>${input.inviterName}</strong> te invito a unirte a <strong>${input.tenantName}</strong> en Parallly como <strong>${input.roleLabel}</strong>.`
-        : `Te invitaron a unirte a <strong>${input.tenantName}</strong> en Parallly como <strong>${input.roleLabel}</strong>.`;
+        ? emsg(lang, 'invitation.introNamed', { inviter: input.inviterName, tenant: input.tenantName, role: input.roleLabel })
+        : emsg(lang, 'invitation.introAnon', { tenant: input.tenantName, role: input.roleLabel });
 
     const tenantLogoBlock = input.tenantLogoUrl
         ? `<div style="text-align:center;margin:0 0 18px;">
@@ -266,192 +285,195 @@ export function invitationEmail(input: {
 
     return emailLayout(`
         ${tenantLogoBlock}
-        <h1 style="margin:0 0 12px;font-size:22px;color:#111;text-align:center;">Te estamos esperando</h1>
+        <h1 style="margin:0 0 12px;font-size:22px;color:#111;text-align:center;">${emsg(lang, 'invitation.title')}</h1>
         <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;text-align:center;">${intro}</p>
-        ${actionButton('Aceptar invitacion', input.acceptUrl)}
+        ${actionButton(emsg(lang, 'invitation.cta'), input.acceptUrl)}
         ${featureHighlights([
-            { icon: '&#128236;', title: 'Bandeja unificada', desc: 'Atiende conversaciones de todos los canales en un solo lugar.' },
-            { icon: '&#129302;', title: 'Asistente IA', desc: 'Un copiloto inteligente que te sugiere respuestas y automatiza tareas.' },
-            { icon: '&#128200;', title: 'CRM integrado', desc: 'Contactos, pipeline y seguimiento sin salir de la plataforma.' },
+            { icon: '&#128236;', title: emsg(lang, 'invitation.feat1.title'), desc: emsg(lang, 'invitation.feat1.desc') },
+            { icon: '&#129302;', title: emsg(lang, 'invitation.feat2.title'), desc: emsg(lang, 'invitation.feat2.desc') },
+            { icon: '&#128200;', title: emsg(lang, 'invitation.feat3.title'), desc: emsg(lang, 'invitation.feat3.desc') },
         ])}
         <p style="margin:18px 0 0;font-size:13px;color:#777;text-align:center;">
-            Este enlace expira el <strong>${input.expiresText}</strong>.
+            ${emsg(lang, 'invitation.expires', { expires: input.expiresText })}
         </p>
         <p style="margin:8px 0 0;font-size:12px;color:#999;text-align:center;">
-            Si no esperabas esta invitacion, podes ignorar este correo.
+            ${emsg(lang, 'invitation.ignore')}
         </p>
-    `);
+    `, undefined, lang);
 }
 
 /**
  * Welcome email for invited team members — sent after accepting an invitation.
  */
-export function welcomeTeamMemberEmail(firstName: string, tenantName: string, roleLabel: string): string {
+export function welcomeTeamMemberEmail(firstName: string, tenantName: string, roleLabel: string, lang: string = 'es'): string {
     return emailLayout(`
       <div style="text-align:center;margin-bottom:20px;">
         <p style="margin:0;font-size:28px;">&#127881;</p>
       </div>
-      <h1 style="margin:0 0 8px;font-size:22px;color:#111;text-align:center;">Bienvenido al equipo</h1>
+      <h1 style="margin:0 0 8px;font-size:22px;color:#111;text-align:center;">${emsg(lang, 'teamWelcome.title')}</h1>
       <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
-        Hola ${firstName}, ya formas parte de <strong>${tenantName}</strong> como <strong>${roleLabel}</strong>.
+        ${emsg(lang, 'teamWelcome.subtitle', { name: firstName, tenant: tenantName, role: roleLabel })}
       </p>
       ${featureHighlights([
-          { icon: '&#128236;', title: 'Bandeja de entrada', desc: 'Accede a las conversaciones asignadas desde el inbox.' },
-          { icon: '&#128172;', title: 'Respuestas rapidas', desc: 'Usa macros y respuestas predefinidas para agilizar la atencion.' },
-          { icon: '&#129302;', title: 'Copiloto IA', desc: 'El asistente te sugiere respuestas basadas en el contexto de cada conversacion.' },
-          { icon: '&#128202;', title: 'CRM y contactos', desc: 'Consulta el perfil de cada contacto, historial y notas en un solo lugar.' },
+          { icon: '&#128236;', title: emsg(lang, 'teamWelcome.feat1.title'), desc: emsg(lang, 'teamWelcome.feat1.desc') },
+          { icon: '&#128172;', title: emsg(lang, 'teamWelcome.feat2.title'), desc: emsg(lang, 'teamWelcome.feat2.desc') },
+          { icon: '&#129302;', title: emsg(lang, 'teamWelcome.feat3.title'), desc: emsg(lang, 'teamWelcome.feat3.desc') },
+          { icon: '&#128202;', title: emsg(lang, 'teamWelcome.feat4.title'), desc: emsg(lang, 'teamWelcome.feat4.desc') },
       ])}
-      ${actionButton('Ir al Dashboard', `${DASHBOARD_URL}/admin`)}
-      ${tipBox('Explora la bandeja de entrada y familiarizate con las herramientas. Si tenes dudas, tu administrador puede ayudarte.')}
+      ${actionButton(emsg(lang, 'teamWelcome.cta'), `${DASHBOARD_URL}/admin`)}
+      ${tipBox(emsg(lang, 'teamWelcome.tip'))}
     `,
-    `<p style="margin:0;font-size:12px;color:#999;">Necesitas ayuda? <a href="${SUPPORT_URL}" style="color:${BRAND_COLOR};text-decoration:none;">Contacta a soporte</a></p>`
+    supportFooter(lang),
+    lang,
     );
 }
 
 /**
  * Fallback message notification — when WhatsApp/channel is unavailable
  */
-export function fallbackMessageEmail(leadName: string, message: string): string {
+export function fallbackMessageEmail(leadName: string, message: string, lang: string = 'es'): string {
     return emailLayout(`
-      <p style="margin:0 0 4px;font-size:15px;color:#333;">Nuevo mensaje recibido</p>
+      <p style="margin:0 0 4px;font-size:15px;color:#333;">${emsg(lang, 'fallback.heading')}</p>
       <p style="margin:0 0 16px;font-size:14px;color:#555;">
-        Recibiste un mensaje de <strong>${leadName}</strong> que no pudo ser entregado por el canal original.
+        ${emsg(lang, 'fallback.body', { leadName })}
       </p>
       <div style="padding:16px;background-color:#f9fafb;border-radius:8px;border-left:3px solid ${BRAND_COLOR};">
         <p style="margin:0;font-size:15px;color:#333;line-height:1.6;">${message}</p>
       </div>
-      ${actionButton('Ver en Inbox', `${DASHBOARD_URL}/admin/inbox`)}
+      ${actionButton(emsg(lang, 'fallback.cta'), `${DASHBOARD_URL}/admin/inbox`)}
       <p style="margin:0;font-size:12px;color:#999;text-align:center;">
-        Este mensaje fue enviado como fallback porque el canal de comunicacion no estuvo disponible.
+        ${emsg(lang, 'fallback.note')}
       </p>
-    `);
+    `, undefined, lang);
 }
 
 /**
  * Agent assignment notification
  */
-export function agentAssignmentEmail(leadName: string, stage: string): string {
+export function agentAssignmentEmail(leadName: string, stage: string, lang: string = 'es'): string {
     return emailLayout(`
       <div style="text-align:center;margin-bottom:16px;">
         <div style="display:inline-block;width:48px;height:48px;background-color:#dbeafe;border-radius:50%;line-height:48px;font-size:22px;">&#127919;</div>
       </div>
-      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Nuevo lead asignado</h1>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">${emsg(lang, 'assignment.title')}</h1>
       <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
-        <strong>${leadName}</strong> ha sido asignado a ti en etapa <strong>${stage}</strong>.
+        ${emsg(lang, 'assignment.body', { leadName, stage })}
       </p>
-      ${actionButton('Ver contacto', `${DASHBOARD_URL}/admin/contacts`)}
-      ${tipBox('Revisa el perfil del contacto y su historial de conversaciones para dar seguimiento efectivo.')}
-    `);
+      ${actionButton(emsg(lang, 'assignment.cta'), `${DASHBOARD_URL}/admin/contacts`)}
+      ${tipBox(emsg(lang, 'assignment.tip'))}
+    `, undefined, lang);
 }
 
 // ── Billing lifecycle emails ──────────────────────────────────
 
-export function trialEndingSoonEmail(firstName: string, daysLeft: number, planName: string): string {
+export function trialEndingSoonEmail(firstName: string, daysLeft: number, planName: string, lang: string = 'es'): string {
+    const daysWord = emsg(lang, daysLeft !== 1 ? 'common.days' : 'common.day');
     return emailLayout(`
       <div style="text-align:center;margin-bottom:16px;">
         <div style="display:inline-block;width:48px;height:48px;background-color:#fef3c7;border-radius:50%;line-height:48px;font-size:22px;">&#9200;</div>
       </div>
-      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Tu prueba gratuita termina pronto</h1>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">${emsg(lang, 'trial.endingTitle')}</h1>
       <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
-        Hola <strong>${firstName}</strong>, tu prueba del plan <strong>${planName}</strong> termina en <strong>${daysLeft} día${daysLeft !== 1 ? 's' : ''}</strong>.
+        ${emsg(lang, 'trial.endingBody', { name: firstName, planName, days: String(daysLeft), daysWord })}
       </p>
       <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
-        Elige un plan antes de que termine para mantener todas tus conversaciones, contactos y configuración.
+        ${emsg(lang, 'trial.endingDetail')}
       </p>
-      ${actionButton('Elegir plan', `${DASHBOARD_URL}/admin/settings/billing`)}
-      ${tipBox('Si necesitas más tiempo, contacta a nuestro equipo de soporte.')}
-    `);
+      ${actionButton(emsg(lang, 'trial.endingCta'), `${DASHBOARD_URL}/admin/settings/billing`)}
+      ${tipBox(emsg(lang, 'trial.endingTip'))}
+    `, undefined, lang);
 }
 
-export function trialEndedEmail(firstName: string, planName: string): string {
+export function trialEndedEmail(firstName: string, planName: string, lang: string = 'es'): string {
     return emailLayout(`
       <div style="text-align:center;margin-bottom:16px;">
         <div style="display:inline-block;width:48px;height:48px;background-color:#fee2e2;border-radius:50%;line-height:48px;font-size:22px;">&#128680;</div>
       </div>
-      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Tu prueba gratuita ha terminado</h1>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">${emsg(lang, 'trialEnded.title')}</h1>
       <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
-        Hola <strong>${firstName}</strong>, tu período de prueba del plan <strong>${planName}</strong> ha finalizado.
+        ${emsg(lang, 'trialEnded.body', { name: firstName, planName })}
       </p>
       <p style="margin:0 0 12px;font-size:14px;color:#666;text-align:center;">
-        Tienes <strong>7 días</strong> para elegir un plan. Durante este período:
+        ${emsg(lang, 'trialEnded.graceIntro')}
       </p>
       <ul style="margin:0 0 20px;padding-left:20px;font-size:14px;color:#666;">
-        <li style="margin-bottom:6px;"><strong>Días 1-3:</strong> Acceso completo con aviso</li>
-        <li style="margin-bottom:6px;"><strong>Días 3-7:</strong> Modo solo lectura (no podrás enviar mensajes ni crear contenido)</li>
-        <li><strong>Después del día 7:</strong> Cuenta suspendida</li>
+        <li style="margin-bottom:6px;">${emsg(lang, 'trialEnded.grace1')}</li>
+        <li style="margin-bottom:6px;">${emsg(lang, 'trialEnded.grace2')}</li>
+        <li>${emsg(lang, 'trialEnded.grace3')}</li>
       </ul>
       <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
-        Tus datos están seguros. Al pagar, el acceso se restaura al instante.
+        ${emsg(lang, 'trialEnded.dataSafe')}
       </p>
-      ${actionButton('Elegir plan ahora', `${DASHBOARD_URL}/admin/settings/billing`)}
-    `);
+      ${actionButton(emsg(lang, 'trialEnded.cta'), `${DASHBOARD_URL}/admin/settings/billing`)}
+    `, undefined, lang);
 }
 
-export function paymentFailedEmail(firstName: string, planName: string): string {
+export function paymentFailedEmail(firstName: string, planName: string, lang: string = 'es'): string {
     return emailLayout(`
       <div style="text-align:center;margin-bottom:16px;">
         <div style="display:inline-block;width:48px;height:48px;background-color:#fee2e2;border-radius:50%;line-height:48px;font-size:22px;">&#128179;</div>
       </div>
-      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Tu pago no pudo procesarse</h1>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">${emsg(lang, 'paymentFailed.title')}</h1>
       <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
-        Hola <strong>${firstName}</strong>, no pudimos procesar el pago de tu plan <strong>${planName}</strong>.
+        ${emsg(lang, 'paymentFailed.body', { name: firstName, planName })}
       </p>
       <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
-        Tienes <strong>7 días</strong> para actualizar tu método de pago. Después de ese plazo, tu cuenta será suspendida.
+        ${emsg(lang, 'paymentFailed.detail')}
       </p>
-      ${actionButton('Actualizar método de pago', `${DASHBOARD_URL}/admin/settings/billing`)}
-      ${tipBox('Verifica que tu tarjeta tenga fondos suficientes y que los datos estén actualizados.')}
-    `);
+      ${actionButton(emsg(lang, 'paymentFailed.cta'), `${DASHBOARD_URL}/admin/settings/billing`)}
+      ${tipBox(emsg(lang, 'paymentFailed.tip'))}
+    `, undefined, lang);
 }
 
-export function softLockEmail(firstName: string, daysRemaining: number): string {
+export function softLockEmail(firstName: string, daysRemaining: number, lang: string = 'es'): string {
+    const daysWord = emsg(lang, daysRemaining !== 1 ? 'common.days' : 'common.day');
     return emailLayout(`
       <div style="text-align:center;margin-bottom:16px;">
         <div style="display:inline-block;width:48px;height:48px;background-color:#fef3c7;border-radius:50%;line-height:48px;font-size:22px;">&#128274;</div>
       </div>
-      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Tu cuenta ha sido restringida</h1>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">${emsg(lang, 'softLock.title')}</h1>
       <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
-        Hola <strong>${firstName}</strong>, tu cuenta ahora está en <strong>modo solo lectura</strong>.
+        ${emsg(lang, 'softLock.body', { name: firstName })}
       </p>
       <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
-        No podrás enviar mensajes, crear contenido ni modificar configuraciones. Te quedan <strong>${daysRemaining} día${daysRemaining !== 1 ? 's' : ''}</strong> antes de que tu cuenta sea completamente suspendida.
+        ${emsg(lang, 'softLock.detail', { days: String(daysRemaining), daysWord })}
       </p>
       <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
-        Realiza un pago ahora para restaurar el acceso completo al instante.
+        ${emsg(lang, 'softLock.restore')}
       </p>
-      ${actionButton('Pagar y restaurar acceso', `${DASHBOARD_URL}/admin/settings/billing`)}
-    `);
+      ${actionButton(emsg(lang, 'softLock.cta'), `${DASHBOARD_URL}/admin/settings/billing`)}
+    `, undefined, lang);
 }
 
-export function accountSuspendedEmail(firstName: string): string {
+export function accountSuspendedEmail(firstName: string, lang: string = 'es'): string {
     return emailLayout(`
       <div style="text-align:center;margin-bottom:16px;">
         <div style="display:inline-block;width:48px;height:48px;background-color:#fee2e2;border-radius:50%;line-height:48px;font-size:22px;">&#128683;</div>
       </div>
-      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Tu cuenta ha sido suspendida</h1>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">${emsg(lang, 'suspended.title')}</h1>
       <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
-        Hola <strong>${firstName}</strong>, tu cuenta de Parallly ha sido suspendida por falta de pago.
+        ${emsg(lang, 'suspended.body', { name: firstName })}
       </p>
       <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
-        Tus datos están seguros y se conservarán por 90 días. Puedes reactivar tu cuenta en cualquier momento realizando un pago.
+        ${emsg(lang, 'suspended.detail')}
       </p>
-      ${actionButton('Reactivar cuenta', `${DASHBOARD_URL}/admin/settings/billing`)}
-      ${tipBox('Si crees que esto es un error, contacta a nuestro equipo de soporte.')}
-    `);
+      ${actionButton(emsg(lang, 'suspended.cta'), `${DASHBOARD_URL}/admin/settings/billing`)}
+      ${tipBox(emsg(lang, 'suspended.tip'))}
+    `, undefined, lang);
 }
 
-export function paymentSucceededEmail(firstName: string, planName: string, amountFormatted: string): string {
+export function paymentSucceededEmail(firstName: string, planName: string, amountFormatted: string, lang: string = 'es'): string {
     return emailLayout(`
       <div style="text-align:center;margin-bottom:16px;">
         <div style="display:inline-block;width:48px;height:48px;background-color:#dcfce7;border-radius:50%;line-height:48px;font-size:22px;">&#9989;</div>
       </div>
-      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">Pago recibido exitosamente</h1>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#111;text-align:center;">${emsg(lang, 'paymentOk.title')}</h1>
       <p style="margin:0 0 20px;font-size:15px;color:#555;text-align:center;">
-        Hola <strong>${firstName}</strong>, hemos recibido tu pago de <strong>${amountFormatted}</strong> por el plan <strong>${planName}</strong>.
+        ${emsg(lang, 'paymentOk.body', { name: firstName, amount: amountFormatted, planName })}
       </p>
       <p style="margin:0 0 20px;font-size:14px;color:#666;text-align:center;">
-        Tu acceso completo ha sido restaurado. ¡Gracias por confiar en Parallly!
+        ${emsg(lang, 'paymentOk.detail')}
       </p>
-      ${actionButton('Ir al dashboard', `${DASHBOARD_URL}/admin`)}
-    `);
+      ${actionButton(emsg(lang, 'paymentOk.cta'), `${DASHBOARD_URL}/admin`)}
+    `, undefined, lang);
 }

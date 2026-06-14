@@ -24,11 +24,10 @@ env:
 
 jobs:
   # ──────────────────────────────────────────────────────────────
-  # JOB 0: Validate — typecheck (4 apps) + lint + migrations + real boot smoke
-  # test (DI graph + onModuleInit). Defined in the reusable _validate.yml.
-  # ROLLOUT: Phase 1 — runs alongside the build but is NOT yet a hard gate
-  # (build-and-push has no `needs: validate`). Once it's green in CI we add the
-  # dependency so a red validate blocks build + deploy.
+  # JOB 0: Validate (the CI gate) — typecheck (4 apps) + lint + migrations +
+  # real boot smoke test (DI graph + onModuleInit). Defined in the reusable
+  # _validate.yml. build-and-push depends on it, so a red validate blocks the
+  # whole build + deploy (verified green on 5fd18c3 before wiring the gate).
   # ──────────────────────────────────────────────────────────────
   validate:
     uses: ./.github/workflows/_validate.yml
@@ -37,6 +36,7 @@ jobs:
   # JOB 1: Build & push Docker images to GHCR
   # ──────────────────────────────────────────────────────────────
   build-and-push:
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: read

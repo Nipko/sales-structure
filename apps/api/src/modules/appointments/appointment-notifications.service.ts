@@ -100,8 +100,8 @@ export class AppointmentNotificationsService {
                         await this.emailTemplates.renderAndSend(schemaName, 'appointment_confirmation_email', contact.email, {
                             customer_name: contact.name || customerNameFallback[lang] || 'Cliente',
                             service_name: appointment.serviceName,
-                            appointment_date: new Date(appointment.startAt).toLocaleDateString('es-CO'),
-                            appointment_time: new Date(appointment.startAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+                            appointment_date: new Date(appointment.startAt).toLocaleDateString(locale),
+                            appointment_time: new Date(appointment.startAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }),
                             location: appointment.location || '',
                         }, lang);
                     }

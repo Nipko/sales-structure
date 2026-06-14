@@ -182,7 +182,7 @@ function ChannelsSettingsContent() {
                                     {isPassword && <Key size={14} className="text-indigo-600" />}
                                     {field.label}
                                 </Label>
-                                <p className="text-xs text-neutral-500 dark:text-neutral-400">{field.description}</p>
+                                <p className="text-xs text-neutral-500 dark:text-neutral-400">{t(`channelFieldDesc.${field.key}`)}</p>
                                 <div className="relative">
                                     <Input
                                         type={isPassword && !isVisible ? "password" : "text"}

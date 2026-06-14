@@ -200,7 +200,11 @@
       "feature1": "Agendamiento de citas por chat",
       "feature2": "Planes de tratamiento multi-sesión",
       "feature3": "Recordatorios automáticos + recall semestral",
-      "feature4": "Sincronización con Google Calendar"
+      "feature4": "Sincronización con Google Calendar",
+      "demo1": "Hola, necesito una cita con el dentista",
+      "demo2": "¡Hola! Soy Sofía, asistente de la clínica. Tenemos disponibilidad mañana jueves a las 9am y 3pm. ¿Cuál te queda mejor?",
+      "demo3": "Jueves 9am porfa",
+      "demo4": "Perfecto ✅ Tu cita queda confirmada para jueves 9:00 AM. Te enviaré un recordatorio el miércoles. ¿Necesitas algo más?"
     },
     "veterinaria": {
       "pain1": "Dueños que escriben por una urgencia y no reciben respuesta a tiempo.",
@@ -213,7 +217,11 @@
       "feature1": "Ficha por mascota con historial completo",
       "feature2": "Recordatorios de vacunas automáticos",
       "feature3": "Tratamientos veterinarios multi-sesión",
-      "feature4": "Reservas de daycare y peluquería"
+      "feature4": "Reservas de daycare y peluquería",
+      "demo1": "Mi perrito necesita vacunas",
+      "demo2": "¡Hola! Soy Toby 🐾 ¿Qué raza y edad tiene? Así verifico el esquema de vacunación.",
+      "demo3": "Golden Retriever, 3 meses",
+      "demo4": "Le toca la triple y la parvovirus. Tenemos cupo mañana a las 11am. ¿Te agendo?"
     },
     "restaurantes": {
       "pain1": "Pedidos que se pierden en hora pico porque nadie alcanza a responder.",
@@ -226,7 +234,11 @@
       "feature1": "Menú digital con categorías y promociones",
       "feature2": "Pedidos en kanban: recibido → cocina → listo → entregado",
       "feature3": "Reservas de mesa por chat",
-      "feature4": "Sonido de notificación en cocina"
+      "feature4": "Sonido de notificación en cocina",
+      "demo1": "Quiero pedir para domicilio",
+      "demo2": "¡Hola! Soy Luca 🍽️ Te paso el menú del día. ¿Quieres ver el menú completo o las promociones?",
+      "demo3": "Las promociones",
+      "demo4": "🔥 Hoy: 2x1 en hamburguesas + bebida gratis en pedidos +$35k. ¿Te anoto algo?"
     },
     "gimnasios": {
       "pain1": "Prospectos que piden info de planes y no reciben respuesta a tiempo.",
@@ -239,7 +251,11 @@
       "feature1": "Planes de membresía con congelamiento",
       "feature2": "Reserva de clases por chat con cupos",
       "feature3": "Check-in y recall a inactivos",
-      "feature4": "Tasa de fill por clase y horario"
+      "feature4": "Tasa de fill por clase y horario",
+      "demo1": "Hola, info sobre membresías",
+      "demo2": "¡Hola! Soy Coach 💪 Tenemos mensual $89k, trimestral $240k (ahorras $27k). ¿Te agendo una visita?",
+      "demo3": "Sí, mañana puedo",
+      "demo4": "Te agendo mañana a las 10am para tour + clase de prueba gratis ✅"
     },
     "inmobiliaria": {
       "pain1": "Interesados que preguntan por una propiedad y se enfrían sin respuesta.",
@@ -252,7 +268,11 @@
       "feature1": "Catálogo de inmuebles venta y arriendo",
       "feature2": "Búsqueda por barrio, precio, m², habitaciones",
       "feature3": "Agendamiento de visitas",
-      "feature4": "Calificación automática de leads"
+      "feature4": "Calificación automática de leads",
+      "demo1": "Hola, busco apto en arriendo en Chapinero",
+      "demo2": "¡Hola! Soy Carlos, tu asesor inmobiliario. Tenemos 12 opciones en Chapinero. ¿Cuál es tu presupuesto mensual?",
+      "demo3": "Entre 2 y 3 millones",
+      "demo4": "Tengo 5 aptos en ese rango. Te paso las fichas con fotos. ¿Quieres agendar visita para este sábado?"
     },
     "turismo": {
       "pain1": "Consultas de paquetes que llegan de noche y se enfrían sin respuesta.",
@@ -265,7 +285,11 @@
       "feature1": "Tours del día y paquetes multi-día",
       "feature2": "Sincronización iCal con Airbnb y Booking",
       "feature3": "Anti-doble-booking automático",
-      "feature4": "Instrucciones de check-in al huésped"
+      "feature4": "Instrucciones de check-in al huésped",
+      "demo1": "Hola, buscamos paquete a Cartagena 4 noches",
+      "demo2": "¡Hola! Soy Maya ✈️ Tengo 3 opciones. ¿Cuántas personas y fechas?",
+      "demo3": "2 adultos, del 15 al 19 de julio",
+      "demo4": "Disponible 🙌 Hotel Caribe: $2.4M pp todo incluido. Hotel Playa: $1.8M pp con desayuno. ¿Te interesa alguno?"
     },
     "educacion": {
       "pain1": "Interesados en cursos que preguntan y nunca reciben seguimiento.",
@@ -278,7 +302,11 @@
       "feature1": "Catálogo de cursos por modalidad",
       "feature2": "Cohortes con cupos y horarios",
       "feature3": "Prueba de nivel guiada por IA",
-      "feature4": "Tracking de pagos por inscripción"
+      "feature4": "Tracking de pagos por inscripción",
+      "demo1": "Quiero info sobre cursos de inglés",
+      "demo2": "¡Hola! Soy Ana 📚 Tenemos cursos A1-C2, presencial y virtual. ¿Sabes tu nivel actual?",
+      "demo3": "No, nunca hice prueba",
+      "demo4": "Te hago un mini diagnóstico acá mismo (5 preguntas). ¿Empezamos? Primera: How would you describe your daily routine?"
     },
     "seguros": {
       "pain1": "Cotizaciones que se demoran y el cliente se va con otra aseguradora.",
@@ -291,7 +319,11 @@
       "feature1": "Cotización por chat según perfil",
       "feature2": "Emisión de pólizas y tracking",
       "feature3": "Gestión de reclamos con estados",
-      "feature4": "Recordatorios de renovación"
+      "feature4": "Recordatorios de renovación",
+      "demo1": "Necesito cotización de seguro auto",
+      "demo2": "¡Hola! Soy Roberto 🛡️ Con gusto te cotizo. ¿Marca, modelo y año del vehículo?",
+      "demo3": "Mazda CX-5 2023",
+      "demo4": "Tengo 3 opciones: Básico $89k/mes, Completo $145k/mes, Premium $210k/mes (todo riesgo). ¿Cuál te interesa?"
     },
     "hogar": {
       "pain1": "Urgencias que llegan a cualquier hora y se quedan sin respuesta.",
@@ -304,7 +336,11 @@
       "feature1": "Solicitudes priorizadas: emergencia → flexible",
       "feature2": "Asignación automática por habilidades",
       "feature3": "Fotos del problema desde el chat",
-      "feature4": "Estados: pendiente → cotizado → completado"
+      "feature4": "Estados: pendiente → cotizado → completado",
+      "demo1": "Se me tapó el desagüe, urgente",
+      "demo2": "Entendido 🚨 Soy Iván. ¿Dirección para enviar técnico?",
+      "demo3": "Calle 50 #15-20",
+      "demo4": "Carlos llega en 35min. Te aviso cuando salga. Costo estimado: $60k-$120k."
     },
     "fotografia": {
       "pain1": "Consultas por sesiones que llegan por Instagram y se enfrían sin respuesta.",
@@ -317,7 +353,11 @@
       "feature1": "Catálogo de paquetes por tipo",
       "feature2": "Reserva con depósito y vigencia",
       "feature3": "Tracking entrega de galería",
-      "feature4": "Link directo a Pixieset/Pic-Time"
+      "feature4": "Link directo a Pixieset/Pic-Time",
+      "demo1": "Vi tu trabajo, cuánto vale una sesión de boda?",
+      "demo2": "¡Gracias! Soy Diego 📸 Tenemos 3 paquetes: Gold $3.5M, Premium $5.2M, Luxury $8M. ¿Cuándo es la fecha?",
+      "demo3": "15 de junio",
+      "demo4": "Disponible 🙌 Te paso el portafolio y detalles por aquí."
     },
     "belleza": {
       "pain1": "Clientas que escriben de madrugada por Instagram y se van con la competencia.",
@@ -330,7 +370,11 @@
       "feature1": "Servicios con duración y precio",
       "feature2": "Staff multi-calendario",
       "feature3": "Recordatorios + reagendamiento",
-      "feature4": "Promociones y paquetes"
+      "feature4": "Promociones y paquetes",
+      "demo1": "Hola! Vi tu trabajo, quiero mechas balayage",
+      "demo2": "¡Hola! Soy Luna 💇‍♀️ Gracias por escribirnos. Mechas balayage desde $180k. ¿Para cuándo te gustaría?",
+      "demo3": "Este sábado si hay",
+      "demo4": "Sábado tenemos 10am y 2pm con Camila (especialista en color). ¿Cuál prefieres?"
     },
     "automotriz": {
       "pain1": "Clientes que piden cotización de un servicio y no reciben respuesta a tiempo.",
@@ -343,7 +387,11 @@
       "feature1": "Diagnóstico y cotización por chat",
       "feature2": "Agendamiento de citas de taller",
       "feature3": "Seguimiento de reparaciones en curso",
-      "feature4": "Inventario de repuestos y disponibilidad"
+      "feature4": "Inventario de repuestos y disponibilidad",
+      "demo1": "Hola, necesito revisión de frenos",
+      "demo2": "¡Hola! Soy Mech 🚗 La revisión de frenos cuesta $85k (incluye diagnóstico). ¿Qué vehículo tienes?",
+      "demo3": "Renault Sandero 2021",
+      "demo4": "Tengo cupo mañana a las 2pm. Demora aprox 1h. ¿Te agendo?"
     },
     "finanzas": {
       "pain1": "Prospectos que piden asesoría y no reciben seguimiento a tiempo.",
@@ -356,7 +404,11 @@
       "feature1": "Calificación de perfil de inversión",
       "feature2": "Cotizaciones personalizadas por chat",
       "feature3": "Seguimiento de portafolio",
-      "feature4": "Recordatorios de vencimientos y pagos"
+      "feature4": "Recordatorios de vencimientos y pagos",
+      "demo1": "Hola, necesito asesoría para invertir",
+      "demo2": "¡Hola! Soy Alex 💰 ¿Cuál es tu perfil: conservador, moderado o agresivo? ¿Y monto aproximado?",
+      "demo3": "Moderado, unos 20 millones",
+      "demo4": "Tengo 3 opciones para tu perfil. ¿Te agendo una llamada con un asesor certificado?"
     },
     "servicios-profesionales": {
       "pain1": "Consultas que llegan fuera de horario y se enfrían sin respuesta.",
@@ -369,7 +421,11 @@
       "feature1": "Calificación automática de consultas",
       "feature2": "Agendamiento de consultas por área",
       "feature3": "Seguimiento de casos activos",
-      "feature4": "Cotizaciones y propuestas por chat"
+      "feature4": "Cotizaciones y propuestas por chat",
+      "demo1": "Necesito asesoría legal para mi empresa",
+      "demo2": "¡Hola! ¿En qué área necesitas apoyo: laboral, societario, tributario?",
+      "demo3": "Tributario",
+      "demo4": "Tengo disponibilidad para una consulta esta semana. ¿Te agendo?"
     },
     "tecnologia": {
       "pain1": "Tickets de soporte que se acumulan sin primera respuesta.",
@@ -382,7 +438,11 @@
       "feature1": "Tickets de soporte automatizados",
       "feature2": "Onboarding guiado por IA",
       "feature3": "Base de conocimiento técnica",
-      "feature4": "Escalamiento inteligente por prioridad"
+      "feature4": "Escalamiento inteligente por prioridad",
+      "demo1": "Hola, necesito soporte con mi software",
+      "demo2": "¡Hola! ¿Es un problema técnico o quieres info sobre planes y servicios?",
+      "demo3": "Problema técnico, no puedo iniciar sesión",
+      "demo4": "Entendido. Te genero un ticket de soporte prioritario. Un técnico te contacta en 15min."
     },
     "retail": {
       "pain1": "Clientes que preguntan por stock y se van sin respuesta.",
@@ -395,7 +455,11 @@
       "feature1": "Consulta de disponibilidad en tiempo real",
       "feature2": "Recomendaciones personalizadas",
       "feature3": "Seguimiento de pedidos",
-      "feature4": "Promociones y descuentos automáticos"
+      "feature4": "Promociones y descuentos automáticos",
+      "demo1": "Hola, tienen la camiseta en talla M?",
+      "demo2": "¡Hola! Sí, tenemos en M y L. ¿Te interesa algún color en particular?",
+      "demo3": "Negra",
+      "demo4": "Disponible ✅ $65k con envío gratis. ¿Te la separo?"
     },
     "pet-services": {
       "pain1": "Reservas de guardería o paseo que llegan tarde y se pierden.",
@@ -408,7 +472,11 @@
       "feature1": "Reservas con disponibilidad por fecha",
       "feature2": "Ficha de mascota con preferencias",
       "feature3": "Historial de servicios",
-      "feature4": "Recordatorios de próximos servicios"
+      "feature4": "Recordatorios de próximos servicios",
+      "demo1": "Hola, necesito guardería para mi perro",
+      "demo2": "¡Hola! ¿Para qué fechas y qué raza es tu peludo?",
+      "demo3": "Del viernes al domingo, es un Beagle",
+      "demo4": "Tenemos cupo 🎉 $45k/noche incluye paseos y alimentación. ¿Te reservo?"
     },
     "otro": {
       "pain1": "Clientes que escriben fuera de horario y no reciben respuesta.",
@@ -421,7 +489,11 @@
       "feature1": "Agente IA totalmente personalizable",
       "feature2": "Pipeline configurable por etapas",
       "feature3": "Base de conocimiento flexible",
-      "feature4": "Multi-canal desde el primer día"
+      "feature4": "Multi-canal desde el primer día",
+      "demo1": "Hola, necesito información sobre sus servicios",
+      "demo2": "¡Hola! Con gusto te ayudo. ¿Qué servicio te interesa?",
+      "demo3": "Quiero cotizar",
+      "demo4": "Perfecto. Te paso las opciones disponibles. ¿Prefieres que te agende una llamada?"
     }
   },
   "solutions": {

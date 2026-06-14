@@ -1758,6 +1758,35 @@
       "analyticsEnabledDesc": "Rastreamento de eventos e métricas",
       "ragEnabled": "RAG ativado",
       "ragEnabledDesc": "Pesquisa na base de conhecimento"
+    },
+    "aiProvidersSecurityNote": "Suas chaves de API são armazenadas criptografadas (AES-256) e nunca expostas no navegador.",
+    "channelFieldDesc": {
+      "whatsapp": {
+        "phone_number_id": "ID do número de telefone no Meta Business",
+        "access_token": "Token permanente da Meta",
+        "business_account_id": "ID da sua conta do WhatsApp Business",
+        "verify_token": "Token para verificar os webhooks da Meta",
+        "app_secret": "App Secret da Meta (verificação de assinatura)"
+      },
+      "instagram": {
+        "ig_user_id": "ID da sua conta do Instagram Business",
+        "access_token": "Token da página do Facebook vinculada",
+        "verify_token": "Token para verificar os webhooks da Meta",
+        "app_secret": "App Secret da Meta",
+        "webhook_url": "URL para configurar no Meta Developer"
+      },
+      "messenger": {
+        "page_id": "ID da sua página do Facebook",
+        "page_access_token": "Token de acesso permanente da página",
+        "verify_token": "Token para verificar os webhooks da Meta",
+        "app_secret": "App Secret da Meta",
+        "webhook_url": "URL para configurar no Meta Developer"
+      },
+      "telegram": {
+        "bot_token": "Token do bot (do @BotFather)",
+        "bot_username": "Nome de usuário do bot (sem @)",
+        "webhook_url": "URL do webhook"
+      }
     }
   },
   "media": {

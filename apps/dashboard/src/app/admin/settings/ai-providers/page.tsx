@@ -88,7 +88,7 @@ function AIProvidersContent() {
 
             <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs text-neutral-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-neutral-400">
                 <Shield size={14} className="shrink-0 text-indigo-600" />
-                {t("security")}
+                {t("aiProvidersSecurityNote")}
             </div>
 
             <div className="space-y-4">

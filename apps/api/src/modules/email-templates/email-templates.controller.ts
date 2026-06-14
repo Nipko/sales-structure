@@ -44,8 +44,10 @@ export class EmailTemplatesController {
         @Body() body: { name: string; slug: string; subject: string; bodyHtml: string; bodyJson?: any; variables?: string[] },
         @CurrentUser() user: any,
     ) {
+        // Count DISTINCT slugs (not rows) — a template translated to en/pt/fr is one
+        // logical template across several language rows, so it must count once.
         const cnt = await this.prisma.executeInTenantSchema<any[]>(user.schemaName,
-            `SELECT COUNT(*)::int AS c FROM email_templates WHERE is_active = true`);
+            `SELECT COUNT(DISTINCT slug)::int AS c FROM email_templates WHERE is_active = true`);
         await this.throttle.enforcePlanLimit(tenantId, 'emailTemplates', cnt?.[0]?.c || 0, 'plantillas de email');
         const data = await this.service.create(user.schemaName, body);
         return { success: true, data };

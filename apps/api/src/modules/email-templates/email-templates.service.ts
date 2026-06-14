@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { TEMPLATE_TRANSLATIONS } from './email-template-translations';
 import { randomUUID } from 'crypto';
 
 export interface EmailTemplate {
@@ -1371,26 +1372,23 @@ export class EmailTemplatesService {
             );
         }
 
-        // TODO(i18n): seed en/pt/fr rows once translated content exists.
-        // Drop a `TEMPLATE_TRANSLATIONS: Record<lang, Record<slug, {subject, bodyHtml}>>`
-        // map at module scope and uncomment the loop below. Until then ONLY 'es'
-        // rows are seeded and getBySlug falls back to 'es' for other languages, so
-        // no email is ever missing.
-        //
-        // for (const [lang, bySlug] of Object.entries(TEMPLATE_TRANSLATIONS)) {
-        //     for (const tpl of DEFAULT_TEMPLATES) {
-        //         const tr = bySlug[tpl.slug];
-        //         if (!tr) continue; // no translation yet → 'es' fallback covers it
-        //         const id = randomUUID();
-        //         await this.prisma.executeInTenantSchema(schemaName,
-        //             `INSERT INTO email_templates (id, name, slug, subject, body_html, body_json, variables, is_active, language, created_at, updated_at)
-        //              VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, NOW(), NOW())
-        //              ON CONFLICT (slug, language) DO UPDATE SET name = EXCLUDED.name, subject = EXCLUDED.subject,
-        //                body_html = EXCLUDED.body_html, variables = EXCLUDED.variables, updated_at = NOW()`,
-        //             [id, tpl.name, tpl.slug, tr.subject, tr.bodyHtml, JSON.stringify(tpl.bodyJson), tpl.variables, tpl.isActive, lang],
-        //         );
-        //     }
-        // }
+        // en/pt/fr rows from TEMPLATE_TRANSLATIONS (filled in batches). A slug/language
+        // absent there is skipped and getBySlug falls back to 'es', so no email is ever
+        // missing while a translation is pending. Empty map → only 'es' seeded (unchanged).
+        for (const [lang, bySlug] of Object.entries(TEMPLATE_TRANSLATIONS)) {
+            for (const tpl of DEFAULT_TEMPLATES) {
+                const tr = bySlug[tpl.slug];
+                if (!tr) continue;
+                const id = randomUUID();
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `INSERT INTO email_templates (id, name, slug, subject, body_html, body_json, variables, is_active, language, created_at, updated_at)
+                     VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, NOW(), NOW())
+                     ON CONFLICT (slug, language) DO UPDATE SET name = EXCLUDED.name, subject = EXCLUDED.subject,
+                       body_html = EXCLUDED.body_html, variables = EXCLUDED.variables, updated_at = NOW()`,
+                    [id, tr.name || tpl.name, tpl.slug, tr.subject, tr.bodyHtml, JSON.stringify(tpl.bodyJson), tpl.variables, tpl.isActive, lang],
+                );
+            }
+        }
     }
 
     private mapRow(row: any): EmailTemplate {

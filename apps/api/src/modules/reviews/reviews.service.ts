@@ -6,6 +6,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { rmsg } from './reviews-i18n';
 
 const STAR_MAP: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 const GBP_BASE = 'https://mybusiness.googleapis.com/v4';
@@ -21,7 +22,7 @@ interface GbpConfig {
 
 /**
  * Reviews & reputation (T3.23) — connect Google Business Profile, sync reviews,
- * and reply with AI in Spanish (Podium/Birdeye-style). GBP tokens are stored
+ * and reply with AI in the tenant's configured language (Podium/Birdeye-style). GBP tokens are stored
  * encrypted in tenant.settings.googleBusiness; reviews cached in `gbp_reviews`.
  */
 @Injectable()
@@ -69,23 +70,23 @@ export class ReviewsService {
         // raw tenantId.
         const nonceKey = `gbp:oauth:${state}`;
         const tenantId = await this.redis.get(nonceKey);
-        if (!tenantId) throw new BadRequestException('OAuth state inválido o expirado');
+        if (!tenantId) throw new BadRequestException(rmsg(null, 'oauth.invalidState'));
         await this.redis.del(nonceKey); // single use
         const oauth2 = new google.auth.OAuth2(this.clientId, this.clientSecret, this.redirectUri);
         const { tokens } = await oauth2.getToken(code);
-        if (!tokens.refresh_token) throw new BadRequestException('Google no devolvió refresh_token (revoca el acceso y reintenta)');
+        if (!tokens.refresh_token) throw new BadRequestException(rmsg(null, 'oauth.noRefreshToken'));
         const cfg = await this.getConfigRaw(tenantId);
         cfg.encryptedRefreshToken = this.encrypt(tokens.refresh_token);
         await this.saveConfigRaw(tenantId, cfg);
     }
 
-    private async getAccessToken(tenantId: string): Promise<string> {
+    private async getAccessToken(tenantId: string, lang?: string): Promise<string> {
         const cfg = await this.getConfigRaw(tenantId);
-        if (!cfg.encryptedRefreshToken) throw new BadRequestException('Google Business no está conectado');
+        if (!cfg.encryptedRefreshToken) throw new BadRequestException(rmsg(lang, 'oauth.notConnected'));
         const oauth2 = new google.auth.OAuth2(this.clientId, this.clientSecret, this.redirectUri);
         oauth2.setCredentials({ refresh_token: this.decrypt(cfg.encryptedRefreshToken) });
         const { token } = await oauth2.getAccessToken();
-        if (!token) throw new BadRequestException('No se pudo obtener access token de Google');
+        if (!token) throw new BadRequestException(rmsg(lang, 'oauth.accessTokenFailed'));
         return token;
     }
 
@@ -163,10 +164,11 @@ export class ReviewsService {
     // ── Sync reviews from GBP ────────────────────────────────
     async syncReviews(tenantId: string): Promise<{ synced: number }> {
         const cfg = await this.getConfigRaw(tenantId);
-        if (!cfg.accountId || !cfg.locationId) throw new BadRequestException('Falta accountId / locationId de Google Business');
+        const lang = await this.getTenantLanguage(tenantId);
+        if (!cfg.accountId || !cfg.locationId) throw new BadRequestException(rmsg(lang, 'sync.missingAccountLocation'));
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureTables(schemaName);
-        const token = await this.getAccessToken(tenantId);
+        const token = await this.getAccessToken(tenantId, lang);
 
         const res = await this.http.axiosRef.get(`${GBP_BASE}/${this.reviewParent(cfg)}/reviews`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -188,7 +190,7 @@ export class ReviewsService {
                     reply_status = CASE WHEN EXCLUDED.reply_comment IS NOT NULL THEN 'posted' ELSE gbp_reviews.reply_status END,
                     synced_at = NOW()`,
                 [
-                    r.name, r.reviewer?.displayName || 'Anónimo', r.reviewer?.profilePhotoUrl || null,
+                    r.name, r.reviewer?.displayName || rmsg(lang, 'review.anonymousReviewer'), r.reviewer?.profilePhotoUrl || null,
                     rating, r.comment || null, r.createTime || null, replyComment,
                     replyComment ? 'posted' : 'none',
                 ],
@@ -241,26 +243,32 @@ export class ReviewsService {
         };
     }
 
-    // ── AI reply (Spanish) ───────────────────────────────────
+    // ── AI reply (tenant language) ───────────────────────────
     async generateReply(tenantId: string, reviewId: string): Promise<{ suggestion: string }> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName, `SELECT reviewer_name, rating, comment FROM gbp_reviews WHERE id = $1::uuid`, [reviewId],
         );
         const review = rows?.[0];
-        if (!review) throw new NotFoundException('Reseña no encontrada');
+        const lang = await this.getTenantLanguage(tenantId);
+        if (!review) throw new NotFoundException(rmsg(lang, 'review.notFound'));
 
-        const businessName = await this.businessName(tenantId);
-        const systemPrompt = `Eres el encargado de reputación de "${businessName}". Redacta una respuesta pública a una reseña de Google, en español neutro de Latinoamérica.
-Reglas:
-- Tono cálido, profesional y humano. Agradece siempre.
-- Si la reseña es negativa (1-2 estrellas): discúlpate con empatía, no te justifiques en exceso, ofrece resolverlo en privado e invita a contactar.
-- Si es positiva (4-5): agradece con calidez y refuerza la relación.
-- Máximo 60 palabras. Sin emojis excesivos (máximo 1). No inventes datos ni promesas concretas.
-- Personaliza con el nombre del cliente si está disponible.
-Devuelve SOLO el texto de la respuesta.`;
+        const businessName = await this.businessName(tenantId, lang);
+        const langInstruction = rmsg(lang, 'prompt.langInstruction');
+        const systemPrompt = `You are the reputation manager of "${businessName}". Write a public reply to a Google review, ${langInstruction}.
+Rules:
+- Warm, professional and human tone. Always thank the reviewer.
+- If the review is negative (1-2 stars): apologize with empathy, do not over-justify, offer to resolve privately and invite them to contact you.
+- If positive (4-5 stars): thank warmly and reinforce the relationship.
+- Maximum 60 words. No excessive emojis (maximum 1). Do not invent data or make concrete promises.
+- Personalise with the customer's name if available.
+Return ONLY the reply text.`;
 
-        const userPrompt = `Cliente: ${review.reviewer_name || 'Cliente'}\nEstrellas: ${review.rating || '?'}/5\nReseña: "${review.comment || '(sin texto)'}"`;
+        const labelClient = rmsg(lang, 'prompt.labelClient');
+        const labelStars = rmsg(lang, 'prompt.labelStars');
+        const labelReview = rmsg(lang, 'prompt.labelReview');
+        const noText = rmsg(lang, 'review.noText');
+        const userPrompt = `${labelClient}: ${review.reviewer_name || labelClient}\n${labelStars}: ${review.rating || '?'}/5\n${labelReview}: "${review.comment || noText}"`;
 
         const res = await this.llmRouter.execute({
             task: 'conversation',
@@ -281,16 +289,17 @@ Devuelve SOLO el texto de la respuesta.`;
     }
 
     async postReply(tenantId: string, reviewId: string, comment: string): Promise<void> {
-        if (!comment?.trim()) throw new BadRequestException('La respuesta no puede estar vacía');
+        const lang = await this.getTenantLanguage(tenantId);
+        if (!comment?.trim()) throw new BadRequestException(rmsg(lang, 'reply.empty'));
         const cfg = await this.getConfigRaw(tenantId);
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName, `SELECT review_name FROM gbp_reviews WHERE id = $1::uuid`, [reviewId],
         );
         const reviewName = rows?.[0]?.review_name;
-        if (!reviewName) throw new NotFoundException('Reseña no encontrada');
+        if (!reviewName) throw new NotFoundException(rmsg(lang, 'review.notFound'));
 
-        const token = await this.getAccessToken(tenantId);
+        const token = await this.getAccessToken(tenantId, lang);
         await this.http.axiosRef.put(`${GBP_BASE}/${reviewName}/reply`, { comment: comment.trim() }, {
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 20000,
         });
@@ -323,11 +332,28 @@ Devuelve SOLO el texto de la respuesta.`;
         return !!(cfg.autoReply && cfg.encryptedRefreshToken && cfg.accountId && cfg.locationId);
     }
 
-    private async businessName(tenantId: string): Promise<string> {
+    private async businessName(tenantId: string, lang?: string): Promise<string> {
+        const fallback = rmsg(lang, 'prompt.fallbackBusiness');
         try {
             const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
-            return tenant?.name || 'nuestro negocio';
-        } catch { return 'nuestro negocio'; }
+            return tenant?.name || fallback;
+        } catch { return fallback; }
+    }
+
+    /**
+     * Resolves tenant's configured language as a 2-char code (es/en/pt/fr),
+     * falling back to 'es'. tenant.language is stored as a full locale (e.g. 'es-CO').
+     */
+    private async getTenantLanguage(tenantId: string): Promise<string> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { language: true },
+            });
+            return (tenant?.language || 'es').slice(0, 2).toLowerCase();
+        } catch {
+            return 'es';
+        }
     }
 
     private encrypt(text: string): string {

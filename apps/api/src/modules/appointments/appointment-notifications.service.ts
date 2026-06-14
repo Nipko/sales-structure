@@ -6,6 +6,7 @@ import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import type { OutboundMessage } from '@parallext/shared';
+import { apptMsg, normaliseLang, LANG_LOCALE } from './appointment-notifications-i18n';
 
 /**
  * Listens for appointment events and sends WhatsApp/channel notifications.
@@ -34,26 +35,29 @@ export class AppointmentNotificationsService {
             const tenantId = await this.getTenantId(schemaName);
             if (!tenantId) return;
 
+            const lang = await this.getContactLanguage(schemaName, appointment.contactId, tenantId);
+            const locale = LANG_LOCALE[lang] ?? 'es-CO';
+
             const startDate = new Date(appointment.startAt);
-            const dateStr = startDate.toLocaleDateString('es-CO', {
+            const dateStr = startDate.toLocaleDateString(locale, {
                 weekday: 'long', day: 'numeric', month: 'long',
             });
-            const timeStr = startDate.toLocaleTimeString('es-CO', {
+            const timeStr = startDate.toLocaleTimeString(locale, {
                 hour: '2-digit', minute: '2-digit', hour12: true,
             });
 
             const text = [
-                `✅ *Cita confirmada*`,
+                apptMsg(lang, 'confirmTitle'),
                 ``,
-                `Hola ${contact.name || ''}! Tu cita ha sido agendada:`,
+                apptMsg(lang, 'confirmGreeting', { name: contact.name || '' }),
                 ``,
                 `📋 *${appointment.serviceName}*`,
                 `🗓️ ${dateStr}`,
                 `⏰ ${timeStr}`,
-                appointment.location ? `📍 ${appointment.location}` : null,
-                appointment.meetingUrl ? `💻 Enlace de reunión: ${appointment.meetingUrl}` : null,
+                appointment.location ? apptMsg(lang, 'confirmLocation', { location: appointment.location }) : null,
+                appointment.meetingUrl ? apptMsg(lang, 'confirmMeeting', { url: appointment.meetingUrl }) : null,
                 ``,
-                `Si necesitas cancelar o reprogramar, escríbenos con anticipación.`,
+                apptMsg(lang, 'confirmFooter'),
             ].filter(Boolean).join('\n');
 
             await this.sendMessage(tenantId, contact, text, {
@@ -84,11 +88,7 @@ export class AppointmentNotificationsService {
                     }
 
                     if (emailConfirmationsEnabled) {
-                        // Resolve the tenant's configured language for the template
-                        // (falls back to 'es'). Per-customer detected-language is a
-                        // future improvement — TODO: thread the conversation's
-                        // detected language through to here when available.
-                        const lang = await this.getTenantLanguage(tenantId);
+                        // Reuse the already-resolved customer language (detectedLanguage → tenant.language → 'es').
                         await this.emailTemplates.renderAndSend(schemaName, 'appointment_confirmation_email', contact.email, {
                             customer_name: contact.name || 'Cliente',
                             service_name: appointment.serviceName,
@@ -120,18 +120,21 @@ export class AppointmentNotificationsService {
             const tenantId = await this.getTenantId(schemaName);
             if (!tenantId) return;
 
+            const lang = await this.getContactLanguage(schemaName, appointment.contactId, tenantId);
+            const locale = LANG_LOCALE[lang] ?? 'es-CO';
+
             const startDate = new Date(appointment.startAt);
-            const dateStr = startDate.toLocaleDateString('es-CO', {
+            const dateStr = startDate.toLocaleDateString(locale, {
                 weekday: 'long', day: 'numeric', month: 'long',
             });
 
             const text = [
-                `❌ *Cita cancelada*`,
+                apptMsg(lang, 'cancelTitle'),
                 ``,
-                `Tu cita de *${appointment.serviceName}* del ${dateStr} ha sido cancelada.`,
-                reason ? `Motivo: ${reason}` : null,
+                apptMsg(lang, 'cancelBody', { service: appointment.serviceName, date: dateStr }),
+                reason ? apptMsg(lang, 'cancelReason', { reason }) : null,
                 ``,
-                `Si deseas reprogramar, no dudes en escribirnos.`,
+                apptMsg(lang, 'cancelFooter'),
             ].filter(Boolean).join('\n');
 
             await this.sendMessage(tenantId, contact, text, {
@@ -159,6 +162,41 @@ export class AppointmentNotificationsService {
             SELECT id FROM tenants WHERE schema_name = ${schemaName} LIMIT 1
         `;
         return rows?.[0]?.id || null;
+    }
+
+    /**
+     * Resolve the language to use for WhatsApp messages sent to a specific contact.
+     *
+     * Priority:
+     *  1. `conversation.metadata.detectedLanguage` — the language the customer has
+     *     actually been writing in (persisted per-turn by conversations.service.ts).
+     *  2. `tenant.language` — the tenant's configured language.
+     *  3. Hard fallback: 'es'.
+     *
+     * Returns a normalised 2-char code (es/en/pt/fr).
+     */
+    private async getContactLanguage(
+        schemaName: string,
+        contactId: string | null,
+        tenantId: string,
+    ): Promise<string> {
+        if (contactId) {
+            try {
+                const rows = await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT metadata FROM conversations
+                     WHERE contact_id = $1::uuid
+                     ORDER BY updated_at DESC
+                     LIMIT 1`,
+                    [contactId],
+                );
+                const detected = rows?.[0]?.metadata?.detectedLanguage as string | undefined;
+                if (detected) return normaliseLang(detected);
+            } catch {
+                // non-critical — fall through to tenant language
+            }
+        }
+        return this.getTenantLanguage(tenantId);
     }
 
     /**

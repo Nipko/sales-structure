@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { createHash } from 'crypto';
+import { imsg, isOptOutMessage } from './intake-i18n';
 
 interface IntakeResult {
     leadId: string;
@@ -10,14 +11,6 @@ interface IntakeResult {
     isNew: boolean;
     phone: string;
 }
-
-// Opt-out: word-boundary regex to avoid false positives (e.g. "trabajan" ≠ "baja")
-const OPT_OUT_INTAKE_PATTERNS = [
-    ...['stop', 'baja'].map(w => new RegExp(`\\b${w}\\b`, 'i')),
-    ...['no quiero', 'eliminar mis datos', 'borrar mis datos', 'cancelar suscripcion', 'darme de baja'].map(
-        p => new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
-    ),
-];
 
 @Injectable()
 export class IntakeService {
@@ -92,9 +85,11 @@ export class IntakeService {
     async processFormSubmission(
         formDefinitionId: string,
         payload: any,
-        meta: { ip: string; userAgent: string; originUrl: string; tenantId: string; schemaName: string }
+        meta: { ip: string; userAgent: string; originUrl: string; tenantId: string; schemaName: string; lang?: string }
     ): Promise<IntakeResult> {
         const { schemaName } = meta;
+        // Normalise language: prefer explicit lang, then Accept-Language, fallback 'es'
+        const lang = meta.lang ?? 'es';
 
         // 1. Get form definition to know campaign/course info
         const definitionRows = await this.prisma.executeInTenantSchema<any[]>(
@@ -108,20 +103,20 @@ export class IntakeService {
 
         const formDef = definitionRows[0];
         if (!formDef) {
-            throw new NotFoundException('Definición de formulario no encontrada.');
+            throw new NotFoundException(imsg(lang, 'form.notFound'));
         }
 
         // 2. Validate payload vs field definitions (basic validation here, could be extended)
         if (!payload.phone || !payload.email || !payload.first_name) {
-            throw new BadRequestException('Faltan campos requeridos (nombre, email, teléfono).');
+            throw new BadRequestException(imsg(lang, 'form.missingFields'));
         }
         if (!payload.consent) {
-            throw new BadRequestException('El consentimiento es requerido para capturar el lead.');
+            throw new BadRequestException(imsg(lang, 'form.consentRequired'));
         }
 
         const phone = this.normalizePhone(payload.phone);
         if (!phone) {
-            throw new BadRequestException('El número de teléfono no tiene un formato válido.');
+            throw new BadRequestException(imsg(lang, 'form.invalidPhone'));
         }
 
         const dto: CreateLeadDto = {
@@ -168,15 +163,17 @@ export class IntakeService {
 
     async captureFromForm(
         dto: CreateLeadDto,
-        meta: { ip: string; userAgent: string; originUrl: string; tenantId: string; schemaName: string }
+        meta: { ip: string; userAgent: string; originUrl: string; tenantId: string; schemaName: string; lang?: string }
     ): Promise<IntakeResult> {
+        const lang = meta.lang ?? 'es';
+
         if (!dto.consent) {
-            throw new BadRequestException('El consentimiento es requerido para capturar el lead.');
+            throw new BadRequestException(imsg(lang, 'form.consentRequired'));
         }
 
         const phone = this.normalizePhone(dto.phone);
         if (!phone) {
-            throw new BadRequestException('El número de teléfono no tiene un formato válido.');
+            throw new BadRequestException(imsg(lang, 'form.invalidPhone'));
         }
 
         // Pass normalized phone back
@@ -344,13 +341,26 @@ export class IntakeService {
 
     // ─── Opt-out detection (used by channels service) ─────────────────────────
 
+    /**
+     * Detect and record an opt-out from any inbound message.
+     *
+     * The `lang` parameter is optional and kept for signature compatibility.
+     * Detection is intentionally language-agnostic — OPT_OUT_INTAKE_PATTERNS
+     * in intake-i18n.ts covers ES/EN/PT/FR in a single flat list so that
+     * customers can opt out regardless of the language they write in.
+     *
+     * @param schemaName  Tenant PostgreSQL schema
+     * @param phone       Normalised phone number of the sender
+     * @param message     Raw inbound message text
+     * @param lang        (optional) Detected or configured language — reserved for future use
+     */
     async checkAndRecordOptOut(
         schemaName: string,
         phone: string,
-        message: string
+        message: string,
+        lang?: string,
     ): Promise<boolean> {
-        const text = message.trim();
-        const isOptOut = OPT_OUT_INTAKE_PATTERNS.some(p => p.test(text));
+        const isOptOut = isOptOutMessage(message);
         if (!isOptOut) return false;
 
         // Find lead by phone

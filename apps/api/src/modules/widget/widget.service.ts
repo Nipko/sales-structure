@@ -5,6 +5,14 @@ import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
 
+/** Default widget strings by language (es/en/pt/fr). Fallback: es. */
+const WIDGET_DEFAULTS: Record<string, { welcomeMessage: string; agentName: string }> = {
+    es: { welcomeMessage: '¡Hola! ¿En qué te puedo ayudar?', agentName: 'Asistente' },
+    en: { welcomeMessage: 'Hello! How can I help you?',       agentName: 'Assistant' },
+    pt: { welcomeMessage: 'Olá! Como posso te ajudar?',       agentName: 'Assistente' },
+    fr: { welcomeMessage: 'Bonjour ! Comment puis-je vous aider ?', agentName: 'Assistant' },
+};
+
 @Injectable()
 export class WidgetService implements OnModuleInit {
     private readonly logger = new Logger(WidgetService.name);
@@ -120,6 +128,11 @@ export class WidgetService implements OnModuleInit {
 
     async createWidget(tenantId: string, data: any): Promise<any> {
         const widgetId = 'wgt_' + crypto.randomBytes(6).toString('hex');
+
+        // Resolve tenant language for localised defaults (es-CO → es, fallback es)
+        const lang = await this.getTenantLanguage(tenantId);
+        const defaults = WIDGET_DEFAULTS[lang] ?? WIDGET_DEFAULTS['es'];
+
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `INSERT INTO public.widget_configs (tenant_id, widget_id, name, primary_color, position, welcome_message, agent_name, pre_chat_enabled, pre_chat_fields, allowed_domains, locale)
              VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::text[], $11)
@@ -128,14 +141,27 @@ export class WidgetService implements OnModuleInit {
             data.name || 'Web Chat',
             data.primaryColor || '#6c5ce7',
             data.position || 'bottom-right',
-            data.welcomeMessage || '¡Hola! ¿En qué te puedo ayudar?',
-            data.agentName || 'Asistente',
+            data.welcomeMessage || defaults.welcomeMessage,
+            data.agentName || defaults.agentName,
             data.preChatEnabled || false,
             JSON.stringify(data.preChatFields || ['name', 'email']),
             data.allowedDomains || [],
-            data.locale || 'es',
+            data.locale || lang,
         );
         return rows[0];
+    }
+
+    /** Tenant language as a short code (es/en/pt/fr), falling back to 'es'. */
+    private async getTenantLanguage(tenantId: string): Promise<string> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { language: true },
+            });
+            return (tenant?.language || 'es').split('-')[0];
+        } catch {
+            return 'es';
+        }
     }
 
     async updateWidget(tenantId: string, widgetConfigId: string, data: any): Promise<any> {

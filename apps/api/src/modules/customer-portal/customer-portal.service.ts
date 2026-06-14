@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { cpmsg } from './customer-portal-i18n';
 
 @Injectable()
 export class CustomerPortalService {
@@ -35,6 +36,25 @@ export class CustomerPortalService {
 
         await this.redis.set(`tenant:${tenantId}:schema`, tenant.schemaName, 600);
         return tenant.schemaName;
+    }
+
+    /**
+     * Resolve the tenant preferred language (cached in Redis alongside schema).
+     * Returns the raw value stored on the tenant row (e.g. "es-CO", "en").
+     * cpmsg() normalises it to 2 chars internally.
+     */
+    private async getTenantLanguage(tenantId: string): Promise<string> {
+        const cached = await this.redis.get(`tenant:${tenantId}:lang`);
+        if (cached) return cached;
+
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { language: true },
+        });
+
+        const lang = tenant?.language ?? 'es';
+        await this.redis.set(`tenant:${tenantId}:lang`, lang, 600);
+        return lang;
     }
 
     /**
@@ -78,7 +98,10 @@ export class CustomerPortalService {
         body: { phone?: string; email?: string },
         ip?: string,
     ): Promise<{ identifier: string; channel: 'whatsapp' | 'email' }> {
-        const schema = await this.getSchemaName(tenantId);
+        const [schema, lang] = await Promise.all([
+            this.getSchemaName(tenantId),
+            this.getTenantLanguage(tenantId),
+        ]);
 
         const identifier = body.phone || body.email;
         if (!identifier) {
@@ -90,10 +113,10 @@ export class CustomerPortalService {
         // Rate limit this public endpoint (atomic INCR+EXPIRE) by identifier and
         // by IP, to stop contact enumeration and code/SMS bombing.
         const idCount = await this.redis.incrementRateLimit(`ratelimit:portal:id:${tenantId}:${identifier}`, 3600);
-        if (idCount > 3) throw new BadRequestException('Too many requests. Please try again later.');
+        if (idCount > 3) throw new BadRequestException(cpmsg(lang, 'auth.tooManyRequests'));
         if (ip) {
             const ipCount = await this.redis.incrementRateLimit(`ratelimit:portal:ip:${ip}`, 3600);
-            if (ipCount > 10) throw new BadRequestException('Too many requests. Please try again later.');
+            if (ipCount > 10) throw new BadRequestException(cpmsg(lang, 'auth.tooManyRequests'));
         }
 
         // Verify the contact exists in the tenant schema
@@ -143,11 +166,14 @@ export class CustomerPortalService {
             throw new BadRequestException('A valid 6-digit code is required');
         }
 
-        const redisKey = this.codeKey(tenantId, identifier);
+        const [redisKey, lang] = [
+            this.codeKey(tenantId, identifier),
+            await this.getTenantLanguage(tenantId),
+        ];
         const stored = await this.redis.get(redisKey);
 
         if (!stored) {
-            throw new UnauthorizedException('Verification code expired or not found. Request a new one.');
+            throw new UnauthorizedException(cpmsg(lang, 'auth.codeExpired'));
         }
 
         const data = JSON.parse(stored) as { code: string; contactId: string; attempts: number };
@@ -155,14 +181,14 @@ export class CustomerPortalService {
         // Rate-limit brute force: max 5 attempts
         if (data.attempts >= 5) {
             await this.redis.del(redisKey);
-            throw new UnauthorizedException('Too many failed attempts. Request a new code.');
+            throw new UnauthorizedException(cpmsg(lang, 'auth.tooManyAttempts'));
         }
 
         if (data.code !== body.code) {
             // Increment attempt counter
             data.attempts += 1;
             await this.redis.set(redisKey, JSON.stringify(data), 600);
-            throw new UnauthorizedException('Invalid verification code');
+            throw new UnauthorizedException(cpmsg(lang, 'auth.invalidCode'));
         }
 
         // Code is valid — delete it so it can't be reused

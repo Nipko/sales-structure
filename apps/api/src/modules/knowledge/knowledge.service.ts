@@ -5,6 +5,7 @@ import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { LlmKeyService } from '../settings/llm-key.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { kbmsg } from './knowledge-i18n';
 import OpenAI from 'openai';
 import axios from 'axios';
 import * as crypto from 'crypto';
@@ -42,12 +43,13 @@ export class KnowledgeService {
      * resolves platform_settings first, then falls back to the OPENAI_API_KEY env),
      * rebuilding when the key rotates. Throws a clear error when no key is available.
      */
-    private async ensureOpenAI(): Promise<OpenAI> {
+    private async ensureOpenAI(tenantId?: string): Promise<OpenAI> {
         const key = await this.llmKeys.getKey('openai');
         if (!key) {
+            const lang = tenantId ? await this.getTenantLanguage(tenantId) : 'es';
             throw new BadRequestException({
                 error: 'embeddings_unavailable',
-                message: 'La base de conocimiento requiere una API key de OpenAI configurada (se usa para generar los embeddings). Configúrala en el panel de super admin.',
+                message: kbmsg(lang, 'embeddings.noKey'),
             });
         }
         if (this.openai && key === this.currentKey) return this.openai;
@@ -87,11 +89,15 @@ export class KnowledgeService {
 
         const maxChars = await this.throttle.getPlanLimit(tenantId, 'knowledgeMaxCharsPerDoc');
         if (textContent.length > maxChars) {
+            const lang = await this.getTenantLanguage(tenantId);
             throw new ForbiddenException({
                 error: 'document_too_large',
                 currentChars: textContent.length,
                 maxAllowed: maxChars,
-                message: `El documento excede el límite de ${maxChars.toLocaleString()} caracteres (~${Math.round(maxChars / 2500)} páginas) para tu plan.`,
+                message: kbmsg(lang, 'document.tooLarge', {
+                    limit: maxChars.toLocaleString(),
+                    pages: String(Math.round(maxChars / 2500)),
+                }),
             });
         }
 
@@ -146,9 +152,10 @@ export class KnowledgeService {
         const crawlLimit = features.knowledgeCrawlPages ?? 0;
 
         if (crawlLimit === 0) {
+            const lang = await this.getTenantLanguage(tenantId);
             throw new ForbiddenException({
                 error: 'plan_upgrade_required',
-                message: 'Tu plan no incluye la importación de URLs. Actualizá a Starter o superior.',
+                message: kbmsg(lang, 'crawl.planRequired'),
             });
         }
 
@@ -157,9 +164,10 @@ export class KnowledgeService {
             const crawled = await this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS c FROM knowledge_documents WHERE source_type = 'url' AND status != 'deleted'`);
             if ((crawled?.[0]?.c || 0) >= crawlLimit) {
+                const lang = await this.getTenantLanguage(tenantId);
                 throw new ForbiddenException({
                     error: 'crawl_limit_reached',
-                    message: `Tu plan permite hasta ${crawlLimit} páginas importadas. Actualizá tu plan para agregar más.`,
+                    message: kbmsg(lang, 'crawl.limitReached', { limit: String(crawlLimit) }),
                 });
             }
         }
@@ -169,7 +177,8 @@ export class KnowledgeService {
             parsedUrl = new URL(url);
             if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('Invalid protocol');
         } catch {
-            throw new BadRequestException({ error: 'invalid_url', message: 'La URL proporcionada no es válida.' });
+            const lang = await this.getTenantLanguage(tenantId);
+            throw new BadRequestException({ error: 'invalid_url', message: kbmsg(lang, 'crawl.invalidUrl') });
         }
 
         this.logger.log(`[Crawl] Fetching ${url} for tenant ${tenantId}`);
@@ -194,7 +203,8 @@ export class KnowledgeService {
         }
 
         if (!textContent.trim() || textContent.trim().length < 50) {
-            throw new BadRequestException({ error: 'no_content', message: 'No se pudo extraer contenido útil de la URL.' });
+            const lang = await this.getTenantLanguage(tenantId);
+            throw new BadRequestException({ error: 'no_content', message: kbmsg(lang, 'crawl.noContent') });
         }
 
         const docTitle = title || this.extractTitleFromHtml(response.data) || parsedUrl.hostname + parsedUrl.pathname;
@@ -214,7 +224,10 @@ export class KnowledgeService {
         const docs = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT id, source_url, title, crawl_hash FROM knowledge_documents WHERE id = $1::uuid AND source_type = 'url'`,
             [documentId]);
-        if (!docs?.[0]) throw new BadRequestException({ error: 'not_url_doc', message: 'Este documento no fue importado desde una URL.' });
+        if (!docs?.[0]) {
+            const lang = await this.getTenantLanguage(tenantId);
+            throw new BadRequestException({ error: 'not_url_doc', message: kbmsg(lang, 'doc.notUrlSource') });
+        }
 
         const doc = docs[0];
         const response = await axios.get(doc.source_url, {
@@ -262,16 +275,21 @@ export class KnowledgeService {
             );
         }
         if (!textContent.trim()) {
-            throw new BadRequestException({ error: 'empty_content', message: 'El contenido del documento está vacío.' });
+            const lang = await this.getTenantLanguage(tenantId);
+            throw new BadRequestException({ error: 'empty_content', message: kbmsg(lang, 'doc.emptyContent') });
         }
 
         const maxChars = await this.throttle.getPlanLimit(tenantId, 'knowledgeMaxCharsPerDoc');
         if (textContent.length > maxChars) {
+            const lang = await this.getTenantLanguage(tenantId);
             throw new ForbiddenException({
                 error: 'document_too_large',
                 currentChars: textContent.length,
                 maxAllowed: maxChars,
-                message: `El documento excede el límite de ${maxChars.toLocaleString()} caracteres (~${Math.round(maxChars / 2500)} páginas) para tu plan.`,
+                message: kbmsg(lang, 'document.tooLarge', {
+                    limit: maxChars.toLocaleString(),
+                    pages: String(Math.round(maxChars / 2500)),
+                }),
             });
         }
 
@@ -444,7 +462,10 @@ export class KnowledgeService {
              ORDER BY occurrences DESC, last_seen_at DESC
              LIMIT 20`);
 
-        if (!unanswered?.length) return { suggestions: [], message: 'No hay queries sin respuesta para analizar.' };
+        if (!unanswered?.length) {
+            const lang = await this.getTenantLanguage(tenantId);
+            return { suggestions: [], message: kbmsg(lang, 'suggestions.noUnanswered') };
+        }
 
         const existingDocs = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT title, category FROM knowledge_documents WHERE status = 'ready' ORDER BY created_at DESC LIMIT 30`);
@@ -453,7 +474,7 @@ export class KnowledgeService {
         const docList = (existingDocs || []).map((d: any) => `- ${d.title}${d.category ? ` [${d.category}]` : ''}`).join('\n');
 
         try {
-            const completion = await (await this.ensureOpenAI()).chat.completions.create({
+            const completion = await (await this.ensureOpenAI(tenantId)).chat.completions.create({
                 model: 'gpt-4o-mini',
                 temperature: 0.4,
                 max_tokens: 1500,
@@ -1024,13 +1045,18 @@ export class KnowledgeService {
             const used = parseInt(await this.redis.get(redisKey) || '0', 10);
             const limit = await this.throttle.getPlanLimit(tenantId, 'knowledgeEmbeddingsPerMonth');
             if (used + chunks.length > limit) {
+                const lang = await this.getTenantLanguage(tenantId);
                 throw new ForbiddenException({
                     error: 'plan_limit_reached',
                     limitKey: 'knowledgeEmbeddingsPerMonth',
                     currentCount: used,
                     chunksNeeded: chunks.length,
                     maxAllowed: limit,
-                    message: `Has alcanzado el límite de ${limit.toLocaleString()} embeddings mensuales. Usado: ${used}, necesarios: ${chunks.length}.`,
+                    message: kbmsg(lang, 'embed.limitReached', {
+                        limit: limit.toLocaleString(),
+                        used: String(used),
+                        needed: String(chunks.length),
+                    }),
                 });
             }
         }
@@ -1213,7 +1239,7 @@ export class KnowledgeService {
         // Embeddings currently require OpenAI specifically. Fail with a clear,
         // actionable message instead of an opaque 401 from the SDK when the key
         // is missing (the platform contract only guarantees ≥1 provider of any kind).
-        const openai = await this.ensureOpenAI();
+        const openai = await this.ensureOpenAI(tenantId);
         const response = await openai.embeddings.create({
             model: 'text-embedding-3-small',
             input: text,
@@ -1373,11 +1399,15 @@ export class KnowledgeService {
         if (data.content) {
             const maxChars = await this.throttle.getPlanLimit(tenantId, 'knowledgeMaxCharsPerDoc');
             if (data.content.length > maxChars) {
+                const lang = await this.getTenantLanguage(tenantId);
                 throw new ForbiddenException({
                     error: 'document_too_large',
                     currentChars: data.content.length,
                     maxAllowed: maxChars,
-                    message: `El documento excede el límite de ${maxChars.toLocaleString()} caracteres (~${Math.round(maxChars / 2500)} páginas) para tu plan.`,
+                    message: kbmsg(lang, 'document.tooLarge', {
+                        limit: maxChars.toLocaleString(),
+                        pages: String(Math.round(maxChars / 2500)),
+                    }),
                 });
             }
         }
@@ -1567,6 +1597,23 @@ export class KnowledgeService {
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /**
+     * Tenant's configured language as a short code (es/en/pt/fr), falling back
+     * to 'es'. `tenant.language` is stored as a full locale (e.g. 'es-CO'), so
+     * we strip the region — matching the convention in handoff.service and email-i18n.
+     */
+    private async getTenantLanguage(tenantId: string): Promise<string> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { language: true },
+            });
+            return (tenant?.language || 'es-CO').substring(0, 2).toLowerCase();
+        } catch {
+            return 'es';
+        }
+    }
 
     private async tenantSchema(tenantId: string): Promise<string> {
         return this.prisma.getTenantSchemaName(tenantId);

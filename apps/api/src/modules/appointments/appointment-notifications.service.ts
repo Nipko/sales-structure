@@ -89,8 +89,16 @@ export class AppointmentNotificationsService {
 
                     if (emailConfirmationsEnabled) {
                         // Reuse the already-resolved customer language (detectedLanguage → tenant.language → 'es').
+                        // customer_name fallback is lang-keyed: same greeting word used in
+                        // WhatsApp channel messages (confirmGreeting already resolved via apptMsg).
+                        const customerNameFallback: Record<string, string> = {
+                            es: 'Cliente',
+                            en: 'Customer',
+                            pt: 'Cliente',
+                            fr: 'Client',
+                        };
                         await this.emailTemplates.renderAndSend(schemaName, 'appointment_confirmation_email', contact.email, {
-                            customer_name: contact.name || 'Cliente',
+                            customer_name: contact.name || customerNameFallback[lang] || 'Cliente',
                             service_name: appointment.serviceName,
                             appointment_date: new Date(appointment.startAt).toLocaleDateString('es-CO'),
                             appointment_time: new Date(appointment.startAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),

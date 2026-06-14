@@ -7,6 +7,7 @@ import { EmailTemplatesService } from '../email-templates/email-templates.servic
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { NormalizedMessage, TenantConfig } from '@parallext/shared';
+import { handoffAgentI18n } from './handoff-i18n';
 
 export interface HandoffResult {
     handoffId: string;
@@ -135,7 +136,7 @@ export class HandoffService {
              WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 20`,
             [conversationId],
         );
-        const summary = await this.generateAISummary(recentMessages || [], reason, tenantId);
+        const summary = await this.generateAISummary(recentMessages || [], reason, tenantId, lang);
 
         // 2. Update conversation status to waiting_human
         await this.prisma.executeInTenantSchema(schemaName,
@@ -164,10 +165,11 @@ export class HandoffService {
         );
 
         // 3. Create internal note documenting the handoff
+        const i18n = handoffAgentI18n(lang);
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO internal_notes (conversation_id, agent_id, content, created_at)
              VALUES ($1::uuid, NULL, $2, NOW())`,
-            [conversationId, `🔄 **Handoff automático** — Razón: ${reason}\n\n${summary}`],
+            [conversationId, i18n.noteText(reason, summary)],
         );
 
         // 4. Get contact info for notifications
@@ -235,13 +237,13 @@ export class HandoffService {
 
         // 9. Send email to assigned agent via template (fire-and-forget)
         if (assignedAgentEmail) {
-            const contactName = contact.contact_name || 'Cliente';
+            const contactName = contact.contact_name || i18n.contactFallback;
             const contactPhone = contact.contact_phone || 'N/A';
             const lastMessage = (contact.last_message || '').substring(0, 200);
 
             try {
                 const sent = await this.emailTemplates.renderAndSend(schemaName, 'handoff_notification', assignedAgentEmail, {
-                    agent_name: assignedAgentName || 'Agente',
+                    agent_name: assignedAgentName || i18n.agentFallback,
                     contact_name: contactName,
                     contact_phone: contactPhone,
                     reason,
@@ -253,24 +255,8 @@ export class HandoffService {
                 // Fallback to direct email if template is not yet seeded
                 this.emailService.send({
                     to: assignedAgentEmail,
-                    subject: `🔴 Handoff: ${contactName} necesita atención`,
-                    html: `
-                        <div style="font-family: sans-serif; max-width: 500px;">
-                            <h2 style="color: #e74c3c;">Conversación escalada</h2>
-                            <p><strong>Cliente:</strong> ${contactName}</p>
-                            <p><strong>Teléfono:</strong> ${contactPhone}</p>
-                            <p><strong>Razón:</strong> ${reason}</p>
-                            <p><strong>Último mensaje:</strong></p>
-                            <blockquote style="border-left: 3px solid #e74c3c; padding-left: 12px; color: #555;">
-                                ${lastMessage}
-                            </blockquote>
-                            <p style="margin-top: 20px;">
-                                <a href="https://admin.parallly-chat.cloud/admin/inbox" style="background: #6366f1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px;">
-                                    Abrir Inbox
-                                </a>
-                            </p>
-                        </div>
-                    `,
+                    subject: i18n.assignedSubject(contactName),
+                    html: i18n.assignedHtml({ contactName, contactPhone, reason, lastMessage }),
                 }).catch(fe => this.logger.warn(`Handoff fallback email failed: ${fe.message}`));
             }
         } else {
@@ -299,7 +285,7 @@ export class HandoffService {
             }
 
             if (fallbackEmail) {
-                const contactName = contact.contact_name || 'Cliente';
+                const contactName = contact.contact_name || i18n.contactFallback;
                 const contactPhone = contact.contact_phone || 'N/A';
                 const lastMessage = (contact.last_message || '').substring(0, 200);
 
@@ -316,26 +302,8 @@ export class HandoffService {
                     // Fallback to direct email
                     this.emailService.send({
                         to: fallbackEmail,
-                        subject: `🔴 URGENTE: Lead esperando atención humana en cola de Parallly`,
-                        html: `
-                            <div style="font-family: sans-serif; max-width: 500px; padding: 20px; border: 1px solid #eee; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-                                <h2 style="color: #e67e22; margin-top: 0;">🔴 Lead Esperando Atención Humana</h2>
-                                <p style="font-size: 14px; color: #555;">Hay un nuevo lead esperando en la cola sin asignar y requiere atención humana urgente.</p>
-                                <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;" />
-                                <p style="font-size: 14px; margin: 5px 0;"><strong>Cliente:</strong> ${contactName}</p>
-                                <p style="font-size: 14px; margin: 5px 0;"><strong>Teléfono:</strong> ${contactPhone}</p>
-                                <p style="font-size: 14px; margin: 5px 0;"><strong>Razón:</strong> ${reason}</p>
-                                <p style="font-size: 14px; margin: 15px 0 5px 0;"><strong>Último mensaje del cliente:</strong></p>
-                                <blockquote style="border-left: 3px solid #e67e22; padding: 5px 12px; margin: 5px 0; color: #666; background: #fafafa; font-style: italic;">
-                                    ${lastMessage}
-                                </blockquote>
-                                <div style="margin-top: 25px; text-align: center;">
-                                    <a href="https://admin.parallly-chat.cloud/admin/inbox" style="background: linear-gradient(135deg, #6366f1, #4f46e5); color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; box-shadow: 0 2px 4px rgba(99,102,241,0.2);">
-                                        Abrir Agent Console (Inbox)
-                                    </a>
-                                </div>
-                            </div>
-                        `,
+                        subject: i18n.unassignedSubject(),
+                        html: i18n.unassignedHtml({ contactName, contactPhone, reason, lastMessage }),
                     }).catch(fe => this.logger.warn(`Handoff fallback unassigned email failed: ${fe.message}`));
                 }
             }
@@ -511,12 +479,15 @@ export class HandoffService {
         messages: Array<{ direction: string; content_text: string }>,
         reason: string,
         tenantId: string,
+        lang?: string,
     ): Promise<string> {
+        const i18n = handoffAgentI18n(lang);
         const reversed = [...messages].reverse();
-        if (reversed.length === 0) return 'Sin mensajes previos.';
+        if (reversed.length === 0) return i18n.noMessagesText;
 
+        const { customer, assistant } = i18n.transcriptLabels;
         const transcript = reversed.map(m => {
-            const role = m.direction === 'inbound' ? 'Cliente' : 'Asistente';
+            const role = m.direction === 'inbound' ? customer : assistant;
             return `${role}: ${(m.content_text || '').substring(0, 300)}`;
         }).join('\n');
 
@@ -543,14 +514,16 @@ export class HandoffService {
             this.logger.warn(`AI summary failed, using fallback: ${err.message}`);
         }
 
-        return this.buildFallbackSummary(reversed);
+        return this.buildFallbackSummary(reversed, lang);
     }
 
-    private buildFallbackSummary(messages: Array<{ direction: string; content_text: string }>): string {
+    private buildFallbackSummary(messages: Array<{ direction: string; content_text: string }>, lang?: string): string {
+        const i18n = handoffAgentI18n(lang);
+        const { customer, ai } = i18n.transcriptLabels;
         const lines = messages.map(m => {
-            const prefix = m.direction === 'inbound' ? 'Cliente' : 'IA';
+            const prefix = m.direction === 'inbound' ? customer : ai;
             return `${prefix}: ${(m.content_text || '').substring(0, 150)}`;
         });
-        return `**Últimos ${messages.length} mensajes antes del handoff:**\n${lines.join('\n')}`;
+        return `${i18n.fallbackSummaryHeader(messages.length)}\n${lines.join('\n')}`;
     }
 }

@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { agentAvailI18n } from './agent-availability-i18n';
 
 type AvailabilityStatus = 'online' | 'busy' | 'offline';
 
@@ -113,18 +114,18 @@ export class AgentAvailabilityService {
         try {
             const tenants = await this.prisma.tenant.findMany({
                 where: { isActive: true },
-                select: { id: true, schemaName: true },
+                select: { id: true, schemaName: true, language: true },
             });
 
             for (const tenant of tenants) {
-                await this.processEscalations(tenant.id, tenant.schemaName);
+                await this.processEscalations(tenant.id, tenant.schemaName, tenant.language ?? undefined);
             }
         } catch (e: any) {
             this.logger.warn(`Escalation check failed: ${e.message}`);
         }
     }
 
-    private async processEscalations(tenantId: string, schemaName: string): Promise<void> {
+    private async processEscalations(tenantId: string, schemaName: string, tenantLanguage?: string): Promise<void> {
         try {
             // Find conversations waiting >5 min with no agent response
             const stale = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -182,25 +183,18 @@ export class AgentAvailabilityService {
                 });
 
                 // Email all supervisors
+                const i18n = agentAvailI18n(tenantLanguage);
                 for (const sup of supervisors) {
                     this.emailService.send({
                         to: sup.email,
-                        subject: `⚠️ Escalación: ${contactName} esperando ${waitMinutes} min sin respuesta`,
-                        html: `
-                            <div style="font-family: sans-serif; max-width: 500px;">
-                                <h2 style="color: #e67e22;">⚠️ Conversación sin atender</h2>
-                                <p><strong>Cliente:</strong> ${contactName}</p>
-                                <p><strong>Teléfono:</strong> ${conv.contact_phone || 'N/A'}</p>
-                                <p><strong>Razón:</strong> ${reason}</p>
-                                <p><strong>Tiempo de espera:</strong> ${waitMinutes} minutos</p>
-                                <p><strong>Agente asignado:</strong> ${conv.assigned_to ? 'Sí (sin respuesta)' : 'Ninguno'}</p>
-                                <p style="margin-top: 20px;">
-                                    <a href="https://admin.parallly-chat.cloud/admin/inbox" style="background: #e67e22; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px;">
-                                        Abrir Inbox
-                                    </a>
-                                </p>
-                            </div>
-                        `,
+                        subject: i18n.escalationSubject(contactName, waitMinutes),
+                        html: i18n.escalationHtml({
+                            contactName,
+                            contactPhone: conv.contact_phone || null,
+                            reason,
+                            waitMinutes,
+                            assignedTo: conv.assigned_to || null,
+                        }),
                     }).catch(e => this.logger.warn(`Escalation email failed: ${e.message}`));
                 }
             }

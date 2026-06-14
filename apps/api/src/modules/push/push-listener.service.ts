@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { PushService } from './push.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { pushI18n } from './push-i18n';
 
 @Injectable()
 export class PushListenerService {
@@ -12,6 +13,19 @@ export class PushListenerService {
         private readonly prisma: PrismaService,
     ) {}
 
+    /** Resolve tenant language (2-char, fallback 'es'). */
+    private async getTenantLanguage(tenantId: string): Promise<string> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { language: true },
+            });
+            return (tenant?.language || 'es').slice(0, 2).toLowerCase();
+        } catch {
+            return 'es';
+        }
+    }
+
     @OnEvent('handoff.escalated')
     async onHandoff(event: {
         tenantId: string;
@@ -21,9 +35,12 @@ export class PushListenerService {
         assignedAgentName?: string;
         contactName?: string;
     }) {
+        const lang = await this.getTenantLanguage(event.tenantId);
+        const t = pushI18n(lang);
+
         const payload = {
-            title: 'Conversación escalada',
-            body: `${event.contactName || 'Cliente'} necesita atención — ${event.reason}`,
+            title: t.handoffTitle,
+            body: t.handoffBody(event.contactName || t.contactFallback, event.reason),
             url: '/admin/inbox',
             tag: `handoff-${event.conversationId}`,
         };
@@ -60,9 +77,12 @@ export class PushListenerService {
             const assignedTo = rows?.[0]?.assigned_to;
             if (!assignedTo) return;
 
-            const preview = (event.text || '').trim().slice(0, 120) || 'Nuevo mensaje';
+            const lang = await this.getTenantLanguage(event.tenantId);
+            const t = pushI18n(lang);
+
+            const preview = (event.text || '').trim().slice(0, 120) || t.newMessageFallback;
             await this.pushService.sendToUser(assignedTo, {
-                title: 'Nuevo mensaje',
+                title: t.newMessageTitle,
                 body: preview,
                 url: '/admin/inbox',
                 tag: `msg-${event.conversationId}`, // replaces prior notification for this chat
@@ -78,9 +98,12 @@ export class PushListenerService {
         conversationId: string;
         contactName?: string;
     }) {
+        const lang = await this.getTenantLanguage(event.tenantId);
+        const t = pushI18n(lang);
+
         await this.pushService.sendToTenantRole(event.tenantId, 'tenant_supervisor', {
-            title: 'Escalación SLA',
-            body: `${event.contactName || 'Conversación'} sin respuesta por más de 5 minutos`,
+            title: t.slaEscalationTitle,
+            body: t.slaEscalationBody(event.contactName || t.conversationFallback),
             url: '/admin/inbox',
             tag: `sla-${event.conversationId}`,
         }).catch(() => {});
@@ -111,12 +134,15 @@ export class PushListenerService {
 
         if (!tenantId) return;
 
+        const lang = await this.getTenantLanguage(tenantId);
+        const t = pushI18n(lang);
+
         // Read customer and service names supporting both direct parameters and nested appointment object
-        const customerName = event.customerName || event.appointment?.customerName || event.appointment?.customer_name || event.appointment?.contactName || event.appointment?.contact_name || 'Cliente';
-        const serviceName = event.serviceName || event.appointment?.serviceName || event.appointment?.service_name || 'Servicio';
+        const customerName = event.customerName || event.appointment?.customerName || event.appointment?.customer_name || event.appointment?.contactName || event.appointment?.contact_name || t.contactFallback;
+        const serviceName = event.serviceName || event.appointment?.serviceName || event.appointment?.service_name || t.serviceFallback;
 
         await this.pushService.sendToTenantRole(tenantId, 'tenant_admin', {
-            title: 'Nueva cita agendada',
+            title: t.newAppointmentTitle,
             body: `${customerName} — ${serviceName}`,
             url: '/admin/appointments',
             tag: 'appointment-new',

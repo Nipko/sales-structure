@@ -5,6 +5,7 @@ import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import type { OutboundMessage } from '@parallext/shared';
+import { recallDefaultMessage, recallNameFallback, normaliseRecallLang } from './recall-i18n';
 
 /**
  * Recall Service — daily cron that re-engages contacts whose last appointment
@@ -104,8 +105,9 @@ export class RecallService {
             return 0;
         }
 
-        const message = config.message ||
-            'Hola {name}, ya pasaron {months} meses desde tu última visita. ¿Quieres agendar tu cita de control?';
+        // Resolve tenant language once per batch as a shared fallback. Individual
+        // contacts may have their own detectedLanguage resolved inside the loop.
+        const tenantLang = await this.getTenantLanguage(tenantId);
 
         let sent = 0;
         for (const c of dueContacts) {
@@ -113,8 +115,20 @@ export class RecallService {
                 const monthsAgo = Math.round(
                     (Date.now() - new Date(c.last_appointment_at).getTime()) / (1000 * 60 * 60 * 24 * 30),
                 );
-                const text = message
-                    .replace(/\{name\}/g, c.name?.split(' ')?.[0] || 'estimado/a')
+
+                // Per-contact language: prefer detectedLanguage from their latest
+                // conversation; fall back to the already-resolved tenant language.
+                const contactLang = await this.getContactLanguage(schemaName, c.id, tenantLang);
+
+                // When the contact name is missing use a lang-appropriate greeting.
+                const firstName = c.name?.split(' ')?.[0] || recallNameFallback(contactLang);
+
+                // Re-build the message using the contact's own language when the
+                // tenant has NOT provided a custom message (system default only).
+                const resolvedTemplate = config.message ? config.message : recallDefaultMessage(contactLang);
+
+                const text = resolvedTemplate
+                    .replace(/\{name\}/g, firstName)
                     .replace(/\{months\}/g, String(monthsAgo));
 
                 const outbound: OutboundMessage = {
@@ -148,6 +162,54 @@ export class RecallService {
         return { accessToken: creds.accessToken, accountId: creds.accountId };
     }
 
+    /**
+     * Resolve the language to use for a specific contact.
+     *
+     * Priority:
+     *  1. `conversation.metadata.detectedLanguage` — the language the customer has
+     *     actually been writing in (persisted per-turn by conversations.service.ts).
+     *  2. `tenantLang` — the tenant's configured language (already resolved by caller).
+     *
+     * Returns a normalised 2-char code (es/en/pt/fr).
+     */
+    private async getContactLanguage(
+        schemaName: string,
+        contactId: string,
+        tenantLang: string,
+    ): Promise<string> {
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT metadata FROM conversations
+                 WHERE contact_id = $1::uuid
+                 ORDER BY updated_at DESC
+                 LIMIT 1`,
+                [contactId],
+            );
+            const detected = rows?.[0]?.metadata?.detectedLanguage as string | undefined;
+            if (detected) return normaliseRecallLang(detected);
+        } catch {
+            // non-critical — fall through to tenant language
+        }
+        return normaliseRecallLang(tenantLang);
+    }
+
+    /**
+     * Tenant's configured language as a short code (es/en/pt/fr), falling back
+     * to 'es'. `tenant.language` may be stored as a full locale (e.g. 'es-CO').
+     */
+    private async getTenantLanguage(tenantId: string): Promise<string> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { language: true },
+            });
+            return normaliseRecallLang((tenant?.language || 'es').split('-')[0]);
+        } catch {
+            return 'es';
+        }
+    }
+
     // ── Tenant config CRUD (used by the dashboard) ────────────────
 
     async getConfig(tenantId: string): Promise<any> {
@@ -160,7 +222,9 @@ export class RecallService {
             daysThreshold: 180,
             cooldownDays: 90,
             channelType: 'whatsapp',
-            message: 'Hola {name}, ya pasaron {months} meses desde tu última visita. ¿Quieres agendar tu cita de control?',
+            // Empty string means "use the system default" (multi-language, resolved at send time).
+            // The dashboard should show a placeholder hint with the es default for reference.
+            message: '',
         };
     }
 

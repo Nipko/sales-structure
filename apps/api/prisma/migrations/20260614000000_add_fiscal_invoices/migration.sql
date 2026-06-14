@@ -40,11 +40,8 @@ CREATE INDEX IF NOT EXISTS "fiscal_invoices_tenant_id_created_at_idx" ON "public
 CREATE INDEX IF NOT EXISTS "fiscal_invoices_status_idx" ON "public"."fiscal_invoices"("status");
 CREATE INDEX IF NOT EXISTS "fiscal_invoices_payment_id_idx" ON "public"."fiscal_invoices"("payment_id");
 
--- Seed default fiscal platform settings (idempotent). Mode starts hybrid
--- (CO_LOCAL = Colombian entity issues DIAN FEV) and IVA defaults to excluido
--- (cloud computing), both editable from the super admin without redeploy.
-INSERT INTO "public"."platform_settings" ("key", "value", "category", "label", "field_type")
-VALUES
-    ('fiscal.mode', 'CO_LOCAL', 'fiscal', 'Modo fiscal', 'select'),
-    ('fiscal.co_iva_treatment', 'excluido', 'fiscal', 'Tratamiento IVA Colombia', 'select')
-ON CONFLICT ("key") DO NOTHING;
+-- NOTE: fiscal platform settings (fiscal.mode, fiscal.co_iva_treatment, …) are
+-- NOT seeded here. FiscalConfigService returns the defaults (CO_LOCAL / excluido)
+-- when the rows are absent, and the super admin writes them at runtime. Seeding
+-- would couple this migration to the platform_settings column set, which differs
+-- between the Prisma-managed schema (CI) and the SQL-bootstrapped one (prod).

@@ -583,7 +583,7 @@ export default function Lead360Page() {
                                                         }}
                                                         className="w-4 h-4 accent-primary"
                                                     />
-                                                    <span className="text-sm">{val ? 'Yes' : 'No'}</span>
+                                                    <span className="text-sm">{val ? tc("yes") : tc("no")}</span>
                                                 </label>
                                             ) : def.attribute_type === 'select' ? (
                                                 <select
@@ -721,9 +721,9 @@ export default function Lead360Page() {
                     {/* Tabs */}
                     <div className="flex border-b border-border">
                         {[
-                            { key: "timeline", label: "Timeline", icon: Clock },
-                            { key: "notes", label: `Notes (${notes.length})`, icon: StickyNote },
-                            { key: "tasks", label: `Tasks (${tasks.filter((tk: any) => tk.status !== "done").length})`, icon: CheckSquare },
+                            { key: "timeline", label: t("leadDetail.tabTimeline"), icon: Clock },
+                            { key: "notes", label: t("leadDetail.tabNotes", { count: notes.length }), icon: StickyNote },
+                            { key: "tasks", label: t("leadDetail.tabTasks", { count: tasks.filter((tk: any) => tk.status !== "done").length }), icon: CheckSquare },
                         ].map(tab => (
                             <button
                                 key={tab.key}
@@ -745,7 +745,7 @@ export default function Lead360Page() {
                         {activeTab === "timeline" && (
                             <div className="flex flex-col gap-3">
                                 {timeline.length === 0 && (
-                                    <p className="text-muted-foreground text-center py-10">No activity recorded yet.</p>
+                                    <p className="text-muted-foreground text-center py-10">{t("leadDetail.noActivity")}</p>
                                 )}
                                 {timeline.map((event: any, i: number) => {
                                     const Icon = EVENT_ICONS[event.event_type] || Zap;
@@ -774,7 +774,7 @@ export default function Lead360Page() {
                                     <textarea
                                         value={newNote}
                                         onChange={e => setNewNote(e.target.value)}
-                                        placeholder="Add an internal note..."
+                                        placeholder={t("leadDetail.addNotePlaceholder")}
                                         rows={3}
                                         className="w-full px-3 py-2.5 rounded-lg border border-border bg-muted text-foreground text-[13px] resize-y outline-none box-border"
                                     />
@@ -786,7 +786,7 @@ export default function Lead360Page() {
                                             !newNote.trim() && "opacity-50"
                                         )}
                                     >
-                                        <Send size={14} /> Save note
+                                        <Send size={14} /> {t("leadDetail.saveNote")}
                                     </button>
                                 </div>
                                 {notes.map((note: any) => (
@@ -799,7 +799,7 @@ export default function Lead360Page() {
                                     </div>
                                 ))}
                                 {notes.length === 0 && (
-                                    <p className="text-muted-foreground text-center py-8">No notes yet.</p>
+                                    <p className="text-muted-foreground text-center py-8">{t("leadDetail.noNotes")}</p>
                                 )}
                             </div>
                         )}
@@ -811,7 +811,7 @@ export default function Lead360Page() {
                                     <input
                                         value={newTask.title}
                                         onChange={e => setNewTask(tk => ({ ...tk, title: e.target.value }))}
-                                        placeholder="New task... (e.g.: Call client)"
+                                        placeholder={t("leadDetail.newTaskPlaceholder")}
                                         className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-[13px] outline-none box-border"
                                     />
                                     <div className="flex gap-2">
@@ -820,11 +820,11 @@ export default function Lead360Page() {
                                             onChange={e => setNewTask(tk => ({ ...tk, type: e.target.value }))}
                                             className="flex-1 px-2.5 py-2 rounded-lg border border-border bg-card text-foreground text-xs outline-none"
                                         >
-                                            <option value="follow_up">Follow-up</option>
-                                            <option value="call">Call</option>
-                                            <option value="email">Email</option>
-                                            <option value="meeting">Meeting</option>
-                                            <option value="handoff">Handoff</option>
+                                            <option value="follow_up">{t("leadDetail.taskTypes.follow_up")}</option>
+                                            <option value="call">{t("leadDetail.taskTypes.call")}</option>
+                                            <option value="email">{t("leadDetail.taskTypes.email")}</option>
+                                            <option value="meeting">{t("leadDetail.taskTypes.meeting")}</option>
+                                            <option value="handoff">{t("leadDetail.taskTypes.handoff")}</option>
                                         </select>
                                         <input
                                             type="datetime-local"
@@ -869,7 +869,7 @@ export default function Lead360Page() {
                                     </div>
                                 ))}
                                 {tasks.length === 0 && (
-                                    <p className="text-muted-foreground text-center py-8">No tasks created.</p>
+                                    <p className="text-muted-foreground text-center py-8">{t("leadDetail.noTasks")}</p>
                                 )}
                             </div>
                         )}

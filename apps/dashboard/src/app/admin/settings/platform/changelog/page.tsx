@@ -5,8 +5,8 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import { HelpPanel } from "@/components/ui/help-panel";
-import { 
-    Sparkles, Plus, Trash2, Globe, Image as ImageIcon, Eye, 
+import {
+    Sparkles, Plus, Trash2, Globe, Image as ImageIcon, Eye,
     Save, FileText, CheckCircle2, ChevronRight, Edit2, List, Trash, X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -46,6 +46,8 @@ export default function PlatformChangelogPage() {
 
 function ChangelogManagerContent() {
     const tHelp = useTranslations("help");
+    const t = useTranslations("changelog");
+    const tc = useTranslations("common");
     // --- Tabs ---
     const [activeTab, setActiveTab] = useState<"compose" | "history">("compose");
 
@@ -126,10 +128,10 @@ function ChangelogManagerContent() {
             if (res.success && res.url) {
                 setFeatures(prev => prev.map((f, i) => i === idx ? { ...f, image: res.url } : f));
             } else {
-                alert("Error al subir la imagen: " + (res.error || "Desconocido"));
+                alert(t("imageUploadError") + ": " + (res.error || tc("unknown")));
             }
         } catch (err) {
-            alert("Error al subir la imagen.");
+            alert(t("imageUploadError"));
         }
         setLoading(false);
     };
@@ -146,11 +148,11 @@ function ChangelogManagerContent() {
 
     const handleSubmit = async () => {
         if (!version.trim()) {
-            alert("Por favor ingresa una versión (ej. v1.4.0)");
+            alert(t("validationVersion"));
             return;
         }
         if (!title.es.trim()) {
-            alert("Por favor ingresa un título en Español");
+            alert(t("validationTitle"));
             return;
         }
 
@@ -173,16 +175,16 @@ function ChangelogManagerContent() {
             }
 
             if (res.success) {
-                setSuccessMessage(editingId ? "¡Novedad actualizada con éxito!" : "¡Nueva novedad publicada con éxito!");
+                setSuccessMessage(editingId ? t("successUpdated") : t("successPublished"));
                 setTimeout(() => setSuccessMessage(null), 4000);
                 if (!editingId) resetForm();
                 loadHistory();
                 setActiveTab("history");
             } else {
-                alert("Error al guardar: " + (res.error || "Desconocido"));
+                alert(tc("errorSaving") + ": " + (res.error || tc("unknown")));
             }
         } catch (err) {
-            alert("Error de conexión al guardar.");
+            alert(tc("connectionError"));
         }
         setLoading(false);
     };
@@ -205,8 +207,8 @@ function ChangelogManagerContent() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("¿Estás seguro de que deseas eliminar permanentemente esta novedad? Se borrarán también sus imágenes asociadas.")) return;
-        
+        if (!confirm(t("deleteConfirm"))) return;
+
         setLoading(true);
         try {
             const res = await api.deleteSystemUpdate(id);
@@ -214,10 +216,10 @@ function ChangelogManagerContent() {
                 loadHistory();
                 if (editingId === id) resetForm();
             } else {
-                alert("Error al eliminar: " + (res.error || "Desconocido"));
+                alert(t("deleteError") + ": " + (res.error || tc("unknown")));
             }
         } catch {
-            alert("Error de conexión.");
+            alert(tc("connectionError"));
         }
         setLoading(false);
     };
@@ -232,10 +234,10 @@ function ChangelogManagerContent() {
                 <div>
                     <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
                         <Sparkles className="text-indigo-500 animate-pulse" />
-                        Compilador de Novedades (Changelog)
+                        {t("pageTitle")}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                        Crea, traduce y publica actualizaciones del sistema ("Qué hay de nuevo") visibles en el dashboard de todos los tenants.
+                        {t("pageSubtitle")}
                     </p>
                 </div>
                 
@@ -247,7 +249,7 @@ function ChangelogManagerContent() {
                                 onClick={resetForm}
                                 className="px-4 py-2 text-sm font-semibold rounded-xl text-neutral-600 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-750 transition-all"
                             >
-                                Cancelar Edición
+                                {t("cancelEdit")}
                             </button>
                         )}
                         <button
@@ -256,7 +258,7 @@ function ChangelogManagerContent() {
                             className="flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-sm font-semibold shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/20 transition-all"
                         >
                             <Save size={16} />
-                            {editingId ? "Actualizar Cambios" : "Publicar Cambios"}
+                            {editingId ? t("updateChanges") : t("publishChanges")}
                         </button>
                     </div>
                 )}
@@ -289,7 +291,7 @@ function ChangelogManagerContent() {
                     )}
                 >
                     <FileText size={16} />
-                    {editingId ? "Editar Novedad" : "Redactar Novedad"}
+                    {editingId ? t("tabEditEntry") : t("tabCompose")}
                 </button>
                 <button
                     onClick={() => setActiveTab("history")}
@@ -301,7 +303,7 @@ function ChangelogManagerContent() {
                     )}
                 >
                     <List size={16} />
-                    Historial de Novedades ({historyItems.length})
+                    {t("tabHistory", { count: historyItems.length })}
                 </button>
             </div>
 
@@ -315,17 +317,17 @@ function ChangelogManagerContent() {
                         {/* Meta: Version, Date, Active status */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-4 border-b border-neutral-100 dark:border-neutral-850">
                             <div>
-                                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-1.5">Versión</label>
+                                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-1.5">{t("labelVersion")}</label>
                                 <input
                                     type="text"
-                                    placeholder="ej. v1.4.0"
+                                    placeholder={t("placeholderVersion")}
                                     value={version}
                                     onChange={e => setVersion(e.target.value)}
                                     className={inputClasses}
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-1.5">Fecha Publicación</label>
+                                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-1.5">{t("labelPublishDate")}</label>
                                 <input
                                     type="date"
                                     value={date}
@@ -341,7 +343,7 @@ function ChangelogManagerContent() {
                                         onChange={e => setIsActive(e.target.checked)}
                                         className="h-4 w-4 text-indigo-600 border-neutral-300 rounded focus:ring-indigo-500 cursor-pointer"
                                     />
-                                    <span className="text-xs font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-400">Publicado</span>
+                                    <span className="text-xs font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-400">{t("labelPublished")}</span>
                                 </label>
                             </div>
                         </div>
@@ -349,7 +351,7 @@ function ChangelogManagerContent() {
                         {/* Language Selector Tabs for Title and Description */}
                         <div>
                             <div className="flex items-center justify-between mb-3 select-none">
-                                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Cabecera de Novedad (Multiidioma)</span>
+                                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">{t("sectionHeader")}</span>
                                 <div className="flex bg-neutral-100 dark:bg-neutral-800 p-0.5 rounded-lg border border-neutral-200/50 dark:border-neutral-700/50">
                                     {LANGUAGES.map(lang => (
                                         <button
@@ -376,11 +378,11 @@ function ChangelogManagerContent() {
                                     <div key={lang.code} className={cn("space-y-4", langTab !== lang.code && "hidden")}>
                                         <div>
                                             <label className="block text-xs font-bold text-neutral-500 dark:text-neutral-400 mb-1.5 flex items-center gap-1">
-                                                Título en {lang.label} <span className="text-red-500 font-bold">*</span>
+                                                {t("fieldTitleIn", { lang: lang.label })} <span className="text-red-500 font-bold">*</span>
                                             </label>
                                             <input
                                                 type="text"
-                                                placeholder={`ej. ¡Nuevas analíticas de IA y agentes! (${lang.code.toUpperCase()})`}
+                                                placeholder={t("placeholderTitle", { code: lang.code.toUpperCase() })}
                                                 value={title[lang.code] || ""}
                                                 onChange={e => setTitle(prev => ({ ...prev, [lang.code]: e.target.value }))}
                                                 className={inputClasses}
@@ -388,10 +390,10 @@ function ChangelogManagerContent() {
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-neutral-500 dark:text-neutral-400 mb-1.5">
-                                                Cuerpo / Introducción en {lang.label}
+                                                {t("fieldBodyIn", { lang: lang.label })}
                                             </label>
                                             <textarea
-                                                placeholder={`Ingresa un resumen conciso de los cambios en esta release... (${lang.code.toUpperCase()})`}
+                                                placeholder={t("placeholderBody", { code: lang.code.toUpperCase() })}
                                                 value={description[lang.code] || ""}
                                                 onChange={e => setDescription(prev => ({ ...prev, [lang.code]: e.target.value }))}
                                                 className={textareaClasses}
@@ -405,14 +407,14 @@ function ChangelogManagerContent() {
                         {/* Features Dynamic Section */}
                         <div className="space-y-4">
                             <div className="flex items-center justify-between border-t border-neutral-100 dark:border-neutral-850 pt-4 select-none">
-                                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Secciones de Características ({features.length})</span>
+                                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">{t("sectionFeatures", { count: features.length })}</span>
                                 <button
                                     type="button"
                                     onClick={addFeature}
                                     className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1.5 rounded-lg border border-indigo-200/40 dark:border-indigo-800/20 hover:bg-indigo-100/60 dark:hover:bg-indigo-500/20 transition-all"
                                 >
                                     <Plus size={14} />
-                                    Añadir Sección
+                                    {t("addSection")}
                                 </button>
                             </div>
 
@@ -420,7 +422,7 @@ function ChangelogManagerContent() {
                             <div className="space-y-4 max-h-[45vh] overflow-y-auto pr-1.5 custom-scrollbar">
                                 {features.length === 0 ? (
                                     <div className="text-center py-8 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 bg-neutral-50/30 text-neutral-400 dark:text-neutral-500 text-xs font-semibold leading-relaxed">
-                                        No has añadido ninguna sección de detalles todavía.<br />Haz clic en "Añadir Sección" para comenzar.
+                                        {t("emptyFeatures")}
                                     </div>
                                 ) : (
                                     features.map((feature, idx) => (
@@ -437,7 +439,7 @@ function ChangelogManagerContent() {
                                             {/* Feature header: Type selector */}
                                             <div className="flex gap-4 items-center">
                                                 <div>
-                                                    <label className="block text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-1.5">Categoría</label>
+                                                    <label className="block text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-1.5">{t("labelCategory")}</label>
                                                     <div className="flex bg-neutral-100 dark:bg-neutral-800 p-0.5 rounded-lg border border-neutral-200/50 dark:border-neutral-700/50 select-none">
                                                         {(['new', 'improved', 'fixed'] as const).map(type => (
                                                             <button
@@ -455,7 +457,7 @@ function ChangelogManagerContent() {
                                                                         : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
                                                                 )}
                                                             >
-                                                                {type === 'new' ? "Nuevo" : type === 'improved' ? "Mejora" : "Corregido"}
+                                                                {type === 'new' ? t("typeNew") : type === 'improved' ? t("typeImproved") : t("typeFixed")}
                                                             </button>
                                                         ))}
                                                     </div>
@@ -468,11 +470,11 @@ function ChangelogManagerContent() {
                                                     <div key={lang.code} className={cn("grid grid-cols-1 md:grid-cols-2 gap-3", langTab !== lang.code && "hidden")}>
                                                         <div>
                                                             <label className="block text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mb-1">
-                                                                Título ({lang.label})
+                                                                {t("featureTitleLabel", { lang: lang.label })}
                                                             </label>
                                                             <input
                                                                 type="text"
-                                                                placeholder={`ej. Rendimiento IA (${lang.code.toUpperCase()})`}
+                                                                placeholder={t("featureTitlePlaceholder", { code: lang.code.toUpperCase() })}
                                                                 value={feature.title[lang.code] || ""}
                                                                 onChange={e => updateFeatureText(idx, 'title', lang.code, e.target.value)}
                                                                 className={inputClasses}
@@ -480,11 +482,11 @@ function ChangelogManagerContent() {
                                                         </div>
                                                         <div>
                                                             <label className="block text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mb-1">
-                                                                Detalle / Explicación ({lang.label})
+                                                                {t("featureDetailLabel", { lang: lang.label })}
                                                             </label>
                                                             <input
                                                                 type="text"
-                                                                placeholder={`ej. Compara métricas en un panel interactivo. (${lang.code.toUpperCase()})`}
+                                                                placeholder={t("featureDetailPlaceholder", { code: lang.code.toUpperCase() })}
                                                                 value={feature.desc[lang.code] || ""}
                                                                 onChange={e => updateFeatureText(idx, 'desc', lang.code, e.target.value)}
                                                                 className={inputClasses}
@@ -509,7 +511,7 @@ function ChangelogManagerContent() {
                                                     className="flex items-center gap-1.5 text-xs font-bold text-neutral-600 bg-neutral-50 border border-neutral-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-750 px-3.5 py-2 rounded-lg transition-colors cursor-pointer select-none"
                                                 >
                                                     <ImageIcon size={14} />
-                                                    {feature.image ? "Reemplazar Imagen" : "Subir Captura/Imagen"}
+                                                    {feature.image ? t("replaceImage") : t("uploadImage")}
                                                 </button>
 
                                                 {feature.image && (
@@ -538,7 +540,7 @@ function ChangelogManagerContent() {
                         <div className="flex items-center justify-between px-2 select-none">
                             <span className="text-xs font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 flex items-center gap-1">
                                 <Eye size={14} />
-                                Vista Previa del Modal en Tiempo Real
+                                {t("previewLabel")}
                             </span>
                             
                             <div className="flex bg-neutral-100 dark:bg-neutral-800 p-0.5 rounded-lg border border-neutral-200/50 dark:border-neutral-700/50">
@@ -580,10 +582,10 @@ function ChangelogManagerContent() {
                                     </div>
                                     <h2 className="text-base font-extrabold tracking-tight flex items-center gap-1.5">
                                         <Sparkles size={16} className="text-amber-300 animate-pulse shrink-0" />
-                                        <span className="truncate">{title[previewLang] || title["es"] || `[Título en ${previewLang.toUpperCase()}]`}</span>
+                                        <span className="truncate">{title[previewLang] || title["es"] || t("previewNoTitle", { code: previewLang.toUpperCase() })}</span>
                                     </h2>
                                     <p className="text-[11px] text-white/90 mt-1.5 font-medium leading-relaxed max-h-16 overflow-y-auto custom-scrollbar">
-                                        {description[previewLang] || description["es"] || `[Introducción en ${previewLang.toUpperCase()}]`}
+                                        {description[previewLang] || description["es"] || t("previewNoDesc", { code: previewLang.toUpperCase() })}
                                     </p>
                                 </div>
 
@@ -591,7 +593,7 @@ function ChangelogManagerContent() {
                                 <div className="max-h-56 overflow-y-auto p-5 space-y-4 bg-neutral-50/50 dark:bg-neutral-900/30 custom-scrollbar">
                                     {features.length === 0 ? (
                                         <div className="text-center py-6 text-[10px] font-semibold text-neutral-400 leading-normal">
-                                            Las características dinámicas que añadas<br />aparecerán listadas aquí con sus imágenes.
+                                            {t("previewEmptyFeatures")}
                                         </div>
                                     ) : (
                                         features.map((feature, idx) => {
@@ -658,14 +660,14 @@ function ChangelogManagerContent() {
                     {loadingHistory ? (
                         <div className="flex flex-col items-center justify-center py-16">
                             <div className="w-8 h-8 border-2 border-neutral-200 dark:border-neutral-700 border-t-indigo-500 rounded-full animate-spin mb-3" />
-                            <p className="text-sm text-neutral-500">Cargando historial de novedades...</p>
+                            <p className="text-sm text-neutral-500">{t("loadingHistory")}</p>
                         </div>
                     ) : historyItems.length === 0 ? (
                         <div className="text-center py-16 text-neutral-400">
                             <FileText className="mx-auto mb-3 text-neutral-300 dark:text-neutral-700" size={36} />
-                            <h3 className="font-semibold text-neutral-700 dark:text-neutral-300 text-sm">Sin Novedades Registradas</h3>
+                            <h3 className="font-semibold text-neutral-700 dark:text-neutral-300 text-sm">{t("emptyHistoryTitle")}</h3>
                             <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1 max-w-sm mx-auto">
-                                No has publicado ningún anuncio todavía. Redacta y publica tu primer changelog desde la pestaña anterior.
+                                {t("emptyHistoryDesc")}
                             </p>
                         </div>
                     ) : (
@@ -673,12 +675,12 @@ function ChangelogManagerContent() {
                             <table className="w-full border-collapse text-left text-sm text-neutral-500 dark:text-neutral-400">
                                 <thead className="border-b border-neutral-200 dark:border-neutral-850 text-xs font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
                                     <tr>
-                                        <th className="py-3 px-4">Versión</th>
-                                        <th className="py-3 px-4">Título (ES)</th>
-                                        <th className="py-3 px-4">Fecha</th>
-                                        <th className="py-3 px-4">Características</th>
-                                        <th className="py-3 px-4 text-center">Estado</th>
-                                        <th className="py-3 px-4 text-right">Acciones</th>
+                                        <th className="py-3 px-4">{t("colVersion")}</th>
+                                        <th className="py-3 px-4">{t("colTitle")}</th>
+                                        <th className="py-3 px-4">{t("colDate")}</th>
+                                        <th className="py-3 px-4">{t("colFeatures")}</th>
+                                        <th className="py-3 px-4 text-center">{t("colStatus")}</th>
+                                        <th className="py-3 px-4 text-right">{t("colActions")}</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-neutral-100 dark:divide-neutral-850 font-medium text-neutral-800 dark:text-neutral-200">
@@ -709,7 +711,7 @@ function ChangelogManagerContent() {
                                                             ? "bg-emerald-50 text-emerald-700 border border-emerald-250 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-850" 
                                                             : "bg-neutral-100 text-neutral-500 border border-neutral-200 dark:bg-neutral-800/50 dark:text-neutral-400 dark:border-neutral-850"
                                                     )}>
-                                                        {item.isActive ? "Activo" : "Borrador"}
+                                                        {item.isActive ? tc("active") : t("statusDraft")}
                                                     </span>
                                                 </td>
                                                 <td className="py-3.5 px-4 text-right">
@@ -717,14 +719,14 @@ function ChangelogManagerContent() {
                                                         <button
                                                             onClick={() => handleEdit(item)}
                                                             className="text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                                                            title="Editar"
+                                                            title={tc("edit")}
                                                         >
                                                             <Edit2 size={14} />
                                                         </button>
                                                         <button
                                                             onClick={() => handleDelete(item.id)}
                                                             className="text-neutral-400 hover:text-red-500 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-850 transition-colors"
-                                                            title="Eliminar"
+                                                            title={tc("delete")}
                                                         >
                                                             <Trash size={14} />
                                                         </button>

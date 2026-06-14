@@ -394,7 +394,7 @@ function ChannelsTab({ volume }: { volume: any[] }) {
                             </div>
                             <div>
                                 <p className="text-sm font-semibold text-foreground">{t(ch.channel as any)}</p>
-                                <p className="text-[12px] text-muted-foreground">{ch.pct}% del total</p>
+                                <p className="text-[12px] text-muted-foreground">{t("pctOfTotal", { pct: ch.pct })}</p>
                             </div>
                         </div>
                         <p className="text-2xl font-semibold text-foreground">{ch.count}</p>
@@ -775,12 +775,13 @@ function CohortsTab({ data }: { data: any }) {
 
 // ── Tab: CRM Analytics (link to dedicated page) ──
 function CrmRedirectTab() {
+    const t = useTranslations("analyticsV2");
     return (
         <div className="flex flex-col items-center justify-center py-16 gap-4">
             <Activity size={40} className="text-indigo-500 opacity-40" />
-            <p className="text-sm text-muted-foreground">Embudo de ventas, velocidad del pipeline, win/loss y leaderboard</p>
+            <p className="text-sm text-muted-foreground">{t("crmRedirectDesc")}</p>
             <Link href="/admin/crm-analytics" className="px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors">
-                Abrir CRM Analytics →
+                {t("crmRedirectCta")}
             </Link>
         </div>
     );
@@ -788,12 +789,13 @@ function CrmRedirectTab() {
 
 // ── Tab: Agent Performance (link to dedicated page) ──
 function AgentsRedirectTab() {
+    const t = useTranslations("analyticsV2");
     return (
         <div className="flex flex-col items-center justify-center py-16 gap-4">
             <Users size={40} className="text-emerald-500 opacity-40" />
-            <p className="text-sm text-muted-foreground">Rendimiento por agente, tiempos de respuesta, CSAT y leaderboard</p>
+            <p className="text-sm text-muted-foreground">{t("agentsRedirectDesc")}</p>
             <Link href="/admin/agent-analytics" className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 transition-colors">
-                Abrir Reportes de Agentes →
+                {t("agentsRedirectCta")}
             </Link>
         </div>
     );

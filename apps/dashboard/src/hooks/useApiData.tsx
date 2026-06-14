@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 
 /**
@@ -62,13 +63,14 @@ export function useApiData<T>(
  * Returns a badge indicating if data is live or demo.
  */
 export function DataSourceBadge({ isLive }: { isLive: boolean }) {
+    const t = useTranslations("common");
     return (
         <span style={{
             fontSize: 10, padding: "2px 8px", borderRadius: 6, fontWeight: 600,
             background: isLive ? "rgba(46, 204, 113, 0.15)" : "rgba(241, 196, 15, 0.15)",
             color: isLive ? "#2ecc71" : "#f1c40f",
         }}>
-            {isLive ? "● LIVE" : "● DEMO"}
+            {isLive ? `● ${t("badgeLive")}` : `● ${t("badgeDemo")}`}
         </span>
     );
 }

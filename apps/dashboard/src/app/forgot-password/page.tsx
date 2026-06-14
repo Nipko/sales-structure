@@ -540,7 +540,7 @@ export default function ForgotPasswordPage() {
 
                 {/* Footer */}
                 <p className="text-center text-xs text-neutral-400 mt-6">
-                    Powered by{" "}
+                    {t('poweredBy')}{" "}
                     <a
                         href="https://parallext.com"
                         target="_blank"

@@ -74,7 +74,11 @@
       "en": "English",
       "pt": "Português",
       "fr": "Français"
-    }
+    },
+    "status": "Estado",
+    "private": "Privado",
+    "badgeLive": "LIVE",
+    "badgeDemo": "DEMO"
   },
   "nav": {
     "platformConsole": "Consola de plataforma",
@@ -157,7 +161,10 @@
       "attribution": "Atribución",
       "managed": "Gestionados",
       "fiscalAdmin": "Facturación electrónica"
-    }
+    },
+    "expandSidebar": "Expandir",
+    "collapseSidebar": "Contraer",
+    "novedades": "Novedades"
   },
   "topbar": {
     "menu": "Menú",
@@ -227,7 +234,9 @@
       "transfer": "Transferencia a agente humano",
       "escalation": "Escalación",
       "noResponse": "Sin respuesta",
-      "assignedToYou": "Asignado a ti"
+      "assignedToYou": "Asignado a ti",
+      "leadWaiting": "LEAD ESPERANDO: {name}",
+      "escalationTitle": "ESCALACIÓN: {name}"
     },
     "categories": {
       "all": "Todas",
@@ -356,7 +365,9 @@
     "ssoLogin": "Iniciar sesión con SSO",
     "ssoRedirecting": "Redirigiendo a tu proveedor de identidad...",
     "ssoForcedMessage": "Tu organización requiere inicio de sesión con SSO",
-    "ssoAvailable": "SSO disponible para tu dominio"
+    "ssoAvailable": "SSO disponible para tu dominio",
+    "poweredBy": "Con la tecnología de",
+    "generatePassword": "Generar contraseña"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -554,6 +565,9 @@
       }
     },
     "subtitle": "Gestiona tus contactos, leads y segmentos",
+    "scoreFilterLabel": "Score",
+    "tagFilterLabel": "Tag",
+    "resourceLabel": "contactos",
     "leadDetail": {
       "loading": "Cargando perfil...",
       "contact": "Contacto",
@@ -584,7 +598,23 @@
       "factorProfile": "Perfil",
       "aiInsights": "AI Insights",
       "insightError": "No se pudo generar el insight",
-      "insightUnavailable": "No hay insight disponible"
+      "insightUnavailable": "No hay insight disponible",
+      "tabTimeline": "Historial",
+      "tabNotes": "Notas ({count})",
+      "tabTasks": "Tareas ({count})",
+      "noActivity": "Aún no hay actividad registrada.",
+      "addNotePlaceholder": "Agregar una nota interna...",
+      "saveNote": "Guardar nota",
+      "noNotes": "Sin notas aún.",
+      "newTaskPlaceholder": "Nueva tarea... (ej: Llamar al cliente)",
+      "taskTypes": {
+        "follow_up": "Seguimiento",
+        "call": "Llamada",
+        "email": "Email",
+        "meeting": "Reunión",
+        "handoff": "Handoff"
+      },
+      "noTasks": "Sin tareas creadas."
     },
     "importTemplate": {
       "fileName": "plantilla_contactos",
@@ -1198,6 +1228,22 @@
     "saved": "Guardado!",
     "saving": "Guardando...",
     "backToSettings": "Configuración",
+    "aiConfigPage": {
+      "defaultModel": "Modelo por defecto",
+      "defaultModelDesc": "Se usa cuando el router no puede decidir qué modelo utilizar",
+      "temperature": "Temperatura",
+      "temperatureDesc": "Creatividad de las respuestas (0.0 = preciso, 1.0 = creativo)",
+      "maxTokens": "Tokens máximos",
+      "maxTokensDesc": "Límite de tokens por respuesta del modelo"
+    },
+    "providerConfigured": "Configurada",
+    "providerDesc": {
+      "openai": "GPT-4o y GPT-4o-mini",
+      "anthropic": "Claude Sonnet y Opus",
+      "googleAi": "Gemini Pro y Flash",
+      "xai": "Modelos Grok",
+      "deepseek": "DeepSeek Chat"
+    },
     "connectionError": "Error de conexión",
     "saveError": "Error al guardar",
     "pages": {
@@ -1388,7 +1434,12 @@
       "personaJuridica": "Persona jurídica",
       "personaNatural": "Persona natural",
       "documentType": "Tipo de documento",
-      "docType": { "6": "NIT", "3": "Cédula de ciudadanía", "5": "Cédula de extranjería", "7": "Pasaporte" },
+      "docType": {
+        "3": "Cédula de ciudadanía",
+        "5": "Cédula de extranjería",
+        "6": "NIT",
+        "7": "Pasaporte"
+      },
       "documentId": "Número de documento",
       "dv": "DV",
       "businessName": "Razón social",
@@ -1415,7 +1466,12 @@
       "xml": "XML",
       "typeInvoice": "Factura",
       "typeCreditNote": "Nota crédito",
-      "status": { "pending": "Pendiente", "issued": "Emitida", "failed": "Fallida", "cancelled": "Anulada" },
+      "status": {
+        "pending": "Pendiente",
+        "issued": "Emitida",
+        "failed": "Fallida",
+        "cancelled": "Anulada"
+      },
       "adminTitle": "Configuración fiscal (plataforma)",
       "adminSubtitle": "Solo super admin. Define qué entidad factura y el tratamiento de IVA, sin redeploy.",
       "mode": "Modo fiscal",
@@ -1541,7 +1597,13 @@
       "cardTitle": "Ejemplo de tarjeta",
       "cardDescription": "Esta es una descripción de ejemplo para mostrar cómo lucen las tarjetas con el tema actual.",
       "textInput": "Campo de texto",
-      "textInputPlaceholder": "Escribe algo aquí..."
+      "textInputPlaceholder": "Escribe algo aquí...",
+      "btnPrimary": "Principal",
+      "btnSecondary": "Secundario",
+      "btnDestructive": "Destructivo",
+      "badgesLabel": "Etiquetas",
+      "badgeActive": "Activo",
+      "badgeInactive": "Inactivo"
     },
     "navProfile": "Perfil",
     "navSecurity": "Seguridad",
@@ -1729,7 +1791,8 @@
       "loadingImages": "Cargando imágenes...",
       "allTagsPill": "Todas",
       "newTagPlaceholder": "Nueva etiqueta...",
-      "confirmDelete": "¿Eliminar esta imagen?"
+      "confirmDelete": "¿Eliminar esta imagen?",
+      "couldNotLoad": "No se pudo cargar la imagen"
     }
   },
   "appointments": {
@@ -1939,7 +2002,8 @@
       "active": "Activo",
       "inactive": "Inactivo",
       "all": "Todos",
-      "confirmDelete": "¿Eliminar este servicio?"
+      "confirmDelete": "¿Eliminar este servicio?",
+      "addStaffMember": "+ Agregar miembro del equipo..."
     },
     "calendarCount": "{count}/{max} calendarios",
     "calendarLimitReached": "Límite de calendarios alcanzado. Mejora tu plan.",
@@ -2140,7 +2204,10 @@
     "loadPresetBtn": "Cargar preajustes de la industria",
     "loadPresetConfirm": "¿Deseas cargar las etapas y condiciones de transición estándar para tu vertical? Esto reemplazará las etapas actuales de tu embudo.",
     "loadPresetSuccess": "Plantilla de la industria cargada con éxito. Recuerda guardar los cambios.",
-    "presetsLoaded": "Preajustes Cargados"
+    "presetsLoaded": "Preajustes Cargados",
+    "resourceLabel": "etapas de pipeline",
+    "rulesHeader": "Reglas",
+    "noPresetsFound": "No se encontraron preajustes para este vertical."
   },
   "scoringConfig": {
     "title": "Lead Scoring",
@@ -2448,7 +2515,12 @@
       "taskDescriptionPlaceholder": "Hacer seguimiento al lead",
       "hoursLimit": "Límite de horas",
       "selectStage": "Seleccionar etapa"
-    }
+    },
+    "resourceLabel": "reglas de automatización",
+    "limitTitle": "Límite de reglas alcanzado",
+    "limitDesc": "Tu plan actual permite hasta {limit} reglas de automatización. Actualiza tu plan para crear más.",
+    "reviewDesc": "Confirma los detalles antes de guardar",
+    "ruleNameLabel": "Nombre de la regla *"
   },
   "broadcast": {
     "title": "Campañas",
@@ -3278,7 +3350,8 @@
       "planRequired": "Las analíticas de KB requieren plan Starter o superior.",
       "dailyVolume": "Volumen diario",
       "queries": "Consultas",
-      "hits": "Aciertos"
+      "hits": "Aciertos",
+      "loadError": "Error al cargar analytics"
     },
     "bulk": {
       "button": "Importación masiva",
@@ -3392,7 +3465,8 @@
         "score": "Satisfacción",
         "feedbackCount": "Feedbacks"
       }
-    }
+    },
+    "resourceLabel": "documentos de conocimiento"
   },
   "identity": {
     "title": "Identidad",
@@ -3976,7 +4050,13 @@
       "other": "Otro"
     },
     "referralTitle": "¿Cómo nos conociste?",
-    "otherSpecify": "Especifica"
+    "otherSpecify": "Especifica",
+    "registrationError": "Error al completar el registro",
+    "connectionError": "Error de conexión",
+    "step2TitleVertical": "¿Quién contactará a {agentName}?",
+    "step3TitleVertical": "¿Cómo ayudará {agentName} a tus {noun}?",
+    "step3SubtitleVertical": "Selecciona las funciones que {agentName} realizará automáticamente",
+    "defaultCustomerNoun": "clientes"
   },
   "analytics": {
     "title": "Analytics",
@@ -4181,7 +4261,22 @@
     "cohortRetention": "Retención por Cohorte",
     "cohortMonth": "Mes Cohorte",
     "cohortSize": "Tamaño",
-    "month": "Mes"
+    "month": "Mes",
+    "pctOfTotal": "{pct}% del total",
+    "crmRedirectDesc": "Embudo de ventas, velocidad del pipeline, win/loss y leaderboard",
+    "crmRedirectCta": "Abrir CRM Analytics →",
+    "agentsRedirectDesc": "Rendimiento por agente, tiempos de respuesta, CSAT y leaderboard",
+    "agentsRedirectCta": "Abrir Reportes de Agentes →",
+    "vsAnterior": "vs anterior",
+    "dayLabels": {
+      "sun": "Dom",
+      "mon": "Lun",
+      "tue": "Mar",
+      "wed": "Mié",
+      "thu": "Jue",
+      "fri": "Vie",
+      "sat": "Sáb"
+    }
   },
   "onboardingMetrics": {
     "title": "Activación de onboarding",
@@ -5271,7 +5366,73 @@
     "deleteProperty": "Eliminar propiedad",
     "deletePropertyConfirm": "Esta propiedad se desactivará y dejará de mostrarse. Las reservas existentes se mantendrán.",
     "deleting": "Eliminando...",
-    "perNight": "noche"
+    "perNight": "noche",
+    "dowSun": "Do",
+    "dowMon": "Lu",
+    "dowTue": "Ma",
+    "dowWed": "Mi",
+    "dowThu": "Ju",
+    "dowFri": "Vi",
+    "dowSat": "Sa",
+    "icalSyncTitle": "Sincronización (iCal)",
+    "addCalendar": "+ Agregar Calendario",
+    "eventsCount": "{count} eventos",
+    "confirmDeleteCalendar": "¿Estás seguro de que quieres eliminar este calendario?",
+    "checkOut": "Check-out",
+    "roomAbbr": "hab",
+    "bathroom": "baño",
+    "amenityCategory": {
+      "essentials": "Esenciales",
+      "bathroom": "Baños",
+      "outdoor": "Exterior",
+      "safety": "Seguridad",
+      "entertainment": "Entretenimiento",
+      "special": "Especiales"
+    },
+    "amenity": {
+      "wifi": "WiFi",
+      "ac": "Aire acondicionado",
+      "heating": "Calefacción",
+      "kitchen": "Cocina",
+      "washer": "Lavadora",
+      "dryer": "Secadora",
+      "tv": "TV",
+      "iron": "Plancha",
+      "hot_tub": "Jacuzzi",
+      "bathtub": "Bañera",
+      "hair_dryer": "Secador de cabello",
+      "toiletries": "Artículos de aseo",
+      "pool": "Piscina",
+      "parking": "Estacionamiento",
+      "garden": "Jardín",
+      "bbq": "BBQ/Parrilla",
+      "balcony": "Balcón",
+      "terrace": "Terraza",
+      "sea_view": "Vista al mar",
+      "mountain_view": "Vista a la montaña",
+      "security_cameras": "Cámaras de seguridad",
+      "smoke_detector": "Detector de humo",
+      "first_aid": "Botiquín",
+      "safe": "Caja fuerte",
+      "gym": "Gimnasio",
+      "game_room": "Sala de juegos",
+      "netflix": "Netflix/Streaming",
+      "books": "Libros",
+      "pet_friendly": "Acepta mascotas",
+      "elevator": "Ascensor",
+      "wheelchair_accessible": "Accesible",
+      "workspace": "Espacio de trabajo"
+    },
+    "currencyOptions": {
+      "COP": "COP — Peso colombiano",
+      "USD": "USD — Dólar estadounidense",
+      "MXN": "MXN — Peso mexicano",
+      "ARS": "ARS — Peso argentino",
+      "BRL": "BRL — Real brasileño",
+      "CLP": "CLP — Peso chileno",
+      "PEN": "PEN — Sol peruano",
+      "EUR": "EUR — Euro"
+    }
   },
   "verticalEmptyStates": {
     "salud": {
@@ -8299,7 +8460,8 @@
       "deleted": "Trigger eliminado",
       "error": "Error al guardar"
     },
-    "planLimit": "Has alcanzado el límite de triggers de tu plan"
+    "planLimit": "Has alcanzado el límite de triggers de tu plan",
+    "noWidgetWarning": "Aún no hay widget configurado. Crea un widget primero."
   },
   "emailChannel": {
     "title": "Canal de Email",
@@ -8673,7 +8835,11 @@
   "fiscalAdmin": {
     "title": "Facturación electrónica (Plataforma)",
     "subtitle": "Configuración fiscal global, facturas de todos los clientes y conexión con Factus.",
-    "tabs": { "config": "Configuración", "invoices": "Facturas", "factus": "Factus" },
+    "tabs": {
+      "config": "Configuración",
+      "invoices": "Facturas",
+      "factus": "Factus"
+    },
     "mode": "Modo fiscal",
     "modeCoLocal": "Colombia (SAS — factura DIAN)",
     "modeUsRemote": "Total (LLC EEUU — sin factura DIAN)",
@@ -8705,7 +8871,12 @@
     "colAmount": "Monto",
     "colDate": "Fecha",
     "colActions": "Acciones",
-    "status": { "pending": "Pendiente", "issued": "Emitida", "failed": "Fallida", "cancelled": "Anulada" },
+    "status": {
+      "pending": "Pendiente",
+      "issued": "Emitida",
+      "failed": "Fallida",
+      "cancelled": "Anulada"
+    },
     "pdfOfficial": "PDF oficial (Factus)",
     "pdfBranded": "PDF con marca",
     "xml": "XML",
@@ -8895,5 +9066,58 @@
       "slugHint": "Se genera automáticamente si se deja vacío.",
       "createButton": "Crear página"
     }
+  },
+  "changelog": {
+    "pageTitle": "Compilador de Novedades (Changelog)",
+    "pageSubtitle": "Crea, traduce y publica actualizaciones del sistema (\"Qué hay de nuevo\") visibles en el dashboard de todos los tenants.",
+    "cancelEdit": "Cancelar Edición",
+    "updateChanges": "Actualizar Cambios",
+    "publishChanges": "Publicar Cambios",
+    "tabCompose": "Redactar Novedad",
+    "tabEditEntry": "Editar Novedad",
+    "tabHistory": "Historial de Novedades ({count})",
+    "labelVersion": "Versión",
+    "placeholderVersion": "ej. v1.4.0",
+    "labelPublishDate": "Fecha Publicación",
+    "labelPublished": "Publicado",
+    "sectionHeader": "Cabecera de Novedad (Multiidioma)",
+    "fieldTitleIn": "Título en {lang}",
+    "placeholderTitle": "ej. ¡Nuevas analíticas de IA y agentes! ({code})",
+    "fieldBodyIn": "Cuerpo / Introducción en {lang}",
+    "placeholderBody": "Ingresa un resumen conciso de los cambios en esta release... ({code})",
+    "sectionFeatures": "Secciones de Características ({count})",
+    "addSection": "Añadir Sección",
+    "emptyFeatures": "No has añadido ninguna sección de detalles todavía. Haz clic en \"Añadir Sección\" para comenzar.",
+    "labelCategory": "Categoría",
+    "typeNew": "Nuevo",
+    "typeImproved": "Mejora",
+    "typeFixed": "Corregido",
+    "featureTitleLabel": "Título ({lang})",
+    "featureTitlePlaceholder": "ej. Rendimiento IA ({code})",
+    "featureDetailLabel": "Detalle / Explicación ({lang})",
+    "featureDetailPlaceholder": "ej. Compara métricas en un panel interactivo. ({code})",
+    "replaceImage": "Reemplazar Imagen",
+    "uploadImage": "Subir Captura/Imagen",
+    "previewLabel": "Vista Previa del Modal en Tiempo Real",
+    "previewEmptyFeatures": "Las características dinámicas que añadas aparecerán listadas aquí con sus imágenes.",
+    "previewNoTitle": "[Título en {code}]",
+    "previewNoDesc": "[Introducción en {code}]",
+    "loadingHistory": "Cargando historial de novedades...",
+    "emptyHistoryTitle": "Sin Novedades Registradas",
+    "emptyHistoryDesc": "No has publicado ningún anuncio todavía. Redacta y publica tu primer changelog desde la pestaña anterior.",
+    "colVersion": "Versión",
+    "colTitle": "Título (ES)",
+    "colDate": "Fecha",
+    "colFeatures": "Características",
+    "colStatus": "Estado",
+    "colActions": "Acciones",
+    "statusDraft": "Borrador",
+    "imageUploadError": "Error al subir la imagen",
+    "validationVersion": "Por favor ingresa una versión (ej. v1.4.0)",
+    "validationTitle": "Por favor ingresa un título en Español",
+    "successPublished": "¡Nueva novedad publicada con éxito!",
+    "successUpdated": "¡Novedad actualizada con éxito!",
+    "deleteConfirm": "¿Estás seguro de que deseas eliminar permanentemente esta novedad? Se borrarán también sus imágenes asociadas.",
+    "deleteError": "Error al eliminar"
   }
 }

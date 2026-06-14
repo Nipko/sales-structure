@@ -117,7 +117,7 @@ export default function SetupPasswordPage() {
                         {/* Confirm Password */}
                         <div className="mb-4">
                             <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                Confirm password
+                                {t('confirmPassword')}
                             </label>
                             <div className="relative">
                                 <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
@@ -186,7 +186,7 @@ export default function SetupPasswordPage() {
                 </div>
 
                 {/* Footer */}
-                <p className="text-center text-xs text-neutral-400 mt-6">Powered by <a href="https://parallext.com" target="_blank" className="text-indigo-500 hover:text-indigo-400">Parallext.com</a></p>
+                <p className="text-center text-xs text-neutral-400 mt-6">{t('poweredBy')} <a href="https://parallext.com" target="_blank" className="text-indigo-500 hover:text-indigo-400">Parallext.com</a></p>
             </div>
         </div>
     );

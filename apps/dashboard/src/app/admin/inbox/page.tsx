@@ -207,30 +207,31 @@ const statusDotColor: Record<string, string> = {
 
 function WaitTimer({ triggeredAt }: { triggeredAt: string }) {
     const [elapsed, setElapsed] = useState("");
+    const t = useTranslations("inbox");
 
     useEffect(() => {
         if (!triggeredAt) return;
         const update = () => {
             const diff = Date.now() - new Date(triggeredAt).getTime();
             if (diff < 0) {
-                setElapsed("Esperando...");
+                setElapsed(t("waitWaiting"));
                 return;
             }
             const mins = Math.floor(diff / (1000 * 60));
             if (mins < 1) {
-                setElapsed("Hace < 1 min");
+                setElapsed(t("waitLessThan1Min"));
             } else if (mins < 60) {
-                setElapsed(`Hace ${mins} min`);
+                setElapsed(t("waitMins", { mins }));
             } else {
                 const hours = Math.floor(mins / 60);
                 const remainingMins = mins % 60;
-                setElapsed(`Hace ${hours}h ${remainingMins}m`);
+                setElapsed(t("waitHoursAndMins", { h: hours, m: remainingMins }));
             }
         };
         update();
         const interval = setInterval(update, 15000); // update every 15 seconds
         return () => clearInterval(interval);
-    }, [triggeredAt]);
+    }, [triggeredAt, t]);
 
     if (!triggeredAt) return null;
 
@@ -1292,7 +1293,7 @@ export default function InboxPage() {
                             { key: "all" as const, label: t("filterAll") },
                             { key: "mine" as const, label: t("filterMine") },
                             { key: "unassigned" as const, label: t("filterUnassigned") },
-                            { key: "handoff" as const, label: "Handoff" },
+                            { key: "handoff" as const, label: t("statusHandoff") },
                             { key: "resolved" as const, label: t("filterResolved") },
                         ]).map(f => (
                             <button
@@ -1792,7 +1793,7 @@ export default function InboxPage() {
                                 <button
                                     onClick={() => setShowContactPanel(!showContactPanel)}
                                     className="hidden lg:flex p-1.5 rounded-lg border border-border bg-transparent text-muted-foreground cursor-pointer items-center hover:bg-muted transition-colors"
-                                    title={showContactPanel ? "Ocultar panel" : "Mostrar panel"}
+                                    title={showContactPanel ? t("hidePanel") : t("showPanel")}
                                 >
                                     {showContactPanel ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
                                 </button>
@@ -2164,7 +2165,7 @@ export default function InboxPage() {
                                 {showCannedMenu && filteredCanned.length === 0 && cannedFilter && (
                                     <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-xl shadow-lg px-4 py-3 z-50">
                                         <div className="text-xs text-muted-foreground text-center">
-                                            No se encontraron respuestas para &quot;/{cannedFilter}&quot;
+                                            {t("cannedNotFound", { filter: cannedFilter })}
                                         </div>
                                     </div>
                                 )}
@@ -2333,7 +2334,7 @@ export default function InboxPage() {
                         {selectedConv.tags?.length > 0 && (
                             <div className="mb-4">
                                 <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                    <Tag size={12} /> Tags
+                                    <Tag size={12} /> {t("tagsLabel")}
                                 </div>
                                 <div className="flex flex-wrap gap-1.5">
                                     {selectedConv.tags.map((tag: string) => (
@@ -2350,7 +2351,7 @@ export default function InboxPage() {
                             <div className="p-3.5 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/15 mb-4">
                                 <div className="text-[11px] text-muted-foreground mb-1">{t("estimatedValue")}</div>
                                 <div className="text-xl font-semibold text-emerald-500">
-                                    ${selectedConv.estimatedValue.toLocaleString()} COP
+                                    {t("estimatedValueAmount", { amount: selectedConv.estimatedValue.toLocaleString() })}
                                 </div>
                             </div>
                         )}
@@ -2362,7 +2363,7 @@ export default function InboxPage() {
                                 <div className="flex items-center gap-2 text-[13px]">
                                     <Clock size={13} className="text-muted-foreground flex-shrink-0" />
                                     <span className="text-muted-foreground text-xs">{t('lastActivity')}:</span>
-                                    <span className="text-xs ml-auto">{safeDate(selectedConv.lastMessageAt) || 'N/A'}</span>
+                                    <span className="text-xs ml-auto">{safeDate(selectedConv.lastMessageAt) || t("notAvailable")}</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-[13px]">
                                     <MessageSquare size={13} className="text-muted-foreground flex-shrink-0" />
@@ -2647,7 +2648,7 @@ export default function InboxPage() {
                                         href={`/admin/contacts/${selectedConv.contactId}`}
                                         className="flex-1 py-2 px-3 rounded-xl border border-border bg-transparent text-foreground text-xs font-medium cursor-pointer flex gap-1.5 items-center justify-center hover:bg-muted transition-colors no-underline"
                                     >
-                                        <ExternalLink size={12} /> {`Ver ${vt.customerNoun}`}
+                                        <ExternalLink size={12} /> {t("viewContact", { noun: vt.customerNoun })}
                                     </a>
                                 )}
                                 {selectedConv.contactPhone && (

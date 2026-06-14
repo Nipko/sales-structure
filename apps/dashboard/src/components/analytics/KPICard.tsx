@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { TrendingUp, TrendingDown, Minus, type LucideIcon } from "lucide-react";
 
 interface KPICardProps {
@@ -15,6 +16,7 @@ interface KPICardProps {
 export default function KPICard({
     label, value, unit, changePercent, icon: Icon, iconColor = "text-indigo-400", invertTrend,
 }: KPICardProps) {
+    const t = useTranslations("analyticsV2");
     const isPositive = invertTrend ? changePercent < 0 : changePercent > 0;
     const isNeutral = changePercent === 0;
     const trendColor = isNeutral ? "text-muted-foreground" : isPositive ? "text-emerald-500" : "text-red-400";
@@ -34,7 +36,7 @@ export default function KPICard({
             <div className={`flex items-center gap-1 mt-2 text-[12px] ${trendColor}`}>
                 <TrendIcon size={14} />
                 <span>{Math.abs(changePercent)}%</span>
-                <span className="text-muted-foreground ml-1">vs anterior</span>
+                <span className="text-muted-foreground ml-1">{t("vsAnterior")}</span>
             </div>
         </div>
     );

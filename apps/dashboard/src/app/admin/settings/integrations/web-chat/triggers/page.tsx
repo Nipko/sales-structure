@@ -268,7 +268,7 @@ export default function WidgetTriggersPage() {
             {/* No widget warning */}
             {!widgetConfigId && (
                 <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-6 text-center">
-                    <p className="text-sm text-amber-700 dark:text-amber-400">No widget configured yet. Create a widget first.</p>
+                    <p className="text-sm text-amber-700 dark:text-amber-400">{t("noWidgetWarning")}</p>
                 </div>
             )}
 

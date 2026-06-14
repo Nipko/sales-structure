@@ -74,7 +74,11 @@
       "en": "English",
       "pt": "Português",
       "fr": "Français"
-    }
+    },
+    "status": "Status",
+    "private": "Private",
+    "badgeLive": "LIVE",
+    "badgeDemo": "DEMO"
   },
   "nav": {
     "platformConsole": "Platform console",
@@ -157,7 +161,10 @@
       "attribution": "Attribution",
       "managed": "Managed",
       "fiscalAdmin": "Electronic invoicing"
-    }
+    },
+    "expandSidebar": "Expand",
+    "collapseSidebar": "Collapse",
+    "novedades": "What's new"
   },
   "topbar": {
     "menu": "Menu",
@@ -227,7 +234,9 @@
       "transfer": "Transfer to human agent",
       "escalation": "Escalation",
       "noResponse": "No response",
-      "assignedToYou": "Assigned to you"
+      "assignedToYou": "Assigned to you",
+      "leadWaiting": "LEAD WAITING: {name}",
+      "escalationTitle": "ESCALATION: {name}"
     },
     "categories": {
       "all": "All",
@@ -356,7 +365,9 @@
     "ssoLogin": "Sign in with SSO",
     "ssoRedirecting": "Redirecting to your identity provider...",
     "ssoForcedMessage": "Your organization requires SSO login",
-    "ssoAvailable": "SSO available for your domain"
+    "ssoAvailable": "SSO available for your domain",
+    "poweredBy": "Powered by",
+    "generatePassword": "Generate password"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -554,6 +565,9 @@
       }
     },
     "subtitle": "Manage your contacts, leads and segments",
+    "scoreFilterLabel": "Score",
+    "tagFilterLabel": "Tag",
+    "resourceLabel": "contacts",
     "leadDetail": {
       "loading": "Loading profile...",
       "contact": "Contact",
@@ -584,7 +598,23 @@
       "factorProfile": "Profile",
       "aiInsights": "AI Insights",
       "insightError": "Could not generate insight",
-      "insightUnavailable": "No insight available"
+      "insightUnavailable": "No insight available",
+      "tabTimeline": "Timeline",
+      "tabNotes": "Notes ({count})",
+      "tabTasks": "Tasks ({count})",
+      "noActivity": "No activity recorded yet.",
+      "addNotePlaceholder": "Add an internal note...",
+      "saveNote": "Save note",
+      "noNotes": "No notes yet.",
+      "newTaskPlaceholder": "New task... (e.g.: Call client)",
+      "taskTypes": {
+        "follow_up": "Follow-up",
+        "call": "Call",
+        "email": "Email",
+        "meeting": "Meeting",
+        "handoff": "Handoff"
+      },
+      "noTasks": "No tasks created."
     },
     "importTemplate": {
       "fileName": "contacts_template",
@@ -799,7 +829,16 @@
       "loading": "Generating AI suggestion...",
       "refresh": "Regenerate"
     },
-    "save": "Save"
+    "save": "Save",
+    "waitWaiting": "Waiting...",
+    "waitLessThan1Min": "< 1 min ago",
+    "waitMins": "{mins} min ago",
+    "waitHoursAndMins": "{h}h {m}m ago",
+    "cannedNotFound": "No responses found for \"/{filter}\"",
+    "tagsLabel": "Tags",
+    "notAvailable": "N/A",
+    "viewContact": "View {noun}",
+    "estimatedValueAmount": "${amount} COP"
   },
   "slackIntegration": {
     "title": "Slack",
@@ -1190,6 +1229,22 @@
     "saving": "Saving...",
     "backToSettings": "Settings",
     "connectionError": "Connection error",
+    "aiConfigPage": {
+      "defaultModel": "Default model",
+      "defaultModelDesc": "Used when the router cannot decide which model to use",
+      "temperature": "Temperature",
+      "temperatureDesc": "Response creativity (0.0 = precise, 1.0 = creative)",
+      "maxTokens": "Max Tokens",
+      "maxTokensDesc": "Token limit per model response"
+    },
+    "providerConfigured": "Configured",
+    "providerDesc": {
+      "openai": "GPT-4o and GPT-4o-mini",
+      "anthropic": "Claude Sonnet and Opus",
+      "googleAi": "Gemini Pro and Flash",
+      "xai": "Grok models",
+      "deepseek": "DeepSeek Chat"
+    },
     "saveError": "Error saving",
     "pages": {
       "profile": "Profile",
@@ -1379,7 +1434,12 @@
       "personaJuridica": "Legal entity",
       "personaNatural": "Individual",
       "documentType": "Document type",
-      "docType": { "6": "NIT", "3": "Citizenship ID", "5": "Foreigner ID", "7": "Passport" },
+      "docType": {
+        "3": "Citizenship ID",
+        "5": "Foreigner ID",
+        "6": "NIT",
+        "7": "Passport"
+      },
       "documentId": "Document number",
       "dv": "VD",
       "businessName": "Legal name",
@@ -1406,7 +1466,12 @@
       "xml": "XML",
       "typeInvoice": "Invoice",
       "typeCreditNote": "Credit note",
-      "status": { "pending": "Pending", "issued": "Issued", "failed": "Failed", "cancelled": "Cancelled" },
+      "status": {
+        "pending": "Pending",
+        "issued": "Issued",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
       "adminTitle": "Fiscal configuration (platform)",
       "adminSubtitle": "Super admin only. Sets which entity invoices and the VAT treatment, no redeploy.",
       "mode": "Fiscal mode",
@@ -1532,7 +1597,13 @@
       "cardTitle": "Example card",
       "cardDescription": "This is an example description to show how cards look with the current theme.",
       "textInput": "Text Input",
-      "textInputPlaceholder": "Type something here..."
+      "textInputPlaceholder": "Type something here...",
+      "btnPrimary": "Primary",
+      "btnSecondary": "Secondary",
+      "btnDestructive": "Destructive",
+      "badgesLabel": "Badges",
+      "badgeActive": "Active",
+      "badgeInactive": "Inactive"
     },
     "navProfile": "Profile",
     "navSecurity": "Security",
@@ -1720,7 +1791,8 @@
       "loadingImages": "Loading images...",
       "allTagsPill": "All",
       "newTagPlaceholder": "New tag...",
-      "confirmDelete": "Delete this image?"
+      "confirmDelete": "Delete this image?",
+      "couldNotLoad": "Could not load image"
     }
   },
   "appointments": {
@@ -1930,7 +2002,8 @@
       "active": "Active",
       "inactive": "Inactive",
       "all": "All",
-      "confirmDelete": "Delete this service?"
+      "confirmDelete": "Delete this service?",
+      "addStaffMember": "+ Add staff member..."
     },
     "calendarCount": "{count}/{max} calendars",
     "calendarLimitReached": "Calendar limit reached. Upgrade your plan.",
@@ -2131,7 +2204,10 @@
     "loadPresetBtn": "Load Industry Presets",
     "loadPresetConfirm": "Do you want to load the standard stages and transition rules for your vertical? This will replace your current stages.",
     "loadPresetSuccess": "Industry template loaded successfully. Remember to save changes.",
-    "presetsLoaded": "Presets Loaded"
+    "presetsLoaded": "Presets Loaded",
+    "resourceLabel": "pipeline stages",
+    "rulesHeader": "Rules",
+    "noPresetsFound": "No presets found for this vertical."
   },
   "scoringConfig": {
     "title": "Lead Scoring",
@@ -2439,7 +2515,12 @@
       "taskDescriptionPlaceholder": "Follow up with lead",
       "hoursLimit": "Hours limit",
       "selectStage": "Select stage"
-    }
+    },
+    "resourceLabel": "automation rules",
+    "limitTitle": "Rule limit reached",
+    "limitDesc": "Your current plan allows up to {limit} automation rules. Upgrade your plan to create more.",
+    "reviewDesc": "Confirm the details before saving",
+    "ruleNameLabel": "Rule name *"
   },
   "broadcast": {
     "title": "Campaigns",
@@ -3269,7 +3350,8 @@
       "planRequired": "KB analytics require Starter plan or higher.",
       "dailyVolume": "Daily volume",
       "queries": "Queries",
-      "hits": "Hits"
+      "hits": "Hits",
+      "loadError": "Error loading analytics"
     },
     "bulk": {
       "button": "Bulk import",
@@ -3383,7 +3465,8 @@
         "score": "Satisfaction",
         "feedbackCount": "Feedbacks"
       }
-    }
+    },
+    "resourceLabel": "knowledge documents"
   },
   "identity": {
     "title": "Identity",
@@ -3967,7 +4050,13 @@
       "other": "Other"
     },
     "referralTitle": "How did you find us?",
-    "otherSpecify": "Please specify"
+    "otherSpecify": "Please specify",
+    "registrationError": "Error completing registration",
+    "connectionError": "Connection error",
+    "step2TitleVertical": "Who will contact {agentName}?",
+    "step3TitleVertical": "How will {agentName} help your {noun}?",
+    "step3SubtitleVertical": "Select the tasks that {agentName} will handle automatically",
+    "defaultCustomerNoun": "customers"
   },
   "analytics": {
     "title": "Analytics",
@@ -4172,7 +4261,22 @@
     "cohortRetention": "Cohort Retention",
     "cohortMonth": "Cohort Month",
     "cohortSize": "Size",
-    "month": "Month"
+    "month": "Month",
+    "pctOfTotal": "{pct}% of total",
+    "crmRedirectDesc": "Sales funnel, pipeline velocity, win/loss and leaderboard",
+    "crmRedirectCta": "Open CRM Analytics →",
+    "agentsRedirectDesc": "Agent performance, response times, CSAT and leaderboard",
+    "agentsRedirectCta": "Open Agent Reports →",
+    "vsAnterior": "vs previous",
+    "dayLabels": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    }
   },
   "onboardingMetrics": {
     "title": "Onboarding activation",
@@ -5262,7 +5366,73 @@
     "deleteProperty": "Delete property",
     "deletePropertyConfirm": "This property will be deactivated and hidden. Existing bookings will be preserved.",
     "deleting": "Deleting...",
-    "perNight": "night"
+    "perNight": "night",
+    "dowSun": "Su",
+    "dowMon": "Mo",
+    "dowTue": "Tu",
+    "dowWed": "We",
+    "dowThu": "Th",
+    "dowFri": "Fr",
+    "dowSat": "Sa",
+    "icalSyncTitle": "Sync (iCal)",
+    "addCalendar": "+ Add Calendar",
+    "eventsCount": "{count} events",
+    "confirmDeleteCalendar": "Are you sure you want to delete this calendar?",
+    "checkOut": "Check-out",
+    "roomAbbr": "rm",
+    "bathroom": "bath",
+    "amenityCategory": {
+      "essentials": "Essentials",
+      "bathroom": "Bathroom",
+      "outdoor": "Outdoor",
+      "safety": "Safety",
+      "entertainment": "Entertainment",
+      "special": "Special"
+    },
+    "amenity": {
+      "wifi": "WiFi",
+      "ac": "Air conditioning",
+      "heating": "Heating",
+      "kitchen": "Kitchen",
+      "washer": "Washer",
+      "dryer": "Dryer",
+      "tv": "TV",
+      "iron": "Iron",
+      "hot_tub": "Hot tub",
+      "bathtub": "Bathtub",
+      "hair_dryer": "Hair dryer",
+      "toiletries": "Toiletries",
+      "pool": "Pool",
+      "parking": "Parking",
+      "garden": "Garden",
+      "bbq": "BBQ/Grill",
+      "balcony": "Balcony",
+      "terrace": "Terrace",
+      "sea_view": "Sea view",
+      "mountain_view": "Mountain view",
+      "security_cameras": "Security cameras",
+      "smoke_detector": "Smoke detector",
+      "first_aid": "First aid kit",
+      "safe": "Safe",
+      "gym": "Gym",
+      "game_room": "Game room",
+      "netflix": "Netflix/Streaming",
+      "books": "Books",
+      "pet_friendly": "Pet friendly",
+      "elevator": "Elevator",
+      "wheelchair_accessible": "Wheelchair accessible",
+      "workspace": "Workspace"
+    },
+    "currencyOptions": {
+      "COP": "COP — Colombian Peso",
+      "USD": "USD — US Dollar",
+      "MXN": "MXN — Mexican Peso",
+      "ARS": "ARS — Argentine Peso",
+      "BRL": "BRL — Brazilian Real",
+      "CLP": "CLP — Chilean Peso",
+      "PEN": "PEN — Peruvian Sol",
+      "EUR": "EUR — Euro"
+    }
   },
   "verticalEmptyStates": {
     "salud": {
@@ -8290,7 +8460,8 @@
       "deleted": "Trigger deleted",
       "error": "Error saving"
     },
-    "planLimit": "You have reached the trigger limit for your plan"
+    "planLimit": "You have reached the trigger limit for your plan",
+    "noWidgetWarning": "No widget configured yet. Create a widget first."
   },
   "emailChannel": {
     "title": "Email Channel",
@@ -8664,7 +8835,11 @@
   "fiscalAdmin": {
     "title": "Electronic invoicing (Platform)",
     "subtitle": "Global fiscal configuration, all customers' invoices, and Factus connection.",
-    "tabs": { "config": "Configuration", "invoices": "Invoices", "factus": "Factus" },
+    "tabs": {
+      "config": "Configuration",
+      "invoices": "Invoices",
+      "factus": "Factus"
+    },
     "mode": "Fiscal mode",
     "modeCoLocal": "Colombia (SAS — DIAN invoice)",
     "modeUsRemote": "Total (US LLC — no DIAN invoice)",
@@ -8696,7 +8871,12 @@
     "colAmount": "Amount",
     "colDate": "Date",
     "colActions": "Actions",
-    "status": { "pending": "Pending", "issued": "Issued", "failed": "Failed", "cancelled": "Cancelled" },
+    "status": {
+      "pending": "Pending",
+      "issued": "Issued",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
     "pdfOfficial": "Official PDF (Factus)",
     "pdfBranded": "Branded PDF",
     "xml": "XML",
@@ -8886,5 +9066,58 @@
       "slugHint": "Auto-generated if left empty.",
       "createButton": "Create Page"
     }
+  },
+  "changelog": {
+    "pageTitle": "Changelog Compiler",
+    "pageSubtitle": "Create, translate and publish system updates (\"What's new\") visible on every tenant's dashboard.",
+    "cancelEdit": "Cancel Edit",
+    "updateChanges": "Update Changes",
+    "publishChanges": "Publish Changes",
+    "tabCompose": "New Entry",
+    "tabEditEntry": "Edit Entry",
+    "tabHistory": "Entry History ({count})",
+    "labelVersion": "Version",
+    "placeholderVersion": "e.g. v1.4.0",
+    "labelPublishDate": "Publish Date",
+    "labelPublished": "Published",
+    "sectionHeader": "Entry Header (Multilingual)",
+    "fieldTitleIn": "Title in {lang}",
+    "placeholderTitle": "e.g. New AI analytics and agents! ({code})",
+    "fieldBodyIn": "Body / Introduction in {lang}",
+    "placeholderBody": "Enter a concise summary of the changes in this release... ({code})",
+    "sectionFeatures": "Feature Sections ({count})",
+    "addSection": "Add Section",
+    "emptyFeatures": "No detail sections added yet. Click \"Add Section\" to get started.",
+    "labelCategory": "Category",
+    "typeNew": "New",
+    "typeImproved": "Improved",
+    "typeFixed": "Fixed",
+    "featureTitleLabel": "Title ({lang})",
+    "featureTitlePlaceholder": "e.g. AI Performance ({code})",
+    "featureDetailLabel": "Detail / Explanation ({lang})",
+    "featureDetailPlaceholder": "e.g. Compare metrics in an interactive panel. ({code})",
+    "replaceImage": "Replace Image",
+    "uploadImage": "Upload Screenshot/Image",
+    "previewLabel": "Live Modal Preview",
+    "previewEmptyFeatures": "Dynamic features you add will appear listed here with their images.",
+    "previewNoTitle": "[Title in {code}]",
+    "previewNoDesc": "[Introduction in {code}]",
+    "loadingHistory": "Loading entry history...",
+    "emptyHistoryTitle": "No Entries Yet",
+    "emptyHistoryDesc": "You haven't published any announcement yet. Draft and publish your first changelog from the previous tab.",
+    "colVersion": "Version",
+    "colTitle": "Title (ES)",
+    "colDate": "Date",
+    "colFeatures": "Features",
+    "colStatus": "Status",
+    "colActions": "Actions",
+    "statusDraft": "Draft",
+    "imageUploadError": "Error uploading image",
+    "validationVersion": "Please enter a version (e.g. v1.4.0)",
+    "validationTitle": "Please enter a title in Spanish",
+    "successPublished": "New entry published successfully!",
+    "successUpdated": "Entry updated successfully!",
+    "deleteConfirm": "Are you sure you want to permanently delete this entry? Associated images will also be deleted.",
+    "deleteError": "Error deleting entry"
   }
 }

@@ -450,7 +450,7 @@ export default function MediaBankPage() {
             </button>
             <img src={mediaUrl(previewFile.url)} alt={previewFile.label || previewFile.originalName}
               className="max-w-[85vw] max-h-[75vh] object-contain block"
-              onError={e => { (e.target as HTMLImageElement).alt = "Could not load image"; }} />
+              onError={e => { (e.target as HTMLImageElement).alt = t("mediaPage.couldNotLoad"); }} />
             <div className="p-4 border-t border-border">
               <div className="flex items-center justify-between gap-4 mb-2">
                 <div className="min-w-0">

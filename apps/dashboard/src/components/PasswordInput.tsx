@@ -49,6 +49,7 @@ export default function PasswordInput({
     value, onChange, placeholder, showValidation = true, showGenerator = true, className,
 }: PasswordInputProps) {
     const t = useTranslations("auth");
+    const tc = useTranslations("common");
     const [show, setShow] = useState(false);
     const [copied, setCopied] = useState(false);
 
@@ -85,7 +86,7 @@ export default function PasswordInput({
                         <button
                             type="button"
                             onClick={handleGenerate}
-                            title={copied ? "Copied!" : "Generate password"}
+                            title={copied ? tc("copied") : t("generatePassword")}
                             className="p-1.5 rounded-lg bg-transparent text-muted-foreground/50 hover:text-indigo-500 hover:bg-indigo-500/10 transition-colors"
                         >
                             {copied ? <Copy size={16} className="text-emerald-500" /> : <RefreshCw size={16} />}

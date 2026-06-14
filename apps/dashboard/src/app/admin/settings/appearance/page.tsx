@@ -223,13 +223,13 @@ export default function AppearancePage() {
             </p>
             <div className="flex flex-wrap gap-3">
               <button className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors">
-                Primary
+                {t("btnPrimary")}
               </button>
               <button className="px-4 py-2 rounded-lg border border-neutral-300 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors">
-                Secondary
+                {t("btnSecondary")}
               </button>
               <button className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors">
-                Destructive
+                {t("btnDestructive")}
               </button>
             </div>
           </div>
@@ -252,14 +252,14 @@ export default function AppearancePage() {
           {/* Badges */}
           <div>
             <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3 uppercase tracking-wider">
-              Badges
+              {t("badgesLabel")}
             </p>
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300">
-                Active
+                {t("badgeActive")}
               </span>
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
-                Inactive
+                {t("badgeInactive")}
               </span>
             </div>
           </div>

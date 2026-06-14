@@ -521,7 +521,7 @@ export default function OnboardingPage() {
         try {
             const result = await api.completeOnboarding(data);
             if (!result.success) {
-                setError(result.error || "Error completing registration");
+                setError(result.error || t('registrationError'));
                 setIsSubmitting(false);
                 return;
             }
@@ -539,7 +539,7 @@ export default function OnboardingPage() {
             // router.push would keep the old user state without tenantId
             window.location.href = "/admin";
         } catch {
-            setError("Connection error");
+            setError(t('connectionError'));
         }
         setIsSubmitting(false);
     };
@@ -823,7 +823,7 @@ export default function OnboardingPage() {
                         <div>
                             <h2 className="text-xl font-semibold text-foreground mb-1">
                                 {VERTICAL_AGENT_NAMES[industry]
-                                    ? `¿Quién contactará a ${VERTICAL_AGENT_NAMES[industry]}?`
+                                    ? t('step2TitleVertical', { agentName: VERTICAL_AGENT_NAMES[industry] })
                                     : t('step2')}
                             </h2>
                             <p className="text-muted-foreground text-sm mb-6">
@@ -869,12 +869,12 @@ export default function OnboardingPage() {
                         <div>
                             <h2 className="text-xl font-semibold text-foreground mb-1">
                                 {VERTICAL_AGENT_NAMES[industry]
-                                    ? `¿Cómo ayudará ${VERTICAL_AGENT_NAMES[industry]} a tus ${VERTICAL_CUSTOMER_NOUN[industry] ?? 'clientes'}?`
+                                    ? t('step3TitleVertical', { agentName: VERTICAL_AGENT_NAMES[industry], noun: VERTICAL_CUSTOMER_NOUN[industry] ?? t('defaultCustomerNoun') })
                                     : t('goalsTitle')}
                             </h2>
                             <p className="text-muted-foreground text-sm mb-6">
                                 {VERTICAL_AGENT_NAMES[industry]
-                                    ? `Selecciona las funciones que ${VERTICAL_AGENT_NAMES[industry]} realizará automáticamente`
+                                    ? t('step3SubtitleVertical', { agentName: VERTICAL_AGENT_NAMES[industry] })
                                     : t('step3')}
                             </p>
 

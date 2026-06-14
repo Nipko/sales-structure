@@ -76,7 +76,7 @@ export default function PipelineSettingsPage() {
                 setDirty(true);
                 alert(t("loadPresetSuccess"));
             } else {
-                alert("No presets found for this vertical.");
+                alert(t("noPresetsFound"));
             }
         } catch (err) {
             console.error('Failed to load stages presets:', err);
@@ -204,7 +204,7 @@ export default function PipelineSettingsPage() {
                 mediaKey="settingsPipeline"
             />
 
-            <UpgradeBanner current={stages.length} limit={getLimit("pipelineStages")} resourceLabel="etapas de pipeline" />
+            <UpgradeBanner current={stages.length} limit={getLimit("pipelineStages")} resourceLabel={t("resourceLabel")} />
 
             {/* Industry Preset Trigger Bar */}
             <div className="flex justify-end mb-4">
@@ -226,7 +226,7 @@ export default function PipelineSettingsPage() {
                     <div>{t("color")}</div>
                     <div>{t("probability")}</div>
                     <div>{t("terminal")}</div>
-                    <div>Reglas</div>
+                    <div>{t("rulesHeader")}</div>
                     <div></div>
                 </div>
  

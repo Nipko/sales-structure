@@ -201,7 +201,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
         
         // Browser push for unassigned handoff (critical — works even with tab minimized/in background)
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
-          new Notification(`🔴 LEAD ESPERANDO: ${contactName}`, {
+          new Notification(`🔴 ${t("notifications.leadWaiting", { name: contactName })}`, {
             body: `Se requiere atención humana. Motivo: ${payload.reason || 'Traspaso'}`,
             icon: '/favicon.ico',
             tag: `handoff-${payload.conversationId}`,
@@ -215,7 +215,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
       addNotif("handoff", `⚠️ ${payload.contactName || t("notifications.unknownClient")} — ${payload.waitMinutes}min`, `${t("notifications.escalation")}: ${payload.reason || t("notifications.noResponse")}`);
       // Browser push for escalation (critical — works even with tab minimized)
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        new Notification(`⚠️ ESCALACIÓN: ${payload.contactName}`, {
+        new Notification(`⚠️ ${t("notifications.escalationTitle", { name: payload.contactName })}`, {
           body: `Esperando ${payload.waitMinutes} min sin respuesta. ${payload.reason || ''}`,
           icon: '/favicon.ico',
           tag: `escalation-${payload.conversationId}`,

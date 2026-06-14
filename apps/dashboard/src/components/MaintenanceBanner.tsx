@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Info, AlertTriangle, AlertOctagon, X } from "lucide-react";
@@ -31,6 +32,7 @@ const POLL_INTERVAL_MS = 60_000;
 const DISMISS_KEY = "maintenance:dismissed-setAt";
 
 export default function MaintenanceBanner() {
+    const tc = useTranslations("common");
     const [config, setConfig] = useState<MaintenanceConfig | null>(null);
     const [dismissedSetAt, setDismissedSetAt] = useState<string | null>(null);
 
@@ -102,7 +104,7 @@ export default function MaintenanceBanner() {
                         ? "hover:bg-neutral-900/20"
                         : "hover:bg-white/20",
                 )}
-                aria-label="Dismiss"
+                aria-label={tc("dismiss")}
             >
                 <X size={14} />
             </button>

@@ -56,6 +56,7 @@ export default function ServicesTab({
     services, loading, activeTenantId, onCreateService, onEditService, onDeleteService, onToggleActive,
 }: ServicesTabProps) {
     const t = useTranslations("appointments");
+    const tc = useTranslations("common");
     const locale = useLocale();
     const numLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : undefined;
     const [searchQuery, setSearchQuery] = useState("");
@@ -273,7 +274,7 @@ export default function ServicesTab({
                                 {expandedStaff === svc.id && (
                                     <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 space-y-2">
                                         {loadingStaff ? (
-                                            <div className="text-xs text-muted-foreground text-center py-2">Loading...</div>
+                                            <div className="text-xs text-muted-foreground text-center py-2">{tc("loading")}</div>
                                         ) : (
                                             <>
                                                 {(staffMap[svc.id] || []).map(staff => (
@@ -312,7 +313,7 @@ export default function ServicesTab({
                                                             className="w-full px-2 py-1.5 rounded-lg bg-white dark:bg-neutral-900 border border-dashed border-neutral-300 dark:border-neutral-700 text-xs text-muted-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
                                                         >
                                                             <option value="">
-                                                                + Add staff member...
+                                                                {t("servicesSection.addStaffMember")}
                                                             </option>
                                                             {available.map(u => (
                                                                 <option key={u.id} value={u.id}>

@@ -96,10 +96,10 @@ function AIConfigContent() {
                 {/* Default model */}
                 <div>
                     <label className="mb-1.5 flex items-center gap-2 text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        <SlidersHorizontal size={14} className="text-neutral-400" /> Modelo por defecto
+                        <SlidersHorizontal size={14} className="text-neutral-400" /> {t("aiConfigPage.defaultModel")}
                     </label>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
-                        Used when the router cannot decide which model to use
+                        {t("aiConfigPage.defaultModelDesc")}
                     </p>
                     <select
                         value={values["llm.default_model"]}
@@ -113,10 +113,10 @@ function AIConfigContent() {
                 {/* Temperature */}
                 <div>
                     <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        Temperatura
+                        {t("aiConfigPage.temperature")}
                     </label>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
-                        Creatividad de respuestas (0.0 = preciso, 1.0 = creativo)
+                        {t("aiConfigPage.temperatureDesc")}
                     </p>
                     <input
                         type="number"
@@ -132,10 +132,10 @@ function AIConfigContent() {
                 {/* Max tokens */}
                 <div>
                     <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
-                        Max Tokens
+                        {t("aiConfigPage.maxTokens")}
                     </label>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
-                        Token limit per model response
+                        {t("aiConfigPage.maxTokensDesc")}
                     </p>
                     <input
                         type="number"

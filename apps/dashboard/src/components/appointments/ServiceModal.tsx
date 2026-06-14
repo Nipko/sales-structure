@@ -306,19 +306,19 @@ export default function ServiceModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
-                {t('category') || 'Category'}
+                {t('category')}
               </label>
               <input
                 type="text"
                 value={form.category || ''}
                 onChange={(e) => onChange({ ...form, category: e.target.value })}
-                placeholder={t('categoryPlaceholder') || 'e.g. Consulting'}
+                placeholder={t('categoryPlaceholder')}
                 className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
-                {t('maxConcurrent') || 'Max concurrent'}
+                {t('maxConcurrent')}
               </label>
               <input
                 type="number" min={1} max={50}
@@ -332,7 +332,7 @@ export default function ServiceModal({
           {/* Required Fields */}
           <div>
             <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
-              {t('requiredFieldsLabel') || 'Required fields (public booking)'}
+              {t('requiredFieldsLabel')}
             </label>
             <div className="flex gap-3">
               {['email', 'notes'].map(field => (

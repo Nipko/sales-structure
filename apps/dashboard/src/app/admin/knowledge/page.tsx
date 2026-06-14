@@ -180,7 +180,7 @@ export default function KnowledgePage() {
                     setAnalytics(result);
                 }
             })
-            .catch(() => setAnalyticsError("Error loading analytics"))
+            .catch(() => setAnalyticsError(t("analytics.loadError")))
             .finally(() => setAnalyticsLoading(false));
     }, [tab, activeTenantId, t]);
 
@@ -601,7 +601,7 @@ export default function KnowledgePage() {
                     <UpgradeBanner
                         current={totalDocs}
                         limit={getLimit("knowledgeArticles")}
-                        resourceLabel="documentos de conocimiento"
+                        resourceLabel={t("resourceLabel")}
                     />
 
                     {/* Category filter */}
@@ -708,7 +708,7 @@ export default function KnowledgePage() {
                                     onClick={() => handleTogglePublic(doc)}
                                     className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-semibold text-xs cursor-pointer",
                                         doc.is_public ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500" : "border-border bg-transparent text-muted-foreground")}
-                                    title={doc.is_public ? "Public" : "Private"}
+                                    title={doc.is_public ? tc("public") : tc("private")}
                                 >
                                     <GlobeLock size={13} />
                                 </button>

@@ -44,15 +44,15 @@ interface Property {
   is_active: boolean;
 }
 
-const CURRENCY_OPTIONS = [
-  { code: "COP", symbol: "$", label: "COP — Peso colombiano" },
-  { code: "USD", symbol: "$", label: "USD — Dólar estadounidense" },
-  { code: "MXN", symbol: "$", label: "MXN — Peso mexicano" },
-  { code: "ARS", symbol: "$", label: "ARS — Peso argentino" },
-  { code: "BRL", symbol: "R$", label: "BRL — Real brasileño" },
-  { code: "CLP", symbol: "$", label: "CLP — Peso chileno" },
-  { code: "PEN", symbol: "S/", label: "PEN — Sol peruano" },
-  { code: "EUR", symbol: "€", label: "EUR — Euro" },
+const CURRENCY_CODES = [
+  { code: "COP", symbol: "$" },
+  { code: "USD", symbol: "$" },
+  { code: "MXN", symbol: "$" },
+  { code: "ARS", symbol: "$" },
+  { code: "BRL", symbol: "R$" },
+  { code: "CLP", symbol: "$" },
+  { code: "PEN", symbol: "S/" },
+  { code: "EUR", symbol: "€" },
 ];
 
 const COUNTRY_CURRENCY: Record<string, string> = {
@@ -67,49 +67,49 @@ const COUNTRY_CURRENCY: Record<string, string> = {
 };
 
 export const AMENITY_CATEGORIES = [
-  { key: "essentials", label: "Esenciales", items: [
-    { key: "wifi", label: "WiFi" },
-    { key: "ac", label: "Aire acondicionado" },
-    { key: "heating", label: "Calefacción" },
-    { key: "kitchen", label: "Cocina" },
-    { key: "washer", label: "Lavadora" },
-    { key: "dryer", label: "Secadora" },
-    { key: "tv", label: "TV" },
-    { key: "iron", label: "Plancha" },
+  { key: "essentials", items: [
+    { key: "wifi" },
+    { key: "ac" },
+    { key: "heating" },
+    { key: "kitchen" },
+    { key: "washer" },
+    { key: "dryer" },
+    { key: "tv" },
+    { key: "iron" },
   ]},
-  { key: "bathroom", label: "Baños", items: [
-    { key: "hot_tub", label: "Jacuzzi" },
-    { key: "bathtub", label: "Bañera" },
-    { key: "hair_dryer", label: "Secador de cabello" },
-    { key: "toiletries", label: "Artículos de aseo" },
+  { key: "bathroom", items: [
+    { key: "hot_tub" },
+    { key: "bathtub" },
+    { key: "hair_dryer" },
+    { key: "toiletries" },
   ]},
-  { key: "outdoor", label: "Exterior", items: [
-    { key: "pool", label: "Piscina" },
-    { key: "parking", label: "Estacionamiento" },
-    { key: "garden", label: "Jardín" },
-    { key: "bbq", label: "BBQ/Parrilla" },
-    { key: "balcony", label: "Balcón" },
-    { key: "terrace", label: "Terraza" },
-    { key: "sea_view", label: "Vista al mar" },
-    { key: "mountain_view", label: "Vista a la montaña" },
+  { key: "outdoor", items: [
+    { key: "pool" },
+    { key: "parking" },
+    { key: "garden" },
+    { key: "bbq" },
+    { key: "balcony" },
+    { key: "terrace" },
+    { key: "sea_view" },
+    { key: "mountain_view" },
   ]},
-  { key: "safety", label: "Seguridad", items: [
-    { key: "security_cameras", label: "Cámaras de seguridad" },
-    { key: "smoke_detector", label: "Detector de humo" },
-    { key: "first_aid", label: "Botiquín" },
-    { key: "safe", label: "Caja fuerte" },
+  { key: "safety", items: [
+    { key: "security_cameras" },
+    { key: "smoke_detector" },
+    { key: "first_aid" },
+    { key: "safe" },
   ]},
-  { key: "entertainment", label: "Entretenimiento", items: [
-    { key: "gym", label: "Gimnasio" },
-    { key: "game_room", label: "Sala de juegos" },
-    { key: "netflix", label: "Netflix/Streaming" },
-    { key: "books", label: "Libros" },
+  { key: "entertainment", items: [
+    { key: "gym" },
+    { key: "game_room" },
+    { key: "netflix" },
+    { key: "books" },
   ]},
-  { key: "special", label: "Especiales", items: [
-    { key: "pet_friendly", label: "Acepta mascotas" },
-    { key: "elevator", label: "Ascensor" },
-    { key: "wheelchair_accessible", label: "Accesible" },
-    { key: "workspace", label: "Espacio de trabajo" },
+  { key: "special", items: [
+    { key: "pet_friendly" },
+    { key: "elevator" },
+    { key: "wheelchair_accessible" },
+    { key: "workspace" },
   ]},
 ];
 
@@ -306,11 +306,11 @@ export default function PropertiesPage() {
                   </span>
                   <span className="flex items-center gap-1">
                     <BedDouble size={12} />
-                    {p.bedrooms} {p.bedrooms === 1 ? "hab" : "hab"}
+                    {p.bedrooms} {t("roomAbbr")}
                   </span>
                   <span className="flex items-center gap-1">
                     <Bath size={12} />
-                    {p.bathrooms} {p.bathrooms === 1 ? "baño" : "baños"}
+                    {p.bathrooms} {p.bathrooms === 1 ? t("bathroom") : t("bathrooms")}
                   </span>
                   {(p.amenities?.length ?? 0) > 0 && (
                     <span className="ml-auto">
@@ -429,8 +429,8 @@ export default function PropertiesPage() {
                   onChange={(e) => setForm({ ...form, currency: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  {CURRENCY_OPTIONS.map(c => (
-                    <option key={c.code} value={c.code}>{c.label}</option>
+                  {CURRENCY_CODES.map(c => (
+                    <option key={c.code} value={c.code}>{t(`currencyOptions.${c.code}`)}</option>
                   ))}
                 </select>
               </div>
@@ -473,7 +473,7 @@ export default function PropertiesPage() {
                   {AMENITY_CATEGORIES.map(cat => (
                     <div key={cat.key}>
                       <p className="text-[11px] font-semibold text-neutral-400 dark:text-neutral-500 mb-1.5 uppercase tracking-wide">
-                        {cat.label}
+                        {t(`amenityCategory.${cat.key}`)}
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {cat.items.map(item => (
@@ -487,7 +487,7 @@ export default function PropertiesPage() {
                                 : "border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:border-indigo-300 dark:hover:border-indigo-700"
                             }`}
                           >
-                            {item.label}
+                            {t(`amenity.${item.key}`)}
                           </button>
                         ))}
                       </div>

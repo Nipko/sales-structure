@@ -90,19 +90,19 @@ interface Feed {
 
 const FEED_SOURCES = ["Airbnb", "Booking", "Vrbo", "Otro"];
 
-const CURRENCY_OPTIONS = [
-  { code: "COP", symbol: "$", label: "COP — Peso colombiano" },
-  { code: "USD", symbol: "$", label: "USD — Dólar estadounidense" },
-  { code: "MXN", symbol: "$", label: "MXN — Peso mexicano" },
-  { code: "ARS", symbol: "$", label: "ARS — Peso argentino" },
-  { code: "BRL", symbol: "R$", label: "BRL — Real brasileño" },
-  { code: "CLP", symbol: "$", label: "CLP — Peso chileno" },
-  { code: "PEN", symbol: "S/", label: "PEN — Sol peruano" },
-  { code: "EUR", symbol: "€", label: "EUR — Euro" },
+const CURRENCY_CODES = [
+  { code: "COP", symbol: "$" },
+  { code: "USD", symbol: "$" },
+  { code: "MXN", symbol: "$" },
+  { code: "ARS", symbol: "$" },
+  { code: "BRL", symbol: "R$" },
+  { code: "CLP", symbol: "$" },
+  { code: "PEN", symbol: "S/" },
+  { code: "EUR", symbol: "€" },
 ];
 
 function getCurrencySymbol(code: string): string {
-  return CURRENCY_OPTIONS.find(c => c.code === code)?.symbol || "$";
+  return CURRENCY_CODES.find(c => c.code === code)?.symbol || "$";
 }
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
@@ -357,8 +357,8 @@ function InfoTab({
           onChange={(e) => setForm({ ...form, currency: e.target.value })}
           className={inputCls}
         >
-          {CURRENCY_OPTIONS.map(c => (
-            <option key={c.code} value={c.code}>{c.label}</option>
+          {CURRENCY_CODES.map(c => (
+            <option key={c.code} value={c.code}>{t(`currencyOptions.${c.code}`)}</option>
           ))}
         </select>
       </div>
@@ -377,7 +377,7 @@ function InfoTab({
           {AMENITY_CATEGORIES.map(cat => (
             <div key={cat.key}>
               <p className="text-[11px] font-semibold text-neutral-400 dark:text-neutral-500 mb-1.5 uppercase tracking-wide">
-                {cat.label}
+                {t(`amenityCategory.${cat.key}`)}
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {cat.items.map(item => (
@@ -391,7 +391,7 @@ function InfoTab({
                         : "border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:border-indigo-300 dark:hover:border-indigo-700"
                     }`}
                   >
-                    {item.label}
+                    {t(`amenity.${item.key}`)}
                   </button>
                 ))}
               </div>
@@ -950,7 +950,7 @@ function CalendarTab({
     cells.push({ day: d, date: dateStr, status, source: entry?.source, blockId: entry?.blockId, summary: entry?.summary });
   }
 
-  const DOW_LABELS = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
+  const DOW_LABELS = [t("dowSun"), t("dowMon"), t("dowTue"), t("dowWed"), t("dowThu"), t("dowFri"), t("dowSat")];
 
   return (
     <div>
@@ -1218,10 +1218,10 @@ function BookingsTab({
         <thead>
           <tr className="border-b border-neutral-200 dark:border-neutral-800">
             <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("name")}</th>
-            <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">Check-in</th>
-            <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">Check-out</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("checkIn")}</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("checkOut")}</th>
             <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("feedSource")}</th>
-            <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">Status</th>
+            <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 dark:text-neutral-400">{tc("status")}</th>
           </tr>
         </thead>
         <tbody>
@@ -1322,7 +1322,7 @@ function FeedsTab({
   }
 
   async function handleDelete(feedId: string) {
-    if (!confirm("¿Estás seguro de que quieres eliminar este calendario?")) return;
+    if (!confirm(t("confirmDeleteCalendar"))) return;
     await api.deletePropertyFeed(tenantId, feedId);
     loadFeeds();
   }
@@ -1385,7 +1385,7 @@ function FeedsTab({
       {/* Feeds list */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Sincronización (iCal)</h3>
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("icalSyncTitle")}</h3>
           <button
             onClick={() => {
               setEditingFeedId(null);
@@ -1394,7 +1394,7 @@ function FeedsTab({
             }}
             className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
           >
-            + Agregar Calendario
+            {t("addCalendar")}
           </button>
         </div>
 
@@ -1501,7 +1501,7 @@ function FeedsTab({
                   </div>
                   <div className="flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-400">
                     <span>{t("lastSync")}: {formatDate(f.last_sync_at)}</span>
-                    <span>{f.events_imported || 0} eventos</span>
+                    <span>{t("eventsCount", { count: f.events_imported || 0 })}</span>
                   </div>
                   {f.last_sync_status === "error" && f.last_sync_error && (
                     <p className="mt-1.5 text-[11px] text-red-600 dark:text-red-400 break-words">
@@ -1513,14 +1513,14 @@ function FeedsTab({
                   <button
                     onClick={() => handleEdit(f)}
                     className="p-1.5 rounded-lg text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
-                    title="Editar"
+                    title={tc("edit")}
                   >
                     <Edit2 size={16} />
                   </button>
                   <button
                     onClick={() => handleDelete(f.id)}
                     className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                    title="Eliminar"
+                    title={tc("delete")}
                   >
                     <Trash2 size={16} />
                   </button>
@@ -1530,7 +1530,7 @@ function FeedsTab({
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 transition-colors ml-2"
                   >
                     <RefreshCw size={14} className={syncing === f.id ? "animate-spin" : ""} />
-                    Sincronizar
+                    {t("syncNow")}
                   </button>
                 </div>
               </div>
@@ -1588,7 +1588,7 @@ function CheckInTab({
     <div className="space-y-5 max-w-2xl">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Check-in</label>
+          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("checkIn")}</label>
           <input
             type="time"
             value={form.check_in_time}
@@ -1597,7 +1597,7 @@ function CheckInTab({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Check-out</label>
+          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("checkOut")}</label>
           <input
             type="time"
             value={form.check_out_time}

@@ -6,10 +6,11 @@ interface HeatmapProps {
     data: Array<{ day: number; hour: number; count: number }>;
 }
 
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
 export default function Heatmap({ data }: HeatmapProps) {
     const t = useTranslations("analyticsV2");
+    const DAY_LABELS = DAY_KEYS.map(k => t(`dayLabels.${k}`));
 
     // Build 7x24 grid
     const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));

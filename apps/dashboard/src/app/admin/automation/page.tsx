@@ -428,7 +428,7 @@ export default function AutomationPage() {
                 <UpgradeBanner
                     current={rules.length}
                     limit={getLimit("automationRules")}
-                    resourceLabel="reglas de automatización"
+                    resourceLabel={t("resourceLabel")}
                 />
 
                 {/* Rules list */}
@@ -589,8 +589,8 @@ export default function AutomationPage() {
                 <UpgradeModal
                     open={upgradeModalOpen}
                     onClose={() => setUpgradeModalOpen(false)}
-                    title="Límite de reglas alcanzado"
-                    description={`Tu plan actual permite hasta ${getLimit("automationRules") ?? "—"} reglas de automatización. Actualiza tu plan para crear más.`}
+                    title={t("limitTitle")}
+                    description={t("limitDesc", { limit: getLimit("automationRules") ?? "—" })}
                 />
             </div>
         );
@@ -905,12 +905,12 @@ export default function AutomationPage() {
                                 {t("reviewTitle")}
                             </h2>
                             <p className="text-muted-foreground text-[13px] mb-5">
-                                Confirm the details before saving
+                                {t("reviewDesc")}
                             </p>
 
                             {/* Rule name */}
                             <div className="mb-[18px]">
-                                <Label className="text-xs font-semibold text-muted-foreground mb-1">Rule name *</Label>
+                                <Label className="text-xs font-semibold text-muted-foreground mb-1">{t("ruleNameLabel")}</Label>
                                 <Input
                                     value={ruleForm.name}
                                     onChange={e => setRuleForm(prev => ({ ...prev, name: e.target.value }))}
@@ -939,9 +939,9 @@ export default function AutomationPage() {
                             {/* Summary cards */}
                             <div className="grid grid-cols-3 gap-3 mb-6">
                                 {[
-                                    { label: "Trigger", value: triggerLabel(ruleForm.trigger_type) },
-                                    { label: "Conditions", value: String(ruleForm.conditions.length) },
-                                    { label: "Actions", value: String(ruleForm.actions.length) },
+                                    { label: t("steps.trigger"), value: triggerLabel(ruleForm.trigger_type) },
+                                    { label: t("steps.conditions"), value: String(ruleForm.conditions.length) },
+                                    { label: t("steps.actions"), value: String(ruleForm.actions.length) },
                                 ].map(item => (
                                     <div key={item.label} className="p-4 rounded-[10px] bg-neutral-100 dark:bg-neutral-800 border border-border text-center">
                                         <div className="text-xs text-muted-foreground mb-1">{item.label}</div>

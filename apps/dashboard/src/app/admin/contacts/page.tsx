@@ -421,7 +421,7 @@ export default function ContactsPage() {
                     </span>
                     {(appliedFilters.scoreMin || appliedFilters.scoreMax) && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-400 text-xs border border-indigo-500/20">
-                            Score: {appliedFilters.scoreMin || '1'}-{appliedFilters.scoreMax || '10'}
+                            {t('scoreFilterLabel')}: {appliedFilters.scoreMin || '1'}-{appliedFilters.scoreMax || '10'}
                             <button onClick={() => {
                                 setAppliedFilters(f => ({ ...f, scoreMin: undefined, scoreMax: undefined }));
                                 setFilterScoreMin(""); setFilterScoreMax("");
@@ -445,7 +445,7 @@ export default function ContactsPage() {
                     )}
                     {appliedFilters.tags && appliedFilters.tags.split(",").map(t2 => t2.trim()).filter(Boolean).map(tag => (
                         <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-400 text-xs border border-indigo-500/20">
-                            Tag: {tag}
+                            {t('tagFilterLabel')}: {tag}
                             <button onClick={() => {
                                 const remaining = appliedFilters.tags!.split(",").map(t3 => t3.trim()).filter(t3 => t3 !== tag).join(", ");
                                 setAppliedFilters(f => ({ ...f, tags: remaining || undefined }));
@@ -549,7 +549,7 @@ export default function ContactsPage() {
             <UpgradeBanner
                 current={totalCount}
                 limit={getLimit("maxContacts")}
-                resourceLabel="contactos"
+                resourceLabel={t('resourceLabel')}
             />
 
             {/* Table */}

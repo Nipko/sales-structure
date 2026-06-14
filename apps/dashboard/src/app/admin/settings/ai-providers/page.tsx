@@ -11,11 +11,11 @@ import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import { HelpPanel } from "@/components/ui/help-panel";
 
 const providers = [
-    { key: "llm.openai_api_key", label: "OpenAI", description: "GPT-4o y GPT-4o-mini", placeholder: "sk-...", color: "bg-emerald-500" },
-    { key: "llm.anthropic_api_key", label: "Anthropic", description: "Claude Sonnet y Opus", placeholder: "sk-ant-...", color: "bg-amber-600" },
-    { key: "llm.google_ai_api_key", label: "Google AI", description: "Gemini Pro y Flash", placeholder: "AI...", color: "bg-blue-500" },
-    { key: "llm.xai_api_key", label: "xAI", description: "Grok models", placeholder: "xai-...", color: "bg-neutral-700" },
-    { key: "llm.deepseek_api_key", label: "DeepSeek", description: "DeepSeek Chat", placeholder: "sk-...", color: "bg-indigo-500" },
+    { key: "llm.openai_api_key", id: "openai", label: "OpenAI", placeholder: "sk-...", color: "bg-emerald-500" },
+    { key: "llm.anthropic_api_key", id: "anthropic", label: "Anthropic", placeholder: "sk-ant-...", color: "bg-amber-600" },
+    { key: "llm.google_ai_api_key", id: "googleAi", label: "Google AI", placeholder: "AI...", color: "bg-blue-500" },
+    { key: "llm.xai_api_key", id: "xai", label: "xAI", placeholder: "xai-...", color: "bg-neutral-700" },
+    { key: "llm.deepseek_api_key", id: "deepseek", label: "DeepSeek", placeholder: "sk-...", color: "bg-indigo-500" },
 ];
 
 export default function AIProvidersPage() {
@@ -106,11 +106,11 @@ function AIProvidersContent() {
                                 </div>
                                 <div>
                                     <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{provider.label}</div>
-                                    <div className="text-xs text-neutral-500 dark:text-neutral-400">{provider.description}</div>
+                                    <div className="text-xs text-neutral-500 dark:text-neutral-400">{t(`providerDesc.${provider.id}`)}</div>
                                 </div>
                                 {value && (
                                     <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
-                                        Configurada
+                                        {t("providerConfigured")}
                                     </span>
                                 )}
                             </div>

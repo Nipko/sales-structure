@@ -74,7 +74,11 @@
       "en": "English",
       "pt": "Português",
       "fr": "Français"
-    }
+    },
+    "status": "Statut",
+    "private": "Privé",
+    "badgeLive": "EN DIRECT",
+    "badgeDemo": "DÉMO"
   },
   "nav": {
     "platformConsole": "Console plateforme",
@@ -157,7 +161,10 @@
       "attribution": "Attribution",
       "managed": "Gérés",
       "fiscalAdmin": "Facturation électronique"
-    }
+    },
+    "expandSidebar": "Agrandir",
+    "collapseSidebar": "Réduire",
+    "novedades": "Nouveautés"
   },
   "topbar": {
     "menu": "Menu",
@@ -227,7 +234,9 @@
       "transfer": "Transfert à un agent humain",
       "escalation": "Escalade",
       "noResponse": "Sans réponse",
-      "assignedToYou": "Assigné à vous"
+      "assignedToYou": "Assigné à vous",
+      "leadWaiting": "LEAD EN ATTENTE: {name}",
+      "escalationTitle": "ESCALADE: {name}"
     },
     "categories": {
       "all": "Toutes",
@@ -356,7 +365,9 @@
     "ssoLogin": "Se connecter avec SSO",
     "ssoRedirecting": "Redirection vers votre fournisseur d'identité...",
     "ssoForcedMessage": "Votre organisation exige la connexion SSO",
-    "ssoAvailable": "SSO disponible pour votre domaine"
+    "ssoAvailable": "SSO disponible pour votre domaine",
+    "poweredBy": "Propulsé par",
+    "generatePassword": "Générer un mot de passe"
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -554,6 +565,9 @@
       }
     },
     "subtitle": "Gerez vos contacts, leads et segments",
+    "scoreFilterLabel": "Score",
+    "tagFilterLabel": "Tag",
+    "resourceLabel": "contacts",
     "leadDetail": {
       "loading": "Chargement du profil...",
       "contact": "Contact",
@@ -584,7 +598,23 @@
       "factorProfile": "Profil",
       "aiInsights": "AI Insights",
       "insightError": "Impossible de generer l'insight",
-      "insightUnavailable": "Aucun insight disponible"
+      "insightUnavailable": "Aucun insight disponible",
+      "tabTimeline": "Historique",
+      "tabNotes": "Notes ({count})",
+      "tabTasks": "Tâches ({count})",
+      "noActivity": "Aucune activité enregistrée pour l'instant.",
+      "addNotePlaceholder": "Ajouter une note interne...",
+      "saveNote": "Enregistrer la note",
+      "noNotes": "Aucune note pour l'instant.",
+      "newTaskPlaceholder": "Nouvelle tâche... (ex : Appeler le client)",
+      "taskTypes": {
+        "follow_up": "Suivi",
+        "call": "Appel",
+        "email": "E-mail",
+        "meeting": "Réunion",
+        "handoff": "Handoff"
+      },
+      "noTasks": "Aucune tâche créée."
     },
     "importTemplate": {
       "fileName": "modele_contacts",
@@ -799,7 +829,16 @@
       "loading": "Génération de la suggestion IA...",
       "refresh": "Régénérer"
     },
-    "save": "Enregistrer"
+    "save": "Enregistrer",
+    "waitWaiting": "En attente...",
+    "waitLessThan1Min": "Il y a < 1 min",
+    "waitMins": "Il y a {mins} min",
+    "waitHoursAndMins": "Il y a {h}h {m}m",
+    "cannedNotFound": "Aucune réponse trouvée pour \"/{filter}\"",
+    "tagsLabel": "Tags",
+    "notAvailable": "N/D",
+    "viewContact": "Voir {noun}",
+    "estimatedValueAmount": "${amount} COP"
   },
   "slackIntegration": {
     "title": "Slack",
@@ -1190,6 +1229,22 @@
     "saving": "Enregistrement...",
     "backToSettings": "Paramètres",
     "connectionError": "Erreur de connexion",
+    "aiConfigPage": {
+      "defaultModel": "Modèle par défaut",
+      "defaultModelDesc": "Utilisé lorsque le routeur ne peut pas décider quel modèle employer",
+      "temperature": "Température",
+      "temperatureDesc": "Créativité des réponses (0.0 = précis, 1.0 = créatif)",
+      "maxTokens": "Tokens maximum",
+      "maxTokensDesc": "Limite de tokens par réponse du modèle"
+    },
+    "providerConfigured": "Configurée",
+    "providerDesc": {
+      "openai": "GPT-4o et GPT-4o-mini",
+      "anthropic": "Claude Sonnet et Opus",
+      "googleAi": "Gemini Pro et Flash",
+      "xai": "Modèles Grok",
+      "deepseek": "DeepSeek Chat"
+    },
     "saveError": "Erreur lors de l'enregistrement",
     "pages": {
       "profile": "Profil",
@@ -1379,7 +1434,12 @@
       "personaJuridica": "Personne morale",
       "personaNatural": "Personne physique",
       "documentType": "Type de document",
-      "docType": { "6": "NIT", "3": "Carte d'identité", "5": "Carte d'étranger", "7": "Passeport" },
+      "docType": {
+        "3": "Carte d'identité",
+        "5": "Carte d'étranger",
+        "6": "NIT",
+        "7": "Passeport"
+      },
       "documentId": "Numéro de document",
       "dv": "DV",
       "businessName": "Raison sociale",
@@ -1406,7 +1466,12 @@
       "xml": "XML",
       "typeInvoice": "Facture",
       "typeCreditNote": "Note de crédit",
-      "status": { "pending": "En attente", "issued": "Émise", "failed": "Échouée", "cancelled": "Annulée" },
+      "status": {
+        "pending": "En attente",
+        "issued": "Émise",
+        "failed": "Échouée",
+        "cancelled": "Annulée"
+      },
       "adminTitle": "Configuration fiscale (plateforme)",
       "adminSubtitle": "Super admin uniquement. Définit l'entité émettrice et le traitement TVA, sans redéploiement.",
       "mode": "Mode fiscal",
@@ -1532,7 +1597,13 @@
       "cardTitle": "Exemple de carte",
       "cardDescription": "Ceci est une description d'exemple pour montrer l'apparence des cartes avec le thème actuel.",
       "textInput": "Champ de texte",
-      "textInputPlaceholder": "Tapez quelque chose ici..."
+      "textInputPlaceholder": "Tapez quelque chose ici...",
+      "btnPrimary": "Principal",
+      "btnSecondary": "Secondaire",
+      "btnDestructive": "Destructeur",
+      "badgesLabel": "Badges",
+      "badgeActive": "Actif",
+      "badgeInactive": "Inactif"
     },
     "navProfile": "Profil",
     "navSecurity": "Sécurité",
@@ -1720,7 +1791,8 @@
       "loadingImages": "Chargement des images...",
       "allTagsPill": "Toutes",
       "newTagPlaceholder": "Nouvelle étiquette...",
-      "confirmDelete": "Supprimer cette image ?"
+      "confirmDelete": "Supprimer cette image ?",
+      "couldNotLoad": "Impossible de charger l'image"
     }
   },
   "appointments": {
@@ -1930,7 +2002,8 @@
       "active": "Actif",
       "inactive": "Inactif",
       "all": "Tous",
-      "confirmDelete": "Supprimer ce service ?"
+      "confirmDelete": "Supprimer ce service ?",
+      "addStaffMember": "+ Ajouter un membre du personnel..."
     },
     "calendarCount": "{count}/{max} calendriers",
     "calendarLimitReached": "Limite de calendriers atteinte. Mettez à niveau votre plan.",
@@ -2131,7 +2204,10 @@
     "loadPresetBtn": "Charger les préréglages de l'industrie",
     "loadPresetConfirm": "Voulez-vous charger les étapes et règles de transition standard pour votre secteur ? Cela remplacera les étapes actuelles.",
     "loadPresetSuccess": "Modèle de l'industrie chargé avec succès. N'oubliez pas d'enregistrer les modifications.",
-    "presetsLoaded": "Préréglages Chargés"
+    "presetsLoaded": "Préréglages Chargés",
+    "resourceLabel": "étapes du pipeline",
+    "rulesHeader": "Règles",
+    "noPresetsFound": "Aucun préréglage trouvé pour ce vertical."
   },
   "scoringConfig": {
     "title": "Lead Scoring",
@@ -2439,7 +2515,12 @@
       "taskDescriptionPlaceholder": "Faire le suivi du lead",
       "hoursLimit": "Limite d'heures",
       "selectStage": "Sélectionner l'étape"
-    }
+    },
+    "resourceLabel": "règles d'automatisation",
+    "limitTitle": "Limite de règles atteinte",
+    "limitDesc": "Votre plan actuel autorise jusqu'à {limit} règles d'automatisation. Mettez à niveau pour en créer davantage.",
+    "reviewDesc": "Confirmez les détails avant d'enregistrer",
+    "ruleNameLabel": "Nom de la règle *"
   },
   "broadcast": {
     "title": "Campagnes",
@@ -3269,7 +3350,8 @@
       "planRequired": "L'analytique KB nécessite le plan Starter ou supérieur.",
       "dailyVolume": "Volume quotidien",
       "queries": "Requêtes",
-      "hits": "Résultats"
+      "hits": "Résultats",
+      "loadError": "Erreur lors du chargement des analyses"
     },
     "bulk": {
       "button": "Import en masse",
@@ -3383,7 +3465,8 @@
         "score": "Score",
         "feedbackCount": "Retours"
       }
-    }
+    },
+    "resourceLabel": "documents de connaissance"
   },
   "identity": {
     "title": "Identité",
@@ -3967,7 +4050,13 @@
       "other": "Autre"
     },
     "referralTitle": "Comment nous avez-vous connu ?",
-    "otherSpecify": "Précisez"
+    "otherSpecify": "Précisez",
+    "registrationError": "Erreur lors de l'inscription",
+    "connectionError": "Erreur de connexion",
+    "step2TitleVertical": "Qui contactera {agentName} ?",
+    "step3TitleVertical": "Comment {agentName} aidera vos {noun} ?",
+    "step3SubtitleVertical": "Sélectionnez les fonctions que {agentName} accomplira automatiquement",
+    "defaultCustomerNoun": "clients"
   },
   "analytics": {
     "title": "Analyses",
@@ -4172,7 +4261,22 @@
     "cohortRetention": "Rétention par Cohorte",
     "cohortMonth": "Mois Cohorte",
     "cohortSize": "Taille",
-    "month": "Mois"
+    "month": "Mois",
+    "pctOfTotal": "{pct}% du total",
+    "crmRedirectDesc": "Entonnoir de ventes, vitesse du pipeline, gains/pertes et classement",
+    "crmRedirectCta": "Ouvrir CRM Analytics →",
+    "agentsRedirectDesc": "Performance par agent, temps de réponse, CSAT et classement",
+    "agentsRedirectCta": "Ouvrir les Rapports d'Agents →",
+    "vsAnterior": "vs précédent",
+    "dayLabels": {
+      "sun": "Dim",
+      "mon": "Lun",
+      "tue": "Mar",
+      "wed": "Mer",
+      "thu": "Jeu",
+      "fri": "Ven",
+      "sat": "Sam"
+    }
   },
   "onboardingMetrics": {
     "title": "Activation de l'onboarding",
@@ -5262,7 +5366,73 @@
     "deleteProperty": "Supprimer la propriété",
     "deletePropertyConfirm": "Cette propriété sera désactivée et masquée. Les réservations existantes seront conservées.",
     "deleting": "Suppression...",
-    "perNight": "nuit"
+    "perNight": "nuit",
+    "dowSun": "Di",
+    "dowMon": "Lu",
+    "dowTue": "Ma",
+    "dowWed": "Me",
+    "dowThu": "Je",
+    "dowFri": "Ve",
+    "dowSat": "Sa",
+    "icalSyncTitle": "Synchronisation (iCal)",
+    "addCalendar": "+ Ajouter un Calendrier",
+    "eventsCount": "{count} événements",
+    "confirmDeleteCalendar": "Êtes-vous sûr de vouloir supprimer ce calendrier ?",
+    "checkOut": "Check-out",
+    "roomAbbr": "ch",
+    "bathroom": "salle de bain",
+    "amenityCategory": {
+      "essentials": "Essentiels",
+      "bathroom": "Salle de bain",
+      "outdoor": "Extérieur",
+      "safety": "Sécurité",
+      "entertainment": "Divertissement",
+      "special": "Spéciaux"
+    },
+    "amenity": {
+      "wifi": "WiFi",
+      "ac": "Climatisation",
+      "heating": "Chauffage",
+      "kitchen": "Cuisine",
+      "washer": "Machine à laver",
+      "dryer": "Sèche-linge",
+      "tv": "TV",
+      "iron": "Fer à repasser",
+      "hot_tub": "Jacuzzi",
+      "bathtub": "Baignoire",
+      "hair_dryer": "Sèche-cheveux",
+      "toiletries": "Articles de toilette",
+      "pool": "Piscine",
+      "parking": "Parking",
+      "garden": "Jardin",
+      "bbq": "Barbecue",
+      "balcony": "Balcon",
+      "terrace": "Terrasse",
+      "sea_view": "Vue sur la mer",
+      "mountain_view": "Vue sur la montagne",
+      "security_cameras": "Caméras de sécurité",
+      "smoke_detector": "Détecteur de fumée",
+      "first_aid": "Trousse de premiers secours",
+      "safe": "Coffre-fort",
+      "gym": "Salle de sport",
+      "game_room": "Salle de jeux",
+      "netflix": "Netflix/Streaming",
+      "books": "Livres",
+      "pet_friendly": "Animaux acceptés",
+      "elevator": "Ascenseur",
+      "wheelchair_accessible": "Accessible aux fauteuils roulants",
+      "workspace": "Espace de travail"
+    },
+    "currencyOptions": {
+      "COP": "COP — Peso colombien",
+      "USD": "USD — Dollar américain",
+      "MXN": "MXN — Peso mexicain",
+      "ARS": "ARS — Peso argentin",
+      "BRL": "BRL — Réal brésilien",
+      "CLP": "CLP — Peso chilien",
+      "PEN": "PEN — Sol péruvien",
+      "EUR": "EUR — Euro"
+    }
   },
   "verticalEmptyStates": {
     "salud": {
@@ -8290,7 +8460,8 @@
       "deleted": "Trigger supprimé",
       "error": "Erreur lors de l'enregistrement"
     },
-    "planLimit": "Vous avez atteint la limite de triggers de votre plan"
+    "planLimit": "Vous avez atteint la limite de triggers de votre plan",
+    "noWidgetWarning": "Aucun widget configuré pour l'instant. Créez un widget en premier."
   },
   "emailChannel": {
     "title": "Canal Email",
@@ -8664,7 +8835,11 @@
   "fiscalAdmin": {
     "title": "Facturation électronique (Plateforme)",
     "subtitle": "Configuration fiscale globale, factures de tous les clients et connexion Factus.",
-    "tabs": { "config": "Configuration", "invoices": "Factures", "factus": "Factus" },
+    "tabs": {
+      "config": "Configuration",
+      "invoices": "Factures",
+      "factus": "Factus"
+    },
     "mode": "Mode fiscal",
     "modeCoLocal": "Colombie (SAS — facture DIAN)",
     "modeUsRemote": "Total (LLC USA — sans facture DIAN)",
@@ -8696,7 +8871,12 @@
     "colAmount": "Montant",
     "colDate": "Date",
     "colActions": "Actions",
-    "status": { "pending": "En attente", "issued": "Émise", "failed": "Échouée", "cancelled": "Annulée" },
+    "status": {
+      "pending": "En attente",
+      "issued": "Émise",
+      "failed": "Échouée",
+      "cancelled": "Annulée"
+    },
     "pdfOfficial": "PDF officiel (Factus)",
     "pdfBranded": "PDF de marque",
     "xml": "XML",
@@ -8886,5 +9066,58 @@
       "slugHint": "Généré automatiquement si laissé vide.",
       "createButton": "Créer la page"
     }
+  },
+  "changelog": {
+    "pageTitle": "Compilateur de Nouveautés (Changelog)",
+    "pageSubtitle": "Créez, traduisez et publiez les mises à jour système (\"Quoi de neuf\") visibles sur le tableau de bord de tous les tenants.",
+    "cancelEdit": "Annuler la modification",
+    "updateChanges": "Mettre à jour les modifications",
+    "publishChanges": "Publier les modifications",
+    "tabCompose": "Rédiger une nouveauté",
+    "tabEditEntry": "Modifier la nouveauté",
+    "tabHistory": "Historique des nouveautés ({count})",
+    "labelVersion": "Version",
+    "placeholderVersion": "ex. v1.4.0",
+    "labelPublishDate": "Date de publication",
+    "labelPublished": "Publié",
+    "sectionHeader": "En-tête de la nouveauté (Multilingue)",
+    "fieldTitleIn": "Titre en {lang}",
+    "placeholderTitle": "ex. Nouvelles analyses IA et agents ! ({code})",
+    "fieldBodyIn": "Corps / Introduction en {lang}",
+    "placeholderBody": "Saisissez un résumé concis des changements de cette version... ({code})",
+    "sectionFeatures": "Sections de fonctionnalités ({count})",
+    "addSection": "Ajouter une section",
+    "emptyFeatures": "Aucune section de détails ajoutée. Cliquez sur \"Ajouter une section\" pour commencer.",
+    "labelCategory": "Catégorie",
+    "typeNew": "Nouveau",
+    "typeImproved": "Amélioré",
+    "typeFixed": "Corrigé",
+    "featureTitleLabel": "Titre ({lang})",
+    "featureTitlePlaceholder": "ex. Performance IA ({code})",
+    "featureDetailLabel": "Détail / Explication ({lang})",
+    "featureDetailPlaceholder": "ex. Comparez des métriques dans un panneau interactif. ({code})",
+    "replaceImage": "Remplacer l'image",
+    "uploadImage": "Télécharger une capture/image",
+    "previewLabel": "Aperçu du modal en temps réel",
+    "previewEmptyFeatures": "Les fonctionnalités dynamiques que vous ajoutez apparaîtront ici avec leurs images.",
+    "previewNoTitle": "[Titre en {code}]",
+    "previewNoDesc": "[Introduction en {code}]",
+    "loadingHistory": "Chargement de l'historique des nouveautés...",
+    "emptyHistoryTitle": "Aucune nouveauté enregistrée",
+    "emptyHistoryDesc": "Vous n'avez encore publié aucune annonce. Rédigez et publiez votre premier changelog depuis l'onglet précédent.",
+    "colVersion": "Version",
+    "colTitle": "Titre (ES)",
+    "colDate": "Date",
+    "colFeatures": "Fonctionnalités",
+    "colStatus": "Statut",
+    "colActions": "Actions",
+    "statusDraft": "Brouillon",
+    "imageUploadError": "Erreur lors du téléchargement de l'image",
+    "validationVersion": "Veuillez saisir une version (ex. v1.4.0)",
+    "validationTitle": "Veuillez saisir un titre en espagnol",
+    "successPublished": "Nouvelle entrée publiée avec succès !",
+    "successUpdated": "Entrée mise à jour avec succès !",
+    "deleteConfirm": "Êtes-vous sûr de vouloir supprimer définitivement cette entrée ? Les images associées seront également supprimées.",
+    "deleteError": "Erreur lors de la suppression"
   }
 }

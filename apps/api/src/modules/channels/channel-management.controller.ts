@@ -29,6 +29,23 @@ export class ChannelManagementController {
         private throttle: TenantThrottleService,
     ) {}
 
+    /**
+     * Activación (TTFV): marca el instante del PRIMER canal conectado del tenant.
+     * Idempotente — el guard `first_channel_connected_at IS NULL` asegura que solo
+     * el primer connect escribe, así sobrevive a reconexiones/desconexiones.
+     * Fire-and-forget: nunca debe romper el flujo de conexión.
+     */
+    private async markFirstChannelConnected(tenantId: string): Promise<void> {
+        try {
+            await this.prisma.tenant.updateMany({
+                where: { id: tenantId, firstChannelConnectedAt: null },
+                data: { firstChannelConnectedAt: new Date() },
+            });
+        } catch (e: any) {
+            this.logger.warn(`markFirstChannelConnected failed for ${tenantId}: ${e?.message}`);
+        }
+    }
+
     @Get('overview')
     @ApiOperation({ summary: 'Get all connected channels with agent assignment status' })
     async getOverview(@Req() req: any) {
@@ -219,6 +236,8 @@ export class ChannelManagementController {
                 },
             });
         }
+
+        void this.markFirstChannelConnected(tenantId);
 
         // 4. Store encrypted credential
         const existingCred = await this.prisma.whatsappCredential.findFirst({
@@ -524,6 +543,8 @@ export class ChannelManagementController {
                     });
                 }
 
+                void this.markFirstChannelConnected(tenantId);
+
                 // Store encrypted credential (messenger_token per tenant)
                 const existingCred = await this.prisma.whatsappCredential.findFirst({
                     where: { tenantId, credentialType: 'messenger_token' },
@@ -776,6 +797,8 @@ export class ChannelManagementController {
             });
         }
 
+        void this.markFirstChannelConnected(tenantId);
+
         // Store encrypted credential with expiration
         const existingCred = await this.prisma.whatsappCredential.findFirst({
             where: { tenantId, credentialType: 'instagram_token' },
@@ -949,6 +972,8 @@ export class ChannelManagementController {
         } else {
             await this.prisma.channelAccount.create({ data: channelData });
         }
+
+        void this.markFirstChannelConnected(tenantId);
 
         // 5. Store encrypted credential
         const existingCred = await this.prisma.whatsappCredential.findFirst({
@@ -1148,6 +1173,8 @@ export class ChannelManagementController {
                 },
             });
         }
+
+        void this.markFirstChannelConnected(tenantId);
 
         // Store encrypted credential (reuse whatsapp_credentials table for all channels)
         const existingCred = await this.prisma.whatsappCredential.findFirst({

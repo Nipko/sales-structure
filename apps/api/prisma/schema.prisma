@@ -44,9 +44,10 @@ model Tenant {
   paymentProviderCustomerId String?   @map("payment_provider_customer_id")
 
   // Onboarding funnel tracking — used by /admin/funnel cohort analysis
-  onboardingCompletedAt DateTime? @map("onboarding_completed_at")
-  firstMessageAt        DateTime? @map("first_message_at")
-  signupSource          String?   @map("signup_source") // landing_page|api|partner|...
+  onboardingCompletedAt    DateTime? @map("onboarding_completed_at")
+  firstChannelConnectedAt  DateTime? @map("first_channel_connected_at") // TTFV: first channel ever connected
+  firstMessageAt           DateTime? @map("first_message_at")
+  signupSource             String?   @map("signup_source") // landing_page|api|partner|...
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

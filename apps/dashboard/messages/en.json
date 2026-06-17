@@ -7568,7 +7568,10 @@
     "activatedCol": "Activated",
     "payingCol": "Paying",
     "conversionCol": "Conv.",
-    "hint": "Stamps are generated automatically: onboarding when setup completes, first message on first inbound, paying when subscription_status is active or past_due."
+    "hint": "Stamps are generated automatically: onboarding when setup completes, first message on first inbound, paying when subscription_status is active or past_due.",
+    "ttfv": "TTFV (channel)",
+    "ttfvHint": "Median signup → first channel connected",
+    "channelCol": "Channel"
   },
   "verticalAnalytics": {
     "title": "Vertical analytics",

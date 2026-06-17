@@ -18,7 +18,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
     Filter as FunnelIcon, RefreshCw, Loader2, TrendingUp, Clock, Users,
-    UserPlus, MessageSquare, DollarSign,
+    UserPlus, MessageSquare, DollarSign, Plug,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 
@@ -33,6 +33,7 @@ interface SourceRow {
     source: string;
     signups: number;
     onboarded: number;
+    channelConnected: number;
     activated: number;
     paying: number;
 }
@@ -41,6 +42,7 @@ interface FunnelData {
     window: { since: string; until: string };
     stages: Stage[];
     overallConversion: number;
+    medianTimeToFirstChannelHours: number | null;
     medianTimeToFirstMessageHours: number | null;
     bySource: SourceRow[];
 }
@@ -54,15 +56,17 @@ const RANGE_OPTIONS = [
 const STAGE_ICONS: Record<string, any> = {
     signups: UserPlus,
     onboarded: Users,
+    channelConnected: Plug,
     activated: MessageSquare,
     paying: DollarSign,
 };
 
 const STAGE_COLORS: Record<string, { bar: string; bg: string; text: string }> = {
-    signups:    { bar: "bg-blue-500",    bg: "bg-blue-500/10",    text: "text-blue-600" },
-    onboarded:  { bar: "bg-indigo-500",  bg: "bg-indigo-500/10",  text: "text-indigo-600" },
-    activated:  { bar: "bg-emerald-500", bg: "bg-emerald-500/10", text: "text-emerald-600" },
-    paying:     { bar: "bg-amber-500",   bg: "bg-amber-500/10",   text: "text-amber-700" },
+    signups:          { bar: "bg-blue-500",    bg: "bg-blue-500/10",    text: "text-blue-600" },
+    onboarded:        { bar: "bg-indigo-500",  bg: "bg-indigo-500/10",  text: "text-indigo-600" },
+    channelConnected: { bar: "bg-teal-500",    bg: "bg-teal-500/10",    text: "text-teal-600" },
+    activated:        { bar: "bg-emerald-500", bg: "bg-emerald-500/10", text: "text-emerald-600" },
+    paying:           { bar: "bg-amber-500",   bg: "bg-amber-500/10",   text: "text-amber-700" },
 };
 
 export default function FunnelPage() {
@@ -164,6 +168,14 @@ export default function FunnelPage() {
                     </div>
                     <div className="bg-card border border-border rounded-xl p-4">
                         <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                            <Plug className="h-3.5 w-3.5" />
+                            {t("ttfv")}
+                        </div>
+                        <div className="text-2xl font-bold mt-1 font-mono">{formatTtfm(data.medianTimeToFirstChannelHours)}</div>
+                        <p className="text-[11px] text-muted-foreground mt-1">{t("ttfvHint")}</p>
+                    </div>
+                    <div className="bg-card border border-border rounded-xl p-4">
+                        <div className="text-xs text-muted-foreground flex items-center gap-1.5">
                             <Clock className="h-3.5 w-3.5" />
                             {t("ttfm")}
                         </div>
@@ -236,6 +248,7 @@ export default function FunnelPage() {
                                 <th className="px-4 py-2 font-semibold">{t("source")}</th>
                                 <th className="px-4 py-2 font-semibold text-right">{t("signupsCol")}</th>
                                 <th className="px-4 py-2 font-semibold text-right">{t("onboardedCol")}</th>
+                                <th className="px-4 py-2 font-semibold text-right">{t("channelCol")}</th>
                                 <th className="px-4 py-2 font-semibold text-right">{t("activatedCol")}</th>
                                 <th className="px-4 py-2 font-semibold text-right">{t("payingCol")}</th>
                                 <th className="px-4 py-2 font-semibold text-right">{t("conversionCol")}</th>
@@ -249,6 +262,7 @@ export default function FunnelPage() {
                                         <td className="px-4 py-2 font-mono text-xs">{s.source}</td>
                                         <td className="px-4 py-2 text-right font-mono">{s.signups}</td>
                                         <td className="px-4 py-2 text-right font-mono text-muted-foreground">{s.onboarded}</td>
+                                        <td className="px-4 py-2 text-right font-mono text-muted-foreground">{s.channelConnected}</td>
                                         <td className="px-4 py-2 text-right font-mono text-muted-foreground">{s.activated}</td>
                                         <td className="px-4 py-2 text-right font-mono">{s.paying}</td>
                                         <td className="px-4 py-2 text-right font-mono font-semibold">

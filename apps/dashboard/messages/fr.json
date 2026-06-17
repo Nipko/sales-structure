@@ -7568,7 +7568,10 @@
     "activatedCol": "Activés",
     "payingCol": "Payant",
     "conversionCol": "Conv.",
-    "hint": "Horodatages générés automatiquement : onboarding quand le setup se termine, premier message au premier inbound, payant quand subscription_status est active ou past_due."
+    "hint": "Horodatages générés automatiquement : onboarding quand le setup se termine, premier message au premier inbound, payant quand subscription_status est active ou past_due.",
+    "ttfv": "TTFV (canal)",
+    "ttfvHint": "Médiane inscription → premier canal connecté",
+    "channelCol": "Canal"
   },
   "verticalAnalytics": {
     "title": "Analytique par verticale",

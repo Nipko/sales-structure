@@ -21,6 +21,21 @@ export class WhatsappConnectionService {
     private readonly configService: ConfigService,
   ) {}
 
+  /**
+   * Activación (TTFV): marca el instante del PRIMER canal conectado del tenant.
+   * Idempotente (guard IS NULL) y fire-and-forget — nunca rompe la conexión.
+   */
+  private async markFirstChannelConnected(tenantId: string): Promise<void> {
+    try {
+      await this.prisma.tenant.updateMany({
+        where: { id: tenantId, firstChannelConnectedAt: null },
+        data: { firstChannelConnectedAt: new Date() },
+      });
+    } catch (e: any) {
+      this.logger.warn(`markFirstChannelConnected failed for ${tenantId}: ${e?.message}`);
+    }
+  }
+
   async getChannelStatus(schemaName: string) {
     const channels = await this.prisma.executeInTenantSchema<any[]>(
       schemaName,
@@ -114,6 +129,10 @@ export class WhatsappConnectionService {
         },
       });
     }
+
+    // Activación (TTFV): marca el primer canal conectado del tenant. Idempotente
+    // (guard IS NULL), fire-and-forget — nunca debe romper la conexión.
+    void this.markFirstChannelConnected(tenantId);
 
     // Upsert credencial cifrada.
     const existingCredential = await this.prisma.whatsappCredential.findFirst({

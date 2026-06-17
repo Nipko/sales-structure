@@ -7568,7 +7568,10 @@
     "activatedCol": "Ativados",
     "payingCol": "Pagando",
     "conversionCol": "Conv.",
-    "hint": "Marcações geradas automaticamente: onboarding ao completar setup, primeira mensagem ao primeiro inbound, pagando quando subscription_status é active ou past_due."
+    "hint": "Marcações geradas automaticamente: onboarding ao completar setup, primeira mensagem ao primeiro inbound, pagando quando subscription_status é active ou past_due.",
+    "ttfv": "TTFV (canal)",
+    "ttfvHint": "Mediana cadastro → primeiro canal conectado",
+    "channelCol": "Canal"
   },
   "verticalAnalytics": {
     "title": "Analítica por vertical",

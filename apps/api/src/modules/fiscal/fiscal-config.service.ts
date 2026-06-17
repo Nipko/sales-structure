@@ -16,6 +16,24 @@ export interface UsIssuerConfig {
 }
 
 /**
+ * Issuer fiscal data for the CO_LOCAL mode (Parallly's own data). Factus holds
+ * the legal source of truth for the OFFICIAL document, but the BRANDED graphic
+ * representation needs these to print Parallly's NIT, address, regime and the
+ * DIAN numbering resolution. Editable from the super admin.
+ */
+export interface CoIssuerConfig {
+    legalName?: string; // razón social DIAN (ej. 'Parallext SAS')
+    nit?: string;
+    address?: string;
+    email?: string;
+    phone?: string;
+    regime?: string; // 'Responsable de IVA' | 'No responsable de IVA'
+    dianResolution?: string; // número + fecha de la resolución de numeración
+    authRange?: string; // rango autorizado (prefijo + desde-hasta)
+    resolutionValidUntil?: string; // vigencia
+}
+
+/**
  * Global fiscal configuration, editable from the super admin without redeploy.
  * Persisted in the shared `platform_settings` table under the `fiscal.*`
  * namespace (same store + raw-SQL pattern as SettingsService) and cached in
@@ -43,6 +61,8 @@ export interface FiscalConfig {
     itemCodeReference: string;
     /** Issuer details for US_REMOTE mode. */
     usIssuer: UsIssuerConfig;
+    /** Issuer fiscal data for CO_LOCAL mode (printed on the branded representation). */
+    coIssuer: CoIssuerConfig;
 }
 
 const DEFAULTS: FiscalConfig = {
@@ -58,6 +78,7 @@ const DEFAULTS: FiscalConfig = {
     itemDescription: 'Suscripción Parallly',
     itemCodeReference: 'PARALLLY-SUB',
     usIssuer: {},
+    coIssuer: {},
 };
 
 @Injectable()
@@ -97,6 +118,16 @@ export class FiscalConfigService {
             }
         }
 
+        let coIssuer: CoIssuerConfig = {};
+        const rawCoIssuer = get('fiscal.issuer_co');
+        if (rawCoIssuer) {
+            try {
+                coIssuer = JSON.parse(rawCoIssuer);
+            } catch {
+                this.logger.warn('fiscal.issuer_co is not valid JSON — ignoring');
+            }
+        }
+
         const mode = (get('fiscal.mode') as FiscalMode) || DEFAULTS.mode;
         const coIvaTreatment = (get('fiscal.co_iva_treatment') as IvaTreatment) || DEFAULTS.coIvaTreatment;
 
@@ -114,6 +145,7 @@ export class FiscalConfigService {
             itemDescription: get('fiscal.item_description') || DEFAULTS.itemDescription,
             itemCodeReference: get('fiscal.item_code_reference') || DEFAULTS.itemCodeReference,
             usIssuer,
+            coIssuer,
         };
 
         await this.redis.setJson(this.CACHE_KEY, config, this.CACHE_TTL);
@@ -141,6 +173,7 @@ export class FiscalConfigService {
         if (patch.itemDescription) updates['fiscal.item_description'] = patch.itemDescription;
         if (patch.itemCodeReference) updates['fiscal.item_code_reference'] = patch.itemCodeReference;
         if (patch.usIssuer) updates['fiscal.issuer_us'] = JSON.stringify(patch.usIssuer);
+        if (patch.coIssuer) updates['fiscal.issuer_co'] = JSON.stringify(patch.coIssuer);
 
         for (const [key, value] of Object.entries(updates)) {
             await this.prisma.$executeRaw`

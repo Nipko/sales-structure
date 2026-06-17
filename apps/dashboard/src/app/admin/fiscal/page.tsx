@@ -24,6 +24,10 @@ type FiscalConfig = {
     itemDescription: string;
     itemCodeReference: string;
     usIssuer: { legalName?: string; taxId?: string; address?: string; email?: string };
+    coIssuer: {
+        legalName?: string; nit?: string; address?: string; email?: string; phone?: string;
+        regime?: string; dianResolution?: string; authRange?: string; resolutionValidUntil?: string;
+    };
 };
 
 type AdminInvoice = {
@@ -198,6 +202,24 @@ export default function FiscalAdminPage() {
                         <div><label className={lbl}>{t("standardCodeId")}</label><input value={config.defaultStandardCodeId} onChange={(e) => setConfig({ ...config, defaultStandardCodeId: e.target.value })} className={inp} /></div>
                         <div><label className={lbl}>{t("productTributeId")}</label><input value={config.defaultProductTributeId} onChange={(e) => setConfig({ ...config, defaultProductTributeId: e.target.value })} className={inp} /></div>
                         <div><label className={lbl}>{t("defaultMunicipalityId")}</label><input value={config.defaultMunicipalityId || ""} onChange={(e) => setConfig({ ...config, defaultMunicipalityId: e.target.value })} className={inp} /></div>
+                    </div>
+
+                    <div className="rounded-lg border border-teal-200 p-4 dark:border-teal-500/20">
+                        <p className="mb-3 text-xs font-medium text-neutral-500">{t("coIssuerTitle")}</p>
+                        <div className="grid grid-cols-2 gap-4">
+                            <input value={config.coIssuer?.legalName || ""} onChange={(e) => setConfig({ ...config, coIssuer: { ...config.coIssuer, legalName: e.target.value } })} className={inp} placeholder={t("coLegalName")} />
+                            <input value={config.coIssuer?.nit || ""} onChange={(e) => setConfig({ ...config, coIssuer: { ...config.coIssuer, nit: e.target.value } })} className={inp} placeholder={t("coNit")} />
+                            <input value={config.coIssuer?.address || ""} onChange={(e) => setConfig({ ...config, coIssuer: { ...config.coIssuer, address: e.target.value } })} className={inp} placeholder={t("coAddress")} />
+                            <input value={config.coIssuer?.email || ""} onChange={(e) => setConfig({ ...config, coIssuer: { ...config.coIssuer, email: e.target.value } })} className={inp} placeholder={t("coEmail")} />
+                            <input value={config.coIssuer?.phone || ""} onChange={(e) => setConfig({ ...config, coIssuer: { ...config.coIssuer, phone: e.target.value } })} className={inp} placeholder={t("coPhone")} />
+                            <select value={config.coIssuer?.regime || "Responsable de IVA"} onChange={(e) => setConfig({ ...config, coIssuer: { ...config.coIssuer, regime: e.target.value } })} className={cn(sel, "w-full")}>
+                                <option value="Responsable de IVA">{t("regimeResponsable")}</option>
+                                <option value="No responsable de IVA">{t("regimeNoResponsable")}</option>
+                            </select>
+                            <input value={config.coIssuer?.dianResolution || ""} onChange={(e) => setConfig({ ...config, coIssuer: { ...config.coIssuer, dianResolution: e.target.value } })} className={inp} placeholder={t("coDianResolution")} />
+                            <input value={config.coIssuer?.authRange || ""} onChange={(e) => setConfig({ ...config, coIssuer: { ...config.coIssuer, authRange: e.target.value } })} className={inp} placeholder={t("coAuthRange")} />
+                            <input value={config.coIssuer?.resolutionValidUntil || ""} onChange={(e) => setConfig({ ...config, coIssuer: { ...config.coIssuer, resolutionValidUntil: e.target.value } })} className={inp} placeholder={t("coValidUntil")} />
+                        </div>
                     </div>
 
                     <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">

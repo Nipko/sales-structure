@@ -196,6 +196,9 @@ export class FiscalController {
 
     private buildBranded(inv: any, cfg: any): BrandedInvoiceData {
         const snap = (inv.acquirerSnapshot as any) || {};
+        const co = cfg.coIssuer || {};
+        const us = cfg.usIssuer || {};
+        const isCo = cfg.mode !== 'US_REMOTE';
         return {
             type: inv.type,
             invoiceNumber: inv.invoiceNumber || String(inv.id).slice(0, 8).toUpperCase(),
@@ -206,11 +209,21 @@ export class FiscalController {
             taxCents: inv.taxCents,
             currency: inv.currency,
             itemDescription: cfg.itemDescription,
-            issuerName: cfg.mode === 'US_REMOTE' ? cfg.usIssuer?.legalName || 'Parallly' : 'Parallly',
-            issuerNit: cfg.mode === 'US_REMOTE' ? cfg.usIssuer?.taxId ?? null : null,
+            // Emisor: CO_LOCAL lee cfg.coIssuer (datos de Parallly); US_REMOTE lee cfg.usIssuer
+            issuerName: isCo ? co.legalName || 'Parallly' : us.legalName || 'Parallly',
+            issuerNit: isCo ? co.nit ?? null : us.taxId ?? null,
+            issuerAddress: isCo ? co.address ?? null : us.address ?? null,
+            issuerEmail: isCo ? co.email ?? null : us.email ?? null,
+            issuerPhone: isCo ? co.phone ?? null : null,
+            issuerRegime: isCo ? co.regime || 'Responsable de IVA' : null,
+            dianResolution: isCo ? co.dianResolution ?? null : null,
+            authRange: isCo ? co.authRange ?? null : null,
+            resolutionValidUntil: isCo ? co.resolutionValidUntil ?? null : null,
             acquirerName: snap.businessName || snap.names || null,
             acquirerDoc: snap.documentId ? `${snap.documentType || ''} ${snap.documentId}`.trim() : null,
             acquirerEmail: snap.email || null,
+            paymentMethod: 'Contado',
+            paymentMeans: 'Transferencia / PSE',
         };
     }
 }

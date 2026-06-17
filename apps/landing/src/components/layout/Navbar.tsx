@@ -122,7 +122,7 @@ export function Navbar() {
               className="bg-transparent text-xs text-text-secondary border border-border rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:border-border-light transition-colors"
             >
               {Object.entries(localeNames).map(([code, name]) => (
-                <option key={code} value={code} className="text-black">{name}</option>
+                <option key={code} value={code}>{name}</option>
               ))}
             </select>
             <a href={LOGIN_URL} className="text-sm text-text-secondary hover:text-text-primary transition-colors">

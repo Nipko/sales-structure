@@ -45,6 +45,10 @@
 @layer base {
   :root {
     --radius: 0.5rem;
+    /* Tell the browser to render native controls (select option popups, date/time
+       pickers, scrollbars, form fields) in the matching scheme. Without this, the
+       dark theme leaves native <select> option lists rendered light → invisible text. */
+    color-scheme: light;
 
     /* Light mode (default) */
     --background: 0 0% 98%;
@@ -90,6 +94,7 @@
   }
 
   .dark {
+    color-scheme: dark;  /* native select popups / date pickers / scrollbars render dark */
     --background: 0 0% 4%;
     --foreground: 0 0% 95%;
     --card: 0 0% 7%;

@@ -49,7 +49,7 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
               className="bg-transparent text-sm border border-border rounded-lg px-2 py-1 outline-none cursor-pointer"
             >
               {Object.entries(localeNames).map(([code, name]) => (
-                <option key={code} value={code} className="text-black">{name}</option>
+                <option key={code} value={code}>{name}</option>
               ))}
             </select>
             <a href={LOGIN_URL} className="text-text-secondary" onClick={onClose}>

@@ -771,7 +771,7 @@ export default function EmailTemplatesPage() {
               </div>
 
               {previewTab === "preview" ? (
-                <div className="bg-white">
+                <div className="bg-white dark:bg-neutral-900">
                   <iframe
                     srcDoc={renderPreviewHtml()}
                     title={t("preview")}

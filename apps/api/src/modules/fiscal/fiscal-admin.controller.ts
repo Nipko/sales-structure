@@ -66,13 +66,11 @@ export class FiscalAdminController {
                 });
             }
         }
-        // Guard: CO_LOCAL needs a Factus numbering range to actually issue.
-        if (body.mode === 'CO_LOCAL' && !(body.factusNumberingRangeId ?? current.factusNumberingRangeId)) {
-            throw new BadRequestException({
-                error: 'numbering_range_required',
-                message: 'Configura el numbering_range_id de Factus antes de operar en modo CO_LOCAL.',
-            });
-        }
+        // NOTE: no exigimos numbering_range_id para GUARDAR. La config se llena de
+        // forma incremental (emisor, IVA, rango…) y la guarda isProviderReady
+        // mantiene la capa fiscal dormida hasta que TODO esté configurado, así que
+        // bloquear el guardado aquí solo estorba. La falta de rango se ve en la
+        // pestaña Factus / panel de facturas, no impidiendo guardar.
 
         const patch: Partial<FiscalConfig> = { ...body };
         await this.config.updateConfig(patch);

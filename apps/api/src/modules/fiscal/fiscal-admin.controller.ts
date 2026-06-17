@@ -18,7 +18,13 @@ class FiscalConfigDto {
     @IsOptional() @IsString() defaultStandardCodeId?: string;
     @IsOptional() @IsString() defaultProductTributeId?: string;
     @IsOptional() @IsString() defaultMunicipalityId?: string;
+    @IsOptional() @IsString() itemDescription?: string;
+    @IsOptional() @IsString() itemCodeReference?: string;
     @IsOptional() @IsObject() usIssuer?: { legalName?: string; taxId?: string; address?: string; email?: string };
+    @IsOptional() @IsObject() coIssuer?: {
+        legalName?: string; nit?: string; address?: string; email?: string; phone?: string;
+        regime?: string; dianResolution?: string; authRange?: string; resolutionValidUntil?: string;
+    };
 }
 
 /**

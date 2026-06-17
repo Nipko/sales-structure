@@ -20,7 +20,7 @@ interface ChecklistItem {
 const ITEMS: ChecklistItem[] = [
     { key: "createAccount", essential: true, href: "", actionKey: "", timeMin: 0, check: () => true },
     { key: "configureAgent", essential: true, href: "/admin/agent", actionKey: "configure", timeMin: 3, check: (d) => d.hasPersona },
-    { key: "connectChannel", essential: true, href: "/admin/channels", actionKey: "connect", timeMin: 3, check: (d) => d.hasAnyChannel },
+    { key: "connectChannel", essential: true, href: "/admin/channels/whatsapp", actionKey: "connect", timeMin: 3, check: (d) => d.hasAnyChannel },
     { key: "sendTestMessage", essential: true, href: "/admin/inbox", actionKey: "try", timeMin: 1, check: (d) => d.hasConversations },
     { key: "addKnowledgeBase", essential: false, href: "/admin/knowledge", actionKey: "configure", timeMin: 5, check: (d) => d.hasKnowledge },
     { key: "inviteTeam", essential: false, href: "/admin/users", actionKey: "invite", timeMin: 2, check: (d) => d.hasTeam },
@@ -128,7 +128,12 @@ export default function OnboardingChecklist() {
     if (dismissed || allDone) return null;
 
     const handleDismiss = () => {
-        localStorage.setItem(`checklist_dismissed_${user.tenantId}`, "true");
+        // Sin un canal conectado NO se descarta permanentemente: solo se minimiza a
+        // la píldora (sigue visible como recordatorio y vuelve completo al recargar).
+        // Con canal conectado, se permite descartar de forma persistente.
+        if (checkData.hasAnyChannel) {
+            localStorage.setItem(`checklist_dismissed_${user.tenantId}`, "true");
+        }
         setDismissed(true);
         setMinimized(true);
     };
@@ -137,7 +142,7 @@ export default function OnboardingChecklist() {
     const recommendedItems = ITEMS.filter(i => !i.essential);
 
     return (
-        <div className="border-l border-neutral-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] w-72 shrink-0 hidden xl:block overflow-y-auto">
+        <div className="border-l border-neutral-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] w-72 shrink-0 hidden lg:block overflow-y-auto">
             <div className="p-4">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-3">

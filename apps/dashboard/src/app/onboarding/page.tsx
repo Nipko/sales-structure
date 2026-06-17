@@ -14,7 +14,11 @@ import { TIMEZONE_GROUPS } from "@parallext/shared";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import MpCardForm from "@/components/billing/MpCardForm";
 
-const STEP_KEYS = ["step1", "step2", "step3", "step4", "step5"];
+// Ruta crítica mínima (trial-first): empresa → audiencia → objetivos.
+// Los pasos "referido" (marketing) y "plan/tarjeta" (muro de pago) se quitaron del
+// flujo: el usuario arranca con trial de plan "emprendedor" sin tarjeta y el upgrade
+// vive en Configuración → Billing. (El JSX de esos pasos queda inerte: step nunca llega.)
+const STEP_KEYS = ["step1", "step2", "step3"];
 
 const PLAN_SLUGS = ["emprendedor", "starter", "pro", "enterprise"] as const;
 type PlanSlug = typeof PLAN_SLUGS[number];
@@ -478,7 +482,7 @@ export default function OnboardingPage() {
 
     const handleNext = () => {
         if (!canProceed()) return;
-        if (step < 4) {
+        if (step < STEP_KEYS.length - 1) {
             setStep(step + 1);
         } else {
             handleSubmit();

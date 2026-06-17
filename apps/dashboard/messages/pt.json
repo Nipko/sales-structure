@@ -2749,7 +2749,10 @@
       "routeMigWarn2FA": "A desativação do 2FA depende do seu provedor atual e pode levar de minutos a 24 horas. Recomendamos solicitar antes de iniciar o processo de migração aqui.",
       "profileCard": "Perfil comercial",
       "profileCardDesc": "Gerencie as informações do seu negócio visíveis para os clientes do WhatsApp",
-      "manageProfile": "Gerenciar perfil"
+      "manageProfile": "Gerenciar perfil",
+      "testAgentTitle": "Teste seu agente",
+      "testAgentDesc": "Seu agente já está ativo neste número. Envie um WhatsApp para {number} e veja a resposta.",
+      "testAgentCta": "Abrir WhatsApp"
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {

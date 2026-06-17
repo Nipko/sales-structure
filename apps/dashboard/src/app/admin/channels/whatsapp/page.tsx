@@ -177,6 +177,27 @@ export default function WhatsAppSetupPage() {
                 mediaKey="channelsWhatsapp"
             />
 
+            {/* Probá tu agente — cierra el loop "canal 100% funcional" tras conectar */}
+            {isConnected && phoneNumber && (
+                <div className="mb-6 rounded-xl border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-4 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                        <MessageSquare size={18} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">{tw("testAgentTitle")}</p>
+                        <p className="text-xs text-emerald-700 dark:text-emerald-400/80 mt-0.5">{tw("testAgentDesc", { number: phoneNumber })}</p>
+                    </div>
+                    <a
+                        href={`https://wa.me/${phoneNumber.replace(/[^0-9]/g, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
+                    >
+                        {tw("testAgentCta")} <ArrowRight size={14} />
+                    </a>
+                </div>
+            )}
+
             {/* Alert */}
             {message.text && (
                 <div className={cn(

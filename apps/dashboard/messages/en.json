@@ -2749,7 +2749,10 @@
       "routeMigWarn2FA": "Disabling 2FA depends on your current provider and can take anywhere from minutes to 24 hours. We recommend requesting it before starting the migration process here.",
       "profileCard": "Business Profile",
       "profileCardDesc": "Manage your business information visible to WhatsApp customers",
-      "manageProfile": "Manage profile"
+      "manageProfile": "Manage profile",
+      "testAgentTitle": "Test your agent",
+      "testAgentDesc": "Your agent is now live on this number. Send a WhatsApp to {number} and watch it reply.",
+      "testAgentCta": "Open WhatsApp"
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {

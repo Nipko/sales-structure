@@ -4636,7 +4636,17 @@
       "channel_messenger": "Messenger",
       "channel_telegram": "Telegram",
       "channel_email": "Email",
-      "channel_webchat": "Chat no site"
+      "channel_webchat": "Chat no site",
+      "prereqs": {
+        "title": "Antes de conectar o WhatsApp",
+        "subtitle": "Tenha isto à mão para conectar em minutos:",
+        "item1": "Um número de telefone para o WhatsApp: seu número atual do WhatsApp Business, ou um novo sem WhatsApp.",
+        "item2": "Acesso ao código de verificação desse número (por SMS ou chamada).",
+        "item3": "Uma conta do Facebook para autorizar com a Meta (você pode criar uma durante o processo).",
+        "sandboxNote": "Não tem um número pronto? Escolha Sandbox para testar sem compromisso.",
+        "continue": "Continuar",
+        "checkAll": "Confirme os itens para continuar"
+      }
     },
     "test": {
       "title": "Teste",

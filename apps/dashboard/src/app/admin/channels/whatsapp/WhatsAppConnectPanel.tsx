@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Layers, Sparkles, FlaskConical, ChevronLeft, Check, ArrowRight } from "lucide-react";
 import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
+import WhatsAppPrerequisites from "./WhatsAppPrerequisites";
 
 type RouteId = "coexistence" | "new" | "sandbox";
 
@@ -25,6 +26,7 @@ export default function WhatsAppConnectPanel({ tenantId, onConnected }: WhatsApp
     const tw = useTranslations("channels.whatsapp");
     const t = useTranslations("setupWizard.connect");
     const [route, setRoute] = useState<RouteId | null>(null);
+    const [prereqsOk, setPrereqsOk] = useState(false);
     const [connected, setConnected] = useState<{ displayPhoneNumber?: string } | null>(null);
     const [error, setError] = useState("");
 
@@ -74,6 +76,11 @@ export default function WhatsAppConnectPanel({ tenantId, onConnected }: WhatsApp
                 />
             </div>
         );
+    }
+
+    // Gate suave: confirmar prerrequisitos antes de ver las rutas (reduce abandono en el popup de Meta).
+    if (!prereqsOk) {
+        return <WhatsAppPrerequisites onContinue={() => setPrereqsOk(true)} />;
     }
 
     return (

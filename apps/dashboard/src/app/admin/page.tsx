@@ -303,7 +303,7 @@ export default function AdminDashboard() {
                         <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">{tSetup("connectBannerTitle")}</p>
                         <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-0.5">{tSetup("connectBannerDesc")}</p>
                     </div>
-                    <Link href="/admin/channels" className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:text-neutral-900 transition-colors">
+                    <Link href="/admin/channels/whatsapp" className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:text-neutral-900 transition-colors">
                         {tSetup("connectBannerCta")} <ArrowUpRight size={14} />
                     </Link>
                 </div>

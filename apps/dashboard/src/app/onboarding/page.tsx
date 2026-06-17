@@ -463,7 +463,10 @@ export default function OnboardingPage() {
     const canProceed = (): boolean => {
         switch (step) {
             case 0:
-                return !!companyName.trim() && !!industry && !!orgSize;
+                // `about` es requerido: es el campo más impactante para la calidad del
+                // agente (alimenta <turn.business> → "¿qué hacen?"). Sin él, el agente
+                // no puede describir el negocio desde el día 1.
+                return !!companyName.trim() && !!industry && !!orgSize && !!about.trim();
             case 1:
                 return audiences.length > 0;
             case 2:
@@ -673,7 +676,7 @@ export default function OnboardingPage() {
                             {/* About — fed into the agent's <turn.business> block */}
                             <div className="mb-4">
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                    {t('about')}
+                                    {t('about')} *
                                 </label>
                                 <div className="relative">
                                     <Info size={16} className="absolute left-3.5 top-3 text-muted-foreground/50" />

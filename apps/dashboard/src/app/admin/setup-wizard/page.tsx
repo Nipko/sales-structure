@@ -125,6 +125,8 @@ export default function SetupWizardPage() {
         if (!templateApplied) {
             try { await api.skipSetupWizard(tenantId); } catch { /* swallow */ }
         }
+        // Disparar el tour guiado al aterrizar en /admin (solo al COMPLETAR, no al saltar).
+        try { localStorage.setItem("parallly:tour:pending", "true"); } catch { /* noop */ }
         window.location.href = "/admin";
     };
 

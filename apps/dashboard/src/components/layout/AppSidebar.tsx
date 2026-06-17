@@ -684,7 +684,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                   const content = wrapWithLink(NavItemContent);
 
                   return (
-                    <li key={item.labelKey} className="relative">
+                    <li key={item.labelKey} id={`tour-${item.labelKey}`} className="relative">
                       {!showExpanded ? (
                         <Tooltip>
                           <TooltipTrigger asChild>

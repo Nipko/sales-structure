@@ -9459,5 +9459,27 @@
     "successUpdated": "Entry updated successfully!",
     "deleteConfirm": "Are you sure you want to permanently delete this entry? Associated images will also be deleted.",
     "deleteError": "Error deleting entry"
+  },
+  "productTour": {
+    "agent": {
+      "title": "Your AI agent",
+      "content": "Your agent lives here: personality, knowledge (FAQs) and procedures — what most shapes how it replies."
+    },
+    "channels": {
+      "title": "Your channels",
+      "content": "Connect and manage WhatsApp and other channels. Without a connected channel, your agent gets no messages."
+    },
+    "inbox": {
+      "title": "Conversations",
+      "content": "See live conversations and take over whenever you want."
+    },
+    "analytics": {
+      "title": "Analytics",
+      "content": "Measure your agent's performance: containment rate, CSAT and more."
+    },
+    "close": "Close",
+    "prev": "Back",
+    "next": "Next",
+    "finish": "Done"
   }
 }

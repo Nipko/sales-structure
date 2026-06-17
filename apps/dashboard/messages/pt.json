@@ -9459,5 +9459,27 @@
     "successUpdated": "Novidade atualizada com sucesso!",
     "deleteConfirm": "Tem certeza de que deseja excluir permanentemente esta novidade? As imagens associadas também serão excluídas.",
     "deleteError": "Erro ao excluir"
+  },
+  "productTour": {
+    "agent": {
+      "title": "Seu agente de IA",
+      "content": "Seu agente fica aqui: personalidade, conhecimento (FAQs) e procedimentos — o que mais impacta como ele responde."
+    },
+    "channels": {
+      "title": "Seus canais",
+      "content": "Conecte e gerencie o WhatsApp e outros canais. Sem um canal conectado, seu agente não recebe mensagens."
+    },
+    "inbox": {
+      "title": "Conversas",
+      "content": "Veja as conversas ao vivo e assuma o controle quando quiser."
+    },
+    "analytics": {
+      "title": "Análises",
+      "content": "Meça o desempenho do agente: taxa de contenção, CSAT e mais."
+    },
+    "close": "Fechar",
+    "prev": "Voltar",
+    "next": "Próximo",
+    "finish": "Concluir"
   }
 }

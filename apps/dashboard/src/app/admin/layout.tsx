@@ -17,6 +17,8 @@ import { TenantProvider } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { useRouter, usePathname } from "next/navigation";
 import { canAccessPath, defaultLandingForRole } from "@/lib/roles";
+import { OnbordaProvider, Onborda } from "onborda";
+import { TourCard, useProductTourSteps, TourLauncher, TourBoundary } from "@/components/tour/ProductTour";
 
 export type RestrictionLevel = "none" | "warning" | "soft_lock" | "hard_lock";
 
@@ -43,6 +45,7 @@ export default function AdminLayout({
     daysRemaining: 7,
     status: "active",
   });
+  const tourSteps = useProductTourSteps();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -97,7 +100,7 @@ export default function AdminLayout({
     }
   }
 
-  return (
+  const content = (
     <TenantProvider>
       <div className="flex h-screen bg-white dark:bg-neutral-950">
         <AppSidebar
@@ -119,5 +122,18 @@ export default function AdminLayout({
       <OfflineIndicator />
       <HelpAssistant />
     </TenantProvider>
+  );
+
+  // Tour guiado (Onborda) envolviendo el contenido. TourBoundary aísla fallas:
+  // si Onborda rompe en render, cae a `content` sin tour (no white-screen).
+  return (
+    <TourBoundary fallback={content}>
+      <OnbordaProvider>
+        <Onborda steps={tourSteps} cardComponent={TourCard} shadowRgb="0,0,0" shadowOpacity="0.5">
+          {content}
+          <TourLauncher />
+        </Onborda>
+      </OnbordaProvider>
+    </TourBoundary>
   );
 }

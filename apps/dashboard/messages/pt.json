@@ -3260,6 +3260,16 @@
       "qualificationAssistant": "Assistente de Qualificação",
       "blankAgent": "Agente em Branco",
       "defaultAgent": "Agente Padrão"
+    },
+    "readiness": {
+      "title": "Deixe seu agente 100% pronto",
+      "subtitle": "{done} de {total} pronto — conclua o restante para melhores respostas",
+      "items": {
+        "channel": "Canal",
+        "about": "Descrição do negócio",
+        "hours": "Horários",
+        "knowledge": "Conhecimento"
+      }
     }
   },
   "knowledge": {

@@ -15,6 +15,7 @@ import {
 import { PageHeader } from "@/components/ui/page-header";
 import { TabNav } from "@/components/ui/tab-nav";
 import { Badge } from "@/components/ui/badge";
+import { AgentReadinessBanner } from "@/components/AgentReadinessBanner";
 
 import type { PersonaConfig } from "../_types";
 import { defaultConfig } from "../_types";
@@ -360,6 +361,9 @@ export default function AgentEditorPage() {
           </div>
         }
       />
+
+      {/* ── Readiness del agente (about/horarios/KB/canal) ── */}
+      <AgentReadinessBanner tenantId={activeTenantId} channelAssigned={assignedChannels.length > 0} />
 
       {/* ── Agent profile hero + channels ── */}
       <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 mb-6">

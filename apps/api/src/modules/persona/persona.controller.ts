@@ -237,6 +237,12 @@ export class PersonaController {
         let hasAutomation = false;
         let hasTemplates = false;
         let hasAnyChannel = false;
+        let hasBusinessAbout = false;
+
+        // Readiness del agente: horarios de atención viven en tenant.settings.businessHours
+        // (nivel tenant, no requiere query). 24/7 o ≥1 día con horario cuenta como configurado.
+        const bh = settings.businessHours;
+        const hasBusinessHours = !!(bh && (bh.is247 === true || Object.keys(bh.schedule || {}).length > 0));
 
         if (schema) {
             try {
@@ -250,6 +256,7 @@ export class PersonaController {
                     this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".automation_rules WHERE active = true LIMIT 1`).catch(() => [{ c: 0 }]),
                     this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".email_templates LIMIT 1`).catch(() => [{ c: 0 }]),
                     this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`, tenantId).catch(() => [{ c: 0 }]),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".companies WHERE is_primary = true AND about IS NOT NULL AND btrim(about) != ''`).catch(() => [{ c: 0 }]),
                 ]);
 
                 const val = (r: PromiseSettledResult<any>) => r.status === 'fulfilled' ? Number((r.value as any[])?.[0]?.c || 0) : 0;
@@ -260,6 +267,7 @@ export class PersonaController {
                 hasAutomation = val(checks[4]) > 0;
                 hasTemplates = val(checks[5]) > 0;
                 hasAnyChannel = val(checks[6]) > 0;
+                hasBusinessAbout = val(checks[7]) > 0;
             } catch {
                 // If schema doesn't exist yet, all default to false
             }
@@ -278,6 +286,8 @@ export class PersonaController {
                 hasAutomation,
                 hasTemplates,
                 hasAnyChannel,
+                hasBusinessAbout,
+                hasBusinessHours,
             },
         };
     }

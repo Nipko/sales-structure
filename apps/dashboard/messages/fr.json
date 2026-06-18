@@ -3260,6 +3260,16 @@
       "qualificationAssistant": "Assistant de qualification",
       "blankAgent": "Agent vierge",
       "defaultAgent": "Agent par défaut"
+    },
+    "readiness": {
+      "title": "Préparez votre agent à 100 %",
+      "subtitle": "{done} sur {total} terminé — complétez le reste pour de meilleures réponses",
+      "items": {
+        "channel": "Canal",
+        "about": "Description de l'entreprise",
+        "hours": "Horaires",
+        "knowledge": "Connaissance"
+      }
     }
   },
   "knowledge": {

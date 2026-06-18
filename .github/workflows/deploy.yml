@@ -286,6 +286,31 @@ jobs:
             echo "configured=true" >> $GITHUB_OUTPUT
           fi
 
+      # Gate de pre-conexión: el SSH del VPS a veces es inalcanzable por blips de red
+      # o por la ventana del backup nocturno (2AM) que satura el host → "dial tcp i/o
+      # timeout". En vez de re-ejecutar el deploy completo (riesgo de aplicarlo a medias),
+      # esperamos con backoff a que el puerto SSH acepte conexiones y luego deployamos UNA
+      # sola vez. Auto-sana cortes transitorios; si el VPS está caído de verdad, falla con
+      # un mensaje accionable en lugar de un timeout críptico.
+      - name: Wait for VPS SSH to be reachable
+        if: steps.check_secrets.outputs.configured == 'true'
+        env:
+          SSH_HOST: ${{ secrets.SERVER_HOST }}
+          SSH_PORT: ${{ secrets.SERVER_PORT }}
+        run: |
+          PORT="${SSH_PORT:-22}"
+          echo "Esperando a que ${SSH_HOST}:${PORT} acepte conexiones SSH..."
+          for i in $(seq 1 28); do   # 28 intentos * 15s ≈ 7 min
+            if timeout 5 bash -c "true >/dev/tcp/${SSH_HOST}/${PORT}" 2>/dev/null; then
+              echo "✓ SSH alcanzable (intento ${i}). Procedo al deploy."
+              exit 0
+            fi
+            echo "  intento ${i}/28: VPS aún sin respuesta en el puerto SSH, reintento en 15s..."
+            sleep 15
+          done
+          echo "::error::El puerto SSH de ${SSH_HOST}:${PORT} no respondió en ~7 min (VPS inalcanzable: backup nocturno / red / firewall / fail2ban). El deploy NO se aplicó — reintentá el job cuando el VPS esté accesible."
+          exit 1
+
       - name: Deploy to VPS
         if: steps.check_secrets.outputs.configured == 'true'
         uses: appleboy/ssh-action@v1.0.3

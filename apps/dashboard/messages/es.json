@@ -9543,6 +9543,10 @@
     "close": "Cerrar",
     "prev": "Anterior",
     "next": "Siguiente",
-    "finish": "Listo"
+    "finish": "Listo",
+    "verticalTool": {
+      "title": "Herramientas de tu rubro",
+      "content": "Acá gestionás {tool}: lo específico de tu negocio que tu agente usa para responder y vender."
+    }
   }
 }

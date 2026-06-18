@@ -9543,6 +9543,10 @@
     "close": "Fechar",
     "prev": "Voltar",
     "next": "Próximo",
-    "finish": "Concluir"
+    "finish": "Concluir",
+    "verticalTool": {
+      "title": "Ferramentas do seu setor",
+      "content": "Aqui você gerencia {tool}: o específico do seu negócio que seu agente usa para responder e vender."
+    }
   }
 }

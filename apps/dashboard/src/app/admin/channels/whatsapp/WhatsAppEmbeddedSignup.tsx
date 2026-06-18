@@ -44,6 +44,12 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
   const [launching, setLaunching] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [step, setStep] = useState<string>("");
+  // Fase numérica para el stepper visual (progreso del Embedded Signup).
+  const [phase, setPhase] = useState<"" | "exchanging" | "registering" | "done">("");
+  // onSuccess suele desmontar este componente (el padre pasa al estado "conectado").
+  // Evita setState tras el unmount en el finally del happy path.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
   // Use a ref to capture session data from window message (available immediately, no React state delay)
   const sessionDataRef = useRef<{ waba_id?: string; phone_number_id?: string }>({});
 
@@ -127,6 +133,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
         setLaunching(false);
         setProcessing(true);
         setStep(t("exchangingCode"));
+        setPhase("exchanging");
 
         try {
           // Get fresh token from API (refresh if needed)
@@ -154,6 +161,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
           }
 
           setStep(t("registeringAccount"));
+          setPhase("registering");
 
           const payload = {
             tenantId,
@@ -184,13 +192,18 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
 
           const result = JSON.parse(responseText);
           setStep(t("connectionSuccess"));
+          setPhase("done");
           onSuccess(result);
         } catch (err: any) {
           console.error("[EmbeddedSignup] Error:", err);
           onError(err.message || tc("errorSaving"));
         } finally {
-          setProcessing(false);
-          setStep("");
+          // En éxito el componente ya se desmontó (onSuccess) → no tocar estado.
+          if (mountedRef.current) {
+            setProcessing(false);
+            setStep("");
+            setPhase("");
+          }
         }
       };
       
@@ -265,6 +278,38 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
               ? step || tc("loading")
               : t("connectButton")}
       </button>
+
+      {/* Progreso visual del Embedded Signup — visible mientras se autoriza/conecta */}
+      {(launching || processing) && (() => {
+        const stage = phase === "done" ? 3 : phase === "registering" ? 2 : phase === "exchanging" ? 1 : 0;
+        const steps = [t("esuProgress.auth"), t("esuProgress.connecting"), t("esuProgress.activating")];
+        return (
+          <div className="mt-4 flex items-center justify-between gap-1.5">
+            {steps.map((label, i) => {
+              const done = stage > i;
+              const active = stage === i;
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1.5 min-w-0">
+                  <div className="flex items-center w-full">
+                    <div className={`h-0.5 flex-1 ${i === 0 ? "opacity-0" : done || active ? "bg-emerald-500" : "bg-neutral-300 dark:bg-white/15"}`} />
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold ${
+                      done ? "bg-emerald-500 text-white"
+                        : active ? "bg-[#1877F2] text-white"
+                        : "bg-neutral-200 dark:bg-white/10 text-neutral-400"
+                    }`}>
+                      {done ? "✓" : active ? <span className="w-2.5 h-2.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : i + 1}
+                    </div>
+                    <div className={`h-0.5 flex-1 ${i === steps.length - 1 ? "opacity-0" : done ? "bg-emerald-500" : "bg-neutral-300 dark:bg-white/15"}`} />
+                  </div>
+                  <span className={`text-[10px] text-center leading-tight ${active ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       <p className="mt-3 text-xs text-[var(--text-secondary)] text-center leading-relaxed">
         {t("securityNote")}

@@ -79,10 +79,41 @@ export default function SetupWizardPage() {
     useEffect(() => {
         if (!tenantId) return;
         api.getPersonaTemplates(tenantId).then(res => {
-            if (res.success) setTemplates(res.data || []);
+            const tmpls = res.success ? (res.data || []) : [];
+            setTemplates(tmpls);
+            // Restaurar progreso guardado (persistencia ante refresh a mitad del wizard).
+            try {
+                const raw = localStorage.getItem(`parallly:setupwizard:${tenantId}`);
+                if (raw) {
+                    const s = JSON.parse(raw);
+                    const tm = s.templateId ? tmpls.find((x: any) => x.id === s.templateId) : null;
+                    if (tm) setSelectedTemplate(tm);
+                    if (typeof s.agentName === "string") setAgentName(s.agentName);
+                    if (typeof s.greeting === "string") setGreeting(s.greeting);
+                    if (typeof s.tone === "string") setTone(s.tone);
+                    if (typeof s.is247 === "boolean") setIs247(s.is247);
+                    if (typeof s.hOpen === "string") setHOpen(s.hOpen);
+                    if (typeof s.hClose === "string") setHClose(s.hClose);
+                    if (s.hDays && typeof s.hDays === "object" && !Array.isArray(s.hDays)) setHDays(s.hDays);
+                    if (Array.isArray(s.faqs) && s.faqs.length) setFaqs(s.faqs);
+                    // Solo restaurar paso >0 si hay template (los pasos 1+ lo requieren).
+                    if (typeof s.step === "number" && (s.step === 0 || tm)) setStep(Math.min(4, Math.max(0, s.step)));
+                }
+            } catch { /* estado corrupto → empezar limpio */ }
             setLoading(false);
         });
     }, [tenantId]);
+
+    // Persistir el progreso del wizard para sobrevivir a un refresh.
+    useEffect(() => {
+        if (!tenantId || loading) return;
+        try {
+            localStorage.setItem(`parallly:setupwizard:${tenantId}`, JSON.stringify({
+                step, templateId: selectedTemplate?.id || null,
+                agentName, greeting, tone, is247, hOpen, hClose, hDays, faqs,
+            }));
+        } catch { /* storage no disponible */ }
+    }, [tenantId, loading, step, selectedTemplate, agentName, greeting, tone, is247, hOpen, hClose, hDays, faqs]);
 
     // While on the "Conéctalo" step, poll for any connected channel (covers
     // WhatsApp AND channels connected via their own OAuth pages).
@@ -154,12 +185,17 @@ export default function SetupWizardPage() {
                 filledFaqs.map(f => api.createKnowledgeDoc(f.q.trim(), `P: ${f.q.trim()}\nR: ${f.a.trim()}`, "faq")),
             );
         }
+        // Progreso del wizard ya consumido → limpiar el estado persistido.
+        try { localStorage.removeItem(`parallly:setupwizard:${tenantId}`); } catch { /* noop */ }
         // Disparar el tour guiado al aterrizar en /admin (solo al COMPLETAR, no al saltar).
         try { localStorage.setItem("parallly:tour:pending", "true"); } catch { /* noop */ }
         window.location.href = "/admin";
     };
 
     const handleSkip = async () => {
+        if (tenantId) {
+            try { localStorage.removeItem(`parallly:setupwizard:${tenantId}`); } catch { /* noop */ }
+        }
         if (!tenantId) { router.push("/admin"); return; }
         try {
             await api.skipSetupWizard(tenantId);

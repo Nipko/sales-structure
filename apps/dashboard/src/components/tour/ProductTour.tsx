@@ -5,9 +5,35 @@ import { useTranslations } from "next-intl";
 import { useOnborda } from "onborda";
 import type { CardComponentProps } from "onborda";
 import { X, ArrowRight, ArrowLeft } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 /** Flag que el setup-wizard deja al terminar para disparar el tour en /admin. */
 export const TOUR_PENDING_KEY = "parallly:tour:pending";
+
+/**
+ * Mapa vertical → labelKey del ítem PERSONALIZADO del sidebar (id `tour-{labelKey}`).
+ * Solo las verticales con un ítem gateado por industria en AppSidebar; el resto
+ * (automotriz, moda_belleza, servicios_profesionales, finanzas, technology, otro)
+ * no tienen herramienta custom en el sidebar → el tour omite ese paso.
+ *
+ * NOTA: el tour se dispara post-setup-wizard en contexto tenant_admin, que tiene
+ * canEditPipeline + canHandleConversations, así que estos ítems siempre se renderizan.
+ * Si en el futuro se agrega un ítem con `verticals:` en AppSidebar, actualizar este mapa.
+ */
+const VERTICAL_TOOL_LABELKEY: Record<string, string> = {
+    turismo: "properties",
+    inmobiliaria: "listings",
+    restaurantes: "menu",
+    gimnasios: "memberships",
+    education: "courses",
+    seguros: "insurance",
+    servicios_hogar: "serviceRequests",
+    veterinaria: "pets",
+    salud: "treatmentPlans",
+    pet_services: "pets",
+    fotografia: "photoSessions",
+    retail: "orders",
+};
 
 /**
  * Pasos del tour guiado. Bloque A (impactan al agente de chat) primero, Bloque B
@@ -16,19 +42,37 @@ export const TOUR_PENDING_KEY = "parallly:tour:pending";
  */
 export function useProductTourSteps() {
     const t = useTranslations("productTour");
-    return [
-        {
-            tour: "main",
-            steps: [
-                // Bloque A — impactan al agente
-                { icon: "🤖", title: t("agent.title"), content: t("agent.content"), selector: "#tour-automation", side: "right" as const, showControls: true, pointerPadding: 8, pointerRadius: 12 },
-                { icon: "🔌", title: t("channels.title"), content: t("channels.content"), selector: "#tour-channels", side: "right" as const, showControls: true, pointerPadding: 8, pointerRadius: 12 },
-                // Bloque B — valor adicional
-                { icon: "💬", title: t("inbox.title"), content: t("inbox.content"), selector: "#tour-conversations", side: "right" as const, showControls: true, pointerPadding: 8, pointerRadius: 12 },
-                { icon: "📊", title: t("analytics.title"), content: t("analytics.content"), selector: "#tour-analytics", side: "right" as const, showControls: true, pointerPadding: 8, pointerRadius: 12 },
-            ],
-        },
+    const tNav = useTranslations("nav");
+    const { verticalConfig } = useAuth();
+    const common = { side: "right" as const, showControls: true, pointerPadding: 8, pointerRadius: 12 };
+
+    const steps: any[] = [
+        // Bloque A — impactan al agente
+        { icon: "🤖", title: t("agent.title"), content: t("agent.content"), selector: "#tour-automation", ...common },
+        { icon: "🔌", title: t("channels.title"), content: t("channels.content"), selector: "#tour-channels", ...common },
     ];
+
+    // Paso vertical: ilumina la herramienta personalizada del rubro (si la vertical la tiene).
+    // El selector apunta al ítem del sidebar gateado por industria (siempre presente para
+    // esa vertical); si la vertical no tiene tool custom, no se agrega el paso.
+    const toolKey = VERTICAL_TOOL_LABELKEY[verticalConfig?.industry || ""];
+    if (toolKey) {
+        steps.push({
+            icon: "🧰",
+            title: t("verticalTool.title"),
+            content: t("verticalTool.content", { tool: tNav(`items.${toolKey}`) }),
+            selector: `#tour-${toolKey}`,
+            ...common,
+        });
+    }
+
+    // Bloque B — valor adicional
+    steps.push(
+        { icon: "💬", title: t("inbox.title"), content: t("inbox.content"), selector: "#tour-conversations", ...common },
+        { icon: "📊", title: t("analytics.title"), content: t("analytics.content"), selector: "#tour-analytics", ...common },
+    );
+
+    return [{ tour: "main", steps }];
 }
 
 /** Tarjeta del tour (shadcn-styled). */

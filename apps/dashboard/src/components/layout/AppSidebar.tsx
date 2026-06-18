@@ -78,7 +78,9 @@ interface NavItemDef {
   children?: { labelKey: string; href: string; capability?: keyof ReturnType<typeof useRole> }[];
   /** Capability flag from useRole that gates visibility. Omit = always visible. */
   capability?: keyof ReturnType<typeof useRole>;
-  /** Vertical industries that show this item. Omit = visible for all verticals. */
+  /** Vertical industries that show this item. Omit = visible for all verticals.
+   *  NOTE: si agregás un ítem con `verticals:`, actualizá VERTICAL_TOOL_LABELKEY en
+   *  components/tour/ProductTour.tsx para que el tour guiado lo ilumine en esa vertical. */
   verticals?: string[];
   /** Accent color for primary/important items. Omit = neutral grey. */
   accent?: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
     Building2, Globe, ChevronLeft, ChevronRight,
@@ -409,7 +409,12 @@ export default function OnboardingPage() {
     const [step, setStep] = useState(0);
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [redirecting, setRedirecting] = useState(false);
+    const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const router = useRouter();
+
+    // Cancela el timer del puente si el componente se desmonta antes del redirect.
+    useEffect(() => () => { if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current); }, []);
 
     // Step 1
     const [companyName, setCompanyName] = useState("");
@@ -542,14 +547,31 @@ export default function OnboardingPage() {
                 if (d.verticalConfig) localStorage.setItem("verticalConfig", JSON.stringify(d.verticalConfig));
             }
 
-            // Full page reload so AuthContext re-reads the new tokens with tenantId
-            // router.push would keep the old user state without tenantId
-            window.location.href = "/admin";
+            // Puente cohesivo: en vez de caer al dashboard (que rebota al wizard con un
+            // flash), mostramos una transición breve y vamos DIRECTO al setup-wizard.
+            // Full page reload para que AuthContext re-lea los tokens nuevos con tenantId.
+            setRedirecting(true);
+            redirectTimerRef.current = setTimeout(() => { window.location.href = "/admin/setup-wizard"; }, 1400);
+            return;
         } catch {
             setError(t('connectionError'));
         }
         setIsSubmitting(false);
     };
+
+    // Puente visual /onboarding → setup-wizard: transición cohesiva antes del reload.
+    if (redirecting) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-gradient-to-br dark:from-[#0a0a14] dark:via-[#12122a] dark:to-[#1a0a2e] p-5">
+                <div className="text-center relative z-10">
+                    <div className="mb-6"><AnimatedLogo height={44} animate showPoweredBy={false} /></div>
+                    <div className="w-10 h-10 border-[3px] border-neutral-200 dark:border-white/15 border-t-indigo-500 rounded-full animate-spin mx-auto mb-5" />
+                    <h2 className="text-lg font-semibold text-foreground mb-1">{t('bridge.title')}</h2>
+                    <p className="text-sm text-muted-foreground">{t('bridge.subtitle')}</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-gradient-to-br dark:from-[#0a0a14] dark:via-[#12122a] dark:to-[#1a0a2e] p-5">

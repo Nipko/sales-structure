@@ -9543,6 +9543,10 @@
     "close": "Close",
     "prev": "Back",
     "next": "Next",
-    "finish": "Done"
+    "finish": "Done",
+    "verticalTool": {
+      "title": "Tools for your industry",
+      "content": "Here you manage {tool}: the industry-specific data your agent uses to answer and sell."
+    }
   }
 }

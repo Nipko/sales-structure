@@ -4925,7 +4925,8 @@
     },
     "time": {
       "min": "~{n} min"
-    }
+    },
+    "advanced": "Avanzado"
   },
   "catalog": {
     "hub": {
@@ -7287,7 +7288,8 @@
     "searchResults": "Resultados ({count})",
     "industryGeneral": "General",
     "footer": {
-      "support": "Soporte Técnico"
+      "support": "Soporte Técnico",
+      "restartTour": "Reiniciar tour"
     }
   },
   "tours": {

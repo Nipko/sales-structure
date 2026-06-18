@@ -33,7 +33,8 @@ import {
   Link as LinkIcon,
   CreditCard,
   Send,
-  Loader2
+  Loader2,
+  Compass
 } from "lucide-react";
 import {
   Sheet,
@@ -996,9 +997,16 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
 
         {/* Footer Area with Branding and Quick links */}
         <div className="p-4 border-t border-neutral-200/50 dark:border-neutral-800/50 bg-neutral-50 dark:bg-neutral-900/50 flex items-center justify-between shrink-0">
-          <span className="text-[10px] font-medium text-neutral-400 dark:text-neutral-500">
-            Parallly SaaS · V4.0.0
-          </span>
+          <button
+            type="button"
+            onClick={() => {
+              try { window.dispatchEvent(new Event("parallly:start-tour")); } catch { /* noop */ }
+              setOpen(false);
+            }}
+            className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+          >
+            <Compass className="size-2.5" /> {t("footer.restartTour")}
+          </button>
           <a
             href="https://parallly-chat.cloud/support"
             target="_blank"

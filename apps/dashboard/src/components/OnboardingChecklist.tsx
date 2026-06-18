@@ -10,23 +10,27 @@ import { Check, ChevronDown, ChevronUp, X, ListChecks } from "lucide-react";
 
 interface ChecklistItem {
     key: string;
-    essential: boolean;
+    level: 1 | 2 | 3;
     href: string;
     actionKey: string;
     timeMin: number;
     check: (data: any) => boolean;
 }
 
+// Progressive disclosure en 3 niveles:
+//  L1 Esencial   — lo mínimo para que el agente exista y reciba mensajes.
+//  L2 Recomendado — lo que hace al agente "listo" (probarlo, conocimiento).
+//  L3 Avanzado    — potenciadores (equipo, más canales, automatización, plantillas).
 const ITEMS: ChecklistItem[] = [
-    { key: "createAccount", essential: true, href: "", actionKey: "", timeMin: 0, check: () => true },
-    { key: "configureAgent", essential: true, href: "/admin/agent", actionKey: "configure", timeMin: 3, check: (d) => d.hasPersona },
-    { key: "connectChannel", essential: true, href: "/admin/channels/whatsapp", actionKey: "connect", timeMin: 3, check: (d) => d.hasAnyChannel },
-    { key: "sendTestMessage", essential: true, href: "/admin/inbox", actionKey: "try", timeMin: 1, check: (d) => d.hasConversations },
-    { key: "addKnowledgeBase", essential: false, href: "/admin/knowledge", actionKey: "configure", timeMin: 5, check: (d) => d.hasKnowledge },
-    { key: "inviteTeam", essential: false, href: "/admin/users", actionKey: "invite", timeMin: 2, check: (d) => d.hasTeam },
-    { key: "connectInstagram", essential: false, href: "/admin/channels/instagram", actionKey: "connect", timeMin: 3, check: (d) => d.hasInstagram },
-    { key: "createAutomation", essential: false, href: "/admin/automation", actionKey: "create", timeMin: 5, check: (d) => d.hasAutomation },
-    { key: "customizeTemplates", essential: false, href: "/admin/settings/email-templates", actionKey: "edit", timeMin: 3, check: (d) => d.hasTemplates },
+    { key: "createAccount", level: 1, href: "", actionKey: "", timeMin: 0, check: () => true },
+    { key: "configureAgent", level: 1, href: "/admin/agent", actionKey: "configure", timeMin: 3, check: (d) => d.hasPersona },
+    { key: "connectChannel", level: 1, href: "/admin/channels/whatsapp", actionKey: "connect", timeMin: 3, check: (d) => d.hasAnyChannel },
+    { key: "sendTestMessage", level: 2, href: "/admin/inbox", actionKey: "try", timeMin: 1, check: (d) => d.hasConversations },
+    { key: "addKnowledgeBase", level: 2, href: "/admin/knowledge", actionKey: "configure", timeMin: 5, check: (d) => d.hasKnowledge },
+    { key: "inviteTeam", level: 3, href: "/admin/users", actionKey: "invite", timeMin: 2, check: (d) => d.hasTeam },
+    { key: "connectInstagram", level: 3, href: "/admin/channels/instagram", actionKey: "connect", timeMin: 3, check: (d) => d.hasInstagram },
+    { key: "createAutomation", level: 3, href: "/admin/automation", actionKey: "create", timeMin: 5, check: (d) => d.hasAutomation },
+    { key: "customizeTemplates", level: 3, href: "/admin/settings/email-templates", actionKey: "edit", timeMin: 3, check: (d) => d.hasTemplates },
 ];
 
 export default function OnboardingChecklist() {
@@ -39,6 +43,7 @@ export default function OnboardingChecklist() {
     const [collapsed, setCollapsed] = useState(false);
     const [dismissed, setDismissed] = useState(false);
     const [minimized, setMinimized] = useState(false);
+    const [advancedOpen, setAdvancedOpen] = useState(false);
     const [checkData, setCheckData] = useState<any>({});
     const [loaded, setLoaded] = useState(false);
 
@@ -138,8 +143,38 @@ export default function OnboardingChecklist() {
         setMinimized(true);
     };
 
-    const essentialItems = ITEMS.filter(i => i.essential);
-    const recommendedItems = ITEMS.filter(i => !i.essential);
+    const l1Items = ITEMS.filter(i => i.level === 1);
+    const l2Items = ITEMS.filter(i => i.level === 2);
+    const l3Items = ITEMS.filter(i => i.level === 3);
+    const l3Done = l3Items.filter(i => i.check(checkData)).length;
+
+    const renderItem = (item: ChecklistItem, accent: "indigo" | "neutral") => {
+        const done = item.check(checkData);
+        return (
+            <div key={item.key} className="flex items-center gap-2.5">
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                    done ? "bg-emerald-500 text-white" : "border-2 border-neutral-300 dark:border-white/20"
+                }`}>
+                    {done && <Check size={12} />}
+                </div>
+                <span className={`text-[12px] flex-1 ${done ? "text-muted-foreground line-through" : "text-foreground"}`}>
+                    {vt.industry !== 'otro' && tChecklist.has(`${vt.industry}.${item.key}`)
+                        ? tChecklist(`${vt.industry}.${item.key}`)
+                        : t(`items.${item.key}`)}
+                </span>
+                {!done && item.href && (
+                    <button
+                        onClick={() => router.push(item.href)}
+                        className={accent === "indigo"
+                            ? "text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-500 font-medium hover:bg-indigo-500/20 transition-colors cursor-pointer"
+                            : "text-[10px] px-2 py-0.5 rounded bg-neutral-100 dark:bg-white/10 text-muted-foreground font-medium hover:text-foreground transition-colors cursor-pointer"}
+                    >
+                        {t(`actions.${item.actionKey}`)}
+                    </button>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div className="border-l border-neutral-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] w-72 shrink-0 hidden lg:block overflow-y-auto">
@@ -169,68 +204,38 @@ export default function OnboardingChecklist() {
 
                 {!collapsed && (
                     <>
-                        {/* Essentials */}
+                        {/* Nivel 1 — Esencial */}
                         <div className="mb-4">
                             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{t("essentials")}</p>
                             <div className="space-y-1.5">
-                                {essentialItems.map(item => {
-                                    const done = item.check(checkData);
-                                    return (
-                                        <div key={item.key} className="flex items-center gap-2.5">
-                                            <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                                                done ? "bg-emerald-500 text-white" : "border-2 border-neutral-300 dark:border-white/20"
-                                            }`}>
-                                                {done && <Check size={12} />}
-                                            </div>
-                                            <span className={`text-[12px] flex-1 ${done ? "text-muted-foreground line-through" : "text-foreground"}`}>
-                                                {vt.industry !== 'otro' && tChecklist.has(`${vt.industry}.${item.key}`)
-                                                    ? tChecklist(`${vt.industry}.${item.key}`)
-                                                    : t(`items.${item.key}`)}
-                                            </span>
-                                            {!done && item.href && (
-                                                <button
-                                                    onClick={() => router.push(item.href)}
-                                                    className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-500 font-medium hover:bg-indigo-500/20 transition-colors cursor-pointer"
-                                                >
-                                                    {t(`actions.${item.actionKey}`)}
-                                                </button>
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                {l1Items.map(item => renderItem(item, "indigo"))}
                             </div>
                         </div>
 
-                        {/* Recommended */}
-                        <div>
+                        {/* Nivel 2 — Recomendado */}
+                        <div className="mb-4">
                             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{t("recommended")}</p>
                             <div className="space-y-1.5">
-                                {recommendedItems.map(item => {
-                                    const done = item.check(checkData);
-                                    return (
-                                        <div key={item.key} className="flex items-center gap-2.5">
-                                            <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                                                done ? "bg-emerald-500 text-white" : "border-2 border-neutral-300 dark:border-white/20"
-                                            }`}>
-                                                {done && <Check size={12} />}
-                                            </div>
-                                            <span className={`text-[12px] flex-1 ${done ? "text-muted-foreground line-through" : "text-foreground"}`}>
-                                                {vt.industry !== 'otro' && tChecklist.has(`${vt.industry}.${item.key}`)
-                                                    ? tChecklist(`${vt.industry}.${item.key}`)
-                                                    : t(`items.${item.key}`)}
-                                            </span>
-                                            {!done && item.href && (
-                                                <button
-                                                    onClick={() => router.push(item.href)}
-                                                    className="text-[10px] px-2 py-0.5 rounded bg-neutral-100 dark:bg-white/10 text-muted-foreground font-medium hover:text-foreground transition-colors cursor-pointer"
-                                                >
-                                                    {t(`actions.${item.actionKey}`)}
-                                                </button>
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                {l2Items.map(item => renderItem(item, "neutral"))}
                             </div>
+                        </div>
+
+                        {/* Nivel 3 — Avanzado (progressive disclosure: colapsado por defecto) */}
+                        <div>
+                            <button
+                                onClick={() => setAdvancedOpen(o => !o)}
+                                className="w-full flex items-center justify-between mb-2 cursor-pointer group"
+                            >
+                                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider group-hover:text-foreground transition-colors">
+                                    {t("advanced")} <span className="text-[10px] normal-case font-normal">({l3Done}/{l3Items.length})</span>
+                                </span>
+                                {advancedOpen ? <ChevronUp size={13} className="text-muted-foreground" /> : <ChevronDown size={13} className="text-muted-foreground" />}
+                            </button>
+                            {advancedOpen && (
+                                <div className="space-y-1.5">
+                                    {l3Items.map(item => renderItem(item, "neutral"))}
+                                </div>
+                            )}
                         </div>
 
                         {/* Dismiss */}

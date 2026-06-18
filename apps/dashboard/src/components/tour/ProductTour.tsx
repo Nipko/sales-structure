@@ -68,6 +68,9 @@ export function TourCard({ step, currentStep, totalSteps, nextStep, prevStep, ar
     );
 }
 
+/** Evento global para reiniciar el tour desde cualquier parte (ej: HelpAssistant). */
+export const TOUR_RESTART_EVENT = "parallly:start-tour";
+
 /** Dispara el tour cuando el usuario llega a /admin tras completar el setup-wizard. */
 export function TourLauncher() {
     const { startOnborda } = useOnborda();
@@ -81,6 +84,15 @@ export function TourLauncher() {
             }
         } catch { /* localStorage no disponible */ }
     }, [startOnborda]);
+
+    // Permite reiniciar el tour bajo demanda (HelpAssistant dispara este evento).
+    // Vive dentro de <Onborda>, así que useOnborda es seguro aquí.
+    useEffect(() => {
+        const handler = () => { try { startOnborda("main"); } catch { /* noop */ } };
+        window.addEventListener(TOUR_RESTART_EVENT, handler);
+        return () => window.removeEventListener(TOUR_RESTART_EVENT, handler);
+    }, [startOnborda]);
+
     return null;
 }
 

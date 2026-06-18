@@ -4827,7 +4827,19 @@
       "hours": "Horario de atención",
       "hours247": "24/7 (recomendado)",
       "hoursCustom": "Horario personalizado",
-      "afterHoursMsg": "Mensaje fuera de horario"
+      "afterHoursMsg": "Mensaje fuera de horario",
+      "openTime": "Abre",
+      "closeTime": "Cierra",
+      "activeDays": "Días de atención",
+      "dayAbbr": {
+        "monday": "Lu",
+        "tuesday": "Ma",
+        "wednesday": "Mi",
+        "thursday": "Ju",
+        "friday": "Vi",
+        "saturday": "Sá",
+        "sunday": "Do"
+      }
     },
     "channels": {
       "title": "¿Dónde quieres atender?",

@@ -35,6 +35,9 @@ function getToolBadges(tmpl: any): string[] {
     return badges;
 }
 
+// Días del horario comercial — claves alineadas con settings.businessHours (monday..sunday).
+const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
 export default function SetupWizardPage() {
     const t = useTranslations("setupWizard");
     const { user } = useAuth();
@@ -51,8 +54,26 @@ export default function SetupWizardPage() {
     const [greeting, setGreeting] = useState("");
     const [tone, setTone] = useState("amigable");
     const [is247, setIs247] = useState(true);
+    const [hOpen, setHOpen] = useState("08:00");
+    const [hClose, setHClose] = useState("18:00");
+    const [hDays, setHDays] = useState<Record<string, boolean>>({
+        monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: false, sunday: false,
+    });
     const [channelConnected, setChannelConnected] = useState(false);
     const autoAdvancedRef = useRef(false);
+
+    // Construye el objeto businessHours canónico (settings.businessHours) según el toggle.
+    const buildBusinessHours = () => {
+        if (is247) {
+            const allDay = { enabled: true, open: "00:00", close: "23:59" };
+            return { is247: true, timezone: "America/Bogota", schedule: Object.fromEntries(WEEKDAYS.map(d => [d, { ...allDay }])) };
+        }
+        return {
+            is247: false,
+            timezone: "America/Bogota",
+            schedule: Object.fromEntries(WEEKDAYS.map(d => [d, { enabled: !!hDays[d], open: hOpen, close: hClose }])),
+        };
+    };
 
     useEffect(() => {
         if (!tenantId) return;
@@ -111,7 +132,7 @@ export default function SetupWizardPage() {
         try {
             const result = await api.applySetupTemplate(tenantId, {
                 templateId: selectedTemplate.id,
-                customizations: { agentName, greeting, tone, is247 },
+                customizations: { agentName, greeting, tone, is247, businessHours: buildBusinessHours() },
             });
             templateApplied = !!(result as any)?.success;
             if (!templateApplied) {
@@ -335,6 +356,44 @@ export default function SetupWizardPage() {
                                         {t("customize.hoursCustom")}
                                     </button>
                                 </div>
+
+                                {/* Mini-form de horarios (Fase 2.2) — solo cuando NO es 24/7 */}
+                                {!is247 && (
+                                    <div className="mt-3 rounded-xl border border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/[0.03] p-4 space-y-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex-1">
+                                                <label className="block text-[12px] text-muted-foreground mb-1">{t("customize.openTime")}</label>
+                                                <input
+                                                    type="time" value={hOpen} onChange={e => setHOpen(e.target.value)}
+                                                    className="w-full py-2 px-3 rounded-lg border border-neutral-300 dark:border-white/10 bg-white dark:bg-white/5 text-foreground text-sm outline-none focus:border-indigo-500"
+                                                />
+                                            </div>
+                                            <div className="flex-1">
+                                                <label className="block text-[12px] text-muted-foreground mb-1">{t("customize.closeTime")}</label>
+                                                <input
+                                                    type="time" value={hClose} onChange={e => setHClose(e.target.value)}
+                                                    className="w-full py-2 px-3 rounded-lg border border-neutral-300 dark:border-white/10 bg-white dark:bg-white/5 text-foreground text-sm outline-none focus:border-indigo-500"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[12px] text-muted-foreground mb-1.5">{t("customize.activeDays")}</label>
+                                            <div className="flex gap-1.5 flex-wrap">
+                                                {WEEKDAYS.map(d => (
+                                                    <button
+                                                        key={d} type="button"
+                                                        onClick={() => setHDays(prev => ({ ...prev, [d]: !prev[d] }))}
+                                                        className={`min-w-9 h-9 px-2 rounded-lg text-[12px] font-medium transition-colors ${
+                                                            hDays[d] ? "bg-indigo-500 text-white" : "bg-white dark:bg-white/5 border border-neutral-200 dark:border-white/10 text-muted-foreground"
+                                                        }`}
+                                                    >
+                                                        {t(`customize.dayAbbr.${d}`)}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

@@ -4827,7 +4827,19 @@
       "hours": "Business hours",
       "hours247": "24/7 (recommended)",
       "hoursCustom": "Custom hours",
-      "afterHoursMsg": "After hours message"
+      "afterHoursMsg": "After hours message",
+      "openTime": "Opens",
+      "closeTime": "Closes",
+      "activeDays": "Active days",
+      "dayAbbr": {
+        "monday": "Mo",
+        "tuesday": "Tu",
+        "wednesday": "We",
+        "thursday": "Th",
+        "friday": "Fr",
+        "saturday": "Sa",
+        "sunday": "Su"
+      }
     },
     "channels": {
       "title": "Where do you want to serve?",

@@ -179,6 +179,14 @@ export class PersonaController {
             });
         }
 
+        // Horarios canónicos a nivel tenant (settings.businessHours) — es lo que lee el
+        // pipeline (loadTenantBusinessHours) y el readiness. El wizard envía businessHours;
+        // si no, se deriva del toggle is247 para no dejar el horario sin sembrar.
+        let businessHours = body.customizations?.businessHours;
+        if (!businessHours && body.customizations?.is247 !== undefined) {
+            businessHours = { is247: !!body.customizations.is247, timezone: 'America/Bogota', schedule: {} };
+        }
+
         // Mark setup wizard as completed in tenant settings
         await this.prisma.tenant.update({
             where: { id: tenantId },
@@ -189,6 +197,7 @@ export class PersonaController {
                     setupWizardTemplate: body.templateId,
                     setupWizardChannels: body.selectedChannels || [],
                     setupWizardCompletedAt: new Date().toISOString(),
+                    ...(businessHours ? { businessHours } : {}),
                 },
             },
         });

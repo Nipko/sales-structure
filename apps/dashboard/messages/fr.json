@@ -4839,7 +4839,12 @@
         "friday": "Ve",
         "saturday": "Sa",
         "sunday": "Di"
-      }
+      },
+      "faqTitle": "Questions fréquentes (facultatif)",
+      "faqHint": "Ajoutez 1 à 3 questions-réponses pour que votre agent réponde précisément dès le premier jour.",
+      "faqQuestion": "Question (ex : Livrez-vous ?)",
+      "faqAnswer": "Réponse",
+      "faqAdd": "Ajouter une autre"
     },
     "channels": {
       "title": "Où voulez-vous servir ?",

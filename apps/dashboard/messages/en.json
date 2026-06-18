@@ -4839,7 +4839,12 @@
         "friday": "Fr",
         "saturday": "Sa",
         "sunday": "Su"
-      }
+      },
+      "faqTitle": "Frequently asked questions (optional)",
+      "faqHint": "Add 1–3 Q&As so your agent answers accurately from day one.",
+      "faqQuestion": "Question (e.g. Do you ship?)",
+      "faqAnswer": "Answer",
+      "faqAdd": "Add another"
     },
     "channels": {
       "title": "Where do you want to serve?",

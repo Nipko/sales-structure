@@ -4839,7 +4839,12 @@
         "friday": "Sex",
         "saturday": "Sáb",
         "sunday": "Dom"
-      }
+      },
+      "faqTitle": "Perguntas frequentes (opcional)",
+      "faqHint": "Adicione 1–3 perguntas e respostas para que seu agente responda com precisão desde o primeiro dia.",
+      "faqQuestion": "Pergunta (ex: Vocês entregam?)",
+      "faqAnswer": "Resposta",
+      "faqAdd": "Adicionar outra"
     },
     "channels": {
       "title": "Onde você quer atender?",

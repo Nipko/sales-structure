@@ -9,7 +9,7 @@ import {
     Target, Headphones, Calendar, ShoppingCart, Building, UtensilsCrossed,
     ChevronRight, ChevronLeft, Check, Sparkles, MessageSquare, Loader2,
     Zap, Clock, Plane, MapPin, Car, Wrench, Heart, BookOpen, GraduationCap,
-    Scale, Cpu, Briefcase, Home, Globe, Stethoscope, PawPrint, Plug, Compass,
+    Scale, Cpu, Briefcase, Home, Globe, Stethoscope, PawPrint, Plug, Compass, Plus,
 } from "lucide-react";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import WhatsAppConnectPanel from "../channels/whatsapp/WhatsAppConnectPanel";
@@ -59,6 +59,7 @@ export default function SetupWizardPage() {
     const [hDays, setHDays] = useState<Record<string, boolean>>({
         monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: false, sunday: false,
     });
+    const [faqs, setFaqs] = useState<{ q: string; a: string }[]>([{ q: "", a: "" }]);
     const [channelConnected, setChannelConnected] = useState(false);
     const autoAdvancedRef = useRef(false);
 
@@ -145,6 +146,13 @@ export default function SetupWizardPage() {
         }
         if (!templateApplied) {
             try { await api.skipSetupWizard(tenantId); } catch { /* swallow */ }
+        }
+        // Sembrar FAQs como conocimiento (Fase 2.4) — fire-and-forget, no bloquea el cierre.
+        const filledFaqs = faqs.filter(f => f.q.trim() && f.a.trim());
+        if (filledFaqs.length > 0) {
+            void Promise.allSettled(
+                filledFaqs.map(f => api.createKnowledgeDoc(f.q.trim(), `P: ${f.q.trim()}\nR: ${f.a.trim()}`, "faq")),
+            );
         }
         // Disparar el tour guiado al aterrizar en /admin (solo al COMPLETAR, no al saltar).
         try { localStorage.setItem("parallly:tour:pending", "true"); } catch { /* noop */ }
@@ -393,6 +401,39 @@ export default function SetupWizardPage() {
                                             </div>
                                         </div>
                                     </div>
+                                )}
+                            </div>
+
+                            {/* Mini-FAQ (Fase 2.4) — opcional, siembra conocimiento del agente */}
+                            <div>
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("customize.faqTitle")}</label>
+                                <p className="text-[11px] text-muted-foreground mb-2.5">{t("customize.faqHint")}</p>
+                                <div className="space-y-3">
+                                    {faqs.map((f, i) => (
+                                        <div key={i} className="space-y-1.5">
+                                            <input
+                                                type="text" value={f.q}
+                                                onChange={e => setFaqs(prev => prev.map((x, j) => j === i ? { ...x, q: e.target.value } : x))}
+                                                placeholder={t("customize.faqQuestion")}
+                                                className="w-full py-2 px-3 rounded-lg border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none focus:border-indigo-500"
+                                            />
+                                            <textarea
+                                                value={f.a} rows={2}
+                                                onChange={e => setFaqs(prev => prev.map((x, j) => j === i ? { ...x, a: e.target.value } : x))}
+                                                placeholder={t("customize.faqAnswer")}
+                                                className="w-full py-2 px-3 rounded-lg border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none focus:border-indigo-500 resize-none"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                                {faqs.length < 3 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setFaqs(prev => [...prev, { q: "", a: "" }])}
+                                        className="mt-2 text-[12px] text-indigo-500 hover:text-indigo-600 font-medium inline-flex items-center gap-1"
+                                    >
+                                        <Plus size={13} /> {t("customize.faqAdd")}
+                                    </button>
                                 )}
                             </div>
                         </div>

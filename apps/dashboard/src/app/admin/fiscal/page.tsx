@@ -53,6 +53,7 @@ export default function FiscalAdminPage() {
     const [health, setHealth] = useState<{ ok: boolean; message: string } | null>(null);
     const [ranges, setRanges] = useState<any[] | null>(null);
     const [busy, setBusy] = useState(false);
+    const [testResult, setTestResult] = useState<any>(null);
 
     useEffect(() => {
         if (user && user.role !== "super_admin") {
@@ -314,6 +315,32 @@ export default function FiscalAdminPage() {
                                 {health.ok ? <CheckCircle2 size={16} /> : <XCircle size={16} />} {health.message}
                             </span>
                         )}
+                    </div>
+
+                    {/* Validación: preview de generación + emisión de prueba */}
+                    <div className="rounded-lg border border-teal-200 p-4 dark:border-teal-500/20">
+                        <p className="mb-3 text-xs font-medium text-neutral-500">{t("validateTitle")}</p>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button onClick={() => api.previewFiscalInvoice()} className="flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800">
+                                <FileText size={15} /> {t("previewInvoice")}
+                            </button>
+                            <button onClick={async () => { setBusy(true); setTestResult(null); const r = await api.testFiscalInvoice(); setTestResult(r); setBusy(false); }} disabled={busy} className="flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-60">
+                                <Receipt size={15} /> {t("testInvoice")}
+                            </button>
+                        </div>
+                        {testResult && (
+                            <div className={cn("mt-3 rounded-lg px-3 py-2 text-sm", (testResult.success && testResult.data?.status === "issued") ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-red-500/10 text-red-700 dark:text-red-400")}>
+                                {testResult.success && testResult.data?.status === "issued" ? (
+                                    <span>
+                                        {t("testOk")} — {testResult.data?.invoiceNumber} · CUFE {String(testResult.data?.cufe || "").slice(0, 18)}…
+                                        {testResult.data?.pdfUrl && <> · <a href={testResult.data.pdfUrl} target="_blank" rel="noopener noreferrer" className="underline">{t("openOfficial")}</a></>}
+                                    </span>
+                                ) : (
+                                    <span>{t("testFail")}: {testResult.data?.failureReason || testResult.message || testResult.error}</span>
+                                )}
+                            </div>
+                        )}
+                        <p className="mt-2 text-[11px] text-neutral-400">{t("validateHint")}</p>
                     </div>
 
                     <div>

@@ -1,12 +1,15 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsIn, IsObject, IsOptional, IsString } from 'class-validator';
+import type { Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { FiscalConfigService, FiscalConfig } from './fiscal-config.service';
 import { FiscalInvoiceService } from './fiscal-invoice.service';
+import { FiscalPdfService, BrandedInvoiceData } from './fiscal-pdf.service';
 import { FactusAdapter } from './adapters/factus.adapter';
+import { FiscalAcquirer, FiscalInvoiceData } from './interfaces/fiscal-provider.interface';
 
 class FiscalConfigDto {
     @IsOptional() @IsIn(['CO_LOCAL', 'US_REMOTE']) mode?: 'CO_LOCAL' | 'US_REMOTE';
@@ -42,6 +45,7 @@ export class FiscalAdminController {
         private readonly prisma: PrismaService,
         private readonly fiscalService: FiscalInvoiceService,
         private readonly factus: FactusAdapter,
+        private readonly pdf: FiscalPdfService,
     ) {}
 
     @Get('config')
@@ -129,6 +133,82 @@ export class FiscalAdminController {
             throw new BadRequestException({ error: 'cannot_retry', message: 'La factura no existe o ya está emitida.' });
         }
         return { success: true };
+    }
+
+    // ── Validación: preview de generación (sin Factus) + emisión de prueba ──
+
+    /** Genera el PDF branded con datos de ejemplo + el emisor configurado. No usa Factus. */
+    @Get('preview-invoice')
+    async previewInvoice(@Query('type') type: string, @Res() res: Response): Promise<void> {
+        const cfg = await this.config.getConfig();
+        const co = (cfg.coIssuer || {}) as any;
+        const us = (cfg.usIssuer || {}) as any;
+        const isCo = cfg.mode !== 'US_REMOTE';
+        const gross = 5950000; // $59.500 de ejemplo (centavos)
+        const tax = cfg.coIvaTreatment === 'gravado_19' ? gross - Math.round(gross / 1.19) : 0;
+        const sample: BrandedInvoiceData = {
+            type: type === 'credit_note' ? 'credit_note' : 'invoice',
+            invoiceNumber: 'SETP-EJEMPLO-0001',
+            cufe: 'EJEMPLO' + 'a'.repeat(89),
+            qrUrl: 'https://catalogo-vpfe-hab.dian.gov.co/document/searchqr?documentkey=ejemplo',
+            issuedAt: new Date(),
+            amountCents: gross,
+            taxCents: tax,
+            currency: 'COP',
+            itemDescription: `${cfg.itemDescription} — Plan Pro (mensual)`,
+            issuerName: isCo ? co.legalName || 'Parallly' : us.legalName || 'Parallly',
+            issuerNit: isCo ? co.nit || null : us.taxId || null,
+            issuerAddress: isCo ? co.address || null : us.address || null,
+            issuerEmail: isCo ? co.email || null : us.email || null,
+            issuerPhone: isCo ? co.phone || null : null,
+            issuerRegime: isCo ? co.regime || 'Responsable de IVA' : null,
+            dianResolution: isCo ? co.dianResolution || null : null,
+            authRange: isCo ? co.authRange || null : null,
+            resolutionValidUntil: isCo ? co.resolutionValidUntil || null : null,
+            acquirerName: 'Cliente de Ejemplo SAS',
+            acquirerDoc: 'NIT 900123456',
+            acquirerEmail: 'cliente@ejemplo.com',
+            paymentMethod: 'Contado',
+            paymentMeans: 'Transferencia / PSE',
+        };
+        const buffer = await this.pdf.render(sample);
+        res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="factura-ejemplo.pdf"' });
+        res.send(buffer);
+    }
+
+    /** Emite una factura de PRUEBA real contra Factus (sandbox) sin persistir. Devuelve CUFE/links o el error de DIAN. */
+    @Post('test-invoice')
+    async testInvoice() {
+        const cfg = await this.config.getConfig();
+        if (!cfg.factusNumberingRangeId) {
+            return {
+                success: false,
+                error: 'numbering_range_required',
+                message: 'Configura el numbering_range_id en la pestaña Factus antes de emitir una prueba.',
+            };
+        }
+        const acquirer: FiscalAcquirer = {
+            documentType: '3', // cédula de ciudadanía
+            documentId: '222222222222', // consumidor final
+            legalOrganizationId: '2',
+            names: 'Consumidor Final',
+            tributeId: '21',
+        };
+        const data: FiscalInvoiceData = {
+            referenceCode: `TEST-${Date.now()}`,
+            tenantId: 'preview',
+            amountCents: 5950000,
+            currency: 'COP',
+            description: `${cfg.itemDescription} — FACTURA DE PRUEBA`,
+            acquirer,
+            ivaTreatment: cfg.coIvaTreatment,
+        };
+        try {
+            const result = await this.factus.issue(data);
+            return { success: result.status === 'issued', data: result };
+        } catch (err: any) {
+            return { success: false, error: err?.message || 'error' };
+        }
     }
 
     // ── Factus connection helpers ───────────────────────────────

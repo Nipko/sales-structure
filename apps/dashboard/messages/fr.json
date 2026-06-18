@@ -2764,7 +2764,12 @@
       "manageProfile": "Gérer le profil",
       "testAgentTitle": "Testez votre agent",
       "testAgentDesc": "Votre agent est actif sur ce numéro. Envoyez un WhatsApp à {number} et voyez sa réponse.",
-      "testAgentCta": "Ouvrir WhatsApp"
+      "testAgentCta": "Ouvrir WhatsApp",
+      "esuProgress": {
+        "auth": "Autorisation",
+        "connecting": "Connexion du numéro",
+        "activating": "Activation WhatsApp"
+      }
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -4400,6 +4405,10 @@
       "pet_services": "propriétaires",
       "servicios_hogar": "clients",
       "fotografia": "clients"
+    },
+    "bridge": {
+      "title": "Compte prêt !",
+      "subtitle": "Préparation de la configuration de votre agent…"
     }
   },
   "analytics": {
@@ -9276,6 +9285,13 @@
     "coDianResolution": "Résolution DIAN",
     "coAuthRange": "Plage autorisée",
     "coValidUntil": "Validité",
+    "validateTitle": "Validation (tester génération et émission)",
+    "previewInvoice": "Voir facture d'exemple",
+    "testInvoice": "Émettre facture de test",
+    "testOk": "Facture de test émise",
+    "testFail": "Émission impossible",
+    "openOfficial": "Voir officielle",
+    "validateHint": "\"Voir facture d'exemple\" génère le PDF de marque sans utiliser Factus. \"Émettre facture de test\" crée une vraie facture dans Factus (nécessite identifiants + plage).",
     "switchWarningTitle": "Activer le mode total (LLC USA)",
     "switchWarningBody": "L'activation du mode total ARRÊTERA l'émission des factures électroniques DIAN pour les clients colombiens. Confirmez avec votre comptable avant de continuer.",
     "switchConfirm": "Oui, activer le mode total"

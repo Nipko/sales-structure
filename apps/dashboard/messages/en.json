@@ -2764,7 +2764,12 @@
       "manageProfile": "Manage profile",
       "testAgentTitle": "Test your agent",
       "testAgentDesc": "Your agent is now live on this number. Send a WhatsApp to {number} and watch it reply.",
-      "testAgentCta": "Open WhatsApp"
+      "testAgentCta": "Open WhatsApp",
+      "esuProgress": {
+        "auth": "Authorization",
+        "connecting": "Connecting number",
+        "activating": "Activating WhatsApp"
+      }
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -4400,6 +4405,10 @@
       "pet_services": "pet owners",
       "servicios_hogar": "clients",
       "fotografia": "clients"
+    },
+    "bridge": {
+      "title": "Account ready!",
+      "subtitle": "Setting up your agent…"
     }
   },
   "analytics": {
@@ -9276,6 +9285,13 @@
     "coDianResolution": "DIAN resolution",
     "coAuthRange": "Authorized range",
     "coValidUntil": "Valid until",
+    "validateTitle": "Validation (test generation & issuance)",
+    "previewInvoice": "View sample invoice",
+    "testInvoice": "Issue test invoice",
+    "testOk": "Test invoice issued",
+    "testFail": "Could not issue",
+    "openOfficial": "View official",
+    "validateHint": "\"View sample invoice\" generates the branded PDF without touching Factus. \"Issue test invoice\" creates a real invoice in Factus (needs credentials + range).",
     "switchWarningTitle": "Enable total mode (US LLC)",
     "switchWarningBody": "Enabling total mode will STOP issuing DIAN electronic invoices for Colombian customers. Confirm with your accountant before continuing.",
     "switchConfirm": "Yes, enable total mode"

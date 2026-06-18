@@ -1136,6 +1136,20 @@ export const api = {
     retryFiscalInvoice: (id: string) => apiPost(`/fiscal-admin/invoices/${id}/retry`, {}),
     getFactusHealth: () => apiGet(`/fiscal-admin/factus/health`),
     getFactusNumberingRanges: () => apiGet(`/fiscal-admin/factus/numbering-ranges`),
+    previewFiscalInvoice: async (type?: string) => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+        const res = await fetch(`${BASE_URL}/fiscal-admin/preview-invoice${type ? `?type=${type}` : ""}`, {
+            method: "GET",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        window.open(url, "_blank");
+        setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+        return { success: true };
+    },
+    testFiscalInvoice: () => apiPost(`/fiscal-admin/test-invoice`, {}),
 
     // --- WA Template creation ---
     createWhatsAppTemplate: (data: { name: string; language: string; category: string; components: any[] }) =>

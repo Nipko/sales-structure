@@ -2764,7 +2764,12 @@
       "manageProfile": "Gestionar perfil",
       "testAgentTitle": "Probá tu agente",
       "testAgentDesc": "Tu agente ya está activo en este número. Escribile un WhatsApp a {number} y mirá cómo responde.",
-      "testAgentCta": "Abrir WhatsApp"
+      "testAgentCta": "Abrir WhatsApp",
+      "esuProgress": {
+        "auth": "Autorización",
+        "connecting": "Conectando número",
+        "activating": "Activando WhatsApp"
+      }
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -4400,6 +4405,10 @@
       "pet_services": "tutores",
       "servicios_hogar": "clientes",
       "fotografia": "clientes"
+    },
+    "bridge": {
+      "title": "¡Cuenta lista!",
+      "subtitle": "Preparando la configuración de tu agente…"
     }
   },
   "analytics": {
@@ -9276,6 +9285,13 @@
     "coDianResolution": "Resolución DIAN",
     "coAuthRange": "Rango autorizado",
     "coValidUntil": "Vigencia",
+    "validateTitle": "Validación (probar generación y emisión)",
+    "previewInvoice": "Ver factura de ejemplo",
+    "testInvoice": "Emitir factura de prueba",
+    "testOk": "Factura de prueba emitida",
+    "testFail": "No se pudo emitir",
+    "openOfficial": "Ver oficial",
+    "validateHint": "\"Ver factura de ejemplo\" genera el PDF con marca sin tocar Factus. \"Emitir factura de prueba\" crea una factura real en Factus (requiere credenciales + rango).",
     "switchWarningTitle": "Activar modo total (LLC EEUU)",
     "switchWarningBody": "Al activar el modo total se DEJARÁ de emitir factura electrónica DIAN para los clientes de Colombia. Confirma con tu contador antes de continuar.",
     "switchConfirm": "Sí, activar modo total"

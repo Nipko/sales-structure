@@ -411,6 +411,18 @@
       "noAppointmentsToday": "No appointments scheduled for today",
       "noLeadsYet": "No recent leads yet",
       "unnamed": "Unnamed"
+    },
+    "emptyState": {
+      "title": "Your dashboard will come alive soon",
+      "subtitle": "Once your first conversations arrive you'll see live metrics here. Meanwhile, get everything ready:",
+      "actions": {
+        "testTitle": "Test your agent",
+        "testDesc": "Message it on WhatsApp and watch it reply.",
+        "knowledgeTitle": "Add knowledge",
+        "knowledgeDesc": "Add FAQs and docs for accurate replies.",
+        "teamTitle": "Invite your team",
+        "teamDesc": "Add agents to handle handoffs."
+      }
     }
   },
   "contacts": {

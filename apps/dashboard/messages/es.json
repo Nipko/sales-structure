@@ -411,6 +411,18 @@
       "noAppointmentsToday": "No hay citas programadas para hoy",
       "noLeadsYet": "Aún no hay leads recientes",
       "unnamed": "Sin nombre"
+    },
+    "emptyState": {
+      "title": "Tu panel cobrará vida muy pronto",
+      "subtitle": "Cuando lleguen tus primeras conversaciones verás aquí tus métricas en vivo. Mientras tanto, dejá todo listo:",
+      "actions": {
+        "testTitle": "Probá tu agente",
+        "testDesc": "Escribile por WhatsApp y mirá cómo responde.",
+        "knowledgeTitle": "Cargá conocimiento",
+        "knowledgeDesc": "Sumá FAQs y documentos para respuestas precisas.",
+        "teamTitle": "Invitá a tu equipo",
+        "teamDesc": "Sumá agentes para atender los handoffs."
+      }
     }
   },
   "contacts": {

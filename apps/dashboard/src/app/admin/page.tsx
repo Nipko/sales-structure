@@ -20,6 +20,7 @@ import {
     Plane,
     GraduationCap,
     DollarSign,
+    Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -292,6 +293,16 @@ export default function AdminDashboard() {
         lost: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     };
 
+    // Empty-state: tenant sin actividad real todavía (ya cargó datos pero todo en cero).
+    // Muestra un hero guiado en vez de un panel de puros ceros.
+    const isEmptyTenant = user?.role !== "super_admin" && isLive && activity.length === 0
+        && (overview.messagesProcessed ?? 0) === 0 && (overview.leadsToday ?? 0) === 0;
+    const emptyActions = [
+        { href: "/admin/channels/whatsapp", icon: MessageSquare, tk: "test", iconBg: "bg-emerald-500/10", iconText: "text-emerald-500" },
+        { href: "/admin/knowledge", icon: Brain, tk: "knowledge", iconBg: "bg-violet-500/10", iconText: "text-violet-500" },
+        { href: "/admin/users", icon: Users, tk: "team", iconBg: "bg-sky-500/10", iconText: "text-sky-500" },
+    ];
+
     return (
         <div className="animate-in">
             {needsChannel && user?.role !== "super_admin" && (
@@ -327,6 +338,42 @@ export default function AdminDashboard() {
                 tips={tHelp.raw("dashboard.tips") as string[]}
                 mediaKey="dashboard"
             />
+
+            {/* Empty-state guiado (Fase 4) — tenant nuevo sin actividad todavía */}
+            {isEmptyTenant && (
+                <div className="mb-8 rounded-xl border border-indigo-200 dark:border-indigo-500/20 bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-500/10 dark:to-neutral-900 p-6">
+                    <div className="flex items-start gap-3 mb-5">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-500 text-white flex items-center justify-center shrink-0">
+                            <Sparkles size={20} />
+                        </div>
+                        <div>
+                            <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{t("emptyState.title")}</h3>
+                            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{t("emptyState.subtitle")}</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {emptyActions.map((a) => {
+                            const Icon = a.icon;
+                            return (
+                                <Link
+                                    key={a.tk}
+                                    href={a.href}
+                                    className="group rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors"
+                                >
+                                    <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center mb-2.5", a.iconBg)}>
+                                        <Icon size={18} className={a.iconText} />
+                                    </div>
+                                    <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-1">
+                                        {t(`emptyState.actions.${a.tk}Title`)}
+                                        <ArrowUpRight size={13} className="text-neutral-400 group-hover:text-indigo-500 transition-colors" />
+                                    </p>
+                                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t(`emptyState.actions.${a.tk}Desc`)}</p>
+                                </Link>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {user?.role === "super_admin" && <OnboardingMetricsCard />}
 

@@ -411,6 +411,18 @@
       "noAppointmentsToday": "Aucun rendez-vous prévu pour aujourd'hui",
       "noLeadsYet": "Aucun lead récent pour le moment",
       "unnamed": "Sans nom"
+    },
+    "emptyState": {
+      "title": "Votre tableau de bord va prendre vie bientôt",
+      "subtitle": "Dès vos premières conversations, vous verrez ici vos métriques en direct. En attendant, préparez tout :",
+      "actions": {
+        "testTitle": "Testez votre agent",
+        "testDesc": "Écrivez-lui sur WhatsApp et voyez sa réponse.",
+        "knowledgeTitle": "Ajoutez des connaissances",
+        "knowledgeDesc": "Ajoutez des FAQ et docs pour des réponses précises.",
+        "teamTitle": "Invitez votre équipe",
+        "teamDesc": "Ajoutez des agents pour gérer les transferts."
+      }
     }
   },
   "contacts": {

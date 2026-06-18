@@ -155,3 +155,22 @@ Los hallazgos pivotales del audit fueron **verificados leyendo el código direct
 ## 9. Reconciliación con docs previos
 
 `docs/onboarding-redesign-2026-q2.md` (research/propuesta) y `docs/onboarding-redesign-implementation-plan.md` (plan file-by-file) ya diseñaron esta dirección. **Fases 1–2 de ese plan están parcialmente implementadas** (el setup-wizard con sus 5 pasos y componentes existe). **Lo que falta** es lo de este documento: las **Fase 0** quick-wins (referido, trial-first, TTFV), el **pre-check de prerrequisitos**, el **tour interactivo real** (Onborda), el **website→KB**, y el **checklist hub + soft-gate**. Este doc actualiza y prioriza ese plan hacia el objetivo explícito de **canal en ≤10 min + tour guiado**.
+
+---
+
+## 10. Estado de implementación (jun 2026 — TODO de corrido)
+
+Implementado en su totalidad salvo una pieza diferida por plan-gating. Verificado con `tsc` en api/dashboard/landing (0 errores) e i18n a paridad en 4 idiomas.
+
+| Fase | Estado | Notas |
+|------|--------|-------|
+| **0 — Quick wins** | ✅ | Referido removido (trial-first), wizard 3 pasos, checklist no-descartable sin canal + link directo a WhatsApp + visible en mobile, `about` requerido (2.1). |
+| **1.2 — Verificación + "probá tu agente"** | ✅ | CTA verde con link `wa.me` al número conectado en `/admin/channels/whatsapp` (estado conectado). |
+| **1.4 — Soft-gate** | ✅ | Banner `needsChannel` apunta directo a WhatsApp. |
+| **1.6 — TTFV** | ✅ | Columna `tenants.first_channel_connected_at` (idempotente, marcada en cada conexión de canal) + step "Canal conectado" en el funnel con mediana TTFV. |
+| **2.2 — Mini-paso de horarios** | ✅ | Form compacto (apertura/cierre + días) cuando no es 24/7; **persiste `settings.businessHours` canónico** (corrige inconsistencia: antes el wizard solo seteaba el schedule del agente). |
+| **2.4 — Mini-FAQ** | ✅ | Hasta 3 Q&A opcionales → `POST /knowledge/documents` (categoría `faq`) fire-and-forget. Funciona en el plan emprendedor (`knowledgeArticles: 5`). |
+| **2.5 — Readiness banner** | ✅ | Banner en el editor del agente: canal/about/horarios/conocimiento, cada pendiente con link directo. `setup-status` extendido con `hasBusinessAbout` + `hasBusinessHours`. |
+| **3 — Tour Onborda** | ✅ | Onborda + TourBoundary (aísla fallas) + disparo post-wizard + **"reiniciar tour"** en HelpAssistant (vía evento de window, sin acoplar `useOnborda`). |
+| **4 — Checklist hub + empty-state** | ✅ | Checklist en 3 niveles (Esencial/Recomendado/Avanzado, Avanzado colapsado) + empty-state guiado en el dashboard (hero con 3 acciones cuando el tenant aún no tiene actividad). |
+| **2.3 — Website→KB** | ⏸️ **Diferido (por diseño)** | El crawl está plan-gated a **0 páginas** en el plan por defecto (emprendedor); auto-crawlear en el wizard daría `ForbiddenException` para casi todos los nuevos trials. Ya está expuesto **con upsell** en `/admin/knowledge` y enlazado desde el banner de readiness (item "conocimiento"). La mini-FAQ (2.4) cubre el sembrado de KB en el onboarding para todos los planes. |

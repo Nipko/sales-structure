@@ -4680,7 +4680,10 @@
         "sandboxNote": "Não tem um número pronto? Escolha Sandbox para testar sem compromisso.",
         "continue": "Continuar",
         "checkAll": "Confirme os itens para continuar"
-      }
+      },
+      "telegramHint": "Cole o token do seu bot (obtenha no @BotFather no Telegram).",
+      "telegramPlaceholder": "Token do bot",
+      "telegramConnect": "Conectar"
     },
     "test": {
       "title": "Teste",

@@ -496,7 +496,7 @@ export default function SetupWizardPage() {
 
                         <div className="mt-7">
                             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{t("connect.otherChannels")}</p>
-                            <SecondaryChannels />
+                            <SecondaryChannels onConnected={() => setChannelConnected(true)} />
                         </div>
                     </div>
                 )}

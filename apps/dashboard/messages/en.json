@@ -4680,7 +4680,10 @@
         "sandboxNote": "Don't have a number ready? Choose Sandbox to try it risk-free.",
         "continue": "Continue",
         "checkAll": "Confirm the items to continue"
-      }
+      },
+      "telegramHint": "Paste your bot token (get it from @BotFather on Telegram).",
+      "telegramPlaceholder": "Bot token",
+      "telegramConnect": "Connect"
     },
     "test": {
       "title": "Try it",

@@ -34,8 +34,9 @@ class FiscalDataDto {
     @IsOptional() @IsString() @MaxLength(200) address?: string;
     /** Factus municipality_id (internal id from /v2/municipalities). */
     @IsOptional() @IsString() municipalityId?: string;
-    /** DIVIPOLA/DANE code (5 digits) — reference for selecting the municipality. */
+    /** DIVIPOLA/DANE code (5 digits) — selected municipality; the Factus id is resolved from it. */
     @IsOptional() @IsString() @MaxLength(5) daneCode?: string;
+    @IsOptional() @IsString() @MaxLength(120) municipalityName?: string;
     @IsOptional() @IsEmail() email?: string;
     @IsOptional() @IsString() @MaxLength(30) phone?: string;
 }
@@ -104,6 +105,7 @@ export class FiscalController {
             address: body.address,
             municipalityId: body.municipalityId,
             daneCode: body.daneCode,
+            municipalityName: body.municipalityName,
             email: body.email,
             phone: body.phone,
         };

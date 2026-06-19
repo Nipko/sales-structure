@@ -48,6 +48,10 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
     private refreshToken: string | null = null;
     private tokenExpiresAt = 0; // epoch ms
 
+    // DANE/DIVIPOLA code -> Factus municipality_id. Municipios are static, so an
+    // in-memory memo per process is enough (no Redis needed).
+    private readonly municipalityCache = new Map<string, string>();
+
     // DIAN payment catalog: 1 = contado, 48 = tarjeta de crédito (subscriptions
     // are card charges). These are not validity-critical and can be revisited.
     private readonly PAYMENT_FORM = '1';
@@ -156,7 +160,7 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             payment_method_code: this.PAYMENT_METHOD_CODE,
             operation_type: this.OPERATION_TYPE,
             send_email: !!data.acquirer.email && cfg.factusEnvironment === 'production',
-            customer: this.buildCustomer(data.acquirer, cfg),
+            customer: await this.buildCustomer(data.acquirer, cfg),
             items: [line.item],
         };
 
@@ -240,7 +244,7 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         };
     }
 
-    private buildCustomer(a: FiscalAcquirer, cfg: { defaultMunicipalityId: string | null }): Record<string, unknown> {
+    private async buildCustomer(a: FiscalAcquirer, cfg: { defaultMunicipalityId: string | null }): Promise<Record<string, unknown>> {
         const customer: Record<string, unknown> = {
             identification: a.documentId,
             legal_organization_id: a.legalOrganizationId,
@@ -253,9 +257,34 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         if (a.address) customer.address = a.address;
         if (a.email) customer.email = a.email;
         if (a.phone) customer.phone = a.phone;
-        const municipality = a.municipalityId || cfg.defaultMunicipalityId;
+        // Municipality: an explicit Factus id wins; otherwise resolve it from the
+        // DANE/DIVIPOLA code the tenant selected; otherwise the configured default.
+        const municipality =
+            a.municipalityId ||
+            (a.daneCode ? await this.resolveMunicipalityId(a.daneCode) : null) ||
+            cfg.defaultMunicipalityId;
         if (municipality) customer.municipality_id = municipality;
         return customer;
+    }
+
+    /** Resolve the Factus internal municipality_id from a 5-digit DANE/DIVIPOLA code (cached in-memory). */
+    private async resolveMunicipalityId(daneCode: string): Promise<string | null> {
+        const code = (daneCode || '').trim();
+        if (!code) return null;
+        const cached = this.municipalityCache.get(code);
+        if (cached) return cached;
+        try {
+            const res = await this.authedFetch(`/v2/municipalities?filter[code]=${encodeURIComponent(code)}`, { method: 'GET' });
+            const json: any = await res.json().catch(() => ({}));
+            const list: any[] = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.data) ? json.data.data : [];
+            const match = list.find((m) => String(m.code) === code) || list[0];
+            const id = match?.id != null ? String(match.id) : null;
+            if (id) this.municipalityCache.set(code, id);
+            return id;
+        } catch (err: any) {
+            this.logger.warn(`Factus municipality resolve failed for ${code}: ${err?.message}`);
+            return null;
+        }
     }
 
     /**

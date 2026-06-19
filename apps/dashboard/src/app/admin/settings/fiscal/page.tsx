@@ -1,11 +1,12 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { CO_MUNICIPIOS } from "@/lib/co-municipios";
 import { Receipt, Save, CheckCircle, AlertCircle, FileText, FileCode } from "lucide-react";
 
 type FiscalData = {
@@ -19,6 +20,7 @@ type FiscalData = {
     address?: string;
     municipalityId?: string;
     daneCode?: string;
+    municipalityName?: string;
     email?: string;
     phone?: string;
 };
@@ -56,6 +58,12 @@ export default function FiscalPage() {
     const [error, setError] = useState("");
 
     const tenantId = activeTenantId || user?.tenantId;
+
+    const muniByCode = useMemo(() => {
+        const map: Record<string, { n: string; d: string }> = {};
+        for (const g of CO_MUNICIPIOS) for (const m of g.m) map[m.c] = { n: m.n, d: g.d };
+        return map;
+    }, []);
 
     const load = useCallback(async () => {
         if (!tenantId) return;
@@ -180,13 +188,20 @@ export default function FiscalPage() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-4">
-                    <div>
-                        <label className={labelClasses}>{t("municipalityId")}</label>
-                        <input value={data.municipalityId || ""} onChange={(e) => setData({ ...data, municipalityId: e.target.value })} className={inputClasses} placeholder="980" />
-                    </div>
-                    <div>
-                        <label className={labelClasses}>{t("daneCode")}</label>
-                        <input value={data.daneCode || ""} onChange={(e) => setData({ ...data, daneCode: e.target.value })} className={inputClasses} placeholder="11001" />
+                    <div className="col-span-2">
+                        <label className={labelClasses}>{t("municipality")}</label>
+                        <select
+                            value={data.daneCode || ""}
+                            onChange={(e) => { const code = e.target.value; setData({ ...data, daneCode: code, municipalityName: muniByCode[code]?.n }); }}
+                            className={selectClasses}
+                        >
+                            <option value="">{t("municipalitySelect")}</option>
+                            {CO_MUNICIPIOS.map((g) => (
+                                <optgroup key={g.d} label={g.d}>
+                                    {g.m.map((m) => <option key={m.c} value={m.c}>{m.n}</option>)}
+                                </optgroup>
+                            ))}
+                        </select>
                     </div>
                     <div>
                         <label className={labelClasses}>{t("phone")}</label>

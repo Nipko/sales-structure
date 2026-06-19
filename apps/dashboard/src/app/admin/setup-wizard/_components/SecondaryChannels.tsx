@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import { Instagram, Facebook, Send, Mail, Globe, ArrowRight } from "lucide-react";
 
 const CHANNELS = [
@@ -13,6 +14,7 @@ const CHANNELS = [
 
 export default function SecondaryChannels() {
     const t = useTranslations("setupWizard.connect");
+    const router = useRouter();
     return (
         <div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -21,7 +23,9 @@ export default function SecondaryChannels() {
                 return (
                     <button
                         key={ch.id}
-                        onClick={() => window.open(ch.href, "_blank", "noopener")}
+                        // Misma pestaña (no _blank): el wizard persiste su estado y se
+                        // restaura al volver, en vez de abrir una pestaña huérfana.
+                        onClick={() => router.push(ch.href)}
                         className="flex items-center gap-3 p-3 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30 text-left transition-all cursor-pointer"
                     >
                         <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: ch.color }}>

@@ -260,25 +260,6 @@ const VERTICAL_GOALS: Record<string, Array<{key: string; label: string; icon: st
     ],
 };
 
-const VERTICAL_AGENT_NAMES: Record<string, string> = {
-    salud: 'Sofía',
-    veterinaria: 'Dra. Ana',
-    gimnasios: 'Alex',
-    seguros: 'Andrés',
-    moda_belleza: 'Luna',
-    inmobiliaria: 'Carlos',
-    restaurantes: 'Luca',
-    automotriz: 'Marco',
-    turismo: 'Maya',
-    education: 'Pablo',
-    finanzas: 'Roberto',
-    servicios_profesionales: 'Elena',
-    retail: 'Sofía',
-    technology: 'Diego',
-    pet_services: 'Luna',
-    servicios_hogar: 'Carlos',
-    fotografia: 'Valentina',
-};
 
 const VERTICAL_AUDIENCES: Record<string, Array<{key: string; label: string}>> = {
     salud: [
@@ -371,26 +352,6 @@ const VERTICAL_AUDIENCES: Record<string, Array<{key: string; label: string}>> = 
     ],
 };
 
-const VERTICAL_CUSTOMER_NOUN: Record<string, string> = {
-    salud: 'pacientes',
-    veterinaria: 'tutores',
-    gimnasios: 'miembros',
-    seguros: 'asegurados',
-    moda_belleza: 'clientes',
-    inmobiliaria: 'prospectos',
-    restaurantes: 'comensales',
-    automotriz: 'compradores',
-    turismo: 'viajeros',
-    education: 'estudiantes',
-    finanzas: 'clientes',
-    servicios_profesionales: 'clientes',
-    retail: 'compradores',
-    technology: 'empresas',
-    pet_services: 'tutores',
-    servicios_hogar: 'clientes',
-    fotografia: 'clientes',
-};
-
 // TikTok icon (lucide doesn't have one)
 function TikTokIcon({ className }: { className?: string }) {
     return (
@@ -402,7 +363,9 @@ function TikTokIcon({ className }: { className?: string }) {
 
 const inputClasses = "w-full py-3 px-3.5 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20";
 const inputWithIconClasses = cn(inputClasses, "pl-11");
-const selectClasses = cn(inputClasses, "appearance-none cursor-pointer");
+// Fondo sólido oscuro en selects: con color-scheme:dark hace que el popup nativo de
+// <option> se renderice oscuro y legible (dark:bg-white/5 translúcido lo dejaba ilegible).
+const selectClasses = cn(inputClasses, "appearance-none cursor-pointer dark:bg-neutral-800");
 
 export default function OnboardingPage() {
     const t = useTranslations('onboarding');
@@ -630,7 +593,7 @@ export default function OnboardingPage() {
                             {/* Company Name */}
                             <div className="mb-4">
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                    {t('companyName')} *
+                                    {t('companyName')} <span className="text-rose-500">*</span>
                                 </label>
                                 <div className="relative">
                                     <Building2 size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
@@ -698,7 +661,7 @@ export default function OnboardingPage() {
                             {/* About — fed into the agent's <turn.business> block */}
                             <div className="mb-4">
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                    {t('about')} *
+                                    {t('about')} <span className="text-rose-500">*</span>
                                 </label>
                                 <div className="relative">
                                     <Info size={16} className="absolute left-3.5 top-3 text-muted-foreground/50" />
@@ -767,7 +730,7 @@ export default function OnboardingPage() {
                             {/* Industry */}
                             <div className="mb-4">
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                    {t('industry')} *
+                                    {t('industry')} <span className="text-rose-500">*</span>
                                 </label>
                                 <select
                                     value={industry}
@@ -809,7 +772,7 @@ export default function OnboardingPage() {
                             {/* Org Size */}
                             <div>
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                    {t('companySize')} *
+                                    {t('companySize')} <span className="text-rose-500">*</span>
                                 </label>
                                 <select
                                     value={orgSize}
@@ -829,7 +792,7 @@ export default function OnboardingPage() {
                             {/* Timezone */}
                             <div className="mt-4">
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                    {t('timezone')} *
+                                    {t('timezone')} <span className="text-rose-500">*</span>
                                 </label>
                                 <select
                                     value={timezone}
@@ -851,9 +814,7 @@ export default function OnboardingPage() {
                     {step === 1 && (
                         <div>
                             <h2 className="text-xl font-semibold text-foreground mb-1">
-                                {VERTICAL_AGENT_NAMES[industry]
-                                    ? t('step2TitleVertical', { agentName: VERTICAL_AGENT_NAMES[industry] })
-                                    : t('step2')}
+                                {t('step2')}
                             </h2>
                             <p className="text-muted-foreground text-sm mb-6">
                                 {t('audienceTitle')}
@@ -897,14 +858,10 @@ export default function OnboardingPage() {
                     {step === 2 && (
                         <div>
                             <h2 className="text-xl font-semibold text-foreground mb-1">
-                                {VERTICAL_AGENT_NAMES[industry]
-                                    ? t('step3TitleVertical', { agentName: VERTICAL_AGENT_NAMES[industry], noun: VERTICAL_CUSTOMER_NOUN[industry] ? t(`customerNouns.${industry}`) : t('defaultCustomerNoun') })
-                                    : t('goalsTitle')}
+                                {t('goalsTitle')}
                             </h2>
                             <p className="text-muted-foreground text-sm mb-6">
-                                {VERTICAL_AGENT_NAMES[industry]
-                                    ? t('step3SubtitleVertical', { agentName: VERTICAL_AGENT_NAMES[industry] })
-                                    : t('step3')}
+                                {t('step3')}
                             </p>
 
                             <div className="space-y-3">

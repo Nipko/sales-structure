@@ -4652,11 +4652,11 @@
     "connectBannerCta": "Conectar canal",
     "connect": {
       "title": "Conecta tu primer canal",
-      "subtitle": "Es el último paso para empezar a recibir clientes. WhatsApp es el recomendado.",
+      "subtitle": "Conectá al menos un canal para empezar a recibir clientes. WhatsApp es el más usado, pero podés elegir cualquiera.",
       "recommendedWhatsapp": "Recomendado · WhatsApp",
       "whatsappBrandTitle": "WhatsApp Business",
       "officialMeta": "Conexión oficial vía Meta",
-      "otherChannelsHint": "Se abre en otra pestaña. Al conectar, vuelve aquí y el asistente continúa solo.",
+      "otherChannelsHint": "Te llevamos a la conexión del canal; al terminar, volvé al asistente y continúa solo.",
       "otherChannels": "O conecta otro canal",
       "recommended": "Recomendado",
       "back": "Volver",

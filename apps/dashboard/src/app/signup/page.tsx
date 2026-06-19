@@ -245,7 +245,7 @@ export default function SignupPage() {
                         {/* Name row */}
                         <div className="grid grid-cols-2 gap-3 mb-3.5">
                             <div>
-                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t('firstName')}</label>
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t('firstName')} <span className="text-rose-500">*</span></label>
                                 <div className="relative">
                                     <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                     <input
@@ -259,7 +259,7 @@ export default function SignupPage() {
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t('lastName')}</label>
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t('lastName')} <span className="text-rose-500">*</span></label>
                                 <div className="relative">
                                     <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                     <input
@@ -277,7 +277,7 @@ export default function SignupPage() {
                         {/* Email */}
                         <div className="mb-3.5">
                             <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                {t('corporateEmail')}
+                                {t('corporateEmail')} <span className="text-rose-500">*</span>
                             </label>
                             <div className="relative">
                                 <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
@@ -295,7 +295,7 @@ export default function SignupPage() {
                         {/* Password */}
                         <div className="mb-6">
                             <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
-                                {t('password')}
+                                {t('password')} <span className="text-rose-500">*</span>
                             </label>
                             <PasswordInput
                                 value={form.password}

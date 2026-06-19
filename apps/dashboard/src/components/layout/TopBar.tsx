@@ -403,7 +403,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
           document.cookie = `locale=${e.target.value};path=/;max-age=31536000`;
           window.location.reload();
         }}
-        className="h-8 rounded-md border border-neutral-200 dark:border-neutral-700 bg-transparent text-sm text-neutral-700 dark:text-neutral-300 px-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        className="h-8 rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 px-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
         title={t("language")}
       >
         {locales.map((l) => (

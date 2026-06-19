@@ -185,6 +185,15 @@
   }
 }
 
+/* Dark-mode native <select> popups: además de color-scheme:dark, forzamos color de
+   <option>/<optgroup> para navegadores que lo respetan (Firefox y Chromium recientes),
+   así las opciones no seleccionadas no quedan en gris ilegible sobre fondo claro. */
+.dark select option,
+.dark select optgroup {
+  background-color: #171717; /* neutral-900 */
+  color: #f5f5f5;            /* neutral-100 */
+}
+
 /* Focus ring system (states-and-variants skill) */
 @layer base {
   *:focus-visible {

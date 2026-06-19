@@ -1,78 +1,166 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Instagram, Facebook, Send, Mail, Globe, ArrowRight, ChevronDown, Loader2 } from "lucide-react";
 
-// Canales que se conectan en su propia página (OAuth / setup dedicado). Navegan en la
-// MISMA pestaña (no _blank): el wizard persiste su estado y se restaura al volver.
-const NAV_CHANNELS = [
-    { id: "instagram", href: "/admin/channels/instagram", icon: Instagram, color: "#E4405F" },
-    { id: "messenger", href: "/admin/channels/messenger", icon: Facebook, color: "#0084FF" },
-    { id: "email", href: "/admin/channels/email", icon: Mail, color: "#6c5ce7" },
-    { id: "webchat", href: "/admin/settings/integrations/web-chat", icon: Globe, color: "#00b894" },
-];
+const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || "";
+const MESSENGER_CONFIG_ID = process.env.NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID || "1288798860026149";
+const INSTAGRAM_APP_ID = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || "1472258884595741";
+const INSTAGRAM_REDIRECT_URI = process.env.NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI || "https://admin.parallly-chat.cloud/admin/channels/instagram/callback";
 
-export default function SecondaryChannels({ onConnected }: { onConnected?: () => void }) {
+interface Props {
+    tenantId: string;
+    onConnected?: () => void;
+}
+
+/**
+ * Conexión de canales secundarios DENTRO del wizard, sin sacar al usuario del flujo:
+ *  - Telegram: form inline (bot token).
+ *  - Messenger: FB.login() vía SDK (popup propio de Meta, el wizard sigue montado).
+ *  - Instagram: popup OAuth + BroadcastChannel("ig_oauth") de retorno.
+ *  - Webchat: 1 click crea el widget.
+ *  - Email: navega a su página (form SMTP/SendGrid completo) en la MISMA pestaña.
+ * Todos los inline llaman onConnected() al conectar → el wizard avanza a "Descúbrelo".
+ */
+export default function SecondaryChannels({ tenantId, onConnected }: Props) {
     const t = useTranslations("setupWizard.connect");
     const tc = useTranslations("common");
     const router = useRouter();
 
-    // Telegram se conecta INLINE (form de bot token, sin OAuth) → no saca al usuario del wizard.
+    const [busy, setBusy] = useState<string | null>(null);       // canal conectándose
     const [tgOpen, setTgOpen] = useState(false);
     const [botToken, setBotToken] = useState("");
-    const [connecting, setConnecting] = useState(false);
-    const [error, setError] = useState("");
+    const [errors, setErrors] = useState<Record<string, string>>({});
+
+    const setError = (id: string, msg: string) => setErrors((e) => ({ ...e, [id]: msg }));
+    const clearError = (id: string) => setErrors((e) => { const n = { ...e }; delete n[id]; return n; });
+
+    // --- Instagram retorno vía BroadcastChannel ---
+    useEffect(() => {
+        const ch = new BroadcastChannel("ig_oauth");
+        ch.onmessage = (event) => {
+            if (event.data?.type === "ig_oauth_success") {
+                clearError("instagram");
+                setBusy(null);
+                onConnected?.();
+            } else if (event.data?.type === "ig_oauth_error") {
+                setError("instagram", event.data.message || tc("connectionError"));
+                setBusy(null);
+            }
+        };
+        return () => ch.close();
+    }, [onConnected, tc]);
 
     const connectTelegram = async () => {
         if (!botToken.trim()) return;
-        setConnecting(true);
-        setError("");
+        setBusy("telegram"); clearError("telegram");
         try {
-            await api.fetch("/channels/telegram/connect", {
-                method: "POST",
-                body: JSON.stringify({ botToken: botToken.trim() }),
-            });
-            setBotToken("");
-            setTgOpen(false);
-            onConnected?.(); // el wizard avanza a "Descúbrelo" sin salir
+            await api.fetch("/channels/telegram/connect", { method: "POST", body: JSON.stringify({ botToken: botToken.trim() }) });
+            setBotToken(""); setTgOpen(false);
+            onConnected?.();
         } catch (err: any) {
-            setError(err?.message || err?.data?.message || tc("connectionError"));
-        } finally {
-            setConnecting(false);
+            setError("telegram", err?.message || err?.data?.message || tc("connectionError"));
+        } finally { setBusy(null); }
+    };
+
+    const connectMessenger = () => {
+        const w = window as any;
+        setBusy("messenger"); clearError("messenger");
+        const doLogin = () => {
+            if (!w.FB) { setError("messenger", tc("connectionError")); setBusy(null); return; }
+            w.FB.login((response: any) => {
+                const token = response.authResponse?.accessToken;
+                if (!token) { setBusy(null); return; } // usuario canceló
+                api.messengerOAuthConnect(token)
+                    .then((r: any) => {
+                        if (r?.success) onConnected?.();
+                        else setError("messenger", r?.error || tc("connectionError"));
+                    })
+                    .catch((e: any) => setError("messenger", e?.message || tc("connectionError")))
+                    .finally(() => setBusy(null));
+            }, { config_id: MESSENGER_CONFIG_ID, response_type: "token", override_default_response_type: true, auth_type: "rerequest" });
+        };
+        // Carga el SDK on-demand (no en mount) para no pisar el fbAsyncInit del panel de WhatsApp.
+        if (w.FB) { doLogin(); return; }
+        w.fbAsyncInit = function () {
+            try { w.FB.init({ appId: META_APP_ID, cookie: true, xfbml: false, version: "v21.0" }); } catch { /* ya inicializado */ }
+            doLogin();
+        };
+        if (!document.querySelector('script[src*="connect.facebook.net"]')) {
+            const s = document.createElement("script");
+            s.src = "https://connect.facebook.net/en_US/sdk.js";
+            s.async = true; s.defer = true;
+            document.body.appendChild(s);
         }
     };
 
-    const cardCls = "flex items-center gap-3 p-3 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30 text-left transition-all cursor-pointer";
+    const connectInstagram = () => {
+        clearError("instagram"); setBusy("instagram");
+        const state = crypto.randomUUID();
+        localStorage.setItem("ig_oauth_state", state);
+        const params = new URLSearchParams({
+            enable_fb_login: "0", force_authentication: "1",
+            client_id: INSTAGRAM_APP_ID, redirect_uri: INSTAGRAM_REDIRECT_URI,
+            response_type: "code", scope: "instagram_business_basic,instagram_business_manage_messages", state,
+        });
+        const url = `https://www.instagram.com/oauth/authorize?${params.toString()}`;
+        const w = 600, h = 700;
+        const left = window.screenX + (window.outerWidth - w) / 2;
+        const top = window.screenY + (window.outerHeight - h) / 2;
+        const popup = window.open(url, "instagram_oauth", `width=${w},height=${h},left=${left},top=${top},scrollbars=yes`);
+        if (!popup) {
+            // No redirigir (sacaría del wizard); pedir permitir popups.
+            setError("instagram", t("popupBlocked"));
+            setBusy(null);
+            return;
+        }
+        // Si cierran el popup sin terminar, liberar el estado "conectando".
+        const poll = setInterval(() => {
+            if (popup.closed) { clearInterval(poll); setBusy((b) => (b === "instagram" ? null : b)); }
+        }, 600);
+    };
+
+    const connectWebchat = async () => {
+        setBusy("webchat"); clearError("webchat");
+        try {
+            await api.fetch(`/widgets/${tenantId}`, { method: "POST", body: JSON.stringify({ name: "Web Chat" }) });
+            onConnected?.();
+        } catch (err: any) {
+            setError("webchat", err?.message || err?.data?.message || tc("connectionError"));
+        } finally { setBusy(null); }
+    };
+
+    const cardCls = "flex items-center gap-3 p-3 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30 text-left transition-all cursor-pointer disabled:opacity-60 disabled:cursor-default";
+
+    const ChannelButton = ({ id, icon: Icon, color, onClick, expandable }: { id: string; icon: any; color: string; onClick: () => void; expandable?: boolean }) => (
+        <button onClick={onClick} disabled={busy === id} className={cardCls}>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: color }}>
+                <Icon size={16} />
+            </div>
+            <span className="text-[13px] text-foreground flex-1">{t(`channel_${id}`)}</span>
+            {busy === id ? <Loader2 size={14} className="text-muted-foreground shrink-0 animate-spin" />
+                : expandable ? <ChevronDown size={14} className={`text-muted-foreground shrink-0 transition-transform ${tgOpen ? "rotate-180" : ""}`} />
+                : <ArrowRight size={14} className="text-muted-foreground shrink-0" />}
+        </button>
+    );
 
     return (
         <div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {/* Telegram — inline */}
-                <button onClick={() => setTgOpen((v) => !v)} className={cardCls}>
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: "#0088CC" }}>
-                        <Send size={16} />
-                    </div>
-                    <span className="text-[13px] text-foreground flex-1">{t("channel_telegram")}</span>
-                    <ChevronDown size={14} className={`text-muted-foreground shrink-0 transition-transform ${tgOpen ? "rotate-180" : ""}`} />
-                </button>
-
-                {/* Resto de canales — navegan en la misma pestaña */}
-                {NAV_CHANNELS.map((ch) => {
-                    const Icon = ch.icon;
-                    return (
-                        <button key={ch.id} onClick={() => router.push(ch.href)} className={cardCls}>
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: ch.color }}>
-                                <Icon size={16} />
-                            </div>
-                            <span className="text-[13px] text-foreground flex-1">{t(`channel_${ch.id}`)}</span>
-                            <ArrowRight size={14} className="text-muted-foreground shrink-0" />
-                        </button>
-                    );
-                })}
+                <ChannelButton id="instagram" icon={Instagram} color="#E4405F" onClick={connectInstagram} />
+                <ChannelButton id="messenger" icon={Facebook} color="#0084FF" onClick={connectMessenger} />
+                <ChannelButton id="telegram" icon={Send} color="#0088CC" onClick={() => setTgOpen((v) => !v)} expandable />
+                <ChannelButton id="webchat" icon={Globe} color="#00b894" onClick={connectWebchat} />
+                <ChannelButton id="email" icon={Mail} color="#6c5ce7" onClick={() => router.push("/admin/channels/email")} />
             </div>
+
+            {/* Errores inline por canal */}
+            {(["instagram", "messenger", "webchat"] as const).map((id) => errors[id] ? (
+                <p key={id} className="text-[12px] text-rose-500 mt-1.5">{t(`channel_${id}`)}: {errors[id]}</p>
+            ) : null)}
 
             {/* Form inline de Telegram */}
             {tgOpen && (
@@ -89,13 +177,13 @@ export default function SecondaryChannels({ onConnected }: { onConnected?: () =>
                         />
                         <button
                             onClick={connectTelegram}
-                            disabled={connecting || !botToken.trim()}
+                            disabled={busy === "telegram" || !botToken.trim()}
                             className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white transition-colors"
                         >
-                            {connecting ? <Loader2 size={14} className="animate-spin" /> : t("telegramConnect")}
+                            {busy === "telegram" ? <Loader2 size={14} className="animate-spin" /> : t("telegramConnect")}
                         </button>
                     </div>
-                    {error && <p className="text-[12px] text-rose-500 mt-1.5">{error}</p>}
+                    {errors.telegram && <p className="text-[12px] text-rose-500 mt-1.5">{errors.telegram}</p>}
                 </div>
             )}
 

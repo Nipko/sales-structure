@@ -4656,7 +4656,7 @@
       "recommendedWhatsapp": "Recommended · WhatsApp",
       "whatsappBrandTitle": "WhatsApp Business",
       "officialMeta": "Official connection via Meta",
-      "otherChannelsHint": "We'll take you to the channel setup; when you're done, come back to the wizard and it continues.",
+      "otherChannelsHint": "Connect them without leaving the wizard. Email opens its settings page.",
       "otherChannels": "Or connect another channel",
       "recommended": "Recommended",
       "back": "Back",
@@ -4683,7 +4683,8 @@
       },
       "telegramHint": "Paste your bot token (get it from @BotFather on Telegram).",
       "telegramPlaceholder": "Bot token",
-      "telegramConnect": "Connect"
+      "telegramConnect": "Connect",
+      "popupBlocked": "Allow pop-ups to connect Instagram."
     },
     "test": {
       "title": "Try it",

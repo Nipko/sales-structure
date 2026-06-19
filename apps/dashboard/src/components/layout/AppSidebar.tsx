@@ -284,11 +284,13 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
           const lastReadId = localStorage.getItem("lastReadChangelogId");
 
           if (!lastReadId) {
-            // First time login or empty cache: automatically open the popup to welcome them
-            setChangelogOpen(true);
-            setHasUnreadChangelog(true);
+            // Cuenta nueva / primera sesión: NO mostramos novedades (para ellos todo es nuevo).
+            // Los dejamos "al día" en silencio para que solo vean FUTURAS publicaciones —
+            // sin auto-abrir el popup ni marcar indicador.
+            localStorage.setItem("lastReadChangelogId", latestUpdate.id);
           } else if (lastReadId !== latestUpdate.id) {
-            // New release available
+            // Hay una novedad nueva desde la última visita → solo el indicador (no auto-abrir).
+            // Al abrirla (openChangelogModal) se marca leída y deja de aparecer.
             setHasUnreadChangelog(true);
           }
         }

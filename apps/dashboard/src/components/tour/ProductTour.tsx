@@ -80,30 +80,65 @@ export function TourCard({ step, currentStep, totalSteps, nextStep, prevStep, ar
     const t = useTranslations("productTour");
     const { closeOnborda } = useOnborda();
     const isLast = currentStep + 1 >= totalSteps;
+
+    // Fix de posición: Onborda calcula la posición de la tarjeta ANTES de que termine su
+    // scroll suave (y no escucha el evento 'scroll'), dejándola fuera de pantalla cuando el
+    // target del sidebar estaba scrolleado. Llevamos el target a la vista al instante y
+    // disparamos 'resize' (que Onborda SÍ escucha → updatePointerPosition) para recalcular.
+    const selector = (step as any)?.selector as string | undefined;
+    useEffect(() => {
+        if (!selector) return;
+        const el = document.querySelector(selector) as HTMLElement | null;
+        if (el) el.scrollIntoView({ block: "center", behavior: "auto" });
+        const raf = requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+        const tm = setTimeout(() => window.dispatchEvent(new Event("resize")), 300);
+        return () => { cancelAnimationFrame(raf); clearTimeout(tm); };
+    }, [currentStep, selector]);
+
     return (
-        <div className="max-w-xs rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900 shadow-xl p-4">
-            <div className="flex items-start justify-between gap-2 mb-2">
-                <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                    <span>{step.icon}</span> {step.title}
-                </h3>
-                <button onClick={() => closeOnborda()} className="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer" aria-label={t("close")}>
-                    <X size={15} />
+        <div className="w-[360px] max-w-[calc(100vw-2rem)] rounded-2xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900 shadow-2xl p-5">
+            {/* Header */}
+            <div className="flex items-start gap-3 mb-2.5">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 flex items-center justify-center text-xl shrink-0">
+                    {step.icon}
+                </div>
+                <h3 className="flex-1 text-[15px] font-semibold text-foreground leading-tight pt-1.5">{step.title}</h3>
+                <button onClick={() => closeOnborda()} className="shrink-0 -mt-1 -mr-1 p-1 text-muted-foreground hover:text-foreground cursor-pointer" aria-label={t("close")}>
+                    <X size={16} />
                 </button>
             </div>
-            <div className="text-[13px] text-muted-foreground leading-snug mb-3">{step.content}</div>
+
+            {/* Content */}
+            <p className="text-sm text-muted-foreground leading-relaxed mb-4">{step.content}</p>
+
+            {/* Progress dots */}
+            <div className="flex items-center gap-1.5 mb-4" aria-hidden>
+                {Array.from({ length: totalSteps }).map((_, i) => (
+                    <span
+                        key={i}
+                        className={`h-1.5 rounded-full transition-all ${
+                            i === currentStep ? "w-5 bg-indigo-500"
+                                : i < currentStep ? "w-1.5 bg-indigo-400/60"
+                                : "w-1.5 bg-neutral-200 dark:bg-white/15"
+                        }`}
+                    />
+                ))}
+            </div>
+
+            {/* Footer */}
             <div className="flex items-center justify-between">
-                <span className="text-[11px] text-muted-foreground">{currentStep + 1} / {totalSteps}</span>
+                <span className="text-[12px] text-muted-foreground tabular-nums">{currentStep + 1} / {totalSteps}</span>
                 <div className="flex items-center gap-2">
                     {currentStep > 0 && (
-                        <button onClick={() => prevStep()} className="px-2 py-1 rounded-lg text-[12px] text-muted-foreground hover:text-foreground inline-flex items-center cursor-pointer" aria-label={t("prev")}>
-                            <ArrowLeft size={13} />
+                        <button onClick={() => prevStep()} className="px-3 py-2 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-neutral-100 dark:hover:bg-white/5 inline-flex items-center gap-1 cursor-pointer transition-colors">
+                            <ArrowLeft size={14} /> {t("prev")}
                         </button>
                     )}
                     <button
                         onClick={() => (isLast ? closeOnborda() : nextStep())}
-                        className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 inline-flex items-center gap-1 cursor-pointer"
+                        className="px-4 py-2 rounded-lg text-[13px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 inline-flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
                     >
-                        {isLast ? t("finish") : t("next")} {!isLast && <ArrowRight size={13} />}
+                        {isLast ? t("finish") : t("next")} {!isLast && <ArrowRight size={14} />}
                     </button>
                 </div>
             </div>

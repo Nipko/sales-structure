@@ -24,11 +24,14 @@ import {
  *  - Credit note: POST /v2/credit-notes/validate referencing the original by
  *    bill_id (Factus internal id), correction_concept_code 1–6.
  *
- * Uses the "flat IDs" payload convention (tribute_id, is_excluded, tax_rate,
- * unit_measure_id, standard_code_id; customer.identification_document_id,
- * legal_organization_id, tribute_id, municipality_id) — the one confirmed by
- * the laravel-factus-sdk. Catalog values are read from FiscalConfigService so
- * they can be tuned against the sandbox without code changes.
+ * Uses the current Factus "codes" payload convention enforced by
+ * /bills/validate: top-level payment_details[] (payment_form, payment_method_code,
+ * amount), and per item unit_measure_code, standard_code and a taxes[] array
+ * ({code, rate}). For maximum compatibility the legacy "internal IDs" fields
+ * (unit_measure_id, standard_code_id, tribute_id, tax_rate, is_excluded) are
+ * still sent — the current validation ignores unknown keys. Catalog values are
+ * read from FiscalConfigService so they can be tuned against the sandbox
+ * without code changes.
  *
  * Credentials come from env (secrets), never the DB:
  *   FACTUS_BASE_URL (default sandbox), FACTUS_CLIENT_ID, FACTUS_CLIENT_SECRET,
@@ -58,6 +61,9 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
     private readonly PAYMENT_METHOD_CODE = '48';
     private readonly DOCUMENT_TYPE = '01'; // factura electrónica de venta
     private readonly OPERATION_TYPE = '10'; // estándar
+    // DIAN tax catalog code for IVA, used in the item-level `taxes` array
+    // (current Factus "codes" contract). 01 = IVA.
+    private readonly IVA_TAX_CODE = '01';
 
     constructor(private readonly config: FiscalConfigService) {}
 
@@ -159,6 +165,9 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             payment_form: this.PAYMENT_FORM,
             payment_method_code: this.PAYMENT_METHOD_CODE,
             operation_type: this.OPERATION_TYPE,
+            // Current Factus contract requires payment_details (array); the sum of
+            // amounts must equal the invoice total incl. taxes (= the gross charge).
+            payment_details: this.buildPaymentDetails(baseCents),
             send_email: !!data.acquirer.email && cfg.factusEnvironment === 'production',
             customer: await this.buildCustomer(data.acquirer, cfg),
             items: [line.item],
@@ -184,6 +193,7 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             bill_id: Number(data.originalProviderRef),
             observation: (data.reason || 'Reembolso').slice(0, 250),
             payment_method_code: this.PAYMENT_METHOD_CODE,
+            payment_details: this.buildPaymentDetails(baseCents),
             items: [line.item],
         };
         if (cfg.factusCreditNumberingRangeId) {
@@ -235,6 +245,17 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
                 quantity: 1,
                 discount_rate: 0,
                 price,
+                // Current Factus "codes" contract (the one bills/validate enforces):
+                unit_measure_code: cfg.defaultUnitMeasureCode,
+                standard_code: cfg.defaultStandardCode,
+                // For 'gravado_19' Factus recomputes IVA from this rate on the net
+                // price. For 'excluido' there is no IVA: we send a 0.00 IVA line and
+                // keep is_excluded=1 so the document is classified as excluded.
+                // NOTE: confirm against the Factus docs whether an excluded line
+                // should instead carry taxes:[] or a distinct tribute code.
+                taxes: [{ code: this.IVA_TAX_CODE, rate: excluded ? '0.00' : '19.00' }],
+                // Legacy "internal IDs" contract — accepted/ignored by the current
+                // validation; kept for backward compatibility across Factus versions.
                 tax_rate: excluded ? '0.00' : '19.00',
                 unit_measure_id: Number(cfg.defaultUnitMeasureId),
                 standard_code_id: Number(cfg.defaultStandardCodeId),
@@ -242,6 +263,21 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
                 tribute_id: Number(cfg.defaultProductTributeId),
             },
         };
+    }
+
+    /**
+     * Build the payment_details array required by the current Factus contract.
+     * One entry is enough for our single-charge subscriptions; the amount must
+     * equal the invoice total including taxes (= the gross charge in COP).
+     */
+    private buildPaymentDetails(grossCents: number): Array<Record<string, unknown>> {
+        return [
+            {
+                payment_form: this.PAYMENT_FORM,
+                payment_method_code: this.PAYMENT_METHOD_CODE,
+                amount: (grossCents / 100).toFixed(2),
+            },
+        ];
     }
 
     private async buildCustomer(a: FiscalAcquirer, cfg: { defaultMunicipalityId: string | null }): Promise<Record<string, unknown>> {

@@ -50,10 +50,18 @@ export interface FiscalConfig {
     factusNumberingRangeId: string | null;
     /** Factus numbering_range_id for the active "Nota Crédito" range (optional; inferred if single). */
     factusCreditNumberingRangeId: string | null;
-    /** Catalog defaults for the subscription line item. */
+    /** Catalog defaults for the subscription line item (legacy "internal IDs" contract). */
     defaultUnitMeasureId: string;
     defaultStandardCodeId: string;
     defaultProductTributeId: string;
+    /**
+     * Catalog defaults for the CURRENT Factus "codes" contract (bills/validate
+     * validates these, not the *_id fields above):
+     *  - unit_measure_code: DIAN unit-of-measure code (94 = unidad, 70 = ...).
+     *  - standard_code: UNSPSC code of the product/service ("código estándar").
+     */
+    defaultUnitMeasureCode: string;
+    defaultStandardCode: string;
     /** Fallback municipality_id when the acquirer has none. */
     defaultMunicipalityId: string | null;
     /** Invoice line item: base description (plan name is appended) and SKU/code. */
@@ -74,6 +82,9 @@ const DEFAULTS: FiscalConfig = {
     defaultUnitMeasureId: '70', // 'unidad'
     defaultStandardCodeId: '1', // adopción del contribuyente
     defaultProductTributeId: '1', // IVA (product tribute)
+    defaultUnitMeasureCode: '94', // 'unidad' (catálogo DIAN, contrato por códigos)
+    defaultStandardCode: '999', // genérico — reemplazar por el UNSPSC real del servicio
+
     defaultMunicipalityId: null,
     itemDescription: 'Suscripción Parallly',
     itemCodeReference: 'PARALLLY-SUB',
@@ -141,6 +152,8 @@ export class FiscalConfigService {
             defaultUnitMeasureId: get('fiscal.default_unit_measure_id') || DEFAULTS.defaultUnitMeasureId,
             defaultStandardCodeId: get('fiscal.default_standard_code_id') || DEFAULTS.defaultStandardCodeId,
             defaultProductTributeId: get('fiscal.default_product_tribute_id') || DEFAULTS.defaultProductTributeId,
+            defaultUnitMeasureCode: get('fiscal.default_unit_measure_code') || DEFAULTS.defaultUnitMeasureCode,
+            defaultStandardCode: get('fiscal.default_standard_code') || DEFAULTS.defaultStandardCode,
             defaultMunicipalityId: get('fiscal.default_municipality_id') ?? DEFAULTS.defaultMunicipalityId,
             itemDescription: get('fiscal.item_description') || DEFAULTS.itemDescription,
             itemCodeReference: get('fiscal.item_code_reference') || DEFAULTS.itemCodeReference,
@@ -168,6 +181,8 @@ export class FiscalConfigService {
         if (patch.defaultUnitMeasureId) updates['fiscal.default_unit_measure_id'] = patch.defaultUnitMeasureId;
         if (patch.defaultStandardCodeId) updates['fiscal.default_standard_code_id'] = patch.defaultStandardCodeId;
         if (patch.defaultProductTributeId) updates['fiscal.default_product_tribute_id'] = patch.defaultProductTributeId;
+        if (patch.defaultUnitMeasureCode) updates['fiscal.default_unit_measure_code'] = patch.defaultUnitMeasureCode;
+        if (patch.defaultStandardCode) updates['fiscal.default_standard_code'] = patch.defaultStandardCode;
         if (patch.defaultMunicipalityId !== undefined)
             updates['fiscal.default_municipality_id'] = patch.defaultMunicipalityId ?? '';
         if (patch.itemDescription) updates['fiscal.item_description'] = patch.itemDescription;

@@ -20,6 +20,8 @@ class FiscalConfigDto {
     @IsOptional() @IsString() defaultUnitMeasureId?: string;
     @IsOptional() @IsString() defaultStandardCodeId?: string;
     @IsOptional() @IsString() defaultProductTributeId?: string;
+    @IsOptional() @IsString() defaultUnitMeasureCode?: string;
+    @IsOptional() @IsString() defaultStandardCode?: string;
     @IsOptional() @IsString() defaultMunicipalityId?: string;
     @IsOptional() @IsString() itemDescription?: string;
     @IsOptional() @IsString() itemCodeReference?: string;

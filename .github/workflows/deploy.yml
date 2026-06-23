@@ -520,6 +520,13 @@ jobs:
             echo "VAPID_PRIVATE_KEY=${PROD_VAPID_PRIVATE_KEY}" >> .env
             echo "API_PUBLIC_URL=https://api.parallly-chat.cloud/api/v1" >> .env
             echo "DASHBOARD_URL=https://admin.parallly-chat.cloud" >> .env
+            echo "# App URLs & defaults (code has fallbacks; set explicitly for reproducible deploys)" >> .env
+            echo "API_URL=https://api.parallly-chat.cloud" >> .env
+            echo "NEXT_PUBLIC_DASHBOARD_URL=https://admin.parallly-chat.cloud" >> .env
+            echo "BODY_SIZE_LIMIT=50mb" >> .env
+            echo "EMAIL_LOGO_URL=https://parallly-chat.cloud/parallly-logo.svg" >> .env
+            echo "EMBEDDING_MODEL=text-embedding-3-small" >> .env
+            echo "EMBEDDING_DIMENSIONS=1536" >> .env
             echo "GIT_SHA=${GIT_SHA}" >> .env
             chmod 600 .env
             echo "  [OK] .env generated and secured"
@@ -540,34 +547,11 @@ jobs:
               sleep 5
             done
 
-            echo "===> Ensuring platform_settings table exists..."
-            $DC exec -T postgres \
-              psql -U parallext -d parallext_engine -c "
-                CREATE TABLE IF NOT EXISTS platform_settings (
-                  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), key TEXT UNIQUE NOT NULL,
-                  value TEXT, is_secret BOOLEAN DEFAULT false, category TEXT DEFAULT 'general',
-                  created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
-                );
-              " || true
-
-            echo "===> Ensuring users columns exist..."
-            $DC exec -T postgres \
-              psql -U parallext -d parallext_engine \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS availability_status VARCHAR(20) DEFAULT 'offline';" \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS max_capacity INTEGER DEFAULT 5;" \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;" \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(20) DEFAULT 'email';" \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS google_id TEXT;" \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS microsoft_id TEXT;" \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS picture TEXT;" \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;" \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verify_code TEXT;" \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verify_expires TIMESTAMPTZ;" \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT false;" \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;" \
-              -c "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS skill_tags TEXT[] DEFAULT '{}';" \
-              -c "ALTER TABLE public.users ALTER COLUMN password DROP NOT NULL;" \
-              || true
+            # platform_settings + users auth/profile columns are now created by the
+            # Prisma migration 20260623000000_add_user_fields_and_platform_settings
+            # (applied by "prisma migrate deploy" below). The previous raw-SQL
+            # patches here were removed so the migration chain is the single source
+            # of truth for the public schema.
 
             echo "===> Running Prisma public schema migrations..."
             $DC \

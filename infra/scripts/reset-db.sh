@@ -31,21 +31,10 @@ docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME -c "CREATE EXTENSION IF N
 
 echo ""
 echo "===> Step 3: Run Prisma migrations (public schema)..."
-docker compose -f $COMPOSE_FILE run --rm api npx prisma migrate deploy
+docker compose -f $COMPOSE_FILE run --rm api npx prisma migrate deploy --schema=prisma/schema.prisma
 
 echo ""
-echo "===> Step 4: Create platform_settings table..."
-docker exec $DB_CONTAINER psql -U $DB_USER -d $DB_NAME -c "
-  CREATE TABLE IF NOT EXISTS platform_settings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    key TEXT UNIQUE NOT NULL,
-    value TEXT,
-    is_secret BOOLEAN DEFAULT false,
-    category TEXT DEFAULT 'general',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-  );
-"
+echo "===> Step 4: platform_settings now created by Prisma migrations (Step 3)."
 
 echo ""
 echo "===> Step 5: Seed admin user..."

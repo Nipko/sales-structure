@@ -101,6 +101,23 @@ model User {
   @@schema("public")
 }
 
+// ---- Platform Settings (global key/value config; accessed via raw SQL) ----
+// Modeled so Prisma is aware of the table (created in migration
+// 20260623000000_add_user_fields_and_platform_settings); the app reads/writes it
+// through $queryRaw/$executeRaw, not the typed client.
+model PlatformSetting {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key       String   @unique
+  value     String?
+  isSecret  Boolean  @default(false) @map("is_secret")
+  category  String   @default("general")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("platform_settings")
+  @@schema("public")
+}
+
 // ---- Channel Accounts (WhatsApp numbers, IG accounts, etc.) ----
 model ChannelAccount {
   id            String   @id @default(uuid())

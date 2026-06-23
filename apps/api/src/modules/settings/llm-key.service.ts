@@ -18,7 +18,7 @@ const DB_KEY_TO_PROVIDER: Record<string, string> = Object.fromEntries(
 const ENV_FALLBACKS: Record<string, string> = {
     openai: 'OPENAI_API_KEY',
     anthropic: 'ANTHROPIC_API_KEY',
-    google: 'GOOGLE_AI_API_KEY',
+    google: 'GOOGLE_GENERATIVE_AI_API_KEY',
     xai: 'XAI_API_KEY',
     deepseek: 'DEEPSEEK_API_KEY',
 };

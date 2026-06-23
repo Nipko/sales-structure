@@ -2429,3 +2429,531 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."photo_sessions" (
 CREATE INDEX IF NOT EXISTS "idx_photo_sessions_status" ON "{{SCHEMA_NAME}}"."photo_sessions" ("status", "scheduled_at" DESC);
 CREATE INDEX IF NOT EXISTS "idx_photo_sessions_contact" ON "{{SCHEMA_NAME}}"."photo_sessions" ("contact_id", "scheduled_at" DESC) WHERE "contact_id" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS "idx_photo_sessions_delivery" ON "{{SCHEMA_NAME}}"."photo_sessions" ("delivery_due_at") WHERE "status" IN ('scheduled', 'in_progress');
+
+-- ============================================================
+-- Lazy/runtime tables folded into the canonical template (2026-06-23).
+-- These per-tenant tables/columns were previously created on first feature
+-- access via ensure*Tables() in services, so a brand-new tenant lacked them
+-- until the feature ran. They are now created up-front. The service ensure*
+-- methods remain as idempotent safety nets. Everything here is IF NOT EXISTS.
+-- (PUBLIC-schema lazy tables — widget_*, push_subscriptions, email_channel_configs
+--  — are created at app boot via onModuleInit and stay out of this per-tenant file.)
+-- ============================================================
+
+-- ---- Staff scheduling (verticals) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."staff_members" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "name" TEXT NOT NULL,
+    "email" TEXT,
+    "phone" TEXT,
+    "role" TEXT DEFAULT 'stylist',
+    "avatar_url" TEXT,
+    "specialties" TEXT[] DEFAULT '{}',
+    "is_active" BOOLEAN DEFAULT true,
+    "sort_order" INT DEFAULT 0,
+    "created_at" TIMESTAMPTZ DEFAULT now(),
+    "updated_at" TIMESTAMPTZ DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."staff_schedules" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "staff_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."staff_members"("id") ON DELETE CASCADE,
+    "day_of_week" INT NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
+    "start_time" TIME NOT NULL,
+    "end_time" TIME NOT NULL,
+    "is_active" BOOLEAN DEFAULT true,
+    UNIQUE("staff_id", "day_of_week")
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."staff_service_links" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "staff_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."staff_members"("id") ON DELETE CASCADE,
+    "service_id" UUID NOT NULL,
+    "duration_override_min" INT,
+    "price_override" INT,
+    UNIQUE("staff_id", "service_id")
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."staff_breaks" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "staff_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."staff_members"("id") ON DELETE CASCADE,
+    "date" DATE NOT NULL,
+    "start_time" TIME NOT NULL,
+    "end_time" TIME NOT NULL,
+    "reason" TEXT
+);
+
+-- ---- Vehicle inventory (verticals) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."vehicles" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "make" TEXT NOT NULL,
+    "model" TEXT NOT NULL,
+    "year" INT NOT NULL,
+    "trim_level" TEXT,
+    "vin" TEXT,
+    "license_plate" TEXT,
+    "color" TEXT,
+    "fuel_type" TEXT DEFAULT 'gasoline',
+    "transmission" TEXT DEFAULT 'automatic',
+    "mileage_km" INT DEFAULT 0,
+    "condition" TEXT DEFAULT 'new',
+    "price_cents" INT NOT NULL,
+    "currency" TEXT DEFAULT 'COP',
+    "status" TEXT DEFAULT 'available',
+    "category" TEXT DEFAULT 'sedan',
+    "features" TEXT[] DEFAULT '{}',
+    "photos" TEXT[] DEFAULT '{}',
+    "description" TEXT,
+    "location" TEXT,
+    "is_featured" BOOLEAN DEFAULT false,
+    "acquired_at" DATE,
+    "sold_at" DATE,
+    "sold_price_cents" INT,
+    "buyer_contact_id" UUID,
+    "created_at" TIMESTAMPTZ DEFAULT now(),
+    "updated_at" TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_vehicles_status" ON "{{SCHEMA_NAME}}"."vehicles"("status");
+CREATE INDEX IF NOT EXISTS "idx_vehicles_make_model" ON "{{SCHEMA_NAME}}"."vehicles"("make", "model");
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."vehicle_inquiries" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "vehicle_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."vehicles"("id") ON DELETE CASCADE,
+    "contact_id" UUID,
+    "contact_name" TEXT,
+    "contact_phone" TEXT,
+    "contact_email" TEXT,
+    "inquiry_type" TEXT DEFAULT 'info',
+    "notes" TEXT,
+    "status" TEXT DEFAULT 'new',
+    "assigned_to" UUID,
+    "created_at" TIMESTAMPTZ DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."test_drives" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "vehicle_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."vehicles"("id") ON DELETE CASCADE,
+    "contact_id" UUID,
+    "contact_name" TEXT NOT NULL,
+    "contact_phone" TEXT,
+    "scheduled_date" DATE NOT NULL,
+    "scheduled_time" TIME NOT NULL,
+    "duration_min" INT DEFAULT 30,
+    "status" TEXT DEFAULT 'scheduled',
+    "notes" TEXT,
+    "assigned_to" UUID,
+    "created_at" TIMESTAMPTZ DEFAULT now()
+);
+
+-- ---- E-commerce ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."ecommerce_products" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "external_id" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "description" TEXT,
+    "handle" TEXT,
+    "vendor" TEXT,
+    "product_type" TEXT,
+    "price_cents" INT,
+    "currency" TEXT DEFAULT 'USD',
+    "compare_at_price_cents" INT,
+    "image_url" TEXT,
+    "images" TEXT[] DEFAULT '{}',
+    "variants" JSONB DEFAULT '[]',
+    "tags" TEXT[] DEFAULT '{}',
+    "status" TEXT DEFAULT 'active',
+    "inventory_quantity" INT DEFAULT 0,
+    "synced_at" TIMESTAMPTZ DEFAULT now(),
+    "created_at" TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(external_id, provider)
+);
+CREATE INDEX IF NOT EXISTS "idx_ecommerce_products_status" ON "{{SCHEMA_NAME}}"."ecommerce_products" ("status");
+CREATE INDEX IF NOT EXISTS "idx_ecommerce_products_provider" ON "{{SCHEMA_NAME}}"."ecommerce_products" ("provider");
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."abandoned_carts" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "external_id" TEXT,
+    "provider" TEXT NOT NULL,
+    "contact_id" UUID,
+    "contact_phone" TEXT,
+    "contact_email" TEXT,
+    "items" JSONB DEFAULT '[]',
+    "total_cents" INT DEFAULT 0,
+    "currency" TEXT DEFAULT 'USD',
+    "checkout_url" TEXT,
+    "status" TEXT DEFAULT 'abandoned',
+    "recovery_sent_at" TIMESTAMPTZ,
+    "recovered_at" TIMESTAMPTZ,
+    "created_at" TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_abandoned_carts_contact" ON "{{SCHEMA_NAME}}"."abandoned_carts" ("contact_id");
+CREATE INDEX IF NOT EXISTS "idx_abandoned_carts_status" ON "{{SCHEMA_NAME}}"."abandoned_carts" ("status");
+
+-- ---- Channel manager (vacation rental) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."cm_listings" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "external_id" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "address" TEXT,
+    "check_in_time" TEXT DEFAULT '15:00',
+    "check_out_time" TEXT DEFAULT '11:00',
+    "max_guests" INT DEFAULT 4,
+    "base_price_cents" INT DEFAULT 0,
+    "currency" TEXT DEFAULT 'USD',
+    "status" TEXT DEFAULT 'active',
+    "amenities" TEXT[] DEFAULT '{}',
+    "photos" TEXT[] DEFAULT '{}',
+    "property_id" UUID,
+    "last_synced_at" TIMESTAMPTZ DEFAULT now(),
+    "created_at" TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(external_id, provider)
+);
+CREATE INDEX IF NOT EXISTS "idx_cm_listings_provider" ON "{{SCHEMA_NAME}}"."cm_listings" ("provider");
+CREATE INDEX IF NOT EXISTS "idx_cm_listings_status" ON "{{SCHEMA_NAME}}"."cm_listings" ("status");
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."cm_reservations" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "listing_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."cm_listings"("id") ON DELETE CASCADE,
+    "external_id" TEXT,
+    "provider" TEXT NOT NULL,
+    "guest_name" TEXT NOT NULL,
+    "guest_email" TEXT,
+    "guest_phone" TEXT,
+    "check_in" DATE NOT NULL,
+    "check_out" DATE NOT NULL,
+    "guests" INT DEFAULT 1,
+    "total_cents" INT DEFAULT 0,
+    "currency" TEXT DEFAULT 'USD',
+    "status" TEXT DEFAULT 'confirmed',
+    "source" TEXT,
+    "notes" TEXT,
+    "contact_id" UUID,
+    "synced_at" TIMESTAMPTZ DEFAULT now(),
+    "created_at" TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(external_id, provider)
+);
+CREATE INDEX IF NOT EXISTS "idx_cm_reservations_listing_id" ON "{{SCHEMA_NAME}}"."cm_reservations" ("listing_id");
+CREATE INDEX IF NOT EXISTS "idx_cm_reservations_status" ON "{{SCHEMA_NAME}}"."cm_reservations" ("status");
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."cm_availability" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "listing_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."cm_listings"("id") ON DELETE CASCADE,
+    "date" DATE NOT NULL,
+    "is_available" BOOLEAN DEFAULT true,
+    "price_cents" INT,
+    "min_nights" INT DEFAULT 1,
+    "notes" TEXT,
+    UNIQUE(listing_id, date)
+);
+CREATE INDEX IF NOT EXISTS "idx_cm_availability_listing_id" ON "{{SCHEMA_NAME}}"."cm_availability" ("listing_id");
+
+-- ---- Email channel (per-tenant thread metadata) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."email_threads" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "conversation_id" UUID NOT NULL,
+    "subject" TEXT,
+    "message_id_header" TEXT,
+    "in_reply_to" TEXT,
+    "references_header" TEXT,
+    "cc" TEXT[],
+    "bcc" TEXT[],
+    "created_at" TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_email_threads_conversation_id" ON "{{SCHEMA_NAME}}"."email_threads" ("conversation_id");
+
+-- ---- Drip sequences (automation) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."drip_sequences" (
+    "id" UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    "tenant_id" UUID NOT NULL,
+    "name" VARCHAR(255) NOT NULL,
+    "trigger_event" VARCHAR(100) NOT NULL,
+    "trigger_conditions" JSONB DEFAULT '{}',
+    "steps" JSONB NOT NULL DEFAULT '[]',
+    "is_active" BOOLEAN DEFAULT false,
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."drip_enrollments" (
+    "id" UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    "sequence_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."drip_sequences"("id") ON DELETE CASCADE,
+    "contact_id" UUID NOT NULL,
+    "conversation_id" UUID,
+    "current_step" INTEGER DEFAULT 0,
+    "status" VARCHAR(50) DEFAULT 'active',
+    "enrolled_at" TIMESTAMPTZ DEFAULT NOW(),
+    "last_step_at" TIMESTAMPTZ,
+    "completed_at" TIMESTAMPTZ,
+    "stop_reason" TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_drip_enrollments_active" ON "{{SCHEMA_NAME}}"."drip_enrollments" ("sequence_id", "contact_id") WHERE "status" = 'active';
+
+-- ---- CTWA attribution ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."ctwa_attributions" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "contact_id" UUID NOT NULL,
+    "conversation_id" UUID,
+    "source_id" TEXT NOT NULL,
+    "source_type" TEXT,
+    "source_url" TEXT,
+    "headline" TEXT,
+    "body" TEXT,
+    "media_type" TEXT,
+    "ctwa_clid" TEXT,
+    "captured_at" TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE("contact_id", "source_id")
+);
+CREATE INDEX IF NOT EXISTS "idx_ctwa_captured" ON "{{SCHEMA_NAME}}"."ctwa_attributions"("captured_at");
+
+-- ---- Procedures (deterministic SOP engine) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."procedures" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "trigger" JSONB NOT NULL DEFAULT '{"keywords":[]}',
+    "steps" JSONB NOT NULL DEFAULT '[]',
+    "status" VARCHAR(20) NOT NULL DEFAULT 'draft',
+    "vertical" VARCHAR(50),
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "source_sop" TEXT,
+    "created_by" VARCHAR(120),
+    "created_at" TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_procedures_status" ON "{{SCHEMA_NAME}}"."procedures"("status");
+
+-- ---- Broadcast A/B test variants ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."campaign_variants" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "campaign_id" UUID NOT NULL,
+    "name" TEXT NOT NULL,
+    "content" JSONB NOT NULL,
+    "percentage" INTEGER NOT NULL DEFAULT 50,
+    "is_winner" BOOLEAN DEFAULT false,
+    "stats" JSONB DEFAULT '{"sent":0,"delivered":0,"read":0,"responded":0,"failed":0}',
+    "created_at" TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_campaign_variants_campaign" ON "{{SCHEMA_NAME}}"."campaign_variants"("campaign_id");
+
+-- ---- Knowledge feedback ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_feedback" (
+    "id" UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    "conversation_id" UUID,
+    "message_id" UUID,
+    "document_id" UUID,
+    "query" TEXT,
+    "rating" SMALLINT NOT NULL,
+    "is_false_positive" BOOLEAN DEFAULT false,
+    "comment" TEXT,
+    "created_by" VARCHAR(255),
+    "created_at" TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_kb_feedback_document" ON "{{SCHEMA_NAME}}"."kb_feedback"("document_id");
+CREATE INDEX IF NOT EXISTS "idx_kb_feedback_rating" ON "{{SCHEMA_NAME}}"."kb_feedback"("rating");
+
+-- ---- KB health issues ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_health_issues" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "type" VARCHAR(30) NOT NULL,
+    "document_id" UUID,
+    "related_document_id" UUID,
+    "detail" TEXT,
+    "suggestion" TEXT,
+    "status" VARCHAR(20) NOT NULL DEFAULT 'open',
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_kbhealth_status" ON "{{SCHEMA_NAME}}"."kb_health_issues"("status", "created_at");
+
+-- ---- Customer memory (Mem0-style) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_memories" (
+    "contact_id" UUID PRIMARY KEY,
+    "facts" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    "summary" TEXT,
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_memory_facts" (
+    "id" UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    "owner_kind" VARCHAR(16) NOT NULL DEFAULT 'profile',
+    "owner_id" UUID NOT NULL,
+    "fact_text" TEXT NOT NULL,
+    "embedding" vector(1536),
+    "seen_count" INTEGER NOT NULL DEFAULT 1,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "last_seen_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_cmf_owner" ON "{{SCHEMA_NAME}}"."customer_memory_facts" ("owner_kind", "owner_id");
+
+-- ---- Saved reports (analytics) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."saved_reports" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "name" VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "config" JSONB NOT NULL DEFAULT '{}',
+    "created_by" UUID,
+    "is_favorite" BOOLEAN DEFAULT false,
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+
+-- ---- Observability: traces + quality scores ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."conversation_traces" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL,
+    provider VARCHAR(40),
+    model VARCHAR(80),
+    tier VARCHAR(40),
+    task VARCHAR(40),
+    latency_ms INTEGER,
+    prompt_tokens INTEGER,
+    completion_tokens INTEGER,
+    total_tokens INTEGER,
+    fallback_used BOOLEAN DEFAULT false,
+    kb_sources JSONB DEFAULT '[]'::jsonb,
+    stage VARCHAR(40),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_ctrace_conversation ON "{{SCHEMA_NAME}}"."conversation_traces"(conversation_id, created_at);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."turn_traces" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL,
+    message_id UUID NULL,
+    total_duration_ms INTEGER,
+    step_count INTEGER,
+    steps JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_turntrace_conv ON "{{SCHEMA_NAME}}"."turn_traces"(conversation_id, created_at);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."conversation_quality_scores" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL,
+    overall_score NUMERIC,
+    resolution_score NUMERIC,
+    tone_score NUMERIC,
+    accuracy_score NUMERIC,
+    empathy_score NUMERIC,
+    flags JSONB DEFAULT '[]'::jsonb,
+    resolution_type VARCHAR(50),
+    resolution_verified BOOLEAN,
+    verification_reason TEXT,
+    scored_by VARCHAR(20) DEFAULT 'ai',
+    rubric_version VARCHAR(20) DEFAULT 'v1',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_cqs_conversation ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_cqs_created ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(created_at);
+
+-- ---- Simulation + eval gate ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."simulation_runs" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id UUID,
+    channel_type VARCHAR(40) DEFAULT 'whatsapp',
+    persona_version INTEGER,
+    persona_snapshot JSONB,
+    scenario_source VARCHAR(20) NOT NULL DEFAULT 'synthetic',
+    vertical VARCHAR(50),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    scenario_count INTEGER DEFAULT 0,
+    avg_score NUMERIC,
+    resolved_rate NUMERIC,
+    results JSONB DEFAULT '[]'::jsonb,
+    summary JSONB,
+    baseline_run_id UUID,
+    error TEXT,
+    created_by VARCHAR(120),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_simruns_created ON "{{SCHEMA_NAME}}"."simulation_runs"(created_at);
+CREATE INDEX IF NOT EXISTS idx_simruns_agent ON "{{SCHEMA_NAME}}"."simulation_runs"(agent_id);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_scenarios" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    key TEXT UNIQUE NOT NULL,
+    title TEXT NOT NULL,
+    vertical TEXT,
+    language TEXT NOT NULL DEFAULT 'es',
+    messages JSONB NOT NULL DEFAULT '[]'::jsonb,
+    criteria TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE "{{SCHEMA_NAME}}"."eval_scenarios" ADD COLUMN IF NOT EXISTS expected_actions JSONB NOT NULL DEFAULT '[]'::jsonb;
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."eval_runs" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id UUID,
+    k INT NOT NULL DEFAULT 1,
+    threshold NUMERIC,
+    passed BOOLEAN,
+    avg_score NUMERIC,
+    eval_activable BOOLEAN NOT NULL DEFAULT false,
+    results JSONB NOT NULL DEFAULT '[]'::jsonb,
+    trigger TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_eval_runs_agent ON "{{SCHEMA_NAME}}"."eval_runs" (agent_id);
+
+-- ---- Google Business Profile reviews ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."gbp_reviews" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    review_name TEXT UNIQUE NOT NULL,
+    reviewer_name TEXT,
+    reviewer_photo TEXT,
+    rating INTEGER,
+    comment TEXT,
+    create_time TIMESTAMPTZ,
+    reply_comment TEXT,
+    reply_status VARCHAR(20) DEFAULT 'none',
+    ai_suggestion TEXT,
+    synced_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_gbp_created ON "{{SCHEMA_NAME}}"."gbp_reviews"(create_time);
+
+-- ---- Vertical integrations cache ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."vi_items" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    provider VARCHAR(20) NOT NULL,
+    item_type VARCHAR(40) NOT NULL,
+    external_id TEXT NOT NULL,
+    title TEXT,
+    subtitle TEXT,
+    price_cents INTEGER,
+    currency VARCHAR(10),
+    data JSONB DEFAULT '{}'::jsonb,
+    synced_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(provider, item_type, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_vi_items_lookup ON "{{SCHEMA_NAME}}"."vi_items"(provider, item_type);
+
+-- ---- Outbound webhooks ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."webhook_endpoints" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    url TEXT NOT NULL,
+    events TEXT[] NOT NULL DEFAULT '{}',
+    secret TEXT NOT NULL,
+    description TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."webhook_deliveries" (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    endpoint_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."webhook_endpoints"(id) ON DELETE CASCADE,
+    event TEXT NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}',
+    status_code INT,
+    response_body TEXT,
+    error TEXT,
+    attempt INT NOT NULL DEFAULT 1,
+    delivered_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ---- Column additions to existing template tables (idempotent) ----
+ALTER TABLE "{{SCHEMA_NAME}}"."campaigns" ADD COLUMN IF NOT EXISTS "is_ab_test" BOOLEAN DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."campaigns" ADD COLUMN IF NOT EXISTS "ab_test_config" JSONB DEFAULT '{}';
+ALTER TABLE "{{SCHEMA_NAME}}"."campaigns" ADD COLUMN IF NOT EXISTS "scheduled_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."campaign_recipients" ADD COLUMN IF NOT EXISTS "variant_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."campaign_recipients" ADD COLUMN IF NOT EXISTS "email" VARCHAR(255) DEFAULT '';
+ALTER TABLE "{{SCHEMA_NAME}}"."campaign_recipients" ADD COLUMN IF NOT EXISTS "channel" VARCHAR(50) DEFAULT 'whatsapp';
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "satisfaction_score" DECIMAL(3,2);
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "feedback_count" INTEGER DEFAULT 0;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "was_handed_off" BOOLEAN DEFAULT false;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "handoff_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "ai_message_count" INTEGER DEFAULT 0;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "resolution_type" VARCHAR(50);
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "resolution_verified" BOOLEAN;
+ALTER TABLE "{{SCHEMA_NAME}}"."pipeline_stages" ADD COLUMN IF NOT EXISTS "pipeline_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."deals" ADD COLUMN IF NOT EXISTS "pipeline_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "size" VARCHAR(50);
+ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "domain" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "notes" TEXT;

@@ -15,7 +15,7 @@ export default registerAs('llm', () => ({
         },
     },
     google: {
-        apiKey: process.env.GOOGLE_AI_API_KEY || '',
+        apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || '',
         models: {
             standard: 'gemini-2.0-pro',
             efficient: 'gemini-2.0-flash',

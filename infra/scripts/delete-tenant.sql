@@ -12,6 +12,11 @@
 --     tour_packages, treatment_plans, real_estate_listings, etc.).
 --  4. Removes the row in tenants itself.
 --
+--  RETAINED on purpose: fiscal_invoices rows + the /data/invoices/<tid>/
+--  XML/PDF artifacts — Colombian DIAN requires keeping issued electronic
+--  invoices for ~5 years. They are stamped with the tenant identity before
+--  the tenants row is removed (NOT deleted, and the disk files stay).
+--
 --  USAGE
 --  -----
 --  Edit the `tid` UUID below, then pipe to psql:
@@ -67,6 +72,10 @@ BEGIN
         GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  billing_subscriptions: %', deleted_rows;
     EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  billing_subscriptions: skipped (%)', SQLERRM; END;
 
+    BEGIN DELETE FROM billing_coupon_redemptions WHERE tenant_id = tid;
+        GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  billing_coupon_redemptions: %', deleted_rows;
+    EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  billing_coupon_redemptions: skipped (%)', SQLERRM; END;
+
     BEGIN DELETE FROM audit_logs WHERE tenant_id = tid;
         GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  audit_logs: %', deleted_rows;
     EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  audit_logs: skipped (%)', SQLERRM; END;
@@ -91,6 +100,10 @@ BEGIN
         GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  crm_connections: %', deleted_rows;
     EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  crm_connections: skipped (%)', SQLERRM; END;
 
+    BEGIN DELETE FROM api_keys WHERE tenant_id = tid;
+        GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  api_keys: %', deleted_rows;
+    EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  api_keys: skipped (%)', SQLERRM; END;
+
     BEGIN DELETE FROM feature_request_votes WHERE tenant_id = tid;
         GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  feature_request_votes: %', deleted_rows;
     EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  feature_request_votes: skipped (%)', SQLERRM; END;
@@ -99,7 +112,9 @@ BEGIN
         GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  feature_request_comments: %', deleted_rows;
     EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  feature_request_comments: skipped (%)', SQLERRM; END;
 
-    BEGIN DELETE FROM feature_request_subscribers WHERE tenant_id = tid;
+    -- feature_request_subscribers has NO tenant_id column — it is keyed by user_id.
+    -- Must run BEFORE deleting users (below) so the subquery still resolves.
+    BEGIN DELETE FROM feature_request_subscribers WHERE user_id IN (SELECT id FROM users WHERE tenant_id = tid);
         GET DIAGNOSTICS deleted_rows = ROW_COUNT; RAISE NOTICE '  feature_request_subscribers: %', deleted_rows;
     EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  feature_request_subscribers: skipped (%)', SQLERRM; END;
 
@@ -114,6 +129,23 @@ BEGIN
     -- 3. Drop the tenant schema (cascades all per-tenant tables).
     EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', sname);
     RAISE NOTICE '  → DROP SCHEMA "%" CASCADE ejecutado', sname;
+
+    -- 3b. RETAIN fiscal documents (DIAN ~5-year legal retention): we do NOT
+    --     delete fiscal_invoices nor the /data/invoices/<tid>/ XML/PDF files.
+    --     Stamp tenant identity so the retained rows stay identifiable after the
+    --     tenants row is gone. Cast both sides to text (tenant_id may be text or
+    --     uuid depending on the deployment).
+    BEGIN
+        UPDATE fiscal_invoices
+        SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+            'tenantPurgedAt', NOW()::text,
+            'tenantNameSnapshot', tname,
+            'tenantSchemaSnapshot', sname
+        )
+        WHERE tenant_id::text = tid::text;
+        GET DIAGNOSTICS deleted_rows = ROW_COUNT;
+        RAISE NOTICE '  fiscal_invoices RETAINED (stamped): %', deleted_rows;
+    EXCEPTION WHEN OTHERS THEN RAISE NOTICE '  fiscal_invoices stamp: skipped (%)', SQLERRM; END;
 
     -- 4. Finally remove the row in tenants itself.
     DELETE FROM tenants WHERE id = tid;

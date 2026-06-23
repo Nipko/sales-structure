@@ -5,6 +5,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { MediaService } from '../media/media.service';
+import { BillingService } from '../billing/billing.service';
 
 @Injectable()
 export class OffboardingService {
@@ -15,6 +16,7 @@ export class OffboardingService {
         private redis: RedisService,
         private eventEmitter: EventEmitter2,
         private mediaService: MediaService,
+        private billing: BillingService,
         @InjectQueue('outbound-messages') private outboundQueue: Queue,
         @InjectQueue('broadcast-messages') private broadcastQueue: Queue,
         @InjectQueue('automation-jobs') private automationQueue: Queue,
@@ -651,6 +653,63 @@ export class OffboardingService {
     /**
      * AES-256-GCM decryption — same pattern as ChannelTokenService.
      */
+    /**
+     * Best-effort revocation of external OAuth tokens on purge so access dies
+     * with the tenant. Must be invoked BEFORE DROP SCHEMA (the calendar tokens
+     * live inside the per-tenant schema). Never throws — every call is guarded.
+     *  - Google Calendar: POST oauth2.googleapis.com/revoke (Microsoft stores an
+     *    MSAL cache blob, not a raw refresh token, so there is no clean revoke —
+     *    that access simply expires).
+     *  - Google Business Profile: token in tenant.settings.googleBusiness.
+     */
+    private async revokeExternalOAuth(
+        tenantId: string,
+        schemaName: string | null,
+        settings: any,
+    ): Promise<void> {
+        const revokeGoogle = async (refreshToken: string): Promise<void> => {
+            await fetch('https://oauth2.googleapis.com/revoke', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ token: refreshToken }).toString(),
+            }).catch(() => null);
+        };
+
+        // 1. Calendar OAuth tokens (per-tenant schema) — read before the drop.
+        if (schemaName) {
+            try {
+                const rows = await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT provider, encrypted_refresh_token FROM calendar_integrations`,
+                );
+                let revoked = 0;
+                for (const r of rows || []) {
+                    if (String(r.provider || '').toLowerCase() !== 'google') continue;
+                    try {
+                        await revokeGoogle(this.decryptToken(r.encrypted_refresh_token));
+                        revoked++;
+                    } catch {
+                        /* decrypt/revoke best-effort */
+                    }
+                }
+                this.logger.log(`[Purge ${tenantId}] Revoked ${revoked} Google Calendar OAuth tokens`);
+            } catch (err: any) {
+                this.logger.warn(`[Purge ${tenantId}] Calendar OAuth revoke partial: ${err.message}`);
+            }
+        }
+
+        // 2. Google Business Profile (reviews) OAuth token in tenant.settings.
+        try {
+            const enc = settings?.googleBusiness?.encryptedRefreshToken;
+            if (enc) {
+                await revokeGoogle(this.decryptToken(enc));
+                this.logger.log(`[Purge ${tenantId}] Revoked Google Business Profile OAuth token`);
+            }
+        } catch (err: any) {
+            this.logger.warn(`[Purge ${tenantId}] GBP OAuth revoke partial: ${err.message}`);
+        }
+    }
+
     private decryptToken(encryptedValue: string): string {
         const encryptionKey = process.env.ENCRYPTION_KEY;
         if (!encryptionKey) throw new Error('ENCRYPTION_KEY not configured');
@@ -737,6 +796,11 @@ export class OffboardingService {
      *  7. Clear Redis: tenant:*, vertical:*, tenant_plan:*, refresh:*<userId>:*.
      *  8. Audit log + emit event.
      *
+     * RETAINED on purpose (NOT deleted): fiscal_invoices rows + the
+     * /data/invoices/{tenantId}/ XML/PDF artifacts — Colombian DIAN requires
+     * keeping issued electronic invoices for ~5 years. Their tenant identity is
+     * stamped into metadata before the tenants row is removed (step 6b).
+     *
      * Use case: super_admin "delete tenant" button, or final step of long
      * cancellation flow. Irreversible. Returns a summary to surface in the UI.
      */
@@ -749,7 +813,7 @@ export class OffboardingService {
     }> {
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { id: true, name: true, schemaName: true },
+            select: { id: true, name: true, schemaName: true, settings: true },
         });
         if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
 
@@ -776,6 +840,23 @@ export class OffboardingService {
         } catch (err: any) {
             this.logger.warn(`[Purge ${tenantId}] Queue drain partial: ${err.message}`);
         }
+
+        // 3b. Cancel the subscription at the payment provider BEFORE deleting the
+        // billing rows, so we never orphan an active subscription on MercadoPago/
+        // Stripe. Best-effort: trials (no providerSubscriptionId) and already-
+        // cancelled subscriptions throw — we swallow and continue.
+        try {
+            await this.billing.cancelSubscription(tenantId, { immediate: true, reason: 'tenant_purge' });
+            this.logger.log(`[Purge ${tenantId}] Provider subscription cancelled`);
+        } catch (err: any) {
+            this.logger.warn(`[Purge ${tenantId}] Provider subscription cancel skipped: ${err.message}`);
+        }
+
+        // 3c. Revoke external OAuth tokens (Google/Microsoft Calendar in the tenant
+        // schema, Google Business Profile in tenant.settings) so external access
+        // dies with the tenant. MUST run before DROP SCHEMA — the calendar tokens
+        // live inside the per-tenant schema.
+        await this.revokeExternalOAuth(tenantId, tenant.schemaName, tenant.settings);
 
         // 4. Delete public-schema rows in FK-safe order
         const publicRowsDeleted: Record<string, number> = {};
@@ -807,12 +888,14 @@ export class OffboardingService {
 
         await safeDelete('billing_payments', () => this.prisma.billingPayment.deleteMany({ where: { tenantId } }));
         await safeDelete('billing_subscriptions', () => this.prisma.billingSubscription.deleteMany({ where: { tenantId } }));
+        await safeDelete('billing_coupon_redemptions', () => this.prisma.billingCouponRedemption.deleteMany({ where: { tenantId } }));
         await safeDelete('audit_logs', () => this.prisma.auditLog.deleteMany({ where: { tenantId } }));
         await safeDelete('channel_accounts', () => this.prisma.channelAccount.deleteMany({ where: { tenantId } }));
         await safeDelete('whatsapp_onboardings', () => this.prisma.whatsappOnboarding.deleteMany({ where: { tenantId } }));
         await safeDelete('whatsapp_credentials', () => this.prisma.whatsappCredential.deleteMany({ where: { tenantId } }));
         await safeDelete('tenant_financial_snapshots', () => this.prisma.tenantFinancialSnapshot.deleteMany({ where: { tenantId } }));
         await safeDelete('crm_connections', () => this.prisma.crmConnection.deleteMany({ where: { tenantId } }));
+        await safeDelete('api_keys', () => this.prisma.apiKey.deleteMany({ where: { tenantId } }));
         await safeDelete('feature_request_votes', () => this.prisma.featureRequestVote.deleteMany({ where: { tenantId } }));
         await safeDelete('feature_request_comments', () => this.prisma.featureRequestComment.deleteMany({ where: { tenantId } }));
         try {
@@ -847,6 +930,38 @@ export class OffboardingService {
 
         // 6. Wipe filesystem (uploads: logos, product photos, property photos, etc.)
         const mediaResult = await this.mediaService.deleteAllTenantFiles(tenantId);
+
+        // 6b. RETAIN fiscal documents (DIAN legal retention, ~5 years). We do NOT
+        // delete fiscal_invoices rows, nor the /data/invoices/{tenantId}/ artifacts
+        // (mediaService.deleteAllTenantFiles only touches /data/media). Since the
+        // tenants row is about to disappear, stamp tenant identity into each
+        // invoice so the retained documents remain identifiable afterwards
+        // (tenant_id becomes a dangling reference once the tenant is gone).
+        try {
+            const purgedAt = new Date().toISOString();
+            // Single atomic jsonb merge (no per-row loop). The `||` operator
+            // preserves existing metadata keys; acquirer_snapshot is a separate
+            // column and is untouched. tenant_id::text cast is safe whether the
+            // column is text or uuid in this deployment.
+            const stamped: number = await this.prisma.$executeRawUnsafe(
+                `UPDATE fiscal_invoices
+                    SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+                        'tenantPurgedAt', $2::text,
+                        'tenantNameSnapshot', $3::text,
+                        'tenantSchemaSnapshot', $4::text
+                    )
+                  WHERE tenant_id::text = $1::text`,
+                tenantId,
+                purgedAt,
+                tenant.name,
+                tenant.schemaName,
+            );
+            publicRowsDeleted['fiscal_invoices_retained'] = stamped;
+            this.logger.log(`[Purge ${tenantId}] Retained ${stamped} fiscal invoices (DIAN retention)`);
+        } catch (err: any) {
+            this.logger.warn(`[Purge ${tenantId}] Fiscal retention stamp failed: ${err.message}`);
+            publicRowsDeleted['fiscal_invoices_retained'] = -1;
+        }
 
         // 7. Delete the tenant row itself
         try {

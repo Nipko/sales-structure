@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import * as sharp from 'sharp';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -77,6 +78,7 @@ export class MediaService {
     constructor(
         private prisma: PrismaService,
         private config: ConfigService,
+        private throttle: TenantThrottleService,
     ) {
         this.storagePath = config.get<string>('MEDIA_STORAGE_PATH', '/data/media');
         // Public URL without /api/v1 prefix (media is excluded from global prefix)
@@ -164,6 +166,24 @@ export class MediaService {
                 `El video pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. El maximo permitido es 16 MB.`,
             );
         }
+
+        // Per-tenant media storage quota. Counts THIS upload (un-rounded floats,
+        // so a legitimate file just under the cap isn't rejected by rounding) and
+        // blocks before any overshoot. Single choke point — also covers logo
+        // uploads (uploadLogo → upload) and future callers. Inbound customer media
+        // uses saveBuffer() (no DB row) and is exempt here.
+        // Note: for images, incomingMb is the RAW upload size while the stored webp
+        // is smaller, so this is a conservative (fail-closed) upper bound that may
+        // trip slightly early. Accurate per-image accounting would require checking
+        // after compression — deferred (low impact, bounded by the 5 MB image cap).
+        const usageMb = await this.getTenantStorageUsageMb(schemaName);
+        const incomingMb = file.size / (1024 * 1024);
+        await this.throttle.enforcePlanLimit(
+            tenantId,
+            'mediaStorageMb',
+            usageMb + incomingMb,
+            'MB de almacenamiento multimedia',
+        );
 
         const id = randomUUID();
         const tenantDir = path.join(this.storagePath, tenantId);

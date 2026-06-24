@@ -6,6 +6,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { PlatformMonitorService } from './platform-monitor.service';
+import { PlatformStorageService } from './platform-storage.service';
 import { MediaCleanupService } from '../media/media-cleanup.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import * as os from 'os';
@@ -17,6 +18,7 @@ export class HealthController {
         private prisma: PrismaService,
         private redis: RedisService,
         private monitor: PlatformMonitorService,
+        private storage: PlatformStorageService,
         private mediaCleanup: MediaCleanupService,
         private llmRouter: LLMRouterService,
     ) { }
@@ -139,6 +141,22 @@ export class HealthController {
         return this.mediaCleanup.getStorageReport();
     }
 
+    @Get('storage/overview')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Platform disk + storage totals (super_admin only)' })
+    async storageOverview() {
+        return { success: true, data: await this.storage.getDiskOverview() };
+    }
+
+    @Get('storage/tenants')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Per-tenant storage (DB schema + media + quota) (super_admin only)' })
+    async storageTenants() {
+        return { success: true, data: await this.storage.getPerTenantStorage() };
+    }
+
     @Post('media-cleanup')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @Roles('super_admin')
@@ -149,12 +167,15 @@ export class HealthController {
         const totalOrphans = results.reduce((sum, r) => sum + r.orphanedFiles.length, 0);
         const totalFreed = results.reduce((sum, r) => sum + r.freedBytes, 0);
         return {
-            dryRun: isDryRun,
-            tenantsAffected: results.length,
-            totalOrphanedFiles: totalOrphans,
-            totalFreedBytes: totalFreed,
-            totalFreedMB: Math.round(totalFreed / 1048576 * 100) / 100,
-            details: results,
+            success: true,
+            data: {
+                dryRun: isDryRun,
+                tenantsAffected: results.length,
+                totalOrphanedFiles: totalOrphans,
+                totalFreedBytes: totalFreed,
+                totalFreedMB: Math.round(totalFreed / 1048576 * 100) / 100,
+                details: results,
+            },
         };
     }
 }

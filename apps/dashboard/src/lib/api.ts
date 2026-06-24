@@ -544,6 +544,9 @@ export const api = {
     getPlatformBilling: () => apiGet("/tenants/platform-billing"),
     getPlatformUsage: () => apiGet("/tenants/platform-usage"),
     getPlatformHealth: () => apiGet("/tenants/health"),
+    getStorageOverview: () => apiGet("/health/storage/overview"),
+    getStorageTenants: () => apiGet("/health/storage/tenants"),
+    runMediaCleanup: (dryRun: boolean) => apiPost(`/health/media-cleanup?dryRun=${dryRun}`, {}),
 
     // --- Tenant management (super_admin) ---
     suspendTenant: (tenantId: string, reason: string) =>
@@ -665,7 +668,9 @@ export const api = {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
             body: formData,
         });
-        return res.json();
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) return { success: false, error: json?.message || json?.error || `Error ${res.status}` };
+        return json;
     },
     uploadLogo: async (tenantId: string, file: File) => {
         const formData = new FormData();
@@ -676,7 +681,9 @@ export const api = {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
             body: formData,
         });
-        return res.json();
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) return { success: false, error: json?.message || json?.error || `Error ${res.status}` };
+        return json;
     },
     getMediaList: (tenantId: string, entityType?: string) =>
         apiGet(`/media/list/${tenantId}${entityType ? `?entityType=${entityType}` : ""}`),

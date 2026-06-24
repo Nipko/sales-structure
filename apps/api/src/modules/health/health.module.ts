@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { HealthController } from './health.controller';
 import { PlatformMonitorService } from './platform-monitor.service';
+import { PlatformStorageService } from './platform-storage.service';
 import { MediaModule } from '../media/media.module';
 import { AIModule } from '../ai/ai.module';
 
@@ -17,7 +18,7 @@ import { AIModule } from '../ai/ai.module';
         ),
     ],
     controllers: [HealthController],
-    providers: [PlatformMonitorService],
-    exports: [PlatformMonitorService],
+    providers: [PlatformMonitorService, PlatformStorageService],
+    exports: [PlatformMonitorService, PlatformStorageService],
 })
 export class HealthModule { }

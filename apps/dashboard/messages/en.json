@@ -134,6 +134,7 @@
       "pets": "Pets",
       "photoSessions": "Photo sessions",
       "platformUsage": "Tenant usage",
+      "storage": "Storage",
       "platformHealth": "System health",
       "platformAudit": "Audit log",
       "llmStats": "AI usage",
@@ -6536,6 +6537,17 @@
         "Click a tenant name in the table to go to their detail at '/admin/tenants' and from there change their plan or review their billing history."
       ]
     },
+    "storage": {
+      "title": "What is the Storage panel for?",
+      "description": "This screen shows how much storage each tenant consumes: their database size (conversations, messages, embeddings) and media files on disk, plus the server's total disk usage. It helps you spot who is growing too fast and act before the disk fills up.",
+      "tips": [
+        "The 'Server disk usage' bar turns amber at 80% and red at 90%: if it gets there, free space or expand the disk before writes get blocked.",
+        "Sort the table by 'Total' to instantly see which tenants consume the most storage; sort by 'Media quota' to see who is close to their plan limit.",
+        "The 'Near quota' tile counts tenants at 80%+ of their media quota: reach out to upgrade their plan before they can no longer upload files.",
+        "Use 'Analyze' in Clean orphaned files to see how much reclaimable space exists without deleting anything; the delete button only appears afterward.",
+        "Click a tenant's name to open its detail and adjust its quota (mediaStorageMb) or change its plan."
+      ]
+    },
     "webhooks": {
       "title": "What is the Webhook monitor?",
       "description": "This screen is a real-time monitoring console (updates every 5 seconds) showing the last 200 webhook events received from all channels. It is used to debug integrations and detect errors without needing server access.",
@@ -7548,6 +7560,36 @@
     "timeline": "Timeline",
     "stacktrace": "Stack trace",
     "detailUnavailable": "Could not load job detail"
+  },
+  "platformStorage": {
+    "title": "Storage",
+    "subtitle": "Per-tenant storage usage: database size and media files, against their plan quota",
+    "diskUsage": "Server disk usage",
+    "diskUnavailable": "Not available in this environment",
+    "diskUsed": "{used} of {total} used",
+    "diskFree": "{free} free",
+    "totalDb": "Database",
+    "totalMedia": "Media",
+    "mediaFiles": "{count, plural, =0 {no files} one {# file} other {# files}}",
+    "activeTenants": "Active tenants",
+    "nearQuota": "Near quota",
+    "cleanupTitle": "Clean orphaned files",
+    "cleanupDesc": "Files on disk with no reference in the database (older than 1 hour). Analyze first, then delete.",
+    "cleanupAnalyze": "Analyze",
+    "cleanupRun": "Delete orphans",
+    "cleanupNone": "No orphaned files found.",
+    "cleanupFound": "Found {files} orphaned files ({mb} MB) across {tenants} tenants. Review before deleting.",
+    "cleanupDone": "Deleted {files} orphaned files ({mb} MB freed).",
+    "search": "Search tenant or plan...",
+    "tenant": "Tenant",
+    "plan": "Plan",
+    "db": "Database",
+    "media": "Media",
+    "total": "Total",
+    "mediaQuota": "Media quota",
+    "unlimited": "Unlimited",
+    "notConfigured": "Not configured",
+    "noResults": "No results match the filters"
   },
   "platformUsage": {
     "title": "Tenant usage",

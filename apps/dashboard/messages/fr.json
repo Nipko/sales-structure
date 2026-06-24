@@ -134,6 +134,7 @@
       "pets": "Animaux",
       "photoSessions": "Séances photo",
       "platformUsage": "Utilisation par tenant",
+      "storage": "Stockage",
       "platformHealth": "Santé du système",
       "platformAudit": "Audit",
       "llmStats": "Utilisation IA",
@@ -6536,6 +6537,17 @@
         "Cliquez sur le nom d'un tenant dans le tableau pour accéder à son détail dans '/admin/tenants' et de là changer son plan ou consulter son historique de facturation."
       ]
     },
+    "storage": {
+      "title": "À quoi sert le panneau Stockage ?",
+      "description": "Cet écran montre combien de stockage chaque tenant consomme : la taille de sa base de données (conversations, messages, embeddings) et ses fichiers multimédias sur le disque, ainsi que l'utilisation totale du disque du serveur. Il vous aide à repérer qui grandit trop vite et à agir avant que le disque ne soit plein.",
+      "tips": [
+        "La barre « Utilisation du disque du serveur » devient ambre à 80 % et rouge à 90 % : si elle y arrive, libérez de l'espace ou agrandissez le disque avant que les écritures ne soient bloquées.",
+        "Triez le tableau par « Total » pour voir immédiatement quels tenants consomment le plus de stockage ; triez par « Quota multimédia » pour voir qui est proche de la limite de son forfait.",
+        "La tuile « Proche du quota » compte les tenants à 80 % ou plus de leur quota multimédia : contactez-les pour faire évoluer leur forfait avant qu'ils ne puissent plus téléverser de fichiers.",
+        "Utilisez « Analyser » dans Nettoyer les fichiers orphelins pour voir l'espace récupérable sans rien supprimer ; le bouton de suppression n'apparaît qu'ensuite.",
+        "Cliquez sur le nom d'un tenant pour ouvrir son détail et ajuster son quota (mediaStorageMb) ou changer son forfait."
+      ]
+    },
     "webhooks": {
       "title": "Qu'est-ce que le moniteur de Webhooks?",
       "description": "Cet écran est une console de surveillance en temps réel (mise à jour toutes les 5 secondes) affichant les 200 derniers événements webhook reçus de tous les canaux. Il sert à déboguer les intégrations et détecter les erreurs sans accès serveur.",
@@ -7548,6 +7560,36 @@
     "timeline": "Timeline",
     "stacktrace": "Stack trace",
     "detailUnavailable": "Impossible de charger le détail du job"
+  },
+  "platformStorage": {
+    "title": "Stockage",
+    "subtitle": "Utilisation du stockage par tenant : taille de la base de données et fichiers multimédias, par rapport au quota du forfait",
+    "diskUsage": "Utilisation du disque du serveur",
+    "diskUnavailable": "Non disponible dans cet environnement",
+    "diskUsed": "{used} sur {total} utilisés",
+    "diskFree": "{free} libres",
+    "totalDb": "Base de données",
+    "totalMedia": "Multimédia",
+    "mediaFiles": "{count, plural, =0 {aucun fichier} one {# fichier} other {# fichiers}}",
+    "activeTenants": "Tenants actifs",
+    "nearQuota": "Proche du quota",
+    "cleanupTitle": "Nettoyer les fichiers orphelins",
+    "cleanupDesc": "Fichiers sur le disque sans référence dans la base de données (plus d'une heure). Analysez d'abord, puis supprimez.",
+    "cleanupAnalyze": "Analyser",
+    "cleanupRun": "Supprimer les orphelins",
+    "cleanupNone": "Aucun fichier orphelin trouvé.",
+    "cleanupFound": "{files} fichiers orphelins trouvés ({mb} Mo) sur {tenants} tenants. Vérifiez avant de supprimer.",
+    "cleanupDone": "{files} fichiers orphelins supprimés ({mb} Mo libérés).",
+    "search": "Rechercher un tenant ou un forfait...",
+    "tenant": "Tenant",
+    "plan": "Forfait",
+    "db": "Base de données",
+    "media": "Multimédia",
+    "total": "Total",
+    "mediaQuota": "Quota multimédia",
+    "unlimited": "Illimité",
+    "notConfigured": "Non configuré",
+    "noResults": "Aucun résultat ne correspond aux filtres"
   },
   "platformUsage": {
     "title": "Utilisation par tenant",

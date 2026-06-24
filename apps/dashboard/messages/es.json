@@ -134,6 +134,7 @@
       "pets": "Mascotas",
       "photoSessions": "Sesiones fotográficas",
       "platformUsage": "Uso por tenant",
+      "storage": "Almacenamiento",
       "platformHealth": "Salud del sistema",
       "platformAudit": "Auditoría",
       "llmStats": "Uso de IA",
@@ -6536,6 +6537,17 @@
         "Haz clic en el nombre de un tenant en la tabla para ir a su detalle en '/admin/tenants' y desde ahí cambiar su plan o revisar su historial de facturación."
       ]
     },
+    "storage": {
+      "title": "¿Para qué sirve el panel de Almacenamiento?",
+      "description": "Esta pantalla muestra cuánto almacenamiento consume cada tenant: el tamaño de su base de datos (conversaciones, mensajes, embeddings) y sus archivos multimedia en disco, además del uso de disco total del servidor. Te ayuda a detectar quién está creciendo demasiado y actuar antes de que el disco se llene.",
+      "tips": [
+        "La barra de 'Uso de disco del servidor' se vuelve ámbar al 80% y roja al 90%: si llega ahí, libera espacio o amplía el disco antes de que se bloqueen las escrituras.",
+        "Ordena la tabla por 'Total' para ver de inmediato qué tenants consumen más almacenamiento; ordena por 'Cuota multimedia' para ver quién está cerca de su límite de plan.",
+        "El tile 'Cerca de cuota' cuenta los tenants al 80% o más de su cuota multimedia: contáctalos para escalar su plan antes de que no puedan subir más archivos.",
+        "Usa 'Analizar' en Limpiar archivos huérfanos para ver cuánto espacio recuperable hay sin borrar nada; solo después aparece el botón para eliminar.",
+        "Haz clic en el nombre de un tenant para ir a su detalle y ajustar su cuota (mediaStorageMb) o cambiar su plan."
+      ]
+    },
     "webhooks": {
       "title": "¿Qué es el monitor de Webhooks entrantes?",
       "description": "Esta pantalla es una consola de monitoreo en tiempo real (actualización cada 5 segundos) que muestra los últimos 200 eventos de webhook recibidos de todos los canales. Sirve para depurar integraciones y detectar errores sin necesidad de acceder al servidor.",
@@ -7548,6 +7560,36 @@
     "timeline": "Timeline",
     "stacktrace": "Stack trace",
     "detailUnavailable": "No se pudo cargar el detalle del job"
+  },
+  "platformStorage": {
+    "title": "Almacenamiento",
+    "subtitle": "Uso de almacenamiento por tenant: tamaño de la base de datos y archivos multimedia, contra la cuota de su plan",
+    "diskUsage": "Uso de disco del servidor",
+    "diskUnavailable": "No disponible en este entorno",
+    "diskUsed": "{used} de {total} usados",
+    "diskFree": "{free} libres",
+    "totalDb": "Base de datos",
+    "totalMedia": "Multimedia",
+    "mediaFiles": "{count, plural, =0 {sin archivos} one {# archivo} other {# archivos}}",
+    "activeTenants": "Tenants activos",
+    "nearQuota": "Cerca de cuota",
+    "cleanupTitle": "Limpiar archivos huérfanos",
+    "cleanupDesc": "Archivos en disco sin referencia en la base de datos (más de 1 hora de antigüedad). Analiza primero y luego elimina.",
+    "cleanupAnalyze": "Analizar",
+    "cleanupRun": "Eliminar huérfanos",
+    "cleanupNone": "No se encontraron archivos huérfanos.",
+    "cleanupFound": "Se encontraron {files} archivos huérfanos ({mb} MB) en {tenants} tenants. Revisa antes de eliminar.",
+    "cleanupDone": "Se eliminaron {files} archivos huérfanos ({mb} MB liberados).",
+    "search": "Buscar tenant o plan...",
+    "tenant": "Tenant",
+    "plan": "Plan",
+    "db": "Base de datos",
+    "media": "Multimedia",
+    "total": "Total",
+    "mediaQuota": "Cuota multimedia",
+    "unlimited": "Ilimitado",
+    "notConfigured": "Sin configurar",
+    "noResults": "Sin resultados que coincidan con los filtros"
   },
   "platformUsage": {
     "title": "Uso por tenant",

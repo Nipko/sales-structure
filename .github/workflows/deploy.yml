@@ -424,8 +424,14 @@ jobs:
 
             echo "===> Pulling latest infrastructure code..."
             git fetch origin
+            # The deploy server tracks origin exactly (config comes from .env, which is
+            # gitignored and regenerated below — not from editing tracked files). Stash
+            # any local edits to tracked files first (recoverable on the VPS via
+            # `git stash list`) so drifted infra scripts can't block the fast-forward,
+            # then hard-reset to origin.
+            git stash push -m "pre-deploy-$(date +%s)" || true
             git checkout ${{ github.ref_name }}
-            git pull origin ${{ github.ref_name }}
+            git reset --hard "origin/${{ github.ref_name }}"
 
             echo "===> Logging into GHCR..."
             echo "$GHCR_PAT" | docker login ghcr.io \

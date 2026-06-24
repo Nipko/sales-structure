@@ -134,6 +134,7 @@
       "pets": "Pets",
       "photoSessions": "Sessões fotográficas",
       "platformUsage": "Uso por tenant",
+      "ops": "Operações",
       "incidents": "Incidentes",
       "storage": "Armazenamento",
       "platformHealth": "Saúde do sistema",
@@ -6538,6 +6539,17 @@
         "Clique no nome de um tenant na tabela para acessar seu detalhe em '/admin/tenants' e de lá alterar o plano ou revisar o histórico de faturamento."
       ]
     },
+    "ops": {
+      "title": "O que é o Centro de Operações?",
+      "description": "É o painel central (NOC) que resume a saúde de toda a plataforma em uma única vista: incidentes ativos, estado de serviços e filas, uso de armazenamento e acessos rápidos a cada painel de detalhe. É o ponto de partida para detectar e agir diante de qualquer problema.",
+      "tips": [
+        "O banner no topo resume o estado global: verde (operacional), âmbar (requer atenção) ou vermelho (crítico). Vermelho significa um incidente crítico ou um serviço fora do ar.",
+        "Os tiles de incidentes são clicáveis — levam a /admin/incidents para reconhecer ou resolver.",
+        "As 'Vitais do sistema' mostram API/PostgreSQL/Redis e as filas BullMQ; um ponto vermelho ou jobs falhados sinalizam um problema.",
+        "A seção de armazenamento mostra o % de disco e a projeção de enchimento; aja antes que chegue a 90%.",
+        "Esta vista se atualiza sozinha a cada 30s; use os acessos rápidos para aprofundar em qualquer área."
+      ]
+    },
     "incidents": {
       "title": "O que é o painel de Incidentes?",
       "description": "É a caixa de alertas do Centro de Operações. Cada problema detectado (disco, RAM, Redis, filas, provedores de IA, projeção de disco, cota por tenant, pagamentos, tokens...) fica registrado aqui de forma persistente, com quantas vezes se repetiu e desde quando. Antes só chegavam por email e se perdiam ao reiniciar.",
@@ -7572,6 +7584,20 @@
     "timeline": "Timeline",
     "stacktrace": "Stack trace",
     "detailUnavailable": "Não foi possível carregar o detalhe do job"
+  },
+  "ops": {
+    "title": "Centro de Operações",
+    "subtitle": "Visão unificada do estado da plataforma: incidentes, sistema e armazenamento",
+    "status_operational": "Operacional",
+    "status_warning": "Requer atenção",
+    "status_critical": "Crítico",
+    "lastUpdated": "Atualizado {time}",
+    "viewAll": "Ver todos",
+    "incidentsTitle": "Incidentes ativos",
+    "noActiveIncidents": "Sem incidentes ativos — tudo em ordem",
+    "systemVitalsTitle": "Vitais do sistema",
+    "storageTitle": "Armazenamento",
+    "quickLinksTitle": "Acessos rápidos"
   },
   "incidents": {
     "title": "Incidentes",

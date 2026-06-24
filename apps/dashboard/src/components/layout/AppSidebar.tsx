@@ -52,6 +52,7 @@ import {
   ShieldCheck,
   HardDrive,
   Siren,
+  Gauge,
   Brain,
   Scale,
   Filter as FunnelIcon,
@@ -195,6 +196,7 @@ const platformSections: NavSectionDef[] = [
   {
     titleKey: "platform",
     items: [
+      { labelKey: "ops", href: "/admin/ops", icon: Gauge, accent: "text-indigo-500 dark:text-indigo-400" },
       { labelKey: "tenants", href: "/admin/tenants", icon: Building2, shortcut: "⌘ 1", accent: "text-blue-500 dark:text-blue-400" },
       { labelKey: "incidents", href: "/admin/incidents", icon: Siren, accent: "text-rose-500 dark:text-rose-400" },
       { labelKey: "financials", href: "/admin/financials", icon: DollarSign, accent: "text-emerald-500 dark:text-emerald-400" },

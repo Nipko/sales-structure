@@ -134,6 +134,7 @@
       "pets": "Mascotas",
       "photoSessions": "Sesiones fotográficas",
       "platformUsage": "Uso por tenant",
+      "ops": "Operaciones",
       "incidents": "Incidentes",
       "storage": "Almacenamiento",
       "platformHealth": "Salud del sistema",
@@ -6538,6 +6539,17 @@
         "Haz clic en el nombre de un tenant en la tabla para ir a su detalle en '/admin/tenants' y desde ahí cambiar su plan o revisar su historial de facturación."
       ]
     },
+    "ops": {
+      "title": "¿Qué es el Centro de Operaciones?",
+      "description": "Es el panel central (NOC) que resume en una sola vista la salud de toda la plataforma: incidentes activos, estado de servicios y colas, uso de almacenamiento, y accesos directos a cada panel de detalle. Es el punto de partida para detectar y actuar ante cualquier problema.",
+      "tips": [
+        "El banner de arriba resume el estado global: verde (operativo), ámbar (requiere atención) o rojo (crítico). Si está rojo, hay un incidente crítico o un servicio caído.",
+        "Los tiles de incidentes son clicables: te llevan a /admin/incidents para reconocer o resolver.",
+        "Las 'Vitales del sistema' muestran API/PostgreSQL/Redis y las colas BullMQ; un punto rojo o jobs fallidos indican un problema.",
+        "La sección de almacenamiento muestra el % de disco y la proyección de llenado; actúa antes de que llegue al 90%.",
+        "Esta vista se actualiza sola cada 30s; usa los accesos directos para profundizar en cualquier área."
+      ]
+    },
     "incidents": {
       "title": "¿Qué es el panel de Incidentes?",
       "description": "Es la bandeja de alertas del Centro de Operaciones. Cada problema detectado (disco, RAM, Redis, colas, proveedores de IA, proyección de disco, cuota por tenant, pagos, tokens...) queda registrado aquí de forma persistente, con cuántas veces se repitió y desde cuándo. Antes solo llegaban por email y se perdían al reiniciar.",
@@ -7572,6 +7584,20 @@
     "timeline": "Timeline",
     "stacktrace": "Stack trace",
     "detailUnavailable": "No se pudo cargar el detalle del job"
+  },
+  "ops": {
+    "title": "Centro de Operaciones",
+    "subtitle": "Vista unificada del estado de la plataforma: incidentes, sistema y almacenamiento",
+    "status_operational": "Operativo",
+    "status_warning": "Requiere atención",
+    "status_critical": "Crítico",
+    "lastUpdated": "Actualizado {time}",
+    "viewAll": "Ver todos",
+    "incidentsTitle": "Incidentes activos",
+    "noActiveIncidents": "Sin incidentes activos — todo en orden",
+    "systemVitalsTitle": "Vitales del sistema",
+    "storageTitle": "Almacenamiento",
+    "quickLinksTitle": "Accesos directos"
   },
   "incidents": {
     "title": "Incidentes",

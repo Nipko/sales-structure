@@ -134,6 +134,7 @@
       "pets": "Animaux",
       "photoSessions": "Séances photo",
       "platformUsage": "Utilisation par tenant",
+      "ops": "Opérations",
       "incidents": "Incidents",
       "storage": "Stockage",
       "platformHealth": "Santé du système",
@@ -6538,6 +6539,17 @@
         "Cliquez sur le nom d'un tenant dans le tableau pour accéder à son détail dans '/admin/tenants' et de là changer son plan ou consulter son historique de facturation."
       ]
     },
+    "ops": {
+      "title": "Qu'est-ce que le Centre d'Opérations ?",
+      "description": "C'est le panneau central (NOC) qui résume l'état de toute la plateforme en une seule vue : incidents actifs, état des services et des files, utilisation du stockage et accès rapides à chaque panneau de détail. C'est le point de départ pour détecter et agir face à tout problème.",
+      "tips": [
+        "Le bandeau du haut résume l'état global : vert (opérationnel), ambre (attention requise) ou rouge (critique). Rouge signifie un incident critique ou un service en panne.",
+        "Les tuiles d'incidents sont cliquables — elles mènent à /admin/incidents pour accuser réception ou résoudre.",
+        "Les « Vitales du système » montrent API/PostgreSQL/Redis et les files BullMQ ; un point rouge ou des jobs échoués signalent un problème.",
+        "La section stockage montre le % du disque et la projection de remplissage ; agissez avant qu'il n'atteigne 90 %.",
+        "Cette vue se rafraîchit toute seule toutes les 30 s ; utilisez les accès rapides pour approfondir chaque zone."
+      ]
+    },
     "incidents": {
       "title": "Qu'est-ce que le panneau Incidents ?",
       "description": "C'est la boîte d'alertes du Centre d'Opérations. Chaque problème détecté (disque, RAM, Redis, files, fournisseurs d'IA, projection du disque, quota par tenant, paiements, jetons...) y est enregistré de façon persistante, avec le nombre de répétitions et depuis quand. Auparavant, ils n'arrivaient que par e-mail et étaient perdus au redémarrage.",
@@ -7572,6 +7584,20 @@
     "timeline": "Timeline",
     "stacktrace": "Stack trace",
     "detailUnavailable": "Impossible de charger le détail du job"
+  },
+  "ops": {
+    "title": "Centre d'Opérations",
+    "subtitle": "Vue unifiée de l'état de la plateforme : incidents, système et stockage",
+    "status_operational": "Opérationnel",
+    "status_warning": "Attention requise",
+    "status_critical": "Critique",
+    "lastUpdated": "Mis à jour {time}",
+    "viewAll": "Voir tout",
+    "incidentsTitle": "Incidents actifs",
+    "noActiveIncidents": "Aucun incident actif — tout va bien",
+    "systemVitalsTitle": "Vitales du système",
+    "storageTitle": "Stockage",
+    "quickLinksTitle": "Accès rapides"
   },
   "incidents": {
     "title": "Incidents",

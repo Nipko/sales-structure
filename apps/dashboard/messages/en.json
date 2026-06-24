@@ -134,6 +134,7 @@
       "pets": "Pets",
       "photoSessions": "Photo sessions",
       "platformUsage": "Tenant usage",
+      "ops": "Operations",
       "incidents": "Incidents",
       "storage": "Storage",
       "platformHealth": "System health",
@@ -6538,6 +6539,17 @@
         "Click a tenant name in the table to go to their detail at '/admin/tenants' and from there change their plan or review their billing history."
       ]
     },
+    "ops": {
+      "title": "What is the Operations Center?",
+      "description": "It's the central NOC panel that summarizes the whole platform's health in one view: active incidents, service and queue status, storage usage, and quick links to each detailed panel. It's the starting point to detect and act on any problem.",
+      "tips": [
+        "The top banner summarizes overall status: green (operational), amber (needs attention) or red (critical). Red means a critical incident or a service down.",
+        "The incident tiles are clickable — they take you to /admin/incidents to acknowledge or resolve.",
+        "'System vitals' shows API/PostgreSQL/Redis and the BullMQ queues; a red dot or failed jobs signal a problem.",
+        "The storage section shows disk % and the fill projection; act before it reaches 90%.",
+        "This view auto-refreshes every 30s; use the quick links to drill into any area."
+      ]
+    },
     "incidents": {
       "title": "What is the Incidents panel?",
       "description": "It's the ops center's alert inbox. Every detected problem (disk, RAM, Redis, queues, AI providers, disk projection, per-tenant quota, payments, tokens...) is recorded here persistently, with how many times it recurred and since when. Previously they only arrived by email and were lost on restart.",
@@ -7572,6 +7584,20 @@
     "timeline": "Timeline",
     "stacktrace": "Stack trace",
     "detailUnavailable": "Could not load job detail"
+  },
+  "ops": {
+    "title": "Operations Center",
+    "subtitle": "A unified view of platform health: incidents, system and storage",
+    "status_operational": "Operational",
+    "status_warning": "Needs attention",
+    "status_critical": "Critical",
+    "lastUpdated": "Updated {time}",
+    "viewAll": "View all",
+    "incidentsTitle": "Active incidents",
+    "noActiveIncidents": "No active incidents — all clear",
+    "systemVitalsTitle": "System vitals",
+    "storageTitle": "Storage",
+    "quickLinksTitle": "Quick links"
   },
   "incidents": {
     "title": "Incidents",

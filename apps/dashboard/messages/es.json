@@ -7600,6 +7600,7 @@
     "dbConnections": "Conexiones PostgreSQL (%)",
     "pgbouncer": "PgBouncer (espera)",
     "sentryErrors": "Errores de app (Sentry)",
+    "slaBreaches": "Conversaciones violando SLA",
     "queueFailed": "Jobs fallidos en cola",
     "paymentFailures": "Pagos fallidos",
     "llmBudgetPct": "Presupuesto IA por tenant (%)",

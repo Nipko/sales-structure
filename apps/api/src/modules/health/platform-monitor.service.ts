@@ -422,6 +422,69 @@ export class PlatformMonitorService implements OnModuleInit {
         }
     }
 
+    // ── SLA breaches across tenants — every 10 min (offset from checkSystem) ──
+
+    @Cron('8,18,28,38,48,58 * * * *')
+    async checkSlaBreaches() {
+        try {
+            const cfg = await this.alertConfig.get();
+            const tenants = await this.prisma.tenant.findMany({
+                where: { isActive: true },
+                select: { id: true, schemaName: true },
+            });
+
+            let total = 0;
+            for (const t of tenants) {
+                try {
+                    const rows = await this.prisma.executeInTenantSchema<Array<{ n: number }>>(
+                        t.schemaName,
+                        `SELECT COUNT(*)::int AS n
+                         FROM conversations c
+                         WHERE c.status IN ('waiting_human', 'with_human')
+                           AND c.metadata->>'handoff' IS NOT NULL
+                           AND (c.metadata->'handoff'->>'startedAt')::timestamp < NOW() - interval '10 minutes'
+                           AND NOT EXISTS (
+                               SELECT 1 FROM messages m
+                               WHERE m.conversation_id = c.id
+                                 AND m.direction = 'outbound'
+                                 AND m.metadata->>'source' = 'agent'
+                                 AND m.created_at > (c.metadata->'handoff'->>'startedAt')::timestamp
+                           )`,
+                        [],
+                    );
+                    total += Number(rows?.[0]?.n ?? 0);
+                } catch { /* tenant tables may not exist yet */ }
+            }
+
+            if (total >= cfg.slaBreaches.crit) {
+                await this.alert(
+                    'sla:breaches:critical',
+                    `${total} conversaciones violando SLA — CRITICO`,
+                    `Hay <b>${total}</b> conversaciones en handoff esperando mas de 10 min sin respuesta de
+                     un agente, en toda la plataforma (umbral critico: ${cfg.slaBreaches.crit}).<br><br>
+                     Indica un backlog operativo sistemico: agentes desconectados, sobrecarga o un problema
+                     de routing. Revisa la disponibilidad de agentes.`,
+                    total,
+                );
+                await this.incidents.resolveByKey('sla:breaches:warning');
+            } else if (total >= cfg.slaBreaches.warn) {
+                await this.alert(
+                    'sla:breaches:warning',
+                    `${total} conversaciones violando SLA`,
+                    `Hay <b>${total}</b> conversaciones en handoff esperando mas de 10 min sin respuesta de
+                     un agente (umbral: ${cfg.slaBreaches.warn}).<br>Revisa la disponibilidad de agentes.`,
+                    total,
+                );
+                await this.incidents.resolveByKey('sla:breaches:critical');
+            } else {
+                await this.incidents.resolveByKey('sla:breaches:critical');
+                await this.incidents.resolveByKey('sla:breaches:warning');
+            }
+        } catch (e: any) {
+            this.logger.debug(`SLA breach check skipped: ${e.message}`);
+        }
+    }
+
     // ── Hourly admin email refresh ──
 
     @Cron('0 * * * *')

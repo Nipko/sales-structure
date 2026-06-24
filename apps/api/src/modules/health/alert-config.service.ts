@@ -15,6 +15,7 @@ export interface AlertConfig {
     dbConnections: { warn: number; crit: number };
     pgbouncer: { warnSec: number; critSec: number };
     sentryErrors: { warn: number; crit: number };
+    slaBreaches: { warn: number; crit: number };
     queueFailed: number;
     paymentFailures: number;
     llmBudgetPct: number;
@@ -31,6 +32,7 @@ export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
     dbConnections: { warn: 80, crit: 90 },
     pgbouncer: { warnSec: 5, critSec: 20 },
     sentryErrors: { warn: 50, crit: 200 },
+    slaBreaches: { warn: 10, crit: 30 },
     queueFailed: 100,
     paymentFailures: 5,
     llmBudgetPct: 90,
@@ -64,6 +66,7 @@ export class AlertConfigService {
             dbConnections: { ...base.dbConnections, ...(p.dbConnections || {}) },
             pgbouncer: { ...base.pgbouncer, ...(p.pgbouncer || {}) },
             sentryErrors: { ...base.sentryErrors, ...(p.sentryErrors || {}) },
+            slaBreaches: { ...base.slaBreaches, ...(p.slaBreaches || {}) },
             queueFailed: num(p.queueFailed, base.queueFailed),
             paymentFailures: num(p.paymentFailures, base.paymentFailures),
             llmBudgetPct: num(p.llmBudgetPct, base.llmBudgetPct),

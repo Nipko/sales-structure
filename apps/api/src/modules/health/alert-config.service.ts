@@ -14,6 +14,7 @@ export interface AlertConfig {
     redis: { warn: number; crit: number };
     dbConnections: { warn: number; crit: number };
     pgbouncer: { warnSec: number; critSec: number };
+    sentryErrors: { warn: number; crit: number };
     queueFailed: number;
     paymentFailures: number;
     llmBudgetPct: number;
@@ -29,6 +30,7 @@ export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
     redis: { warn: 75, crit: 90 },
     dbConnections: { warn: 80, crit: 90 },
     pgbouncer: { warnSec: 5, critSec: 20 },
+    sentryErrors: { warn: 50, crit: 200 },
     queueFailed: 100,
     paymentFailures: 5,
     llmBudgetPct: 90,
@@ -61,6 +63,7 @@ export class AlertConfigService {
             redis: { ...base.redis, ...(p.redis || {}) },
             dbConnections: { ...base.dbConnections, ...(p.dbConnections || {}) },
             pgbouncer: { ...base.pgbouncer, ...(p.pgbouncer || {}) },
+            sentryErrors: { ...base.sentryErrors, ...(p.sentryErrors || {}) },
             queueFailed: num(p.queueFailed, base.queueFailed),
             paymentFailures: num(p.paymentFailures, base.paymentFailures),
             llmBudgetPct: num(p.llmBudgetPct, base.llmBudgetPct),

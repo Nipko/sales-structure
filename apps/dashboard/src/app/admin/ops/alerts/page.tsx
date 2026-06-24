@@ -19,6 +19,7 @@ interface AlertConfig {
     redis: { warn: number; crit: number };
     dbConnections: { warn: number; crit: number };
     pgbouncer: { warnSec: number; critSec: number };
+    sentryErrors: { warn: number; crit: number };
     queueFailed: number;
     paymentFailures: number;
     llmBudgetPct: number;
@@ -84,7 +85,7 @@ export default function AlertConfigPage() {
         }
     }
 
-    const Pair = ({ label, base, warnKey = "warn", critKey = "crit", unit }: { label: string; base: "disk" | "ram" | "redis" | "dbConnections" | "pgbouncer"; warnKey?: string; critKey?: string; unit: string }) => (
+    const Pair = ({ label, base, warnKey = "warn", critKey = "crit", unit }: { label: string; base: "disk" | "ram" | "redis" | "dbConnections" | "pgbouncer" | "sentryErrors"; warnKey?: string; critKey?: string; unit: string }) => (
         <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 py-2 border-b border-border last:border-0">
             <span className="text-sm">{label}</span>
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -141,6 +142,7 @@ export default function AlertConfigPage() {
                         <Pair label={t("redis")} base="redis" unit="%" />
                         <Pair label={t("dbConnections")} base="dbConnections" unit="%" />
                         <Pair label={t("pgbouncer")} base="pgbouncer" warnKey="warnSec" critKey="critSec" unit="s" />
+                        <Pair label={t("sentryErrors")} base="sentryErrors" unit="/h" />
                         <Single label={t("queueFailed")} field="queueFailed" unit={t("unitJobs")} />
                         <Single label={t("paymentFailures")} field="paymentFailures" unit={t("unit24h")} />
                         <Single label={t("llmBudgetPct")} field="llmBudgetPct" unit="%" />

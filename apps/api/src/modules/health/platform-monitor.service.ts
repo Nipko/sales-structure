@@ -11,6 +11,7 @@ import { PlatformStorageService } from './platform-storage.service';
 import { IncidentService, IncidentSeverity } from './incident.service';
 import { TelegramAlertService } from './telegram-alert.service';
 import { AlertConfigService } from './alert-config.service';
+import { SentryStatsService } from './sentry-stats.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -37,6 +38,7 @@ export class PlatformMonitorService implements OnModuleInit {
         private incidents: IncidentService,
         private telegram: TelegramAlertService,
         private alertConfig: AlertConfigService,
+        private sentry: SentryStatsService,
         private throttle: TenantThrottleService,
         private config: ConfigService,
         @InjectQueue('outbound-messages') private outboundQueue: Queue,
@@ -70,6 +72,7 @@ export class PlatformMonitorService implements OnModuleInit {
         await this.checkRedisMemory();
         await this.checkDbConnections();
         await this.checkPgBouncerPool();
+        await this.checkSentryErrors();
         await this.checkLlmProviders();
         // Backstop: auto-resolve incidents that simply stopped re-firing.
         await this.incidents.sweepStale(48);
@@ -381,6 +384,41 @@ export class PlatformMonitorService implements OnModuleInit {
             this.logger.debug(`PgBouncer pool check skipped: ${e.message}`);
         } finally {
             try { if (client) await client.end(); } catch { /* ignore */ }
+        }
+    }
+
+    // ── Application error rate (Sentry) ──
+
+    private async checkSentryErrors() {
+        try {
+            const errors = await this.sentry.getErrorsLastHour();
+            if (errors == null) return; // unconfigured or failed — stay silent
+            const cfg = await this.alertConfig.get();
+
+            if (errors >= cfg.sentryErrors.crit) {
+                await this.alert(
+                    'sentry:errors:critical',
+                    `Pico de errores de la app: ${errors}/h — CRITICO`,
+                    `Sentry reporto <b>${errors}</b> errores en la ultima hora (umbral critico: ${cfg.sentryErrors.crit}).<br><br>
+                     Algo se rompio en la aplicacion. Revisa Sentry para el stack trace y el release afectado.`,
+                    errors,
+                );
+                await this.incidents.resolveByKey('sentry:errors:warning');
+            } else if (errors >= cfg.sentryErrors.warn) {
+                await this.alert(
+                    'sentry:errors:warning',
+                    `Errores de la app elevados: ${errors}/h`,
+                    `Sentry reporto <b>${errors}</b> errores en la ultima hora (umbral: ${cfg.sentryErrors.warn}).<br>
+                     Revisa Sentry para identificar el problema mas frecuente.`,
+                    errors,
+                );
+                await this.incidents.resolveByKey('sentry:errors:critical');
+            } else {
+                await this.incidents.resolveByKey('sentry:errors:critical');
+                await this.incidents.resolveByKey('sentry:errors:warning');
+            }
+        } catch (e: any) {
+            this.logger.debug(`Sentry error check skipped: ${e.message}`);
         }
     }
 

@@ -7599,6 +7599,7 @@
     "redis": "Redis (% mémoire)",
     "dbConnections": "Connexions PostgreSQL (%)",
     "pgbouncer": "PgBouncer (attente)",
+    "sentryErrors": "Erreurs de l'app (Sentry)",
     "queueFailed": "Jobs échoués en file",
     "paymentFailures": "Paiements échoués",
     "llmBudgetPct": "Budget IA par tenant (%)",

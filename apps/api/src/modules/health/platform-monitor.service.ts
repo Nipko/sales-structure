@@ -10,6 +10,7 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { PlatformStorageService } from './platform-storage.service';
 import { IncidentService, IncidentSeverity } from './incident.service';
 import { TelegramAlertService } from './telegram-alert.service';
+import { AlertConfigService } from './alert-config.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -35,6 +36,7 @@ export class PlatformMonitorService implements OnModuleInit {
         private storage: PlatformStorageService,
         private incidents: IncidentService,
         private telegram: TelegramAlertService,
+        private alertConfig: AlertConfigService,
         private throttle: TenantThrottleService,
         private config: ConfigService,
         @InjectQueue('outbound-messages') private outboundQueue: Queue,
@@ -77,6 +79,7 @@ export class PlatformMonitorService implements OnModuleInit {
 
     @Cron('2,7,12,17,22,27,32,37,42,47,52,57 * * * *')
     async checkQueues() {
+        const cfg = await this.alertConfig.get();
         const queues = [
             { name: 'outbound-messages', queue: this.outboundQueue, warnAt: 500, critAt: 2000 },
             { name: 'broadcast-messages', queue: this.broadcastQueue, warnAt: 1000, critAt: 5000 },
@@ -115,7 +118,7 @@ export class PlatformMonitorService implements OnModuleInit {
                     await this.incidents.resolveByKey(`queue:${q.name}:warning`);
                 }
 
-                if (failed > 100) {
+                if (failed > cfg.queueFailed) {
                     await this.alert(
                         `queue:${q.name}:failed`,
                         `Cola ${q.name} — ${failed} jobs fallidos`,
@@ -136,12 +139,13 @@ export class PlatformMonitorService implements OnModuleInit {
 
     private async checkDisk() {
         try {
+            const cfg = await this.alertConfig.get();
             const stats = fs.statfsSync('/');
             const totalGB = (stats.blocks * stats.bsize) / (1024 ** 3);
             const freeGB = (stats.bfree * stats.bsize) / (1024 ** 3);
             const usedPct = Math.round(((totalGB - freeGB) / totalGB) * 100);
 
-            if (usedPct >= 90) {
+            if (usedPct >= cfg.disk.crit) {
                 await this.alert(
                     'disk:critical',
                     `Disco al ${usedPct}% — CRITICO`,
@@ -151,7 +155,7 @@ export class PlatformMonitorService implements OnModuleInit {
                     usedPct,
                 );
                 await this.incidents.resolveByKey('disk:warning');
-            } else if (usedPct >= 80) {
+            } else if (usedPct >= cfg.disk.warn) {
                 await this.alert(
                     'disk:warning',
                     `Disco al ${usedPct}%`,
@@ -173,11 +177,12 @@ export class PlatformMonitorService implements OnModuleInit {
     // ── RAM usage ──
 
     private async checkMemory() {
+        const cfg = await this.alertConfig.get();
         const totalMB = Math.round(os.totalmem() / (1024 ** 2));
         const freeMB = Math.round(os.freemem() / (1024 ** 2));
         const usedPct = Math.round(((totalMB - freeMB) / totalMB) * 100);
 
-        if (usedPct >= 95) {
+        if (usedPct >= cfg.ram.crit) {
             await this.alert(
                 'ram:critical',
                 `RAM al ${usedPct}% — CRITICO`,
@@ -187,7 +192,7 @@ export class PlatformMonitorService implements OnModuleInit {
                 usedPct,
             );
             await this.incidents.resolveByKey('ram:warning');
-        } else if (usedPct >= 85) {
+        } else if (usedPct >= cfg.ram.warn) {
             await this.alert(
                 'ram:warning',
                 `RAM al ${usedPct}%`,
@@ -206,6 +211,7 @@ export class PlatformMonitorService implements OnModuleInit {
 
     private async checkRedisMemory() {
         try {
+            const cfg = await this.alertConfig.get();
             const client = (this.redis as any).client;
             if (!client?.info) return;
 
@@ -221,7 +227,7 @@ export class PlatformMonitorService implements OnModuleInit {
 
             const usedPct = Math.round((usedMB / maxMB) * 100);
 
-            if (usedPct >= 90) {
+            if (usedPct >= cfg.redis.crit) {
                 await this.alert(
                     'redis:critical',
                     `Redis al ${usedPct}% — CRITICO`,
@@ -232,7 +238,7 @@ export class PlatformMonitorService implements OnModuleInit {
                     usedPct,
                 );
                 await this.incidents.resolveByKey('redis:warning');
-            } else if (usedPct >= 75) {
+            } else if (usedPct >= cfg.redis.warn) {
                 await this.alert(
                     'redis:warning',
                     `Redis al ${usedPct}%`,
@@ -260,6 +266,7 @@ export class PlatformMonitorService implements OnModuleInit {
 
     private async checkDbConnections() {
         try {
+            const cfg = await this.alertConfig.get();
             const rows = await this.prisma.$queryRawUnsafe(
                 `SELECT count(*)::int AS used, current_setting('max_connections')::int AS max
                  FROM pg_stat_activity WHERE backend_type = 'client backend'`,
@@ -269,7 +276,7 @@ export class PlatformMonitorService implements OnModuleInit {
             if (max <= 0) return;
             const usedPct = Math.round((used / max) * 100);
 
-            if (usedPct >= 90) {
+            if (usedPct >= cfg.dbConnections.crit) {
                 await this.alert(
                     'db:connections:critical',
                     `Conexiones cliente a PostgreSQL al ${usedPct}% — CRITICO`,
@@ -280,7 +287,7 @@ export class PlatformMonitorService implements OnModuleInit {
                     usedPct,
                 );
                 await this.incidents.resolveByKey('db:connections:warning');
-            } else if (usedPct >= 80) {
+            } else if (usedPct >= cfg.dbConnections.warn) {
                 await this.alert(
                     'db:connections:warning',
                     `Conexiones cliente a PostgreSQL al ${usedPct}%`,
@@ -306,6 +313,7 @@ export class PlatformMonitorService implements OnModuleInit {
     // pg isn't installed or the admin DB is unreachable.
 
     private async checkPgBouncerPool() {
+        const cfg = await this.alertConfig.get();
         const url = this.config.get<string>('DATABASE_URL');
         if (!url) return;
 
@@ -344,7 +352,7 @@ export class PlatformMonitorService implements OnModuleInit {
                 maxwait = Math.max(maxwait, Number(r.maxwait || 0));
             }
 
-            if (maxwait >= 20) {
+            if (maxwait >= cfg.pgbouncer.critSec) {
                 await this.alert(
                     'pgbouncer:pool:critical',
                     `PgBouncer: clientes esperando ${maxwait}s — CRITICO`,
@@ -355,7 +363,7 @@ export class PlatformMonitorService implements OnModuleInit {
                     maxwait,
                 );
                 await this.incidents.resolveByKey('pgbouncer:pool:warning');
-            } else if (maxwait >= 5) {
+            } else if (maxwait >= cfg.pgbouncer.warnSec) {
                 await this.alert(
                     'pgbouncer:pool:warning',
                     `PgBouncer: clientes esperando hasta ${maxwait}s`,
@@ -387,6 +395,7 @@ export class PlatformMonitorService implements OnModuleInit {
 
     @Cron('15 3 * * *')
     async checkStorage() {
+        const cfg = await this.alertConfig.get();
         try {
             await this.storage.captureSnapshot();
         } catch (e: any) {
@@ -396,7 +405,7 @@ export class PlatformMonitorService implements OnModuleInit {
         // Disk-fill projection — alert if the disk will be full within 14 days.
         try {
             const proj = await this.storage.getDiskProjection();
-            if (proj && proj.daysUntilFull < 14) {
+            if (proj && proj.daysUntilFull < cfg.diskProjectionDays) {
                 await this.alert(
                     'disk:projection',
                     `Disco se llena en ~${proj.daysUntilFull} dias`,
@@ -416,7 +425,7 @@ export class PlatformMonitorService implements OnModuleInit {
         try {
             const rows = await this.storage.getPerTenantStorage();
             for (const r of rows) {
-                if (r.mediaLimitMb > 0 && r.mediaPct >= 90) {
+                if (r.mediaLimitMb > 0 && r.mediaPct >= cfg.storageQuotaPct) {
                     await this.alert(
                         `storage:tenant:${r.tenantId}`,
                         `Tenant ${r.tenantName} al ${r.mediaPct}% de su cuota de almacenamiento`,
@@ -451,7 +460,8 @@ export class PlatformMonitorService implements OnModuleInit {
             const failed = await this.prisma.billingPayment.count({
                 where: { status: 'failed', createdAt: { gte: since } },
             });
-            const THRESHOLD = 5;
+            const cfg = await this.alertConfig.get();
+            const THRESHOLD = cfg.paymentFailures;
             if (failed >= THRESHOLD) {
                 await this.alert(
                     'billing:payment_failures',
@@ -506,6 +516,7 @@ export class PlatformMonitorService implements OnModuleInit {
 
     private async checkLlmBudgets() {
         try {
+            const cfg = await this.alertConfig.get();
             const tenants = await this.prisma.tenant.findMany({
                 where: { isActive: true },
                 select: { id: true, name: true },
@@ -518,7 +529,7 @@ export class PlatformMonitorService implements OnModuleInit {
                 }
                 const spentCents = await this.throttle.getLlmSpendUsdCents(t.id); // USD cents, month-to-date
                 const pct = Math.round((spentCents / (budget as number)) * 100);
-                if (pct >= 90) {
+                if (pct >= cfg.llmBudgetPct) {
                     await this.alert(
                         `llm:budget:${t.id}`,
                         `Tenant ${t.name} al ${pct}% de su presupuesto de IA`,
@@ -538,12 +549,13 @@ export class PlatformMonitorService implements OnModuleInit {
 
     private async checkBackupHeartbeat() {
         try {
+            const cfg = await this.alertConfig.get();
             const last = await this.redis.get('backup:last_success');
             if (!last) return; // heartbeat not wired yet — stay silent (no false positive)
             const ts = Number(last) || Date.parse(last);
             if (!Number.isFinite(ts)) return;
             const ageH = (Date.now() - ts) / (60 * 60 * 1000);
-            if (ageH > 26) {
+            if (ageH > cfg.backupStaleHours) {
                 await this.alert(
                     'backup:stale',
                     `Backup sin exito hace ${Math.round(ageH)}h`,
@@ -646,6 +658,7 @@ export class PlatformMonitorService implements OnModuleInit {
 
     private async alert(key: string, subject: string, html: string, value: number) {
         const severity = this.severityFromKey(key);
+        const cfg = await this.alertConfig.get();
 
         // Persist/dedup the incident on every fire, independent of the email
         // cooldown, so re-fires bump count/lastSeen and survive restarts.
@@ -661,9 +674,11 @@ export class PlatformMonitorService implements OnModuleInit {
         this.logger.warn(`ALERT [${key}]: ${subject} (value=${value})`);
 
         // Telegram ops channel (throttled by the same cooldown above).
-        await this.telegram.send(this.toTelegramText(severity, subject, html));
+        if (cfg.channels.telegram) {
+            await this.telegram.send(this.toTelegramText(severity, subject, html));
+        }
 
-        if (this.adminEmails.length === 0) return;
+        if (!cfg.channels.email || this.adminEmails.length === 0) return;
 
         const fullHtml = `
             <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">

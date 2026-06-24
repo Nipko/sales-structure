@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -9,6 +9,7 @@ import { RedisService } from '../redis/redis.service';
 import { PlatformMonitorService } from './platform-monitor.service';
 import { PlatformStorageService } from './platform-storage.service';
 import { IncidentService } from './incident.service';
+import { AlertConfigService } from './alert-config.service';
 import { MediaCleanupService } from '../media/media-cleanup.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import * as os from 'os';
@@ -22,6 +23,7 @@ export class HealthController {
         private monitor: PlatformMonitorService,
         private storage: PlatformStorageService,
         private incidents: IncidentService,
+        private alertConfig: AlertConfigService,
         private mediaCleanup: MediaCleanupService,
         private llmRouter: LLMRouterService,
     ) { }
@@ -214,6 +216,24 @@ export class HealthController {
     async resolveIncident(@Param('id') id: string, @CurrentUser() user: any) {
         const by = user?.email || 'super_admin';
         return { success: true, data: await this.incidents.resolve(id, by) };
+    }
+
+    // ── Alert thresholds config (super_admin) ────────────────────
+
+    @Get('alert-config')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Get platform alert thresholds (super_admin only)' })
+    async getAlertConfig() {
+        return { success: true, data: await this.alertConfig.get() };
+    }
+
+    @Put('alert-config')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Update platform alert thresholds (super_admin only)' })
+    async setAlertConfig(@Body() body: any) {
+        return { success: true, data: await this.alertConfig.set(body) };
     }
 
     @Post('media-cleanup')

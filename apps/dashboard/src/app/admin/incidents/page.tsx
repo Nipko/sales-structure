@@ -9,11 +9,12 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useTranslations, useFormatter } from "next-intl";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
     Siren, RefreshCw, Loader2, AlertTriangle, AlertCircle, Info,
-    CheckCircle2, Check, ChevronDown, ChevronRight,
+    CheckCircle2, Check, ChevronDown, ChevronRight, SlidersHorizontal,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 
@@ -53,6 +54,7 @@ export default function IncidentsPage() {
     const t = useTranslations("incidents");
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
+    const tCfg = useTranslations("alertConfig");
     const format = useFormatter();
 
     const [summary, setSummary] = useState<Summary | null>(null);
@@ -120,14 +122,23 @@ export default function IncidentsPage() {
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
                 </div>
-                <button
-                    onClick={fetchData}
-                    disabled={loading}
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted text-foreground rounded-lg text-sm transition disabled:opacity-50"
-                >
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    {tc("refresh")}
-                </button>
+                <div className="flex items-center gap-2">
+                    <Link
+                        href="/admin/ops/alerts"
+                        className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted text-foreground rounded-lg text-sm transition"
+                    >
+                        <SlidersHorizontal className="h-4 w-4" />
+                        {tCfg("title")}
+                    </Link>
+                    <button
+                        onClick={fetchData}
+                        disabled={loading}
+                        className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted text-foreground rounded-lg text-sm transition disabled:opacity-50"
+                    >
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        {tc("refresh")}
+                    </button>
+                </div>
             </div>
 
             <HelpPanel

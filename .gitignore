@@ -43,3 +43,14 @@ prisma/generated/
 
 # Uploads
 uploads/
+
+# Scratch / debug files
+scratch/
+scratch-*.ts
+*.tsbuildinfo
+
+# Debug screenshots dumped at the repo root
+/*.png
+
+# Claude Code agent worktrees
+.claude/worktrees/

@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { RedisService } from '../redis/redis.service';
@@ -35,6 +36,7 @@ export class PlatformMonitorService implements OnModuleInit {
         private incidents: IncidentService,
         private telegram: TelegramAlertService,
         private throttle: TenantThrottleService,
+        private config: ConfigService,
         @InjectQueue('outbound-messages') private outboundQueue: Queue,
         @InjectQueue('broadcast-messages') private broadcastQueue: Queue,
         @InjectQueue('automation-jobs') private automationQueue: Queue,
@@ -65,6 +67,7 @@ export class PlatformMonitorService implements OnModuleInit {
         await this.checkMemory();
         await this.checkRedisMemory();
         await this.checkDbConnections();
+        await this.checkPgBouncerPool();
         await this.checkLlmProviders();
         // Backstop: auto-resolve incidents that simply stopped re-firing.
         await this.incidents.sweepStale(48);
@@ -292,6 +295,84 @@ export class PlatformMonitorService implements OnModuleInit {
             }
         } catch (e: any) {
             this.logger.debug(`DB connections check skipped: ${e.message}`);
+        }
+    }
+
+    // ── PgBouncer pool saturation (the real app-side signal) ──
+    // Reads SHOW POOLS from the PgBouncer admin console (the `parallext` user is
+    // in stats_users/admin_users). maxwait = seconds the oldest client has been
+    // waiting for a pooled connection; with query_wait_timeout=60s, a rising
+    // maxwait means requests are about to start failing. Best-effort + silent if
+    // pg isn't installed or the admin DB is unreachable.
+
+    private async checkPgBouncerPool() {
+        const url = this.config.get<string>('DATABASE_URL');
+        if (!url) return;
+
+        let parsed: URL;
+        try { parsed = new URL(url); } catch { return; }
+        if (!parsed.port || !parsed.hostname) return;
+
+        let pg: any;
+        try { pg = require('pg'); } catch { return; } // pg not present → skip
+
+        // URL.username/password are percent-encoded; decode defensively — a literal
+        // '%' in the password would otherwise make decodeURIComponent throw.
+        const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
+
+        let client: any;
+        try {
+            client = new pg.Client({
+                host: parsed.hostname,
+                port: Number(parsed.port),
+                user: safeDecode(parsed.username),
+                password: safeDecode(parsed.password),
+                database: 'pgbouncer', // PgBouncer admin pseudo-database
+                connectionTimeoutMillis: 4000,
+                query_timeout: 4000,
+                application_name: 'parallext-monitor',
+            });
+            await client.connect();
+            const res = await client.query('SHOW POOLS');
+            const rows: any[] = res?.rows || [];
+
+            let clWaiting = 0;
+            let maxwait = 0;
+            for (const r of rows) {
+                if (r.database === 'pgbouncer') continue; // skip the admin pseudo-pool
+                clWaiting += Number(r.cl_waiting || 0);
+                maxwait = Math.max(maxwait, Number(r.maxwait || 0));
+            }
+
+            if (maxwait >= 20) {
+                await this.alert(
+                    'pgbouncer:pool:critical',
+                    `PgBouncer: clientes esperando ${maxwait}s — CRITICO`,
+                    `El pool de PgBouncer esta saturado: el cliente mas antiguo lleva <b>${maxwait}s</b>
+                     esperando una conexion y hay <b>${clWaiting}</b> en cola.<br><br>
+                     Con query_wait_timeout=60s los requests empezaran a fallar pronto. Sube
+                     default_pool_size, revisa queries lentas o conexiones que no se liberan.`,
+                    maxwait,
+                );
+                await this.incidents.resolveByKey('pgbouncer:pool:warning');
+            } else if (maxwait >= 5) {
+                await this.alert(
+                    'pgbouncer:pool:warning',
+                    `PgBouncer: clientes esperando hasta ${maxwait}s`,
+                    `Hay <b>${clWaiting}</b> cliente(s) esperando una conexion del pool de PgBouncer
+                     (espera maxima <b>${maxwait}s</b>).<br>El pool esta bajo presion; vigila el trafico
+                     y las queries lentas.`,
+                    maxwait,
+                );
+                await this.incidents.resolveByKey('pgbouncer:pool:critical');
+            } else {
+                await this.incidents.resolveByKey('pgbouncer:pool:critical');
+                await this.incidents.resolveByKey('pgbouncer:pool:warning');
+            }
+        } catch (e: any) {
+            this.logger.debug(`PgBouncer pool check skipped: ${e.message}`);
+        } finally {
+            try { if (client) await client.end(); } catch { /* ignore */ }
         }
     }
 

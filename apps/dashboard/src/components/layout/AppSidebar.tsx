@@ -274,6 +274,23 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [hasUnreadChangelog, setHasUnreadChangelog] = useState(false);
 
+  // --- Active critical incidents badge (super_admin platform mode) ---
+  const [criticalCount, setCriticalCount] = useState(0);
+
+  useEffect(() => {
+    if (useTenantTree) return; // only the platform tree shows the incidents badge
+    let alive = true;
+    async function loadIncidentCount() {
+      try {
+        const res = await api.getIncidentsSummary();
+        if (alive && res.success) setCriticalCount(Number((res.data as any)?.activeCritical) || 0);
+      } catch { /* ignore */ }
+    }
+    loadIncidentCount();
+    const id = setInterval(loadIncidentCount, 60000);
+    return () => { alive = false; clearInterval(id); };
+  }, [useTenantTree]);
+
   useEffect(() => {
     if (!useTenantTree) return; // Only tenant users see system release announcements in popup/sidebar
 
@@ -662,10 +679,14 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                       }}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <Icon size={16} className={cn(
-                          "shrink-0",
-                          item.active ? "text-indigo-600 dark:text-indigo-400" : item.accent || "text-neutral-400 dark:text-neutral-500"
-                        )} />
+                        <div className="relative shrink-0">
+                          <Icon size={16} className={cn(
+                            item.active ? "text-indigo-600 dark:text-indigo-400" : item.accent || "text-neutral-400 dark:text-neutral-500"
+                          )} />
+                          {!showExpanded && item.labelKey === "incidents" && criticalCount > 0 && (
+                            <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
+                          )}
+                        </div>
                         {showExpanded && (
                           <span className="truncate">{item.label}</span>
                         )}
@@ -673,6 +694,11 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
 
                       {showExpanded && (
                         <div className="flex items-center gap-1.5 shrink-0">
+                          {item.labelKey === "incidents" && criticalCount > 0 && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white leading-none">
+                              {criticalCount}
+                            </span>
+                          )}
                           {item.shortcut && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-md border border-border/50 text-neutral-400 font-mono tracking-tighter bg-background/50">
                               {item.shortcut}

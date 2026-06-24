@@ -64,6 +64,7 @@ export class PlatformMonitorService implements OnModuleInit {
         await this.checkDisk();
         await this.checkMemory();
         await this.checkRedisMemory();
+        await this.checkDbConnections();
         await this.checkLlmProviders();
         // Backstop: auto-resolve incidents that simply stopped re-firing.
         await this.incidents.sweepStale(48);
@@ -243,6 +244,54 @@ export class PlatformMonitorService implements OnModuleInit {
             }
         } catch (e: any) {
             this.logger.debug(`Redis memory check skipped: ${e.message}`);
+        }
+    }
+
+    // ── PostgreSQL client-backend saturation ──
+    // NOTE: counts real PG *client backends* only (excludes autovacuum/walwriter/etc
+    // so the % isn't inflated). Apps go through PgBouncer (transaction mode), which
+    // keeps this low by design — so this mainly catches direct-connection leaks
+    // (migrations via DIRECT_DATABASE_URL), a misconfigured pool, or PgBouncer being
+    // bypassed. The deeper app-saturation signal (PgBouncer SHOW POOLS cl_waiting/
+    // maxwait) is a planned follow-up.
+
+    private async checkDbConnections() {
+        try {
+            const rows = await this.prisma.$queryRawUnsafe(
+                `SELECT count(*)::int AS used, current_setting('max_connections')::int AS max
+                 FROM pg_stat_activity WHERE backend_type = 'client backend'`,
+            ) as Array<{ used: number; max: number }>;
+            const used = Number(rows?.[0]?.used ?? 0);
+            const max = Number(rows?.[0]?.max ?? 0);
+            if (max <= 0) return;
+            const usedPct = Math.round((used / max) * 100);
+
+            if (usedPct >= 90) {
+                await this.alert(
+                    'db:connections:critical',
+                    `Conexiones cliente a PostgreSQL al ${usedPct}% — CRITICO`,
+                    `Hay <b>${used}</b> de <b>${max}</b> conexiones cliente a PostgreSQL (${usedPct}%).<br><br>
+                     Normalmente PgBouncer las mantiene bajas; un valor tan alto indica fuga de conexiones,
+                     migraciones atascadas (DIRECT_DATABASE_URL) o bypass de PgBouncer. Cerca del maximo,
+                     las nuevas conexiones empezaran a fallar.`,
+                    usedPct,
+                );
+                await this.incidents.resolveByKey('db:connections:warning');
+            } else if (usedPct >= 80) {
+                await this.alert(
+                    'db:connections:warning',
+                    `Conexiones cliente a PostgreSQL al ${usedPct}%`,
+                    `Hay <b>${used}</b> de <b>${max}</b> conexiones cliente a PostgreSQL (${usedPct}%).<br>
+                     PgBouncer suele mantener esto bajo: revisa fugas de conexiones o el estado del pool.`,
+                    usedPct,
+                );
+                await this.incidents.resolveByKey('db:connections:critical');
+            } else {
+                await this.incidents.resolveByKey('db:connections:critical');
+                await this.incidents.resolveByKey('db:connections:warning');
+            }
+        } catch (e: any) {
+            this.logger.debug(`DB connections check skipped: ${e.message}`);
         }
     }
 

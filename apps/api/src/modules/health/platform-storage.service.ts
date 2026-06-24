@@ -249,7 +249,7 @@ export class PlatformStorageService {
             // Fetched newest-first to get the MOST RECENT 30; flip back to
             // ascending so the regression slope and currentPct reflect recent data.
             snaps.reverse();
-            const points = snaps
+            const points: { x: number; y: number }[] = snaps
                 .filter((s: { diskUsedPct: number | null }) => s.diskUsedPct != null)
                 .map((s: { snapshotDate: Date; diskUsedPct: number | null }) => ({
                     x: s.snapshotDate.getTime(),
@@ -258,13 +258,13 @@ export class PlatformStorageService {
             if (points.length < 3) return null;
 
             const x0 = points[0].x;
-            const xs = points.map((p) => (p.x - x0) / 86400000); // days from first point
-            const ys = points.map((p) => p.y);
+            const xs: number[] = points.map((p: { x: number; y: number }) => (p.x - x0) / 86400000); // days from first point
+            const ys: number[] = points.map((p: { x: number; y: number }) => p.y);
             const n = xs.length;
-            const sx = xs.reduce((a, b) => a + b, 0);
-            const sy = ys.reduce((a, b) => a + b, 0);
-            const sxx = xs.reduce((a, b) => a + b * b, 0);
-            const sxy = xs.reduce((a, b, i) => a + b * ys[i], 0);
+            const sx = xs.reduce((a: number, b: number) => a + b, 0);
+            const sy = ys.reduce((a: number, b: number) => a + b, 0);
+            const sxx = xs.reduce((a: number, b: number) => a + b * b, 0);
+            const sxy = xs.reduce((a: number, b: number, i: number) => a + b * ys[i], 0);
             const denom = n * sxx - sx * sx;
             if (denom === 0) return null;
 

@@ -7589,7 +7589,10 @@
     "mediaQuota": "Cuota multimedia",
     "unlimited": "Ilimitado",
     "notConfigured": "Sin configurar",
-    "noResults": "Sin resultados que coincidan con los filtros"
+    "noResults": "Sin resultados que coincidan con los filtros",
+    "projection": "Se llena en ~{days} días (+{rate}%/día)",
+    "trendTitle": "Tendencia de uso de disco",
+    "trendDisk": "% de disco"
   },
   "platformUsage": {
     "title": "Uso por tenant",

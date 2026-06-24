@@ -157,6 +157,15 @@ export class HealthController {
         return { success: true, data: await this.storage.getPerTenantStorage() };
     }
 
+    @Get('storage/history')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Storage snapshot history for the trend chart (super_admin only)' })
+    async storageHistory(@Query('days') days?: string, @Query('tenantId') tenantId?: string) {
+        const d = days ? parseInt(days, 10) : 30;
+        return { success: true, data: await this.storage.getHistory(Number.isFinite(d) ? d : 30, tenantId) };
+    }
+
     @Post('media-cleanup')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @Roles('super_admin')

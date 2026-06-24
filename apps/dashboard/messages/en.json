@@ -7589,7 +7589,10 @@
     "mediaQuota": "Media quota",
     "unlimited": "Unlimited",
     "notConfigured": "Not configured",
-    "noResults": "No results match the filters"
+    "noResults": "No results match the filters",
+    "projection": "Fills up in ~{days} days (+{rate}%/day)",
+    "trendTitle": "Disk usage trend",
+    "trendDisk": "Disk %"
   },
   "platformUsage": {
     "title": "Tenant usage",

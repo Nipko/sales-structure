@@ -536,6 +536,21 @@ model TenantFinancialSnapshot {
   @@schema("public")
 }
 
+// ---- Daily Storage Snapshot (disk fill projection + trend + quota alerts) ----
+model StorageSnapshot {
+  id           String   @id @default(uuid())
+  snapshotDate DateTime @map("snapshot_date")
+  tenantId     String   @map("tenant_id") // tenant uuid, or 'platform' for the platform-wide row
+  dbBytes      BigInt   @default(0) @map("db_bytes")
+  mediaBytes   BigInt   @default(0) @map("media_bytes")
+  diskUsedPct  Int?     @map("disk_used_pct") // only set on the 'platform' row
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([snapshotDate, tenantId])
+  @@map("storage_snapshots")
+  @@schema("public")
+}
+
 // ---- Infrastructure Costs ----
 model InfraCost {
   id          String   @id @default(uuid())

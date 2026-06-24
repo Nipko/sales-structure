@@ -17,6 +17,9 @@ import {
     Database, Image as ImageIcon, Trash2,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import {
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
 
 interface StorageRow {
     tenantId: string;
@@ -37,6 +40,14 @@ interface Overview {
     totalMediaFiles: number;
     totalDbBytes: number;
     tenantCount: number;
+    projection: { daysUntilFull: number; slopePctPerDay: number; currentPct: number } | null;
+}
+
+interface HistoryPoint {
+    date: string;
+    dbBytes: number;
+    mediaBytes: number;
+    diskUsedPct: number | null;
 }
 
 interface CleanupResult {
@@ -69,6 +80,7 @@ export default function StoragePage() {
     const tHelp = useTranslations("help");
 
     const [overview, setOverview] = useState<Overview | null>(null);
+    const [history, setHistory] = useState<HistoryPoint[]>([]);
     const [data, setData] = useState<StorageRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -82,11 +94,13 @@ export default function StoragePage() {
     async function fetchData() {
         setLoading(true);
         try {
-            const [ov, rows] = await Promise.all([
+            const [ov, rows, hist] = await Promise.all([
                 api.getStorageOverview(),
                 api.getStorageTenants(),
+                api.getStorageHistory(30),
             ]);
             if (ov.success) setOverview(ov.data as Overview);
+            if (hist.success) setHistory((hist.data as HistoryPoint[]) || []);
             if (rows.success) {
                 setData((rows.data as StorageRow[]) || []);
                 setError(null);
@@ -209,6 +223,16 @@ export default function StoragePage() {
                         </div>
                     </>
                 )}
+                {overview?.projection && (
+                    <div className={cn(
+                        "mt-2 text-xs font-medium",
+                        overview.projection.daysUntilFull < 14 ? "text-red-600"
+                            : overview.projection.daysUntilFull < 30 ? "text-amber-600"
+                                : "text-muted-foreground",
+                    )}>
+                        {t("projection", { days: overview.projection.daysUntilFull, rate: overview.projection.slopePctPerDay })}
+                    </div>
+                )}
             </div>
 
             {/* Summary tiles */}
@@ -231,6 +255,32 @@ export default function StoragePage() {
                     <div className={cn("text-2xl font-bold mt-1", overQuotaCount > 0 && "text-amber-600")}>{overQuotaCount}</div>
                 </div>
             </div>
+
+            {/* Disk usage trend */}
+            {history.length > 1 && (
+                <div className="bg-card border border-border rounded-xl p-4">
+                    <h3 className="text-sm font-medium mb-3">{t("trendTitle")}</h3>
+                    <ResponsiveContainer width="100%" height={220}>
+                        <AreaChart data={history}>
+                            <defs>
+                                <linearGradient id="diskGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a45" opacity={0.3} />
+                            <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#9898b0" />
+                            <YAxis tick={{ fontSize: 11 }} stroke="#9898b0" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                            <Tooltip
+                                contentStyle={{ backgroundColor: "#1a1a2e", border: "1px solid #2a2a45", borderRadius: 8 }}
+                                labelStyle={{ color: "#e8e8f0" }}
+                                formatter={(value: any) => [`${value}%`, t("trendDisk")]}
+                            />
+                            <Area type="monotone" dataKey="diskUsedPct" stroke="#06b6d4" strokeWidth={2} fill="url(#diskGrad)" connectNulls />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </div>
+            )}
 
             {/* Orphan cleanup */}
             <div className="bg-card border border-border rounded-xl p-4">

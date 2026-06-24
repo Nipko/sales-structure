@@ -6,6 +6,7 @@ import { RedisService } from '../redis/redis.service';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { PlatformStorageService } from './platform-storage.service';
 import * as os from 'os';
 import * as fs from 'fs';
 
@@ -27,6 +28,7 @@ export class PlatformMonitorService implements OnModuleInit {
         private email: EmailService,
         private prisma: PrismaService,
         private llmRouter: LLMRouterService,
+        private storage: PlatformStorageService,
         @InjectQueue('outbound-messages') private outboundQueue: Queue,
         @InjectQueue('broadcast-messages') private broadcastQueue: Queue,
         @InjectQueue('automation-jobs') private automationQueue: Queue,
@@ -219,6 +221,54 @@ export class PlatformMonitorService implements OnModuleInit {
     @Cron('0 * * * *')
     async refreshAdmins() {
         await this.refreshAdminEmails();
+    }
+
+    // ── Storage snapshots + early-warning alerts — daily 3:15 AM ──
+
+    @Cron('15 3 * * *')
+    async checkStorage() {
+        try {
+            await this.storage.captureSnapshot();
+        } catch (e: any) {
+            this.logger.warn(`Storage snapshot failed: ${e.message}`);
+        }
+
+        // Disk-fill projection — alert if the disk will be full within 14 days.
+        try {
+            const proj = await this.storage.getDiskProjection();
+            if (proj && proj.daysUntilFull < 14) {
+                await this.alert(
+                    'disk:projection',
+                    `Disco se llena en ~${proj.daysUntilFull} dias`,
+                    `Al ritmo actual (+${proj.slopePctPerDay}%/dia, ${proj.currentPct}% ahora) el disco
+                     llegara al 100% en aproximadamente <b>${proj.daysUntilFull} dias</b>.<br><br>
+                     Libera espacio (limpieza de huerfanos en /admin/storage) o amplia el disco antes.`,
+                    proj.daysUntilFull,
+                );
+            }
+        } catch (e: any) {
+            this.logger.debug(`Disk projection check skipped: ${e.message}`);
+        }
+
+        // Per-tenant media quota — alert tenants at >=90% of their plan quota.
+        try {
+            const rows = await this.storage.getPerTenantStorage();
+            for (const r of rows) {
+                if (r.mediaLimitMb > 0 && r.mediaPct >= 90) {
+                    await this.alert(
+                        `storage:tenant:${r.tenantId}`,
+                        `Tenant ${r.tenantName} al ${r.mediaPct}% de su cuota de almacenamiento`,
+                        `El tenant <b>${r.tenantName}</b> (${r.plan}) usa <b>${r.mediaUsedMb} MB</b> de
+                         <b>${r.mediaLimitMb} MB</b> de su cuota multimedia (${r.mediaPct}%).<br><br>
+                         Cuando llegue al 100% se rechazaran nuevas subidas. Considera contactarlo
+                         para escalar su plan o ajustar su cuota.`,
+                        r.mediaPct,
+                    );
+                }
+            }
+        } catch (e: any) {
+            this.logger.debug(`Tenant quota check skipped: ${e.message}`);
+        }
     }
 
     // ── LLM provider health ──

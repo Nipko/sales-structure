@@ -546,6 +546,8 @@ export const api = {
     getPlatformHealth: () => apiGet("/tenants/health"),
     getStorageOverview: () => apiGet("/health/storage/overview"),
     getStorageTenants: () => apiGet("/health/storage/tenants"),
+    getStorageHistory: (days?: number, tenantId?: string) =>
+        apiGet(`/health/storage/history?days=${days ?? 30}${tenantId ? `&tenantId=${encodeURIComponent(tenantId)}` : ""}`),
     runMediaCleanup: (dryRun: boolean) => apiPost(`/health/media-cleanup?dryRun=${dryRun}`, {}),
 
     // --- Tenant management (super_admin) ---

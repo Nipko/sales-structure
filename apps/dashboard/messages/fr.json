@@ -7589,7 +7589,10 @@
     "mediaQuota": "Quota multimédia",
     "unlimited": "Illimité",
     "notConfigured": "Non configuré",
-    "noResults": "Aucun résultat ne correspond aux filtres"
+    "noResults": "Aucun résultat ne correspond aux filtres",
+    "projection": "Plein dans ~{days} jours (+{rate} %/jour)",
+    "trendTitle": "Tendance d'utilisation du disque",
+    "trendDisk": "% du disque"
   },
   "platformUsage": {
     "title": "Utilisation par tenant",

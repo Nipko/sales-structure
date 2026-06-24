@@ -134,6 +134,7 @@
       "pets": "Pets",
       "photoSessions": "Sessões fotográficas",
       "platformUsage": "Uso por tenant",
+      "incidents": "Incidentes",
       "storage": "Armazenamento",
       "platformHealth": "Saúde do sistema",
       "platformAudit": "Auditoria",
@@ -6537,6 +6538,17 @@
         "Clique no nome de um tenant na tabela para acessar seu detalhe em '/admin/tenants' e de lá alterar o plano ou revisar o histórico de faturamento."
       ]
     },
+    "incidents": {
+      "title": "O que é o painel de Incidentes?",
+      "description": "É a caixa de alertas do Centro de Operações. Cada problema detectado (disco, RAM, Redis, filas, provedores de IA, projeção de disco, cota por tenant, pagamentos, tokens...) fica registrado aqui de forma persistente, com quantas vezes se repetiu e desde quando. Antes só chegavam por email e se perdiam ao reiniciar.",
+      "tips": [
+        "Comece pelos 'Críticos ativos' — exigem ação imediata. O número em vermelho no topo diz quantos há.",
+        "Use 'Reconhecer' para marcar que já está ciente de um incidente (continua ativo, mas deixa de ser ruído); use 'Resolver' quando o problema estiver solucionado.",
+        "Muitos incidentes se resolvem sozinhos: quando a condição volta ao normal (ex.: o disco cai abaixo de 80%) o sistema os marca como resolvidos automaticamente.",
+        "O contador ×N indica quantas vezes o mesmo alerta se repetiu sem ser resolvido: um número alto sinaliza um problema persistente.",
+        "O filtro 'Resolvidos' é o seu histórico: use-o para ver o que aconteceu nas últimas 24h e detectar padrões recorrentes."
+      ]
+    },
     "storage": {
       "title": "Para que serve o painel de Armazenamento?",
       "description": "Esta tela mostra quanto armazenamento cada tenant consome: o tamanho do banco de dados (conversas, mensagens, embeddings) e os arquivos de mídia no disco, além do uso total de disco do servidor. Ajuda a identificar quem está crescendo rápido demais e agir antes que o disco encha.",
@@ -7560,6 +7572,27 @@
     "timeline": "Timeline",
     "stacktrace": "Stack trace",
     "detailUnavailable": "Não foi possível carregar o detalhe do job"
+  },
+  "incidents": {
+    "title": "Incidentes",
+    "subtitle": "Alertas de plataforma persistentes: reconheça, resolva e veja o histórico",
+    "activeCritical": "Críticos ativos",
+    "activeWarning": "Avisos ativos",
+    "acknowledged": "Reconhecidos",
+    "resolved24h": "Resolvidos (24h)",
+    "filter_active": "Ativos",
+    "filter_acknowledged": "Reconhecidos",
+    "filter_resolved": "Resolvidos",
+    "filter_all": "Todos",
+    "severity_critical": "Crítico",
+    "severity_warning": "Aviso",
+    "severity_info": "Info",
+    "lastSeen": "Última vez",
+    "resolvedBy": "Resolvido por {who}",
+    "ackedBy": "Reconhecido por {who}",
+    "ack": "Reconhecer",
+    "resolve": "Resolver",
+    "noIncidents": "Sem incidentes neste filtro"
   },
   "platformStorage": {
     "title": "Armazenamento",

@@ -551,6 +551,30 @@ model StorageSnapshot {
   @@schema("public")
 }
 
+// ---- Platform Incidents (persistent alerts for the ops center) ----
+model PlatformIncident {
+  id             String    @id @default(uuid())
+  key            String // alert key, e.g. 'disk:critical', 'storage:tenant:<id>'
+  severity       String    @default("warning") // info | warning | critical
+  title          String
+  body           String?
+  value          Float?
+  status         String    @default("active") // active | acknowledged | resolved
+  count          Int       @default(1) // times re-fired while open
+  firstSeenAt    DateTime  @default(now()) @map("first_seen_at")
+  lastSeenAt     DateTime  @default(now()) @map("last_seen_at")
+  acknowledgedAt DateTime? @map("acknowledged_at")
+  acknowledgedBy String?   @map("acknowledged_by")
+  resolvedAt     DateTime? @map("resolved_at")
+  resolvedBy     String?   @map("resolved_by") // user email, or 'system' for auto-resolve
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([status, severity])
+  @@index([key])
+  @@map("platform_incidents")
+  @@schema("public")
+}
+
 // ---- Infrastructure Costs ----
 model InfraCost {
   id          String   @id @default(uuid())

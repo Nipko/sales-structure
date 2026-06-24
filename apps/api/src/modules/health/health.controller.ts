@@ -1,12 +1,14 @@
-import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { PlatformMonitorService } from './platform-monitor.service';
 import { PlatformStorageService } from './platform-storage.service';
+import { IncidentService } from './incident.service';
 import { MediaCleanupService } from '../media/media-cleanup.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import * as os from 'os';
@@ -19,6 +21,7 @@ export class HealthController {
         private redis: RedisService,
         private monitor: PlatformMonitorService,
         private storage: PlatformStorageService,
+        private incidents: IncidentService,
         private mediaCleanup: MediaCleanupService,
         private llmRouter: LLMRouterService,
     ) { }
@@ -164,6 +167,53 @@ export class HealthController {
     async storageHistory(@Query('days') days?: string, @Query('tenantId') tenantId?: string) {
         const d = days ? parseInt(days, 10) : 30;
         return { success: true, data: await this.storage.getHistory(Number.isFinite(d) ? d : 30, tenantId) };
+    }
+
+    // ── Incidents (super_admin ops center) ───────────────────────
+
+    @Get('incidents')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'List platform incidents (super_admin only)' })
+    async listIncidents(
+        @Query('status') status?: string,
+        @Query('severity') severity?: string,
+        @Query('limit') limit?: string,
+        @Query('offset') offset?: string,
+    ) {
+        const data = await this.incidents.list({
+            status,
+            severity,
+            limit: limit ? parseInt(limit, 10) : undefined,
+            offset: offset ? parseInt(offset, 10) : undefined,
+        });
+        return { success: true, data };
+    }
+
+    @Get('incidents/summary')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Incident counts by status/severity (super_admin only)' })
+    async incidentsSummary() {
+        return { success: true, data: await this.incidents.summary() };
+    }
+
+    @Post('incidents/:id/ack')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Acknowledge an incident (super_admin only)' })
+    async ackIncident(@Param('id') id: string, @CurrentUser() user: any) {
+        const by = user?.email || 'super_admin';
+        return { success: true, data: await this.incidents.acknowledge(id, by) };
+    }
+
+    @Post('incidents/:id/resolve')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Resolve an incident (super_admin only)' })
+    async resolveIncident(@Param('id') id: string, @CurrentUser() user: any) {
+        const by = user?.email || 'super_admin';
+        return { success: true, data: await this.incidents.resolve(id, by) };
     }
 
     @Post('media-cleanup')

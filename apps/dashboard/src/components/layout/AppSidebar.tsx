@@ -51,6 +51,7 @@ import {
   TrendingUp,
   ShieldCheck,
   HardDrive,
+  Siren,
   Brain,
   Scale,
   Filter as FunnelIcon,
@@ -195,6 +196,7 @@ const platformSections: NavSectionDef[] = [
     titleKey: "platform",
     items: [
       { labelKey: "tenants", href: "/admin/tenants", icon: Building2, shortcut: "⌘ 1", accent: "text-blue-500 dark:text-blue-400" },
+      { labelKey: "incidents", href: "/admin/incidents", icon: Siren, accent: "text-rose-500 dark:text-rose-400" },
       { labelKey: "financials", href: "/admin/financials", icon: DollarSign, accent: "text-emerald-500 dark:text-emerald-400" },
       { labelKey: "fiscalAdmin", href: "/admin/fiscal", icon: Receipt, accent: "text-teal-500 dark:text-teal-400" },
       { labelKey: "managed", href: "/admin/managed", icon: ShieldCheck, accent: "text-indigo-500 dark:text-indigo-400" },

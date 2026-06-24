@@ -549,6 +549,11 @@ export const api = {
     getStorageHistory: (days?: number, tenantId?: string) =>
         apiGet(`/health/storage/history?days=${days ?? 30}${tenantId ? `&tenantId=${encodeURIComponent(tenantId)}` : ""}`),
     runMediaCleanup: (dryRun: boolean) => apiPost(`/health/media-cleanup?dryRun=${dryRun}`, {}),
+    getIncidents: (status?: string, severity?: string) =>
+        apiGet(`/health/incidents?${status ? `status=${status}` : ""}${severity ? `&severity=${severity}` : ""}`),
+    getIncidentsSummary: () => apiGet("/health/incidents/summary"),
+    ackIncident: (id: string) => apiPost(`/health/incidents/${id}/ack`, {}),
+    resolveIncident: (id: string) => apiPost(`/health/incidents/${id}/resolve`, {}),
 
     // --- Tenant management (super_admin) ---
     suspendTenant: (tenantId: string, reason: string) =>

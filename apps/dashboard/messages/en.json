@@ -134,6 +134,7 @@
       "pets": "Pets",
       "photoSessions": "Photo sessions",
       "platformUsage": "Tenant usage",
+      "incidents": "Incidents",
       "storage": "Storage",
       "platformHealth": "System health",
       "platformAudit": "Audit log",
@@ -6537,6 +6538,17 @@
         "Click a tenant name in the table to go to their detail at '/admin/tenants' and from there change their plan or review their billing history."
       ]
     },
+    "incidents": {
+      "title": "What is the Incidents panel?",
+      "description": "It's the ops center's alert inbox. Every detected problem (disk, RAM, Redis, queues, AI providers, disk projection, per-tenant quota, payments, tokens...) is recorded here persistently, with how many times it recurred and since when. Previously they only arrived by email and were lost on restart.",
+      "tips": [
+        "Start with 'Active critical' — those need immediate action. The red number at the top tells you how many there are.",
+        "Use 'Acknowledge' to mark that you're aware of an incident (it stays active but stops being noise); use 'Resolve' once the problem is fixed.",
+        "Many incidents resolve themselves: when the condition returns to normal (e.g. disk drops below 80%) the system marks them resolved automatically.",
+        "The ×N counter shows how many times the same alert recurred without resolving: a high number signals a persistent problem.",
+        "The 'Resolved' filter is your history: use it to see what happened in the last 24h and spot recurring patterns."
+      ]
+    },
     "storage": {
       "title": "What is the Storage panel for?",
       "description": "This screen shows how much storage each tenant consumes: their database size (conversations, messages, embeddings) and media files on disk, plus the server's total disk usage. It helps you spot who is growing too fast and act before the disk fills up.",
@@ -7560,6 +7572,27 @@
     "timeline": "Timeline",
     "stacktrace": "Stack trace",
     "detailUnavailable": "Could not load job detail"
+  },
+  "incidents": {
+    "title": "Incidents",
+    "subtitle": "Persistent platform alerts: acknowledge, resolve, and review their history",
+    "activeCritical": "Active critical",
+    "activeWarning": "Active warnings",
+    "acknowledged": "Acknowledged",
+    "resolved24h": "Resolved (24h)",
+    "filter_active": "Active",
+    "filter_acknowledged": "Acknowledged",
+    "filter_resolved": "Resolved",
+    "filter_all": "All",
+    "severity_critical": "Critical",
+    "severity_warning": "Warning",
+    "severity_info": "Info",
+    "lastSeen": "Last seen",
+    "resolvedBy": "Resolved by {who}",
+    "ackedBy": "Acknowledged by {who}",
+    "ack": "Acknowledge",
+    "resolve": "Resolve",
+    "noIncidents": "No incidents in this filter"
   },
   "platformStorage": {
     "title": "Storage",

@@ -136,6 +136,13 @@ elif [ -n "${OFFSITE_REMOTE}" ]; then
   echo "  WARN: OFFSITE_REMOTE set but rclone not installed"
 fi
 
+# ── Heartbeat for the ops-center backup monitor ──
+# Records a success timestamp (epoch ms) in Redis. PlatformMonitorService reads
+# `backup:last_success` daily and raises a critical incident if it goes stale
+# (>26h). If Redis requires a password, add `-a "${REDIS_PASSWORD}"`.
+docker exec "${REDIS_CONTAINER}" redis-cli SET backup:last_success "$(date +%s%3N)" >/dev/null 2>&1 \
+  || echo "  WARN: Could not write backup heartbeat to Redis"
+
 # ── Summary ──
 TOTAL_SIZE=$(du -sh "${BACKUP_DIR}" 2>/dev/null | cut -f1)
 echo ""

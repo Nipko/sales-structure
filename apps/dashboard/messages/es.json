@@ -134,6 +134,7 @@
       "pets": "Mascotas",
       "photoSessions": "Sesiones fotográficas",
       "platformUsage": "Uso por tenant",
+      "incidents": "Incidentes",
       "storage": "Almacenamiento",
       "platformHealth": "Salud del sistema",
       "platformAudit": "Auditoría",
@@ -6537,6 +6538,17 @@
         "Haz clic en el nombre de un tenant en la tabla para ir a su detalle en '/admin/tenants' y desde ahí cambiar su plan o revisar su historial de facturación."
       ]
     },
+    "incidents": {
+      "title": "¿Qué es el panel de Incidentes?",
+      "description": "Es la bandeja de alertas del Centro de Operaciones. Cada problema detectado (disco, RAM, Redis, colas, proveedores de IA, proyección de disco, cuota por tenant, pagos, tokens...) queda registrado aquí de forma persistente, con cuántas veces se repitió y desde cuándo. Antes solo llegaban por email y se perdían al reiniciar.",
+      "tips": [
+        "Empieza por los 'Críticos activos': son los que requieren acción inmediata. El número en rojo arriba te dice cuántos hay.",
+        "Usa 'Reconocer' para marcar que ya estás al tanto de un incidente (sigue activo pero deja de ser ruido); usa 'Resolver' cuando el problema esté solucionado.",
+        "Muchos incidentes se resuelven solos: cuando la condición vuelve a la normalidad (p. ej. el disco baja del 80%) el sistema los marca como resueltos automáticamente.",
+        "El contador ×N indica cuántas veces se repitió la misma alerta sin resolverse: un número alto señala un problema persistente.",
+        "El filtro 'Resueltos' es tu historial: úsalo para ver qué pasó en las últimas 24h y detectar patrones recurrentes."
+      ]
+    },
     "storage": {
       "title": "¿Para qué sirve el panel de Almacenamiento?",
       "description": "Esta pantalla muestra cuánto almacenamiento consume cada tenant: el tamaño de su base de datos (conversaciones, mensajes, embeddings) y sus archivos multimedia en disco, además del uso de disco total del servidor. Te ayuda a detectar quién está creciendo demasiado y actuar antes de que el disco se llene.",
@@ -7560,6 +7572,27 @@
     "timeline": "Timeline",
     "stacktrace": "Stack trace",
     "detailUnavailable": "No se pudo cargar el detalle del job"
+  },
+  "incidents": {
+    "title": "Incidentes",
+    "subtitle": "Alertas de plataforma persistentes: reconócelas, resuélvelas y revisa su historial",
+    "activeCritical": "Críticos activos",
+    "activeWarning": "Advertencias activas",
+    "acknowledged": "Reconocidos",
+    "resolved24h": "Resueltos (24h)",
+    "filter_active": "Activos",
+    "filter_acknowledged": "Reconocidos",
+    "filter_resolved": "Resueltos",
+    "filter_all": "Todos",
+    "severity_critical": "Crítico",
+    "severity_warning": "Advertencia",
+    "severity_info": "Info",
+    "lastSeen": "Última vez",
+    "resolvedBy": "Resuelto por {who}",
+    "ackedBy": "Reconocido por {who}",
+    "ack": "Reconocer",
+    "resolve": "Resolver",
+    "noIncidents": "Sin incidentes en este filtro"
   },
   "platformStorage": {
     "title": "Almacenamiento",

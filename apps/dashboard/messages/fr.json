@@ -134,6 +134,7 @@
       "pets": "Animaux",
       "photoSessions": "Séances photo",
       "platformUsage": "Utilisation par tenant",
+      "incidents": "Incidents",
       "storage": "Stockage",
       "platformHealth": "Santé du système",
       "platformAudit": "Audit",
@@ -6537,6 +6538,17 @@
         "Cliquez sur le nom d'un tenant dans le tableau pour accéder à son détail dans '/admin/tenants' et de là changer son plan ou consulter son historique de facturation."
       ]
     },
+    "incidents": {
+      "title": "Qu'est-ce que le panneau Incidents ?",
+      "description": "C'est la boîte d'alertes du Centre d'Opérations. Chaque problème détecté (disque, RAM, Redis, files, fournisseurs d'IA, projection du disque, quota par tenant, paiements, jetons...) y est enregistré de façon persistante, avec le nombre de répétitions et depuis quand. Auparavant, ils n'arrivaient que par e-mail et étaient perdus au redémarrage.",
+      "tips": [
+        "Commencez par les « Critiques actifs » : ils nécessitent une action immédiate. Le nombre en rouge en haut indique combien il y en a.",
+        "Utilisez « Accuser réception » pour signaler que vous êtes au courant d'un incident (il reste actif mais cesse d'être du bruit) ; utilisez « Résoudre » une fois le problème corrigé.",
+        "Beaucoup d'incidents se résolvent seuls : quand la condition revient à la normale (p. ex. le disque passe sous 80 %), le système les marque comme résolus automatiquement.",
+        "Le compteur ×N indique combien de fois la même alerte s'est répétée sans être résolue : un nombre élevé signale un problème persistant.",
+        "Le filtre « Résolus » est votre historique : utilisez-le pour voir ce qui s'est passé ces dernières 24 h et repérer des schémas récurrents."
+      ]
+    },
     "storage": {
       "title": "À quoi sert le panneau Stockage ?",
       "description": "Cet écran montre combien de stockage chaque tenant consomme : la taille de sa base de données (conversations, messages, embeddings) et ses fichiers multimédias sur le disque, ainsi que l'utilisation totale du disque du serveur. Il vous aide à repérer qui grandit trop vite et à agir avant que le disque ne soit plein.",
@@ -7560,6 +7572,27 @@
     "timeline": "Timeline",
     "stacktrace": "Stack trace",
     "detailUnavailable": "Impossible de charger le détail du job"
+  },
+  "incidents": {
+    "title": "Incidents",
+    "subtitle": "Alertes de plateforme persistantes : accusez réception, résolvez et consultez l'historique",
+    "activeCritical": "Critiques actifs",
+    "activeWarning": "Avertissements actifs",
+    "acknowledged": "Pris en compte",
+    "resolved24h": "Résolus (24h)",
+    "filter_active": "Actifs",
+    "filter_acknowledged": "Pris en compte",
+    "filter_resolved": "Résolus",
+    "filter_all": "Tous",
+    "severity_critical": "Critique",
+    "severity_warning": "Avertissement",
+    "severity_info": "Info",
+    "lastSeen": "Vu pour la dernière fois",
+    "resolvedBy": "Résolu par {who}",
+    "ackedBy": "Pris en compte par {who}",
+    "ack": "Accuser réception",
+    "resolve": "Résoudre",
+    "noIncidents": "Aucun incident dans ce filtre"
   },
   "platformStorage": {
     "title": "Stockage",

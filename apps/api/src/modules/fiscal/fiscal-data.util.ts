@@ -8,6 +8,8 @@ export interface TenantFiscalData {
     legalOrganizationId?: string;
     businessName?: string;
     names?: string;
+    /** Opt-in: issue as "consumidor final" (DIAN 222222222222) when the tenant has no NIT. */
+    consumidorFinal?: boolean;
     [k: string]: unknown;
 }
 
@@ -35,6 +37,8 @@ export function readFiscalData(settings: unknown): TenantFiscalData | null {
 export function isFiscalDataComplete(settings: unknown): boolean {
     const fd = readFiscalData(settings);
     if (!fd) return false;
+    // Opt-in "consumidor final" is a valid, complete profile (DIAN B2C fallback).
+    if (fd.consumidorFinal === true) return true;
     if (!fd.documentType || !fd.documentId || !fd.legalOrganizationId) return false;
     if (fd.legalOrganizationId === '1' && !fd.businessName) return false; // persona jurídica
     if (fd.legalOrganizationId === '2' && !fd.names) return false; // persona natural

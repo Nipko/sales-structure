@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Put, Query, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import type { Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -39,6 +39,8 @@ class FiscalDataDto {
     @IsOptional() @IsString() @MaxLength(120) municipalityName?: string;
     @IsOptional() @IsEmail() email?: string;
     @IsOptional() @IsString() @MaxLength(30) phone?: string;
+    /** Opt-in: issue as "consumidor final" (DIAN 222222222222); the other fields are forced server-side. */
+    @IsOptional() @IsBoolean() consumidorFinal?: boolean;
 }
 
 /**
@@ -73,6 +75,24 @@ export class FiscalController {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
         if (!tenant) throw new NotFoundException({ error: 'tenant_not_found' });
 
+        // Opt-in "consumidor final": issue as the DIAN adquirente no identificado
+        // (222222222222). Forces the canonical values server-side so downstream
+        // issuance and the fiscal gate treat it as a complete, valid profile.
+        if (body.consumidorFinal === true) {
+            const fiscalData = {
+                consumidorFinal: true,
+                documentType: '3', // cédula de ciudadanía
+                documentId: '222222222222',
+                legalOrganizationId: '2',
+                names: 'Consumidor Final',
+                tributeId: '21', // no responsable de IVA
+                email: body.email,
+            };
+            const settings = { ...((tenant.settings as object) ?? {}), fiscalData };
+            await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings: settings as any } });
+            return { success: true, data: { fiscalData } };
+        }
+
         // Persona jurídica must carry a business name; natural a name.
         if (body.legalOrganizationId === '1' && !body.businessName) {
             throw new BadRequestException({ error: 'business_name_required', message: 'Razón social requerida para persona jurídica.' });
@@ -95,6 +115,7 @@ export class FiscalController {
         }
 
         const fiscalData = {
+            consumidorFinal: false,
             documentType: body.documentType,
             documentId: body.documentId.trim(),
             dv,

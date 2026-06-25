@@ -101,9 +101,6 @@ export class BillingService {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: input.tenantId } });
         if (!tenant) throw new NotFoundException({ error: 'tenant_not_found', tenantId: input.tenantId });
 
-        // Fiscal gate: collect DIAN tax identity before starting a (chargeable) plan.
-        await this.assertFiscalDataReady(tenant, input.billingCountry);
-
         const existing = await this.prisma.billingSubscription.findUnique({ where: { tenantId: input.tenantId } });
         if (existing) {
             throw new ConflictException({
@@ -133,6 +130,13 @@ export class BillingService {
         // 'trialing' state; when the trial ends the reconciliation cron or
         // the upgrade flow creates the provider subscription and charges.
         const skipProviderCreate = plan.trialDays > 0;
+
+        // Fiscal gate: only block CHARGE-bearing flows (paid plan, or a card-backed
+        // trial that auto-converts). A free trial with no card has no charge yet, so
+        // we don't block free signups/onboarding — the gate fires later on upgrade.
+        if (plan.requiresCardForTrial || plan.trialDays === 0) {
+            await this.assertFiscalDataReady(tenant, input.billingCountry);
+        }
 
         // Create the customer on the provider side (or reuse existing one).
         // We still create the customer up front when possible so subsequent

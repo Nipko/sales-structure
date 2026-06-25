@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { IsIn, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsObject, IsOptional, IsString } from 'class-validator';
 import type { Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -14,6 +14,7 @@ import { FiscalAcquirer, FiscalInvoiceData } from './interfaces/fiscal-provider.
 class FiscalConfigDto {
     @IsOptional() @IsIn(['CO_LOCAL', 'US_REMOTE']) mode?: 'CO_LOCAL' | 'US_REMOTE';
     @IsOptional() @IsIn(['excluido', 'gravado_19']) coIvaTreatment?: 'excluido' | 'gravado_19';
+    @IsOptional() @IsBoolean() fiscalGateEnabled?: boolean;
     @IsOptional() @IsIn(['sandbox', 'production']) factusEnvironment?: string;
     @IsOptional() @IsString() factusNumberingRangeId?: string;
     @IsOptional() @IsString() factusCreditNumberingRangeId?: string;

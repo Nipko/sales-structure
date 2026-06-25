@@ -44,6 +44,13 @@ export interface FiscalConfig {
     mode: FiscalMode;
     /** How the IVA line is built for CO invoices (cloud computing default: excluido). */
     coIvaTreatment: IvaTreatment;
+    /**
+     * When true, billing REQUIRES a complete fiscal profile before any charge for
+     * tenants in DIAN countries (Colombia). Dormant by default — turn on (super
+     * admin) only after Factus is live and existing tenants are backfilled, so
+     * deploying the gate changes nothing until then.
+     */
+    fiscalGateEnabled: boolean;
     /** Informational env label for Factus ('sandbox' | 'production'). Base URL comes from env. */
     factusEnvironment: string;
     /** Factus numbering_range_id for the active "Factura de Venta" range (required to issue). */
@@ -76,6 +83,7 @@ export interface FiscalConfig {
 const DEFAULTS: FiscalConfig = {
     mode: 'CO_LOCAL',
     coIvaTreatment: 'excluido',
+    fiscalGateEnabled: false,
     factusEnvironment: 'sandbox',
     factusNumberingRangeId: null,
     factusCreditNumberingRangeId: null,
@@ -145,6 +153,7 @@ export class FiscalConfigService {
         const config: FiscalConfig = {
             mode: mode === 'US_REMOTE' ? 'US_REMOTE' : 'CO_LOCAL',
             coIvaTreatment: coIvaTreatment === 'gravado_19' ? 'gravado_19' : 'excluido',
+            fiscalGateEnabled: get('fiscal.gate_enabled') === 'true',
             factusEnvironment: get('fiscal.factus_environment') || DEFAULTS.factusEnvironment,
             factusNumberingRangeId: get('fiscal.factus_numbering_range_id') ?? DEFAULTS.factusNumberingRangeId,
             factusCreditNumberingRangeId:
@@ -173,6 +182,8 @@ export class FiscalConfigService {
         const updates: Record<string, string> = {};
         if (patch.mode) updates['fiscal.mode'] = patch.mode;
         if (patch.coIvaTreatment) updates['fiscal.co_iva_treatment'] = patch.coIvaTreatment;
+        if (patch.fiscalGateEnabled !== undefined)
+            updates['fiscal.gate_enabled'] = patch.fiscalGateEnabled ? 'true' : 'false';
         if (patch.factusEnvironment) updates['fiscal.factus_environment'] = patch.factusEnvironment;
         if (patch.factusNumberingRangeId !== undefined)
             updates['fiscal.factus_numbering_range_id'] = patch.factusNumberingRangeId ?? '';

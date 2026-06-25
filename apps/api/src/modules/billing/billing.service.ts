@@ -11,6 +11,8 @@ import {
     NormalizedBillingEvent,
     PaymentProviderName,
 } from './types/provider-types';
+import { FiscalConfigService } from '../fiscal/fiscal-config.service';
+import { billingCountryRequiresFiscalData, isFiscalDataComplete } from '../fiscal/fiscal-data.util';
 
 /**
  * Provider-agnostic subscription billing orchestrator.
@@ -40,7 +42,31 @@ export class BillingService {
         private readonly redis: RedisService,
         private readonly eventEmitter: EventEmitter2,
         private readonly providerFactory: PaymentProviderFactory,
+        private readonly fiscalConfig: FiscalConfigService,
     ) {}
+
+    /**
+     * Fiscal gate (top global pattern: collect tax identity before charging).
+     * When enabled by the super admin, a tenant in a DIAN country (Colombia) must
+     * have a complete + valid fiscal profile before any charge-bearing flow
+     * (trial start, upgrade). Dormant by default (fiscal.gate_enabled=false) so
+     * deploying it changes nothing until fiscal go-live + tenant backfill.
+     */
+    private async assertFiscalDataReady(
+        tenant: { billingCountry?: string | null; settings?: unknown } | null,
+        effectiveCountry?: string | null,
+    ): Promise<void> {
+        const cfg = await this.fiscalConfig.getConfig();
+        if (!cfg.fiscalGateEnabled) return;
+        const country = effectiveCountry ?? tenant?.billingCountry;
+        if (!billingCountryRequiresFiscalData(country)) return;
+        if (isFiscalDataComplete(tenant?.settings)) return;
+        throw new BadRequestException({
+            error: 'fiscal_data_required',
+            message:
+                'Completa tus datos fiscales (NIT/cédula) antes de iniciar o cambiar tu plan. Es requerido para emitir tu factura electrónica (DIAN).',
+        });
+    }
 
     // -------------------------------------------------------------------------
     // Reads
@@ -74,6 +100,9 @@ export class BillingService {
     }) {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: input.tenantId } });
         if (!tenant) throw new NotFoundException({ error: 'tenant_not_found', tenantId: input.tenantId });
+
+        // Fiscal gate: collect DIAN tax identity before starting a (chargeable) plan.
+        await this.assertFiscalDataReady(tenant, input.billingCountry);
 
         const existing = await this.prisma.billingSubscription.findUnique({ where: { tenantId: input.tenantId } });
         if (existing) {
@@ -218,8 +247,10 @@ export class BillingService {
         const provider = this.providerFactory.getByName(providerName);
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { id: true, name: true, billingCountry: true, billingEmail: true, paymentProviderCustomerId: true },
+            select: { id: true, name: true, billingCountry: true, billingEmail: true, paymentProviderCustomerId: true, settings: true },
         });
+        // Fiscal gate: require DIAN tax identity before charging an upgrade.
+        await this.assertFiscalDataReady(tenant);
         const newProviderPlanId = this.resolveProviderPlanId(newPlan, providerName, tenant?.billingCountry);
 
         let updatedStatus = sub.status;

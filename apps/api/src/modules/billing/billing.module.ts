@@ -19,6 +19,7 @@ import { PaymentProviderFactory } from './payment-provider.factory';
 import { BillingReconciliationProcessor } from './processors/reconciliation.processor';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { MediaProcessingModule } from '../media-processing/media-processing.module';
+import { FiscalModule } from '../fiscal/fiscal.module';
 
 /**
  * Billing module — provider-agnostic subscription billing.
@@ -31,7 +32,7 @@ import { MediaProcessingModule } from '../media-processing/media-processing.modu
  * so it is consumable in BillingService without an explicit import here.
  */
 @Module({
-    imports: [PrismaModule, RedisModule, EmailModule, MediaProcessingModule],
+    imports: [PrismaModule, RedisModule, EmailModule, MediaProcessingModule, FiscalModule],
     controllers: [BillingController, BillingAdminController, BillingPublicController, CouponsController, BillingWebhookController],
     providers: [
         BillingService,

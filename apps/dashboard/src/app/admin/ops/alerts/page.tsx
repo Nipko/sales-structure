@@ -21,6 +21,7 @@ interface AlertConfig {
     pgbouncer: { warnSec: number; critSec: number };
     sentryErrors: { warn: number; crit: number };
     slaBreaches: { warn: number; crit: number };
+    queueDepth: Record<string, { warn: number; crit: number }>;
     queueFailed: number;
     paymentFailures: number;
     llmBudgetPct: number;
@@ -151,6 +152,26 @@ export default function AlertConfigPage() {
                         <Single label={t("storageQuotaPct")} field="storageQuotaPct" unit="%" />
                         <Single label={t("diskProjectionDays")} field="diskProjectionDays" unit={t("unitDays")} />
                         <Single label={t("backupStaleHours")} field="backupStaleHours" unit={t("unitHours")} />
+                    </section>
+
+                    <section className="bg-card border border-border rounded-xl p-4">
+                        <h3 className="text-sm font-semibold mb-1">{t("queueDepthTitle")}</h3>
+                        <p className="text-xs text-muted-foreground mb-2">{t("queueDepthHint")}</p>
+                        {Object.keys(cfg.queueDepth).map(name => (
+                            <div key={name} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 py-2 border-b border-border last:border-0">
+                                <span className="text-sm font-mono truncate">{name}</span>
+                                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    {t("warn")}
+                                    <input type="number" value={cfg.queueDepth[name].warn} onChange={e => setNum(["queueDepth", name, "warn"], e.target.value)}
+                                        className="w-20 bg-card border border-border rounded-lg px-2 py-1 text-sm text-foreground" />
+                                </label>
+                                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    {t("crit")}
+                                    <input type="number" value={cfg.queueDepth[name].crit} onChange={e => setNum(["queueDepth", name, "crit"], e.target.value)}
+                                        className="w-20 bg-card border border-border rounded-lg px-2 py-1 text-sm text-foreground" />
+                                </label>
+                            </div>
+                        ))}
                     </section>
 
                     <section className="bg-card border border-border rounded-xl p-4">

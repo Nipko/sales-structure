@@ -7590,6 +7590,8 @@
     "subtitle": "Tune the platform monitor's thresholds and notification channels — no deploy needed",
     "backToIncidents": "Back to Incidents",
     "thresholdsTitle": "Thresholds",
+    "queueDepthTitle": "Queue depth (BullMQ)",
+    "queueDepthHint": "Pending-jobs threshold (waiting + active) per queue.",
     "channelsTitle": "Notification channels",
     "channelsHint": "Incidents are always recorded; these toggles only control the email/Telegram notifications.",
     "warn": "Warn",

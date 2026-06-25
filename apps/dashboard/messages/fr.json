@@ -7590,6 +7590,8 @@
     "subtitle": "Ajustez les seuils du moniteur de plateforme et les canaux de notification, sans déploiement",
     "backToIncidents": "Retour aux Incidents",
     "thresholdsTitle": "Seuils",
+    "queueDepthTitle": "Profondeur des files (BullMQ)",
+    "queueDepthHint": "Seuil de jobs en attente (waiting + active) par file.",
     "channelsTitle": "Canaux de notification",
     "channelsHint": "Les incidents sont toujours enregistrés ; ces options contrôlent uniquement les notifications par e-mail/Telegram.",
     "warn": "Alerte",

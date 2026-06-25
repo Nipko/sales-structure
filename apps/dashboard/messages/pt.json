@@ -7590,6 +7590,8 @@
     "subtitle": "Ajuste os limiares do monitor da plataforma e os canais de notificação, sem precisar de deploy",
     "backToIncidents": "Voltar a Incidentes",
     "thresholdsTitle": "Limiares",
+    "queueDepthTitle": "Profundidade das filas (BullMQ)",
+    "queueDepthHint": "Limiar de jobs pendentes (waiting + active) por fila.",
     "channelsTitle": "Canais de notificação",
     "channelsHint": "Os incidentes sempre ficam registrados; estes toggles só controlam os avisos por email/Telegram.",
     "warn": "Aviso",

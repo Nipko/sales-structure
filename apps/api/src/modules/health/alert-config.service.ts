@@ -16,6 +16,7 @@ export interface AlertConfig {
     pgbouncer: { warnSec: number; critSec: number };
     sentryErrors: { warn: number; crit: number };
     slaBreaches: { warn: number; crit: number };
+    queueDepth: Record<string, { warn: number; crit: number }>;
     queueFailed: number;
     paymentFailures: number;
     llmBudgetPct: number;
@@ -33,6 +34,12 @@ export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
     pgbouncer: { warnSec: 5, critSec: 20 },
     sentryErrors: { warn: 50, crit: 200 },
     slaBreaches: { warn: 10, crit: 30 },
+    queueDepth: {
+        'outbound-messages': { warn: 500, crit: 2000 },
+        'broadcast-messages': { warn: 1000, crit: 5000 },
+        'automation-jobs': { warn: 300, crit: 1000 },
+        'nurturing': { warn: 200, crit: 500 },
+    },
     queueFailed: 100,
     paymentFailures: 5,
     llmBudgetPct: 90,
@@ -59,6 +66,12 @@ export class AlertConfigService {
     private mergeOver(base: AlertConfig, partial: any): AlertConfig {
         const p = (partial && typeof partial === 'object') ? partial : {};
         const num = (v: any, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+        // Deep-merge the per-queue depth thresholds against the canonical queue set.
+        const qd: Record<string, { warn: number; crit: number }> = {};
+        for (const k of Object.keys(base.queueDepth)) {
+            const pk = (p.queueDepth && typeof p.queueDepth === 'object' && p.queueDepth[k]) || {};
+            qd[k] = { ...base.queueDepth[k], ...pk };
+        }
         return {
             disk: { ...base.disk, ...(p.disk || {}) },
             ram: { ...base.ram, ...(p.ram || {}) },
@@ -67,6 +80,7 @@ export class AlertConfigService {
             pgbouncer: { ...base.pgbouncer, ...(p.pgbouncer || {}) },
             sentryErrors: { ...base.sentryErrors, ...(p.sentryErrors || {}) },
             slaBreaches: { ...base.slaBreaches, ...(p.slaBreaches || {}) },
+            queueDepth: qd,
             queueFailed: num(p.queueFailed, base.queueFailed),
             paymentFailures: num(p.paymentFailures, base.paymentFailures),
             llmBudgetPct: num(p.llmBudgetPct, base.llmBudgetPct),

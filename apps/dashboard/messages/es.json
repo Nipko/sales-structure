@@ -7590,6 +7590,8 @@
     "subtitle": "Ajusta los umbrales del monitor de plataforma y los canales de notificación, sin necesidad de deploy",
     "backToIncidents": "Volver a Incidentes",
     "thresholdsTitle": "Umbrales",
+    "queueDepthTitle": "Profundidad de colas (BullMQ)",
+    "queueDepthHint": "Umbral de jobs pendientes (waiting + active) por cola.",
     "channelsTitle": "Canales de notificación",
     "channelsHint": "Los incidentes siempre quedan registrados; estos toggles solo controlan los avisos por email/Telegram.",
     "warn": "Aviso",

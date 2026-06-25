@@ -84,34 +84,35 @@ export class PlatformMonitorService implements OnModuleInit {
     async checkQueues() {
         const cfg = await this.alertConfig.get();
         const queues = [
-            { name: 'outbound-messages', queue: this.outboundQueue, warnAt: 500, critAt: 2000 },
-            { name: 'broadcast-messages', queue: this.broadcastQueue, warnAt: 1000, critAt: 5000 },
-            { name: 'automation-jobs', queue: this.automationQueue, warnAt: 300, critAt: 1000 },
-            { name: 'nurturing', queue: this.nurturingQueue, warnAt: 200, critAt: 500 },
+            { name: 'outbound-messages', queue: this.outboundQueue },
+            { name: 'broadcast-messages', queue: this.broadcastQueue },
+            { name: 'automation-jobs', queue: this.automationQueue },
+            { name: 'nurturing', queue: this.nurturingQueue },
         ];
 
         for (const q of queues) {
             try {
+                const d = cfg.queueDepth[q.name] || { warn: 500, crit: 2000 };
                 const waiting = await q.queue.getWaitingCount();
                 const active = await q.queue.getActiveCount();
                 const failed = await q.queue.getFailedCount();
                 const depth = waiting + active;
 
-                if (depth >= q.critAt) {
+                if (depth >= d.crit) {
                     await this.alert(
                         `queue:${q.name}:critical`,
                         `Cola ${q.name} CRITICA`,
-                        `La cola <b>${q.name}</b> tiene <b>${depth}</b> jobs pendientes (umbral: ${q.critAt}).<br>
+                        `La cola <b>${q.name}</b> tiene <b>${depth}</b> jobs pendientes (umbral: ${d.crit}).<br>
                          Waiting: ${waiting} | Active: ${active} | Failed: ${failed}<br><br>
                          Revisa Bull Board para más detalles.`,
                         depth,
                     );
                     await this.incidents.resolveByKey(`queue:${q.name}:warning`);
-                } else if (depth >= q.warnAt) {
+                } else if (depth >= d.warn) {
                     await this.alert(
                         `queue:${q.name}:warning`,
                         `Cola ${q.name} alta`,
-                        `La cola <b>${q.name}</b> tiene <b>${depth}</b> jobs pendientes (umbral warning: ${q.warnAt}).<br>
+                        `La cola <b>${q.name}</b> tiene <b>${depth}</b> jobs pendientes (umbral warning: ${d.warn}).<br>
                          Waiting: ${waiting} | Active: ${active} | Failed: ${failed}`,
                         depth,
                     );

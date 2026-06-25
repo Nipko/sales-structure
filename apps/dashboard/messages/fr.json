@@ -9372,6 +9372,8 @@
     "ivaTreatment": "Traitement TVA (Colombie)",
     "ivaExcluido": "Exclu (cloud computing)",
     "ivaGravado": "Taxé 19%",
+    "gateEnabled": "Exiger les données fiscales avant de facturer",
+    "gateEnabledHint": "Si activé, un client colombien doit renseigner son NIT/pièce d'identité avant de démarrer ou de changer pour un plan payant. À activer uniquement lorsque Factus est en production et que les clients existants ont leurs données.",
     "factusEnvironment": "Environnement Factus",
     "sandbox": "Sandbox",
     "production": "Production",

@@ -9372,6 +9372,8 @@
     "ivaTreatment": "Tratamiento de IVA (Colombia)",
     "ivaExcluido": "Excluido (computación en la nube)",
     "ivaGravado": "Gravado 19%",
+    "gateEnabled": "Exigir datos fiscales antes de cobrar",
+    "gateEnabledHint": "Si está activo, un cliente de Colombia debe completar su NIT/cédula antes de iniciar o cambiar a un plan pago. Actívalo solo cuando Factus esté en producción y los clientes existentes tengan sus datos.",
     "factusEnvironment": "Entorno Factus",
     "sandbox": "Pruebas (sandbox)",
     "production": "Producción",

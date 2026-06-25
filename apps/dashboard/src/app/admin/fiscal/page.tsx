@@ -14,6 +14,7 @@ import {
 type FiscalConfig = {
     mode: "CO_LOCAL" | "US_REMOTE";
     coIvaTreatment: "excluido" | "gravado_19";
+    fiscalGateEnabled: boolean;
     factusEnvironment: string;
     factusNumberingRangeId: string | null;
     factusCreditNumberingRangeId: string | null;
@@ -179,6 +180,30 @@ export default function FiscalAdminPage() {
                                 <option value="gravado_19">{t("ivaGravado")}</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-500/20 dark:bg-amber-500/5">
+                        <div>
+                            <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{t("gateEnabled")}</p>
+                            <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{t("gateEnabledHint")}</p>
+                        </div>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={config.fiscalGateEnabled}
+                            onClick={() => setConfig({ ...config, fiscalGateEnabled: !config.fiscalGateEnabled })}
+                            className={cn(
+                                "relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors",
+                                config.fiscalGateEnabled ? "bg-teal-600" : "bg-neutral-300 dark:bg-neutral-600",
+                            )}
+                        >
+                            <span
+                                className={cn(
+                                    "absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform",
+                                    config.fiscalGateEnabled ? "translate-x-[22px]" : "translate-x-0.5",
+                                )}
+                            />
+                        </button>
                     </div>
 
                     <div className="grid grid-cols-3 gap-4">

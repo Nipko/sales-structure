@@ -9358,6 +9358,12 @@
     "aiSuggest": "Sugerir com IA",
     "postReply": "Publicar resposta"
   },
+  "fiscalGate": {
+    "title": "Complete seus dados fiscais",
+    "body": "Para iniciar ou mudar de plano precisamos do seu NIT/documento e dados de faturamento, exigidos para emitir sua nota fiscal eletrônica (DIAN). Complete seu perfil fiscal e tente novamente.",
+    "later": "Mais tarde",
+    "complete": "Completar dados fiscais"
+  },
   "fiscalAdmin": {
     "title": "Faturação eletrônica (Plataforma)",
     "subtitle": "Configuração fiscal global, faturas de todos os clientes e conexão com a Factus.",

@@ -1719,14 +1719,14 @@ async function apiGet<T = any>(endpoint: string): Promise<{ success: boolean; da
     }
 }
 
-async function apiPost<T = any>(endpoint: string, body: any): Promise<{ success: boolean; data?: T; error?: string }> {
+async function apiPost<T = any>(endpoint: string, body: any): Promise<{ success: boolean; data?: T; error?: string; errorCode?: string }> {
     try {
         const res = await authFetch(endpoint, {
             method: "POST",
             body: JSON.stringify(body),
         });
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}` };
+        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };

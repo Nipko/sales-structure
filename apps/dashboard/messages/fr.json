@@ -9358,6 +9358,12 @@
     "aiSuggest": "Suggérer avec IA",
     "postReply": "Publier la réponse"
   },
+  "fiscalGate": {
+    "title": "Complétez vos données fiscales",
+    "body": "Pour démarrer ou changer de plan, nous avons besoin de votre NIT/pièce d'identité et de vos informations de facturation, requis pour émettre votre facture électronique (DIAN). Complétez votre profil fiscal et réessayez.",
+    "later": "Plus tard",
+    "complete": "Compléter les données fiscales"
+  },
   "fiscalAdmin": {
     "title": "Facturation électronique (Plateforme)",
     "subtitle": "Configuration fiscale globale, factures de tous les clients et connexion Factus.",

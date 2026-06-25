@@ -9358,6 +9358,12 @@
     "aiSuggest": "Sugerir con IA",
     "postReply": "Publicar respuesta"
   },
+  "fiscalGate": {
+    "title": "Completa tus datos fiscales",
+    "body": "Para iniciar o cambiar a un plan necesitamos tu NIT/cédula y datos de facturación, requeridos para emitir tu factura electrónica (DIAN). Completa tu perfil fiscal y vuelve a intentarlo.",
+    "later": "Más tarde",
+    "complete": "Completar datos fiscales"
+  },
   "fiscalAdmin": {
     "title": "Facturación electrónica (Plataforma)",
     "subtitle": "Configuración fiscal global, facturas de todos los clientes y conexión con Factus.",

@@ -9358,6 +9358,12 @@
     "aiSuggest": "AI suggest",
     "postReply": "Post reply"
   },
+  "fiscalGate": {
+    "title": "Complete your tax details",
+    "body": "To start or change a plan we need your tax ID and billing details, required to issue your electronic invoice (DIAN). Complete your fiscal profile and try again.",
+    "later": "Later",
+    "complete": "Complete tax details"
+  },
   "fiscalAdmin": {
     "title": "Electronic invoicing (Platform)",
     "subtitle": "Global fiscal configuration, all customers' invoices, and Factus connection.",

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import MpCardForm from "@/components/billing/MpCardForm";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { FiscalGateModal } from "@/components/FiscalGateModal";
 
 type SubscriptionStatus = "pending_auth" | "trialing" | "active" | "past_due" | "cancelled" | "expired";
 
@@ -159,6 +160,7 @@ export default function BillingPage() {
     // Modal state — "upgrade" when user is about to subscribe/change to a paid plan
     // that needs a card; "change-card" when rotating the card on an existing sub.
     const [modal, setModal] = useState<null | { kind: "upgrade"; planSlug: string } | { kind: "change-card" }>(null);
+    const [fiscalGate, setFiscalGate] = useState(false);
     const [modalSubmitting, setModalSubmitting] = useState(false);
 
     const load = useCallback(async () => {
@@ -221,11 +223,17 @@ export default function BillingPage() {
 
             if (!subscription) {
                 const res = await api.startBillingTrial(activeTenantId, { planSlug, cardTokenId });
-                if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
+                if (!res?.success) {
+                    if ((res as any)?.errorCode === "fiscal_data_required") { setModal(null); setFiscalGate(true); return; }
+                    throw new Error((res as any)?.error || t("actionFailed"));
+                }
                 setToast(t("trialStarted"));
             } else {
                 const res = await api.upgradeBillingPlan(activeTenantId, { planSlug, cardTokenId });
-                if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
+                if (!res?.success) {
+                    if ((res as any)?.errorCode === "fiscal_data_required") { setModal(null); setFiscalGate(true); return; }
+                    throw new Error((res as any)?.error || t("actionFailed"));
+                }
                 setToast(t("planChanged"));
             }
             setModal(null);
@@ -1006,6 +1014,7 @@ export default function BillingPage() {
             </section>
 
             {/* Card modal — upgrade-to-paid flow and change-card flow */}
+            <FiscalGateModal open={fiscalGate} onClose={() => setFiscalGate(false)} />
             {modal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !modalSubmitting && setModal(null)}>
                     <div className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>

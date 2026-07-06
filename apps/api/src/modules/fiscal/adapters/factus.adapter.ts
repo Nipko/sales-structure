@@ -281,26 +281,58 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
     }
 
     private async buildCustomer(a: FiscalAcquirer, cfg: { defaultMunicipalityId: string | null }): Promise<Record<string, unknown>> {
+        const tributeId = a.tributeId || '21'; // 21 = no responsable de IVA (default)
         const customer: Record<string, unknown> = {
             identification: a.documentId,
-            legal_organization_id: a.legalOrganizationId,
-            tribute_id: a.tributeId || '21', // 21 = no responsable de IVA (default)
-            identification_document_id: a.documentType,
             names: a.names || a.businessName || '',
             company: a.businessName || a.names || '',
+            // Current Factus "codes" contract. identification_document_code is the
+            // DIAN document-type code (NOT our Factus catalog id): cédula=13, NIT=31,
+            // etc. legal_organization (1/2) and tribute (18/21) keep their values.
+            identification_document_code: this.dianDocTypeCode(a.documentType),
+            legal_organization_code: a.legalOrganizationId,
+            tribute_code: tributeId,
+            // Legacy "internal IDs" contract — kept for compatibility; ignored by
+            // the current validation.
+            legal_organization_id: a.legalOrganizationId,
+            tribute_id: tributeId,
+            identification_document_id: a.documentType,
         };
         if (a.dv) customer.dv = a.dv;
         if (a.address) customer.address = a.address;
         if (a.email) customer.email = a.email;
         if (a.phone) customer.phone = a.phone;
-        // Municipality: an explicit Factus id wins; otherwise resolve it from the
-        // DANE/DIVIPOLA code the tenant selected; otherwise the configured default.
+        // municipality_code (codes contract) is the DANE/DIVIPOLA code directly.
+        if (a.daneCode) customer.municipality_code = a.daneCode;
+        // Legacy municipality_id: an explicit Factus id wins; otherwise resolve it
+        // from the DANE/DIVIPOLA code; otherwise the configured default.
         const municipality =
             a.municipalityId ||
             (a.daneCode ? await this.resolveMunicipalityId(a.daneCode) : null) ||
             cfg.defaultMunicipalityId;
         if (municipality) customer.municipality_id = municipality;
         return customer;
+    }
+
+    /**
+     * Map our Factus identification_document catalog id to the DIAN
+     * identification_document_code the current Factus "codes" contract expects
+     * (Factus id → DIAN code: 3→13 cédula, 6→31 NIT, 5→22 céd. extranjería,
+     * 7→41 pasaporte, …). Falls back to the input value if unmapped.
+     */
+    private dianDocTypeCode(factusDocType: string | undefined): string {
+        const map: Record<string, string> = {
+            '1': '11', // Registro civil
+            '2': '12', // Tarjeta de identidad
+            '3': '13', // Cédula de ciudadanía
+            '4': '21', // Tarjeta de extranjería
+            '5': '22', // Cédula de extranjería
+            '6': '31', // NIT
+            '7': '41', // Pasaporte
+            '8': '42', // Documento de identificación de extranjero
+            '10': '50', // NIT de otro país
+        };
+        return map[String(factusDocType ?? '')] ?? String(factusDocType ?? '');
     }
 
     /** Resolve the Factus internal municipality_id from a 5-digit DANE/DIVIPOLA code (cached in-memory). */

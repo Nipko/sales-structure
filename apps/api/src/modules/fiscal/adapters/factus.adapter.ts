@@ -173,7 +173,22 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             items: [line.item],
         };
 
-        const res = await this.authedFetch('/v2/bills/validate', { method: 'POST', body: payload });
+        let res = await this.authedFetch('/v2/bills/validate', { method: 'POST', body: payload });
+        if (res.status === 409) {
+            // A previous attempt left a bill for this reference_code in Factus,
+            // "pendiente por enviar a la DIAN" (created but not yet validated), so
+            // re-validating the same reference_code 409s forever. Factus's sanctioned
+            // recovery is to delete the not-yet-validated bill and re-issue. Delete is
+            // refused for an already-validated bill (safe); in that rare case we
+            // reconcile by reference and recover the existing CUFE instead of failing.
+            this.logger.warn(`[Factus] 409 on reference ${data.referenceCode} — deleting stuck pending bill and re-issuing`);
+            await this.deleteByReference(data.referenceCode);
+            res = await this.authedFetch('/v2/bills/validate', { method: 'POST', body: payload });
+            if (res.status === 409) {
+                const recovered = await this.reconcileByReference(data.referenceCode);
+                if (recovered) return recovered;
+            }
+        }
         return this.parseIssueResponse(res, 'bill');
     }
 
@@ -217,6 +232,78 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         }
         const bill = json?.data?.bill ?? json?.data ?? {};
         return { status: String(bill?.status ?? json?.status ?? 'unknown'), raw: json };
+    }
+
+    /**
+     * Delete a not-yet-validated bill by its reference_code (Factus:
+     * DELETE /v2/bills/destroy/reference/:reference_code). Best-effort: Factus
+     * refuses to delete a bill already validated by the DIAN, and a missing
+     * reference is a no-op — both are fine, we only use this to clear a bill left
+     * "pendiente por enviar a la DIAN" so a re-issue with the same reference works.
+     */
+    private async deleteByReference(referenceCode: string): Promise<void> {
+        try {
+            const res = await this.authedFetch(
+                `/v2/bills/destroy/reference/${encodeURIComponent(referenceCode)}`,
+                { method: 'DELETE' },
+            );
+            if (res.ok) this.logger.warn(`[Factus] Deleted stuck pending bill for reference ${referenceCode}`);
+            else this.logger.warn(`[Factus] deleteByReference(${referenceCode}) → HTTP ${res.status} (ignored)`);
+        } catch (e: any) {
+            this.logger.warn(`[Factus] deleteByReference(${referenceCode}) failed: ${e?.message}`);
+        }
+    }
+
+    /**
+     * Recover an already-validated bill by reference_code (used when a 409 means
+     * the bill was validated by the DIAN on a prior attempt). Returns an issued
+     * result ONLY when a CUFE is present; otherwise null (so the caller can fall
+     * back to delete + re-issue). Best-effort — any error resolves to null.
+     */
+    private async reconcileByReference(referenceCode: string): Promise<FiscalIssueResult | null> {
+        try {
+            const listRes = await this.authedFetch(
+                `/v2/bills?filter[reference_code]=${encodeURIComponent(referenceCode)}`,
+                { method: 'GET' },
+            );
+            if (!listRes.ok) return null;
+            const listJson: any = await listRes.json().catch(() => ({}));
+            const list: any[] = Array.isArray(listJson?.data)
+                ? listJson.data
+                : Array.isArray(listJson?.data?.data)
+                    ? listJson.data.data
+                    : [];
+            const summary = list.find((b) => String(b?.reference_code) === referenceCode) || list[0];
+            if (!summary) return null;
+
+            // Fetch full detail by number to obtain CUFE/QR/public_url.
+            let bill = summary;
+            const number = summary?.number != null ? String(summary.number) : null;
+            if (number) {
+                const detRes = await this.authedFetch(`/v2/bills/show/${encodeURIComponent(number)}`, { method: 'GET' });
+                if (detRes.ok) {
+                    const detJson: any = await detRes.json().catch(() => ({}));
+                    bill = detJson?.data?.bill ?? detJson?.data ?? summary;
+                }
+            }
+
+            const cufe = bill?.cufe ?? bill?.cude;
+            if (!cufe) return null; // not validated yet → let caller delete + re-issue
+
+            this.logger.warn(`[Factus] Reconciled already-validated bill for reference ${referenceCode} (${bill?.number})`);
+            return {
+                status: 'issued',
+                providerRef: bill?.id != null ? String(bill.id) : number ?? undefined,
+                invoiceNumber: bill?.number != null ? String(bill.number) : number ?? undefined,
+                cufe: String(cufe),
+                qrUrl: bill?.qr ?? undefined,
+                pdfUrl: bill?.public_url ?? undefined,
+                taxCents: bill?.tax_amount != null ? Math.round(parseFloat(String(bill.tax_amount)) * 100) : undefined,
+                raw: { reconciledByReference: true, bill },
+            };
+        } catch {
+            return null;
+        }
     }
 
     // -------------------------------------------------------------------------

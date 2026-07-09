@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Put, Query, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import type { Response } from 'express';
@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { FiscalStorageService } from './fiscal-storage.service';
 import { FiscalPdfService, BrandedInvoiceData } from './fiscal-pdf.service';
 import { FiscalConfigService } from './fiscal-config.service';
+import { FiscalInvoiceService } from './fiscal-invoice.service';
 import { FactusAdapter } from './adapters/factus.adapter';
 import { computeNitDv } from './nit.util';
 
@@ -56,6 +57,7 @@ export class FiscalController {
         private readonly storage: FiscalStorageService,
         private readonly pdf: FiscalPdfService,
         private readonly config: FiscalConfigService,
+        private readonly fiscalService: FiscalInvoiceService,
         private readonly factus: FactusAdapter,
     ) {}
 
@@ -160,6 +162,26 @@ export class FiscalController {
             },
         });
         return { success: true, data: invoices };
+    }
+
+    /**
+     * Re-queue a failed/pending fiscal invoice for another issuance attempt.
+     * Tenant-facing (scoped to :tenantId so a tenant can only retry its own).
+     * With the consumidor-final fallback this now succeeds even when the tenant
+     * never completed its fiscal profile.
+     */
+    @Post(':tenantId/invoices/:id/retry')
+    async retryInvoice(@Param('tenantId') tenantId: string, @Param('id') id: string) {
+        const inv = await this.prisma.fiscalInvoice.findFirst({
+            where: { id, tenantId },
+            select: { id: true },
+        });
+        if (!inv) throw new NotFoundException({ error: 'invoice_not_found' });
+        const ok = await this.fiscalService.requeue(id);
+        if (!ok) {
+            throw new BadRequestException({ error: 'cannot_retry', message: 'La factura ya está emitida o no se puede reintentar.' });
+        }
+        return { success: true };
     }
 
     @Get(':tenantId/invoices/:id/pdf')

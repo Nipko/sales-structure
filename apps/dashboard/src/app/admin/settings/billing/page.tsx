@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -154,6 +155,9 @@ export default function BillingPage() {
     } | null>(null);
     const [action, setAction] = useState<null | "upgrade" | "cancel" | "reactivate" | "pause" | "resume" | "retry">(null);
     const [targetPlan, setTargetPlan] = useState<string | null>(null);
+    // Fiscal profile (DIAN) — undefined = not loaded, null = none on file.
+    const [fiscalData, setFiscalData] = useState<{ consumidorFinal?: boolean; documentId?: string; businessName?: string; names?: string } | null | undefined>(undefined);
+    const [billingCountry, setBillingCountry] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [toast, setToast] = useState<string | null>(null);
 
@@ -173,12 +177,17 @@ export default function BillingPage() {
             const subRes = await api.getBillingSubscription(activeTenantId);
             if (subRes?.success) setSubscription((subRes.data as any) ?? null);
             const country = (subRes as any)?.billingCountry as string | null;
-            const [plansRes, usageRes, kbRes] = await Promise.all([
+            const [plansRes, usageRes, kbRes, fiscalRes] = await Promise.all([
                 api.getBillingPlans(country || undefined),
                 api.getBillingUsage(activeTenantId),
                 api.fetch(`/knowledge/usage/${activeTenantId}`).catch(() => null),
+                api.getFiscalData(activeTenantId).catch(() => null),
             ]);
             if (plansRes?.success) setPlans((plansRes.data as Plan[]) ?? []);
+            if (fiscalRes?.success) {
+                setFiscalData(((fiscalRes.data as any)?.fiscalData ?? null));
+                setBillingCountry(((fiscalRes.data as any)?.billingCountry ?? country ?? null));
+            }
             if (usageRes?.success) {
                 const d = usageRes.data as any;
                 setUsage(d?.aiMessages ? {
@@ -203,6 +212,12 @@ export default function BillingPage() {
         () => plans.find((p) => p.id === subscription?.planId),
         [plans, subscription?.planId],
     );
+
+    const fiscalStatus = useMemo<"complete" | "consumidor_final" | "pending">(() => {
+        if (fiscalData?.consumidorFinal) return "consumidor_final";
+        if (fiscalData?.documentId) return "complete";
+        return "pending";
+    }, [fiscalData]);
 
     const handleUpgrade = async (planSlug: string, cardTokenId?: string) => {
         if (!activeTenantId) return;
@@ -584,6 +599,69 @@ export default function BillingPage() {
                 <section className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950/20 p-6 text-sm text-indigo-800 dark:text-indigo-300">
                     <p className="font-medium">{t("noSubscription")}</p>
                     <p className="mt-1 text-indigo-700 dark:text-indigo-400">{t("noSubscriptionHint")}</p>
+                </section>
+            )}
+
+            {/* Fiscal profile (DIAN) — Colombia only. Status + link to complete the
+                fiscal data; warns that leaving it blank issues to "consumidor final". */}
+            {billingCountry === "CO" && fiscalData !== undefined && (
+                <section
+                    className={cn(
+                        "rounded-xl border p-5",
+                        fiscalStatus === "pending"
+                            ? "border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20"
+                            : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900",
+                    )}
+                >
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div className="flex items-start gap-3">
+                            <div
+                                className={cn(
+                                    "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                                    fiscalStatus === "complete"
+                                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                        : fiscalStatus === "consumidor_final"
+                                            ? "bg-teal-500/10 text-teal-600 dark:text-teal-400"
+                                            : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                                )}
+                            >
+                                {fiscalStatus === "complete" ? <CheckCircle2 size={18} />
+                                    : fiscalStatus === "consumidor_final" ? <FileText size={18} />
+                                        : <AlertTriangle size={18} />}
+                            </div>
+                            <div>
+                                <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                                    {t("fiscalSectionTitle")}
+                                </h2>
+                                {fiscalStatus === "complete" && (
+                                    <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                                        {t("fiscalStatusCompleteHint", { name: fiscalData?.businessName || fiscalData?.names || "—" })}
+                                    </p>
+                                )}
+                                {fiscalStatus === "consumidor_final" && (
+                                    <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                                        {t("fiscalStatusConsumidorFinalHint")}
+                                    </p>
+                                )}
+                                {fiscalStatus === "pending" && (
+                                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 max-w-xl">
+                                        {t("fiscalStatusPendingHint")}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                        <Link
+                            href="/admin/settings/fiscal"
+                            className={cn(
+                                "shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                                fiscalStatus === "pending"
+                                    ? "bg-amber-500 hover:bg-amber-600 text-white"
+                                    : "bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200",
+                            )}
+                        >
+                            {fiscalStatus === "pending" ? t("fiscalCompleteCta") : t("fiscalManageCta")}
+                        </Link>
+                    </div>
                 </section>
             )}
 

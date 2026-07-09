@@ -7,7 +7,7 @@ import { FiscalConfigService } from '../fiscal-config.service';
 import { FiscalProviderFactory } from '../fiscal-provider.factory';
 import { FactusAdapter } from '../adapters/factus.adapter';
 import { FiscalStorageService } from '../fiscal-storage.service';
-import { FISCAL_MAX_ATTEMPTS, FISCAL_QUEUE, FiscalJobData } from '../fiscal.constants';
+import { CONSUMIDOR_FINAL_ACQUIRER, FISCAL_MAX_ATTEMPTS, FISCAL_QUEUE, FiscalJobData } from '../fiscal.constants';
 import { FiscalAcquirer, FiscalIssueResult } from '../interfaces/fiscal-provider.interface';
 
 /**
@@ -52,13 +52,23 @@ export class FiscalInvoiceProcessor extends WorkerHost {
 
         // Acquirer: prefer the immutable snapshot taken at creation; fall back to
         // current tenant fiscal data.
-        const acquirer =
+        let acquirer =
             (inv.acquirerSnapshot as FiscalAcquirer | null) ?? this.extractAcquirer(tenant?.settings);
 
+        // Colombia requires a fiscal document for EVERY sale. When the tenant was
+        // charged before completing its fiscal profile, issue to the DIAN
+        // "consumidor final" (adquirente no identificado, 222222222222) — the
+        // legally-valid B2C fallback a POS uses — instead of failing. The tenant
+        // is warned (checkout + billing) that missing data means this. We persist
+        // the fallback snapshot so the archived record/PDF reflects who it was
+        // issued to, and a retry of a previously-failed invoice now succeeds.
+        let consumidorFinalFallback = false;
         if (provider.name === 'factus' && (!acquirer || !acquirer.documentId)) {
-            await this.markFailed(inv.id, 'missing_fiscal_data');
-            this.escalate(inv.id, inv.tenantId, 'missing_fiscal_data');
-            return; // non-retryable until the tenant completes its fiscal profile
+            acquirer = CONSUMIDOR_FINAL_ACQUIRER;
+            consumidorFinalFallback = true;
+            this.logger.warn(
+                `[Fiscal] Invoice ${inv.id} (tenant=${inv.tenantId}) has no fiscal data — issuing to consumidor final (DIAN 222222222222)`,
+            );
         }
 
         // FX → COP (only when the charge currency differs and a provider needs COP).
@@ -74,7 +84,15 @@ export class FiscalInvoiceProcessor extends WorkerHost {
             }
         }
 
-        await this.prisma.fiscalInvoice.update({ where: { id: inv.id }, data: { attempts: { increment: 1 } } });
+        await this.prisma.fiscalInvoice.update({
+            where: { id: inv.id },
+            data: {
+                attempts: { increment: 1 },
+                // Record the consumidor-final fallback on the row so the branded
+                // PDF and audit reflect the acquirer it was actually issued to.
+                ...(consumidorFinalFallback ? { acquirerSnapshot: acquirer as any } : {}),
+            },
+        });
 
         const ivaTreatment = cfg.coIvaTreatment;
         const acq = (acquirer || {}) as FiscalAcquirer;
@@ -172,6 +190,7 @@ export class FiscalInvoiceProcessor extends WorkerHost {
                     ...(inv.metadata as object),
                     trmApplied: trmApplied ?? null,
                     factusPublicUrl: result.pdfUrl ?? null,
+                    consumidorFinalFallback: consumidorFinalFallback || undefined,
                     raw: result.raw,
                 } as any,
             },

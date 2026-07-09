@@ -7,7 +7,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { CO_MUNICIPIOS } from "@/lib/co-municipios";
-import { Receipt, Save, CheckCircle, AlertCircle, FileText, FileCode } from "lucide-react";
+import { Receipt, Save, CheckCircle, AlertCircle, FileText, FileCode, RotateCw } from "lucide-react";
 
 type FiscalData = {
     consumidorFinal?: boolean;
@@ -56,6 +56,7 @@ export default function FiscalPage() {
     const [invoices, setInvoices] = useState<FiscalInvoice[]>([]);
     const [savingData, setSavingData] = useState(false);
     const [savedData, setSavedData] = useState(false);
+    const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
 
     const tenantId = activeTenantId || user?.tenantId;
@@ -90,6 +91,15 @@ export default function FiscalPage() {
             else setError(res.error || tc("errorSaving"));
         } catch { setError(tc("connectionError")); }
         setSavingData(false);
+    };
+
+    const retry = async (id: string) => {
+        if (!tenantId) return;
+        setBusy(true); setError("");
+        const res = await api.retryTenantFiscalInvoice(tenantId, id);
+        if (!res.success) setError((res as any).error || tc("errorSaving"));
+        await load();
+        setBusy(false);
     };
 
     const money = (cents: number, currency: string) =>
@@ -294,6 +304,10 @@ export default function FiscalPage() {
                                                         <FileCode size={14} />
                                                     </button>
                                                 </div>
+                                            ) : (inv.status === "failed" || inv.status === "pending") ? (
+                                                <button title={t("retry")} disabled={busy} onClick={() => retry(inv.id)} className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 disabled:opacity-50">
+                                                    <RotateCw size={14} /> {t("retry")}
+                                                </button>
                                             ) : "—"}
                                         </td>
                                     </tr>

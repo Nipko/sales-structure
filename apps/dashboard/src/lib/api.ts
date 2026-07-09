@@ -1119,6 +1119,7 @@ export const api = {
     updateFiscalData: (tenantId: string, data: Record<string, any>) =>
         apiPut(`/fiscal/${tenantId}/data`, data),
     getFiscalInvoices: (tenantId: string) => apiGet(`/fiscal/${tenantId}/invoices`),
+    retryTenantFiscalInvoice: (tenantId: string, id: string) => apiPost(`/fiscal/${tenantId}/invoices/${id}/retry`, {}),
     downloadFiscalInvoice: async (tenantId: string, id: string, kind: "pdf" | "xml" = "pdf", format?: "official" | "branded") => {
         const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
         const qs = kind === "pdf" && format ? `?format=${format}` : "";

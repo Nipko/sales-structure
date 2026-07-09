@@ -138,6 +138,45 @@ export class FiscalAdminController {
         return { success: true };
     }
 
+    /**
+     * Force a full re-emission of a fiscal invoice (super admin, testing/recovery).
+     * A DIAN-validated invoice (has CUFE) is immutable and cannot be re-emitted.
+     * For a not-yet-validated Factus bill: delete it at Factus (frees the
+     * reference_code so it doesn't 409), reset the local row, and re-queue —
+     * producing a brand-new document with the same fiscal data.
+     */
+    @Post('invoices/:id/reissue')
+    async reissueInvoice(@Param('id') id: string) {
+        const inv = await this.prisma.fiscalInvoice.findUnique({ where: { id } });
+        if (!inv) throw new BadRequestException({ error: 'not_found', message: 'Factura no encontrada.' });
+        if (inv.cufe) {
+            throw new BadRequestException({
+                error: 'already_validated',
+                message: 'La factura ya fue validada por la DIAN (CUFE) y es inmutable: no se puede re-emitir.',
+            });
+        }
+        // Free the reference at Factus (only works while unvalidated) so the fresh
+        // issue doesn't 409 on the existing bill.
+        if (inv.provider === 'factus') {
+            await this.factus.deleteByReference(inv.id);
+        }
+        await this.prisma.fiscalInvoice.update({
+            where: { id },
+            data: {
+                status: 'pending',
+                providerRef: null,
+                invoiceNumber: null,
+                cufe: null,
+                qrUrl: null,
+                pdfUrl: null,
+                failureReason: null,
+                attempts: 0,
+            },
+        });
+        await this.fiscalService.requeue(id);
+        return { success: true };
+    }
+
     // ── Validación: preview de generación (sin Factus) + emisión de prueba ──
 
     /** Genera el PDF branded con datos de ejemplo + el emisor configurado. No usa Factus. */

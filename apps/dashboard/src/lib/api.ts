@@ -1151,6 +1151,7 @@ export const api = {
         return apiGet(`/fiscal-admin/invoices${q ? `?${q}` : ""}`);
     },
     retryFiscalInvoice: (id: string) => apiPost(`/fiscal-admin/invoices/${id}/retry`, {}),
+    reissueFiscalInvoice: (id: string) => apiPost(`/fiscal-admin/invoices/${id}/reissue`, {}),
     getFactusHealth: () => apiGet(`/fiscal-admin/factus/health`),
     getFactusNumberingRanges: () => apiGet(`/fiscal-admin/factus/numbering-ranges`),
     previewFiscalInvoice: async (type?: string) => {

@@ -235,6 +235,30 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
     }
 
     /**
+     * Delete a NOT-yet-validated bill by its reference_code (Factus
+     * DELETE /v2/bills/destroy/reference/:reference_code). Factus refuses to delete
+     * a bill already validated by the DIAN. Used ONLY by the explicit super-admin
+     * "re-emit" action (never automatically) — returns true when deleted.
+     */
+    async deleteByReference(referenceCode: string): Promise<boolean> {
+        try {
+            const res = await this.authedFetch(
+                `/v2/bills/destroy/reference/${encodeURIComponent(referenceCode)}`,
+                { method: 'DELETE' },
+            );
+            if (res.ok) {
+                this.logger.warn(`[Factus] Deleted bill for reference ${referenceCode}`);
+                return true;
+            }
+            this.logger.warn(`[Factus] deleteByReference(${referenceCode}) → HTTP ${res.status} (ignored)`);
+            return false;
+        } catch (e: any) {
+            this.logger.warn(`[Factus] deleteByReference(${referenceCode}) failed: ${e?.message}`);
+            return false;
+        }
+    }
+
+    /**
      * Recover a bill by reference_code and return an issued result ONLY when the
      * DIAN has validated it (CUFE present); otherwise null (caller reports the
      * invoice as still 'pending' and polls again later). Best-effort — any error

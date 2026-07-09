@@ -32,7 +32,7 @@ type FiscalConfig = {
 };
 
 type AdminInvoice = {
-    id: string; tenantId: string; tenantName?: string; type: string; status: string;
+    id: string; tenantId: string; tenantName?: string; type: string; status: string; provider?: string;
     invoiceNumber?: string | null; cufe?: string | null; amountCents: number; currency: string;
     failureReason?: string | null; issuedAt?: string | null; createdAt: string;
 };
@@ -95,6 +95,15 @@ export default function FiscalAdminPage() {
         setBusy(true);
         const res = await api.retryFiscalInvoice(id);
         if (!res.success) setError(res.error || tc("errorSaving"));
+        await loadInvoices();
+        setBusy(false);
+    };
+
+    const reissue = async (inv: AdminInvoice) => {
+        if (!window.confirm(t("reissueConfirm"))) return;
+        setBusy(true); setError("");
+        const res = await api.reissueFiscalInvoice(inv.id);
+        if (!res.success) setError((res as any).error || tc("errorSaving"));
         await loadInvoices();
         setBusy(false);
     };
@@ -318,6 +327,9 @@ export default function FiscalAdminPage() {
                                                     )}
                                                     {(inv.status === "failed" || inv.status === "pending") && (
                                                         <button title={t("retry")} disabled={busy} onClick={() => retry(inv.id)} className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 disabled:opacity-50"><RotateCw size={14} /> {t("retry")}</button>
+                                                    )}
+                                                    {inv.provider === "factus" && !inv.cufe && (
+                                                        <button title={t("reissueHint")} disabled={busy} onClick={() => reissue(inv)} className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 disabled:opacity-50"><RefreshCw size={14} /> {t("reissue")}</button>
                                                     )}
                                                 </div>
                                             </td>

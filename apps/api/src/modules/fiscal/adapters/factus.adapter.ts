@@ -287,11 +287,13 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             names: a.names || a.businessName || '',
             company: a.businessName || a.names || '',
             // Current Factus "codes" contract. identification_document_code is the
-            // DIAN document-type code (NOT our Factus catalog id): cédula=13, NIT=31,
-            // etc. legal_organization (1/2) and tribute (18/21) keep their values.
+            // DIAN document-type code (NOT our Factus catalog id): cédula=13, NIT=31.
+            // tribute_code is the DIAN tribute code (01 IVA, ZZ no aplica) — also
+            // distinct from our internal tribute_id (18/21). legal_organization
+            // (1/2) happens to coincide.
             identification_document_code: this.dianDocTypeCode(a.documentType),
             legal_organization_code: a.legalOrganizationId,
-            tribute_code: tributeId,
+            tribute_code: this.dianTributeCode(tributeId),
             // Legacy "internal IDs" contract — kept for compatibility; ignored by
             // the current validation.
             legal_organization_id: a.legalOrganizationId,
@@ -333,6 +335,21 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             '10': '50', // NIT de otro país
         };
         return map[String(factusDocType ?? '')] ?? String(factusDocType ?? '');
+    }
+
+    /**
+     * Map our internal customer tribute_id to the DIAN tribute_code the current
+     * Factus "codes" contract expects. DIAN customer tributos: '01' IVA, '04' INC,
+     * 'ZA' IVA e INC, 'ZZ' No aplica. Our catalog uses '18' (responsable de IVA)
+     * and '21' (no responsable) — the latter maps to 'ZZ', which also covers
+     * "consumidor final". Defaults to 'ZZ' (no aplica) for any unmapped value.
+     */
+    private dianTributeCode(factusTributeId: string | undefined): string {
+        const map: Record<string, string> = {
+            '18': '01', // Responsable de IVA
+            '21': 'ZZ', // No responsable / No aplica (consumidor final)
+        };
+        return map[String(factusTributeId ?? '')] ?? 'ZZ';
     }
 
     /** Resolve the Factus internal municipality_id from a 5-digit DANE/DIVIPOLA code (cached in-memory). */

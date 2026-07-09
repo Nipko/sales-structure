@@ -405,8 +405,11 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             providerRef,
             invoiceNumber: node?.number != null ? String(node.number) : undefined,
             cufe: node?.cufe ?? node?.cude ?? undefined,
-            qrUrl: node?.qr ?? undefined,
-            pdfUrl: node?.public_url ?? undefined,
+            // Factus returns `qr` (DIAN catalog URL) inside data.bill; be robust if
+            // it ever sits at the data level. This is the string we render into a
+            // QR image on the branded PDF. Present in sandbox too (DIAN habilitación).
+            qrUrl: node?.qr ?? json?.data?.qr ?? undefined,
+            pdfUrl: node?.public_url ?? json?.data?.public_url ?? undefined,
             taxCents: tax,
             raw: { status: json?.status, total, node },
         };

@@ -1487,6 +1487,8 @@
       "typeInvoice": "Invoice",
       "typeCreditNote": "Credit note",
       "retry": "Retry",
+      "processing": "Processing…",
+      "refresh": "Refresh",
       "status": {
         "pending": "Pending",
         "issued": "Issued",

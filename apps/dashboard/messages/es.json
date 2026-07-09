@@ -1487,6 +1487,8 @@
       "typeInvoice": "Factura",
       "typeCreditNote": "Nota crédito",
       "retry": "Reintentar",
+      "processing": "Procesando…",
+      "refresh": "Actualizar",
       "status": {
         "pending": "Pendiente",
         "issued": "Emitida",

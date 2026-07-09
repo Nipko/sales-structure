@@ -1487,6 +1487,8 @@
       "typeInvoice": "Facture",
       "typeCreditNote": "Note de crédit",
       "retry": "Réessayer",
+      "processing": "Traitement…",
+      "refresh": "Actualiser",
       "status": {
         "pending": "En attente",
         "issued": "Émise",

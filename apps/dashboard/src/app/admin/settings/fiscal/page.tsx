@@ -7,7 +7,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { CO_MUNICIPIOS } from "@/lib/co-municipios";
-import { Receipt, Save, CheckCircle, AlertCircle, FileText, FileCode, RotateCw } from "lucide-react";
+import { Receipt, Save, CheckCircle, AlertCircle, FileText, FileCode, RotateCw, RefreshCw, Loader2 } from "lucide-react";
 
 type FiscalData = {
     consumidorFinal?: boolean;
@@ -57,6 +57,7 @@ export default function FiscalPage() {
     const [savingData, setSavingData] = useState(false);
     const [savedData, setSavedData] = useState(false);
     const [busy, setBusy] = useState(false);
+    const [retryingId, setRetryingId] = useState<string | null>(null);
     const [error, setError] = useState("");
 
     const tenantId = activeTenantId || user?.tenantId;
@@ -78,6 +79,12 @@ export default function FiscalPage() {
         }
     }, [tenantId, tc]);
 
+    const loadInvoices = useCallback(async () => {
+        if (!tenantId) return;
+        const iRes = await api.getFiscalInvoices(tenantId);
+        if (iRes.success) setInvoices((iRes.data as FiscalInvoice[]) || []);
+    }, [tenantId]);
+
     useEffect(() => { load(); }, [load]);
 
     const saveData = async () => {
@@ -95,11 +102,23 @@ export default function FiscalPage() {
 
     const retry = async (id: string) => {
         if (!tenantId) return;
-        setBusy(true); setError("");
+        setRetryingId(id); setBusy(true); setError("");
         const res = await api.retryTenantFiscalInvoice(tenantId, id);
-        if (!res.success) setError((res as any).error || tc("errorSaving"));
-        await load();
-        setBusy(false);
+        if (!res.success) { setError((res as any).error || tc("errorSaving")); setBusy(false); setRetryingId(null); return; }
+        // Issuance runs async on the queue (~1-3s against Factus). Poll the list
+        // until this invoice leaves "pending" (→ issued or failed), so the row
+        // updates in place without needing a manual refresh.
+        for (let i = 0; i < 8; i++) {
+            await new Promise((r) => setTimeout(r, 2500));
+            const iRes = await api.getFiscalInvoices(tenantId);
+            if (iRes.success) {
+                const list = (iRes.data as FiscalInvoice[]) || [];
+                setInvoices(list);
+                const cur = list.find((v) => v.id === id);
+                if (cur && cur.status !== "pending") break;
+            }
+        }
+        setBusy(false); setRetryingId(null);
     };
 
     const money = (cents: number, currency: string) =>
@@ -262,7 +281,12 @@ export default function FiscalPage() {
 
             {/* Issued invoices */}
             <section className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
-                <h2 className="mb-4 text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("invoicesTitle")}</h2>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("invoicesTitle")}</h2>
+                    <button onClick={loadInvoices} disabled={busy} className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-500 transition-colors hover:text-neutral-800 disabled:opacity-50 dark:hover:text-neutral-200">
+                        <RefreshCw size={13} className={busy ? "animate-spin" : ""} /> {t("refresh")}
+                    </button>
+                </div>
                 {invoices.length === 0 ? (
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">{t("noInvoices")}</p>
                 ) : (
@@ -292,7 +316,11 @@ export default function FiscalPage() {
                                         <td className="py-2.5 pr-4 text-neutral-700 dark:text-neutral-300">{money(inv.amountCents, inv.currency)}</td>
                                         <td className="py-2.5 pr-4 text-neutral-500">{new Date(inv.issuedAt || inv.createdAt).toLocaleDateString("es-CO")}</td>
                                         <td className="py-2.5">
-                                            {inv.status === "issued" && tenantId ? (
+                                            {retryingId === inv.id ? (
+                                                <span className="inline-flex items-center gap-1.5 text-xs text-neutral-500">
+                                                    <Loader2 size={13} className="animate-spin" /> {t("processing")}
+                                                </span>
+                                            ) : inv.status === "issued" && tenantId ? (
                                                 <div className="flex items-center gap-3">
                                                     <button title={t("pdfOfficial")} onClick={() => api.downloadFiscalInvoice(tenantId, inv.id, "pdf", "official")} className="inline-flex items-center gap-1 text-indigo-500 hover:underline">
                                                         <FileText size={14} /> PDF
@@ -305,8 +333,8 @@ export default function FiscalPage() {
                                                     </button>
                                                 </div>
                                             ) : (inv.status === "failed" || inv.status === "pending") ? (
-                                                <button title={t("retry")} disabled={busy} onClick={() => retry(inv.id)} className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 disabled:opacity-50">
-                                                    <RotateCw size={14} /> {t("retry")}
+                                                <button title={t("retry")} disabled={busy} onClick={() => retry(inv.id)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400 dark:hover:bg-amber-500/20">
+                                                    <RotateCw size={13} /> {t("retry")}
                                                 </button>
                                             ) : "—"}
                                         </td>

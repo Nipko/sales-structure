@@ -37,7 +37,10 @@ export class FiscalInvoiceProcessor extends WorkerHost {
             this.logger.warn(`[Fiscal] Invoice ${fiscalInvoiceId} not found — dropping job`);
             return;
         }
-        if (inv.status === 'issued') return; // idempotent
+        // Idempotent — but a Factus invoice is only truly done once it has a CUFE
+        // (DIAN-validated). An 'issued' row without a CUFE is still pending and must
+        // be re-checked, so don't short-circuit it.
+        if (inv.status === 'issued' && (inv.provider !== 'factus' || inv.cufe)) return;
 
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: inv.tenantId },
@@ -151,6 +154,29 @@ export class FiscalInvoiceProcessor extends WorkerHost {
             });
             this.escalate(inv.id, inv.tenantId, result.failureReason || 'validation_failed');
             return; // non-retryable
+        }
+
+        if (result.status === 'pending') {
+            // Factus accepted the bill but the DIAN hasn't validated it yet (no CUFE),
+            // so it has no QR / official PDF. Persist the provider ref/number and keep
+            // the invoice 'pending'; throw so BullMQ retries and polls — issue()
+            // reconciles the existing bill by reference on each attempt until the CUFE
+            // appears. Never marked 'issued' without a CUFE.
+            const isFinal = job.attemptsMade + 1 >= (job.opts.attempts ?? FISCAL_MAX_ATTEMPTS);
+            await this.prisma.fiscalInvoice.update({
+                where: { id: inv.id },
+                data: {
+                    status: 'pending',
+                    providerRef: result.providerRef ?? inv.providerRef ?? undefined,
+                    invoiceNumber: result.invoiceNumber ?? inv.invoiceNumber ?? undefined,
+                    failureReason: (result.failureReason || 'pendiente_validacion_dian').slice(0, 500),
+                },
+            });
+            this.logger.warn(
+                `[Fiscal] Invoice ${inv.id} accepted by Factus, pending DIAN validation (no CUFE yet)${isFinal ? ' — attempts exhausted, will stay pending' : ''}`,
+            );
+            if (!isFinal) throw new Error('Factus bill pending DIAN validation'); // retry → poll
+            return;
         }
 
         const fiscalCurrency = provider.name === 'factus' ? 'COP' : inv.currency;

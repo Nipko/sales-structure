@@ -84,7 +84,12 @@ export interface CreditNoteData {
 
 /** Normalized result of an issuance (invoice or credit note). */
 export interface FiscalIssueResult {
-    status: 'issued' | 'failed';
+    /**
+     * 'issued' = DIAN-validated (CUFE present). 'pending' = accepted by the
+     * provider but not yet validated by the DIAN (no CUFE) — must be polled, NOT
+     * treated as done. 'failed' = non-retryable rejection.
+     */
+    status: 'issued' | 'failed' | 'pending';
     /** Provider internal id (Factus bill_id) — persisted so credit notes can reference it. */
     providerRef?: string;
     /** DIAN number/consecutive (prefix + number, e.g. SETP990000001). */

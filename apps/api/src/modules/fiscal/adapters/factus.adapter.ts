@@ -173,21 +173,21 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             items: [line.item],
         };
 
-        let res = await this.authedFetch('/v2/bills/validate', { method: 'POST', body: payload });
+        const res = await this.authedFetch('/v2/bills/validate', { method: 'POST', body: payload });
         if (res.status === 409) {
-            // A previous attempt left a bill for this reference_code in Factus,
-            // "pendiente por enviar a la DIAN" (created but not yet validated), so
-            // re-validating the same reference_code 409s forever. Factus's sanctioned
-            // recovery is to delete the not-yet-validated bill and re-issue. Delete is
-            // refused for an already-validated bill (safe); in that rare case we
-            // reconcile by reference and recover the existing CUFE instead of failing.
-            this.logger.warn(`[Factus] 409 on reference ${data.referenceCode} — deleting stuck pending bill and re-issuing`);
-            await this.deleteByReference(data.referenceCode);
-            res = await this.authedFetch('/v2/bills/validate', { method: 'POST', body: payload });
-            if (res.status === 409) {
-                const recovered = await this.reconcileByReference(data.referenceCode);
-                if (recovered) return recovered;
-            }
+            // A bill for this reference_code already exists in Factus (created on a
+            // prior attempt and "pendiente por enviar a la DIAN"). Do NOT recreate it:
+            // that would burn a numbering consecutive and could drop a bill about to
+            // validate. Reconcile instead — return issued once the DIAN validates
+            // (CUFE present), otherwise report 'pending' so the job retries and polls.
+            this.logger.warn(`[Factus] 409 on reference ${data.referenceCode} — reconciling existing bill`);
+            const recovered = await this.reconcileByReference(data.referenceCode);
+            if (recovered) return recovered;
+            return {
+                status: 'pending',
+                failureReason: 'Factus: factura pendiente por enviar a la DIAN (sin CUFE).',
+                raw: { conflict: true, referenceCode: data.referenceCode },
+            };
         }
         return this.parseIssueResponse(res, 'bill');
     }
@@ -235,30 +235,11 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
     }
 
     /**
-     * Delete a not-yet-validated bill by its reference_code (Factus:
-     * DELETE /v2/bills/destroy/reference/:reference_code). Best-effort: Factus
-     * refuses to delete a bill already validated by the DIAN, and a missing
-     * reference is a no-op — both are fine, we only use this to clear a bill left
-     * "pendiente por enviar a la DIAN" so a re-issue with the same reference works.
-     */
-    private async deleteByReference(referenceCode: string): Promise<void> {
-        try {
-            const res = await this.authedFetch(
-                `/v2/bills/destroy/reference/${encodeURIComponent(referenceCode)}`,
-                { method: 'DELETE' },
-            );
-            if (res.ok) this.logger.warn(`[Factus] Deleted stuck pending bill for reference ${referenceCode}`);
-            else this.logger.warn(`[Factus] deleteByReference(${referenceCode}) → HTTP ${res.status} (ignored)`);
-        } catch (e: any) {
-            this.logger.warn(`[Factus] deleteByReference(${referenceCode}) failed: ${e?.message}`);
-        }
-    }
-
-    /**
-     * Recover an already-validated bill by reference_code (used when a 409 means
-     * the bill was validated by the DIAN on a prior attempt). Returns an issued
-     * result ONLY when a CUFE is present; otherwise null (so the caller can fall
-     * back to delete + re-issue). Best-effort — any error resolves to null.
+     * Recover a bill by reference_code and return an issued result ONLY when the
+     * DIAN has validated it (CUFE present); otherwise null (caller reports the
+     * invoice as still 'pending' and polls again later). Best-effort — any error
+     * resolves to null. Used to reconcile a 409 ("factura pendiente por enviar a
+     * la DIAN") without recreating the bill.
      */
     private async reconcileByReference(referenceCode: string): Promise<FiscalIssueResult | null> {
         try {
@@ -288,7 +269,7 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             }
 
             const cufe = bill?.cufe ?? bill?.cude;
-            if (!cufe) return null; // not validated yet → let caller delete + re-issue
+            if (!cufe) return null; // not validated yet → caller keeps it 'pending' and polls
 
             this.logger.warn(`[Factus] Reconciled already-validated bill for reference ${referenceCode} (${bill?.number})`);
             return {
@@ -476,30 +457,68 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             throw new Error(`Factus ${kind} HTTP ${res.status}: ${this.formatErrors(json)}`);
         }
 
-        const node = json?.data?.[kind] ?? json?.data?.bill ?? json?.data ?? {};
+        let node = json?.data?.[kind] ?? json?.data?.bill ?? json?.data ?? {};
         const errors = node?.errors;
         if (Array.isArray(errors) && errors.length > 0) {
             return { status: 'failed', failureReason: this.formatErrors(json), raw: json };
         }
 
+        const number = node?.number != null ? String(node.number) : undefined;
+
+        // A DIAN-validated document ALWAYS carries a CUFE (bill) / CUDE (credit
+        // note). Factus can return 200 with the bill created but "pendiente por
+        // enviar a la DIAN" (no CUFE yet). In that case re-fetch the full bill by
+        // number — it may have validated in the meantime — before deciding.
+        let cufe = node?.cufe ?? node?.cude;
+        if (!cufe && number) {
+            const detail = await this.fetchBillByNumber(number);
+            if (detail) {
+                node = detail;
+                cufe = node?.cufe ?? node?.cude;
+            }
+        }
+
         const total = node?.total != null ? Math.round(parseFloat(String(node.total)) * 100) : undefined;
         const tax = node?.tax_amount != null ? Math.round(parseFloat(String(node.tax_amount)) * 100) : undefined;
-        const providerRef =
-            node?.id != null ? String(node.id) : node?.number != null ? String(node.number) : undefined;
+        const providerRef = node?.id != null ? String(node.id) : number;
+
+        // No CUFE ⇒ not validated by the DIAN. Report 'pending' (with the provider
+        // ref/number) instead of a fake 'issued' with no QR / no official PDF; the
+        // processor keeps it pending and polls (issue() reconciles by reference).
+        if (!cufe && kind === 'bill') {
+            return {
+                status: 'pending',
+                providerRef,
+                invoiceNumber: number,
+                failureReason: 'Aceptada por Factus; pendiente de validación DIAN (sin CUFE).',
+                raw: { status: json?.status, total, node },
+            };
+        }
 
         return {
             status: 'issued',
             providerRef,
-            invoiceNumber: node?.number != null ? String(node.number) : undefined,
-            cufe: node?.cufe ?? node?.cude ?? undefined,
-            // Factus returns `qr` (DIAN catalog URL) inside data.bill; be robust if
-            // it ever sits at the data level. This is the string we render into a
-            // QR image on the branded PDF. Present in sandbox too (DIAN habilitación).
+            invoiceNumber: number,
+            cufe: cufe ?? undefined,
+            // `qr` is the DIAN catalog URL (data.bill.qr; robust at data level too),
+            // rendered into a QR image on the branded PDF. Present in sandbox too.
             qrUrl: node?.qr ?? json?.data?.qr ?? undefined,
             pdfUrl: node?.public_url ?? json?.data?.public_url ?? undefined,
             taxCents: tax,
             raw: { status: json?.status, total, node },
         };
+    }
+
+    /** Fetch the full bill object by number (Factus GET /v2/bills/show/:number), or null. */
+    private async fetchBillByNumber(number: string): Promise<any | null> {
+        try {
+            const res = await this.authedFetch(`/v2/bills/show/${encodeURIComponent(number)}`, { method: 'GET' });
+            if (!res.ok) return null;
+            const json: any = await res.json().catch(() => ({}));
+            return json?.data?.bill ?? json?.data ?? null;
+        } catch {
+            return null;
+        }
     }
 
     /** Flatten Factus error shapes (data.errors object|array, message) into one string. */

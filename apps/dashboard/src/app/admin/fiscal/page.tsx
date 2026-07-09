@@ -353,18 +353,36 @@ export default function FiscalAdminPage() {
                                 <Receipt size={15} /> {t("testInvoice")}
                             </button>
                         </div>
-                        {testResult && (
-                            <div className={cn("mt-3 rounded-lg px-3 py-2 text-sm", (testResult.success && testResult.data?.status === "issued") ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-red-500/10 text-red-700 dark:text-red-400")}>
-                                {testResult.success && testResult.data?.status === "issued" ? (
-                                    <span>
-                                        {t("testOk")} — {testResult.data?.invoiceNumber} · CUFE {String(testResult.data?.cufe || "").slice(0, 18)}…
-                                        {testResult.data?.pdfUrl && <> · <a href={testResult.data.pdfUrl} target="_blank" rel="noopener noreferrer" className="underline">{t("openOfficial")}</a></>}
-                                    </span>
-                                ) : (
-                                    <span>{t("testFail")}: {testResult.data?.failureReason || testResult.message || testResult.error}</span>
-                                )}
-                            </div>
-                        )}
+                        {testResult && (() => {
+                            const d = testResult.data || {};
+                            if (testResult.success && d.status === "issued") {
+                                return (
+                                    <div className="mt-3 rounded-lg bg-emerald-500/10 px-3 py-3 text-sm text-emerald-700 dark:text-emerald-400">
+                                        <div className="font-medium">{t("testOk")} — {d.invoiceNumber} · CUFE {String(d.cufe || "").slice(0, 18)}…</div>
+                                        <div className="mt-3 flex flex-wrap items-start gap-3">
+                                            {d.qrPng && <img src={d.qrPng} alt="QR DIAN" width={120} height={120} className="rounded-md border border-emerald-500/20 bg-white p-1" />}
+                                            <div className="space-y-1 text-xs text-neutral-500 dark:text-neutral-400">
+                                                {d.qrPng && <p>{t("qrScanHint")}</p>}
+                                                {d.qrUrl && <a href={d.qrUrl} target="_blank" rel="noopener noreferrer" className="block break-all text-teal-600 underline dark:text-teal-400">{t("qrOpenDian")}</a>}
+                                                {d.pdfUrl && <a href={d.pdfUrl} target="_blank" rel="noopener noreferrer" className="block text-indigo-600 underline dark:text-indigo-400">{t("openOfficial")}</a>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            if (d.status === "pending") {
+                                return (
+                                    <div className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+                                        {t("testPending")}: {d.failureReason || t("testPendingHint")}
+                                    </div>
+                                );
+                            }
+                            return (
+                                <div className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+                                    {t("testFail")}: {d.failureReason || testResult.message || testResult.error}
+                                </div>
+                            );
+                        })()}
                         <p className="mt-2 text-[11px] text-neutral-400">{t("validateHint")}</p>
                     </div>
 

@@ -208,7 +208,10 @@ export class FiscalAdminController {
         };
         try {
             const result = await this.factus.issue(data);
-            return { success: result.status === 'issued', data: result };
+            // Render the DIAN QR inline so a super admin can visually validate it
+            // without opening the PDF. Only present once validated (CUFE + qr URL).
+            const qrPng = result.qrUrl ? await this.pdf.renderQrPng(result.qrUrl) : null;
+            return { success: result.status === 'issued', data: { ...result, qrPng } };
         } catch (err: any) {
             return { success: false, error: err?.message || 'error' };
         }

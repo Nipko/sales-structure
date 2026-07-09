@@ -49,6 +49,18 @@ export class FiscalPdfService {
     private readonly logger = new Logger(FiscalPdfService.name);
     private readonly logo = Buffer.from(PARALLLY_LOGO_PNG_BASE64, 'base64');
 
+    /** Render a QR string (e.g. the DIAN catalog URL) into a PNG data URL, or null. */
+    async renderQrPng(data: string, width = 220): Promise<string | null> {
+        if (!data) return null;
+        try {
+            const buf = await QRCode.toBuffer(data, { margin: 1, width });
+            return `data:image/png;base64,${buf.toString('base64')}`;
+        } catch (err: any) {
+            this.logger.warn(`QR render failed: ${err?.message}`);
+            return null;
+        }
+    }
+
     async render(data: BrandedInvoiceData): Promise<Buffer> {
         let qrPng: Buffer | null = null;
         if (data.qrUrl) {

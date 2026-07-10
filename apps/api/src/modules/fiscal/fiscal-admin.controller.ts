@@ -9,6 +9,7 @@ import { FiscalConfigService, FiscalConfig } from './fiscal-config.service';
 import { FiscalInvoiceService } from './fiscal-invoice.service';
 import { FiscalPdfService, BrandedInvoiceData } from './fiscal-pdf.service';
 import { FactusAdapter } from './adapters/factus.adapter';
+import { copAmountInWords } from './number-to-words.util';
 import { FiscalAcquirer, FiscalInvoiceData } from './interfaces/fiscal-provider.interface';
 
 class FiscalConfigDto {
@@ -190,14 +191,19 @@ export class FiscalAdminController {
         const tax = cfg.coIvaTreatment === 'gravado_19' ? gross - Math.round(gross / 1.19) : 0;
         const sample: BrandedInvoiceData = {
             type: type === 'credit_note' ? 'credit_note' : 'invoice',
-            invoiceNumber: 'SETP-EJEMPLO-0001',
+            invoiceNumber: 'SETP990000001',
+            prefix: 'SETP',
+            consecutive: '990000001',
             cufe: 'EJEMPLO' + 'a'.repeat(89),
             qrUrl: 'https://catalogo-vpfe-hab.dian.gov.co/document/searchqr?documentkey=ejemplo',
             issuedAt: new Date(),
             amountCents: gross,
             taxCents: tax,
             currency: 'COP',
+            amountInWords: copAmountInWords(gross),
             itemDescription: `${cfg.itemDescription} — Plan Pro (mensual)`,
+            itemCode: cfg.itemCodeReference || 'PARALLLY-SUB',
+            unitMeasure: 'Unidad',
             issuerName: isCo ? co.legalName || 'Parallly' : us.legalName || 'Parallly',
             issuerNit: isCo ? co.nit || null : us.taxId || null,
             issuerAddress: isCo ? co.address || null : us.address || null,
@@ -208,10 +214,10 @@ export class FiscalAdminController {
             authRange: isCo ? co.authRange || null : null,
             resolutionValidUntil: isCo ? co.resolutionValidUntil || null : null,
             acquirerName: 'Cliente de Ejemplo SAS',
-            acquirerDoc: 'NIT 900123456',
+            acquirerDoc: 'NIT 900123456-3',
             acquirerEmail: 'cliente@ejemplo.com',
             paymentMethod: 'Contado',
-            paymentMeans: 'Transferencia / PSE',
+            paymentMeans: 'Tarjeta de crédito',
         };
         const buffer = await this.pdf.render(sample);
         res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="factura-ejemplo.pdf"' });

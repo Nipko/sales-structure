@@ -11,6 +11,14 @@ import { FiscalConfigService } from './fiscal-config.service';
 import { FiscalInvoiceService } from './fiscal-invoice.service';
 import { FactusAdapter } from './adapters/factus.adapter';
 import { computeNitDv } from './nit.util';
+import { copAmountInWords } from './number-to-words.util';
+
+/** Factus doc-type catalog code → human label for the graphic representation. */
+const ACQUIRER_DOC_LABELS: Record<string, string> = {
+    '1': 'RC', '2': 'TI', '3': 'CC', '4': 'TE', '5': 'CE', '6': 'NIT', '7': 'Pasaporte', '8': 'DIE', '10': 'NIT',
+};
+/** DIAN unit-of-measure code → label. */
+const UNIT_MEASURE_LABELS: Record<string, string> = { '94': 'Unidad' };
 
 /** Acquirer fiscal profile saved on Tenant.settings.fiscalData. */
 class FiscalDataDto {
@@ -244,9 +252,30 @@ export class FiscalController {
         const co = cfg.coIssuer || {};
         const us = cfg.usIssuer || {};
         const isCo = cfg.mode !== 'US_REMOTE';
+
+        // Prefijo + consecutivo: el número DIAN viene como '<PREFIJO><consecutivo>'
+        // (p.ej. SETP990010633). Separarlos para mostrar el prefijo como campo.
+        const fullNumber = inv.invoiceNumber || String(inv.id).slice(0, 8).toUpperCase();
+        const parts = /^([A-Za-z]+)\s*(\d+)$/.exec(fullNumber);
+        const prefix = parts ? parts[1] : null;
+        const consecutive = parts ? parts[2] : fullNumber;
+
+        // Documento del adquirente legible: mapear el código Factus a NIT/CC/… y
+        // anexar el dígito de verificación (numeral 3, obligatorio).
+        const docLabel = ACQUIRER_DOC_LABELS[String(snap.documentType ?? '')] || (snap.documentType ? String(snap.documentType) : '');
+        const acquirerDoc = snap.documentId
+            ? `${docLabel ? docLabel + ' ' : ''}${snap.documentId}${snap.dv ? '-' + snap.dv : ''}`.trim()
+            : null;
+
+        // Valor en letras solo tiene sentido en COP (facturación DIAN); en US_REMOTE
+        // (recibo USD) se omite.
+        const amountInWords = (inv.currency || '').toUpperCase() === 'COP' ? copAmountInWords(inv.amountCents) : null;
+
         return {
             type: inv.type,
-            invoiceNumber: inv.invoiceNumber || String(inv.id).slice(0, 8).toUpperCase(),
+            invoiceNumber: fullNumber,
+            prefix,
+            consecutive,
             cufe: inv.cufe,
             // The DIAN QR is deterministic from the CUFE — build it when the stored
             // qrUrl is missing so already-issued invoices still render the QR.
@@ -257,7 +286,10 @@ export class FiscalController {
             amountCents: inv.amountCents,
             taxCents: inv.taxCents,
             currency: inv.currency,
+            amountInWords,
             itemDescription: cfg.itemDescription,
+            itemCode: cfg.itemCodeReference || null,
+            unitMeasure: UNIT_MEASURE_LABELS[String(cfg.defaultUnitMeasureCode ?? '')] || 'Unidad',
             // Emisor: CO_LOCAL lee cfg.coIssuer (datos de Parallly); US_REMOTE lee cfg.usIssuer
             issuerName: isCo ? co.legalName || 'Parallly' : us.legalName || 'Parallly',
             issuerNit: isCo ? co.nit ?? null : us.taxId ?? null,
@@ -269,10 +301,12 @@ export class FiscalController {
             authRange: isCo ? co.authRange ?? null : null,
             resolutionValidUntil: isCo ? co.resolutionValidUntil ?? null : null,
             acquirerName: snap.businessName || snap.names || null,
-            acquirerDoc: snap.documentId ? `${snap.documentType || ''} ${snap.documentId}`.trim() : null,
+            acquirerDoc,
             acquirerEmail: snap.email || null,
+            // Reflejamos lo que declaramos a la DIAN: payment_form '1' (contado) y
+            // payment_method_code '48' (tarjeta de crédito) — ver FactusAdapter.
             paymentMethod: 'Contado',
-            paymentMeans: 'Transferencia / PSE',
+            paymentMeans: 'Tarjeta de crédito',
         };
     }
 }

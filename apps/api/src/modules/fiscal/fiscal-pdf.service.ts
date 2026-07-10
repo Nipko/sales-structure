@@ -6,13 +6,23 @@ import { PARALLLY_LOGO_PNG_BASE64 } from './assets/parallly-logo';
 export interface BrandedInvoiceData {
     type: string; // 'invoice' | 'credit_note'
     invoiceNumber: string;
+    /** Prefijo autorizado del rango de numeración (p.ej. 'SETP'). */
+    prefix?: string | null;
+    /** Consecutivo sin prefijo (p.ej. '990010633'). */
+    consecutive?: string | null;
     cufe?: string | null;
     qrUrl?: string | null;
     issuedAt?: Date | null;
     amountCents: number; // total bruto
     taxCents: number; // IVA
     currency: string;
+    /** Total en letras (COP), p.ej. 'CINCUENTA Y NUEVE MIL QUINIENTOS PESOS M/CTE'. */
+    amountInWords?: string | null;
     itemDescription: string;
+    /** Código del producto/servicio (SKU / referencia) — numeral 8. */
+    itemCode?: string | null;
+    /** Unidad de medida legible (catálogo DIAN), p.ej. 'Unidad'. */
+    unitMeasure?: string | null;
     // Emisor (Parallly)
     issuerName: string;
     issuerNit?: string | null;
@@ -190,6 +200,7 @@ export class FiscalPdfService {
                 roundRect(MARGIN, cy, INNER_W, resH, 6, '#fff9f0', '#f4a261');
                 const resItems = [
                     { label: 'Resolución DIAN', val: data.dianResolution || '— Sin configurar —' },
+                    { label: 'Prefijo', val: data.prefix || '—' },
                     { label: 'Rango autorizado', val: data.authRange || '—' },
                     { label: 'Vigencia', val: data.resolutionValidUntil || '—' },
                 ];
@@ -219,7 +230,8 @@ export class FiscalPdfService {
                 const rowH = 34;
                 roundRect(MARGIN, cy, INNER_W, rowH, 6, C_WHITE, C_LIGHT);
                 doc.fillColor(C_TEXT).font('Helvetica-Bold').fontSize(10).text(data.itemDescription, MARGIN + 12, cy + 7, { width: COL_DESC - 18 });
-                doc.fillColor(C_MUTED).font('Helvetica').fontSize(8.5).text('Unidad: Servicio', MARGIN + 12, cy + 20, { width: COL_DESC - 18 });
+                const itemMeta = `Unidad: ${data.unitMeasure || 'Servicio'}${data.itemCode ? `  ·  Cód: ${data.itemCode}` : ''}`;
+                doc.fillColor(C_MUTED).font('Helvetica').fontSize(8.5).text(itemMeta, MARGIN + 12, cy + 20, { width: COL_DESC - 18 });
                 doc.fillColor(C_TEXT).font('Helvetica').fontSize(10).text('1', MARGIN + COL_DESC, cy + 11, { width: COL_QTY, align: 'right' });
                 doc.text(this.money(subtotalCents, data.currency), MARGIN + COL_DESC + COL_QTY, cy + 11, { width: COL_UNIT, align: 'right' });
                 doc.text(this.money(subtotalCents, data.currency), MARGIN + COL_DESC + COL_QTY + COL_UNIT, cy + 11, { width: COL_TOT - 12, align: 'right' });
@@ -232,7 +244,7 @@ export class FiscalPdfService {
                 cardBox(totX, cy, totW, totH);
                 const ivaLabel = (data.taxCents || 0) > 0 ? 'IVA 19%' : 'IVA excluido (art. 476 num. 21 ET)';
                 const totLines = [
-                    { label: 'Subtotal (sin IVA)', val: this.money(subtotalCents, data.currency) },
+                    { label: 'Base gravable', val: this.money(subtotalCents, data.currency) },
                     { label: ivaLabel, val: this.money(data.taxCents || 0, data.currency) },
                 ];
                 let ty = cy + 12;
@@ -255,6 +267,15 @@ export class FiscalPdfService {
                 doc.fillColor(C_TEXT).font('Helvetica-Bold').fontSize(10).text(data.paymentMeans || 'Transferencia / PSE', MARGIN + 12, cy + 56, { width: pmW - 24 });
 
                 cy += totH + 14;
+
+                // ── Valor en letras ──
+                if (data.amountInWords) {
+                    const vlH = 30;
+                    cardBox(MARGIN, cy, INNER_W, vlH);
+                    sectionLabel('Valor en letras', MARGIN + 12, cy + 8, INNER_W - 24);
+                    doc.fillColor(C_TEXT).font('Helvetica-Bold').fontSize(9.5).text(data.amountInWords, MARGIN + 12, cy + 17, { width: INNER_W - 24 });
+                    cy += vlH + 14;
+                }
 
                 // ── CUFE ──
                 const cufeH = 42;

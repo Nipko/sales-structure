@@ -202,10 +202,16 @@ export class FiscalController {
         const inv = await this.prisma.fiscalInvoice.findFirst({ where: { id, tenantId } });
         if (!inv) throw new NotFoundException({ error: 'invoice_not_found' });
 
+        // Acquirer fallback for the branded PDF when the invoice snapshot is empty
+        // (created before the tenant completed its fiscal profile) — use the tenant's
+        // current fiscal data instead of defaulting to "Consumidor Final".
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+        const acquirerFallback = (tenant?.settings as any)?.fiscalData || null;
+
         let buffer: Buffer | null = null;
         if (format === 'branded') {
             const cfg = await this.config.getConfig();
-            buffer = await this.pdf.render(this.buildBranded(inv, cfg));
+            buffer = await this.pdf.render(this.buildBranded(inv, cfg, acquirerFallback));
         } else {
             // Official: stored copy → fetch from Factus on demand → branded fallback.
             buffer = this.storage.read(tenantId, inv.id, 'pdf');
@@ -215,7 +221,7 @@ export class FiscalController {
             }
             if (!buffer) {
                 const cfg = await this.config.getConfig();
-                buffer = await this.pdf.render(this.buildBranded(inv, cfg));
+                buffer = await this.pdf.render(this.buildBranded(inv, cfg, acquirerFallback));
             }
         }
         if (!buffer) throw new NotFoundException({ error: 'pdf_unavailable' });
@@ -247,8 +253,14 @@ export class FiscalController {
         res.send(buffer);
     }
 
-    private buildBranded(inv: any, cfg: any): BrandedInvoiceData {
-        const snap = (inv.acquirerSnapshot as any) || {};
+    private buildBranded(inv: any, cfg: any, acquirerFallback?: any): BrandedInvoiceData {
+        const snapRaw = (inv.acquirerSnapshot as any) || null;
+        // Prefer the immutable snapshot; if it carries no document (was null at
+        // creation, before the tenant had fiscal data), fall back to the tenant's
+        // current fiscal data instead of wrongly printing "Consumidor Final".
+        const snap = (snapRaw && snapRaw.documentId)
+            ? snapRaw
+            : (acquirerFallback && acquirerFallback.documentId ? acquirerFallback : (snapRaw || {}));
         const co = cfg.coIssuer || {};
         const us = cfg.usIssuer || {};
         const isCo = cfg.mode !== 'US_REMOTE';

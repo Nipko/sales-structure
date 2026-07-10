@@ -91,9 +91,12 @@ export class FiscalInvoiceProcessor extends WorkerHost {
             where: { id: inv.id },
             data: {
                 attempts: { increment: 1 },
-                // Record the consumidor-final fallback on the row so the branded
-                // PDF and audit reflect the acquirer it was actually issued to.
-                ...(consumidorFinalFallback ? { acquirerSnapshot: acquirer as any } : {}),
+                // Persist the acquirer actually used at issuance (real fiscal data OR
+                // the consumidor-final fallback) so the record/PDF reflect who it was
+                // issued to. The snapshot taken at creation may have been null (tenant
+                // had no fiscal data yet), which previously left the branded PDF
+                // defaulting to "Consumidor Final".
+                ...(acquirer ? { acquirerSnapshot: acquirer as any } : {}),
             },
         });
 

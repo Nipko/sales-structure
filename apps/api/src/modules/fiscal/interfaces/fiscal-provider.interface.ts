@@ -72,6 +72,8 @@ export interface CreditNoteData {
     tenantId: string;
     /** Provider's internal id of the original invoice (Factus bill_id). */
     originalProviderRef: string;
+    /** DIAN number of the original invoice (Factus bill_number) — required by the credit note. */
+    originalInvoiceNumber?: string;
     amountCents: number;
     currency: string;
     description: string;

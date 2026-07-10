@@ -164,12 +164,10 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             numbering_range_id: Number(cfg.factusNumberingRangeId),
             document: this.DOCUMENT_TYPE,
             reference_code: data.referenceCode,
-            observation: data.description,
-            payment_form: this.PAYMENT_FORM,
-            payment_method_code: this.PAYMENT_METHOD_CODE,
             operation_type: this.OPERATION_TYPE,
-            // Current Factus contract requires payment_details (array); the sum of
-            // amounts must equal the invoice total incl. taxes (= the gross charge).
+            observation: data.description,
+            // payment_form/payment_method_code go ONLY inside payment_details per the
+            // Factus docs; the sum of amounts must equal the invoice total incl. taxes.
             payment_details: this.buildPaymentDetails(baseCents),
             send_email: !!data.acquirer.email && cfg.factusEnvironment === 'production',
             customer: await this.buildCustomer(data.acquirer, cfg),
@@ -178,19 +176,24 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
 
         const res = await this.authedFetch('/v2/bills/validate', { method: 'POST', body: payload });
         if (res.status === 409) {
-            // A bill for this reference_code already exists in Factus (created on a
-            // prior attempt and "pendiente por enviar a la DIAN"). Do NOT recreate it:
-            // that would burn a numbering consecutive and could drop a bill about to
-            // validate. Reconcile instead — return issued once the DIAN validates
-            // (CUFE present), otherwise report 'pending' so the job retries and polls.
-            this.logger.warn(`[Factus] 409 on reference ${data.referenceCode} — reconciling existing bill`);
+            // "Se encontró una factura pendiente por enviar a la DIAN." Per the Factus
+            // docs: if the existing bill is already validated (CUFE) reconcile it;
+            // otherwise (is_validated=false) DELETE it by reference and re-create.
+            this.logger.warn(`[Factus] 409 on reference ${data.referenceCode} — reconcile or delete+recreate`);
             const recovered = await this.reconcileByReference(data.referenceCode);
-            if (recovered) return recovered;
-            return {
-                status: 'pending',
-                failureReason: 'Factus: factura pendiente por enviar a la DIAN (sin CUFE).',
-                raw: { conflict: true, referenceCode: data.referenceCode },
-            };
+            if (recovered) return recovered; // already validated → recover CUFE
+            await this.deleteByReference(data.referenceCode); // unvalidated → clear it
+            const retry = await this.authedFetch('/v2/bills/validate', { method: 'POST', body: payload });
+            if (retry.status === 409) {
+                const again = await this.reconcileByReference(data.referenceCode);
+                if (again) return again;
+                return {
+                    status: 'pending',
+                    failureReason: 'Factus: factura pendiente por enviar a la DIAN.',
+                    raw: { conflict: true, referenceCode: data.referenceCode },
+                };
+            }
+            return this.parseIssueResponse(retry, 'bill');
         }
         return this.parseIssueResponse(res, 'bill');
     }
@@ -208,10 +211,12 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             reference_code: data.referenceCode,
             correction_concept_code: data.correctionConceptCode || '2', // 2 = anulación
             customization_id: '20',
-            bill_id: Number(data.originalProviderRef),
+            // Factus exige el NÚMERO de la factura afectada (bill_number), no el id.
+            bill_number: data.originalInvoiceNumber || data.originalProviderRef,
             observation: (data.reason || 'Reembolso').slice(0, 250),
-            payment_method_code: this.PAYMENT_METHOD_CODE,
             payment_details: this.buildPaymentDetails(baseCents),
+            // La nota crédito requiere el objeto customer (mismo del comprador).
+            customer: await this.buildCustomer(data.acquirer, cfg),
             items: [line.item],
         };
         if (cfg.factusCreditNumberingRangeId) {
@@ -332,30 +337,21 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
     ): { item: Record<string, unknown> } {
         const excluded = iva === 'excluido';
         const netCents = excluded ? grossCents : Math.round(grossCents / 1.19);
-        const price = +(netCents / 100).toFixed(2);
+        // Factus expects string amounts/quantities (2 decimals) per the docs.
         return {
             item: {
                 code_reference: cfg.itemCodeReference,
                 name: description.slice(0, 200),
-                quantity: 1,
-                discount_rate: 0,
-                price,
-                // Current Factus "codes" contract (the one bills/validate enforces):
+                quantity: '1.00',
+                discount_rate: '0.00',
+                price: (netCents / 100).toFixed(2),
                 unit_measure_code: cfg.defaultUnitMeasureCode,
                 standard_code: cfg.defaultStandardCode,
-                // For 'gravado_19' Factus recomputes IVA from this rate on the net
-                // price. For 'excluido' there is no IVA: we send a 0.00 IVA line and
-                // keep is_excluded=1 so the document is classified as excluded.
-                // NOTE: confirm against the Factus docs whether an excluded line
-                // should instead carry taxes:[] or a distinct tribute code.
-                taxes: [{ code: this.IVA_TAX_CODE, rate: excluded ? '0.00' : '19.00' }],
-                // Legacy "internal IDs" contract — accepted/ignored by the current
-                // validation; kept for backward compatibility across Factus versions.
-                tax_rate: excluded ? '0.00' : '19.00',
-                unit_measure_id: Number(cfg.defaultUnitMeasureId),
-                standard_code_id: Number(cfg.defaultStandardCodeId),
-                is_excluded: excluded ? 1 : 0,
-                tribute_id: Number(cfg.defaultProductTributeId),
+                // DIAN distingue "excluido" (art. 476, NO sujeto a IVA) de "exento"
+                // (gravado al 0%). El contrato de Factus exige, para excluido,
+                // taxes:[{is_excluded:true}] SIN code/rate; para gravado, el IVA que
+                // Factus recalcula desde el precio neto.
+                taxes: excluded ? [{ is_excluded: true }] : [{ code: this.IVA_TAX_CODE, rate: '19.00' }],
             },
         };
     }

@@ -117,6 +117,7 @@ export class FiscalInvoiceProcessor extends WorkerHost {
                     referenceCode: inv.id,
                     tenantId: inv.tenantId,
                     originalProviderRef: original.providerRef,
+                    originalInvoiceNumber: original.invoiceNumber ?? undefined,
                     amountCents: copAmountCents ?? inv.amountCents,
                     currency: provider.name === 'factus' ? 'COP' : inv.currency,
                     description: `${cfg.itemDescription} — Reembolso`,

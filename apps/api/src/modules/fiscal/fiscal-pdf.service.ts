@@ -88,18 +88,21 @@ export class FiscalPdfService {
         return new Promise((resolve, reject) => {
             try {
                 const isCredit = data.type === 'credit_note';
-                const C_DARK = isCredit ? '#7f1d1d' : '#064e3b';
-                const C_MID = '#10b981';
-                const C_LIGHT = '#d1fae5';
+                // Paleta de marca Parallly (azul #3897f0, consistente con emails y
+                // landing). Las notas crédito conservan la banda roja como distinción
+                // visual del reverso.
+                const C_DARK = isCredit ? '#7f1d1d' : '#103a63'; // banda de encabezado + total
+                const C_MID = '#3897f0'; // acento / etiquetas de sección
+                const C_LIGHT = '#dbeafe'; // bordes y superficies suaves
                 const C_SURF = '#f8fafc';
                 const C_TEXT = '#111827';
                 const C_MUTED = '#6b7280';
                 const C_WHITE = '#ffffff';
                 const C_CUFE = '#374151';
-                const C_REGIME = '#065f46';
-                const C_REGBG = '#d1fae5';
-                const C_ACCENT = '#6ee7b7';
-                const C_HSUBT = '#a7f3d0';
+                const C_REGIME = '#1e40af';
+                const C_REGBG = '#dbeafe';
+                const C_ACCENT = '#93c5fd';
+                const C_HSUBT = '#bfdbfe';
 
                 const PAGE_W = 595.28;
                 const PAGE_H = 841.89;
@@ -173,11 +176,11 @@ export class FiscalPdfService {
                 // ── Franja de aviso ──
                 const greetY = HEADER_H;
                 const greetH = 18;
-                roundRect(0, greetY, PAGE_W, greetH, 0, '#f8fdf9', null);
+                roundRect(0, greetY, PAGE_W, greetH, 0, '#f5f9ff', null);
                 const greetText = isCredit && data.relatedInvoiceNumber
                     ? `Nota crédito que afecta la Factura Electrónica de Venta N.º ${data.relatedInvoiceNumber}. Representación gráfica válida ante la DIAN.`
                     : 'Este documento es una representación gráfica válida ante la DIAN. Conserve esta copia.';
-                doc.fillColor('#2D6A4F').font('Helvetica-Oblique').fontSize(8.5).text(greetText, MARGIN, greetY + 4, { width: INNER_W, align: 'center' });
+                doc.fillColor('#1e3a8a').font('Helvetica-Oblique').fontSize(8.5).text(greetText, MARGIN, greetY + 4, { width: INNER_W, align: 'center' });
 
                 let cy = HEADER_H + greetH + 16;
 

@@ -248,7 +248,11 @@ export class FiscalController {
             type: inv.type,
             invoiceNumber: inv.invoiceNumber || String(inv.id).slice(0, 8).toUpperCase(),
             cufe: inv.cufe,
-            qrUrl: inv.qrUrl,
+            // The DIAN QR is deterministic from the CUFE — build it when the stored
+            // qrUrl is missing so already-issued invoices still render the QR.
+            qrUrl: inv.qrUrl || (inv.cufe
+                ? `https://${cfg.factusEnvironment === 'production' ? 'catalogo-vpfe' : 'catalogo-vpfe-hab'}.dian.gov.co/document/searchqr?documentkey=${inv.cufe}`
+                : null),
             issuedAt: inv.issuedAt,
             amountCents: inv.amountCents,
             taxCents: inv.taxCents,

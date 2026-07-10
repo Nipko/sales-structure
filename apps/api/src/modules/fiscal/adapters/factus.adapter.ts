@@ -301,7 +301,7 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
                 providerRef: bill?.id != null ? String(bill.id) : number ?? undefined,
                 invoiceNumber: bill?.number != null ? String(bill.number) : number ?? undefined,
                 cufe: String(cufe),
-                qrUrl: bill?.qr ?? undefined,
+                qrUrl: (bill?.qr as string | undefined) || (await this.buildDianQrUrl(String(cufe))),
                 pdfUrl: bill?.public_url ?? undefined,
                 taxCents: bill?.tax_amount != null ? Math.round(parseFloat(String(bill.tax_amount)) * 100) : undefined,
                 raw: { reconciledByReference: true, bill },
@@ -519,18 +519,34 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             };
         }
 
+        // The QR content is deterministic from the CUFE (DIAN catalog URL), so build
+        // it ourselves when Factus doesn't return the `qr` field — otherwise the
+        // branded PDF would show an empty placeholder despite being validated.
+        const rawQr = node?.qr ?? json?.data?.qr;
+        const qrUrl = rawQr || (cufe ? await this.buildDianQrUrl(String(cufe)) : undefined);
+
         return {
             status: 'issued',
             providerRef,
             invoiceNumber: number,
             cufe: cufe ?? undefined,
-            // `qr` is the DIAN catalog URL (data.bill.qr; robust at data level too),
-            // rendered into a QR image on the branded PDF. Present in sandbox too.
-            qrUrl: node?.qr ?? json?.data?.qr ?? undefined,
+            qrUrl,
             pdfUrl: node?.public_url ?? json?.data?.public_url ?? undefined,
             taxCents: tax,
             raw: { status: json?.status, total, node },
         };
+    }
+
+    /**
+     * Build the DIAN catalog QR URL from a CUFE. The QR on a DIAN electronic
+     * invoice encodes exactly this URL, so it can be reconstructed deterministically
+     * without relying on the provider returning a `qr` field. Sandbox uses the
+     * habilitación catalog host.
+     */
+    private async buildDianQrUrl(cufe: string): Promise<string> {
+        const cfg = await this.config.getConfig();
+        const host = cfg.factusEnvironment === 'production' ? 'catalogo-vpfe.dian.gov.co' : 'catalogo-vpfe-hab.dian.gov.co';
+        return `https://${host}/document/searchqr?documentkey=${cufe}`;
     }
 
     /** Fetch the full bill object by number (Factus GET /v2/bills/show/:number), or null. */

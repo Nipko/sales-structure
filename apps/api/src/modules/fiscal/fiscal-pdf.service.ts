@@ -41,6 +41,10 @@ export interface BrandedInvoiceData {
     // Pago
     paymentMethod?: string | null;
     paymentMeans?: string | null;
+    /** TRM aplicada (COP por unidad de moneda extranjera), si la factura vino de un cargo en otra moneda. */
+    trm?: number | null;
+    /** Nota crédito: número de la factura de venta afectada. */
+    relatedInvoiceNumber?: string | null;
 }
 
 /**
@@ -170,7 +174,10 @@ export class FiscalPdfService {
                 const greetY = HEADER_H;
                 const greetH = 18;
                 roundRect(0, greetY, PAGE_W, greetH, 0, '#f8fdf9', null);
-                doc.fillColor('#2D6A4F').font('Helvetica-Oblique').fontSize(8.5).text('Este documento es una representación gráfica válida ante la DIAN. Conserve esta copia.', MARGIN, greetY + 4, { width: INNER_W, align: 'center' });
+                const greetText = isCredit && data.relatedInvoiceNumber
+                    ? `Nota crédito que afecta la Factura Electrónica de Venta N.º ${data.relatedInvoiceNumber}. Representación gráfica válida ante la DIAN.`
+                    : 'Este documento es una representación gráfica válida ante la DIAN. Conserve esta copia.';
+                doc.fillColor('#2D6A4F').font('Helvetica-Oblique').fontSize(8.5).text(greetText, MARGIN, greetY + 4, { width: INNER_W, align: 'center' });
 
                 let cy = HEADER_H + greetH + 16;
 
@@ -291,7 +298,8 @@ export class FiscalPdfService {
                 const obsW = INNER_W - qrCardW - 14;
                 cardBox(MARGIN, cy, obsW, qrCardH);
                 sectionLabel('Observaciones', MARGIN + 12, cy + 9, obsW - 24);
-                const obsText = `Documento electrónico generado y validado por la DIAN mediante el proveedor tecnológico Factus. Moneda: ${data.currency}. Verifique la validez con el código QR en el portal de la DIAN.`;
+                const trmText = data.trm ? ` TRM aplicada: ${this.money(Math.round(data.trm * 100), 'COP')} por unidad.` : '';
+                const obsText = `Documento electrónico generado y validado por la DIAN mediante el proveedor tecnológico Factus. Moneda: ${data.currency}.${trmText} Verifique la validez con el código QR en el portal de la DIAN.`;
                 doc.fillColor(C_MUTED).font('Helvetica').fontSize(9).text(obsText, MARGIN + 12, cy + 21, { width: obsW - 24, lineGap: 2 });
 
                 const qrCardX = MARGIN + obsW + 14;

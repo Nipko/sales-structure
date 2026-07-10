@@ -208,10 +208,20 @@ export class FiscalController {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
         const acquirerFallback = (tenant?.settings as any)?.fiscalData || null;
 
+        // Nota crédito: número de la factura de venta afectada, para referenciarla.
+        let relatedInvoiceNumber: string | null = null;
+        if (inv.type === 'credit_note' && inv.relatedInvoiceId) {
+            const orig = await this.prisma.fiscalInvoice.findUnique({
+                where: { id: inv.relatedInvoiceId },
+                select: { invoiceNumber: true },
+            });
+            relatedInvoiceNumber = orig?.invoiceNumber ?? null;
+        }
+
         let buffer: Buffer | null = null;
         if (format === 'branded') {
             const cfg = await this.config.getConfig();
-            buffer = await this.pdf.render(this.buildBranded(inv, cfg, acquirerFallback));
+            buffer = await this.pdf.render(this.buildBranded(inv, cfg, acquirerFallback, relatedInvoiceNumber));
         } else {
             // Official: stored copy → fetch from Factus on demand → branded fallback.
             buffer = this.storage.read(tenantId, inv.id, 'pdf');
@@ -221,7 +231,7 @@ export class FiscalController {
             }
             if (!buffer) {
                 const cfg = await this.config.getConfig();
-                buffer = await this.pdf.render(this.buildBranded(inv, cfg, acquirerFallback));
+                buffer = await this.pdf.render(this.buildBranded(inv, cfg, acquirerFallback, relatedInvoiceNumber));
             }
         }
         if (!buffer) throw new NotFoundException({ error: 'pdf_unavailable' });
@@ -253,7 +263,7 @@ export class FiscalController {
         res.send(buffer);
     }
 
-    private buildBranded(inv: any, cfg: any, acquirerFallback?: any): BrandedInvoiceData {
+    private buildBranded(inv: any, cfg: any, acquirerFallback?: any, relatedInvoiceNumber?: string | null): BrandedInvoiceData {
         const snapRaw = (inv.acquirerSnapshot as any) || null;
         // Prefer the immutable snapshot; if it carries no document (was null at
         // creation, before the tenant had fiscal data), fall back to the tenant's
@@ -319,6 +329,8 @@ export class FiscalController {
             // payment_method_code '48' (tarjeta de crédito) — ver FactusAdapter.
             paymentMethod: 'Contado',
             paymentMeans: 'Tarjeta de crédito',
+            trm: (inv.metadata as any)?.trmApplied ?? null,
+            relatedInvoiceNumber: relatedInvoiceNumber ?? null,
         };
     }
 }

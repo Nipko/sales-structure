@@ -218,6 +218,8 @@ export class FiscalAdminController {
             acquirerEmail: 'cliente@ejemplo.com',
             paymentMethod: 'Contado',
             paymentMeans: 'Tarjeta de crédito',
+            trm: null,
+            relatedInvoiceNumber: type === 'credit_note' ? 'SETP990000001' : null,
         };
         const buffer = await this.pdf.render(sample);
         res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="factura-ejemplo.pdf"' });

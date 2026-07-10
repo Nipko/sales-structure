@@ -201,6 +201,23 @@ export class FiscalInvoiceProcessor extends WorkerHost {
             xmlUrl = `/fiscal/${inv.tenantId}/invoices/${inv.id}/xml`;
         }
 
+        // Authoritative resolution/prefix/range (DIAN numbering resolution) for the
+        // graphic representation — falls back to manual config in the PDF if absent.
+        let numberingRange: any = null;
+        if (provider.name === 'factus') {
+            const range = await this.factus.getNumberingRange(cfg.factusNumberingRangeId).catch(() => null);
+            if (range) {
+                numberingRange = {
+                    prefix: range.prefix ?? null,
+                    resolution: range.resolution_number ?? range.resolution ?? null,
+                    from: range.from ?? null,
+                    to: range.to ?? null,
+                    startDate: range.start_date ?? null,
+                    endDate: range.end_date ?? null,
+                };
+            }
+        }
+
         await this.prisma.fiscalInvoice.update({
             where: { id: inv.id },
             data: {
@@ -220,6 +237,7 @@ export class FiscalInvoiceProcessor extends WorkerHost {
                     trmApplied: trmApplied ?? null,
                     factusPublicUrl: result.pdfUrl ?? null,
                     consumidorFinalFallback: consumidorFinalFallback || undefined,
+                    numberingRange: numberingRange ?? undefined,
                     raw: result.raw,
                 } as any,
             },

@@ -282,6 +282,14 @@ export class FiscalController {
         const prefix = parts ? parts[1] : null;
         const consecutive = parts ? parts[2] : fullNumber;
 
+        // Resolución/rango/prefijo AUTORITATIVOS desde Factus (stamped en metadata al
+        // emitir); si no están, se usa la config manual del emisor.
+        const nr = (inv.metadata as any)?.numberingRange || null;
+        const resolvedPrefix = nr?.prefix || prefix;
+        const dianResolution = nr?.resolution ? `Resolución ${nr.resolution}` : (isCo ? co.dianResolution ?? null : null);
+        const authRange = (nr?.from != null && nr?.to != null) ? `${nr.from} — ${nr.to}` : (isCo ? co.authRange ?? null : null);
+        const resolutionValidUntil = nr?.endDate ? String(nr.endDate) : (isCo ? co.resolutionValidUntil ?? null : null);
+
         // Documento del adquirente legible: mapear el código Factus a NIT/CC/… y
         // anexar el dígito de verificación (numeral 3, obligatorio).
         const docLabel = ACQUIRER_DOC_LABELS[String(snap.documentType ?? '')] || (snap.documentType ? String(snap.documentType) : '');
@@ -296,7 +304,7 @@ export class FiscalController {
         return {
             type: inv.type,
             invoiceNumber: fullNumber,
-            prefix,
+            prefix: resolvedPrefix,
             consecutive,
             cufe: inv.cufe,
             // The DIAN QR is deterministic from the CUFE — build it when the stored
@@ -319,9 +327,9 @@ export class FiscalController {
             issuerEmail: isCo ? co.email ?? null : us.email ?? null,
             issuerPhone: isCo ? co.phone ?? null : null,
             issuerRegime: isCo ? co.regime || 'Responsable de IVA' : null,
-            dianResolution: isCo ? co.dianResolution ?? null : null,
-            authRange: isCo ? co.authRange ?? null : null,
-            resolutionValidUntil: isCo ? co.resolutionValidUntil ?? null : null,
+            dianResolution,
+            authRange,
+            resolutionValidUntil,
             acquirerName: snap.businessName || snap.names || null,
             acquirerDoc,
             acquirerEmail: snap.email || null,

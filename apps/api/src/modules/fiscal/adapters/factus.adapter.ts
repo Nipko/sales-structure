@@ -55,6 +55,9 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
     // in-memory memo per process is enough (no Redis needed).
     private readonly municipalityCache = new Map<string, string>();
 
+    // Numbering ranges change rarely; cache per process (reset on worker restart).
+    private numberingRangesCache: any[] | null = null;
+
     // DIAN payment catalog: 1 = contado, 48 = tarjeta de crédito (subscriptions
     // are card charges). These are not validity-critical and can be revisited.
     private readonly PAYMENT_FORM = '1';
@@ -580,12 +583,13 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
 
     /** Download the official Factus PDF (graphic representation) for an invoice number. */
     async downloadPdf(number: string): Promise<Buffer | null> {
-        return this.downloadDocument(`/v2/bills/download-pdf/${encodeURIComponent(number)}`);
+        // Factus path is /v2/bills/:number/download-pdf (number BEFORE the verb).
+        return this.downloadDocument(`/v2/bills/${encodeURIComponent(number)}/download-pdf`);
     }
 
     /** Download the DIAN-signed XML for an invoice number. */
     async downloadXml(number: string): Promise<Buffer | null> {
-        return this.downloadDocument(`/v2/bills/download-xml/${encodeURIComponent(number)}`);
+        return this.downloadDocument(`/v2/bills/${encodeURIComponent(number)}/download-xml`);
     }
 
     private async downloadDocument(apiPath: string): Promise<Buffer | null> {
@@ -596,6 +600,10 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         }
         const json: any = await res.json().catch(() => ({}));
         const b64 =
+            // Factus returns `pdf_base_64_encoded` / `xml_base_64_encoded` (note the
+            // underscore in base_64). Keep the older spellings as defensive fallbacks.
+            json?.data?.pdf_base_64_encoded ??
+            json?.data?.xml_base_64_encoded ??
             json?.data?.pdf_base64_encoded ??
             json?.data?.xml_base64_encoded ??
             json?.data?.file ??
@@ -634,5 +642,21 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         }
         const data = json?.data;
         return Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+    }
+
+    /**
+     * Resolve a single numbering range by id (cached), used to stamp the
+     * authoritative resolution/prefix/range onto the fiscal invoice for the
+     * graphic representation. Fields: { id, prefix, from, to, resolution_number,
+     * start_date, end_date }. Best-effort — returns null on any error.
+     */
+    async getNumberingRange(id: string | number | null | undefined): Promise<any | null> {
+        if (id == null || id === '') return null;
+        try {
+            if (!this.numberingRangesCache) this.numberingRangesCache = await this.listNumberingRanges();
+            return this.numberingRangesCache.find((r: any) => String(r?.id) === String(id)) || null;
+        } catch {
+            return null;
+        }
     }
 }

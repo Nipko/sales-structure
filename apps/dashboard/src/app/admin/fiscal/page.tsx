@@ -320,7 +320,6 @@ export default function FiscalAdminPage() {
                                                 <div className="flex items-center gap-2">
                                                     {inv.status === "issued" && (
                                                         <>
-                                                            <button title={t("pdfOfficial")} onClick={() => api.downloadFiscalInvoice(inv.tenantId, inv.id, "pdf", "official")} className="text-indigo-500 hover:text-indigo-700"><FileText size={15} /></button>
                                                             <button title={t("pdfBranded")} onClick={() => api.downloadFiscalInvoice(inv.tenantId, inv.id, "pdf", "branded")} className="text-teal-500 hover:text-teal-700"><Receipt size={15} /></button>
                                                             <button title={t("xml")} onClick={() => api.downloadFiscalInvoice(inv.tenantId, inv.id, "xml")} className="text-neutral-400 hover:text-neutral-700"><FileCode size={15} /></button>
                                                         </>

@@ -7,7 +7,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { CO_MUNICIPIOS } from "@/lib/co-municipios";
-import { Receipt, Save, CheckCircle, AlertCircle, FileText, FileCode, RotateCw, RefreshCw, Loader2 } from "lucide-react";
+import { Receipt, Save, CheckCircle, AlertCircle, FileCode, RotateCw, RefreshCw, Loader2 } from "lucide-react";
 
 type FiscalData = {
     consumidorFinal?: boolean;
@@ -322,11 +322,8 @@ export default function FiscalPage() {
                                                 </span>
                                             ) : inv.status === "issued" && tenantId ? (
                                                 <div className="flex items-center gap-3">
-                                                    <button title={t("pdfOfficial")} onClick={() => api.downloadFiscalInvoice(tenantId, inv.id, "pdf", "official")} className="inline-flex items-center gap-1 text-indigo-500 hover:underline">
-                                                        <FileText size={14} /> PDF
-                                                    </button>
                                                     <button title={t("pdfBranded")} onClick={() => api.downloadFiscalInvoice(tenantId, inv.id, "pdf", "branded")} className="inline-flex items-center gap-1 text-teal-500 hover:underline">
-                                                        <Receipt size={14} />
+                                                        <Receipt size={14} /> PDF
                                                     </button>
                                                     <button title={t("xml")} onClick={() => api.downloadFiscalInvoice(tenantId, inv.id, "xml")} className="inline-flex items-center gap-1 text-neutral-400 hover:text-neutral-700">
                                                         <FileCode size={14} />

@@ -7,6 +7,7 @@ import { FiscalPdfService } from './fiscal-pdf.service';
 import { FiscalStorageService } from './fiscal-storage.service';
 import { FactusAdapter } from './adapters/factus.adapter';
 import { buildBrandedInvoiceData } from './fiscal-branded.util';
+import { createZip, ZipEntry } from './zip.util';
 import { EmailAttachment } from '../email/email.service';
 
 /**
@@ -67,20 +68,24 @@ export class FiscalEmailService {
             const total = this.money(inv.amountCents, inv.currency);
             const baseName = `${isCredit ? 'nota-credito' : 'factura'}-${data.invoiceNumber}`;
 
-            const attachments: EmailAttachment[] = [
-                { filename: `${baseName}.pdf`, content: pdfBuffer, contentType: 'application/pdf' },
-            ];
-            // El adquirente debe RECIBIR el documento legal: adjuntamos el XML firmado
-            // (DIAN) además de nuestro PDF con marca. Storage → descarga de Factus.
+            // Entrega estándar: un único .zip con la factura (nuestro PDF con marca)
+            // + el XML firmado (documento legal DIAN). El XML se toma del storage o
+            // se descarga de Factus (best-effort).
+            const zipEntries: ZipEntry[] = [{ name: `${baseName}.pdf`, data: pdfBuffer }];
+            let xml: Buffer | null = null;
             if (inv.provider === 'factus' && inv.invoiceNumber && !isCredit) {
-                let xml = this.storage.read(inv.tenantId, inv.id, 'xml');
+                xml = this.storage.read(inv.tenantId, inv.id, 'xml');
                 if (!xml) {
                     xml = await this.factus.downloadXml(inv.invoiceNumber).catch(() => null);
                     if (xml) this.storage.save(inv.tenantId, inv.id, 'xml', xml);
                 }
-                if (xml) attachments.push({ filename: `${baseName}.xml`, content: xml, contentType: 'application/xml' });
-                else this.logger.warn(`[Fiscal] XML no disponible para adjuntar en ${inv.id}`);
+                if (xml) zipEntries.push({ name: `${baseName}.xml`, data: xml });
+                else this.logger.warn(`[Fiscal] XML no disponible para el zip en ${inv.id}`);
             }
+            const zipBuffer = createZip(zipEntries);
+            const attachments: EmailAttachment[] = [
+                { filename: `${baseName}.zip`, content: zipBuffer, contentType: 'application/zip' },
+            ];
 
             const ok = await this.email.send({
                 to,
@@ -92,7 +97,7 @@ export class FiscalEmailService {
                     issuerName: data.issuerName,
                     cufe: data.cufe,
                     isCredit,
-                    hasXml: attachments.length > 1,
+                    hasXml: !!xml,
                 }),
                 attachments,
             });

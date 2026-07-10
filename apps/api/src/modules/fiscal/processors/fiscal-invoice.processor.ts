@@ -7,6 +7,7 @@ import { FiscalConfigService } from '../fiscal-config.service';
 import { FiscalProviderFactory } from '../fiscal-provider.factory';
 import { FactusAdapter } from '../adapters/factus.adapter';
 import { FiscalStorageService } from '../fiscal-storage.service';
+import { FiscalEmailService } from '../fiscal-email.service';
 import { CONSUMIDOR_FINAL_ACQUIRER, FISCAL_MAX_ATTEMPTS, FISCAL_QUEUE, FiscalJobData } from '../fiscal.constants';
 import { FiscalAcquirer, FiscalIssueResult } from '../interfaces/fiscal-provider.interface';
 
@@ -26,6 +27,7 @@ export class FiscalInvoiceProcessor extends WorkerHost {
         private readonly factory: FiscalProviderFactory,
         private readonly factus: FactusAdapter,
         private readonly storage: FiscalStorageService,
+        private readonly fiscalEmail: FiscalEmailService,
     ) {
         super();
     }
@@ -255,6 +257,11 @@ export class FiscalInvoiceProcessor extends WorkerHost {
         }
 
         this.logger.log(`[Fiscal] Issued ${inv.type} ${inv.id} → ${result.invoiceNumber ?? result.providerRef}`);
+
+        // Send OUR branded PDF to the acquirer (Factus's own email is disabled).
+        // Best-effort + idempotent; never blocks/breaks issuance.
+        await this.fiscalEmail.sendIssuedInvoice(inv.id);
+
         return { status: 'issued', number: result.invoiceNumber };
     }
 

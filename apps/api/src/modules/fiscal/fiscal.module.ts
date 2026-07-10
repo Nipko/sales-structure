@@ -8,6 +8,7 @@ import { FiscalProviderFactory } from './fiscal-provider.factory';
 import { FactusAdapter } from './adapters/factus.adapter';
 import { UsRemoteAdapter } from './adapters/us-remote.adapter';
 import { FiscalInvoiceService } from './fiscal-invoice.service';
+import { FiscalEmailService } from './fiscal-email.service';
 import { FiscalStorageService } from './fiscal-storage.service';
 import { FiscalPdfService } from './fiscal-pdf.service';
 import { FiscalInvoiceProcessor } from './processors/fiscal-invoice.processor';
@@ -31,6 +32,7 @@ import { FiscalAdminController } from './fiscal-admin.controller';
         FactusAdapter,
         UsRemoteAdapter,
         FiscalInvoiceService,
+        FiscalEmailService,
         FiscalStorageService,
         FiscalPdfService,
         FiscalInvoiceProcessor,

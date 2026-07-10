@@ -169,7 +169,9 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             // payment_form/payment_method_code go ONLY inside payment_details per the
             // Factus docs; the sum of amounts must equal the invoice total incl. taxes.
             payment_details: this.buildPaymentDetails(baseCents),
-            send_email: !!data.acquirer.email && cfg.factusEnvironment === 'production',
+            // Factus NO envía correo al cliente: nosotros enviamos nuestra propia
+            // factura con marca (FiscalEmailService) tras la emisión.
+            send_email: false,
             customer: await this.buildCustomer(data.acquirer, cfg),
             items: [line.item],
         };

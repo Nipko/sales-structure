@@ -106,6 +106,43 @@ export function actionButton(text: string, url: string): string {
 }
 
 /**
+ * Branded fiscal-invoice email — our own email announcing the DIAN invoice with
+ * the branded PDF attached (replaces the payment provider's default email).
+ */
+export function fiscalInvoiceEmail(opts: {
+    recipientName?: string | null;
+    invoiceNumber: string;
+    total: string;
+    issuerName: string;
+    cufe?: string | null;
+    isCredit?: boolean;
+    lang?: string;
+}): string {
+    const docLabel = opts.isCredit ? 'nota crédito electrónica' : 'factura electrónica de venta';
+    const greetingName = opts.recipientName ? ` ${opts.recipientName}` : '';
+    const content = `
+      <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111;">Tu ${docLabel}</h1>
+      <p style="margin:0 0 20px;font-size:14px;color:#555;line-height:1.6;">
+        Hola${greetingName}, adjuntamos tu ${docLabel} <strong>N.º ${opts.invoiceNumber}</strong> emitida por <strong>${opts.issuerName}</strong> y validada por la DIAN.
+      </p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;border:1px solid #e8e8e8;border-radius:8px;">
+        <tr>
+          <td style="padding:14px 18px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#777;">Número</td>
+          <td style="padding:14px 18px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#111;text-align:right;font-weight:600;">${opts.invoiceNumber}</td>
+        </tr>
+        <tr>
+          <td style="padding:14px 18px;font-size:13px;color:#777;">Total</td>
+          <td style="padding:14px 18px;font-size:15px;color:${BRAND_DARK};text-align:right;font-weight:700;">${opts.total}</td>
+        </tr>
+      </table>
+      ${opts.cufe ? `<p style="margin:0 0 8px;font-size:11px;color:#999;word-break:break-all;"><strong>CUFE:</strong> ${opts.cufe}</p>` : ''}
+      <p style="margin:16px 0 0;font-size:13px;color:#555;line-height:1.6;">
+        Encontrarás el documento en el <strong>PDF adjunto</strong>. Puedes verificar su validez escaneando el código QR del PDF en el portal de la DIAN.
+      </p>`;
+    return emailLayout(content, undefined, opts.lang || 'es');
+}
+
+/**
  * Feature highlight row (icon + title + description)
  */
 function featureRow(icon: string, title: string, description: string): string {

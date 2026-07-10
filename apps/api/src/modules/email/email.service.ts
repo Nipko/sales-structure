@@ -3,6 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { fallbackMessageEmail, agentAssignmentEmail } from './email-layouts';
 
+export interface EmailAttachment {
+    filename: string;
+    content: Buffer;
+    contentType?: string;
+}
+
 export interface EmailPayload {
     to: string;
     subject: string;
@@ -10,6 +16,7 @@ export interface EmailPayload {
     html?: string;
     from?: string;
     replyTo?: string;
+    attachments?: EmailAttachment[];
 }
 
 @Injectable()
@@ -59,6 +66,7 @@ export class EmailService {
                 text: payload.text,
                 html: payload.html,
                 replyTo: payload.replyTo,
+                attachments: payload.attachments,
             });
 
             this.logger.log(`Email sent to ${payload.to} — messageId: ${info.messageId}`);

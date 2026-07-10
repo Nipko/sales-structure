@@ -6,19 +6,12 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { FiscalStorageService } from './fiscal-storage.service';
-import { FiscalPdfService, BrandedInvoiceData } from './fiscal-pdf.service';
+import { FiscalPdfService } from './fiscal-pdf.service';
 import { FiscalConfigService } from './fiscal-config.service';
 import { FiscalInvoiceService } from './fiscal-invoice.service';
 import { FactusAdapter } from './adapters/factus.adapter';
 import { computeNitDv } from './nit.util';
-import { copAmountInWords } from './number-to-words.util';
-
-/** Factus doc-type catalog code → human label for the graphic representation. */
-const ACQUIRER_DOC_LABELS: Record<string, string> = {
-    '1': 'RC', '2': 'TI', '3': 'CC', '4': 'TE', '5': 'CE', '6': 'NIT', '7': 'Pasaporte', '8': 'DIE', '10': 'NIT',
-};
-/** DIAN unit-of-measure code → label. */
-const UNIT_MEASURE_LABELS: Record<string, string> = { '94': 'Unidad' };
+import { buildBrandedInvoiceData } from './fiscal-branded.util';
 
 /** Acquirer fiscal profile saved on Tenant.settings.fiscalData. */
 class FiscalDataDto {
@@ -221,7 +214,7 @@ export class FiscalController {
         let buffer: Buffer | null = null;
         if (format === 'branded') {
             const cfg = await this.config.getConfig();
-            buffer = await this.pdf.render(this.buildBranded(inv, cfg, acquirerFallback, relatedInvoiceNumber));
+            buffer = await this.pdf.render(buildBrandedInvoiceData(inv, cfg, acquirerFallback, relatedInvoiceNumber));
         } else {
             // Official: stored copy → fetch from Factus on demand → branded fallback.
             buffer = this.storage.read(tenantId, inv.id, 'pdf');
@@ -231,7 +224,7 @@ export class FiscalController {
             }
             if (!buffer) {
                 const cfg = await this.config.getConfig();
-                buffer = await this.pdf.render(this.buildBranded(inv, cfg, acquirerFallback, relatedInvoiceNumber));
+                buffer = await this.pdf.render(buildBrandedInvoiceData(inv, cfg, acquirerFallback, relatedInvoiceNumber));
             }
         }
         if (!buffer) throw new NotFoundException({ error: 'pdf_unavailable' });
@@ -263,82 +256,4 @@ export class FiscalController {
         res.send(buffer);
     }
 
-    private buildBranded(inv: any, cfg: any, acquirerFallback?: any, relatedInvoiceNumber?: string | null): BrandedInvoiceData {
-        const snapRaw = (inv.acquirerSnapshot as any) || null;
-        // Prefer the immutable snapshot; if it carries no document (was null at
-        // creation, before the tenant had fiscal data), fall back to the tenant's
-        // current fiscal data instead of wrongly printing "Consumidor Final".
-        const snap = (snapRaw && snapRaw.documentId)
-            ? snapRaw
-            : (acquirerFallback && acquirerFallback.documentId ? acquirerFallback : (snapRaw || {}));
-        const co = cfg.coIssuer || {};
-        const us = cfg.usIssuer || {};
-        const isCo = cfg.mode !== 'US_REMOTE';
-
-        // Prefijo + consecutivo: el número DIAN viene como '<PREFIJO><consecutivo>'
-        // (p.ej. SETP990010633). Separarlos para mostrar el prefijo como campo.
-        const fullNumber = inv.invoiceNumber || String(inv.id).slice(0, 8).toUpperCase();
-        const parts = /^([A-Za-z]+)\s*(\d+)$/.exec(fullNumber);
-        const prefix = parts ? parts[1] : null;
-        const consecutive = parts ? parts[2] : fullNumber;
-
-        // Resolución/rango/prefijo AUTORITATIVOS desde Factus (stamped en metadata al
-        // emitir); si no están, se usa la config manual del emisor.
-        const nr = (inv.metadata as any)?.numberingRange || null;
-        const resolvedPrefix = nr?.prefix || prefix;
-        const dianResolution = nr?.resolution ? `Resolución ${nr.resolution}` : (isCo ? co.dianResolution ?? null : null);
-        const authRange = (nr?.from != null && nr?.to != null) ? `${nr.from} — ${nr.to}` : (isCo ? co.authRange ?? null : null);
-        const resolutionValidUntil = nr?.endDate ? String(nr.endDate) : (isCo ? co.resolutionValidUntil ?? null : null);
-
-        // Documento del adquirente legible: mapear el código Factus a NIT/CC/… y
-        // anexar el dígito de verificación (numeral 3, obligatorio).
-        const docLabel = ACQUIRER_DOC_LABELS[String(snap.documentType ?? '')] || (snap.documentType ? String(snap.documentType) : '');
-        const acquirerDoc = snap.documentId
-            ? `${docLabel ? docLabel + ' ' : ''}${snap.documentId}${snap.dv ? '-' + snap.dv : ''}`.trim()
-            : null;
-
-        // Valor en letras solo tiene sentido en COP (facturación DIAN); en US_REMOTE
-        // (recibo USD) se omite.
-        const amountInWords = (inv.currency || '').toUpperCase() === 'COP' ? copAmountInWords(inv.amountCents) : null;
-
-        return {
-            type: inv.type,
-            invoiceNumber: fullNumber,
-            prefix: resolvedPrefix,
-            consecutive,
-            cufe: inv.cufe,
-            // The DIAN QR is deterministic from the CUFE — build it when the stored
-            // qrUrl is missing so already-issued invoices still render the QR.
-            qrUrl: inv.qrUrl || (inv.cufe
-                ? `https://${cfg.factusEnvironment === 'production' ? 'catalogo-vpfe' : 'catalogo-vpfe-hab'}.dian.gov.co/document/searchqr?documentkey=${inv.cufe}`
-                : null),
-            issuedAt: inv.issuedAt,
-            amountCents: inv.amountCents,
-            taxCents: inv.taxCents,
-            currency: inv.currency,
-            amountInWords,
-            itemDescription: cfg.itemDescription,
-            itemCode: cfg.itemCodeReference || null,
-            unitMeasure: UNIT_MEASURE_LABELS[String(cfg.defaultUnitMeasureCode ?? '')] || 'Unidad',
-            // Emisor: CO_LOCAL lee cfg.coIssuer (datos de Parallly); US_REMOTE lee cfg.usIssuer
-            issuerName: isCo ? co.legalName || 'Parallly' : us.legalName || 'Parallly',
-            issuerNit: isCo ? co.nit ?? null : us.taxId ?? null,
-            issuerAddress: isCo ? co.address ?? null : us.address ?? null,
-            issuerEmail: isCo ? co.email ?? null : us.email ?? null,
-            issuerPhone: isCo ? co.phone ?? null : null,
-            issuerRegime: isCo ? co.regime || 'Responsable de IVA' : null,
-            dianResolution,
-            authRange,
-            resolutionValidUntil,
-            acquirerName: snap.businessName || snap.names || null,
-            acquirerDoc,
-            acquirerEmail: snap.email || null,
-            // Reflejamos lo que declaramos a la DIAN: payment_form '1' (contado) y
-            // payment_method_code '48' (tarjeta de crédito) — ver FactusAdapter.
-            paymentMethod: 'Contado',
-            paymentMeans: 'Tarjeta de crédito',
-            trm: (inv.metadata as any)?.trmApplied ?? null,
-            relatedInvoiceNumber: relatedInvoiceNumber ?? null,
-        };
-    }
 }

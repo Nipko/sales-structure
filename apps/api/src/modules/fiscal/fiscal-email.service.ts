@@ -4,7 +4,10 @@ import { EmailService } from '../email/email.service';
 import { fiscalInvoiceEmail } from '../email/email-layouts';
 import { FiscalConfigService } from './fiscal-config.service';
 import { FiscalPdfService } from './fiscal-pdf.service';
+import { FiscalStorageService } from './fiscal-storage.service';
+import { FactusAdapter } from './adapters/factus.adapter';
 import { buildBrandedInvoiceData } from './fiscal-branded.util';
+import { EmailAttachment } from '../email/email.service';
 
 /**
  * Sends OUR branded PDF of an issued fiscal invoice to the acquirer, replacing
@@ -19,6 +22,8 @@ export class FiscalEmailService {
         private readonly config: FiscalConfigService,
         private readonly pdf: FiscalPdfService,
         private readonly email: EmailService,
+        private readonly storage: FiscalStorageService,
+        private readonly factus: FactusAdapter,
     ) {}
 
     /**
@@ -60,7 +65,22 @@ export class FiscalEmailService {
 
             const isCredit = inv.type === 'credit_note';
             const total = this.money(inv.amountCents, inv.currency);
-            const filename = `${isCredit ? 'nota-credito' : 'factura'}-${data.invoiceNumber}.pdf`;
+            const baseName = `${isCredit ? 'nota-credito' : 'factura'}-${data.invoiceNumber}`;
+
+            const attachments: EmailAttachment[] = [
+                { filename: `${baseName}.pdf`, content: pdfBuffer, contentType: 'application/pdf' },
+            ];
+            // El adquirente debe RECIBIR el documento legal: adjuntamos el XML firmado
+            // (DIAN) además de nuestro PDF con marca. Storage → descarga de Factus.
+            if (inv.provider === 'factus' && inv.invoiceNumber && !isCredit) {
+                let xml = this.storage.read(inv.tenantId, inv.id, 'xml');
+                if (!xml) {
+                    xml = await this.factus.downloadXml(inv.invoiceNumber).catch(() => null);
+                    if (xml) this.storage.save(inv.tenantId, inv.id, 'xml', xml);
+                }
+                if (xml) attachments.push({ filename: `${baseName}.xml`, content: xml, contentType: 'application/xml' });
+                else this.logger.warn(`[Fiscal] XML no disponible para adjuntar en ${inv.id}`);
+            }
 
             const ok = await this.email.send({
                 to,
@@ -72,8 +92,9 @@ export class FiscalEmailService {
                     issuerName: data.issuerName,
                     cufe: data.cufe,
                     isCredit,
+                    hasXml: attachments.length > 1,
                 }),
-                attachments: [{ filename, content: pdfBuffer, contentType: 'application/pdf' }],
+                attachments,
             });
 
             if (ok) {

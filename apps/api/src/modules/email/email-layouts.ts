@@ -116,6 +116,7 @@ export function fiscalInvoiceEmail(opts: {
     issuerName: string;
     cufe?: string | null;
     isCredit?: boolean;
+    hasXml?: boolean;
     lang?: string;
 }): string {
     const docLabel = opts.isCredit ? 'nota crédito electrónica' : 'factura electrónica de venta';
@@ -137,7 +138,7 @@ export function fiscalInvoiceEmail(opts: {
       </table>
       ${opts.cufe ? `<p style="margin:0 0 8px;font-size:11px;color:#999;word-break:break-all;"><strong>CUFE:</strong> ${opts.cufe}</p>` : ''}
       <p style="margin:16px 0 0;font-size:13px;color:#555;line-height:1.6;">
-        Encontrarás el documento en el <strong>PDF adjunto</strong>. Puedes verificar su validez escaneando el código QR del PDF en el portal de la DIAN.
+        Adjuntamos ${opts.hasXml ? 'el <strong>PDF</strong> y el <strong>XML firmado</strong> (documento legal ante la DIAN)' : 'el <strong>PDF</strong>'}. Puedes verificar la validez escaneando el código QR del PDF en el portal de la DIAN.
       </p>`;
     return emailLayout(content, undefined, opts.lang || 'es');
 }

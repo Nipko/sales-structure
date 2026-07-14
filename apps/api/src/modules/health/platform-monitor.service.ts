@@ -551,7 +551,6 @@ export class PlatformMonitorService implements OnModuleInit {
     @Cron('30 7 * * *')
     async checkRiskSignals() {
         await this.checkPaymentFailures();
-        await this.checkChannelTokens();
         await this.checkLlmBudgets();
         await this.checkBackupHeartbeat();
     }
@@ -580,33 +579,96 @@ export class PlatformMonitorService implements OnModuleInit {
         }
     }
 
-    private async checkChannelTokens() {
+    private escapeHtml(s: string): string {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    private credTypeLabel(t: string): string {
+        const map: Record<string, string> = {
+            instagram_token: 'Instagram',
+            messenger_token: 'Messenger',
+            whatsapp_token: 'WhatsApp',
+            system_user_token: 'WhatsApp (system user)',
+            page_token: 'Messenger (page)',
+        };
+        return map[t] || t;
+    }
+
+    /** Resolve tenant ids → display names (falls back to the id). */
+    private async tenantNames(tenantIds: string[]): Promise<Map<string, string>> {
+        const map = new Map<string, string>();
+        const ids = Array.from(new Set(tenantIds)).filter(Boolean);
+        if (!ids.length) return map;
         try {
-            const errored = await this.prisma.whatsappCredential.count({ where: { rotationState: 'error' } });
-            if (errored > 0) {
+            const rows = await this.prisma.tenant.findMany({
+                where: { id: { in: ids } },
+                select: { id: true, name: true },
+            });
+            for (const r of rows as Array<{ id: string; name: string }>) map.set(r.id, r.name);
+        } catch { /* ignore */ }
+        return map;
+    }
+
+    // ── Channel token health — hourly (detail + remediation in the body) ──
+
+    @Cron('0 * * * *')
+    async checkChannelTokens() {
+        try {
+            // Refresh-failed credentials — list which tenant + channel so it's actionable.
+            const errored = await this.prisma.whatsappCredential.findMany({
+                where: { rotationState: 'error' },
+                select: { tenantId: true, credentialType: true },
+                take: 50,
+            }) as Array<{ tenantId: string; credentialType: string }>;
+
+            if (errored.length > 0) {
+                const names = await this.tenantNames(errored.map((c) => c.tenantId));
+                const list = errored
+                    .map((c) => `<li><b>${this.escapeHtml(names.get(c.tenantId) || c.tenantId)}</b> — ${this.credTypeLabel(c.credentialType)}</li>`)
+                    .join('');
                 await this.alert(
                     'tokens:error',
-                    `${errored} token(s) de canal en error`,
-                    `Hay <b>${errored}</b> credencial(es) de canal cuyo refresco fallo (estado 'error').<br>
-                     Esos canales se desconectaran cuando expire el token. Reconecta el canal afectado
-                     desde el panel del tenant.`,
-                    errored,
+                    `${errored.length} token(s) de canal en error`,
+                    `Estas credenciales de canal fallaron al refrescar (estado 'error') y el canal se
+                     desconectara cuando expire el token:<br>
+                     <ul style="margin:6px 0 6px 18px;list-style:disc;">${list}</ul>
+                     <b>Solucion:</b> entra al tenant afectado → Configuracion → Canales y <b>reconecta</b>
+                     el canal (re-autoriza el OAuth). Si es Instagram/Messenger, la re-autorizacion genera un
+                     token nuevo de 60 dias.`,
+                    errored.length,
                 );
             } else {
                 await this.incidents.resolveByKey('tokens:error');
             }
 
+            // Expiring soon — list tenant + channel + days-to-expiry.
             const in7 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-            const expiring = await this.prisma.whatsappCredential.count({
+            const expiring = await this.prisma.whatsappCredential.findMany({
                 where: { rotationState: 'active', expiresAt: { lte: in7, gt: new Date() } },
-            });
-            if (expiring > 0) {
+                select: { tenantId: true, credentialType: true, expiresAt: true },
+                orderBy: { expiresAt: 'asc' },
+                take: 50,
+            }) as Array<{ tenantId: string; credentialType: string; expiresAt: Date | null }>;
+
+            if (expiring.length > 0) {
+                const names = await this.tenantNames(expiring.map((c) => c.tenantId));
+                const list = expiring
+                    .map((c) => {
+                        const days = c.expiresAt ? Math.max(0, Math.ceil((c.expiresAt.getTime() - Date.now()) / 86400000)) : '?';
+                        const date = c.expiresAt ? c.expiresAt.toISOString().slice(0, 10) : '';
+                        return `<li><b>${this.escapeHtml(names.get(c.tenantId) || c.tenantId)}</b> — ${this.credTypeLabel(c.credentialType)} — vence en ${days} dia(s)${date ? ` (${date})` : ''}</li>`;
+                    })
+                    .join('');
                 await this.alert(
                     'tokens:expiring',
-                    `${expiring} token(s) de canal por expirar`,
-                    `Hay <b>${expiring}</b> credencial(es) de canal que expiran en los proximos 7 dias y aun
-                     no se renovaron automaticamente.<br>Verifica que el cron de refresco este corriendo.`,
-                    expiring,
+                    `${expiring.length} token(s) de canal por expirar`,
+                    `Estas credenciales expiran en los proximos 7 dias y aun no se renovaron automaticamente:<br>
+                     <ul style="margin:6px 0 6px 18px;list-style:disc;">${list}</ul>
+                     <b>Solucion:</b> el refresco de Instagram corre a las 6AM (InstagramTokenRefreshService,
+                     renueva tokens con <30 dias de vida). Si un token sigue apareciendo aqui, su refresco esta
+                     fallando (revisa logs) o el canal necesita re-autorizacion: entra al tenant → Configuracion
+                     → Canales y reconectalo.`,
+                    expiring.length,
                 );
             } else {
                 await this.incidents.resolveByKey('tokens:expiring');

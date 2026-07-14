@@ -431,10 +431,11 @@ export class PlatformMonitorService implements OnModuleInit {
             const cfg = await this.alertConfig.get();
             const tenants = await this.prisma.tenant.findMany({
                 where: { isActive: true },
-                select: { id: true, schemaName: true },
+                select: { id: true, name: true, schemaName: true },
             });
 
             let total = 0;
+            const byTenant: Array<{ name: string; n: number }> = [];
             for (const t of tenants) {
                 try {
                     const rows = await this.prisma.executeInTenantSchema<Array<{ n: number }>>(
@@ -453,18 +454,27 @@ export class PlatformMonitorService implements OnModuleInit {
                            )`,
                         [],
                     );
-                    total += Number(rows?.[0]?.n ?? 0);
+                    const n = Number(rows?.[0]?.n ?? 0);
+                    total += n;
+                    if (n > 0) byTenant.push({ name: t.name, n });
                 } catch { /* tenant tables may not exist yet */ }
             }
+
+            const slaList = byTenant
+                .sort((a, b) => b.n - a.n)
+                .slice(0, 15)
+                .map((x) => `<li><b>${this.escapeHtml(x.name)}</b> — ${x.n} conversacion(es)</li>`)
+                .join('');
 
             if (total >= cfg.slaBreaches.crit) {
                 await this.alert(
                     'sla:breaches:critical',
                     `${total} conversaciones violando SLA — CRITICO`,
                     `Hay <b>${total}</b> conversaciones en handoff esperando mas de 10 min sin respuesta de
-                     un agente, en toda la plataforma (umbral critico: ${cfg.slaBreaches.crit}).<br><br>
-                     Indica un backlog operativo sistemico: agentes desconectados, sobrecarga o un problema
-                     de routing. Revisa la disponibilidad de agentes.`,
+                     un agente (umbral critico: ${cfg.slaBreaches.crit}), por tenant:<br>
+                     <ul style="margin:6px 0 6px 18px;list-style:disc;">${slaList}</ul>
+                     Indica un backlog operativo sistemico: agentes desconectados, sobrecarga o routing.
+                     Revisa la disponibilidad de agentes en los tenants afectados.`,
                     total,
                 );
                 await this.incidents.resolveByKey('sla:breaches:warning');
@@ -473,7 +483,9 @@ export class PlatformMonitorService implements OnModuleInit {
                     'sla:breaches:warning',
                     `${total} conversaciones violando SLA`,
                     `Hay <b>${total}</b> conversaciones en handoff esperando mas de 10 min sin respuesta de
-                     un agente (umbral: ${cfg.slaBreaches.warn}).<br>Revisa la disponibilidad de agentes.`,
+                     un agente (umbral: ${cfg.slaBreaches.warn}), por tenant:<br>
+                     <ul style="margin:6px 0 6px 18px;list-style:disc;">${slaList}</ul>
+                     Revisa la disponibilidad de agentes en los tenants afectados.`,
                     total,
                 );
                 await this.incidents.resolveByKey('sla:breaches:critical');
@@ -557,18 +569,37 @@ export class PlatformMonitorService implements OnModuleInit {
 
     private async checkPaymentFailures() {
         try {
-            const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-            const failed = await this.prisma.billingPayment.count({
-                where: { status: 'failed', createdAt: { gte: since } },
-            });
             const cfg = await this.alertConfig.get();
+            const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const rows = await this.prisma.billingPayment.findMany({
+                where: { status: 'failed', createdAt: { gte: since } },
+                select: { tenantId: true, amountCents: true },
+                take: 500,
+            }) as Array<{ tenantId: string; amountCents: number | null }>;
+            const failed = rows.length;
             const THRESHOLD = cfg.paymentFailures;
+
             if (failed >= THRESHOLD) {
+                const byTenant = new Map<string, { count: number; cents: number }>();
+                for (const r of rows) {
+                    const cur = byTenant.get(r.tenantId) || { count: 0, cents: 0 };
+                    cur.count++;
+                    cur.cents += Number(r.amountCents || 0);
+                    byTenant.set(r.tenantId, cur);
+                }
+                const names = await this.tenantNames([...byTenant.keys()]);
+                const list = [...byTenant.entries()]
+                    .sort((a, b) => b[1].count - a[1].count)
+                    .slice(0, 15)
+                    .map(([tid, v]) => `<li><b>${this.escapeHtml(names.get(tid) || tid)}</b> — ${v.count} fallo(s)${v.cents ? ` (~$${(v.cents / 100).toFixed(2)})` : ''}</li>`)
+                    .join('');
                 await this.alert(
                     'billing:payment_failures',
                     `${failed} pagos fallidos en 24h`,
-                    `Se registraron <b>${failed}</b> pagos fallidos en las ultimas 24 horas (umbral: ${THRESHOLD}).<br><br>
-                     Revisa el estado del proveedor de pagos (MercadoPago/Stripe) y la cola de reconciliacion.`,
+                    `Se registraron <b>${failed}</b> pagos fallidos en las ultimas 24 horas (umbral: ${THRESHOLD}), por tenant:<br>
+                     <ul style="margin:6px 0 6px 18px;list-style:disc;">${list}</ul>
+                     <b>Solucion:</b> revisa el estado del proveedor de pagos (MercadoPago/Stripe) y la cola de
+                     reconciliacion. Si se concentra en un tenant, suele ser tarjeta vencida/sin fondos (riesgo de churn).`,
                     failed,
                 );
             } else {

@@ -236,6 +236,15 @@ export class HealthController {
         return { success: true, data: await this.alertConfig.set(body) };
     }
 
+    @Post('checks/run')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Run all monitor checks on demand (super_admin only)' })
+    async runChecks() {
+        await this.monitor.runChecksNow();
+        return { success: true };
+    }
+
     @Post('media-cleanup')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @Roles('super_admin')

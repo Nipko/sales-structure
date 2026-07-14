@@ -900,6 +900,20 @@ export class PlatformMonitorService implements OnModuleInit {
         }
     }
 
+    /**
+     * Run all monitor checks on demand (the super_admin "run checks now" button),
+     * so incidents refresh with their latest detailed bodies without waiting for
+     * the crons. Each check is internally guarded, so this is best-effort.
+     */
+    async runChecksNow(): Promise<void> {
+        await this.checkSystem();
+        await this.checkQueues();
+        await this.checkChannelTokens();
+        await this.checkStorage();
+        await this.checkRiskSignals();
+        await this.checkSlaBreaches();
+    }
+
     // ── Manual status (for /health/detailed or admin API) ──
 
     async getStatus(): Promise<Record<string, any>> {

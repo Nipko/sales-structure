@@ -7661,6 +7661,8 @@
     "ackedBy": "Pris en compte par {who}",
     "ack": "Accuser réception",
     "resolve": "Résoudre",
+    "runChecks": "Lancer les vérifications",
+    "runChecksHint": "Lance le moniteur maintenant et actualise les incidents avec leur détail à jour",
     "noIncidents": "Aucun incident dans ce filtre"
   },
   "platformStorage": {

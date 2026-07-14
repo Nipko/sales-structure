@@ -14,7 +14,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
     Siren, RefreshCw, Loader2, AlertTriangle, AlertCircle, Info,
-    CheckCircle2, Check, ChevronDown, ChevronRight, SlidersHorizontal,
+    CheckCircle2, Check, ChevronDown, ChevronRight, SlidersHorizontal, Play,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 
@@ -64,6 +64,7 @@ export default function IncidentsPage() {
     const [filter, setFilter] = useState<Filter>("active");
     const [expanded, setExpanded] = useState<string | null>(null);
     const [acting, setActing] = useState<string | null>(null);
+    const [running, setRunning] = useState(false);
 
     const fetchData = useCallback(async () => {
         try {
@@ -105,6 +106,18 @@ export default function IncidentsPage() {
         }
     }
 
+    async function runChecks() {
+        setRunning(true);
+        try {
+            await api.runHealthChecks();
+            await fetchData();
+        } catch (e: any) {
+            setError(e?.message || tc("connectionError"));
+        } finally {
+            setRunning(false);
+        }
+    }
+
     const filters: Filter[] = ["active", "acknowledged", "resolved", "all"];
 
     const SevIcon = ({ s }: { s: string }) =>
@@ -123,6 +136,15 @@ export default function IncidentsPage() {
                     <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <button
+                        onClick={runChecks}
+                        disabled={running}
+                        title={t("runChecksHint")}
+                        className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted text-foreground rounded-lg text-sm transition disabled:opacity-50"
+                    >
+                        {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                        {t("runChecks")}
+                    </button>
                     <Link
                         href="/admin/ops/alerts"
                         className="inline-flex items-center gap-2 px-3 py-2 bg-card border border-border hover:bg-muted text-foreground rounded-lg text-sm transition"

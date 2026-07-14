@@ -7661,6 +7661,8 @@
     "ackedBy": "Acknowledged by {who}",
     "ack": "Acknowledge",
     "resolve": "Resolve",
+    "runChecks": "Run checks",
+    "runChecksHint": "Runs the monitor now and refreshes incidents with their updated detail",
     "noIncidents": "No incidents in this filter"
   },
   "platformStorage": {

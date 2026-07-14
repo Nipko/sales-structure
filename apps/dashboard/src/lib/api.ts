@@ -556,6 +556,7 @@ export const api = {
     resolveIncident: (id: string) => apiPost(`/health/incidents/${id}/resolve`, {}),
     getAlertConfig: () => apiGet("/health/alert-config"),
     saveAlertConfig: (config: any) => apiPut("/health/alert-config", config),
+    runHealthChecks: () => apiPost("/health/checks/run", {}),
 
     // --- Tenant management (super_admin) ---
     suspendTenant: (tenantId: string, reason: string) =>

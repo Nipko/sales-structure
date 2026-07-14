@@ -7661,6 +7661,8 @@
     "ackedBy": "Reconocido por {who}",
     "ack": "Reconocer",
     "resolve": "Resolver",
+    "runChecks": "Ejecutar chequeos",
+    "runChecksHint": "Corre el monitor ahora y refresca los incidentes con su detalle actualizado",
     "noIncidents": "Sin incidentes en este filtro"
   },
   "platformStorage": {

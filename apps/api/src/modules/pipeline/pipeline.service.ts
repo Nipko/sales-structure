@@ -611,12 +611,20 @@ export class PipelineService {
         );
 
         if (!stageRows?.length) {
-            // Fallback to first stage in the pipeline
-            stageRows = await this.prisma.executeInTenantSchema<any[]>(
-                schema,
-                `SELECT id FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC LIMIT 1`,
-                [tenantId],
-            );
+            // No exact slug match — typical for a vertical tenant whose stages
+            // (consulta/cotizacion/...) differ from the generic funnel slugs. Map the
+            // generic slug to the tenant's closest NON-terminal stage by probability
+            // instead of collapsing everything into the first stage.
+            const mappedId = await this.resolveDealStageForGeneric(schema, tenantId, opportunityStage);
+            if (mappedId) {
+                stageRows = [{ id: mappedId }];
+            } else {
+                stageRows = await this.prisma.executeInTenantSchema<any[]>(
+                    schema,
+                    `SELECT id FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC LIMIT 1`,
+                    [tenantId],
+                );
+            }
         }
 
         const stageId = stageRows?.[0]?.id;
@@ -1133,6 +1141,7 @@ export class PipelineService {
     ): Promise<void> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return;
+        if (!(await this.isAutoProgressEnabled(tenantId))) return; // per-tenant toggle (default ON)
 
         // Find the opportunity linked to this conversation
         const oppRows = await this.prisma.executeInTenantSchema<any[]>(
@@ -1206,6 +1215,90 @@ export class PipelineService {
         }
 
         this.logger.log(`Auto-progressed conversation ${conversationId} to stage "${targetSlug}": ${reason}`);
+    }
+
+    /**
+     * Map a generic funnel slug to the tenant's closest NON-terminal pipeline stage by
+     * probability. Lets auto-progression work for vertical tenants whose stage slugs
+     * differ from the generic funnel — without ever auto-moving a deal into a terminal
+     * (won/cancelled) stage.
+     */
+    private async resolveDealStageForGeneric(schema: string, tenantId: string, genericSlug: string): Promise<string | null> {
+        const gen = DEFAULT_PIPELINE_STAGES.find(s => s.slug === genericSlug);
+        if (!gen) return null;
+        const targetProb = gen.default_probability ?? 0;
+        const stages = await this.prisma.executeInTenantSchema<Array<{ id: string; is_terminal: boolean; prob: number }>>(
+            schema,
+            `SELECT id, is_terminal, COALESCE(default_probability, 0) AS prob
+             FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC`,
+            [tenantId],
+        );
+        if (!stages?.length) return null;
+        const active = stages.filter((s) => !s.is_terminal);
+        const pool = active.length ? active : stages;
+        let best = pool[0];
+        let bestDiff = Infinity;
+        for (const s of pool) {
+            const diff = Math.abs(Number(s.prob) - targetProb);
+            if (diff < bestDiff) { bestDiff = diff; best = s; } // strict < keeps the earlier stage on ties
+        }
+        return best?.id ?? null;
+    }
+
+    /** Per-tenant auto-progression toggle (default ON). Cached in Redis. */
+    async isAutoProgressEnabled(tenantId: string): Promise<boolean> {
+        const cacheKey = `pipeline:autoprogress:${tenantId}`;
+        try {
+            const cached = await this.redis.get(cacheKey);
+            if (cached === '1') return true;
+            if (cached === '0') return false;
+        } catch { /* ignore */ }
+        let enabled = true; // default ON
+        try {
+            const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+            if ((t?.settings as any)?.pipeline?.autoProgress === false) enabled = false;
+        } catch { /* default ON */ }
+        try { await this.redis.set(cacheKey, enabled ? '1' : '0', 300); } catch { /* ignore */ }
+        return enabled;
+    }
+
+    async setAutoProgressEnabled(tenantId: string, enabled: boolean): Promise<{ enabled: boolean }> {
+        const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+        const settings: any = { ...((t?.settings as any) || {}) };
+        settings.pipeline = { ...(settings.pipeline || {}), autoProgress: enabled };
+        await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings } });
+        try { await this.redis.set(`pipeline:autoprogress:${tenantId}`, enabled ? '1' : '0', 300); } catch { /* ignore */ }
+        return { enabled };
+    }
+
+    /**
+     * Re-align every opportunity's Kanban deal to its current stage (using the new
+     * probability mapping). Fixes deals stuck in the first stage from before the
+     * mapping fix — without waiting for each conversation to get a new signal.
+     */
+    async resyncDeals(tenantId: string): Promise<{ synced: number }> {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) return { synced: 0 };
+        let opps: Array<{ lead_id: string; stage: string }> = [];
+        try {
+            opps = await this.prisma.executeInTenantSchema<Array<{ lead_id: string; stage: string }>>(
+                schema,
+                `SELECT lead_id, stage FROM opportunities
+                 WHERE lead_id IS NOT NULL
+                 ORDER BY updated_at DESC LIMIT 1000`,
+                [],
+            );
+        } catch {
+            return { synced: 0 };
+        }
+        let synced = 0;
+        for (const o of opps) {
+            try {
+                await this.syncOpportunityToDeal(tenantId, o.lead_id, o.stage || 'nuevo');
+                synced++;
+            } catch { /* skip individual failures */ }
+        }
+        return { synced };
     }
 
     // ============================================

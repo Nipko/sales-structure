@@ -114,6 +114,7 @@ export class AnalyticsService {
                         c.updated_at AS created_at
                      FROM conversations c
                      LEFT JOIN contacts ct ON ct.id = c.contact_id
+                     WHERE c.updated_at >= NOW() - INTERVAL '7 days'
                      ORDER BY c.updated_at DESC LIMIT 15`,
                 );
             } catch { /* schema may lack tables */ }

@@ -206,7 +206,7 @@ export default function AdminDashboard() {
                         setActivity(dashResult.data.recentActivity.map((a: any) => ({
                             tenant: a.tenant_name || a.tenant || t('system'),
                             event: a.event || a.description || a.event_type || '',
-                            time: a.created_at ? new Date(a.created_at).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit' }) : a.time || '',
+                            time: a.created_at ? formatTimeAgo(a.created_at) : a.time || '',
                             type: a.type || a.event_type || 'conversation',
                         })));
                     }

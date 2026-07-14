@@ -7,7 +7,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { PageHeader } from "@/components/ui/page-header";
 import { cn } from "@/lib/utils";
 import {
-    GripVertical, Plus, Trash2, Save, Loader2, Settings, Eye, EyeOff, X, Sparkles,
+    GripVertical, Plus, Trash2, Save, Loader2, Settings, Eye, EyeOff, X, Sparkles, RefreshCw,
 } from "lucide-react";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { UpgradeBanner } from "@/components/ui/upgrade-banner";
@@ -53,6 +53,10 @@ export default function PipelineSettingsPage() {
     const [dragIdx, setDragIdx] = useState<number | null>(null);
     const [expandedStageIdx, setExpandedStageIdx] = useState<number | null>(null);
     const [loadingPresets, setLoadingPresets] = useState(false);
+    const [autoProgress, setAutoProgress] = useState(true);
+    const [savingAuto, setSavingAuto] = useState(false);
+    const [resyncing, setResyncing] = useState(false);
+    const [resyncMsg, setResyncMsg] = useState<string | null>(null);
 
     const handleLoadPresets = async () => {
         if (!activeTenantId) return;
@@ -100,6 +104,32 @@ export default function PipelineSettingsPage() {
             .catch(() => setStages(DEFAULT_STAGES))
             .finally(() => setLoading(false));
     }, [activeTenantId]);
+
+    useEffect(() => {
+        if (!activeTenantId) return;
+        api.getAutoProgress(activeTenantId)
+            .then((res: any) => { if (res?.success && res.data) setAutoProgress(res.data.enabled !== false); })
+            .catch(() => { /* default ON */ });
+    }, [activeTenantId]);
+
+    async function toggleAuto(val: boolean) {
+        if (!activeTenantId) return;
+        setAutoProgress(val);
+        setSavingAuto(true);
+        try { await api.setAutoProgress(activeTenantId, val); }
+        catch { setAutoProgress(!val); }
+        finally { setSavingAuto(false); }
+    }
+
+    async function resync() {
+        if (!activeTenantId) return;
+        setResyncing(true); setResyncMsg(null);
+        try {
+            const res: any = await api.resyncDeals(activeTenantId);
+            if (res?.success) setResyncMsg(t("resyncDone", { count: res.data?.synced ?? 0 }));
+        } catch { /* ignore */ }
+        finally { setResyncing(false); }
+    }
 
     const handleSave = async () => {
         if (!activeTenantId) return;
@@ -205,6 +235,38 @@ export default function PipelineSettingsPage() {
             />
 
             <UpgradeBanner current={stages.length} limit={getLimit("pipelineStages")} resourceLabel={t("resourceLabel")} />
+
+            {/* Auto-progression toggle */}
+            <div className="bg-card border border-border rounded-xl p-4 mb-4 flex items-center justify-between gap-3">
+                <div>
+                    <div className="text-sm font-semibold">{t("autoProgressTitle")}</div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t("autoProgressHint")}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                        <button
+                            onClick={resync}
+                            disabled={resyncing}
+                            className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
+                        >
+                            {resyncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                            {t("resyncBtn")}
+                        </button>
+                        {resyncMsg && <span className="text-xs text-emerald-600 dark:text-emerald-400">{resyncMsg}</span>}
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    role="switch"
+                    aria-checked={autoProgress}
+                    disabled={savingAuto}
+                    onClick={() => toggleAuto(!autoProgress)}
+                    className={cn(
+                        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
+                        autoProgress ? "bg-indigo-600" : "bg-neutral-300 dark:bg-neutral-700",
+                    )}
+                >
+                    <span className={cn("inline-block h-4 w-4 transform rounded-full bg-white transition-transform", autoProgress ? "translate-x-6" : "translate-x-1")} />
+                </button>
+            </div>
 
             {/* Industry Preset Trigger Bar */}
             <div className="flex justify-end mb-4">

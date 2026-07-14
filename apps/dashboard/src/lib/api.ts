@@ -197,6 +197,10 @@ export const api = {
     getKanban: (tenantId: string) =>
         apiGet(`/pipeline/kanban/${tenantId}`),
 
+    getAutoProgress: (tenantId: string) => apiGet(`/pipeline/auto-progress/${tenantId}`),
+    setAutoProgress: (tenantId: string, enabled: boolean) => apiPut(`/pipeline/auto-progress/${tenantId}`, { enabled }),
+    resyncDeals: (tenantId: string) => apiPost(`/pipeline/resync/${tenantId}`, {}),
+
     getStages: (tenantId: string) =>
         apiGet(`/pipeline/stages/${tenantId}`),
 

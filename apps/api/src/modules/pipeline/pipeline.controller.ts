@@ -23,6 +23,23 @@ export class PipelineController {
         return { success: true, data: kanban };
     }
 
+    // ---- Auto-progression toggle ----
+
+    @Get('auto-progress/:tenantId')
+    async getAutoProgress(@Param('tenantId') tenantId: string) {
+        return { success: true, data: { enabled: await this.pipelineService.isAutoProgressEnabled(tenantId) } };
+    }
+
+    @Put('auto-progress/:tenantId')
+    async setAutoProgress(@Param('tenantId') tenantId: string, @Body() body: { enabled: boolean }) {
+        return { success: true, data: await this.pipelineService.setAutoProgressEnabled(tenantId, !!body?.enabled) };
+    }
+
+    @Post('resync/:tenantId')
+    async resyncDeals(@Param('tenantId') tenantId: string) {
+        return { success: true, data: await this.pipelineService.resyncDeals(tenantId) };
+    }
+
     // ---- Stages ----
 
     @Get('stages/:tenantId')

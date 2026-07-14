@@ -144,16 +144,16 @@ export class OpportunitiesRepository {
 
       // Load configurable stages from DB, fallback to defaults
       const DEFAULT_STAGES = [
-          { key: 'nuevo', name: 'Nuevo', color: '#95a5a6', position: 0, probability: 10 },
-          { key: 'contactado', name: 'Contactado', color: '#3498db', position: 1, probability: 20 },
-          { key: 'respondio', name: 'Respondió', color: '#9b59b6', position: 2, probability: 30 },
-          { key: 'calificado', name: 'Calificado', color: '#e67e22', position: 3, probability: 50 },
-          { key: 'tibio', name: 'Tibio', color: '#f39c12', position: 4, probability: 60 },
-          { key: 'caliente', name: 'Caliente', color: '#e74c3c', position: 5, probability: 80 },
-          { key: 'listo_cierre', name: 'Listo para cierre', color: '#27ae60', position: 6, probability: 95 },
-          { key: 'ganado', name: 'Ganado', color: '#2ecc71', position: 7, probability: 100 },
-          { key: 'perdido', name: 'Perdido', color: '#7f8c8d', position: 8, probability: 0 },
-          { key: 'no_interesado', name: 'No interesado', color: '#bdc3c7', position: 9, probability: 0 },
+          { key: 'nuevo', name: 'Nuevo', color: '#95a5a6', position: 0, probability: 10, is_terminal: false },
+          { key: 'contactado', name: 'Contactado', color: '#3498db', position: 1, probability: 20, is_terminal: false },
+          { key: 'respondio', name: 'Respondió', color: '#9b59b6', position: 2, probability: 30, is_terminal: false },
+          { key: 'calificado', name: 'Calificado', color: '#e67e22', position: 3, probability: 50, is_terminal: false },
+          { key: 'tibio', name: 'Tibio', color: '#f39c12', position: 4, probability: 60, is_terminal: false },
+          { key: 'caliente', name: 'Caliente', color: '#e74c3c', position: 5, probability: 80, is_terminal: false },
+          { key: 'listo_cierre', name: 'Listo para cierre', color: '#27ae60', position: 6, probability: 95, is_terminal: false },
+          { key: 'ganado', name: 'Ganado', color: '#2ecc71', position: 7, probability: 100, is_terminal: true },
+          { key: 'perdido', name: 'Perdido', color: '#7f8c8d', position: 8, probability: 0, is_terminal: true },
+          { key: 'no_interesado', name: 'No interesado', color: '#bdc3c7', position: 9, probability: 0, is_terminal: true },
       ];
 
       let STAGES = DEFAULT_STAGES;
@@ -170,6 +170,7 @@ export class OpportunitiesRepository {
                   color: s.color || '#3498db',
                   position: s.position,
                   probability: s.probability ?? 0,
+                  is_terminal: !!s.is_terminal,
               }));
           }
       } catch (e) {
@@ -199,14 +200,63 @@ export class OpportunitiesRepository {
 
       const allOpps = opps || [];
 
-      const knownStageKeys = STAGES.map(s => s.key);
+      // Generic funnel slugs (what new opportunities and auto-progression write:
+      // nuevo/contactado/calificado/...) are DISJOINT from a vertical tenant's own
+      // stage slugs (consulta/cotizacion/reserva/...). Without a bridge, every such
+      // card fails the exact `o.stage === s.key` match and piles into column 1. Map
+      // any unmatched-but-known generic slug to the closest column by probability,
+      // respecting terminal-ness (won/lost generic → terminal column).
+      const GENERIC_PROB: Record<string, { prob: number; terminal: boolean }> = {
+          nuevo: { prob: 10, terminal: false },
+          contactado: { prob: 20, terminal: false },
+          respondio: { prob: 30, terminal: false },
+          calificado: { prob: 50, terminal: false },
+          tibio: { prob: 60, terminal: false },
+          caliente: { prob: 80, terminal: false },
+          listo_cierre: { prob: 95, terminal: false },
+          listo_para_cierre: { prob: 95, terminal: false },
+          ganado: { prob: 100, terminal: true },
+          perdido: { prob: 0, terminal: true },
+          no_interesado: { prob: 0, terminal: true },
+      };
+      const resolveColumnIndex = (stage: string | null | undefined): number => {
+          if (!stage) return -1; // null → caller drops into column 0 catch-all
+          const exact = STAGES.findIndex(s => s.key === stage);
+          if (exact >= 0) return exact; // tenant slug (or generic on a generic tenant)
+          const gen = GENERIC_PROB[stage];
+          if (!gen) return -1; // unknown custom slug → column 0 catch-all
+          const indexed = STAGES.map((s, i) => ({ i, s }));
+          let pool: Array<{ i: number; s: typeof STAGES[number] }>;
+          if (gen.terminal) {
+              // Match terminal polarity: a won generic (prob>=50) only maps to a won-type
+              // terminal column and a lost generic (prob<50) only to a lost-type one. This
+              // stops a lost deal from landing in a single-terminal vertical's WON column
+              // (which would also inflate the weighted forecast to 100%).
+              const wonGeneric = gen.prob >= 50;
+              pool = indexed.filter(({ s }) => s.is_terminal && (((s.probability ?? 0) >= 50) === wonGeneric));
+              if (!pool.length) return -1; // no matching-polarity terminal → column 0 catch-all
+          } else {
+              pool = indexed.filter(({ s }) => !s.is_terminal);
+              if (!pool.length) pool = indexed;
+          }
+          let best = pool[0];
+          let bestDiff = Infinity;
+          for (const c of pool) {
+              const diff = Math.abs((c.s.probability ?? 0) - gen.prob);
+              if (diff < bestDiff) { bestDiff = diff; best = c; } // strict < keeps the earlier column on ties
+          }
+          return best.i;
+      };
+      const oppColIdx = new Map<any, number>();
+      for (const o of allOpps) oppColIdx.set(o, resolveColumnIndex((o as any).stage));
+
       const kanbanStages = STAGES.map((s, idx) => {
-          const stageOpps = allOpps.filter((o: any) =>
-              o.stage === s.key ||
-              // First column also catches opportunities whose stage matches no configured
-              // column (null / legacy / custom-stage mismatch) so a card is never silently
-              // dropped from the board.
-              (idx === 0 && (!o.stage || !knownStageKeys.includes(o.stage))));
+          const stageOpps = allOpps.filter((o: any) => {
+              const col = oppColIdx.get(o);
+              // Resolved column wins; unresolved (null / unknown custom slug) fall into
+              // the first column so a card is never silently dropped from the board.
+              return col != null && col >= 0 ? col === idx : idx === 0;
+          });
           const totalValue = stageOpps.reduce((sum: number, o: any) => sum + parseFloat(o.estimated_value || 0), 0);
 
           return {

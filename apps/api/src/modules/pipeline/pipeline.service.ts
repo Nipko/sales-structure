@@ -654,7 +654,12 @@ export class PipelineService {
                 
                 let statusUpdate = '';
                 if (stg?.is_terminal) {
-                    statusUpdate = stg.slug === 'ganado' ? `, status = 'won'` : `, status = 'lost'`;
+                    // Won vs lost by the stage's win-probability, NOT the literal 'ganado'
+                    // slug: vertical tenants' won stage is cerrado/completada/alta/vip/
+                    // entregado (prob 100), never 'ganado', so the old slug check wrongly
+                    // marked every vertical won deal as lost.
+                    const wonLike = stg.slug === 'ganado' || (Number(stg.default_probability) || 0) >= 50;
+                    statusUpdate = wonLike ? `, status = 'won'` : `, status = 'lost'`;
                 }
 
                 await this.prisma.executeInTenantSchema(
@@ -1188,18 +1193,52 @@ export class PipelineService {
 
         if (!targetSlug) return;
 
-        // Only progress forward (never backward)
-        const stageOrder = DEFAULT_PIPELINE_STAGES.map(s => s.slug);
-        const currentIdx = stageOrder.indexOf(currentSlug);
-        const targetIdx = stageOrder.indexOf(targetSlug);
+        // Resolve the generic target into the tenant's OWN stage vocabulary. Vertical
+        // tenants have stage slugs (consulta/cotizacion/reserva/...) disjoint from the
+        // generic funnel — persisting a generic slug to opportunities.stage makes the
+        // Kanban board bucket the card into column 1. When the tenant has no custom
+        // pipeline_stages we keep the generic slug (original behavior, unchanged).
+        const tenantStages = await this.prisma.executeInTenantSchema<Array<{ slug: string; position: number; is_terminal: boolean; prob: number }>>(
+            schema,
+            `SELECT slug, position, is_terminal, COALESCE(default_probability, 0) AS prob
+             FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC`,
+            [tenantId],
+        ).catch(() => [] as Array<{ slug: string; position: number; is_terminal: boolean; prob: number }>);
 
-        if (targetIdx <= currentIdx) return; // Already at or past this stage
+        let writeSlug = targetSlug;
+        let currentIdx: number;
+        let targetIdx: number;
+
+        if (tenantStages && tenantStages.length) {
+            const targetStage = this.mapGenericToTenantStage(targetSlug, tenantStages);
+            if (!targetStage) return; // can't resolve safely → skip rather than corrupt stage
+            const currentStage = this.mapGenericToTenantStage(currentSlug, tenantStages);
+            // Never auto-advance an opportunity that's already terminal (won/lost).
+            // currentStage is null when currentSlug is a generic terminal with no
+            // matching-polarity terminal column (e.g. 'no_interesado' in a vertical whose
+            // only terminal is "won") — treat that as terminal too, otherwise currentIdx=-1
+            // would defeat the forward-only guard and resurrect a lost/uninterested lead.
+            const currentIsTerminal = currentStage
+                ? currentStage.is_terminal
+                : !!DEFAULT_PIPELINE_STAGES.find((s) => s.slug === currentSlug)?.is_terminal;
+            if (currentIsTerminal) return;
+            writeSlug = targetStage.slug;
+            targetIdx = targetStage.position;
+            currentIdx = currentStage ? currentStage.position : -1;
+        } else {
+            // Generic-slug tenant: preserve the original forward-only ordering
+            const stageOrder = DEFAULT_PIPELINE_STAGES.map(s => s.slug);
+            currentIdx = stageOrder.indexOf(currentSlug);
+            targetIdx = stageOrder.indexOf(targetSlug);
+        }
+
+        if (targetIdx <= currentIdx) return; // Already at or past this stage (never move backward)
 
         // Update the opportunity stage
         await this.prisma.executeInTenantSchema(
             schema,
             `UPDATE opportunities SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
-            [targetSlug, opp.opp_id],
+            [writeSlug, opp.opp_id],
         );
 
         // Update the lead stage too
@@ -1207,14 +1246,14 @@ export class PipelineService {
             await this.prisma.executeInTenantSchema(
                 schema,
                 `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
-                [targetSlug, opp.lead_id],
+                [writeSlug, opp.lead_id],
             );
-            await this.syncOpportunityToDeal(tenantId, opp.lead_id, targetSlug).catch(e =>
+            await this.syncOpportunityToDeal(tenantId, opp.lead_id, writeSlug).catch(e =>
                 this.logger.error(`Failed to sync opportunity to deal in autoProgressFromConversation: ${e.message}`)
             );
         }
 
-        this.logger.log(`Auto-progressed conversation ${conversationId} to stage "${targetSlug}": ${reason}`);
+        this.logger.log(`Auto-progressed conversation ${conversationId} to stage "${writeSlug}": ${reason}`);
     }
 
     /**
@@ -1243,6 +1282,42 @@ export class PipelineService {
             if (diff < bestDiff) { bestDiff = diff; best = s; } // strict < keeps the earlier stage on ties
         }
         return best?.id ?? null;
+    }
+
+    /**
+     * Map a stage slug to the tenant's own pipeline stage. Exact slug wins (already a
+     * tenant-native slug); otherwise a generic funnel slug is mapped to the closest
+     * stage by probability, matching terminal-ness (won/lost generic → terminal stage,
+     * everything else → non-terminal). Pure (no query) — operates on the passed stages.
+     */
+    private mapGenericToTenantStage(
+        slug: string,
+        tenantStages: Array<{ slug: string; position: number; is_terminal: boolean; prob: number }>,
+    ): { slug: string; position: number; is_terminal: boolean; prob: number } | null {
+        if (!slug || !tenantStages?.length) return null;
+        const exact = tenantStages.find((s) => s.slug === slug);
+        if (exact) return exact;
+        const gen = DEFAULT_PIPELINE_STAGES.find((s) => s.slug === slug);
+        if (!gen) return null;
+        const targetProb = gen.default_probability ?? 0;
+        let pool: Array<{ slug: string; position: number; is_terminal: boolean; prob: number }>;
+        if (gen.is_terminal) {
+            // Match terminal polarity so a lost generic (prob 0) never maps to a WON
+            // stage in a vertical that only has a won terminal (and vice-versa).
+            const wonGeneric = targetProb >= 50;
+            pool = tenantStages.filter((s) => s.is_terminal && ((Number(s.prob) >= 50) === wonGeneric));
+            if (!pool.length) return null; // no matching-polarity terminal → caller leaves it as-is
+        } else {
+            pool = tenantStages.filter((s) => !s.is_terminal);
+            if (!pool.length) pool = tenantStages;
+        }
+        let best = pool[0];
+        let bestDiff = Infinity;
+        for (const s of pool) {
+            const diff = Math.abs(Number(s.prob) - targetProb);
+            if (diff < bestDiff) { bestDiff = diff; best = s; } // strict < keeps the earlier stage on ties
+        }
+        return best ?? null;
     }
 
     /** Per-tenant auto-progression toggle (default ON). Cached in Redis. */
@@ -1279,11 +1354,21 @@ export class PipelineService {
     async resyncDeals(tenantId: string): Promise<{ synced: number }> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return { synced: 0 };
-        let opps: Array<{ lead_id: string; stage: string }> = [];
+
+        // Tenant's own stages (empty for generic-slug tenants → no remap needed).
+        const tenantStages = await this.prisma.executeInTenantSchema<Array<{ slug: string; position: number; is_terminal: boolean; prob: number }>>(
+            schema,
+            `SELECT slug, position, is_terminal, COALESCE(default_probability, 0) AS prob
+             FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC`,
+            [tenantId],
+        ).catch(() => [] as Array<{ slug: string; position: number; is_terminal: boolean; prob: number }>);
+        const tenantSlugs = new Set(tenantStages.map((s) => s.slug));
+
+        let opps: Array<{ id: string; lead_id: string; stage: string }> = [];
         try {
-            opps = await this.prisma.executeInTenantSchema<Array<{ lead_id: string; stage: string }>>(
+            opps = await this.prisma.executeInTenantSchema<Array<{ id: string; lead_id: string; stage: string }>>(
                 schema,
-                `SELECT lead_id, stage FROM opportunities
+                `SELECT id, lead_id, stage FROM opportunities
                  WHERE lead_id IS NOT NULL
                  ORDER BY updated_at DESC LIMIT 1000`,
                 [],
@@ -1294,7 +1379,33 @@ export class PipelineService {
         let synced = 0;
         for (const o of opps) {
             try {
-                await this.syncOpportunityToDeal(tenantId, o.lead_id, o.stage || 'nuevo');
+                let stage = o.stage || 'nuevo';
+                // Persist a tenant-native slug when the current one isn't a real column
+                // (e.g. generic 'nuevo'/'calificado' on a vertical tenant) so the board,
+                // analytics and deals all agree — not just the read-time board mapping.
+                // Only NON-terminal generic slugs are remapped: terminal end-states
+                // (ganado/perdido/no_interesado) are left untouched so re-sync never flips
+                // a deal's won/lost status or shifts won/lost analytics.
+                if (tenantStages.length && !tenantSlugs.has(stage)) {
+                    const genDef = DEFAULT_PIPELINE_STAGES.find((s) => s.slug === stage);
+                    if (genDef && !genDef.is_terminal) {
+                        const mapped = this.mapGenericToTenantStage(stage, tenantStages);
+                        if (mapped && mapped.slug !== stage) {
+                            await this.prisma.executeInTenantSchema(
+                                schema,
+                                `UPDATE opportunities SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
+                                [mapped.slug, o.id],
+                            );
+                            await this.prisma.executeInTenantSchema(
+                                schema,
+                                `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
+                                [mapped.slug, o.lead_id],
+                            );
+                            stage = mapped.slug;
+                        }
+                    }
+                }
+                await this.syncOpportunityToDeal(tenantId, o.lead_id, stage);
                 synced++;
             } catch { /* skip individual failures */ }
         }

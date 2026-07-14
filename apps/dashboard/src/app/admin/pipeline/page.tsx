@@ -27,6 +27,7 @@ import {
     Pencil,
     Trash2,
     Lock,
+    RefreshCw,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -57,6 +58,9 @@ export default function PipelinePage() {
     const [dealForm, setDealForm] = useState({ contactId: "", title: "", value: "", stageId: "", notes: "" });
     const [dealCreating, setDealCreating] = useState(false);
     const [contacts, setContacts] = useState<any[]>([]);
+    const [autoProgress, setAutoProgress] = useState(true);
+    const [savingAuto, setSavingAuto] = useState(false);
+    const [resyncing, setResyncing] = useState(false);
 
     const [pipelines, setPipelines] = useState<any[]>([]);
     const [activePipelineId, setActivePipelineId] = useState<string | null>(null);
@@ -303,6 +307,53 @@ export default function PipelinePage() {
         }
     }, [activePipelineId, loadKanban]);
 
+    useEffect(() => {
+        if (!activeTenantId || !canApprove) return;
+        api.getAutoProgress(activeTenantId)
+            .then((res: any) => { if (res?.success && res.data) setAutoProgress(res.data.enabled !== false); })
+            .catch(() => { /* default ON */ });
+    }, [activeTenantId, canApprove]);
+
+    const toggleAuto = async (val: boolean) => {
+        if (!activeTenantId) return;
+        setAutoProgress(val);
+        setSavingAuto(true);
+        try {
+            // apiPut resolves { success:false } on error (it never throws), so we must
+            // inspect the result — otherwise the switch silently diverges from the backend.
+            const res: any = await api.setAutoProgress(activeTenantId, val);
+            if (!res?.success) {
+                setAutoProgress(!val); // revert to real state
+                setToast(tc('errorSaving'));
+                setTimeout(() => setToast(null), 2500);
+            }
+        } catch {
+            setAutoProgress(!val);
+        } finally {
+            setSavingAuto(false);
+        }
+    };
+
+    const resync = async () => {
+        if (!activeTenantId || resyncing) return;
+        setResyncing(true);
+        try {
+            const res: any = await api.resyncDeals(activeTenantId);
+            if (res?.success) {
+                await loadKanban(activePipelineId);
+                setToast(t('resyncDone', { count: res.data?.synced ?? 0 }));
+            } else {
+                setToast(tc('errorSaving'));
+            }
+            setTimeout(() => setToast(null), 2500);
+        } catch {
+            setToast(tc('errorSaving'));
+            setTimeout(() => setToast(null), 2500);
+        } finally {
+            setResyncing(false);
+        }
+    };
+
     const stages = kanban?.stages || [];
     const forecast = kanban?.forecast || { total: 0, weighted: 0, dealCount: 0, avgDealValue: 0 };
 
@@ -333,6 +384,37 @@ export default function PipelinePage() {
                     badge={<DataSourceBadge isLive={isLive} />}
                     action={
                         <div className="flex items-center gap-2">
+                            {canApprove && (
+                                <div className="flex items-center gap-2 mr-1 pr-2 border-r border-border">
+                                    <span className="text-sm text-muted-foreground hidden sm:inline" title={t('autoProgressHint')}>
+                                        {t('autoProgressLabel')}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={autoProgress}
+                                        aria-label={t('autoProgressLabel')}
+                                        disabled={savingAuto}
+                                        onClick={() => toggleAuto(!autoProgress)}
+                                        title={t('autoProgressHint')}
+                                        className={cn(
+                                            "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 cursor-pointer",
+                                            autoProgress ? "bg-indigo-600" : "bg-neutral-300 dark:bg-neutral-700",
+                                        )}
+                                    >
+                                        <span className={cn("inline-block h-4 w-4 transform rounded-full bg-white transition-transform", autoProgress ? "translate-x-6" : "translate-x-1")} />
+                                    </button>
+                                    <button
+                                        onClick={resync}
+                                        disabled={resyncing}
+                                        title={t('resyncHint')}
+                                        aria-label={t('resyncBtn')}
+                                        className="p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
+                                    >
+                                        {resyncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                                    </button>
+                                </div>
+                            )}
                             <span className="text-sm text-muted-foreground">{forecast.dealCount} {t('deals')}</span>
                             <button
                                 onClick={openCreateDeal}

@@ -646,6 +646,11 @@ export class AnalyticsService {
 
         const stageMap: Record<string, number> = {};
         for (const r of rows) stageMap[r.stage] = parseInt(r.count);
+        // Auto-advance persists the generic slug 'listo_para_cierre'; fold it into the
+        // canonical 'listo_cierre' bucket so ready-to-close leads aren't undercounted.
+        if (stageMap['listo_para_cierre']) {
+            stageMap['listo_cierre'] = (stageMap['listo_cierre'] || 0) + stageMap['listo_para_cierre'];
+        }
 
         return stages.map(s => ({ stage: s, count: stageMap[s] || 0 }));
     }

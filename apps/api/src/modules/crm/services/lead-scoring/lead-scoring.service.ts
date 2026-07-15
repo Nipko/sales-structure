@@ -57,6 +57,7 @@ const STAGE_SCORES: Record<string, number> = {
     tibio: 60,
     caliente: 80,
     listo_cierre: 95,
+    listo_para_cierre: 95, // alias: generic funnel / auto-advance uses this slug
     ganado: 100,
     perdido: 0,
     no_interesado: 0,

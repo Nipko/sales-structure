@@ -14,6 +14,7 @@ import { CrmAnalyticsService } from './services/crm-analytics/crm-analytics.serv
 import { CrmInsightsService } from './services/crm-insights/crm-insights.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { PipelineService } from '../pipeline/pipeline.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
@@ -36,6 +37,7 @@ export class CrmController {
         private crmInsights: CrmInsightsService,
         private prisma: PrismaService,
         private throttle: TenantThrottleService,
+        private pipelineService: PipelineService,
     ) {}
 
     // ---- Kanban (Pipeline Board using Opportunities) ----
@@ -52,6 +54,10 @@ export class CrmController {
         @Param('opportunityId') opportunityId: string,
         @Body() body: { stage: string },
     ) {
+        // Governance: enforce the target stage's transition rules on the manual board move,
+        // same as the deal board — throws TRANSITION_RULE_FAILED:<type> which the dashboard
+        // maps to a localized toast.
+        await this.pipelineService.assertOpportunityMoveAllowed(tenantId, opportunityId, body.stage);
         await this.oppsRepo.moveOpportunity(tenantId, opportunityId, body.stage);
         return { success: true, message: 'Opportunity moved' };
     }

@@ -15,9 +15,10 @@ import { CrmInsightsService } from './services/crm-insights/crm-insights.service
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 import { AIModule } from '../ai/ai.module';
+import { PipelineModule } from '../pipeline/pipeline.module';
 
 @Module({
-    imports: [PrismaModule, RedisModule, AIModule],
+    imports: [PrismaModule, RedisModule, AIModule, PipelineModule],
     controllers: [CrmController],
     providers: [
         NotesService,

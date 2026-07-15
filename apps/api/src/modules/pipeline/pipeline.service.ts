@@ -75,6 +75,35 @@ export interface StageAnalytics {
     slaBreachRate: number;
 }
 
+/**
+ * Auto-advance keyword sets per language. Keeps non-Spanish leads (pt/en/fr — Brazil
+ * is a major WhatsApp market) from being frozen at 'contactado' because the classifier
+ * only matched Spanish substrings. Accent/word-boundary/negation handling lives in
+ * hasAnyKeyword; these are the lexicons it matches against.
+ */
+export const AUTO_PROGRESS_KEYWORDS: Record<string, { purchase: string[]; intent: string[]; positive: string[] }> = {
+    es: {
+        purchase: ['comprar', 'quiero inscribirme', 'inscribo', 'matricula', 'reservar', 'pagar', 'lo quiero', 'confirmo', 'confirmar'],
+        intent: ['precio', 'costo', 'cuanto', 'valor', 'tarifa', 'disponibilidad', 'disponible', 'cupos', 'horario', 'fecha', 'cuando'],
+        positive: ['interesante', 'me interesa', 'suena bien', 'genial', 'perfecto', 'excelente', 'dale', 'claro', 'bueno', 'listo'],
+    },
+    en: {
+        purchase: ['buy', 'purchase', 'sign me up', 'enroll', 'book it', 'pay', 'i want it', 'i take it', 'confirm', 'checkout'],
+        intent: ['price', 'cost', 'how much', 'pricing', 'rate', 'fee', 'availability', 'available', 'schedule', 'date', 'when', 'slots'],
+        positive: ['interested', 'sounds good', 'great', 'perfect', 'excellent', 'awesome', 'sure', 'nice', 'lets do it'],
+    },
+    pt: {
+        purchase: ['comprar', 'quero me inscrever', 'inscrever', 'matricula', 'reservar', 'pagar', 'quero', 'confirmo', 'confirmar'],
+        intent: ['preco', 'preço', 'custo', 'quanto', 'valor', 'tarifa', 'disponibilidade', 'disponivel', 'horario', 'data', 'quando', 'vagas'],
+        positive: ['interessante', 'tenho interesse', 'me interessa', 'parece bom', 'otimo', 'ótimo', 'perfeito', 'excelente', 'legal', 'claro'],
+    },
+    fr: {
+        purchase: ["acheter", "je veux m'inscrire", "inscrire", "reserver", "réserver", "payer", "je le veux", "je prends", "confirmer"],
+        intent: ["prix", "cout", "coût", "combien", "tarif", "disponibilite", "disponibilité", "disponible", "horaire", "date", "quand", "creneaux"],
+        positive: ["interessant", "intéressant", "ca m'interesse", "parfait", "excellent", "super", "d'accord", "genial", "génial"],
+    },
+};
+
 /** Default pipeline stages seeded per tenant */
 export const DEFAULT_PIPELINE_STAGES = [
     { slug: 'nuevo', name: 'Nuevo', color: '#95a5a6', position: 0, sla_hours: 1, is_terminal: false, default_probability: 10 },
@@ -686,11 +715,11 @@ export class PipelineService {
         }
     }
 
-    /** Evaluate all transition rules for a stage before allowing a move */
+    /** Evaluate all transition rules for a stage before allowing a move (deal path) */
     async evaluateTransitionRules(schema: string, dealId: string, rules: any[]): Promise<void> {
         if (!rules || rules.length === 0) return;
 
-        // 1. Get lead information, contact information, and assigned agent
+        // Lead + contact + assigned agent for this deal
         const dealData = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT d.contact_id, l.id as lead_id, l.email as lead_email, l.phone as lead_phone,
@@ -706,89 +735,168 @@ export class PipelineService {
 
         if (!dealData) return;
 
-        const email = (dealData.lead_email || dealData.contact_email || '').trim();
-        const phone = (dealData.lead_phone || dealData.contact_phone || '').trim();
-        const score = dealData.score || 0;
-        const name = `${dealData.first_name || ''} ${dealData.last_name || ''}`.trim();
+        await this.runRuleChecks(schema, rules, {
+            email: (dealData.lead_email || dealData.contact_email || '').trim(),
+            phone: (dealData.lead_phone || dealData.contact_phone || '').trim(),
+            name: `${dealData.first_name || ''} ${dealData.last_name || ''}`.trim(),
+            score: dealData.score || 0,
+            assignedAgentId: dealData.assigned_agent_id || null,
+            contactId: dealData.contact_id,
+            leadId: dealData.lead_id || null,
+        });
+    }
 
-        // 2. Fetch custom attribute values
-        const customAttributes = await this.prisma.executeInTenantSchema<any[]>(
+    /**
+     * Evaluate a target stage's transition rules against an OPPORTUNITY's lead. Used by
+     * the CRM board move and the AI auto-advance (both lead-centric, not deal-centric).
+     * Throws BadRequestException('TRANSITION_RULE_FAILED:<type>') when a prerequisite is
+     * unmet — same contract as the deal path, so the dashboard's per-rule i18n toasts fire.
+     */
+    async evaluateRulesForLead(schema: string, tenantId: string, leadId: string, targetSlug: string): Promise<void> {
+        if (!leadId) return;
+        const stageRows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT def.key, val.value
-             FROM custom_attribute_values val
-             JOIN custom_attribute_definitions def ON val.definition_id = def.id
-             WHERE val.entity_id = $1::uuid OR val.entity_id = $2::uuid`,
-            [dealData.contact_id, dealData.lead_id || '00000000-0000-0000-0000-000000000000'],
+            `SELECT transition_rules FROM pipeline_stages WHERE tenant_id = $1::uuid AND slug = $2 LIMIT 1`,
+            [tenantId, targetSlug],
         );
+        const rules = stageRows?.[0]?.transition_rules || [];
+        if (!rules.length) return;
 
-        const attrMap = new Map(customAttributes.map(a => [a.key, a.value]));
+        const d = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT l.id as lead_id, l.contact_id, l.email as lead_email, l.phone as lead_phone,
+                    l.first_name, l.last_name, l.score, l.assigned_to,
+                    ct.email as contact_email, ct.phone as contact_phone
+             FROM leads l
+             LEFT JOIN contacts ct ON ct.id = l.contact_id
+             WHERE l.id = $1::uuid
+             LIMIT 1`,
+            [leadId],
+        ).then(res => res[0]);
+        if (!d) return;
 
-        // 3. Evaluate each rule
+        await this.runRuleChecks(schema, rules, {
+            email: (d.lead_email || d.contact_email || '').trim(),
+            phone: (d.lead_phone || d.contact_phone || '').trim(),
+            name: `${d.first_name || ''} ${d.last_name || ''}`.trim(),
+            score: d.score || 0,
+            assignedAgentId: d.assigned_to || null,
+            contactId: d.contact_id,
+            leadId: d.lead_id || null,
+        });
+    }
+
+    /**
+     * Guard a manual opportunity stage move (the CRM board / kanban path). Enforces the
+     * target stage's transition rules — the same governance the deal board's moveToStage
+     * applies — so a rule configured in Settings → Pipeline is honored no matter which
+     * board the move comes from. Throws BadRequestException('TRANSITION_RULE_FAILED:...').
+     */
+    async assertOpportunityMoveAllowed(tenantId: string, opportunityId: string, targetSlug: string): Promise<void> {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) return;
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT lead_id FROM opportunities WHERE id = $1::uuid LIMIT 1`,
+            [opportunityId],
+        );
+        const leadId = rows?.[0]?.lead_id;
+        if (leadId) {
+            await this.evaluateRulesForLead(schema, tenantId, leadId, targetSlug);
+        }
+    }
+
+    /** Shared rule evaluation for both the deal and lead/opportunity paths. */
+    private async runRuleChecks(
+        schema: string,
+        rules: any[],
+        ctx: { email: string; phone: string; name: string; score: number; assignedAgentId: string | null; contactId: string; leadId: string | null },
+    ): Promise<void> {
+        // Custom-attribute values are only needed when a custom_attribute rule is present.
+        // The table stores TYPED values (value_text/number/boolean/date/json) and the
+        // definition key column is `attribute_key` — the old `def.key, val.value` SELECT
+        // referenced non-existent columns and threw 42703 for EVERY rule-bearing stage.
+        // Guarded so an infra error can never masquerade as a rule failure (a query error
+        // skips only the attribute-dependent rules instead of blocking the move / 500ing).
+        let attrMap: Map<string, string> | null = null;
+        const needsAttrs = rules.some((r) => r.type === 'custom_attribute_required' || r.type === 'custom_attribute_equals');
+        if (needsAttrs) {
+            try {
+                const customAttributes = await this.prisma.executeInTenantSchema<any[]>(
+                    schema,
+                    `SELECT def.attribute_key AS key,
+                            COALESCE(val.value_text, val.value_number::text, val.value_boolean::text,
+                                     to_char(val.value_date, 'YYYY-MM-DD'), val.value_json::text) AS value
+                     FROM custom_attribute_values val
+                     JOIN custom_attribute_definitions def ON val.definition_id = def.id
+                     WHERE val.entity_id = $1::uuid OR val.entity_id = $2::uuid`,
+                    [ctx.contactId, ctx.leadId || '00000000-0000-0000-0000-000000000000'],
+                );
+                attrMap = new Map(customAttributes.map((a) => [a.key, a.value]));
+            } catch (e: any) {
+                this.logger.error(`Custom-attribute prefetch failed during rule check: ${e.message}`);
+                attrMap = null; // skip attribute rules rather than block/500
+            }
+        }
+
         for (const rule of rules) {
-            const ruleType = rule.type;
-            switch (ruleType) {
+            switch (rule.type) {
                 case 'email_required':
-                    if (!email) {
-                        throw new BadRequestException('TRANSITION_RULE_FAILED:email_required');
-                    }
+                    if (!ctx.email) throw new BadRequestException('TRANSITION_RULE_FAILED:email_required');
                     break;
                 case 'phone_required':
-                    if (!phone) {
-                        throw new BadRequestException('TRANSITION_RULE_FAILED:phone_required');
-                    }
+                    if (!ctx.phone) throw new BadRequestException('TRANSITION_RULE_FAILED:phone_required');
                     break;
                 case 'name_required':
-                    if (!name) {
-                        throw new BadRequestException('TRANSITION_RULE_FAILED:name_required');
-                    }
+                    if (!ctx.name) throw new BadRequestException('TRANSITION_RULE_FAILED:name_required');
                     break;
-                case 'min_score':
+                case 'min_score': {
                     const minScore = Number(rule.value) || 0;
-                    if (score < minScore) {
-                        throw new BadRequestException(`TRANSITION_RULE_FAILED:min_score:${minScore}`);
-                    }
+                    if (ctx.score < minScore) throw new BadRequestException(`TRANSITION_RULE_FAILED:min_score:${minScore}`);
                     break;
+                }
                 case 'agent_assigned':
-                    if (!dealData.assigned_agent_id) {
-                        throw new BadRequestException('TRANSITION_RULE_FAILED:agent_assigned');
-                    }
+                    if (!ctx.assignedAgentId) throw new BadRequestException('TRANSITION_RULE_FAILED:agent_assigned');
                     break;
-                case 'appointment_required':
+                case 'appointment_required': {
+                    // Any live appointment on the contact satisfies the gate (a freshly
+                    // booked appointment is 'pending'/'confirmed', not 'scheduled').
                     const appointments = await this.prisma.executeInTenantSchema<any[]>(
                         schema,
-                        `SELECT 1 FROM appointments WHERE contact_id = $1::uuid AND status IN ('scheduled', 'completed') LIMIT 1`,
-                        [dealData.contact_id],
+                        `SELECT 1 FROM appointments WHERE contact_id = $1::uuid AND status NOT IN ('cancelled', 'no_show') LIMIT 1`,
+                        [ctx.contactId],
                     );
-                    if (!appointments || appointments.length === 0) {
-                        throw new BadRequestException('TRANSITION_RULE_FAILED:appointment_required');
-                    }
+                    if (!appointments || appointments.length === 0) throw new BadRequestException('TRANSITION_RULE_FAILED:appointment_required');
                     break;
-                case 'offer_required':
-                    if (dealData.lead_id) {
-                        const offers = await this.prisma.executeInTenantSchema<any[]>(
+                }
+                case 'offer_required': {
+                    // An offer is "available" when the lead's course has an active commercial
+                    // offer (commercial_offers links to course_id + active, not lead_id/status).
+                    const offers = ctx.leadId
+                        ? await this.prisma.executeInTenantSchema<any[]>(
                             schema,
-                            `SELECT 1 FROM commercial_offers WHERE lead_id = $1::uuid AND status = 'active' LIMIT 1`,
-                            [dealData.lead_id],
-                        );
-                        if (!offers || offers.length === 0) {
-                            throw new BadRequestException('TRANSITION_RULE_FAILED:offer_required');
-                        }
-                    } else {
-                        throw new BadRequestException('TRANSITION_RULE_FAILED:offer_required');
-                    }
+                            `SELECT 1 FROM commercial_offers co
+                             JOIN leads l ON l.course_id = co.course_id
+                             WHERE l.id = $1::uuid AND co.active = true
+                             LIMIT 1`,
+                            [ctx.leadId],
+                        )
+                        : [];
+                    if (!offers || offers.length === 0) throw new BadRequestException('TRANSITION_RULE_FAILED:offer_required');
                     break;
-                case 'custom_attribute_required':
-                    const val = attrMap.get(rule.field);
-                    if (!val || !val.trim()) {
-                        throw new BadRequestException(`TRANSITION_RULE_FAILED:custom_attribute_required:${rule.field}`);
-                    }
+                }
+                case 'custom_attribute_required': {
+                    if (attrMap === null) break; // couldn't read attributes → don't hard-block
+                    const v = attrMap.get(rule.field);
+                    if (!v || !String(v).trim()) throw new BadRequestException(`TRANSITION_RULE_FAILED:custom_attribute_required:${rule.field}`);
                     break;
-                case 'custom_attribute_equals':
+                }
+                case 'custom_attribute_equals': {
+                    if (attrMap === null) break;
                     const curVal = attrMap.get(rule.field);
-                    if (curVal !== rule.value) {
-                        throw new BadRequestException(`TRANSITION_RULE_FAILED:custom_attribute_equals:${rule.field}:${rule.value}`);
-                    }
+                    if (String(curVal) !== String(rule.value)) throw new BadRequestException(`TRANSITION_RULE_FAILED:custom_attribute_equals:${rule.field}:${rule.value}`);
                     break;
+                }
             }
         }
     }
@@ -1142,6 +1250,7 @@ export class PipelineService {
             messageText?: string;
             isFirstAiResponse?: boolean;
             isCustomerReply?: boolean;
+            lang?: string;
         },
     ): Promise<void> {
         const schema = await this.getTenantSchema(tenantId);
@@ -1168,22 +1277,24 @@ export class PipelineService {
         let targetSlug: string | null = null;
         let reason: string | null = null;
 
-        // Priority order: strongest signal first
-        const purchaseKeywords = ['comprar', 'quiero inscribirme', 'inscribo', 'matricula', 'reservar', 'pagar', 'tómelo', 'lo quiero', 'confirmo', 'confirmar'];
-        const intentKeywords = ['precio', 'costo', 'cuánto', 'cuanto', 'valor', 'tarifa', 'disponibilidad', 'disponible', 'cupos', 'horario', 'fecha', 'cuando'];
-        const positiveKeywords = ['interesante', 'me interesa', 'suena bien', 'genial', 'perfecto', 'excelente', 'dale', 'claro', 'sí', 'bueno'];
+        // Priority order: strongest signal first. Keyword sets are per-language so
+        // pt/en/fr leads aren't frozen at 'contactado'. (analyzeSentiment is Spanish-only,
+        // so the sentiment sub-gate below effectively only sharpens the es path; other
+        // languages still advance via the keyword branches.)
+        const lang = (signals.lang || 'es').slice(0, 2).toLowerCase();
+        const kw = AUTO_PROGRESS_KEYWORDS[lang] || AUTO_PROGRESS_KEYWORDS.es;
 
-        if (this.hasAnyKeyword(messageText, purchaseKeywords)) {
+        if (this.hasAnyKeyword(messageText, kw.purchase)) {
             targetSlug = 'listo_para_cierre';
             reason = 'Explicit purchase language detected';
-        } else if ((signals.sentiment && signals.sentiment < 20) && this.hasAnyKeyword(messageText, intentKeywords)) {
-            // Strong positive sentiment + pricing inquiry
+        } else if (typeof signals.sentiment === 'number' && signals.sentiment < 20 && this.hasAnyKeyword(messageText, kw.intent)) {
+            // Strong positive sentiment (low = positive on the inverted scale) + pricing inquiry
             targetSlug = 'caliente';
             reason = 'Strong purchase intent detected (positive sentiment + pricing inquiry)';
-        } else if (this.hasAnyKeyword(messageText, intentKeywords)) {
+        } else if (this.hasAnyKeyword(messageText, kw.intent)) {
             targetSlug = 'calificado';
             reason = 'Customer asked about pricing/availability';
-        } else if (signals.isCustomerReply && this.hasAnyKeyword(messageText, positiveKeywords)) {
+        } else if (signals.isCustomerReply && this.hasAnyKeyword(messageText, kw.positive)) {
             targetSlug = 'respondio';
             reason = 'Customer replied positively';
         } else if (signals.isFirstAiResponse) {
@@ -1233,6 +1344,29 @@ export class PipelineService {
         }
 
         if (targetIdx <= currentIdx) return; // Already at or past this stage (never move backward)
+
+        // NOTE: we intentionally persist the generic slug 'listo_para_cierre' as-is (NOT
+        // canonicalized to 'listo_cierre'). Rewriting it here broke the generic-tenant
+        // forward-only guard (DEFAULT_PIPELINE_STAGES has no 'listo_cierre') and the rule
+        // lookup below. Scoring/analytics tolerate both slugs via aliases instead.
+
+        // Governance: never auto-advance a card PAST a stage whose prerequisites are unmet
+        // (appointment/offer/email/score/...). Soft-hold — leave it where it is rather than
+        // parking it in a gated stage a human drag would be refused from. Manual moves
+        // enforce the same rules hard.
+        if (opp.lead_id) {
+            try {
+                await this.evaluateRulesForLead(schema, tenantId, opp.lead_id, writeSlug);
+            } catch (ruleErr: any) {
+                const msg = String(ruleErr?.message || '');
+                if (msg.includes('TRANSITION_RULE_FAILED')) {
+                    this.logger.log(`Auto-progress held conv ${conversationId} at "${currentSlug}": "${writeSlug}" prerequisites unmet (${msg})`);
+                } else {
+                    this.logger.warn(`Auto-progress rule check errored (holding): ${msg}`);
+                }
+                return; // hold — do not advance
+            }
+        }
 
         // Update the opportunity stage
         await this.prisma.executeInTenantSchema(
@@ -1416,8 +1550,50 @@ export class PipelineService {
     // Private helpers
     // ============================================
 
+    /** Strip accents + apostrophes + lowercase for accent/quote-insensitive matching. */
+    private normalizeForMatch(s: string): string {
+        const lowered = (s || '').toLowerCase().normalize('NFD');
+        let out = '';
+        for (const ch of lowered) {
+            const code = ch.codePointAt(0) ?? 0;
+            if (code >= 0x300 && code <= 0x36f) continue; // combining diacritical marks
+            if (code === 0x27 || code === 0x2019) continue; // straight + curly apostrophes (can't→cant, d'accord→daccord)
+            out += ch;
+        }
+        return out;
+    }
+
+    /**
+     * Keyword match that is accent/quote-insensitive, respects word boundaries (so 'claro'
+     * no longer matches inside 'declaro' and 'bien' inside 'tambien'), and is negation-aware
+     * (a negator within the 3 preceding tokens suppresses the match, so 'no me interesa' /
+     * "i can't pay" / 'pero,no lo quiero comprar' don't advance the deal).
+     */
     private hasAnyKeyword(text: string, keywords: string[]): boolean {
-        return keywords.some(kw => text.includes(kw));
+        const hay = this.normalizeForMatch(text);
+        if (!hay) return false;
+        // Apostrophes are already stripped, so English contractions arrive as cant/wont/etc.
+        // 'sin' is deliberately NOT a negator ('sin duda quiero comprar' = affirmative).
+        const NEGATORS = new Set([
+            'no', 'nunca', 'tampoco', 'ni', 'jamas',           // es
+            'nao', 'jamais', 'pas',                            // pt / fr
+            'not', 'dont', 'doesnt', 'didnt', 'cant', 'cannot', 'wont', 'wouldnt', 'couldnt', // en
+        ]);
+        for (const kw of keywords) {
+            const needle = this.normalizeForMatch(kw);
+            if (!needle) continue;
+            const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'g');
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(hay)) !== null) {
+                // Tokenize the preamble on any non-alphanumeric run so a punctuation-glued
+                // negator ('pero,no') is still detected.
+                const before = hay.slice(0, m.index).split(/[^a-z0-9]+/).filter(Boolean).slice(-3);
+                if (!before.some((w) => NEGATORS.has(w))) return true; // matched without negation
+                if (re.lastIndex === m.index) re.lastIndex++; // avoid zero-width loop
+            }
+        }
+        return false;
     }
 
     private static readonly UUID_RE =

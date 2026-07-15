@@ -581,9 +581,15 @@ export class ConversationsService {
 
         // 7. Generate AI Response
         this.logger.log(`[Pipeline] Generating AI response...`);
-        const complexity = this.llmRouter.analyzeComplexity(content?.text || '');
-        const sentiment = this.llmRouter.analyzeSentiment(content?.text || '');
         const response = await this.generateResponse(tenantId, conversation, normalizedMsg, config, contact, lead, previousMessageAt, bizHours, inboundMessageId);
+
+        // Auto-progress signals from the RESOLVED inbound text (post audio/image processing,
+        // set by generateResponse on normalizedMsg) so voice-note / image purchase intent
+        // isn't invisible, plus this turn's detected language for keyword selection.
+        const resolvedInboundText = (normalizedMsg as any).resolvedText || content?.text || '';
+        const complexity = this.llmRouter.analyzeComplexity(resolvedInboundText);
+        const sentiment = this.llmRouter.analyzeSentiment(resolvedInboundText);
+        const autoProgressLang = (normalizedMsg as any).detectedLang || (conversation.metadata as any)?.detectedLanguage || config.language || 'es';
         this.logger.log(`[Pipeline] AI response generated: ${response ? response.substring(0, 80) + '...' : 'NULL/EMPTY'}`);
 
         // Track AI response event + increment monthly quota counter — but NOT for
@@ -637,9 +643,10 @@ export class ConversationsService {
         this.pipelineService.autoProgressFromConversation(tenantId, conversation.id, {
             complexity,
             sentiment,
-            messageText: content?.text || '',
+            messageText: resolvedInboundText,
             isFirstAiResponse: !!response,
             isCustomerReply: true,
+            lang: autoProgressLang,
         }).catch(e =>
             this.logger.warn(`Pipeline auto-progress failed (non-fatal): ${e.message}`),
         );
@@ -1199,6 +1206,10 @@ export class ConversationsService {
             return fallbacks[lang] || fallbacks.es;
         }
 
+        // Expose the RESOLVED inbound text (post audio-transcription / image-description)
+        // to the caller so auto-progress can classify purchase intent from voice notes.
+        (msg as any).resolvedText = userText;
+
         // 1. Analyze routing factors
         const complexity = this.llmRouter.analyzeComplexity(userText);
         const sentiment = this.llmRouter.analyzeSentiment(userText);
@@ -1256,6 +1267,7 @@ export class ConversationsService {
         const previousLanguage = (conversation.metadata as any)?.detectedLanguage;
         const detectedLanguage = this.languageDetector.detect(userText, previousLanguage || configuredLanguage);
         const userLanguage = detectedLanguage;
+        (msg as any).detectedLang = detectedLanguage; // expose this turn's language to auto-progress
         // Persist when it changes so the stickiness carries to the next turn.
         if (detectedLanguage && detectedLanguage !== previousLanguage) {
             this.prisma.executeInTenantSchema(schemaName,

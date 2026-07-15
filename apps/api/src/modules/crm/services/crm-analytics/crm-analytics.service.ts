@@ -39,7 +39,7 @@ export class CrmAnalyticsService {
              ORDER BY CASE l.stage
                 WHEN 'nuevo' THEN 1 WHEN 'contactado' THEN 2 WHEN 'respondio' THEN 3
                 WHEN 'calificado' THEN 4 WHEN 'tibio' THEN 5 WHEN 'caliente' THEN 6
-                WHEN 'listo_cierre' THEN 7 WHEN 'ganado' THEN 8 WHEN 'perdido' THEN 9
+                WHEN 'listo_cierre' THEN 7 WHEN 'listo_para_cierre' THEN 7 WHEN 'ganado' THEN 8 WHEN 'perdido' THEN 9
                 WHEN 'no_interesado' THEN 10 ELSE 99 END`,
             params,
         );
@@ -77,7 +77,7 @@ export class CrmAnalyticsService {
              ORDER BY CASE sh.from_stage
                 WHEN 'nuevo' THEN 1 WHEN 'contactado' THEN 2 WHEN 'respondio' THEN 3
                 WHEN 'calificado' THEN 4 WHEN 'tibio' THEN 5 WHEN 'caliente' THEN 6
-                WHEN 'listo_cierre' THEN 7 ELSE 99 END`,
+                WHEN 'listo_cierre' THEN 7 WHEN 'listo_para_cierre' THEN 7 ELSE 99 END`,
             params,
         );
 

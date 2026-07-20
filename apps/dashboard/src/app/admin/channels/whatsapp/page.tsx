@@ -153,8 +153,15 @@ export default function WhatsAppSetupPage() {
     }
 
     const statusData = status?.data || status;
-    const isConnected = statusData?.connected === true || status?.status === "connected";
-    const waChannels: any[] = status?.channels?.length ? status.channels : (status?.channel ? [status.channel] : []);
+    const isConnected = statusData?.connected === true || status?.status === "connected" || statusData?.status === "connected";
+    // Robust across response shapes: the WhatsApp controller returns { channel, channels }
+    // while the generic channel controller returns { data: { account, accounts } }.
+    const waSrc: any = status?.data || status || {};
+    const waChannels: any[] =
+        (Array.isArray(waSrc.channels) && waSrc.channels.length) ? waSrc.channels
+        : (Array.isArray(waSrc.accounts) && waSrc.accounts.length) ? waSrc.accounts
+        : (waSrc.channel ? [waSrc.channel]
+        : (waSrc.account ? [waSrc.account] : []));
     const canAddWa = canAddChannelAccount("whatsapp", waChannels.length);
 
     return (

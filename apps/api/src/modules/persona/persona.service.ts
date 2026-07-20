@@ -707,6 +707,9 @@ export class PersonaService {
         isActive?: boolean;
         isDefault?: boolean;
     }): Promise<any> {
+        // Ensure the table + channel_bindings column exist before we read/write them
+        // (existing tenants may predate the multi-account column).
+        await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
 
         // Capture prior bindings so we can invalidate their per-account caches too.

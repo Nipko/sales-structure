@@ -64,6 +64,16 @@ export class ChannelManagementController {
         try {
             const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
             if (tenant?.schemaName) {
+                // Self-heal: existing tenants whose agent_personas predates multi-account
+                // may lack channel_bindings (the lazy ALTER in PersonaService only runs on
+                // a persona-service access). Idempotent; best-effort if the table is absent.
+                try {
+                    await this.prisma.executeInTenantSchema(
+                        tenant.schemaName,
+                        `ALTER TABLE agent_personas ADD COLUMN IF NOT EXISTS channel_bindings TEXT[] DEFAULT '{}'`,
+                        [],
+                    );
+                } catch { /* table may not exist yet — SELECT below will be caught too */ }
                 const agents = await this.prisma.executeInTenantSchema<any[]>(
                     tenant.schemaName,
                     `SELECT id, name, channels, channel_bindings FROM agent_personas WHERE is_active = true`,

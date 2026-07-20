@@ -2695,6 +2695,10 @@
     "title": "Channels",
     "subtitle": "Manage your communication channels",
     "loading": "Loading channels...",
+    "accountsUsed": "{count}/{limit} accounts",
+    "addAnother": "Add another",
+    "disconnectAccount": "Disconnect",
+    "disconnectAccountConfirm": "Disconnect this account? Other accounts on this channel stay active.",
     "connected": "Connected",
     "disconnected": "Disconnected",
     "connect": "Connect",
@@ -8724,7 +8728,12 @@
       "mediaPerContactPerDay": "Per contact/day",
       "mediaPerConvPer5min": "Per conversation/5min",
       "mediaPerTenantPerHour": "Per tenant/hour",
-      "mediaDailyBudgetCentsUsd": "Daily budget (USD cents)"
+      "mediaDailyBudgetCentsUsd": "Daily budget (USD cents)",
+      "maxChannelAccountsWhatsapp": "WhatsApp accounts",
+      "maxChannelAccountsInstagram": "Instagram accounts",
+      "maxChannelAccountsMessenger": "Messenger pages",
+      "maxChannelAccountsTelegram": "Telegram bots",
+      "maxChannelAccountsSms": "SMS numbers"
     }
   },
   "reportBuilder": {

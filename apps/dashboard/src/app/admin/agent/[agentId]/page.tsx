@@ -10,7 +10,7 @@ import Link from "next/link";
 import {
   Bot, User, Shield, Wrench, Save, CheckCircle, AlertTriangle,
   ArrowLeft, MoreVertical, BookmarkPlus, Star, Clock, TestTube2,
-  MessageSquare, Instagram, Facebook, Send, X,
+  MessageSquare, Instagram, Facebook, Send, X, Phone,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { TabNav } from "@/components/ui/tab-nav";
@@ -32,9 +32,16 @@ const CHANNEL_META: Record<string, { label: string; icon: React.ElementType; col
   instagram: { label: "Instagram", icon: Instagram,     color: "text-pink-500" },
   messenger: { label: "Facebook",  icon: Facebook,      color: "text-blue-500" },
   telegram:  { label: "Telegram",  icon: Send,          color: "text-sky-500" },
+  sms:       { label: "SMS",       icon: Phone,         color: "text-amber-500" },
 };
 
-const ALL_CHANNELS = ["whatsapp", "instagram", "messenger", "telegram"];
+const ALL_CHANNELS = ["whatsapp", "instagram", "messenger", "telegram", "sms"];
+
+// A connected account of a channel (from /channels/overview).
+interface ChannelAccountLite { channelType: string; accountId: string; displayName?: string }
+
+// Binding key that ties an agent to a SPECIFIC connected account.
+const bindingKey = (type: string, accountId: string) => `${type}:${accountId}`;
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -59,6 +66,7 @@ interface AgentData {
   is_active: boolean;
   is_default: boolean;
   channels: string[];
+  channel_bindings?: string[];
   schedule_mode?: string;
   config_json: PersonaConfig;
 }
@@ -83,6 +91,8 @@ export default function AgentEditorPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [isDefault, setIsDefault] = useState(false);
   const [assignedChannels, setAssignedChannels] = useState<string[]>([]);
+  const [assignedBindings, setAssignedBindings] = useState<string[]>([]);
+  const [accounts, setAccounts] = useState<ChannelAccountLite[]>([]);
   const [allAgents, setAllAgents] = useState<AgentData[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -100,18 +110,53 @@ export default function AgentEditorPage() {
     Promise.all([
       api.getAgent(activeTenantId, agentId),
       api.listAgents(activeTenantId),
+      api.fetch('/channels/overview').catch(() => ({ data: [] })),
     ])
-      .then(([agentRes, agentsRes]: any[]) => {
+      .then(([agentRes, agentsRes, overviewRes]: any[]) => {
+        const accts: ChannelAccountLite[] = Array.isArray(overviewRes?.data)
+          ? overviewRes.data.map((a: any) => ({ channelType: a.channelType, accountId: a.accountId, displayName: a.displayName }))
+          : [];
+        setAccounts(accts);
+
         if (agentRes?.success && agentRes.data) {
           const data = agentRes.data;
           const configData = data.config_json || {};
           setConfig(deepMerge(structuredClone(defaultConfig), configData));
           setIsDefault(data.is_default ?? false);
-          setAssignedChannels(data.channels || []);
           if (configData._customPrompt) {
             setCustomPrompt(configData._customPrompt);
             setMode("prompt");
           }
+
+          // Normalize the stored assignment against the CURRENT connected accounts so
+          // the UI (and the next save) are consistent both ways:
+          //  • a type with 2+ accounts uses per-account bindings (expand any legacy
+          //    type-level channel into bindings for all its accounts);
+          //  • a type with ≤1 account uses the type-level channel (fold any leftover
+          //    binding back into `channels` so the assignment isn't lost when a second
+          //    account gets disconnected).
+          const srcChannels: string[] = data.channels || [];
+          const srcBindings: string[] = data.channel_bindings || [];
+          const countByType: Record<string, number> = {};
+          for (const a of accts) countByType[a.channelType] = (countByType[a.channelType] || 0) + 1;
+          const bindingTypes = srcBindings.map(b => b.split(":")[0]);
+          const allTypes = Array.from(new Set([...srcChannels, ...bindingTypes, ...Object.keys(countByType)]));
+          const nextChannels: string[] = [];
+          const nextBindings: string[] = [];
+          for (const type of allTypes) {
+            const cnt = countByType[type] || 0;
+            const hadChannel = srcChannels.includes(type);
+            const typeBindings = srcBindings.filter(b => b.split(":")[0] === type);
+            if (cnt >= 2) {
+              const keys = new Set(typeBindings);
+              if (hadChannel) for (const a of accts.filter(x => x.channelType === type)) keys.add(bindingKey(type, a.accountId));
+              nextBindings.push(...keys);
+            } else if (hadChannel || typeBindings.length > 0) {
+              nextChannels.push(type); // fold binding(s) → type-level
+            }
+          }
+          setAssignedChannels(nextChannels);
+          setAssignedBindings(nextBindings);
         }
         if (agentsRes?.success && Array.isArray(agentsRes.data)) {
           setAllAgents(agentsRes.data);
@@ -176,26 +221,50 @@ export default function AgentEditorPage() {
     );
   }
 
+  function toggleBinding(key: string) {
+    setAssignedBindings(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  }
+
+  function getBindingOwner(key: string): AgentData | undefined {
+    return allAgents.find(a => a.id !== agentId && a.channel_bindings?.includes(key));
+  }
+
+  // Channel types with 2+ connected accounts are assigned per-account (bindings);
+  // types with 0 or 1 keep the simple type-level toggle (backward compatible).
+  const multiAccountTypes = (() => {
+    const c: Record<string, number> = {};
+    for (const a of accounts) c[a.channelType] = (c[a.channelType] || 0) + 1;
+    return new Set(Object.keys(c).filter(t => c[t] >= 2));
+  })();
+
   // ── Save ───────────────────────────────────────────────────
 
   async function handleSave() {
     if (!activeTenantId || !agentId) return;
     setSaving(true);
     try {
-      let payload: any;
-      if (mode === "prompt") {
-        payload = {
-          configJson: { ...config, _customPrompt: customPrompt, _mode: "prompt" },
-          channels: assignedChannels,
-          isDefault,
-        };
-      } else {
-        payload = {
-          configJson: { ...config, _customPrompt: undefined, _mode: "wizard" },
-          channels: assignedChannels,
-          isDefault,
-        };
-      }
+      // Multi-account types are driven by per-account bindings; keep them OUT of
+      // the type-level `channels` so the type fallback doesn't claim every account.
+      // A binding whose type is NOT multi-account (e.g. its second account was just
+      // disconnected) is FOLDED into a type-level channel instead of being dropped —
+      // otherwise the agent would silently lose that assignment on save.
+      const bindingsToSave = assignedBindings.filter(b => multiAccountTypes.has(b.split(":")[0]));
+      const foldedTypes = assignedBindings.map(b => b.split(":")[0]).filter(t => !multiAccountTypes.has(t));
+      const channelsToSave = Array.from(new Set([
+        ...assignedChannels.filter(t => !multiAccountTypes.has(t)),
+        ...foldedTypes,
+      ]));
+      const configJson = mode === "prompt"
+        ? { ...config, _customPrompt: customPrompt, _mode: "prompt" }
+        : { ...config, _customPrompt: undefined, _mode: "wizard" };
+      const payload: any = {
+        configJson,
+        channels: channelsToSave,
+        channelBindings: bindingsToSave,
+        isDefault,
+      };
       const res = await api.updateAgent(activeTenantId, agentId, payload);
       if (res?.success) {
         setToast(t("savedSuccess"));
@@ -363,7 +432,7 @@ export default function AgentEditorPage() {
       />
 
       {/* ── Readiness del agente (about/horarios/KB/canal) ── */}
-      <AgentReadinessBanner tenantId={activeTenantId} channelAssigned={assignedChannels.length > 0} />
+      <AgentReadinessBanner tenantId={activeTenantId} channelAssigned={assignedChannels.length > 0 || assignedBindings.length > 0} />
 
       {/* ── Agent profile hero + channels ── */}
       <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 mb-6">
@@ -411,49 +480,63 @@ export default function AgentEditorPage() {
             </span>
           </div>
           <div className="flex flex-wrap gap-2">
-            {ALL_CHANNELS.map(ch => {
+            {ALL_CHANNELS.flatMap(ch => {
               const meta = CHANNEL_META[ch];
-              if (!meta) return null;
+              if (!meta) return [];
               const Icon = meta.icon;
+              const chipCls = (isAssigned: boolean) => cn(
+                "inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-all",
+                isAssigned
+                  ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10 ring-1 ring-indigo-500"
+                  : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600"
+              );
+              const labelCls = (isAssigned: boolean) => cn(
+                "font-medium",
+                isAssigned ? "text-indigo-600 dark:text-indigo-400" : "text-neutral-600 dark:text-neutral-400"
+              );
+
+              // Multi-account type → one chip per connected account (per-connection binding).
+              if (multiAccountTypes.has(ch)) {
+                return accounts.filter(a => a.channelType === ch).map(a => {
+                  const key = bindingKey(ch, a.accountId);
+                  const isAssigned = assignedBindings.includes(key);
+                  const owner = getBindingOwner(key);
+                  return (
+                    <button key={key} type="button" onClick={() => toggleBinding(key)} className={chipCls(isAssigned)}>
+                      <Icon size={16} className={meta.color} />
+                      <span className={labelCls(isAssigned)}>{meta.label}</span>
+                      <span className="text-[11px] text-neutral-400 truncate max-w-[130px]">· {a.displayName || a.accountId}</span>
+                      {isAssigned && <CheckCircle size={14} className="text-indigo-500" />}
+                      {owner && isAssigned && (
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-0.5"><AlertTriangle size={10} /></span>
+                      )}
+                    </button>
+                  );
+                });
+              }
+
+              // Single/no connected account → type-level toggle (backward compatible).
               const isAssigned = assignedChannels.includes(ch);
               const owner = getChannelOwner(ch);
-
-              return (
-                <button
-                  key={ch}
-                  type="button"
-                  onClick={() => toggleChannel(ch)}
-                  className={cn(
-                    "inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-all",
-                    isAssigned
-                      ? "border-indigo-500 bg-indigo-500/5 dark:bg-indigo-500/10 ring-1 ring-indigo-500"
-                      : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600"
-                  )}
-                >
+              return [(
+                <button key={ch} type="button" onClick={() => toggleChannel(ch)} className={chipCls(isAssigned)}>
                   <Icon size={16} className={meta.color} />
-                  <span className={cn(
-                    "font-medium",
-                    isAssigned ? "text-indigo-600 dark:text-indigo-400" : "text-neutral-600 dark:text-neutral-400"
-                  )}>
-                    {meta.label}
-                  </span>
+                  <span className={labelCls(isAssigned)}>{meta.label}</span>
                   {isAssigned && <CheckCircle size={14} className="text-indigo-500" />}
                   {owner && isAssigned && (
-                    <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-0.5">
-                      <AlertTriangle size={10} />
-                    </span>
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-0.5"><AlertTriangle size={10} /></span>
                   )}
                 </button>
-              );
+              )];
             })}
           </div>
-          {assignedChannels.some(ch => getChannelOwner(ch)) && (
+          {(assignedChannels.some(ch => getChannelOwner(ch)) || assignedBindings.some(k => getBindingOwner(k))) && (
             <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
               <AlertTriangle size={12} />
-              {t("willReassignFrom")} {assignedChannels
-                .filter(ch => getChannelOwner(ch))
-                .map(ch => getChannelOwner(ch)?.name || t("unnamedAgent"))
-                .join(", ")}
+              {t("willReassignFrom")} {[
+                ...assignedChannels.filter(ch => getChannelOwner(ch)).map(ch => getChannelOwner(ch)?.name || t("unnamedAgent")),
+                ...assignedBindings.filter(k => getBindingOwner(k)).map(k => getBindingOwner(k)?.name || t("unnamedAgent")),
+              ].join(", ")}
             </p>
           )}
         </div>

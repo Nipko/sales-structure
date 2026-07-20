@@ -387,6 +387,7 @@ export class PersonaController {
             templateId: body.templateId,
             configJson: body.configJson,
             channels: body.channels,
+            channelBindings: body.channelBindings,
             scheduleMode: body.scheduleMode,
             isDefault: body.isDefault,
             createdBy: req.user?.email || 'system',

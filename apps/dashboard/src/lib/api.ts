@@ -314,6 +314,9 @@ export const api = {
 
     // --- Multi-Agent ---
     listAgents: (tenantId: string) => apiGet(`/persona/${tenantId}/agents`),
+    // Disconnect ONE specific connected account of a channel type (multi-account).
+    disconnectChannelAccount: (channelType: string, accountId: string) =>
+        apiDelete(`/channels/${channelType}/account/${encodeURIComponent(accountId)}`),
     getAgent: (tenantId: string, agentId: string) => apiGet(`/persona/${tenantId}/agents/${agentId}`),
     createAgent: (tenantId: string, data: any) => apiPost(`/persona/${tenantId}/agents`, data),
     updateAgent: (tenantId: string, agentId: string, data: any) => apiPut(`/persona/${tenantId}/agents/${agentId}`, data),

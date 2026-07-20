@@ -42,6 +42,8 @@ export interface PlanFeatures {
   widget: boolean;
   dataRetentionDays: number;
   channels: string[];
+  // Per-channel-type connected-account limits ({ whatsapp: 2, ... }); -1 = unlimited.
+  maxChannelAccounts: Record<string, number>;
   [key: string]: any;
 }
 
@@ -57,6 +59,7 @@ const STARTER_DEFAULTS: PlanFeatures = {
   prioritySupport: false, staffScheduling: false, vehicleInventory: false,
   ecommerce: false, channelManager: false, widget: false, dataRetentionDays: 180,
   channels: ["whatsapp", "instagram", "messenger", "telegram"],
+  maxChannelAccounts: { whatsapp: 1, instagram: 1, messenger: 1, telegram: 1, sms: 1 },
 };
 
 export function usePlanLimits() {
@@ -96,5 +99,20 @@ export function usePlanLimits() {
     return limit;
   };
 
-  return { features, loading, reload, canCreate, getLimit, isUnlimited };
+  // How many connected accounts of a channel type the plan allows (default 1;
+  // -1 = unlimited → returned as null). Mirrors the backend getChannelAccountLimit.
+  const getChannelAccountLimit = (channelType: string): number | null => {
+    const map = features.maxChannelAccounts || {};
+    const raw = typeof map[channelType] === "number" ? map[channelType] : 1;
+    if (isUnlimited(raw)) return null;
+    return raw;
+  };
+
+  const canAddChannelAccount = (channelType: string, currentCount: number): boolean => {
+    const limit = getChannelAccountLimit(channelType);
+    if (limit === null) return true;
+    return currentCount < limit;
+  };
+
+  return { features, loading, reload, canCreate, getLimit, isUnlimited, getChannelAccountLimit, canAddChannelAccount };
 }

@@ -1455,6 +1455,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_personas" (
     "is_default" BOOLEAN DEFAULT false,
     "config_json" JSONB NOT NULL,
     "channels" TEXT[] DEFAULT '{}',
+    "channel_bindings" TEXT[] DEFAULT '{}',
     "schedule_mode" VARCHAR(20) DEFAULT '24_7',
     "version" INTEGER DEFAULT 1,
     "created_by" VARCHAR(255),
@@ -1464,6 +1465,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_personas" (
 
 CREATE INDEX IF NOT EXISTS "idx_agent_personas_active" ON "{{SCHEMA_NAME}}"."agent_personas" ("is_active");
 CREATE INDEX IF NOT EXISTS "idx_agent_personas_channels" ON "{{SCHEMA_NAME}}"."agent_personas" USING GIN ("channels");
+CREATE INDEX IF NOT EXISTS "idx_agent_personas_bindings" ON "{{SCHEMA_NAME}}"."agent_personas" USING GIN ("channel_bindings");
 CREATE INDEX IF NOT EXISTS "idx_agent_personas_default" ON "{{SCHEMA_NAME}}"."agent_personas" ("is_default") WHERE "is_default" = true;
 
 -- ---- Agent Templates (reusable persona configs) ----

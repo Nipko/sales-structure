@@ -57,19 +57,24 @@ export class ChannelManagementController {
             orderBy: { createdAt: 'desc' },
         });
 
-        // Fetch agent assignments from tenant schema
-        let agentAssignments: Record<string, { id: string; name: string }> = {};
+        // Fetch agent assignments from tenant schema. Resolution is per-connection:
+        // an exact channel_binding ("type:accountId") wins over the type-level channel.
+        const byType: Record<string, { id: string; name: string }> = {};
+        const byBinding: Record<string, { id: string; name: string }> = {};
         try {
             const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
             if (tenant?.schemaName) {
                 const agents = await this.prisma.executeInTenantSchema<any[]>(
                     tenant.schemaName,
-                    `SELECT id, name, channels FROM agent_personas WHERE is_active = true`,
+                    `SELECT id, name, channels, channel_bindings FROM agent_personas WHERE is_active = true`,
                     [],
                 );
                 for (const agent of (agents || [])) {
                     for (const ch of (agent.channels || [])) {
-                        agentAssignments[ch] = { id: agent.id, name: agent.name };
+                        byType[ch] = { id: agent.id, name: agent.name };
+                    }
+                    for (const b of (agent.channel_bindings || [])) {
+                        byBinding[b] = { id: agent.id, name: agent.name };
                     }
                 }
             }
@@ -81,16 +86,19 @@ export class ChannelManagementController {
 
         return {
             success: true,
-            data: accounts.map((a: any) => ({
-                id: a.id,
-                channelType: a.channelType,
-                accountId: a.accountId,
-                displayName: a.displayName,
-                isActive: a.isActive,
-                metadata: a.metadata,
-                assignedAgent: agentAssignments[a.channelType] || null,
-                needsAssignment: !agentAssignments[a.channelType],
-            })),
+            data: accounts.map((a: any) => {
+                const assigned = byBinding[`${a.channelType}:${a.accountId}`] || byType[a.channelType] || null;
+                return {
+                    id: a.id,
+                    channelType: a.channelType,
+                    accountId: a.accountId,
+                    displayName: a.displayName,
+                    isActive: a.isActive,
+                    metadata: a.metadata,
+                    assignedAgent: assigned,
+                    needsAssignment: !assigned,
+                };
+            }),
         };
     }
 
@@ -154,6 +162,20 @@ export class ChannelManagementController {
         }
     }
 
+    /**
+     * Gate connecting an ADDITIONAL account of `channelType` behind the plan's
+     * per-type limit (features.maxChannelAccounts). Reconnecting/updating an
+     * existing account never blocks: pass every accountId that identifies the
+     * account being connected in `excludeAccountIds` so it's excluded from the
+     * active count (Instagram may match on either the IG-scoped or app-scoped id).
+     */
+    private async assertChannelAccountQuota(tenantId: string, channelType: string, excludeAccountIds: string[]): Promise<void> {
+        const existingActive = await this.prisma.channelAccount.count({
+            where: { tenantId, channelType, isActive: true, accountId: { notIn: excludeAccountIds } },
+        });
+        await this.throttle.enforceChannelAccountLimit(tenantId, channelType, existingActive);
+    }
+
     @Post('telegram/connect')
     @ApiOperation({ summary: 'Connect a Telegram bot — validates token, sets webhook, stores credentials' })
     async connectTelegram(
@@ -174,6 +196,9 @@ export class ChannelManagementController {
         }
 
         const accountId = botInfo.username;
+
+        // Enforce the plan's per-type account limit before doing any provider work.
+        await this.assertChannelAccountQuota(tenantId, 'telegram', [accountId]);
 
         // 2. Auto-set webhook URL using bot-specific path
         const apiUrl = this.configService.get<string>('API_BASE_URL')
@@ -204,7 +229,7 @@ export class ChannelManagementController {
                 data: {
                     tenantId,
                     displayName: displayName || `@${accountId}`,
-                    accessToken: 'encrypted_ref',
+                    accessToken: encryptedToken,
                     isActive: true,
                     metadata: {
                         source: 'dashboard_connect',
@@ -223,7 +248,7 @@ export class ChannelManagementController {
                     channelType: 'telegram',
                     accountId,
                     displayName: displayName || `@${accountId}`,
-                    accessToken: 'encrypted_ref',
+                    accessToken: encryptedToken,
                     isActive: true,
                     metadata: {
                         source: 'dashboard_connect',
@@ -473,12 +498,34 @@ export class ChannelManagementController {
             throw new BadRequestException(`No Facebook pages found.${diagMsg} Ensure the Facebook account manages at least one Page, that pages_show_list permission was granted in the login dialog, and that all required pages were selected.`);
         }
 
+        // Enforce the plan's per-type account limit. Existing pages reconnect
+        // freely; only NEW pages consume a slot. Over-quota new pages are skipped
+        // (partial connect) and reported so the user knows to upgrade.
+        const existingActiveIds = new Set(
+            (await this.prisma.channelAccount.findMany({
+                where: { tenantId, channelType: 'messenger', isActive: true },
+                select: { accountId: true },
+            })).map((a: { accountId: string }) => a.accountId),
+        );
+        const messengerLimit = await this.throttle.getChannelAccountLimit(tenantId, 'messenger');
+        let messengerSlotsLeft = Number.isFinite(messengerLimit)
+            ? Math.max(0, messengerLimit - existingActiveIds.size)
+            : Number.POSITIVE_INFINITY;
+        const skippedForQuota: string[] = [];
+
         // Step 3: For each page, subscribe webhook and store
         const connected: { id: string; name: string; picture?: string }[] = [];
         for (const page of pages) {
             try {
                 if (!page.access_token) {
                     this.logger.warn(`Messenger OAuth: page ${page.id} (${page.name}) skipped — no access_token (insufficient permissions)`);
+                    continue;
+                }
+
+                const isNewPage = !existingActiveIds.has(page.id);
+                if (isNewPage && messengerSlotsLeft <= 0) {
+                    skippedForQuota.push(page.name || page.id);
+                    this.logger.warn(`Messenger OAuth: page ${page.id} (${page.name}) skipped — plan account limit (${messengerLimit}) reached`);
                     continue;
                 }
 
@@ -514,7 +561,7 @@ export class ChannelManagementController {
                         data: {
                             tenantId,
                             displayName: page.name,
-                            accessToken: 'encrypted_ref',
+                            accessToken: encrypted,
                             isActive: true,
                             metadata: {
                                 source: 'oauth_connect',
@@ -531,7 +578,7 @@ export class ChannelManagementController {
                             channelType: 'messenger',
                             accountId: page.id,
                             displayName: page.name,
-                            accessToken: 'encrypted_ref',
+                            accessToken: encrypted,
                             isActive: true,
                             metadata: {
                                 source: 'oauth_connect',
@@ -567,20 +614,29 @@ export class ChannelManagementController {
                 }
 
                 connected.push({ id: page.id, name: page.name, picture: pictureUrl });
+                if (isNewPage) { existingActiveIds.add(page.id); messengerSlotsLeft--; }
             } catch (e: any) {
                 this.logger.warn(`Failed to connect Messenger page ${page.id}: ${e.message}`);
             }
         }
 
         if (connected.length === 0) {
+            if (skippedForQuota.length > 0) {
+                throw new ForbiddenException({
+                    error: 'plan_limit_reached',
+                    limitKey: 'maxChannelAccounts',
+                    channelType: 'messenger',
+                    message: `Tu plan permite hasta ${Number.isFinite(messengerLimit) ? messengerLimit : '∞'} página(s) de Messenger. No se conectó ninguna nueva (${skippedForQuota.join(', ')}). Actualizá tu plan o desconectá otra para conectar más.`,
+                });
+            }
             throw new BadRequestException('Failed to connect any Facebook page');
         }
 
         // Invalidate cached token so next message uses the fresh one
         await this.channelToken.invalidateCache('messenger', tenantId);
 
-        this.logger.log(`Messenger OAuth: ${connected.length} page(s) connected for tenant ${tenantId}`);
-        return { success: true, data: { connected, total: pages.length } };
+        this.logger.log(`Messenger OAuth: ${connected.length} page(s) connected for tenant ${tenantId}${skippedForQuota.length ? `, ${skippedForQuota.length} skipped (plan limit)` : ''}`);
+        return { success: true, data: { connected, total: pages.length, skippedForQuota } };
     }
 
     @Delete('messenger/disconnect')
@@ -610,7 +666,7 @@ export class ChannelManagementController {
 
                 for (const acc of accounts) {
                     try {
-                        const creds = await this.channelToken.getChannelToken(tenantId, 'messenger');
+                        const creds = await this.channelToken.getChannelToken(tenantId, 'messenger', acc.accountId);
                         if (!creds?.accessToken) {
                             errors.push(`page ${acc.accountId}: no token`);
                             // No-token usually means the user already cleaned
@@ -750,6 +806,11 @@ export class ChannelManagementController {
 
         this.logger.log(`Instagram OAuth: app-scoped=${igUserId}, ig-scoped=${igScopedId}, username=${profile.username}`);
 
+        // Enforce the plan's per-type account limit. Exclude BOTH ids the account
+        // could already be stored under (ig-scoped or legacy app-scoped) so a
+        // reconnect/migration of the same account never counts against the quota.
+        await this.assertChannelAccountQuota(tenantId, 'instagram', [igScopedId, igUserId]);
+
         // Upsert ChannelAccount (unique on [channelType, accountId])
         // Use igScopedId so it matches the webhook's entry[0].id
         // Also check old app-scoped ID for migration
@@ -768,7 +829,7 @@ export class ChannelManagementController {
                     tenantId,
                     accountId: igScopedId, // Fix: ensure we store the IG-scoped ID
                     displayName,
-                    accessToken: 'encrypted_ref',
+                    accessToken: encrypted,
                     isActive: true,
                     metadata: {
                         source: 'oauth_connect',
@@ -785,7 +846,7 @@ export class ChannelManagementController {
                     channelType: 'instagram',
                     accountId: igScopedId,
                     displayName,
-                    accessToken: 'encrypted_ref',
+                    accessToken: encrypted,
                     isActive: true,
                     metadata: {
                         source: 'oauth_connect',
@@ -936,6 +997,9 @@ export class ChannelManagementController {
             throw new BadRequestException('Invalid Twilio credentials');
         }
 
+        // Enforce the plan's per-type account limit before storing anything.
+        await this.assertChannelAccountQuota(tenantId, 'sms', [phoneNumber]);
+
         // 2. Configure webhook URL for inbound SMS
         const apiUrl = this.configService.get<string>('API_BASE_URL')
             || this.configService.get<string>('NEXT_PUBLIC_API_URL')
@@ -957,7 +1021,7 @@ export class ChannelManagementController {
             channelType: 'sms',
             accountId: phoneNumber,
             displayName: displayName || `SMS ${phoneNumber}`,
-            accessToken: 'encrypted_ref',
+            accessToken: encryptedToken,
             isActive: true,
             metadata: {
                 source: 'dashboard_connect',
@@ -1055,7 +1119,7 @@ export class ChannelManagementController {
                         const meta = (acc.metadata as any) || {};
                         const accountSid = meta.accountSid as string | undefined;
                         const phoneNumberSid = meta.phoneNumberSid as string | undefined;
-                        const creds = await this.channelToken.getChannelToken(tenantId, 'sms');
+                        const creds = await this.channelToken.getChannelToken(tenantId, 'sms', acc.accountId);
                         const authToken = creds?.accessToken;
                         if (!accountSid || !phoneNumberSid || !authToken) {
                             errors.push(`${acc.accountId}: incomplete twilio credentials`);
@@ -1141,6 +1205,9 @@ export class ChannelManagementController {
         const { accountId, displayName, accessToken, metadata } = body;
         if (!accountId || !accessToken) throw new BadRequestException('accountId and accessToken are required');
 
+        // Enforce the plan's per-type account limit.
+        await this.assertChannelAccountQuota(tenantId, channelType, [accountId]);
+
         // Encrypt the access token
         const encryptedToken = this.cryptoService.encryptToken(accessToken);
 
@@ -1155,7 +1222,7 @@ export class ChannelManagementController {
                 data: {
                     tenantId,
                     displayName: displayName || accountId,
-                    accessToken: 'encrypted_ref',
+                    accessToken: encryptedToken,
                     isActive: true,
                     metadata: { ...(existing.metadata as any), ...metadata, source: 'manual_connect' },
                 },
@@ -1167,7 +1234,7 @@ export class ChannelManagementController {
                     channelType,
                     accountId,
                     displayName: displayName || accountId,
-                    accessToken: 'encrypted_ref',
+                    accessToken: encryptedToken,
                     isActive: true,
                     metadata: { ...metadata, source: 'manual_connect' },
                 },
@@ -1199,6 +1266,68 @@ export class ChannelManagementController {
 
         this.logger.log(`Channel ${channelType} connected for tenant ${tenantId} (accountId=${accountId})`);
         return { success: true, message: `${channelType} connected successfully` };
+    }
+
+    @Delete(':channelType/account/:accountId')
+    @ApiOperation({ summary: 'Disconnect ONE specific connected account of a channel type (multi-account)' })
+    async disconnectAccount(
+        @Param('channelType') channelType: string,
+        @Param('accountId') accountId: string,
+        @Req() req: any,
+    ) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) throw new BadRequestException('Tenant ID required');
+
+        // Deactivate only THIS account's routing row (unlike the per-type disconnect
+        // which deactivates every account of the type).
+        const rows = (await this.prisma.$queryRawUnsafe(
+            `UPDATE channel_accounts
+               SET is_active = false,
+                   metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('disconnected_at', NOW()::text),
+                   updated_at = NOW()
+             WHERE tenant_id = $1::uuid AND channel_type = $2 AND account_id = $3 AND is_active = true
+             RETURNING id`,
+            tenantId, channelType, accountId,
+        )) as any[];
+
+        if (rows.length === 0) {
+            throw new BadRequestException('No active account found to disconnect');
+        }
+
+        try {
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId,
+                    action: 'channel_account_disconnected',
+                    resource: channelType,
+                    details: { accountId, triggeredBy: req.user?.sub || 'unknown' },
+                },
+            });
+        } catch { /* non-blocking */ }
+
+        // Drop any agent bindings to this connection so resolution falls back cleanly,
+        // and for WhatsApp also remove the per-number row in the tenant schema.
+        try {
+            const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { schemaName: true } });
+            if (tenant?.schemaName) {
+                await this.prisma.$executeRawUnsafe(
+                    `UPDATE "${tenant.schemaName}".agent_personas SET channel_bindings = array_remove(channel_bindings, $1), updated_at = NOW() WHERE $1 = ANY(channel_bindings)`,
+                    `${channelType}:${accountId}`,
+                );
+                if (channelType === 'whatsapp') {
+                    await this.prisma.executeInTenantSchema(
+                        tenant.schemaName,
+                        `DELETE FROM whatsapp_channels WHERE phone_number_id = $1`,
+                        [accountId],
+                    );
+                }
+            }
+        } catch { /* non-blocking — agent_personas/whatsapp_channels may not exist yet */ }
+
+        try { await this.channelToken.invalidateCache(channelType, tenantId, accountId); } catch { /* non-blocking */ }
+
+        this.logger.log(`Channel ${channelType} account ${accountId} disconnected for tenant ${tenantId}`);
+        return { success: true, message: `Cuenta ${accountId} desconectada`, accountId };
     }
 
     @Get(':channelType/config')

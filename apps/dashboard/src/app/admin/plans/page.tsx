@@ -61,7 +61,17 @@ const NESTED_INNER: Record<string, { key: string; label: string }[]> = {
         { key: "perTenantPerHour", label: "mediaPerTenantPerHour" },
         { key: "dailyBudgetCentsUsd", label: "mediaDailyBudgetCentsUsd" },
     ],
+    // Per-channel-type connected-account limits (-1 = unlimited). Rendered as
+    // sub-rows under the "channels" category, alongside the channels chips.
+    maxChannelAccounts: [
+        { key: "whatsapp", label: "maxChannelAccountsWhatsapp" },
+        { key: "instagram", label: "maxChannelAccountsInstagram" },
+        { key: "messenger", label: "maxChannelAccountsMessenger" },
+        { key: "telegram", label: "maxChannelAccountsTelegram" },
+        { key: "sms", label: "maxChannelAccountsSms" },
+    ],
 };
+// Categories that ARE a single nested object (whole category renders as sub-rows).
 const CATEGORY_TO_NESTED: Record<string, string> = { rate: "rateLimits", media: "mediaProcessing" };
 
 const CHANNEL_OPTIONS = ["whatsapp", "instagram", "messenger", "telegram", "sms", "email"];
@@ -489,12 +499,17 @@ export default function PlansPage() {
 
                         {/* Feature categories (registry-driven) */}
                         {CATEGORY_ORDER.map(cat => {
-                            const nestedKey = CATEGORY_TO_NESTED[cat];
-                            const featureDefs = nestedKey
+                            // A category is EITHER a single nested object (rate/media) OR a set of
+                            // flat features that may also include extra nested-object features
+                            // (e.g. `channel` = channels chips + maxChannelAccounts sub-rows).
+                            const pureNestedKey = CATEGORY_TO_NESTED[cat];
+                            const featureDefs = pureNestedKey
                                 ? []
-                                : registry.filter(d => d.category === cat && !CATEGORY_TO_NESTED[d.category]);
-                            const nestedRows = nestedKey ? NESTED_INNER[nestedKey] : [];
-                            if (!featureDefs.length && !nestedRows.length) return null;
+                                : registry.filter(d => d.category === cat && d.type !== "object" && !CATEGORY_TO_NESTED[d.category]);
+                            const nestedKeys: string[] = pureNestedKey
+                                ? [pureNestedKey]
+                                : registry.filter(d => d.category === cat && d.type === "object" && NESTED_INNER[d.key]).map(d => d.key);
+                            if (!featureDefs.length && !nestedKeys.length) return null;
                             return (
                                 <Fragment key={cat}>
                                     <tr><td colSpan={plans.length + 1} className={catCls}>{tc(CATEGORY_I18N[cat])}</td></tr>
@@ -504,12 +519,12 @@ export default function PlansPage() {
                                             {plans.map(p => <td key={p.slug} className={tdCls}>{renderCell(p, def.key, cellTypeFor(def))}</td>)}
                                         </tr>
                                     ))}
-                                    {nestedRows.map(({ key, label }) => (
+                                    {nestedKeys.flatMap(nestedKey => (NESTED_INNER[nestedKey] || []).map(({ key, label }) => (
                                         <tr key={`${nestedKey}.${key}`} className="border-b border-neutral-100 dark:border-neutral-800">
                                             <td className={`${tdCls} font-medium`}>{tf(label)}</td>
                                             {plans.map(p => <td key={p.slug} className={tdCls}>{renderNestedCell(p, nestedKey, key)}</td>)}
                                         </tr>
-                                    ))}
+                                    )))}
                                 </Fragment>
                             );
                         })}

@@ -30,6 +30,14 @@ export const MEDIA_PROCESSING_KEYS = [
     'perConvPer5min', 'perTenantPerHour', 'dailyBudgetCentsUsd',
 ] as const;
 
+/**
+ * Inner numeric keys of features.maxChannelAccounts — how many connected
+ * accounts of each channel type a plan allows (e.g. 2 WhatsApp numbers).
+ * -1 = unlimited. A missing inner key defaults to 1 at runtime (see
+ * TenantThrottleService.getChannelAccountLimit).
+ */
+export const CHANNEL_ACCOUNT_KEYS = ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'] as const;
+
 /** Top-level feature keys (everything inside billing_plans.features). */
 export const PLAN_FEATURE_REGISTRY: PlanFeatureDef[] = [
     // ── Resource limits ──
@@ -58,6 +66,8 @@ export const PLAN_FEATURE_REGISTRY: PlanFeatureDef[] = [
 
     // ── Channel access ──
     { key: 'channels', type: 'array', category: 'channel' },
+    // Per-type connected-account limits: { whatsapp, instagram, messenger, telegram, sms }.
+    { key: 'maxChannelAccounts', type: 'object', category: 'channel' },
 
     // ── AI & engagement ──
     { key: 'llmTier', type: 'string', category: 'ai' },
@@ -104,7 +114,7 @@ export const PLAN_FEATURE_REGISTRY: PlanFeatureDef[] = [
 const REGISTRY_BY_KEY = new Map(PLAN_FEATURE_REGISTRY.map(d => [d.key, d]));
 
 /** Nested object keys that should be 1-level deep-merged (not replaced) on edit. */
-export const NESTED_OBJECT_KEYS = ['rateLimits', 'mediaProcessing'] as const;
+export const NESTED_OBJECT_KEYS = ['rateLimits', 'mediaProcessing', 'maxChannelAccounts'] as const;
 
 /**
  * Numeric feature/limit keys that can be tuned per-tenant via quota overrides.
@@ -157,6 +167,7 @@ export function validatePlanFeatures(features: Record<string, any> | undefined |
 
     const RATE_SET = new Set<string>(RATE_LIMIT_KEYS as readonly string[]);
     const MEDIA_SET = new Set<string>(MEDIA_PROCESSING_KEYS as readonly string[]);
+    const CHANNEL_ACCT_SET = new Set<string>(CHANNEL_ACCOUNT_KEYS as readonly string[]);
 
     for (const [key, value] of Object.entries(features)) {
         const def = REGISTRY_BY_KEY.get(key);
@@ -177,6 +188,11 @@ export function validatePlanFeatures(features: Record<string, any> | undefined |
             for (const [mk, mv] of Object.entries(value as Record<string, any>)) {
                 if (!MEDIA_SET.has(mk)) unknownKeys.push(`mediaProcessing.${mk}`);
                 else if (typeof mv !== 'number') typeErrors.push(`mediaProcessing.${mk} expected number`);
+            }
+        } else if (key === 'maxChannelAccounts') {
+            for (const [ck, cv] of Object.entries(value as Record<string, any>)) {
+                if (!CHANNEL_ACCT_SET.has(ck)) unknownKeys.push(`maxChannelAccounts.${ck}`);
+                else if (typeof cv !== 'number') typeErrors.push(`maxChannelAccounts.${ck} expected number`);
             }
         }
     }

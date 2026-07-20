@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException, Unauthorize
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsappCryptoService } from './whatsapp-crypto.service';
+import { TenantThrottleService } from '../../throttle/tenant-throttle.service';
 
 const META_GRAPH = 'https://graph.facebook.com/v21.0';
 
@@ -19,6 +20,7 @@ export class WhatsappConnectionService {
     private readonly prisma: PrismaService,
     private readonly cryptoService: WhatsappCryptoService,
     private readonly configService: ConfigService,
+    private readonly throttle: TenantThrottleService,
   ) {}
 
   /**
@@ -37,19 +39,22 @@ export class WhatsappConnectionService {
   }
 
   async getChannelStatus(schemaName: string) {
+    // Multi-number aware: return ALL connected numbers. `channel` stays as the
+    // first (oldest) for backward compatibility with existing single-number UI.
     const channels = await this.prisma.executeInTenantSchema<any[]>(
       schemaName,
-      `SELECT id, provider_type, display_phone_number, display_name, display_name_status, 
-              quality_rating, messaging_limit_tier, channel_status, connected_at 
-       FROM whatsapp_channels 
-       LIMIT 1`
+      `SELECT id, provider_type, display_phone_number, display_name, display_name_status,
+              quality_rating, messaging_limit_tier, channel_status, connected_at,
+              phone_number_id, meta_waba_id
+       FROM whatsapp_channels
+       ORDER BY connected_at ASC NULLS LAST`
     );
 
     if (!channels || channels.length === 0) {
-      return { status: 'disconnected', channel: null };
+      return { status: 'disconnected', channel: null, channels: [] };
     }
 
-    return { status: channels[0].channel_status, channel: channels[0] };
+    return { status: channels[0].channel_status, channel: channels[0], channels };
   }
 
   async saveConnection(schemaName: string, tenantId: string, data: any) {
@@ -66,6 +71,13 @@ export class WhatsappConnectionService {
     if (!tenant || tenant.schemaName !== schemaName) {
       throw new BadRequestException('Tenant inválido para este usuario');
     }
+
+    // Enforce the plan's per-type account limit. Reconnecting the same number
+    // never blocks (excluded from the count); a NEW number consumes a slot.
+    const existingActive = await this.prisma.channelAccount.count({
+      where: { tenantId, channelType: 'whatsapp', isActive: true, accountId: { not: phoneNumberId } },
+    });
+    await this.throttle.enforceChannelAccountLimit(tenantId, 'whatsapp', existingActive);
 
     const encryptedToken = this.cryptoService.encryptToken(accessToken);
 

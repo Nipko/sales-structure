@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { cn } from "@/lib/utils";
 import {
     Instagram,
@@ -17,6 +18,8 @@ import {
     Loader2,
     RefreshCw,
     Clock,
+    Trash2,
+    Plus,
 } from "lucide-react";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 import { HelpPanel } from "@/components/ui/help-panel";
@@ -30,6 +33,7 @@ export default function InstagramSetupPage() {
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
+    const { canAddChannelAccount } = usePlanLimits();
 
     const [status, setStatus] = useState<any>(null);
     const [config, setConfig] = useState<{ webhookUrl?: string; verifyToken?: string } | null>(null);
@@ -149,9 +153,21 @@ export default function InstagramSetupPage() {
         );
     }
 
+    const handleDisconnectOne = async (accountId: string) => {
+        if (!accountId) return;
+        if (!window.confirm(t("disconnectAccountConfirm"))) return;
+        try {
+            const res = await api.disconnectChannelAccount("instagram", accountId);
+            if (res?.success) await loadData();
+            else setMessage({ type: "error", text: (res as any)?.error || tc("connectionError") });
+        } catch { setMessage({ type: "error", text: tc("connectionError") }); }
+    };
+
     const statusData = status?.data || status;
     const isConnected = statusData?.connected === true;
     const channel = statusData?.account;
+    const accounts: any[] = statusData?.accounts?.length ? statusData.accounts : (channel ? [channel] : []);
+    const canAddInstagram = canAddChannelAccount("instagram", accounts.length);
 
     // Token expiration — read from API's tokenExpiresAt field
     const rawExpiry = statusData?.tokenExpiresAt || channel?.token_expires_at;
@@ -286,35 +302,48 @@ export default function InstagramSetupPage() {
                             </h2>
                         </div>
                         <div className="p-6">
-                            <div className="flex items-center gap-4">
-                                {(channel?.metadata?.profilePicture || channel?.profile_picture_url) ? (
-                                    <img
-                                        src={channel.metadata?.profilePicture || channel.profile_picture_url}
-                                        alt={channel.displayName || channel.display_name || "Instagram"}
-                                        className="w-16 h-16 rounded-full object-cover border-2 border-border"
-                                    />
-                                ) : (
-                                    <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: BRAND_COLOR }}>
-                                        <Instagram size={28} className="text-white" />
+                            <div className="flex flex-col gap-4">
+                                {accounts.map((acc: any, idx: number) => (
+                                    <div key={acc.accountId || acc.account_id || idx} className="flex items-center gap-4">
+                                        {(acc?.metadata?.profilePicture || acc?.profile_picture_url) ? (
+                                            <img
+                                                src={acc.metadata?.profilePicture || acc.profile_picture_url}
+                                                alt={acc.displayName || acc.display_name || "Instagram"}
+                                                className="w-16 h-16 rounded-full object-cover border-2 border-border"
+                                            />
+                                        ) : (
+                                            <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: BRAND_COLOR }}>
+                                                <Instagram size={28} className="text-white" />
+                                            </div>
+                                        )}
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-base font-semibold text-foreground">
+                                                {acc?.displayName || acc?.display_name || "\u2014"}
+                                            </p>
+                                            {(acc?.metadata?.accountType || acc?.metadata?.account_type) && (
+                                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                                                    {acc.metadata.accountType || acc.metadata.account_type}
+                                                </p>
+                                            )}
+                                            <p className="text-xs font-mono text-[var(--text-secondary)] mt-1">
+                                                ID: {acc?.accountId || acc?.account_id || "\u2014"}
+                                            </p>
+                                        </div>
+                                        {accounts.length > 1 ? (
+                                            <button
+                                                onClick={() => handleDisconnectOne(acc?.accountId || acc?.account_id)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[rgba(255,71,87,0.3)] bg-transparent text-[var(--danger)] text-[12px] font-semibold cursor-pointer hover:bg-[rgba(255,71,87,0.1)] transition-colors shrink-0"
+                                            >
+                                                <Trash2 size={13} /> {t("disconnectAccount")}
+                                            </button>
+                                        ) : (
+                                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[rgba(0,214,143,0.1)] text-[var(--success)] border border-[rgba(0,214,143,0.2)]">
+                                                <CheckCircle size={12} />
+                                                {t("connected")}
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-base font-semibold text-foreground">
-                                        {channel?.displayName || channel?.display_name || "\u2014"}
-                                    </p>
-                                    {(channel?.metadata?.accountType || channel?.metadata?.account_type) && (
-                                        <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                                            {channel.metadata.accountType || channel.metadata.account_type}
-                                        </p>
-                                    )}
-                                    <p className="text-xs font-mono text-[var(--text-secondary)] mt-1">
-                                        ID: {channel?.accountId || channel?.account_id || "\u2014"}
-                                    </p>
-                                </div>
-                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[rgba(0,214,143,0.1)] text-[var(--success)] border border-[rgba(0,214,143,0.2)]">
-                                    <CheckCircle size={12} />
-                                    {t("connected")}
-                                </div>
+                                ))}
                             </div>
 
                             {/* Token expiration info */}
@@ -331,6 +360,17 @@ export default function InstagramSetupPage() {
                             )}
                         </div>
                     </div>
+
+                    {/* Connect another account (plan-gated) */}
+                    {canAddInstagram && (
+                        <button
+                            onClick={handleOAuthConnect}
+                            disabled={connecting}
+                            className="w-full mb-6 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-border bg-[var(--bg-secondary)] text-foreground text-[13px] font-semibold cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors disabled:opacity-60"
+                        >
+                            <Plus size={16} style={{ color: BRAND_COLOR }} /> {t("addAnother")}
+                        </button>
+                    )}
 
                     {/* Disconnect */}
                     <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">

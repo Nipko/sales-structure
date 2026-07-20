@@ -1049,6 +1049,12 @@ export default function InboxPage() {
         return c.status !== "resolved";
     });
 
+    // Show the per-conversation channel account (which number/page) only when the
+    // tenant actually has more than one connected account — otherwise it's noise.
+    const showConvAccount = new Set(
+        conversations.map((c: any) => c.channelAccountName).filter(Boolean)
+    ).size > 1;
+
     // ---- Copilot: rewrite agent draft / summarize conversation ----
     const handleRewrite = async (tone: string) => {
         if (!selectedConv?.id || !messageInput.trim() || rewriting) return;
@@ -1410,6 +1416,14 @@ export default function InboxPage() {
                                                         {conv.contactName}
                                                     </span>
                                                     {conv.isAiHandled && <Bot size={13} className="text-indigo-500 flex-shrink-0" />}
+                                                    {showConvAccount && conv.channelAccountName && (
+                                                        <span
+                                                            title={conv.channelAccountName}
+                                                            className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border border-border max-w-[90px] truncate"
+                                                        >
+                                                            {conv.channelAccountName}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 {/* Time badge */}
                                                 <span className={cn(

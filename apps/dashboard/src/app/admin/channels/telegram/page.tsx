@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
@@ -18,6 +19,7 @@ import {
     Sparkles,
     CircleDot,
     Zap,
+    Plus,
 } from "lucide-react";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 import { HelpPanel } from "@/components/ui/help-panel";
@@ -26,11 +28,13 @@ const BRAND = "#0088cc";
 
 export default function TelegramSetupPage() {
     const { activeTenantId } = useTenant();
+    const { canAddChannelAccount } = usePlanLimits();
     const t = useTranslations("channels");
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
 
     const [status, setStatus] = useState<any>(null);
+    const [forceSetup, setForceSetup] = useState(false);
     const [botToken, setBotToken] = useState("");
     const [loading, setLoading] = useState(true);
     const [connecting, setConnecting] = useState(false);
@@ -66,12 +70,23 @@ export default function TelegramSetupPage() {
             await loadStatus();
             setStep(3);
             setBotToken("");
+            setForceSetup(false);
         } catch (err: any) {
             const msg = err?.message || err?.data?.message || tc("connectionError");
             setError(msg);
         } finally {
             setConnecting(false);
         }
+    };
+
+    const handleDisconnectOne = async (accountId: string) => {
+        if (!accountId) return;
+        if (!window.confirm(t("disconnectAccountConfirm"))) return;
+        try {
+            const res = await api.disconnectChannelAccount("telegram", accountId);
+            if (res?.success) await loadStatus();
+            else setWarning((res as any)?.error || tc("connectionError"));
+        } catch { setWarning(tc("connectionError")); }
     };
 
     const handleTest = async () => {
@@ -123,9 +138,11 @@ export default function TelegramSetupPage() {
 
     const isConnected = status?.connected;
     const account = status?.account;
+    const accounts: any[] = status?.accounts?.length ? status.accounts : (account ? [account] : []);
+    const canAddTelegram = canAddChannelAccount("telegram", accounts.length);
 
     // ─── Connected State ───────────────────────────────────
-    if (isConnected && account) {
+    if (isConnected && account && !forceSetup) {
         return (
             <div className="mx-auto max-w-[640px] mt-4">
                 {/* Header */}
@@ -153,26 +170,46 @@ export default function TelegramSetupPage() {
                     </div>
                 )}
 
-                {/* Bot Card */}
-                <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-4">
-                    <div className="p-6">
-                        <div className="flex items-center gap-4">
-                            <div
-                                className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                                style={{ background: `${BRAND}20` }}
-                            >
-                                <Send size={20} style={{ color: BRAND }} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-lg font-semibold text-foreground m-0 truncate">
-                                    {account.metadata?.botName || account.displayName}
-                                </p>
-                                <p className="text-sm font-mono m-0 mt-0.5" style={{ color: BRAND }}>
-                                    @{account.accountId || account.metadata?.botUsername}
-                                </p>
+                {/* Bots list (multi-account) */}
+                <div className="flex flex-col gap-3 mb-4">
+                    {accounts.map((acc: any, idx: number) => (
+                        <div key={acc.accountId || idx} className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
+                            <div className="p-6">
+                                <div className="flex items-center gap-4">
+                                    <div
+                                        className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                                        style={{ background: `${BRAND}20` }}
+                                    >
+                                        <Send size={20} style={{ color: BRAND }} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-lg font-semibold text-foreground m-0 truncate">
+                                            {acc.metadata?.botName || acc.displayName}
+                                        </p>
+                                        <p className="text-sm font-mono m-0 mt-0.5" style={{ color: BRAND }}>
+                                            @{acc.accountId || acc.metadata?.botUsername}
+                                        </p>
+                                    </div>
+                                    {accounts.length > 1 && (
+                                        <button
+                                            onClick={() => handleDisconnectOne(acc.accountId || acc.metadata?.botUsername)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[rgba(255,71,87,0.3)] bg-transparent text-[var(--danger)] text-[12px] font-semibold cursor-pointer hover:bg-[rgba(255,71,87,0.1)] transition-colors shrink-0"
+                                        >
+                                            <Trash2 size={13} /> {t("disconnectAccount")}
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    ))}
+                    {canAddTelegram && (
+                        <button
+                            onClick={() => { setForceSetup(true); setStep(1); }}
+                            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-border bg-[var(--bg-secondary)] text-foreground text-[13px] font-semibold cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors"
+                        >
+                            <Plus size={16} style={{ color: BRAND }} /> {t("addAnother")}
+                        </button>
+                    )}
                 </div>
 
                 {/* Test Result */}
@@ -253,6 +290,14 @@ export default function TelegramSetupPage() {
     // ─── Setup Wizard ──────────────────────────────────────
     return (
         <div className="mx-auto max-w-[640px] mt-4">
+            {forceSetup && (
+                <button
+                    onClick={() => { setForceSetup(false); setStep(1); }}
+                    className="mb-4 inline-flex items-center gap-1.5 text-sm text-[var(--text-secondary)] hover:text-foreground cursor-pointer bg-transparent border-none"
+                >
+                    <ArrowRight size={14} className="rotate-180" /> {t("telegram.back")}
+                </button>
+            )}
             {/* Header */}
             <div className="text-center mb-10">
                 <div

@@ -50,7 +50,7 @@ export class OutboundQueueProcessor extends WorkerHost {
 
         // Resolve the access token at send time (not stored in the job) — fresh
         // and never persisted in Redis as a plaintext credential.
-        const creds = await this.channelToken.getChannelToken(outbound.tenantId, outbound.channelType);
+        const creds = await this.channelToken.getChannelToken(outbound.tenantId, outbound.channelType, outbound.channelAccountId);
 
         this.logger.log(
             `[Outbound] Sending to ${outbound.to} via ${outbound.channelType} tenant=${outbound.tenantId}`,

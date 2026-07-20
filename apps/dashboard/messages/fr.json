@@ -2695,6 +2695,10 @@
     "title": "Canaux",
     "subtitle": "Gerez vos canaux de communication",
     "loading": "Chargement des canaux...",
+    "accountsUsed": "{count}/{limit} comptes",
+    "addAnother": "Ajouter un autre",
+    "disconnectAccount": "Déconnecter",
+    "disconnectAccountConfirm": "Déconnecter ce compte ? Les autres comptes de ce canal restent actifs.",
     "connected": "Connecte",
     "disconnected": "Deconnecte",
     "connect": "Connecter",
@@ -8724,7 +8728,12 @@
       "mediaPerContactPerDay": "Par contact/jour",
       "mediaPerConvPer5min": "Par conversation/5min",
       "mediaPerTenantPerHour": "Par tenant/heure",
-      "mediaDailyBudgetCentsUsd": "Budget quotidien (cents USD)"
+      "mediaDailyBudgetCentsUsd": "Budget quotidien (cents USD)",
+      "maxChannelAccountsWhatsapp": "Comptes WhatsApp",
+      "maxChannelAccountsInstagram": "Comptes Instagram",
+      "maxChannelAccountsMessenger": "Pages Messenger",
+      "maxChannelAccountsTelegram": "Bots Telegram",
+      "maxChannelAccountsSms": "Numéros SMS"
     }
   },
   "reportBuilder": {

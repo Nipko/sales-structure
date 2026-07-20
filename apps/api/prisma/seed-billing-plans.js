@@ -64,6 +64,8 @@ const PLANS = [
             maxPipelines: 1,
             segments: 0,
             mediaStorageMb: 50,
+            // Connected accounts allowed per channel type (-1 = unlimited; missing → 1 at runtime)
+            maxChannelAccounts: { whatsapp: 1, instagram: 1, messenger: 1, telegram: 1, sms: 1 },
             externalCrm: 0,
             outboundWebhooks: 0,
             maxWebhookSubscriptions: 0,
@@ -164,6 +166,8 @@ const PLANS = [
             maxPipelines: 1,
             segments: 3,
             mediaStorageMb: 100,
+            // Connected accounts allowed per channel type (-1 = unlimited; missing → 1 at runtime)
+            maxChannelAccounts: { whatsapp: 1, instagram: 1, messenger: 1, telegram: 1, sms: 1 },
             externalCrm: 0,
             outboundWebhooks: 0,
             maxWebhookSubscriptions: 3,
@@ -260,6 +264,8 @@ const PLANS = [
             maxPipelines: 3,
             segments: 15,
             mediaStorageMb: 1024,
+            // Connected accounts allowed per channel type (-1 = unlimited; missing → 1 at runtime)
+            maxChannelAccounts: { whatsapp: 2, instagram: 1, messenger: 3, telegram: 1, sms: 1 },
             externalCrm: 1,
             outboundWebhooks: 3,
             maxWebhookSubscriptions: 10,
@@ -356,6 +362,8 @@ const PLANS = [
             maxPipelines: 10,
             segments: -1,
             mediaStorageMb: 10_240,
+            // Connected accounts allowed per channel type (-1 = unlimited; missing → 1 at runtime)
+            maxChannelAccounts: { whatsapp: 3, instagram: 2, messenger: 5, telegram: 2, sms: 2 },
             externalCrm: -1,
             outboundWebhooks: -1,
             maxWebhookSubscriptions: -1,
@@ -449,6 +457,8 @@ const PLANS = [
             maxPipelines: -1,
             segments: -1,
             mediaStorageMb: -1,
+            // Connected accounts allowed per channel type (-1 = unlimited; missing → 1 at runtime)
+            maxChannelAccounts: { whatsapp: -1, instagram: -1, messenger: -1, telegram: -1, sms: -1 },
             externalCrm: -1,
             outboundWebhooks: -1,
             maxWebhookSubscriptions: -1,

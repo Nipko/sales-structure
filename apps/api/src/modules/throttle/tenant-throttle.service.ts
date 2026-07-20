@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
-import { FEATURE_OVERRIDE_KEYS, OVERRIDABLE_QUOTA_KEYS, isOverridableQuotaKey } from './plan-features.registry';
+import { FEATURE_OVERRIDE_KEYS, OVERRIDABLE_QUOTA_KEYS, isOverridableQuotaKey, CHANNEL_ACCOUNT_KEYS } from './plan-features.registry';
 
 /**
  * Plan-based rate limiting and feature gating for multi-tenant fairness.
@@ -31,13 +31,17 @@ export interface QuotaOverrides {
     broadcast?: number;
     priority?: number;
     maxPendingJobs?: number;
+    // Nested per-channel-type connected-account overrides ({ whatsapp: 2, ... }).
+    // Validated in setQuotaOverrides; read in getChannelAccountLimit (NOT applied
+    // by applyOverrides, which only handles flat numeric keys).
+    maxChannelAccounts?: Record<string, number>;
     // Metadata
     reason?: string;
     setBy?: string;
     setAt?: string;
     // Any other overridable numeric feature key (validated against the registry
     // in setQuotaOverrides; applied generically in applyOverrides).
-    [key: string]: number | string | undefined;
+    [key: string]: number | string | Record<string, number> | undefined;
 }
 
 const FALLBACK_LIMITS: PlanLimits = {
@@ -219,7 +223,9 @@ export class TenantThrottleService {
         // Reject unknown keys instead of silently storing a no-op (the old
         // behavior persisted any key but only ever read a fixed subset).
         const META = new Set(['reason', 'setBy', 'setAt']);
-        const unknown = Object.keys(overrides).filter(k => !META.has(k) && !isOverridableQuotaKey(k));
+        // Nested object overrides (not flat numeric keys) validated separately below.
+        const NESTED_OVERRIDE = new Set(['maxChannelAccounts']);
+        const unknown = Object.keys(overrides).filter(k => !META.has(k) && !NESTED_OVERRIDE.has(k) && !isOverridableQuotaKey(k));
         if (unknown.length) {
             const { BadRequestException } = await import('@nestjs/common');
             throw new BadRequestException({
@@ -227,6 +233,27 @@ export class TenantThrottleService {
                 unknownKeys: unknown,
                 message: `Estas claves no se pueden overridear por tenant: ${unknown.join(', ')}.`,
             });
+        }
+
+        // Validate the nested maxChannelAccounts override: object of { channelType: number }.
+        const mca = (overrides as Record<string, any>).maxChannelAccounts;
+        if (mca !== undefined) {
+            const { BadRequestException } = await import('@nestjs/common');
+            if (typeof mca !== 'object' || mca === null || Array.isArray(mca)) {
+                throw new BadRequestException({
+                    error: 'invalid_override_keys',
+                    message: 'maxChannelAccounts debe ser un objeto { canal: número }.',
+                });
+            }
+            const allowed = new Set<string>(CHANNEL_ACCOUNT_KEYS as readonly string[]);
+            const badInner = Object.keys(mca).filter(k => !allowed.has(k) || typeof mca[k] !== 'number');
+            if (badInner.length) {
+                throw new BadRequestException({
+                    error: 'invalid_override_keys',
+                    unknownKeys: badInner.map(k => `maxChannelAccounts.${k}`),
+                    message: `Claves inválidas en maxChannelAccounts: ${badInner.join(', ')}.`,
+                });
+            }
         }
 
         const existing = await this.prisma.tenant.findUnique({
@@ -297,6 +324,58 @@ export class TenantThrottleService {
                 maxAllowed: Number.isFinite(max) ? max : null,
                 plan,
                 message: `Tu plan ${plan} permite hasta ${Number.isFinite(max) ? max : '∞'} ${resourceLabel ?? limitKey}. Actualizá tu plan para agregar más.`,
+            });
+        }
+    }
+
+    // ── Per-channel-type connected-account limit ───────────────────
+
+    /**
+     * How many connected accounts of a given channel type this tenant may have.
+     * Resolution order: per-tenant override (quotaOverrides.maxChannelAccounts) →
+     * plan feature (features.maxChannelAccounts[type]) → default 1.
+     *
+     * The default is 1 (NOT 0): before this feature every plan implicitly allowed
+     * one account per type, and getPlanLimit's fail-closed-to-0 would wrongly block
+     * the FIRST connection whenever the seed hasn't populated the key yet.
+     * Returns Infinity for -1 (unlimited).
+     */
+    async getChannelAccountLimit(tenantId: string, channelType: string): Promise<number> {
+        let raw: any;
+        const overrides = await this.getQuotaOverrides(tenantId);
+        const ovMap = (overrides as Record<string, any>).maxChannelAccounts;
+        if (ovMap && typeof ovMap === 'object' && typeof ovMap[channelType] === 'number') {
+            raw = ovMap[channelType];
+        } else {
+            const features = await this.getPlanFeatures(tenantId);
+            const map = (features.maxChannelAccounts as Record<string, number>) || {};
+            raw = map[channelType];
+        }
+        if (typeof raw !== 'number') return 1;
+        return raw === -1 ? Number.POSITIVE_INFINITY : raw;
+    }
+
+    /**
+     * Throws 403 { error: 'plan_limit_reached', limitKey: 'maxChannelAccounts', ... }
+     * when connecting one more account of `channelType` would exceed the plan.
+     * Pass the count of DISTINCT active accounts of that type that already exist
+     * EXCLUDING the one being (re)connected, so reconnecting an existing account
+     * never blocks.
+     */
+    async enforceChannelAccountLimit(tenantId: string, channelType: string, currentCount: number): Promise<void> {
+        const { ForbiddenException } = await import('@nestjs/common');
+        const max = await this.getChannelAccountLimit(tenantId, channelType);
+        if (currentCount >= max) {
+            const plan = await this.getTenantPlan(tenantId);
+            throw new ForbiddenException({
+                error: 'plan_limit_reached',
+                limitKey: 'maxChannelAccounts',
+                resource: `${channelType}_accounts`,
+                channelType,
+                currentCount,
+                maxAllowed: Number.isFinite(max) ? max : null,
+                plan,
+                message: `Tu plan ${plan} permite hasta ${Number.isFinite(max) ? max : '∞'} cuenta(s) de ${channelType}. Actualizá tu plan o desconectá otra para conectar una nueva.`,
             });
         }
     }

@@ -5,12 +5,13 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { cn } from "@/lib/utils";
 import {
     MessageSquare, CheckCircle, Check, X,
     Phone, Sparkles, Layers, ArrowRightLeft,
     AlertCircle, ArrowRight, Sprout, Clock, XCircle, LogOut,
-    AlertTriangle, Shield, Timer, Info,
+    AlertTriangle, Shield, Timer, Info, Plus, Trash2, Loader2,
 } from "lucide-react";
 import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
@@ -65,8 +66,10 @@ export default function WhatsAppSetupPage() {
     const twt = useTranslations("whatsappTemplates");
     const router = useRouter();
     const { user } = useAuth();
+    const { canAddChannelAccount } = usePlanLimits();
 
     const [selectedRoute, setSelectedRoute] = useState<Route>("new");
+    const [showAddNumber, setShowAddNumber] = useState(false);
     const [status, setStatus] = useState<any>(null);
     const [templates, setTemplates] = useState<any[]>([]);
     const [config, setConfig] = useState<{ webhookUrl?: string; verifyToken?: string } | null>(null);
@@ -120,6 +123,23 @@ export default function WhatsAppSetupPage() {
         }
     };
 
+    const handleDisconnectNumber = async (phoneNumberId: string) => {
+        if (!phoneNumberId) return;
+        if (!window.confirm(t("disconnectAccountConfirm"))) return;
+        setMessage({ type: "", text: "" });
+        try {
+            const res = await api.disconnectChannelAccount("whatsapp", phoneNumberId);
+            if (res?.success) {
+                setMessage({ type: "success", text: t("whatsapp.disconnectSuccess") });
+                await loadData();
+            } else {
+                setMessage({ type: "error", text: (res as any)?.error || tc("connectionError") });
+            }
+        } catch (err: any) {
+            setMessage({ type: "error", text: err.message || tc("connectionError") });
+        }
+    };
+
     const getTenantId = () => {
         try {
             const token = localStorage.getItem("accessToken");
@@ -134,6 +154,8 @@ export default function WhatsAppSetupPage() {
 
     const statusData = status?.data || status;
     const isConnected = statusData?.connected === true || status?.status === "connected";
+    const waChannels: any[] = status?.channels?.length ? status.channels : (status?.channel ? [status.channel] : []);
+    const canAddWa = canAddChannelAccount("whatsapp", waChannels.length);
 
     return (
         <div className="mx-auto max-w-[960px]">
@@ -428,47 +450,91 @@ export default function WhatsAppSetupPage() {
                     </div>
                 </>
             ) : (
-                /* ═══════════ CONNECTED STATE ═══════════ */
-                <div className="mb-6">
+                /* ═══════════ CONNECTED STATE (multi-number) ═══════════ */
+                <div className="mb-6 space-y-4">
                     <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                         <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                             <Phone size={18} className="text-[#25D366]" />
                             <h2 className="text-base font-semibold m-0">{tw("activeChannel")}</h2>
+                            {waChannels.length > 1 && (
+                                <span className="ml-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">
+                                    {waChannels.length}
+                                </span>
+                            )}
                         </div>
-                        <div className="p-6">
-                            {(() => {
-                                const ch = status?.channel || statusData?.account;
+                        <div className="p-6 flex flex-col gap-4">
+                            {waChannels.map((ch: any, idx: number) => {
+                                const pnid = ch?.phone_number_id || ch?.metadata?.phoneNumberId || ch?.accountId;
                                 return (
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-                                        <div>
-                                            <span className="text-xs text-[var(--text-secondary)]">{tw("labelNumber")}</span>
-                                            <p className="text-base font-semibold mt-1 mb-0">
-                                                {ch?.display_phone_number || ch?.metadata?.displayPhoneNumber || ch?.accountId || phoneNumberId || "—"}
-                                            </p>
-                                        </div>
-                                        <div>
-                                            <span className="text-xs text-[var(--text-secondary)]">{tw("labelVerifiedName")}</span>
-                                            <p className="text-sm mt-1 mb-0">
-                                                {ch?.display_name || ch?.verified_name || ch?.displayName || ch?.metadata?.verifiedName || "—"}
-                                            </p>
-                                        </div>
-                                        <div>
-                                            <span className="text-xs text-[var(--text-secondary)]">{tw("labelQuality")}</span>
-                                            <span className="inline-block ml-2 px-2.5 py-0.5 rounded-xl text-xs font-semibold bg-[rgba(46,204,113,0.1)] text-[#2ecc71]">
-                                                {ch?.quality_rating || ch?.metadata?.qualityRating || "GREEN"}
-                                            </span>
-                                        </div>
-                                        <div>
-                                            <span className="text-xs text-[var(--text-secondary)]">{tw("labelPhoneNumberId")}</span>
-                                            <p className="text-xs font-mono mt-1 mb-0 text-[var(--text-secondary)]">
-                                                {ch?.phone_number_id || ch?.metadata?.phoneNumberId || ch?.accountId || phoneNumberId || "—"}
-                                            </p>
+                                    <div key={pnid || ch?.id || idx} className={cn("rounded-lg", waChannels.length > 1 && "border border-border bg-[var(--bg-tertiary)] p-4")}>
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-5 flex-1 min-w-0">
+                                                <div>
+                                                    <span className="text-xs text-[var(--text-secondary)]">{tw("labelNumber")}</span>
+                                                    <p className="text-base font-semibold mt-1 mb-0">
+                                                        {ch?.display_phone_number || ch?.metadata?.displayPhoneNumber || ch?.accountId || phoneNumberId || "—"}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-xs text-[var(--text-secondary)]">{tw("labelVerifiedName")}</span>
+                                                    <p className="text-sm mt-1 mb-0">
+                                                        {ch?.display_name || ch?.verified_name || ch?.displayName || ch?.metadata?.verifiedName || "—"}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-xs text-[var(--text-secondary)]">{tw("labelQuality")}</span>
+                                                    <span className="inline-block ml-2 px-2.5 py-0.5 rounded-xl text-xs font-semibold bg-[rgba(46,204,113,0.1)] text-[#2ecc71]">
+                                                        {ch?.quality_rating || ch?.metadata?.qualityRating || "GREEN"}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-xs text-[var(--text-secondary)]">{tw("labelPhoneNumberId")}</span>
+                                                    <p className="text-xs font-mono mt-1 mb-0 text-[var(--text-secondary)]">
+                                                        {pnid || phoneNumberId || "—"}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {waChannels.length > 1 && (
+                                                <button
+                                                    onClick={() => handleDisconnectNumber(pnid)}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[rgba(231,76,60,0.3)] bg-transparent text-[#e74c3c] text-[12px] font-semibold cursor-pointer hover:bg-[rgba(231,76,60,0.1)] transition-colors shrink-0"
+                                                >
+                                                    <Trash2 size={13} /> {t("disconnectAccount")}
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 );
-                            })()}
+                            })}
                         </div>
                     </div>
+
+                    {/* Add another number (plan-gated) */}
+                    {canAddWa && (
+                        <div className="rounded-xl border border-dashed border-border bg-[var(--bg-secondary)] overflow-hidden">
+                            <div className="p-4">
+                                {!showAddNumber ? (
+                                    <button
+                                        onClick={() => setShowAddNumber(true)}
+                                        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-[var(--bg-tertiary)] text-foreground text-[13px] font-semibold cursor-pointer hover:bg-[var(--bg-primary)] transition-colors"
+                                    >
+                                        <Plus size={16} className="text-[#25D366]" /> {t("addAnother")}
+                                    </button>
+                                ) : (
+                                    <WhatsAppEmbeddedSignup
+                                        mode="standard"
+                                        tenantId={getTenantId()}
+                                        onSuccess={(result) => {
+                                            setMessage({ type: "success", text: tw("channelConnected", { number: result.displayPhoneNumber || "N/A" }) });
+                                            setShowAddNumber(false);
+                                            loadData();
+                                        }}
+                                        onError={(error) => setMessage({ type: "error", text: error })}
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

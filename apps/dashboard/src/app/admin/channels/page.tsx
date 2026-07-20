@@ -6,6 +6,7 @@ import { HelpPanel } from "@/components/ui/help-panel";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { cn } from "@/lib/utils";
 import {
     Globe,
@@ -69,8 +70,10 @@ export default function ChannelsOverviewPage() {
     const t = useTranslations('channels');
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
+    const { getChannelAccountLimit } = usePlanLimits();
     const router = useRouter();
     const [connectedChannels, setConnectedChannels] = useState<string[]>([]);
+    const [accountCounts, setAccountCounts] = useState<Record<string, number>>({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -80,6 +83,12 @@ export default function ChannelsOverviewPage() {
                 const list = res?.data || res;
                 if (Array.isArray(list)) {
                     setConnectedChannels(list.map((ch: any) => ch.channel_type || ch.channelType));
+                    const counts: Record<string, number> = {};
+                    for (const ch of list) {
+                        const type = ch.channel_type || ch.channelType;
+                        if (type) counts[type] = (counts[type] || 0) + 1;
+                    }
+                    setAccountCounts(counts);
                 }
             } catch (err) {
                 console.error("Failed to load channel overview", err);
@@ -126,6 +135,12 @@ export default function ChannelsOverviewPage() {
             <div className="grid grid-cols-3 gap-6">
                 {channels.map((ch) => {
                     const isConnected = connectedChannels.includes(ch.key);
+                    const MULTI = ["whatsapp", "instagram", "messenger", "telegram", "sms"];
+                    const showCount = MULTI.includes(ch.key);
+                    const count = accountCounts[ch.key] || 0;
+                    const limit = getChannelAccountLimit(ch.key); // null = unlimited
+                    const limitStr = limit === null ? "∞" : String(limit);
+                    const canAddMore = isConnected && (limit === null || count < limit);
                     return (
                         <div
                             key={ch.key}
@@ -161,6 +176,18 @@ export default function ChannelsOverviewPage() {
                                     {isConnected ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
                                     {isConnected ? t('connected') : t('disconnected')}
                                 </div>
+
+                                {/* Multi-account count / plan limit */}
+                                {showCount && isConnected && (
+                                    <div className="flex flex-col items-center gap-0.5">
+                                        <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+                                            {t('accountsUsed', { count, limit: limitStr })}
+                                        </span>
+                                        {canAddMore && (
+                                            <span className="text-[10px] text-primary font-semibold">{t('addAnother')}</span>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Card Footer */}

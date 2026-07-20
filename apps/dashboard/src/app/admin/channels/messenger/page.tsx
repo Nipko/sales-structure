@@ -168,6 +168,23 @@ export default function MessengerSetupPage() {
         }
     };
 
+    const handleDisconnectPage = async (accountId: string) => {
+        if (!accountId) return;
+        if (!window.confirm(t("disconnectAccountConfirm"))) return;
+        setMessage({ type: "", text: "" });
+        try {
+            const res = await api.disconnectChannelAccount("messenger", accountId);
+            if (res?.success) {
+                setMessage({ type: "success", text: t("messenger.disconnectSuccess") });
+                await loadData();
+            } else {
+                setMessage({ type: "error", text: (res as any)?.error || tc("connectionError") });
+            }
+        } catch (err: any) {
+            setMessage({ type: "error", text: err.message || tc("connectionError") });
+        }
+    };
+
     const copyToClipboard = (text: string, label: string) => {
         navigator.clipboard.writeText(text);
         setCopied(label);
@@ -326,6 +343,15 @@ export default function MessengerSetupPage() {
                                             <CheckCircle size={12} />
                                             {t("connected")}
                                         </div>
+                                        {connectedPages.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDisconnectPage(page.accountId || page.page_id || page.account_id)}
+                                                className="text-[11px] font-semibold text-[var(--danger)] hover:underline px-2 py-1 cursor-pointer"
+                                            >
+                                                {t("disconnectAccount")}
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
                             </div>

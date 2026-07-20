@@ -393,6 +393,7 @@ export class PersonaService {
                 "is_default" BOOLEAN DEFAULT false,
                 "config_json" JSONB NOT NULL,
                 "channels" TEXT[] DEFAULT '{}',
+                "channel_bindings" TEXT[] DEFAULT '{}',
                 "schedule_mode" VARCHAR(20) DEFAULT '24_7',
                 "version" INTEGER DEFAULT 1,
                 "created_by" VARCHAR(255),
@@ -400,6 +401,14 @@ export class PersonaService {
                 "updated_at" TIMESTAMP DEFAULT NOW()
             )
         `);
+
+        // Multi-account: bind an agent to a SPECIFIC connected account
+        // ("${channelType}:${accountId}"), so two WhatsApp numbers can run
+        // different agents. `channels` (type-level) stays as the fallback.
+        // ALTER for tenants whose table predates this column.
+        await this.prisma.$executeRawUnsafe(
+            `ALTER TABLE "${schemaName}"."agent_personas" ADD COLUMN IF NOT EXISTS "channel_bindings" TEXT[] DEFAULT '{}'`,
+        );
 
         await this.prisma.$executeRawUnsafe(`
             CREATE TABLE IF NOT EXISTS "${schemaName}"."agent_templates" (
@@ -417,6 +426,7 @@ export class PersonaService {
         // Create indexes (one per call — Prisma doesn't allow multiple statements)
         await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_active_${schemaName}" ON "${schemaName}"."agent_personas" ("is_active")`);
         await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_channels_${schemaName}" ON "${schemaName}"."agent_personas" USING GIN ("channels")`);
+        await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_bindings_${schemaName}" ON "${schemaName}"."agent_personas" USING GIN ("channel_bindings")`);
         await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_default_${schemaName}" ON "${schemaName}"."agent_personas" ("is_default") WHERE "is_default" = true`);
     }
 
@@ -432,27 +442,49 @@ export class PersonaService {
      * Get the persona assigned to a specific channel.
      * Falls back to default persona, then to auto-generated default.
      */
-    async getPersonaForChannel(tenantId: string, channelType: string): Promise<TenantConfig> {
-        // Check cache first
-        const cacheKey = `persona:${tenantId}:channel:${channelType}`;
+    async getPersonaForChannel(tenantId: string, channelType: string, accountId?: string): Promise<TenantConfig> {
+        // Check cache first — per-account when an accountId is given so two
+        // accounts of the same type can resolve to different agents.
+        const cacheKey = accountId
+            ? `persona:${tenantId}:channel:${channelType}:acct:${accountId}`
+            : `persona:${tenantId}:channel:${channelType}`;
         const cached = await this.redis.getJson<TenantConfig>(cacheKey);
         if (cached) return cached;
 
         await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
 
-        // 1. Find agent assigned to this channel
         let config: TenantConfig | null = null;
-        try {
-            const rows = await this.prisma.$queryRawUnsafe(
-                `SELECT config_json FROM "${schemaName}".agent_personas
-                 WHERE is_active = true AND $1 = ANY(channels)
-                 ORDER BY updated_at DESC LIMIT 1`,
-                channelType,
-            ) as any[];
-            if (rows.length > 0) config = rows[0].config_json as TenantConfig;
-        } catch (e: any) {
-            this.logger.warn(`agent_personas lookup failed for ${tenantId}/${channelType}: ${e.message}`);
+
+        // 0. Exact connection binding wins ("${channelType}:${accountId}").
+        if (accountId) {
+            try {
+                const binding = `${channelType}:${accountId}`;
+                const rows = await this.prisma.$queryRawUnsafe(
+                    `SELECT config_json FROM "${schemaName}".agent_personas
+                     WHERE is_active = true AND $1 = ANY(channel_bindings)
+                     ORDER BY updated_at DESC LIMIT 1`,
+                    binding,
+                ) as any[];
+                if (rows.length > 0) config = rows[0].config_json as TenantConfig;
+            } catch (e: any) {
+                this.logger.warn(`agent_personas binding lookup failed for ${tenantId}/${channelType}:${accountId}: ${e.message}`);
+            }
+        }
+
+        // 1. Fallback: agent assigned to this channel TYPE.
+        if (!config) {
+            try {
+                const rows = await this.prisma.$queryRawUnsafe(
+                    `SELECT config_json FROM "${schemaName}".agent_personas
+                     WHERE is_active = true AND $1 = ANY(channels)
+                     ORDER BY updated_at DESC LIMIT 1`,
+                    channelType,
+                ) as any[];
+                if (rows.length > 0) config = rows[0].config_json as TenantConfig;
+            } catch (e: any) {
+                this.logger.warn(`agent_personas lookup failed for ${tenantId}/${channelType}: ${e.message}`);
+            }
         }
 
         // 2. Fallback to default agent
@@ -491,7 +523,7 @@ export class PersonaService {
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
 
         let agents = await this.prisma.$queryRawUnsafe(
-            `SELECT id, name, template_id, is_active, is_default, config_json, channels, schedule_mode, version, created_by, created_at, updated_at
+            `SELECT id, name, template_id, is_active, is_default, config_json, channels, channel_bindings, schedule_mode, version, created_by, created_at, updated_at
              FROM "${schemaName}".agent_personas ORDER BY is_default DESC, created_at ASC`,
         ) as any[];
 
@@ -539,11 +571,46 @@ export class PersonaService {
     /**
      * Create a new agent persona
      */
+    /**
+     * Invalidate persona resolution caches: the legacy active key, every
+     * channel-TYPE key, and the per-account keys for the given connection
+     * bindings ("${channelType}:${accountId}").
+     */
+    private async invalidatePersonaCaches(tenantId: string, bindings: string[] = []): Promise<void> {
+        await this.redis.del(`persona:${tenantId}:active`);
+        const allChannels = ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'];
+        for (const ch of allChannels) {
+            await this.redis.del(`persona:${tenantId}:channel:${ch}`);
+        }
+        // Per-account keys: the live pipeline ALWAYS reads the per-account key
+        // (persona:{tenant}:channel:{type}:acct:{accountId}) even when the agent is
+        // assigned by TYPE/default (no binding). So we must clear it for EVERY
+        // currently-connected account, not just the passed bindings — otherwise an
+        // edit to a type-/default-assigned agent stays stale for the TTL. (Redis has
+        // no pattern-del here, so we enumerate the tenant's active accounts.)
+        const perAccount = new Set<string>(bindings);
+        try {
+            const accts = await this.prisma.channelAccount.findMany({
+                where: { tenantId, isActive: true },
+                select: { channelType: true, accountId: true },
+            });
+            for (const a of accts) perAccount.add(`${a.channelType}:${a.accountId}`);
+        } catch { /* non-fatal — fall back to bindings-only invalidation */ }
+        for (const key of perAccount) {
+            const idx = key.indexOf(':');
+            if (idx <= 0) continue;
+            const chType = key.slice(0, idx);
+            const acct = key.slice(idx + 1);
+            if (chType && acct) await this.redis.del(`persona:${tenantId}:channel:${chType}:acct:${acct}`);
+        }
+    }
+
     async createAgent(tenantId: string, data: {
         name: string;
         templateId?: string;
         configJson: any;
         channels?: string[];
+        channelBindings?: string[];
         scheduleMode?: string;
         isDefault?: boolean;
         createdBy?: string;
@@ -592,6 +659,16 @@ export class PersonaService {
             }
         }
 
+        // Enforce "one agent per connection": steal each binding from any other agent.
+        if (data.channelBindings && data.channelBindings.length > 0) {
+            for (const b of data.channelBindings) {
+                await this.prisma.$executeRawUnsafe(
+                    `UPDATE "${schemaName}".agent_personas SET channel_bindings = array_remove(channel_bindings, $1), updated_at = NOW() WHERE is_active = true AND $1 = ANY(channel_bindings)`,
+                    b,
+                );
+            }
+        }
+
         // Merge template config with default persona so all required fields exist
         const defaultBase = this.buildDefaultPersona(tenantId);
         const mergedConfig = this.deepMergeConfig(defaultBase, data.configJson || {});
@@ -600,23 +677,20 @@ export class PersonaService {
         }
 
         const rows = await this.prisma.$queryRawUnsafe(
-            `INSERT INTO "${schemaName}".agent_personas (name, template_id, config_json, channels, schedule_mode, is_default, created_by)
-             VALUES ($1, $2, $3::jsonb, $4::text[], $5, $6, $7) RETURNING *`,
+            `INSERT INTO "${schemaName}".agent_personas (name, template_id, config_json, channels, channel_bindings, schedule_mode, is_default, created_by)
+             VALUES ($1, $2, $3::jsonb, $4::text[], $5::text[], $6, $7, $8) RETURNING *`,
             data.name,
             data.templateId || null,
             JSON.stringify(mergedConfig),
             data.channels || [],
+            data.channelBindings || [],
             data.scheduleMode || '24_7',
             data.isDefault || false,
             data.createdBy || 'system',
         ) as any[];
 
-        // Invalidate cache for all channels to prevent routing conflicts
-        const allChannels = ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'];
-        for (const ch of allChannels) {
-            await this.redis.del(`persona:${tenantId}:channel:${ch}`);
-        }
-        await this.redis.del(`persona:${tenantId}:active`);
+        // Invalidate type-level + per-connection caches to prevent routing conflicts.
+        await this.invalidatePersonaCaches(tenantId, data.channelBindings || []);
 
         return rows[0];
     }
@@ -628,11 +702,19 @@ export class PersonaService {
         name?: string;
         configJson?: any;
         channels?: string[];
+        channelBindings?: string[];
         scheduleMode?: string;
         isActive?: boolean;
         isDefault?: boolean;
     }): Promise<any> {
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
+
+        // Capture prior bindings so we can invalidate their per-account caches too.
+        const priorAgent = await this.prisma.$queryRawUnsafe(
+            `SELECT channel_bindings FROM "${schemaName}".agent_personas WHERE id = $1::uuid`,
+            agentId,
+        ) as any[];
+        const priorBindings: string[] = priorAgent[0]?.channel_bindings || [];
 
         if (data.isDefault) {
             await this.prisma.$executeRawUnsafe(
@@ -651,6 +733,16 @@ export class PersonaService {
             }
         }
 
+        // Handle per-connection binding reassignment ("one agent per connection").
+        if (data.channelBindings) {
+            for (const b of data.channelBindings) {
+                await this.prisma.$executeRawUnsafe(
+                    `UPDATE "${schemaName}".agent_personas SET channel_bindings = array_remove(channel_bindings, $1), updated_at = NOW() WHERE id != $2::uuid AND $1 = ANY(channel_bindings)`,
+                    b, agentId,
+                );
+            }
+        }
+
         if (data.configJson?.persona?.name && data.name === undefined) {
             data.name = data.configJson.persona.name;
         }
@@ -662,6 +754,7 @@ export class PersonaService {
         if (data.name !== undefined) { sets.push(`name = $${paramIdx}`); params.push(data.name); paramIdx++; }
         if (data.configJson !== undefined) { sets.push(`config_json = $${paramIdx}::jsonb`); params.push(JSON.stringify(data.configJson)); paramIdx++; }
         if (data.channels !== undefined) { sets.push(`channels = $${paramIdx}::text[]`); params.push(data.channels); paramIdx++; }
+        if (data.channelBindings !== undefined) { sets.push(`channel_bindings = $${paramIdx}::text[]`); params.push(data.channelBindings); paramIdx++; }
         if (data.scheduleMode !== undefined) { sets.push(`schedule_mode = $${paramIdx}`); params.push(data.scheduleMode); paramIdx++; }
         if (data.isActive !== undefined) { sets.push(`is_active = $${paramIdx}`); params.push(data.isActive); paramIdx++; }
         if (data.isDefault !== undefined) { sets.push(`is_default = $${paramIdx}`); params.push(data.isDefault); paramIdx++; }
@@ -676,12 +769,9 @@ export class PersonaService {
 
         const agent = rows[0];
 
-        // Invalidate caches for active config and all channels to prevent conflicts
-        await this.redis.del(`persona:${tenantId}:active`);
-        const allChannels = ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'];
-        for (const ch of allChannels) {
-            await this.redis.del(`persona:${tenantId}:channel:${ch}`);
-        }
+        // Invalidate type-level + per-connection caches (prior AND new bindings).
+        const affectedBindings = Array.from(new Set([...priorBindings, ...(data.channelBindings || [])]));
+        await this.invalidatePersonaCaches(tenantId, affectedBindings);
 
         // Auto-run the eval gate when the agent's BEHAVIOUR config changed — not on
         // trivial flips (isActive/isDefault/channels/scheduleMode/name). In-process,
@@ -706,16 +796,12 @@ export class PersonaService {
         }
 
         await this.prisma.$executeRawUnsafe(
-            `UPDATE "${schemaName}".agent_personas SET is_active = false, channels = '{}', updated_at = NOW() WHERE id = $1::uuid`,
+            `UPDATE "${schemaName}".agent_personas SET is_active = false, channels = '{}', channel_bindings = '{}', updated_at = NOW() WHERE id = $1::uuid`,
             agentId,
         );
 
-        // Invalidate caches for active config and all channels to prevent conflicts
-        await this.redis.del(`persona:${tenantId}:active`);
-        const allChannels = ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'];
-        for (const ch of allChannels) {
-            await this.redis.del(`persona:${tenantId}:channel:${ch}`);
-        }
+        // Invalidate type-level + per-connection caches (the agent's own bindings).
+        await this.invalidatePersonaCaches(tenantId, (agent?.channel_bindings as string[]) || []);
     }
 
     /**

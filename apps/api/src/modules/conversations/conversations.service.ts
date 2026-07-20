@@ -376,8 +376,9 @@ export class ConversationsService {
             );
         }
 
-        // 2. Load Persona & Check Business Hours
-        const config = await this.personaService.getPersonaForChannel(tenantId, channelType);
+        // 2. Load Persona & Check Business Hours — per-connection agent resolution
+        //    (two accounts of the same type can run different agents).
+        const config = await this.personaService.getPersonaForChannel(tenantId, channelType, normalizedMsg.channelAccountId);
         this.logger.log(`[Pipeline] Persona loaded: ${config?.persona?.name || 'default'} (mode: ${(config as any)?._mode || 'wizard'})`);
 
         if (!config) {
@@ -553,7 +554,7 @@ export class ConversationsService {
 
         // 5b. Send typing indicator before AI generates response
         try {
-            const accessToken = await this.resolveAccessToken(tenantId, channelType);
+            const accessToken = await this.resolveAccessToken(tenantId, channelType, normalizedMsg.channelAccountId);
             if (accessToken) {
                 await this.channelGateway.sendTypingIndicator(
                     channelType as any, normalizedMsg.channelAccountId,
@@ -763,11 +764,31 @@ export class ConversationsService {
             );
         }
 
-        // 3. Find active conversation for same channel, or create new
+        // 3. Find active conversation for the same channel ACCOUNT, or create new.
+        //    Multi-account aware: a customer writing to two different numbers/pages of
+        //    the same tenant gets a separate conversation per account. Historical rows
+        //    with a NULL channel_account_id still match (backward compat) and are
+        //    preferred least; an exact account match wins. When the inbound has no
+        //    account id ($3 NULL), this degrades to the legacy contact+type match.
         let conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT * FROM conversations WHERE contact_id = $1::uuid AND channel_type = $2 AND status IN ('active', 'waiting_human', 'with_human') ORDER BY created_at DESC LIMIT 1`,
-            [contactIdStr, msg.channelType],
+            `SELECT * FROM conversations
+             WHERE contact_id = $1::uuid AND channel_type = $2
+               AND ($3::text IS NULL OR channel_account_id = $3 OR channel_account_id IS NULL)
+               AND status IN ('active', 'waiting_human', 'with_human')
+             ORDER BY (channel_account_id IS NOT DISTINCT FROM $3::text) DESC, created_at DESC
+             LIMIT 1`,
+            [contactIdStr, msg.channelType, msg.channelAccountId ?? null],
         ).then(res => res[0]);
+
+        // Backfill a legacy NULL-account conversation with the account it's now being
+        // used from, so future routing is exact.
+        if (conversation && !conversation.channel_account_id && msg.channelAccountId) {
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations SET channel_account_id = $1 WHERE id = $2::uuid`,
+                [msg.channelAccountId, String(conversation.id)],
+            ).catch(() => { /* non-fatal */ });
+            conversation.channel_account_id = msg.channelAccountId;
+        }
 
         if (!conversation) {
             conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -955,7 +976,7 @@ export class ConversationsService {
             metadata: { inboundTs: this.inboundTs(msg) },
         };
 
-        const accessToken = await this.resolveAccessToken(tenantId, msg.channelType);
+        const accessToken = await this.resolveAccessToken(tenantId, msg.channelType, msg.channelAccountId);
         await this.outboundQueue.enqueue(outbound, accessToken);
     }
 
@@ -1055,7 +1076,7 @@ export class ConversationsService {
             metadata: { inboundTs: this.inboundTs(inboundMsg) },
         };
 
-        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType);
+        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType, inboundMsg.channelAccountId);
         // Use BullMQ queue for retry resilience (3 attempts, exponential backoff).
         // delayMs staggers chunked bubbles so they arrive in order with a pause.
         await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
@@ -1071,7 +1092,7 @@ export class ConversationsService {
             content: { type: 'image', mediaUrl, caption },
             metadata: { inboundTs: this.inboundTs(inboundMsg) },
         };
-        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType);
+        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType, inboundMsg.channelAccountId);
         await this.outboundQueue.enqueue(outbound, accessToken, delayMs);
     }
 
@@ -1121,7 +1142,7 @@ export class ConversationsService {
                 inboundTs: this.inboundTs(inboundMsg),
             },
         };
-        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType);
+        const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType, inboundMsg.channelAccountId);
         await this.outboundQueue.enqueue(outbound, accessToken);
     }
 
@@ -1142,9 +1163,9 @@ export class ConversationsService {
     /**
      * Resolve real Meta access token for a given tenantId and channel type.
      */
-    private async resolveAccessToken(tenantId: string, channelType: string = 'whatsapp'): Promise<string> {
+    private async resolveAccessToken(tenantId: string, channelType: string = 'whatsapp', accountId?: string): Promise<string> {
         try {
-            const creds = await this.channelToken.getChannelToken(tenantId, channelType);
+            const creds = await this.channelToken.getChannelToken(tenantId, channelType, accountId);
             if (!creds.accessToken) {
                 this.logger.error(`[Pipeline] Access token is EMPTY for tenant ${tenantId} channel ${channelType}`);
             }

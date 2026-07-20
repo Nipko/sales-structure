@@ -71,7 +71,9 @@ export class SmsNotificationListenerService {
             where: { tenantId, role: { in: ['tenant_admin', 'tenant_supervisor'] }, isActive: true },
             select: { phone: true },
         });
-        return admins.map((a: { phone: string | null }) => a.phone).filter((p): p is string => !!p);
+        return admins
+            .map((a: { phone: string | null }) => a.phone)
+            .filter((p: string | null): p is string => !!p);
     }
 
     private async getTenantLanguage(tenantId: string): Promise<string> {

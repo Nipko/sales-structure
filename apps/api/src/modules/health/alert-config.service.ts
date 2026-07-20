@@ -23,7 +23,7 @@ export interface AlertConfig {
     storageQuotaPct: number;
     diskProjectionDays: number;
     backupStaleHours: number;
-    channels: { email: boolean; telegram: boolean };
+    channels: { email: boolean; telegram: boolean; sms: boolean };
 }
 
 export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
@@ -46,7 +46,7 @@ export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
     storageQuotaPct: 90,
     diskProjectionDays: 14,
     backupStaleHours: 26,
-    channels: { email: true, telegram: true },
+    channels: { email: true, telegram: true, sms: false },
 };
 
 const SETTINGS_KEY = 'ops.alert_config';

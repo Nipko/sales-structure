@@ -4,6 +4,9 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { cpmsg } from './customer-portal-i18n';
+import { SmsSenderService } from '../sms-notifications/sms-sender.service';
+import { EmailService } from '../email/email.service';
+import { normalizePhoneE164 } from '../../common/utils/phone.util';
 
 @Injectable()
 export class CustomerPortalService {
@@ -14,6 +17,8 @@ export class CustomerPortalService {
         private readonly redis: RedisService,
         private readonly jwt: JwtService,
         private readonly config: ConfigService,
+        private readonly smsSender: SmsSenderService,
+        private readonly emailService: EmailService,
     ) {}
 
     // ---- Helpers ----
@@ -97,7 +102,7 @@ export class CustomerPortalService {
         tenantId: string,
         body: { phone?: string; email?: string },
         ip?: string,
-    ): Promise<{ identifier: string; channel: 'whatsapp' | 'email' }> {
+    ): Promise<{ identifier: string; channel: 'sms' | 'email' }> {
         const [schema, lang] = await Promise.all([
             this.getSchemaName(tenantId),
             this.getTenantLanguage(tenantId),
@@ -108,7 +113,7 @@ export class CustomerPortalService {
             throw new BadRequestException('Either phone or email is required');
         }
 
-        const channel: 'whatsapp' | 'email' = body.phone ? 'whatsapp' : 'email';
+        const channel: 'sms' | 'email' = body.phone ? 'sms' : 'email';
 
         // Rate limit this public endpoint (atomic INCR+EXPIRE) by identifier and
         // by IP, to stop contact enumeration and code/SMS bombing.
@@ -142,11 +147,45 @@ export class CustomerPortalService {
                 attempts: 0,
             }), 600); // 10 minutes
             this.logger.log(`Portal access code generated for ${channel}:${identifier} in tenant ${tenantId}`);
+            // Fire-and-forget: do NOT await. The response must take the same time
+            // whether or not the contact exists, or the latency difference becomes
+            // an enumeration oracle (defeating the generic-response guarantee above).
+            // dispatchCode swallows its own errors, so it never rejects.
+            void this.dispatchCode(tenantId, channel, identifier, code, lang);
         } else {
             this.logger.warn(`Portal access requested for unknown ${channel} in tenant ${tenantId} — generic response`);
         }
 
         return { identifier, channel };
+    }
+
+    /**
+     * Deliver the portal verification code to the customer. SMS goes through the
+     * tenant's own Twilio number (SmsSenderService); email through EmailService.
+     * Best-effort and swallowed — the caller always returns a generic response so
+     * a delivery failure can't be used to probe which contacts exist.
+     *
+     * NOTE: WhatsApp-first OTP is intentionally not wired here. Proactively sending
+     * a code over WhatsApp requires a Meta-approved Authentication message template
+     * per tenant; until that exists, phone codes go over SMS. The hook lives here.
+     */
+    private async dispatchCode(tenantId: string, channel: 'sms' | 'email', identifier: string, code: string, lang: string): Promise<void> {
+        const message = cpmsg(lang, 'auth.codeMessage').replace('{code}', code);
+        try {
+            if (channel === 'sms') {
+                const to = normalizePhoneE164(identifier) || identifier;
+                const sent = await this.smsSender.sendToNumber(tenantId, to, message);
+                if (!sent) this.logger.warn(`Portal SMS code not delivered for tenant ${tenantId} (SMS channel connected?)`);
+            } else {
+                await this.emailService.send({
+                    to: identifier,
+                    subject: cpmsg(lang, 'auth.codeSubject'),
+                    html: `<p style="font-size:16px;font-family:sans-serif">${message}</p>`,
+                });
+            }
+        } catch (e: any) {
+            this.logger.warn(`Portal code dispatch failed for tenant ${tenantId}: ${e.message}`);
+        }
     }
 
     // ---- Verify Code & Issue JWT ----

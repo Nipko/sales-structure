@@ -59,8 +59,9 @@ interface AuthContextType {
     verticalConfig: any | null;
     login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResult>;
     googleLogin: (idToken: string, rememberMe?: boolean) => Promise<GoogleLoginResult>;
-    complete2FALogin: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe?: boolean, trustDevice?: boolean, deviceInfo?: any) => Promise<LoginResult & { deviceTrustToken?: string }>;
+    complete2FALogin: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup' | 'sms', rememberMe?: boolean, trustDevice?: boolean, deviceInfo?: any) => Promise<LoginResult & { deviceTrustToken?: string }>;
     send2FAEmailFallback: (twoFAToken: string) => Promise<boolean>;
+    send2FASmsFallback: (twoFAToken: string) => Promise<boolean>;
     logout: () => void;
     hasRole: (...roles: string[]) => boolean;
 }
@@ -376,7 +377,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }, [getRedirectPath, fetchVerticalConfig]);
 
-    const complete2FALogin = useCallback(async (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = false, trustDevice = false, deviceInfo?: any): Promise<LoginResult & { deviceTrustToken?: string }> => {
+    const complete2FALogin = useCallback(async (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup' | 'sms', rememberMe = false, trustDevice = false, deviceInfo?: any): Promise<LoginResult & { deviceTrustToken?: string }> => {
         try {
             const res = await fetch(`${API_URL}/auth/2fa/verify`, {
                 method: "POST",
@@ -413,6 +414,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const send2FAEmailFallback = useCallback(async (twoFAToken: string): Promise<boolean> => {
         try {
             const res = await fetch(`${API_URL}/auth/2fa/send-email`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ twoFAToken }),
+            });
+            return res.ok;
+        } catch {
+            return false;
+        }
+    }, []);
+
+    const send2FASmsFallback = useCallback(async (twoFAToken: string): Promise<boolean> => {
+        try {
+            const res = await fetch(`${API_URL}/auth/2fa/send-sms`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ twoFAToken }),
@@ -493,6 +507,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 googleLogin,
                 complete2FALogin,
                 send2FAEmailFallback,
+                send2FASmsFallback,
                 logout,
                 hasRole,
             }}

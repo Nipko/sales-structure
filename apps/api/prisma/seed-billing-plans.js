@@ -107,6 +107,7 @@ const PLANS = [
             widget: false,
             httpRequestAction: false,
             abTestBroadcasts: false,
+            smsNotifications: false,
             widgetTriggers: 0,
 
             // ── Rate limits (per-hour sliding windows) ──
@@ -202,6 +203,7 @@ const PLANS = [
             widget: true,
             httpRequestAction: false,
             abTestBroadcasts: false,
+            smsNotifications: false,
             widgetTriggers: 3,
 
             // ── Rate limits (per-hour sliding windows) ──
@@ -297,6 +299,7 @@ const PLANS = [
             widget: true,
             httpRequestAction: true,
             abTestBroadcasts: true,
+            smsNotifications: true,
             widgetTriggers: 10,
 
             // ── Rate limits (per-hour sliding windows) ──
@@ -392,6 +395,7 @@ const PLANS = [
             widget: true,
             httpRequestAction: true,
             abTestBroadcasts: true,
+            smsNotifications: true,
             widgetTriggers: -1,
 
             // ── Rate limits (per-hour sliding windows) ──
@@ -486,6 +490,7 @@ const PLANS = [
             widget: true,
             httpRequestAction: true,
             abTestBroadcasts: true,
+            smsNotifications: true,
             widgetTriggers: -1,
 
             // ── Rate limits (per-hour sliding windows) ──

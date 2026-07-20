@@ -44,7 +44,7 @@ export default function LoginPage() {
     const [ssoInfo, setSsoInfo] = useState<{ available: boolean; tenantId?: string; forced?: boolean } | null>(null);
     const ssoCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const googleHiddenRef = useRef<HTMLDivElement>(null);
-    const { login, googleLogin, complete2FALogin, send2FAEmailFallback } = useAuth();
+    const { login, googleLogin, complete2FALogin, send2FAEmailFallback, send2FASmsFallback } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
     const sessionExpired = searchParams.get("expired") === "1";
@@ -199,6 +199,7 @@ export default function LoginPage() {
                             rememberMe={rememberMe}
                             onVerify={complete2FALogin}
                             onSendEmail={send2FAEmailFallback}
+                            onSendSms={send2FASmsFallback}
                             onBack={() => setTwoFAState(null)}
                             onSuccess={(redirect) => router.push(redirect)}
                         />

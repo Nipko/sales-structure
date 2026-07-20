@@ -855,6 +855,18 @@
     "viewContact": "View {noun}",
     "estimatedValueAmount": "${amount} COP"
   },
+  "smsNotificationsIntegration": {
+    "title": "SMS alerts",
+    "subtitle": "Text your agents when the AI escalates a conversation",
+    "enable": "Enable SMS alerts",
+    "enableHint": "Send an SMS to the assigned agent (or admins/supervisors) on handoff",
+    "events": "Events to notify",
+    "eventHandoff": "Escalated conversation (handoff)",
+    "channelHint": "Requires a connected SMS channel. Messages are sent from your Twilio number and cost per message.",
+    "planHint": "Available on Pro plans and above.",
+    "saved": "Settings saved",
+    "saveFailed": "Couldn't save"
+  },
   "slackIntegration": {
     "title": "Slack",
     "subtitle": "Get Parallly alerts in your Slack channel",
@@ -1041,6 +1053,10 @@
       "webChat": {
         "label": "Web Chat",
         "description": "Embeddable chat widget for your website"
+      },
+      "smsNotifications": {
+        "label": "SMS alerts",
+        "description": "Text your agents when the AI hands off to a human"
       },
       "slack": {
         "label": "Slack",
@@ -7614,7 +7630,8 @@
     "queueDepthTitle": "Queue depth (BullMQ)",
     "queueDepthHint": "Pending-jobs threshold (waiting + active) per queue.",
     "channelsTitle": "Notification channels",
-    "channelsHint": "Incidents are always recorded; these toggles only control the email/Telegram notifications.",
+    "channelsHint": "Incidents are always recorded; these toggles only control the email/Telegram/SMS notifications.",
+    "smsCriticalOnly": "SMS is only sent for critical incidents (it's intrusive and costs per message).",
     "warn": "Warn",
     "crit": "Critical",
     "disk": "Disk (% used)",
@@ -8533,6 +8550,11 @@
     "useEmail": "Send code via email",
     "resendEmail": "Resend code via email",
     "sendingEmail": "Sending...",
+    "smsDescription": "We sent a verification code via SMS to your phone.",
+    "useSms": "Send code via SMS",
+    "resendSms": "Resend code via SMS",
+    "sendingSms": "Sending...",
+    "smsError": "We couldn't send the SMS. Make sure you have a phone number on file or use email.",
     "useAuthenticator": "Use authenticator app",
     "useBackupCode": "Use backup code",
     "backupPlaceholder": "Backup code",

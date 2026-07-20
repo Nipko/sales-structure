@@ -23,7 +23,7 @@ export class CustomerPortalController {
     // ---- Auth Endpoints (no token required) ----
 
     @Post(':tenantId/request-access')
-    @ApiOperation({ summary: 'Request portal access — sends a 6-digit code via WhatsApp or email' })
+    @ApiOperation({ summary: 'Request portal access — sends a 6-digit code via SMS or email' })
     async requestAccess(
         @Param('tenantId') tenantId: string,
         @Body() body: { phone?: string; email?: string },

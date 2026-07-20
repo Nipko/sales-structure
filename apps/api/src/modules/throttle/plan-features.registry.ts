@@ -93,6 +93,7 @@ export const PLAN_FEATURE_REGISTRY: PlanFeatureDef[] = [
     { key: 'widget', type: 'boolean', category: 'module' },
     { key: 'httpRequestAction', type: 'boolean', category: 'module' },
     { key: 'abTestBroadcasts', type: 'boolean', category: 'module' },
+    { key: 'smsNotifications', type: 'boolean', category: 'module' },
     { key: 'widgetTriggers', type: 'number', category: 'module' },
 
     // ── Nested config objects ──

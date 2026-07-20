@@ -4,6 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { PlatformSmsService } from './platform-sms.service';
 import { JwtStrategy } from './jwt.strategy';
 import { GoogleAuthService } from './google-auth.service';
 import { MicrosoftAuthService } from './microsoft-auth.service';
@@ -35,7 +36,7 @@ import { VerticalsModule } from '../verticals/verticals.module';
         }),
     ],
     controllers: [AuthController, SamlController],
-    providers: [AuthService, JwtStrategy, GoogleAuthService, MicrosoftAuthService, SamlService, SamlStrategy, AuthThrottleGuard],
+    providers: [AuthService, PlatformSmsService, JwtStrategy, GoogleAuthService, MicrosoftAuthService, SamlService, SamlStrategy, AuthThrottleGuard],
     exports: [AuthService, JwtStrategy, PassportModule, SamlService],
 })
 export class AuthModule { }

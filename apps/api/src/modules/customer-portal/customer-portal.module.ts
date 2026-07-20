@@ -3,6 +3,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CustomerPortalService } from './customer-portal.service';
 import { CustomerPortalController } from './customer-portal.controller';
+import { EmailModule } from '../email/email.module';
+import { SmsNotificationsModule } from '../sms-notifications/sms-notifications.module';
 
 @Module({
     imports: [
@@ -14,6 +16,8 @@ import { CustomerPortalController } from './customer-portal.controller';
             }),
             inject: [ConfigService],
         }),
+        EmailModule,
+        SmsNotificationsModule,
     ],
     controllers: [CustomerPortalController],
     providers: [CustomerPortalService],

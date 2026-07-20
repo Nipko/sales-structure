@@ -17,24 +17,32 @@ export const CP_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>> =
         'auth.codeExpired':        'El código de verificación expiró o no existe. Solicita uno nuevo.',
         'auth.tooManyAttempts':    'Demasiados intentos fallidos. Solicita un nuevo código.',
         'auth.invalidCode':        'Código de verificación incorrecto.',
+        'auth.codeMessage':        'Tu código de acceso es: {code}. Válido por 10 minutos.',
+        'auth.codeSubject':        'Tu código de acceso',
     },
     en: {
         'auth.tooManyRequests':    'Too many requests. Please try again later.',
         'auth.codeExpired':        'Verification code expired or not found. Request a new one.',
         'auth.tooManyAttempts':    'Too many failed attempts. Request a new code.',
         'auth.invalidCode':        'Invalid verification code.',
+        'auth.codeMessage':        'Your access code is: {code}. Valid for 10 minutes.',
+        'auth.codeSubject':        'Your access code',
     },
     pt: {
         'auth.tooManyRequests':    'Muitas solicitações. Por favor, tente novamente mais tarde.',
         'auth.codeExpired':        'Código de verificação expirado ou não encontrado. Solicite um novo.',
         'auth.tooManyAttempts':    'Muitas tentativas falhadas. Solicite um novo código.',
         'auth.invalidCode':        'Código de verificação inválido.',
+        'auth.codeMessage':        'Seu código de acesso é: {code}. Válido por 10 minutos.',
+        'auth.codeSubject':        'Seu código de acesso',
     },
     fr: {
         'auth.tooManyRequests':    'Trop de requêtes. Veuillez réessayer plus tard.',
         'auth.codeExpired':        'Code de vérification expiré ou introuvable. Demandez-en un nouveau.',
         'auth.tooManyAttempts':    'Trop de tentatives échouées. Demandez un nouveau code.',
         'auth.invalidCode':        'Code de vérification incorrect.',
+        'auth.codeMessage':        'Votre code d\'accès est : {code}. Valable 10 minutes.',
+        'auth.codeSubject':        'Votre code d\'accès',
     },
 };
 

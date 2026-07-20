@@ -855,6 +855,18 @@
     "viewContact": "Ver {noun}",
     "estimatedValueAmount": "${amount} COP"
   },
+  "smsNotificationsIntegration": {
+    "title": "Avisos por SMS",
+    "subtitle": "Avisa a tus agentes por SMS cuando la IA escala una conversación",
+    "enable": "Activar avisos por SMS",
+    "enableHint": "Envía un SMS al agente asignado (o a admins/supervisores) cuando ocurre un handoff",
+    "events": "Eventos a notificar",
+    "eventHandoff": "Conversación escalada (handoff)",
+    "channelHint": "Requiere tener el canal SMS conectado. Los SMS se envían desde tu número de Twilio y tienen costo por mensaje.",
+    "planHint": "Disponible en los planes Pro y superiores.",
+    "saved": "Configuración guardada",
+    "saveFailed": "No se pudo guardar"
+  },
   "slackIntegration": {
     "title": "Slack",
     "subtitle": "Recibe alertas de Parallly en tu canal de Slack",
@@ -1041,6 +1053,10 @@
       "webChat": {
         "label": "Chat web",
         "description": "Widget de chat embebible para tu sitio web"
+      },
+      "smsNotifications": {
+        "label": "Avisos por SMS",
+        "description": "Notifica a tus agentes por SMS cuando la IA escala a un humano"
       },
       "slack": {
         "label": "Slack",
@@ -7616,7 +7632,8 @@
     "queueDepthTitle": "Profundidad de colas (BullMQ)",
     "queueDepthHint": "Umbral de jobs pendientes (waiting + active) por cola.",
     "channelsTitle": "Canales de notificación",
-    "channelsHint": "Los incidentes siempre quedan registrados; estos toggles solo controlan los avisos por email/Telegram.",
+    "channelsHint": "Los incidentes siempre quedan registrados; estos toggles solo controlan los avisos por email/Telegram/SMS.",
+    "smsCriticalOnly": "El SMS solo se envía en incidentes críticos (es intrusivo y tiene costo por mensaje).",
     "warn": "Aviso",
     "crit": "Crítico",
     "disk": "Disco (% uso)",
@@ -8535,6 +8552,11 @@
     "useEmail": "Enviar código por email",
     "resendEmail": "Reenviar código por email",
     "sendingEmail": "Enviando...",
+    "smsDescription": "Enviamos un código de verificación por SMS a tu teléfono.",
+    "useSms": "Enviar código por SMS",
+    "resendSms": "Reenviar código por SMS",
+    "sendingSms": "Enviando...",
+    "smsError": "No pudimos enviar el SMS. Verifica que tengas un número registrado o usa el email.",
     "useAuthenticator": "Usar app de autenticación",
     "useBackupCode": "Usar código de respaldo",
     "backupPlaceholder": "Código de respaldo",

@@ -855,6 +855,18 @@
     "viewContact": "Voir {noun}",
     "estimatedValueAmount": "${amount} COP"
   },
+  "smsNotificationsIntegration": {
+    "title": "Alertes SMS",
+    "subtitle": "Alertez vos agents par SMS quand l'IA transfère une conversation",
+    "enable": "Activer les alertes SMS",
+    "enableHint": "Envoie un SMS à l'agent assigné (ou aux admins/superviseurs) lors d'un transfert",
+    "events": "Événements à notifier",
+    "eventHandoff": "Conversation transférée (handoff)",
+    "channelHint": "Nécessite un canal SMS connecté. Les SMS sont envoyés depuis votre numéro Twilio et facturés par message.",
+    "planHint": "Disponible sur les forfaits Pro et supérieurs.",
+    "saved": "Configuration enregistrée",
+    "saveFailed": "Échec de l'enregistrement"
+  },
   "slackIntegration": {
     "title": "Slack",
     "subtitle": "Recevez les alertes Parallly dans votre canal Slack",
@@ -1041,6 +1053,10 @@
       "webChat": {
         "label": "Chat web",
         "description": "Widget de chat intégrable pour votre site web"
+      },
+      "smsNotifications": {
+        "label": "Alertes SMS",
+        "description": "Alertez vos agents par SMS quand l'IA transfère à un humain"
       },
       "slack": {
         "label": "Slack",
@@ -7614,7 +7630,8 @@
     "queueDepthTitle": "Profondeur des files (BullMQ)",
     "queueDepthHint": "Seuil de jobs en attente (waiting + active) par file.",
     "channelsTitle": "Canaux de notification",
-    "channelsHint": "Les incidents sont toujours enregistrés ; ces options contrôlent uniquement les notifications par e-mail/Telegram.",
+    "channelsHint": "Les incidents sont toujours enregistrés ; ces options contrôlent uniquement les notifications par e-mail/Telegram/SMS.",
+    "smsCriticalOnly": "Le SMS n'est envoyé que pour les incidents critiques (intrusif et facturé par message).",
     "warn": "Alerte",
     "crit": "Critique",
     "disk": "Disque (% utilisé)",
@@ -8533,6 +8550,11 @@
     "useEmail": "Envoyer le code par email",
     "resendEmail": "Renvoyer le code par email",
     "sendingEmail": "Envoi...",
+    "smsDescription": "Nous avons envoyé un code de vérification par SMS à votre téléphone.",
+    "useSms": "Envoyer le code par SMS",
+    "resendSms": "Renvoyer le code par SMS",
+    "sendingSms": "Envoi...",
+    "smsError": "Nous n'avons pas pu envoyer le SMS. Vérifiez que vous avez un numéro enregistré ou utilisez l'email.",
     "useAuthenticator": "Utiliser l'application d'authentification",
     "useBackupCode": "Utiliser un code de secours",
     "backupPlaceholder": "Code de secours",

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
-import { ShieldCheck, Mail, Key, ArrowLeft, Loader2, Monitor } from "lucide-react";
+import { ShieldCheck, Mail, Key, ArrowLeft, Loader2, Monitor, Smartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TwoFactorVerificationProps {
@@ -10,8 +10,9 @@ interface TwoFactorVerificationProps {
     twoFactorMethod: string;
     userEmail?: string;
     rememberMe: boolean;
-    onVerify: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe: boolean, trustDevice?: boolean, deviceInfo?: DeviceInfo) => Promise<{ success: boolean; error?: string; redirect?: string; deviceTrustToken?: string }>;
+    onVerify: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup' | 'sms', rememberMe: boolean, trustDevice?: boolean, deviceInfo?: DeviceInfo) => Promise<{ success: boolean; error?: string; redirect?: string; deviceTrustToken?: string }>;
     onSendEmail: (twoFAToken: string) => Promise<boolean>;
+    onSendSms: (twoFAToken: string) => Promise<boolean>;
     onBack: () => void;
     onSuccess: (redirect: string) => void;
 }
@@ -28,10 +29,10 @@ const CODE_LENGTH = 6;
 
 export default function TwoFactorVerification({
     twoFAToken, twoFactorMethod, userEmail, rememberMe,
-    onVerify, onSendEmail, onBack, onSuccess,
+    onVerify, onSendEmail, onSendSms, onBack, onSuccess,
 }: TwoFactorVerificationProps) {
     const t = useTranslations("twoFactor");
-    const [activeMethod, setActiveMethod] = useState<'totp' | 'email' | 'backup'>(
+    const [activeMethod, setActiveMethod] = useState<'totp' | 'email' | 'backup' | 'sms'>(
         twoFactorMethod === 'totp' ? 'totp' : 'email'
     );
     const [code, setCode] = useState<string[]>(Array(CODE_LENGTH).fill(""));
@@ -40,6 +41,8 @@ export default function TwoFactorVerification({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [emailSent, setEmailSent] = useState(false);
     const [emailSending, setEmailSending] = useState(false);
+    const [smsSent, setSmsSent] = useState(false);
+    const [smsSending, setSmsSending] = useState(false);
     const [trustDevice, setTrustDevice] = useState(false);
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -94,7 +97,7 @@ export default function TwoFactorVerification({
         language: navigator.language,
     });
 
-    const submitCode = async (codeStr: string, method: 'totp' | 'email' | 'backup') => {
+    const submitCode = async (codeStr: string, method: 'totp' | 'email' | 'backup' | 'sms') => {
         setIsSubmitting(true);
         setError("");
         const deviceInfo = trustDevice ? getDeviceInfo() : undefined;
@@ -128,7 +131,21 @@ export default function TwoFactorVerification({
         }
     };
 
-    const switchMethod = (method: 'totp' | 'email' | 'backup') => {
+    const handleSendSms = async () => {
+        setSmsSending(true);
+        const ok = await onSendSms(twoFAToken);
+        setSmsSending(false);
+        if (ok) {
+            setSmsSent(true);
+            setActiveMethod('sms');
+            setCode(Array(CODE_LENGTH).fill(""));
+            setError("");
+        } else {
+            setError(t("smsError"));
+        }
+    };
+
+    const switchMethod = (method: 'totp' | 'email' | 'backup' | 'sms') => {
         setActiveMethod(method);
         setCode(Array(CODE_LENGTH).fill(""));
         setBackupCode("");
@@ -147,6 +164,7 @@ export default function TwoFactorVerification({
             <p className="text-sm text-muted-foreground mb-6">
                 {activeMethod === 'totp' && t("totpDescription")}
                 {activeMethod === 'email' && t("emailDescription", { email: userEmail || "***" })}
+                {activeMethod === 'sms' && t("smsDescription")}
                 {activeMethod === 'backup' && t("backupDescription")}
             </p>
 
@@ -242,6 +260,17 @@ export default function TwoFactorVerification({
                     >
                         <Mail size={14} />
                         {emailSending ? t("sendingEmail") : emailSent ? t("resendEmail") : t("useEmail")}
+                    </button>
+                )}
+                {activeMethod !== 'sms' && (
+                    <button
+                        type="button"
+                        onClick={handleSendSms}
+                        disabled={smsSending}
+                        className="inline-flex items-center justify-center gap-2 text-[13px] text-muted-foreground hover:text-indigo-500 transition-colors bg-transparent border-none cursor-pointer"
+                    >
+                        <Smartphone size={14} />
+                        {smsSending ? t("sendingSms") : smsSent ? t("resendSms") : t("useSms")}
                     </button>
                 )}
                 {activeMethod !== 'totp' && twoFactorMethod === 'totp' && (

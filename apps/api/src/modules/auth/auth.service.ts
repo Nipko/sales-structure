@@ -14,8 +14,10 @@ import { BusinessInfoService } from '../business-info/business-info.service';
 import { BillingService } from '../billing/billing.service';
 import { VerticalsService } from '../verticals/verticals.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { PlatformSmsService } from './platform-sms.service';
 import { JwtPayload, UserRole } from '@parallext/shared';
 import { validateEmailDomain } from '../../common/utils/email.util';
+import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import {
     verificationEmail, passwordResetEmail, twoFactorEmail,
     welcomeEmail, passwordChangedEmail, newTrustedDeviceEmail,
@@ -55,6 +57,7 @@ export class AuthService {
         private billingService: BillingService,
         private verticalsService: VerticalsService,
         private throttleService: TenantThrottleService,
+        private platformSms: PlatformSmsService,
     ) { }
 
     // ── Token helpers ─────────────────────────────────────────────
@@ -1081,8 +1084,28 @@ export class AuthService {
         return { message: '2FA code sent to email' };
     }
 
+    async send2FASms(userId: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+        if (!user.phone) throw new BadRequestException('No phone number on file for SMS 2FA');
+
+        // Rate-limit SMS sends per user — SMS costs money (unlike the email fallback),
+        // so an unthrottled endpoint would allow SMS-bombing the user's number.
+        const rate = await this.redis.incrementRateLimit(`2fa:sms:rate:${userId}`, 3600);
+        if (rate > 3) throw new BadRequestException('Too many SMS requests. Please wait a while or use email.');
+
+        const code = String(crypto.randomInt(100000, 1000000));
+        await this.redis.set(`2fa:sms:${userId}`, code, 300);
+
+        const to = normalizePhoneE164(user.phone) || user.phone;
+        const sent = await this.platformSms.sendTo(to, `Parallly: tu codigo de acceso es ${code}. Valido 5 minutos.`);
+        if (!sent) throw new BadRequestException('SMS delivery unavailable. Try email instead.');
+
+        return { message: '2FA code sent via SMS' };
+    }
+
     async verify2FA(
-        twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe = false,
+        twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup' | 'sms', rememberMe = false,
         trustDevice = false, deviceInfo?: { userAgent?: string; screenWidth?: number; screenHeight?: number; timezone?: string; language?: string; ip?: string },
     ) {
         const userId = this.verify2FAToken(twoFAToken);
@@ -1111,6 +1134,12 @@ export class AuthService {
             if (storedCode && storedCode === code) {
                 valid = true;
                 await this.redis.del(`2fa:email:${userId}`);
+            }
+        } else if (method === 'sms') {
+            const storedCode = await this.redis.get(`2fa:sms:${userId}`);
+            if (storedCode && storedCode === code) {
+                valid = true;
+                await this.redis.del(`2fa:sms:${userId}`);
             }
         } else if (method === 'backup') {
             const normalized = code.toUpperCase().replace(/\s/g, '');

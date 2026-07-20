@@ -633,7 +633,7 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Verify 2FA code during login (public — uses twoFAToken)' })
     async verify2FA(@Body() body: {
-        twoFAToken: string; code: string; method: 'totp' | 'email' | 'backup';
+        twoFAToken: string; code: string; method: 'totp' | 'email' | 'backup' | 'sms';
         rememberMe?: boolean; trustDevice?: boolean;
         deviceInfo?: { userAgent?: string; screenWidth?: number; screenHeight?: number; timezone?: string; language?: string };
     }, @Request() req: any) {
@@ -651,6 +651,15 @@ export class AuthController {
     async send2FAEmail(@Body() body: { twoFAToken: string }) {
         const userId = this.authService.verify2FAToken(body.twoFAToken);
         await this.authService.send2FAEmail(userId);
+        return { success: true };
+    }
+
+    @Post('2fa/send-sms')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Send 2FA fallback code via SMS (public — uses twoFAToken)' })
+    async send2FASms(@Body() body: { twoFAToken: string }) {
+        const userId = this.authService.verify2FAToken(body.twoFAToken);
+        await this.authService.send2FASms(userId);
         return { success: true };
     }
 

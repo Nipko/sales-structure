@@ -113,6 +113,7 @@ export const api = {
     verify2FALogin: (twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup', rememberMe?: boolean) =>
         apiPost("/auth/2fa/verify", { twoFAToken, code, method, rememberMe }),
     send2FAEmail: (twoFAToken: string) => apiPost("/auth/2fa/send-email", { twoFAToken }),
+    send2FASms: (twoFAToken: string) => apiPost("/auth/2fa/send-sms", { twoFAToken }),
     regenerateBackupCodes: (password: string) => apiPost("/auth/2fa/backup-codes", { password }),
 
     listTrustedDevices: () => apiGet("/auth/trusted-devices"),
@@ -959,6 +960,10 @@ export const api = {
     getSlackConfig: (tenantId: string) => apiGet(`/slack/${tenantId}/config`),
     updateSlackConfig: (tenantId: string, body: any) => apiPut(`/slack/${tenantId}/config`, body),
     testSlack: (tenantId: string) => apiPost(`/slack/${tenantId}/test`, {}),
+
+    // SMS notifications (tenant opt-in) — Phase 2
+    getSmsNotificationsConfig: (tenantId: string) => apiGet(`/sms-notifications/${tenantId}/config`),
+    updateSmsNotificationsConfig: (tenantId: string, body: any) => apiPut(`/sms-notifications/${tenantId}/config`, body),
 
     // KB health / contradictions (T2.14)
     getKbHealth: (tenantId: string) => apiGet(`/kb-health/${tenantId}`),

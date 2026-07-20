@@ -41,6 +41,7 @@ import { AttributionModule } from './modules/attribution/attribution.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { ManagedModule } from './modules/managed/managed.module';
 import { SlackModule } from './modules/slack/slack.module';
+import { SmsNotificationsModule } from './modules/sms-notifications/sms-notifications.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { BroadcastModule } from './modules/broadcast/broadcast.module';
@@ -200,6 +201,7 @@ import llmConfig from './config/llm.config';
         ReviewsModule,
         ManagedModule,
         SlackModule,
+        SmsNotificationsModule,
         InventoryModule,
         OrdersModule,
         BroadcastModule,

@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ChannelGatewayService } from '../channels/channel-gateway.service';
+import { ChannelTokenService } from '../channels/channel-token.service';
 import { WhatsappConnectionService } from '../whatsapp/services/whatsapp-connection.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
@@ -82,6 +83,7 @@ export class AgentConsoleService {
         private prisma: PrismaService,
         private redis: RedisService,
         private channelGateway: ChannelGatewayService,
+        private channelToken: ChannelTokenService,
         private whatsappConnection: WhatsappConnectionService,
         private llmRouter: LLMRouterService,
         private eventEmitter: EventEmitter2,
@@ -365,15 +367,19 @@ export class AgentConsoleService {
             );
             if (convRows?.[0]) {
                 const conv = convRows[0];
-                const creds = await this.whatsappConnection.getValidAccessToken(schemaName);
+                // Resolve the token PER-CONNECTION for the conversation's channel + account
+                // (multi-account aware, and works for non-WhatsApp channels — the old
+                // getValidAccessToken always returned a WhatsApp token).
+                const channelType = conv.channel_type || 'whatsapp';
+                const creds = await this.channelToken.getChannelToken(tenantId, channelType, conv.channel_account_id || undefined);
                 const outContent: any = isMedia
                     ? { type: contentType, mediaUrl: this.absoluteMediaUrl(mediaUrl), caption: caption || content || undefined, ...(filename ? { filename } : {}) }
                     : { type: 'text', text: content };
                 await this.channelGateway.sendMessage(
                     {
                         tenantId,
-                        channelType: conv.channel_type || 'whatsapp',
-                        channelAccountId: conv.channel_account_id || creds.phoneNumberId,
+                        channelType,
+                        channelAccountId: conv.channel_account_id || creds.accountId,
                         to: conv.phone,
                         content: outContent,
                     },

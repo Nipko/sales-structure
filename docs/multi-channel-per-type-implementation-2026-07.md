@@ -131,10 +131,33 @@ getPersonaForChannel(tenantId, channelType, accountId?): TenantConfig  // bindin
 - **Inbox**: badge de cuenta por conversación (se muestra solo si el tenant tiene >1 cuenta).
 - **SMS**: la página es un redirect a `/admin/channels` (canal oculto por decisión previa) — sin cambios.
 
+## Auditoría de gaps de gestión (post-deploy) — fixes aplicados
+- **Refresh de tokens de Instagram (era regresión, ARREGLADO)**: el cron escribía en
+  `whatsapp_credentials` pero el runtime ahora lee `channel_accounts.access_token` → los tokens IG
+  se habrían cortado a ~60 días (incluso con 1 cuenta). `instagram-token-refresh.service.ts` reescrito
+  para refrescar POR CUENTA (escribe en `channel_accounts.access_token` + `metadata.tokenExpiresAt`,
+  sincroniza el legacy, invalida caché, auto-migra filas placeholder). El connect IG guarda
+  `metadata.tokenExpiresAt`.
+- **Respuesta del agente humano desde el inbox (ARREGLADO)**: `sendAgentMessage` usaba
+  `getValidAccessToken` (token WhatsApp tenant-wide) para todo canal → roto en IG/Messenger/SMS/Telegram.
+  Ahora usa `getChannelToken(tenantId, channelType, channel_account_id)` → token por-conexión correcto
+  para todos los canales.
+- **`getValidAccessToken` determinístico (ARREGLADO)**: el `LIMIT 1` sin `ORDER BY` elegía número
+  arbitrario; ahora `ORDER BY connected_at` (primer número = más antiguo) para el path `sendTemplate`.
+
 ## Diferido a v2 (aditivo, no bloquea)
-- Selector de número en plantillas de WhatsApp cuando hay >1 número (hoy el backend fija el canal
-  activo con `LIMIT 1`; las plantillas son a nivel WABA, así que suele bastar).
-- Expiración de token IG por-cuenta en la UI (hoy se muestra una sola, del token del tipo).
+- **Broadcast: selector de número de origen** cuando hay >1 (falta campo en `CreateCampaignDto`,
+  tabla `campaigns`, `BroadcastJobData` y UI; hoy sale por la primera cuenta activa, no elegible).
+- **Envíos sistémicos por cuenta específica**: nurturing-plantilla, drip, recordatorios de cita,
+  recall, acciones de automatización y OTP/SMS de portal salen por la cuenta primaria (para WhatsApp
+  el token es tenant-wide, solo varía el número de origen). El pipeline principal y nurturing-texto
+  (dentro de 24h) sí van por-conexión.
+- **Desconexión por-cuenta**: hace limpieza local (routing + whatsapp_channels + bindings + caché)
+  pero NO des-suscribe el webhook de esa cuenta en el proveedor (queda inerte porque el routing está
+  inactivo, pero el proveedor sigue enviando). La desconexión por-TIPO sí avisa al proveedor.
+- Selector de número en plantillas de WhatsApp cuando hay >1 (backend fija el canal con `LIMIT 1`;
+  las plantillas son a nivel WABA, así que suele bastar).
+- Expiración de token IG por-cuenta en la UI (hoy se muestra una sola, del slot legacy).
 
 ## Pendiente del usuario (al cierre)
 - Re-correr el seed en prod para materializar `maxChannelAccounts`: `docker exec parallext-api node prisma/seed-billing-plans.js`

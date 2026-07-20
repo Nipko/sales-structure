@@ -2,11 +2,20 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
+import { ChannelTokenService } from './channel-token.service';
 
 /**
  * Instagram long-lived tokens expire after 60 days.
  * This cron refreshes tokens that are within 30 days of expiration
  * to prevent silent disconnection.
+ *
+ * Multi-account aware: iterates every active Instagram connection in
+ * `channel_accounts` and writes the refreshed token back to
+ * `channel_accounts.access_token` — the per-account slot the runtime actually
+ * reads (ChannelTokenService.getChannelToken prefers it). It also keeps the
+ * legacy `whatsapp_credentials.instagram_token` in sync (fallback + status UI),
+ * and self-heals pre-multi-account rows that still hold the 'encrypted_ref'
+ * placeholder by upgrading them to a real per-account token.
  */
 @Injectable()
 export class InstagramTokenRefreshService {
@@ -15,63 +24,82 @@ export class InstagramTokenRefreshService {
     constructor(
         private prisma: PrismaService,
         private cryptoService: WhatsappCryptoService,
+        private channelToken: ChannelTokenService,
     ) {}
 
     /** Daily at 6AM — refresh IG tokens expiring within 30 days */
     @Cron('0 6 * * *')
     async refreshExpiringSoonTokens() {
-        const threshold = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
+        const now = Date.now();
+        const thresholdMs = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-        const credentials = await this.prisma.whatsappCredential.findMany({
-            where: {
-                credentialType: 'instagram_token',
-                rotationState: 'active',
-                expiresAt: { lte: threshold, gt: new Date() },
-            },
+        const accounts = await this.prisma.channelAccount.findMany({
+            where: { channelType: 'instagram', isActive: true },
         });
+        if (accounts.length === 0) return;
 
-        if (credentials.length === 0) return;
-
-        this.logger.log(`Found ${credentials.length} Instagram token(s) to refresh`);
-
-        for (const cred of credentials) {
+        let refreshed = 0;
+        for (const acc of accounts) {
             try {
-                const currentToken = this.cryptoService.decryptToken(cred.encryptedValue);
+                const meta = ((acc.metadata as Record<string, any>) || {});
+
+                // Resolve the CURRENT token the same way runtime does: prefer the
+                // per-account token, fall back to the shared legacy credential.
+                let currentToken: string | null = null;
+                const hasRealAccountToken =
+                    !!acc.accessToken && acc.accessToken !== 'encrypted_ref' && acc.accessToken !== 'credential_ref';
+                if (hasRealAccountToken) {
+                    try { currentToken = this.cryptoService.decryptToken(acc.accessToken); } catch { currentToken = null; }
+                }
+                const cred = await this.prisma.whatsappCredential.findFirst({
+                    where: { tenantId: acc.tenantId, credentialType: 'instagram_token' },
+                    orderBy: { createdAt: 'desc' },
+                });
+                if (!currentToken && cred?.encryptedValue) {
+                    try { currentToken = this.cryptoService.decryptToken(cred.encryptedValue); } catch { currentToken = null; }
+                }
+                if (!currentToken) continue;
+
+                // Expiry: per-account metadata first, else the legacy credential's expiry.
+                const expMs = meta.tokenExpiresAt
+                    ? new Date(meta.tokenExpiresAt).getTime()
+                    : (cred?.expiresAt ? new Date(cred.expiresAt).getTime() : null);
+                // Refresh when expiry is unknown (never tracked) or within the window.
+                if (expMs !== null && (expMs - now) > thresholdMs) continue;
 
                 const res = await fetch(
                     `https://graph.instagram.com/refresh_access_token?` +
-                    new URLSearchParams({
-                        grant_type: 'ig_refresh_token',
-                        access_token: currentToken,
-                    }),
+                    new URLSearchParams({ grant_type: 'ig_refresh_token', access_token: currentToken }),
                 );
-                const data = await res.json();
+                const data = await res.json() as any;
 
                 if (!data.access_token) {
-                    await this.prisma.whatsappCredential.update({
-                        where: { id: cred.id },
-                        data: { rotationState: 'error', updatedAt: new Date() },
-                    });
-                    this.logger.warn(`IG token refresh failed for tenant ${cred.tenantId}: ${JSON.stringify(data.error || data)}`);
+                    this.logger.warn(`IG token refresh failed for tenant ${acc.tenantId} account ${acc.accountId}: ${JSON.stringify(data.error || data)}`);
                     continue;
                 }
 
-                const newExpiresAt = new Date(Date.now() + (data.expires_in || 5184000) * 1000);
+                const newExpiresAt = new Date(now + (data.expires_in || 5184000) * 1000);
+                const encrypted = this.cryptoService.encryptToken(data.access_token);
 
-                await this.prisma.whatsappCredential.update({
-                    where: { id: cred.id },
-                    data: {
-                        encryptedValue: this.cryptoService.encryptToken(data.access_token),
-                        expiresAt: newExpiresAt,
-                        rotationState: 'active',
-                        updatedAt: new Date(),
-                    },
+                // Write the refreshed token to the per-account slot the runtime reads
+                // (also upgrades legacy placeholder rows to a real per-account token).
+                await this.prisma.channelAccount.update({
+                    where: { id: acc.id },
+                    data: { accessToken: encrypted, metadata: { ...meta, tokenExpiresAt: newExpiresAt.toISOString() } },
                 });
+                // Keep the legacy credential + its expiry in sync (fallback + status UI).
+                await this.prisma.whatsappCredential.updateMany({
+                    where: { tenantId: acc.tenantId, credentialType: 'instagram_token' },
+                    data: { encryptedValue: encrypted, expiresAt: newExpiresAt, rotationState: 'active', updatedAt: new Date() },
+                });
+                await this.channelToken.invalidateCache('instagram', acc.tenantId, acc.accountId).catch(() => {});
 
-                this.logger.log(`IG token refreshed for tenant ${cred.tenantId}, new expiry: ${newExpiresAt.toISOString()}`);
+                refreshed++;
+                this.logger.log(`IG token refreshed for tenant ${acc.tenantId} account ${acc.accountId}, new expiry: ${newExpiresAt.toISOString()}`);
             } catch (e: any) {
-                this.logger.error(`IG token refresh error for tenant ${cred.tenantId}: ${e.message}`);
+                this.logger.error(`IG token refresh error for tenant ${acc.tenantId} account ${acc.accountId}: ${e.message}`);
             }
         }
+        if (refreshed) this.logger.log(`Refreshed ${refreshed} Instagram token(s)`);
     }
 }

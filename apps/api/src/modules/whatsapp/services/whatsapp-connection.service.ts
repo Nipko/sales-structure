@@ -174,10 +174,11 @@ export class WhatsappConnectionService {
    * Obtiene el token real desencriptado y los identificadores de Meta.
    */
   async getValidAccessToken(schemaName: string): Promise<{ accessToken: string, phoneNumberId: string, wabaId: string, channelId: string }> {
-    // 1. Info del canal
+    // 1. Info del canal — el más antiguo (determinístico) cuando hay >1 número.
+    //    (El system_user_token es tenant-wide; solo cambia el phone_number_id de origen.)
     const channels = await this.prisma.executeInTenantSchema<any[]>(
       schemaName,
-      `SELECT id, phone_number_id, meta_waba_id FROM whatsapp_channels LIMIT 1`
+      `SELECT id, phone_number_id, meta_waba_id FROM whatsapp_channels ORDER BY connected_at ASC NULLS LAST LIMIT 1`
     );
 
     if (!channels || channels.length === 0) {
@@ -203,7 +204,7 @@ export class WhatsappConnectionService {
       // Fallback temporal si guardaron el token direcamente en el channel en una prueba previa
       const fallbackChannels = await this.prisma.executeInTenantSchema<any[]>(
         schemaName,
-        `SELECT access_token_ref FROM whatsapp_channels LIMIT 1`
+        `SELECT access_token_ref FROM whatsapp_channels ORDER BY connected_at ASC NULLS LAST LIMIT 1`
       );
       if (fallbackChannels?.[0]?.access_token_ref && fallbackChannels[0].access_token_ref !== 'credential_ref') {
          return {

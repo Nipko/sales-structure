@@ -836,6 +836,7 @@ export class ChannelManagementController {
                         username: profile.username,
                         accountType: profile.account_type,
                         profilePicture: pictureUrl,
+                        tokenExpiresAt: expiresAt.toISOString(),
                     },
                 },
             });
@@ -853,6 +854,7 @@ export class ChannelManagementController {
                         username: profile.username,
                         accountType: profile.account_type,
                         profilePicture: pictureUrl,
+                        tokenExpiresAt: expiresAt.toISOString(),
                     },
                 },
             });

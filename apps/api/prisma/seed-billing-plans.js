@@ -143,7 +143,7 @@ const PLANS = [
         maxAiMessages: 5_000,
         sortOrder: 1,
         priceLocalOverrides: {
-            CO: { currency: 'COP', amountCents: 21_580_000 },
+            CO: { currency: 'COP', amountCents: 27_690_000 },
         },
         features: {
             // ── Resource limits ──
@@ -241,7 +241,7 @@ const PLANS = [
         maxAiMessages: 25_000,
         sortOrder: 2,
         priceLocalOverrides: {
-            CO: { currency: 'COP', amountCents: 67_950_000 },
+            CO: { currency: 'COP', amountCents: 75_770_000 },
         },
         features: {
             // ── Resource limits ──

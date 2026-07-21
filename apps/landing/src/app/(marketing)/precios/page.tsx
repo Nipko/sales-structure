@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useTranslations } from "next-intl";
-import { PLANS, FEATURE_MATRIX, FEATURE_CATEGORIES, UPSELLS } from "../../../data/pricing";
+import { PLANS, FEATURE_MATRIX, FEATURE_CATEGORIES, UPSELLS, resolveFeatureValue } from "../../../data/pricing";
+import { fetchPlans, formatCopPrice, type ApiPlan } from "../../../lib/api";
 import { Section } from "../../../components/ui/Section";
 import { Icon } from "../../../components/ui/Icon";
 import { FAQItem } from "../../../components/ui/FAQItem";
@@ -30,7 +31,29 @@ export default function PricingPage() {
   const [expandedCat, setExpandedCat] = useState<string | null>("communication");
   const [quizStep, setQuizStep] = useState(0);
   const [quizScores, setQuizScores] = useState([0, 0, 0]);
+  const [apiBySlug, setApiBySlug] = useState<Record<string, ApiPlan>>({});
   const t = useTranslations("pricingPage");
+
+  // Pull live plans (prices + features) from billing_plans so the table reflects
+  // whatever the super admin has configured. Falls back to hardcoded data while
+  // loading or if the API is unreachable.
+  useEffect(() => {
+    fetchPlans("CO").then((plans) => {
+      if (!plans) return;
+      const map: Record<string, ApiPlan> = {};
+      for (const p of plans) map[p.slug] = p;
+      setApiBySlug(map);
+    });
+  }, []);
+
+  const planPrices = (slug: string, fallbackMonthly: string, fallbackAnnual: string) => {
+    const ap = apiBySlug[slug];
+    if (!ap) return { monthly: fallbackMonthly, annual: fallbackAnnual };
+    return {
+      monthly: formatCopPrice(ap.displayPriceCents),
+      annual: formatCopPrice(Math.round(ap.displayPriceCents * 0.83)),
+    };
+  };
 
   const quizAnswer = (step: number, score: number) => {
     const next = [...quizScores];
@@ -138,7 +161,9 @@ export default function PricingPage() {
 
               <div className="mb-6">
                 <span className="text-4xl font-bold tabular">
-                  {annual ? plan.priceCopAnnual : plan.priceCopMonthly}
+                  {annual
+                    ? planPrices(plan.slug, plan.priceCopMonthly, plan.priceCopAnnual).annual
+                    : planPrices(plan.slug, plan.priceCopMonthly, plan.priceCopAnnual).monthly}
                 </span>
                 <span className="text-sm text-text-muted ml-1">{t("perMonth")}</span>
                 <p className="text-xs text-text-muted mt-1">
@@ -231,14 +256,14 @@ export default function PricingPage() {
                         <td className="py-3 pr-4 pl-8 text-sm text-text-secondary">
                           {t(`feature${row.key.charAt(0).toUpperCase() + row.key.slice(1)}`)}
                         </td>
-                        {row.values.map((val, vi) => (
+                        {PLANS.map((p, vi) => (
                           <td
                             key={vi}
                             className={`py-3 px-3 text-center text-sm ${
-                              PLANS[vi].highlighted ? "bg-accent/5" : ""
+                              p.highlighted ? "bg-accent/5" : ""
                             }`}
                           >
-                            {renderValue(val, t)}
+                            {renderValue(resolveFeatureValue(apiBySlug[p.slug], row, vi), t)}
                           </td>
                         ))}
                       </tr>

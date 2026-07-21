@@ -565,8 +565,82 @@ export class PlatformMonitorService implements OnModuleInit {
     @Cron('30 7 * * *')
     async checkRiskSignals() {
         await this.checkPaymentFailures();
+        await this.checkWebhookFailures();
         await this.checkLlmBudgets();
         await this.checkBackupHeartbeat();
+    }
+
+    /**
+     * Alerts when the payment-provider webhook starts failing. The webhook is the
+     * only automatic path for activations/renewals/cancellations, so a silent
+     * failure means we keep charging (or stop charging) without reacting.
+     * Counters are written by BillingWebhookController.recordWebhookFailure()
+     * as per-day Redis keys (billing:webhook:fail:{kind}:{YYYY-MM-DD}); we sum the
+     * last two days as a rolling ~24-48h window.
+     */
+    private async checkWebhookFailures() {
+        try {
+            const days = [0, 1].map((offset) => {
+                const d = new Date(Date.now() - offset * 24 * 60 * 60 * 1000);
+                return d.toISOString().slice(0, 10);
+            });
+            const sumKind = async (kind: string): Promise<number> => {
+                let total = 0;
+                for (const day of days) {
+                    const v = await this.redis.get(`billing:webhook:fail:${kind}:${day}`);
+                    total += Number(v || 0);
+                }
+                return total;
+            };
+            const [sig, parseFail, dispatchFail] = await Promise.all([
+                sumKind('signature'),
+                sumKind('parse'),
+                sumKind('dispatch'),
+            ]);
+            const proc = parseFail + dispatchFail;
+
+            // Signature rejections are the highest-signal failure: a persistent
+            // stream almost always means the webhook secret in MercadoPago/Stripe
+            // no longer matches ours (e.g. after rotating credentials or switching
+            // accounts), so EVERY billing event is being silently dropped. Alert
+            // on a low threshold. Processing errors (provider hiccups / dispatch
+            // bugs) get a higher threshold since the daily reconciliation recovers.
+            const SIG_THRESHOLD = 5;
+            const PROC_THRESHOLD = 10;
+
+            if (sig >= SIG_THRESHOLD) {
+                await this.alert(
+                    'billing:webhook_signature',
+                    `${sig} webhooks de pago con firma rechazada`,
+                    `El webhook de pagos rechazó <b>${sig}</b> notificaciones por firma inválida en las últimas 24-48h.<br>
+                     <b>Causa más probable:</b> el secreto del webhook en el proveedor ya no coincide con el nuestro
+                     (<code>MERCADOPAGO_WEBHOOK_SECRET</code>), típicamente tras rotar credenciales o cambiar de cuenta.
+                     Mientras esté así <b>no se procesa ningún alta/baja/pago automáticamente</b> (la reconciliación diaria
+                     mitiga, no reemplaza).<br>
+                     <b>Solución:</b> revisa la firma/secreto del webhook en el panel del proveedor y en los GitHub Secrets.`,
+                    sig,
+                );
+            } else {
+                await this.incidents.resolveByKey('billing:webhook_signature');
+            }
+
+            if (proc >= PROC_THRESHOLD) {
+                await this.alert(
+                    'billing:webhook_processing',
+                    `${proc} webhooks de pago con error de procesamiento`,
+                    `El webhook de pagos falló al procesar <b>${proc}</b> notificaciones en las últimas 24-48h
+                     (parseo: ${parseFail}, despacho: ${dispatchFail}).<br>
+                     <b>Qué revisar:</b> disponibilidad de la API del proveedor y errores en <code>handleBillingEvent</code>
+                     o en la cola de reconciliación. La reconciliación diaria recupera el estado, pero un volumen alto y
+                     sostenido indica un problema real que conviene atender.`,
+                    proc,
+                );
+            } else {
+                await this.incidents.resolveByKey('billing:webhook_processing');
+            }
+        } catch (e: any) {
+            this.logger.debug(`Webhook-failure check skipped: ${e.message}`);
+        }
     }
 
     private async checkPaymentFailures() {

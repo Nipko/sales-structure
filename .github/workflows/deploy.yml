@@ -605,18 +605,44 @@ jobs:
             # patches here were removed so the migration chain is the single source
             # of truth for the public schema.
 
+            echo "===> Pre-migration backup (rollback point)..."
+            # Dump the WHOLE DB (all schemas) in custom format BEFORE touching the
+            # schema, so a bad migration can be rolled back. Runs inside the
+            # postgres container (the host has no postgresql-client), same as
+            # infra/backup/backup.sh. Best-effort: a failed dump warns but does
+            # not block the deploy (the nightly backup is the fallback). Keep only
+            # the last 3 pre-deploy dumps so this never fills the disk.
+            mkdir -p /backup/pre-deploy
+            if docker exec -e PGPASSWORD="${PROD_DB_PASSWORD}" parallext-postgres \
+                 pg_dump -U parallext -d parallext_engine --format=custom \
+                 > "/backup/pre-deploy/predeploy_$(date +%Y%m%d_%H%M%S).dump" 2>/dev/null; then
+              echo "  [OK] pre-migration dump saved"
+            else
+              echo "  [WARN] pre-migration backup failed — continuing (nightly backup is the fallback)"
+            fi
+            ls -t /backup/pre-deploy/predeploy_*.dump 2>/dev/null | tail -n +4 | xargs -r rm -f
+
             echo "===> Running Prisma public schema migrations..."
+            # No "|| true": a failed public-schema migration MUST abort the deploy.
+            # Migrations run before the rolling restart, so aborting here leaves the
+            # old (working) containers running — no half-migrated state.
             $DC \
               run --rm \
-              api npx prisma migrate deploy --schema=prisma/schema.prisma || true
+              api npx prisma migrate deploy --schema=prisma/schema.prisma \
+              || { echo "::error::Prisma migrate deploy FAILED — aborting deploy (containers were NOT recreated)"; exit 1; }
 
             echo "===> Running tenant schema migration (idempotent)..."
+            # Kept tolerant (|| true): one problematic tenant schema must not block
+            # the whole platform deploy. Per-tenant failures are logged by the script.
             $DC \
               run --rm api npm run migrate:tenants || true
 
             echo "===> Seeding billing_plans (idempotent upsert)..."
+            # No "|| true": the seed is create-only; a failure here means a real DB
+            # problem, so abort rather than deploy against a bad plan catalog.
             $DC \
-              run --rm api node prisma/seed-billing-plans.js || true
+              run --rm api node prisma/seed-billing-plans.js \
+              || { echo "::error::billing_plans seed FAILED — aborting deploy"; exit 1; }
 
             echo "===> Syncing billing plans to MercadoPago (Colombia)..."
             # Per-country sync. Colombia is the primary launch market. To add

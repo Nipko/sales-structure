@@ -116,7 +116,23 @@ export class MercadoPagoAdapter implements IPaymentProvider {
                 : 'https://admin.parallly-chat.cloud/admin/settings/billing?status=return',
         };
 
-        const res = await this.mpConfig.preApprovalPlan.create({ body });
+        let res;
+        try {
+            res = await this.mpConfig.preApprovalPlan.create({ body });
+        } catch (err: any) {
+            // Surface MercadoPago's real error instead of a generic 500 so the
+            // operator knows what to fix. Common one at go-live: "The collector
+            // does not meet the personal data verification requirements" → the
+            // MP production account isn't verified/KYC-complete yet.
+            const mpMsg =
+                err?.cause?.[0]?.description ||
+                err?.cause?.[0]?.message ||
+                err?.cause?.message ||
+                err?.message ||
+                'MercadoPago rechazó la creación del plan';
+            this.logger.error(`MP createPlan rejected for slug=${input.slug}: ${mpMsg}`);
+            throw new BadRequestException({ error: 'mp_plan_create_rejected', message: mpMsg });
+        }
         if (!res.id) {
             throw new BadRequestException({
                 error: 'mp_plan_create_failed',

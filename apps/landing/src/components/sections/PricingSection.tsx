@@ -73,10 +73,14 @@ function mapApiPlans(apiPlans: ApiPlan[]): PlanDef[] {
   for (const ap of apiPlans) {
     const idx = SLUG_TO_PLAN_INDEX[ap.slug];
     if (idx === undefined) continue;
-    // displayPriceCents from billing_plans IS the monthly price (MercadoPago
-    // bills monthly). The annual toggle is a marketing discount (~-17%).
+    // displayPriceCents is the monthly price. The annual card shows the per-month
+    // EQUIVALENT of the annual plan (suffix is always "/mes"), i.e. the yearly
+    // total ÷ 12. Use the real annual price from billing_plans when present; fall
+    // back to a ~-17% estimate only if the plan has no annual price configured.
     const monthlyCents = ap.displayPriceCents;
-    const annualCents = Math.round(monthlyCents * 0.83);
+    const annualCents = ap.displayPriceAnnualCents
+      ? Math.round(ap.displayPriceAnnualCents / 12)
+      : Math.round(monthlyCents * 0.83);
     result[idx] = {
       ...result[idx],
       monthlyPrice: formatCopPrice(monthlyCents),

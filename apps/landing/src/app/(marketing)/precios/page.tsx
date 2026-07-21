@@ -51,7 +51,13 @@ export default function PricingPage() {
     if (!ap) return { monthly: fallbackMonthly, annual: fallbackAnnual };
     return {
       monthly: formatCopPrice(ap.displayPriceCents),
-      annual: formatCopPrice(Math.round(ap.displayPriceCents * 0.83)),
+      // Per-month equivalent of the annual plan (suffix is "/mes"): yearly total ÷ 12.
+      // Real annual price from billing_plans when present; ~-17% estimate as fallback.
+      annual: formatCopPrice(
+        ap.displayPriceAnnualCents
+          ? Math.round(ap.displayPriceAnnualCents / 12)
+          : Math.round(ap.displayPriceCents * 0.83),
+      ),
     };
   };
 

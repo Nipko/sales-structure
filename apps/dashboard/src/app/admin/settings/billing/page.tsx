@@ -33,6 +33,10 @@ interface Plan {
     displayPriceCents?: number;
     displayCurrency?: string;
     priceSource?: "override" | "fx" | "usd";
+    /** Annual cycle (override-only): total yearly charge + its MP plan id + discount %. */
+    displayPriceAnnualCents?: number | null;
+    mpPlanIdAnnual?: string | null;
+    annualDiscountPct?: number | null;
 }
 
 interface Payment {
@@ -219,6 +223,8 @@ export default function BillingPage() {
         return "pending";
     }, [fiscalData]);
 
+    const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
+
     const handleUpgrade = async (planSlug: string, cardTokenId?: string) => {
         if (!activeTenantId) return;
         setAction("upgrade");
@@ -237,14 +243,14 @@ export default function BillingPage() {
             }
 
             if (!subscription) {
-                const res = await api.startBillingTrial(activeTenantId, { planSlug, cardTokenId });
+                const res = await api.startBillingTrial(activeTenantId, { planSlug, cardTokenId, billingCycle });
                 if (!res?.success) {
                     if ((res as any)?.errorCode === "fiscal_data_required") { setModal(null); setFiscalGate(true); return; }
                     throw new Error((res as any)?.error || t("actionFailed"));
                 }
                 setToast(t("trialStarted"));
             } else {
-                const res = await api.upgradeBillingPlan(activeTenantId, { planSlug, cardTokenId });
+                const res = await api.upgradeBillingPlan(activeTenantId, { planSlug, cardTokenId, billingCycle });
                 if (!res?.success) {
                     if ((res as any)?.errorCode === "fiscal_data_required") { setModal(null); setFiscalGate(true); return; }
                     throw new Error((res as any)?.error || t("actionFailed"));
@@ -988,13 +994,34 @@ export default function BillingPage() {
 
             {/* Plans grid */}
             <section id="plans">
-                <h2 className="text-lg font-semibold mb-3">{t("availablePlans")}</h2>
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h2 className="text-lg font-semibold">{t("availablePlans")}</h2>
+                    {plans.some((p) => p.displayPriceAnnualCents) && (
+                        <div className="inline-flex rounded-lg border border-neutral-200 dark:border-neutral-800 p-0.5 text-sm">
+                            <button
+                                onClick={() => setBillingCycle("monthly")}
+                                className={cn("px-3 py-1 rounded-md font-medium transition-colors", billingCycle === "monthly" ? "bg-indigo-500 text-white" : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300")}
+                            >{t("cycleMonthly")}</button>
+                            <button
+                                onClick={() => setBillingCycle("annual")}
+                                className={cn("px-3 py-1 rounded-md font-medium transition-colors inline-flex items-center gap-1", billingCycle === "annual" ? "bg-indigo-500 text-white" : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300")}
+                            >
+                                {t("cycleAnnual")}
+                                {(() => { const pct = plans.map((p) => p.annualDiscountPct).find(Boolean); return pct ? <span className="text-[10px] text-emerald-500 font-semibold">-{pct}%</span> : null; })()}
+                            </button>
+                        </div>
+                    )}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {plans
                         .filter((p) => p.slug !== "custom")
                         .map((plan) => {
-                            const isCurrent = subscription?.planId === plan.id;
+                            const currentCycle = (subscription as any)?.billingCycle === "annual" ? "annual" : "monthly";
+                            const isCurrent = subscription?.planId === plan.id && currentCycle === billingCycle;
+                            const isCycleSwitch = subscription?.planId === plan.id && currentCycle !== billingCycle;
                             const isDowngrade = currentPlan && plan.priceUsdCents < currentPlan.priceUsdCents;
+                            const showAnnual = billingCycle === "annual" && !!plan.displayPriceAnnualCents;
+                            const priceCents = showAnnual ? plan.displayPriceAnnualCents! : (plan.displayPriceCents ?? plan.priceUsdCents);
                             const Icon = PLAN_ICON[plan.slug] ?? Zap;
                             return (
                                 <div
@@ -1012,11 +1039,11 @@ export default function BillingPage() {
                                     </div>
                                     <p className="mt-3 text-2xl font-bold">
                                         {formatMoney(
-                                            plan.displayPriceCents ?? plan.priceUsdCents,
+                                            priceCents,
                                             plan.displayCurrency ?? "USD",
                                             locale,
                                         )}
-                                        <span className="text-sm font-normal text-neutral-500"> / {t("month")}</span>
+                                        <span className="text-sm font-normal text-neutral-500"> / {showAnnual ? t("perYear") : t("month")}</span>
                                     </p>
                                     {plan.priceSource === "fx" && (
                                         <p className="text-xs text-neutral-400 -mt-1.5">
@@ -1076,6 +1103,7 @@ export default function BillingPage() {
                                     >
                                         {action === "upgrade" && targetPlan === plan.slug ? t("loading") :
                                          isCurrent ? t("currentPlanLabel") :
+                                         isCycleSwitch ? (billingCycle === "annual" ? t("switchToAnnual") : t("switchToMonthly")) :
                                          isDowngrade ? t("downgradeToPlan", { name: plan.name }) :
                                          subscription ? t("upgradeToPlan", { name: plan.name }) :
                                          t("startTrial")}

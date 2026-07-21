@@ -13,6 +13,11 @@ export interface ApiPlan {
     displayPriceCents: number;
     displayCurrency: string;
     priceSource: 'override' | 'fx' | 'usd';
+    /** Total yearly charge in displayCurrency (override-only). Null when the plan has no annual price. */
+    displayPriceAnnualCents?: number | null;
+    mpPlanIdAnnual?: string | null;
+    /** % discount of the annual total vs paying the monthly price 12×. */
+    annualDiscountPct?: number | null;
 }
 
 export async function fetchPlans(country = 'CO'): Promise<ApiPlan[] | null> {

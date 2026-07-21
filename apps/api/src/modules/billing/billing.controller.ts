@@ -229,6 +229,7 @@ export class BillingController {
                 planId: sub.planId,
                 plan: (sub as any).plan,
                 provider: sub.provider,
+                billingCycle: ((sub as any).metadata && typeof (sub as any).metadata === 'object' && (sub as any).metadata.billingCycle === 'annual') ? 'annual' : 'monthly',
                 trialStartedAt: sub.trialStartedAt,
                 trialEndsAt: sub.trialEndsAt,
                 currentPeriodStart: sub.currentPeriodStart,

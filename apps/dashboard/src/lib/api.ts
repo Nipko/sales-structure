@@ -1017,9 +1017,9 @@ export const api = {
     getBillingPlans: (country?: string) => apiGet(`/billing/plans${country ? `?country=${encodeURIComponent(country)}` : ""}`),
     getBillingSubscription: (tenantId: string) =>
         apiGet(`/billing/${tenantId}/subscription`),
-    startBillingTrial: (tenantId: string, data: { planSlug: string; cardTokenId?: string; billingEmail?: string; billingCountry?: string }) =>
+    startBillingTrial: (tenantId: string, data: { planSlug: string; cardTokenId?: string; billingEmail?: string; billingCountry?: string; billingCycle?: 'monthly' | 'annual' }) =>
         apiPost(`/billing/${tenantId}/subscription`, data),
-    upgradeBillingPlan: (tenantId: string, data: { planSlug: string; cardTokenId?: string }) =>
+    upgradeBillingPlan: (tenantId: string, data: { planSlug: string; cardTokenId?: string; billingCycle?: 'monthly' | 'annual' }) =>
         apiPost(`/billing/${tenantId}/subscription/upgrade`, data),
     cancelBillingSubscription: (tenantId: string, data: { immediate?: boolean; reason?: string }) =>
         apiPost(`/billing/${tenantId}/subscription/cancel`, data),
@@ -1208,8 +1208,8 @@ export const api = {
         apiGet<{ mercadopago: { environment: 'sandbox' | 'production' | 'unconfigured'; configured: boolean; webhookConfigured: boolean } }>(
             '/billing-admin/provider-status',
         ),
-    syncPlanToMp: (slug: string, body?: { country?: string; fx?: number; force?: boolean }) =>
-        apiPost<{ slug: string; country: string; currency: string; amountCents: number | null; mpPlanId: string; skipped: boolean }>(
+    syncPlanToMp: (slug: string, body?: { country?: string; fx?: number; force?: boolean; cycle?: 'month' | 'year' }) =>
+        apiPost<{ slug: string; country: string; currency: string; cycle?: 'month' | 'year'; amountCents: number | null; mpPlanId: string; skipped: boolean }>(
             `/billing-admin/plans/${slug}/sync-mp`,
             body || {},
         ),

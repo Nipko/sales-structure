@@ -15,14 +15,14 @@
 
 set -euo pipefail
 
-# ── Load production env (offsite credentials, dirs) ──
+# ── Read config from the production .env WITHOUT sourcing it ──
+# The deploy writes unquoted values with shell-special chars, so `. .env` breaks
+# the parser. Extract only the keys we need, literally.
 ENV_FILE="${ENV_FILE:-/opt/parallext-engine/.env}"
-if [ -f "${ENV_FILE}" ]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "${ENV_FILE}" || echo "  WARN: could not source ${ENV_FILE}"
-  set +a
-fi
+env_get() {
+  [ -f "${ENV_FILE}" ] || return 0
+  grep -E "^${1}=" "${ENV_FILE}" 2>/dev/null | tail -1 | cut -d= -f2-
+}
 
 # Configuration
 DB_HOST="${DATABASE_HOST:-localhost}"
@@ -35,15 +35,16 @@ INVOICES_DIR="${INVOICES_DIR:-/var/lib/docker/volumes/parallext-fiscal-data/_dat
 REDIS_CONTAINER="${REDIS_CONTAINER:-parallext-redis}"
 # pg_restore runs inside the postgres container (no host postgresql-client needed).
 PG_CONTAINER="${PG_CONTAINER:-parallext-postgres}"
+DB_PASSWORD="${DB_PASSWORD:-$(env_get DB_PASSWORD)}"
 
 # Offsite (S3-compatible) — same vars as backup.sh
-OFFSITE_BUCKET="${OFFSITE_BUCKET:-}"
-OFFSITE_PATH="${OFFSITE_PATH:-parallext}"
-OFFSITE_PROVIDER="${OFFSITE_PROVIDER:-AWS}"
-OFFSITE_REGION="${OFFSITE_REGION:-us-east-1}"
-OFFSITE_ENDPOINT="${OFFSITE_ENDPOINT:-}"
-OFFSITE_ACCESS_KEY="${OFFSITE_ACCESS_KEY:-}"
-OFFSITE_SECRET_KEY="${OFFSITE_SECRET_KEY:-}"
+OFFSITE_BUCKET="${OFFSITE_BUCKET:-$(env_get OFFSITE_BUCKET)}"
+OFFSITE_PATH="${OFFSITE_PATH:-$(env_get OFFSITE_PATH)}";           OFFSITE_PATH="${OFFSITE_PATH:-parallext}"
+OFFSITE_PROVIDER="${OFFSITE_PROVIDER:-$(env_get OFFSITE_PROVIDER)}"; OFFSITE_PROVIDER="${OFFSITE_PROVIDER:-AWS}"
+OFFSITE_REGION="${OFFSITE_REGION:-$(env_get OFFSITE_REGION)}";     OFFSITE_REGION="${OFFSITE_REGION:-us-east-1}"
+OFFSITE_ENDPOINT="${OFFSITE_ENDPOINT:-$(env_get OFFSITE_ENDPOINT)}"
+OFFSITE_ACCESS_KEY="${OFFSITE_ACCESS_KEY:-$(env_get OFFSITE_ACCESS_KEY)}"
+OFFSITE_SECRET_KEY="${OFFSITE_SECRET_KEY:-$(env_get OFFSITE_SECRET_KEY)}"
 
 # Configure the rclone remote from env (no rclone.conf needed).
 setup_offsite() {

@@ -15,17 +15,17 @@
 
 set -euo pipefail
 
-# ── Load production env (offsite credentials, etc.) ──
-# The deploy regenerates /opt/parallext-engine/.env from GitHub Secrets; sourcing
-# it here means OFFSITE_* config is managed the same way as every other secret
-# and never has to be hand-edited on the VPS (which a deploy would revert).
+# ── Read config from the production .env WITHOUT sourcing it ──
+# The deploy writes the .env with UNQUOTED values that contain shell-special
+# chars (spaces, <>, @ — e.g. SMTP_FROM=Parallly <no-reply@...>), so `. .env`
+# breaks the parser. Extract only the keys we need, literally: everything after
+# the first '=' on the matching line. grep-no-match returns empty (pipe ends in
+# cut → exit 0), so this is safe under `set -e`.
 ENV_FILE="${ENV_FILE:-/opt/parallext-engine/.env}"
-if [ -f "${ENV_FILE}" ]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "${ENV_FILE}" || echo "  WARN: could not source ${ENV_FILE}"
-  set +a
-fi
+env_get() {
+  [ -f "${ENV_FILE}" ] || return 0
+  grep -E "^${1}=" "${ENV_FILE}" 2>/dev/null | tail -1 | cut -d= -f2-
+}
 
 # ── Configuration ──
 DB_HOST="${DATABASE_HOST:-localhost}"
@@ -39,6 +39,8 @@ REDIS_CONTAINER="${REDIS_CONTAINER:-parallext-redis}"
 # Run pg_dump/psql INSIDE the postgres container so the host does not need
 # postgresql-client installed and the client version always matches the server.
 PG_CONTAINER="${PG_CONTAINER:-parallext-postgres}"
+DB_PASSWORD="${DB_PASSWORD:-$(env_get DB_PASSWORD)}"
+REDIS_PASSWORD="${REDIS_PASSWORD:-$(env_get REDIS_PASSWORD)}"
 
 # ── Offsite (S3-compatible) ──
 # Set these in GitHub Secrets → injected into .env by deploy.yml. Leave
@@ -49,13 +51,13 @@ PG_CONTAINER="${PG_CONTAINER:-parallext-postgres}"
 #   OFFSITE_REGION    e.g. "us-east-1" (AWS) or "auto" (R2)
 #   OFFSITE_ENDPOINT  empty for AWS; the account endpoint for R2/B2
 #   OFFSITE_ACCESS_KEY / OFFSITE_SECRET_KEY
-OFFSITE_BUCKET="${OFFSITE_BUCKET:-}"
-OFFSITE_PATH="${OFFSITE_PATH:-parallext}"
-OFFSITE_PROVIDER="${OFFSITE_PROVIDER:-AWS}"
-OFFSITE_REGION="${OFFSITE_REGION:-us-east-1}"
-OFFSITE_ENDPOINT="${OFFSITE_ENDPOINT:-}"
-OFFSITE_ACCESS_KEY="${OFFSITE_ACCESS_KEY:-}"
-OFFSITE_SECRET_KEY="${OFFSITE_SECRET_KEY:-}"
+OFFSITE_BUCKET="${OFFSITE_BUCKET:-$(env_get OFFSITE_BUCKET)}"
+OFFSITE_PATH="${OFFSITE_PATH:-$(env_get OFFSITE_PATH)}";           OFFSITE_PATH="${OFFSITE_PATH:-parallext}"
+OFFSITE_PROVIDER="${OFFSITE_PROVIDER:-$(env_get OFFSITE_PROVIDER)}"; OFFSITE_PROVIDER="${OFFSITE_PROVIDER:-AWS}"
+OFFSITE_REGION="${OFFSITE_REGION:-$(env_get OFFSITE_REGION)}";     OFFSITE_REGION="${OFFSITE_REGION:-us-east-1}"
+OFFSITE_ENDPOINT="${OFFSITE_ENDPOINT:-$(env_get OFFSITE_ENDPOINT)}"
+OFFSITE_ACCESS_KEY="${OFFSITE_ACCESS_KEY:-$(env_get OFFSITE_ACCESS_KEY)}"
+OFFSITE_SECRET_KEY="${OFFSITE_SECRET_KEY:-$(env_get OFFSITE_SECRET_KEY)}"
 
 # Retention
 DAILY_KEEP=7

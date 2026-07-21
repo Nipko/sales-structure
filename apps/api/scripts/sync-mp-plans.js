@@ -61,9 +61,15 @@ function parseArgs() {
             process.exit(1);
         }
     }
+    // --cycle=annual (alias --cycle=year) creates the ANNUAL preapproval_plan
+    // (frequency 12 months) and stores its id under overrides[country].annual.mpPlanId
+    // without touching the monthly slot. Default is monthly.
+    const cycleRaw = get('cycle');
+    const cycle = (cycleRaw === 'annual' || cycleRaw === 'year') ? 'year' : 'month';
     return {
         country,
         fx,
+        cycle,
         dryRun: argv.includes('--dry-run'),
         force: argv.includes('--force'),
     };
@@ -96,14 +102,26 @@ async function main() {
             ? { ...plan.priceLocalOverrides }
             : {};
         const existingOverride = priceLocalOverrides[args.country];
+        const isAnnual = args.cycle === 'year';
 
-        if (existingOverride && existingOverride.mpPlanId && !args.force) {
-            console.log(`  [${plan.slug}] already synced for ${args.country} (mpPlanId=${existingOverride.mpPlanId}) — skipping. Use --force to re-create.`);
+        // Idempotent PER CYCLE — skip only if THIS cycle's plan already exists.
+        const existingCycleId = isAnnual ? existingOverride?.annual?.mpPlanId : existingOverride?.mpPlanId;
+        if (existingCycleId && !args.force) {
+            console.log(`  [${plan.slug}] ${args.cycle} already synced for ${args.country} (mpPlanId=${existingCycleId}) — skipping. Use --force to re-create.`);
             continue;
         }
 
         let localAmountCents;
-        if (existingOverride?.amountCents) {
+        if (isAnnual) {
+            // Annual has no USD/FX source — the yearly total must be seeded in
+            // overrides[country].annual.amountCents.
+            if (existingOverride?.annual?.amountCents) {
+                localAmountCents = existingOverride.annual.amountCents;
+            } else {
+                console.error(`  [${plan.slug}] no annual price in DB for ${args.country} (overrides.${args.country}.annual.amountCents) — skipping.`);
+                continue;
+            }
+        } else if (existingOverride?.amountCents) {
             localAmountCents = existingOverride.amountCents;
         } else if (args.fx) {
             localAmountCents = Math.round(plan.priceUsdCents * args.fx);
@@ -113,9 +131,9 @@ async function main() {
         }
 
         const body = {
-            reason: `${plan.name} — Parallly ${args.country}`,
+            reason: `${plan.name} — Parallly ${args.country}${isAnnual ? ' (Anual)' : ''}`,
             auto_recurring: {
-                frequency: 1,
+                frequency: isAnnual ? 12 : 1,
                 frequency_type: 'months',
                 transaction_amount: localAmountCents / 100,
                 currency_id: currency,
@@ -126,7 +144,7 @@ async function main() {
             back_url: 'https://admin.parallly-chat.cloud/admin/settings/billing?status=return',
         };
 
-        console.log(`  [${plan.slug}] creating MP plan: ${currency} ${(localAmountCents / 100).toLocaleString('es-CO')}/mes…`);
+        console.log(`  [${plan.slug}] creating MP ${args.cycle} plan: ${currency} ${(localAmountCents / 100).toLocaleString('es-CO')}${isAnnual ? '/año' : '/mes'}…`);
 
         if (args.dryRun) {
             console.log(`    (dry-run) body:`, JSON.stringify(body, null, 2));
@@ -139,15 +157,24 @@ async function main() {
             continue;
         }
 
-        priceLocalOverrides[args.country] = {
-            ...(existingOverride ?? {}),
-            currency,
-            amountCents: localAmountCents,
-            mpPlanId: res.id,
-        };
+        // Merge into the SAME country object so the other cycle's id survives.
+        if (isAnnual) {
+            priceLocalOverrides[args.country] = {
+                ...(existingOverride ?? {}),
+                annual: { ...(existingOverride?.annual ?? {}), currency, amountCents: localAmountCents, mpPlanId: res.id },
+            };
+        } else {
+            priceLocalOverrides[args.country] = {
+                ...(existingOverride ?? {}),
+                currency,
+                amountCents: localAmountCents,
+                mpPlanId: res.id,
+            };
+        }
 
         const updateData = { priceLocalOverrides };
-        if (args.country === 'CO') {
+        // Legacy top-level column: CO monthly only (annual id lives in the override).
+        if (args.country === 'CO' && !isAnnual) {
             updateData.mpPlanId = res.id;
         }
 

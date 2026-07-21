@@ -39,6 +39,10 @@ class StartTrialDto {
     @IsOptional()
     @IsString()
     billingCountry?: string;
+
+    @IsOptional()
+    @IsIn(['monthly', 'annual'])
+    billingCycle?: 'monthly' | 'annual';
 }
 
 class ChangePlanDto {
@@ -49,6 +53,10 @@ class ChangePlanDto {
     @IsOptional()
     @IsString()
     cardTokenId?: string;
+
+    @IsOptional()
+    @IsIn(['monthly', 'annual'])
+    billingCycle?: 'monthly' | 'annual';
 }
 
 class CancelSubscriptionDto {
@@ -134,11 +142,24 @@ export class BillingController {
                 priceSource = 'fx';
             }
 
+            // Annual cycle (override-only): the total yearly charge + its MP plan
+            // id, plus the % discount vs paying the monthly price 12×.
+            const annual = countryOverride?.annual;
+            const displayPriceAnnualCents: number | null = annual?.amountCents ?? null;
+            const mpPlanIdAnnual: string | null = annual?.mpPlanId ?? null;
+            const annualDiscountPct: number | null =
+                displayPriceAnnualCents && displayPriceCents > 0
+                    ? Math.round((1 - displayPriceAnnualCents / (displayPriceCents * 12)) * 100)
+                    : null;
+
             return {
                 ...p,
                 displayPriceCents,
                 displayCurrency,
                 priceSource,
+                displayPriceAnnualCents,
+                mpPlanIdAnnual,
+                annualDiscountPct,
             };
         });
 
@@ -239,6 +260,7 @@ export class BillingController {
             cardTokenId: body.cardTokenId,
             billingEmail: body.billingEmail,
             billingCountry: body.billingCountry,
+            billingCycle: body.billingCycle,
         });
         return { success: true, data: subscription };
     }
@@ -251,7 +273,7 @@ export class BillingController {
     @Post(':tenantId/subscription/upgrade')
     @UseGuards(AuthGuard('jwt'))
     async upgrade(@Param('tenantId') tenantId: string, @Body() body: ChangePlanDto) {
-        const updated = await this.billingService.upgradeSubscription(tenantId, body.planSlug, body.cardTokenId);
+        const updated = await this.billingService.upgradeSubscription(tenantId, body.planSlug, body.cardTokenId, body.billingCycle);
         return { success: true, data: updated };
     }
 

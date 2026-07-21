@@ -8,6 +8,15 @@ import { SubscriptionStatus } from './subscription-status.enum';
  */
 export type PaymentProviderName = 'mercadopago' | 'stripe' | 'mock';
 
+/**
+ * Billing cycle chosen for a subscription. Stored on billing_subscriptions
+ * (metadata.billingCycle) and used to resolve which preapproval_plan to bind:
+ * monthly → priceLocalOverrides[country].mpPlanId, annual →
+ * priceLocalOverrides[country].annual.mpPlanId. Maps to the provider's
+ * billingInterval ('monthly'→'month', 'annual'→'year').
+ */
+export type BillingCycle = 'monthly' | 'annual';
+
 // -----------------------------------------------------------------------------
 // Customer
 // -----------------------------------------------------------------------------
@@ -87,6 +96,12 @@ export interface CreateSubscriptionInput {
     trialDays?: number;
     /** Short-lived card token from the provider's client-side SDK. Some flows (Starter, no-card trial) omit this. */
     cardTokenId?: string;
+    /**
+     * Billing interval this subscription runs on. Informational only — the real
+     * cycle is frozen in the preapproval_plan that providerPlanId points to. Used
+     * for logging/telemetry. Defaults to 'month'.
+     */
+    billingInterval?: 'month' | 'year';
     /** Arbitrary metadata passed through to the provider for later correlation. */
     metadata?: Record<string, string>;
     /**

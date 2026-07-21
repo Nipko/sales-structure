@@ -44,11 +44,24 @@ export class BillingPublicController {
                 priceSource = 'fx';
             }
 
+            // Annual cycle (override-only): total yearly charge + its MP plan id +
+            // the % discount vs paying the monthly price 12×.
+            const annual = countryOverride?.annual;
+            const displayPriceAnnualCents: number | null = annual?.amountCents ?? null;
+            const mpPlanIdAnnual: string | null = annual?.mpPlanId ?? null;
+            const annualDiscountPct: number | null =
+                displayPriceAnnualCents && displayPriceCents > 0
+                    ? Math.round((1 - displayPriceAnnualCents / (displayPriceCents * 12)) * 100)
+                    : null;
+
             return {
                 ...p,
                 displayPriceCents,
                 displayCurrency,
                 priceSource,
+                displayPriceAnnualCents,
+                mpPlanIdAnnual,
+                annualDiscountPct,
             };
         });
 

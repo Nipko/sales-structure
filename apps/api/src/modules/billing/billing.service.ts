@@ -7,6 +7,7 @@ import { PaymentProviderFactory } from './payment-provider.factory';
 import { BillingEventType } from './types/billing-event.enum';
 import { SubscriptionStatus } from './types/subscription-status.enum';
 import {
+    BillingCycle,
     CancelSubscriptionOptions,
     NormalizedBillingEvent,
     PaymentProviderName,
@@ -97,7 +98,10 @@ export class BillingService {
         billingCountry?: string;
         /** Short-lived card token from the provider client SDK. Required for Pro/Enterprise (requiresCardForTrial=true). */
         cardTokenId?: string;
+        /** Billing cycle chosen at signup. Persisted so trial→paid conversion binds the right (monthly/annual) plan. Defaults to monthly. */
+        billingCycle?: BillingCycle;
     }) {
+        const billingCycle: BillingCycle = input.billingCycle === 'annual' ? 'annual' : 'monthly';
         const tenant = await this.prisma.tenant.findUnique({ where: { id: input.tenantId } });
         if (!tenant) throw new NotFoundException({ error: 'tenant_not_found', tenantId: input.tenantId });
 
@@ -164,9 +168,10 @@ export class BillingService {
             : await provider.createSubscription({
                   tenantId: tenant.id,
                   providerCustomerId: providerCustomerId!,
-                  providerPlanId: this.resolveProviderPlanId(plan, providerName, input.billingCountry ?? tenant.billingCountry),
+                  providerPlanId: this.resolveProviderPlanId(plan, providerName, input.billingCountry ?? tenant.billingCountry, billingCycle),
                   trialDays: plan.trialDays > 0 ? plan.trialDays : undefined,
                   cardTokenId: input.cardTokenId,
+                  billingInterval: billingCycle === 'annual' ? 'year' : 'month',
                   externalReference: tenant.id,
                   metadata: {
                       email: input.billingEmail || tenant.billingEmail || '',
@@ -191,6 +196,7 @@ export class BillingService {
                     currentPeriodStart: providerSub.currentPeriodStart ?? null,
                     currentPeriodEnd: providerSub.currentPeriodEnd ?? null,
                     cancelAtPeriodEnd: providerSub.cancelAtPeriodEnd,
+                    metadata: { billingCycle } as Prisma.InputJsonValue,
                 },
             });
 
@@ -228,23 +234,29 @@ export class BillingService {
     // Upgrade / downgrade
     // -------------------------------------------------------------------------
 
-    async upgradeSubscription(tenantId: string, newPlanSlug: string, cardTokenId?: string) {
+    async upgradeSubscription(tenantId: string, newPlanSlug: string, cardTokenId?: string, billingCycle?: BillingCycle) {
         const sub = await this.requireSubscription(tenantId);
         const newPlan = await this.prisma.billingPlan.findUnique({ where: { slug: newPlanSlug } });
         if (!newPlan || !newPlan.isActive) throw new NotFoundException({ error: 'plan_not_found', planSlug: newPlanSlug });
-        if (newPlan.id === sub.planId) {
-            throw new BadRequestException({ error: 'same_plan', message: 'Tenant is already on this plan.' });
+
+        const currentCycle = this.subscriptionCycle(sub);
+        const targetCycle: BillingCycle = billingCycle ?? currentCycle;
+        const sameTier = newPlan.id === sub.planId;
+        const cycleChanged = targetCycle !== currentCycle;
+        if (sameTier && !cycleChanged) {
+            throw new BadRequestException({ error: 'same_plan', message: 'Tenant is already on this plan and billing cycle.' });
         }
 
         // Detect upgrade vs downgrade by comparing prices in USD cents.
-        // A downgrade goes through a different path: we don't cancel + recreate
-        // immediately (which would force the user to pay again). Instead we
-        // schedule the change for currentPeriodEnd and the daily cron applies
-        // it. The user keeps the higher-tier features until then.
+        // A pure downgrade (lower tier, SAME cycle) is scheduled for period end so
+        // the user isn't re-charged; the user keeps the higher-tier features until
+        // then. A cycle change (monthly↔annual) always needs a NEW preapproval_plan
+        // in MP (different frequency), so it goes through the immediate
+        // cancel+recreate path regardless of tier direction.
         const currentPlan = await this.prisma.billingPlan.findUnique({ where: { id: sub.planId } });
         const isDowngrade = (currentPlan?.priceUsdCents ?? 0) > newPlan.priceUsdCents;
-        if (isDowngrade) {
-            return this.scheduleDowngrade(tenantId, sub.id, newPlan.id);
+        if (isDowngrade && !cycleChanged) {
+            return this.scheduleDowngrade(tenantId, sub.id, newPlan.id, currentCycle);
         }
 
         const providerName = sub.provider as PaymentProviderName;
@@ -255,7 +267,7 @@ export class BillingService {
         });
         // Fiscal gate: require DIAN tax identity before charging an upgrade.
         await this.assertFiscalDataReady(tenant);
-        const newProviderPlanId = this.resolveProviderPlanId(newPlan, providerName, tenant?.billingCountry);
+        const newProviderPlanId = this.resolveProviderPlanId(newPlan, providerName, tenant?.billingCountry, targetCycle);
 
         let updatedStatus = sub.status;
         let currentPeriodStart = sub.currentPeriodStart;
@@ -291,6 +303,7 @@ export class BillingService {
                 providerCustomerId: custId,
                 providerPlanId: newProviderPlanId,
                 cardTokenId,
+                billingInterval: targetCycle === 'annual' ? 'year' : 'month',
                 metadata: { email: payerEmail, billingEmail: payerEmail },
             });
 
@@ -322,6 +335,10 @@ export class BillingService {
                 currentPeriodStart: currentPeriodStart ?? sub.currentPeriodStart,
                 currentPeriodEnd: currentPeriodEnd ?? sub.currentPeriodEnd,
                 providerSubscriptionId: newProviderSubscriptionId,
+                metadata: {
+                    ...(sub.metadata && typeof sub.metadata === 'object' ? (sub.metadata as any) : {}),
+                    billingCycle: targetCycle,
+                } as Prisma.InputJsonValue,
             },
         });
         await this.prisma.tenant.update({
@@ -346,13 +363,15 @@ export class BillingService {
      * provider — the user keeps their higher tier features until period end,
      * then the daily cron (applyPendingPlanChanges) flips planId.
      */
-    private async scheduleDowngrade(tenantId: string, subscriptionId: string, targetPlanId: string) {
+    private async scheduleDowngrade(tenantId: string, subscriptionId: string, targetPlanId: string, cycle: BillingCycle = 'monthly') {
         const sub = await this.prisma.billingSubscription.findUnique({ where: { id: subscriptionId } });
         if (!sub) throw new NotFoundException({ error: 'subscription_not_found' });
 
-        // Effective date: end of current period if present, otherwise +30 days.
+        // Effective date: end of current period if present, otherwise fall back to
+        // one cycle out (+365d for annual, +30d for monthly).
+        const fallbackDays = cycle === 'annual' ? 365 : 30;
         const effectiveAt = sub.currentPeriodEnd
-            ?? new Date(Date.now() + 30 * 86_400_000);
+            ?? new Date(Date.now() + fallbackDays * 86_400_000);
 
         const updated = await this.prisma.billingSubscription.update({
             where: { id: subscriptionId },
@@ -469,7 +488,7 @@ export class BillingService {
                 // must never undo it, so this runs in its own try/catch and is
                 // recorded for manual follow-up instead of throwing.
                 if (sub.provider === 'mercadopago' && sub.providerSubscriptionId && newPlan) {
-                    await this.syncDowngradeToProvider(sub, newPlan, billingCountry);
+                    await this.syncDowngradeToProvider(sub, newPlan, billingCountry, this.subscriptionCycle(sub));
                 }
             } catch (e: any) {
                 this.logger.error(`[Billing] Failed to apply pending change for ${sub.id}: ${e.message}`);
@@ -492,18 +511,21 @@ export class BillingService {
         sub: { id: string; tenantId: string; provider: string; providerSubscriptionId: string | null },
         newPlan: { mpPlanId: string | null; priceLocalOverrides: any },
         billingCountry: string | null,
+        cycle: BillingCycle = 'monthly',
     ): Promise<void> {
         try {
             const overrides = (newPlan.priceLocalOverrides && typeof newPlan.priceLocalOverrides === 'object')
                 ? (newPlan.priceLocalOverrides as Record<string, any>)
                 : {};
             const country = billingCountry?.toUpperCase();
-            const providerPlanId = (country && overrides[country]?.mpPlanId)
-                ? overrides[country].mpPlanId
-                : newPlan.mpPlanId;
+            // Annual fails closed: never fall back to the monthly id (would charge
+            // the wrong amount on the next cycle).
+            const providerPlanId = cycle === 'annual'
+                ? (country ? overrides[country]?.annual?.mpPlanId : undefined)
+                : ((country && overrides[country]?.mpPlanId) ? overrides[country].mpPlanId : newPlan.mpPlanId);
 
             if (!providerPlanId) {
-                throw new Error(`no MercadoPago plan id for country ${country ?? '(default)'}`);
+                throw new Error(`no MercadoPago ${cycle} plan id for country ${country ?? '(default)'}`);
             }
 
             const provider = this.providerFactory.getByName('mercadopago');
@@ -1090,13 +1112,21 @@ export class BillingService {
         plan: { mpPlanId: string | null; stripePlanId: string | null; priceLocalOverrides: any },
         providerName: PaymentProviderName,
         billingCountry?: string | null,
+        cycle: BillingCycle = 'monthly',
     ): string {
         let id: string | null | undefined;
         if (providerName === 'mercadopago') {
             const overrides = (plan.priceLocalOverrides && typeof plan.priceLocalOverrides === 'object') ? plan.priceLocalOverrides : {};
             const country = billingCountry?.toUpperCase();
-            if (country && overrides[country]?.mpPlanId) {
-                id = overrides[country].mpPlanId;
+            const countryOverride = country ? overrides[country] : undefined;
+            if (cycle === 'annual') {
+                // Fail closed: the annual preapproval_plan must exist explicitly.
+                // Never fall back to the monthly id (plan.mpPlanId / overrides.mpPlanId)
+                // for an annual subscription — that would silently charge the
+                // MONTHLY amount on a yearly cadence.
+                id = countryOverride?.annual?.mpPlanId;
+            } else if (countryOverride?.mpPlanId) {
+                id = countryOverride.mpPlanId;
             } else {
                 id = plan.mpPlanId;
             }
@@ -1109,12 +1139,19 @@ export class BillingService {
         if (!id) {
             throw new BadRequestException({
                 error: 'provider_plan_not_configured',
-                message: `This plan is not registered with ${providerName} for country ${billingCountry ?? '(default)'} yet. Run the plan sync script for that provider/country.`,
+                message: `This plan is not registered with ${providerName} for country ${billingCountry ?? '(default)'} (${cycle}) yet. Run the plan sync for that provider/country/cycle.`,
                 providerName,
                 billingCountry,
+                cycle,
             });
         }
         return id;
+    }
+
+    /** Read the billing cycle a subscription runs on (persisted in metadata). Defaults to monthly. */
+    private subscriptionCycle(sub: { metadata?: any } | null | undefined): BillingCycle {
+        const raw = sub?.metadata && typeof sub.metadata === 'object' ? (sub.metadata as any).billingCycle : undefined;
+        return raw === 'annual' ? 'annual' : 'monthly';
     }
 
     /**

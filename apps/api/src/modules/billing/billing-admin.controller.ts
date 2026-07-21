@@ -75,6 +75,10 @@ class SyncMpPlanDto {
     // Recreate the preapproval_plan in MP even if one already exists (e.g. after
     // a price change). MP cannot delete plans, so this orphans the old one.
     @IsOptional() @IsBoolean() force?: boolean;
+    // Which billing cycle to register in MP. 'month' (default) creates the monthly
+    // preapproval_plan; 'year' creates a SEPARATE annual one (frequency 12 months)
+    // and stores its id under priceLocalOverrides[country].annual.mpPlanId.
+    @IsOptional() @IsIn(['month', 'year']) cycle?: 'month' | 'year';
 }
 
 class ReconcileDto {
@@ -290,14 +294,30 @@ export class BillingAdminController {
             ? { ...(plan.priceLocalOverrides as any) }
             : {};
         const existing = overrides[country];
+        const isAnnual = body.cycle === 'year';
 
-        // Idempotent: an already-synced plan is skipped unless force=true.
-        if (existing?.mpPlanId && !body.force) {
-            return { success: true, data: { slug, country, currency, mpPlanId: existing.mpPlanId, amountCents: existing.amountCents ?? null, skipped: true } };
+        // Idempotent PER CYCLE: skip only if THIS cycle's plan already exists.
+        // (Without this, an annual sync would be skipped just because the monthly
+        // plan exists, and the annual preapproval_plan would never be created.)
+        const existingCycleId = isAnnual ? existing?.annual?.mpPlanId : existing?.mpPlanId;
+        if (existingCycleId && !body.force) {
+            return { success: true, data: { slug, country, currency, cycle: isAnnual ? 'year' : 'month', mpPlanId: existingCycleId, amountCents: (isAnnual ? existing?.annual?.amountCents : existing?.amountCents) ?? null, skipped: true } };
         }
 
+        // Amount source. Monthly: local override or priceUsdCents×fx. Annual: the
+        // stored annual override only — the yearly total has no USD/FX source, so
+        // set it via the plan editor or the seed (priceLocalOverrides[CO].annual).
         let amountCents: number;
-        if (existing?.amountCents) {
+        if (isAnnual) {
+            if (existing?.annual?.amountCents) {
+                amountCents = existing.annual.amountCents;
+            } else {
+                throw new BadRequestException({
+                    error: 'no_annual_price',
+                    message: `No hay precio ANUAL local para ${country}. Definí priceLocalOverrides.${country}.annual.amountCents (total del año en centavos) antes de sincronizar el ciclo anual.`,
+                });
+            }
+        } else if (existing?.amountCents) {
             amountCents = existing.amountCents;
         } else if (body.fx) {
             amountCents = Math.round(plan.priceUsdCents * body.fx);
@@ -310,17 +330,26 @@ export class BillingAdminController {
 
         const providerPlan = await this.mp.createPlan({
             slug: plan.slug,
-            name: `${plan.name} — Parallly ${country}`,
+            name: `${plan.name} — Parallly ${country}${isAnnual ? ' (Anual)' : ''}`,
             amountCents,
             currency,
-            billingInterval: 'month',
+            billingInterval: isAnnual ? 'year' : 'month',
             trialDays: 0,
         });
 
-        overrides[country] = { ...(existing ?? {}), currency, amountCents, mpPlanId: providerPlan.providerPlanId };
+        // Merge into the SAME country object so the other cycle's id is preserved.
+        if (isAnnual) {
+            overrides[country] = {
+                ...(existing ?? {}),
+                annual: { ...(existing?.annual ?? {}), currency, amountCents, mpPlanId: providerPlan.providerPlanId },
+            };
+        } else {
+            overrides[country] = { ...(existing ?? {}), currency, amountCents, mpPlanId: providerPlan.providerPlanId };
+        }
         const data: any = { priceLocalOverrides: overrides };
-        // Keep the legacy top-level column in sync for CO (resolveProviderPlanId fallback).
-        if (country === 'CO') data.mpPlanId = providerPlan.providerPlanId;
+        // Keep the legacy top-level column in sync for CO MONTHLY (resolveProviderPlanId fallback).
+        // Annual has no legacy column — its id lives only in the override.
+        if (country === 'CO' && !isAnnual) data.mpPlanId = providerPlan.providerPlanId;
         await this.prisma.billingPlan.update({ where: { slug }, data });
 
         await this.prisma.auditLog.create({
@@ -329,11 +358,11 @@ export class BillingAdminController {
                 userId: req.user?.sub,
                 action: 'billing_plan_synced_mp',
                 resource: `billing-plans/${slug}`,
-                details: { country, currency, amountCents, mpPlanId: providerPlan.providerPlanId, force: !!body.force },
+                details: { country, currency, cycle: isAnnual ? 'year' : 'month', amountCents, mpPlanId: providerPlan.providerPlanId, force: !!body.force },
             },
         });
 
-        return { success: true, data: { slug, country, currency, amountCents, mpPlanId: providerPlan.providerPlanId, skipped: false } };
+        return { success: true, data: { slug, country, currency, cycle: isAnnual ? 'year' : 'month', amountCents, mpPlanId: providerPlan.providerPlanId, skipped: false } };
     }
 
     // ── Reconciliation on-demand ────────────────────────────────

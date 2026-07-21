@@ -41,7 +41,8 @@ const PLANS = [
         maxAiMessages: 1_000,
         sortOrder: 0,
         priceLocalOverrides: {
-            CO: { currency: 'COP', amountCents: 12_570_000 },
+            // amountCents = monthly; annual.amountCents = total year charged (−15% vs 12× monthly).
+            CO: { currency: 'COP', amountCents: 12_570_000, annual: { amountCents: 128_214_000 } },
         },
         features: {
             // ── Resource limits ──
@@ -143,7 +144,7 @@ const PLANS = [
         maxAiMessages: 5_000,
         sortOrder: 1,
         priceLocalOverrides: {
-            CO: { currency: 'COP', amountCents: 27_690_000 },
+            CO: { currency: 'COP', amountCents: 27_690_000, annual: { amountCents: 282_438_000 } },
         },
         features: {
             // ── Resource limits ──
@@ -241,7 +242,7 @@ const PLANS = [
         maxAiMessages: 25_000,
         sortOrder: 2,
         priceLocalOverrides: {
-            CO: { currency: 'COP', amountCents: 75_770_000 },
+            CO: { currency: 'COP', amountCents: 75_770_000, annual: { amountCents: 772_854_000 } },
         },
         features: {
             // ── Resource limits ──
@@ -339,7 +340,7 @@ const PLANS = [
         maxAiMessages: 100_000,
         sortOrder: 3,
         priceLocalOverrides: {
-            CO: { currency: 'COP', amountCents: 178_980_000 },
+            CO: { currency: 'COP', amountCents: 178_980_000, annual: { amountCents: 1_825_596_000 } },
         },
         features: {
             // ── Resource limits ──
@@ -546,7 +547,15 @@ async function main() {
             }
             const mergedOverrides = { ...((existing.priceLocalOverrides && typeof existing.priceLocalOverrides === 'object') ? existing.priceLocalOverrides : {}), ...(plan.priceLocalOverrides ?? {}) };
             for (const [country, vals] of Object.entries(plan.priceLocalOverrides ?? {})) {
-                mergedOverrides[country] = { ...(mergedOverrides[country] ?? {}), ...vals };
+                const prev = mergedOverrides[country] ?? {};
+                const merged = { ...prev, ...vals };
+                // Deep-merge the nested `annual` object so re-seeding the annual
+                // AMOUNT never wipes an already-synced annual.mpPlanId. (The flat
+                // spread above would replace `annual` wholesale otherwise.)
+                if (prev.annual || vals.annual) {
+                    merged.annual = { ...(prev.annual ?? {}), ...(vals.annual ?? {}) };
+                }
+                mergedOverrides[country] = merged;
             }
             await prisma.billingPlan.update({
                 where: { slug: plan.slug },

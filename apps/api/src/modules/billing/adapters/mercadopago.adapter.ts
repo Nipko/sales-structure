@@ -95,7 +95,9 @@ export class MercadoPagoAdapter implements IPaymentProvider {
     // -------------------------------------------------------------------------
 
     async createPlan(input: CreatePlanInput): Promise<ProviderPlan> {
-        const frequencyType = input.billingInterval === 'year' ? 'months' : 'months';
+        // MercadoPago has no 'years' frequency_type for subscriptions — an annual
+        // plan is expressed as 12 months. Monthly is 1 month.
+        const frequencyType = 'months';
         const frequency = input.billingInterval === 'year' ? 12 : 1;
 
         const body = {

@@ -394,6 +394,16 @@ jobs:
           # VAPID keys for push notifications
           PROD_VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
           PROD_VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          # Offsite backups (S3-compatible: AWS S3 / Cloudflare R2 / Backblaze B2).
+          # Read by infra/backup/backup.sh via the generated .env. Leave
+          # OFFSITE_BUCKET empty to keep backups local-only.
+          PROD_OFFSITE_BUCKET: ${{ secrets.OFFSITE_BUCKET }}
+          PROD_OFFSITE_PATH: ${{ secrets.OFFSITE_PATH }}
+          PROD_OFFSITE_PROVIDER: ${{ secrets.OFFSITE_PROVIDER }}
+          PROD_OFFSITE_REGION: ${{ secrets.OFFSITE_REGION }}
+          PROD_OFFSITE_ENDPOINT: ${{ secrets.OFFSITE_ENDPOINT }}
+          PROD_OFFSITE_ACCESS_KEY: ${{ secrets.OFFSITE_ACCESS_KEY }}
+          PROD_OFFSITE_SECRET_KEY: ${{ secrets.OFFSITE_SECRET_KEY }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -420,7 +430,8 @@ jobs:
             PROD_MP_FX_CO,PROD_MP_FX_AR,PROD_MP_FX_MX,PROD_MP_FX_CL,PROD_MP_FX_PE,PROD_MP_FX_UY,PROD_MP_FX_BR,
             PROD_HUBSPOT_CLIENT_ID,PROD_HUBSPOT_CLIENT_SECRET,
             PROD_PIPEDRIVE_CLIENT_ID,PROD_PIPEDRIVE_CLIENT_SECRET,
-            PROD_VAPID_PUBLIC_KEY,PROD_VAPID_PRIVATE_KEY
+            PROD_VAPID_PUBLIC_KEY,PROD_VAPID_PRIVATE_KEY,
+            PROD_OFFSITE_BUCKET,PROD_OFFSITE_PATH,PROD_OFFSITE_PROVIDER,PROD_OFFSITE_REGION,PROD_OFFSITE_ENDPOINT,PROD_OFFSITE_ACCESS_KEY,PROD_OFFSITE_SECRET_KEY
           script_stop: true
           # ↑ timeout: tiempo máximo para ESTABLECER la conexión SSH
           # ↑ command_timeout: tiempo máximo de ejecución del script completo
@@ -543,6 +554,14 @@ jobs:
             # mounted on api+worker (legal 5-year retention). Set explicitly for
             # reproducible deploys even though the code defaults to /data/invoices.
             echo "FISCAL_STORAGE_PATH=/data/invoices" >> .env
+            echo "# Offsite backups (S3-compatible via rclone — read by infra/backup/backup.sh)" >> .env
+            echo "OFFSITE_BUCKET=${PROD_OFFSITE_BUCKET}" >> .env
+            echo "OFFSITE_PATH=${PROD_OFFSITE_PATH:-parallext}" >> .env
+            echo "OFFSITE_PROVIDER=${PROD_OFFSITE_PROVIDER:-AWS}" >> .env
+            echo "OFFSITE_REGION=${PROD_OFFSITE_REGION:-us-east-1}" >> .env
+            echo "OFFSITE_ENDPOINT=${PROD_OFFSITE_ENDPOINT}" >> .env
+            echo "OFFSITE_ACCESS_KEY=${PROD_OFFSITE_ACCESS_KEY}" >> .env
+            echo "OFFSITE_SECRET_KEY=${PROD_OFFSITE_SECRET_KEY}" >> .env
             echo "# External CRM integrations" >> .env
             echo "HUBSPOT_CLIENT_ID=${PROD_HUBSPOT_CLIENT_ID}" >> .env
             echo "HUBSPOT_CLIENT_SECRET=${PROD_HUBSPOT_CLIENT_SECRET}" >> .env

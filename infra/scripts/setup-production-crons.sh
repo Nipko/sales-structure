@@ -63,14 +63,15 @@ else
   echo "         Backup script will fail without it."
 fi
 
-# ── 6. Check rclone for offsite (optional) ──
+# ── 6. Check rclone for offsite (S3-compatible) ──
 if command -v rclone &> /dev/null; then
   echo "  OK — rclone found (offsite sync available)"
-  echo "         Configure: OFFSITE_REMOTE=r2:your-bucket in backup.sh"
+  echo "         Credentials come from .env (OFFSITE_* GitHub Secrets) — no 'rclone config' needed."
+  echo "         Setup guide: docs/backup-offsite-setup.md"
 else
-  echo "  INFO — rclone not installed (offsite sync disabled)"
+  echo "  INFO — rclone not installed (offsite sync disabled until installed)"
   echo "         Install: curl https://rclone.org/install.sh | sudo bash"
-  echo "         Then: rclone config (choose Cloudflare R2 or Backblaze B2)"
+  echo "         Then set the OFFSITE_* GitHub Secrets and redeploy (see docs/backup-offsite-setup.md)."
 fi
 
 echo ""

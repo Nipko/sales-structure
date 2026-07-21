@@ -1290,6 +1290,14 @@ export class ChannelManagementController {
         const tenantId = req.user?.tenantId;
         if (!tenantId) throw new BadRequestException('Tenant ID required');
 
+        // Resolve this account's token BEFORE deactivating — needed to tell the
+        // provider to stop sending webhooks for this SPECIFIC account.
+        let providerToken: string | undefined;
+        try {
+            const creds = await this.channelToken.getChannelToken(tenantId, channelType, accountId);
+            providerToken = creds?.accessToken;
+        } catch { /* no token — skip provider-side cleanup */ }
+
         // Deactivate only THIS account's routing row (unlike the per-type disconnect
         // which deactivates every account of the type).
         const rows = (await this.prisma.$queryRawUnsafe(
@@ -1304,6 +1312,11 @@ export class ChannelManagementController {
 
         if (rows.length === 0) {
             throw new BadRequestException('No active account found to disconnect');
+        }
+
+        // Best-effort: unsubscribe THIS account at the provider so it stops delivering.
+        if (providerToken) {
+            await this.unsubscribeAccountFromProvider(channelType, accountId, providerToken);
         }
 
         try {
@@ -1458,6 +1471,29 @@ export class ChannelManagementController {
             providerOk: false,
             providerError,
         };
+    }
+
+    /**
+     * Best-effort provider-side unsubscribe for a SINGLE disconnected account so the
+     * provider stops delivering webhooks for it (the per-type disconnect flows do the
+     * same for every account). Never throws.
+     */
+    private async unsubscribeAccountFromProvider(channelType: string, accountId: string, accessToken: string): Promise<void> {
+        const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
+        try {
+            if (channelType === 'telegram') {
+                await fetch(`https://api.telegram.org/bot${accessToken}/deleteWebhook?drop_pending_updates=true`, { method: 'POST' });
+            } else if (channelType === 'messenger') {
+                await fetch(`https://graph.facebook.com/${graphVersion}/${accountId}/subscribed_apps?access_token=${accessToken}`, { method: 'DELETE' });
+            } else if (channelType === 'instagram') {
+                await fetch(`https://graph.instagram.com/me/permissions?access_token=${accessToken}`, { method: 'DELETE' });
+            } else {
+                return; // whatsapp (WABA-level) / sms (pull-style) have no per-account unsubscribe here
+            }
+            this.logger.log(`Provider unsubscribe attempted for ${channelType} account ${accountId}`);
+        } catch (e: any) {
+            this.logger.warn(`Provider unsubscribe failed for ${channelType} account ${accountId}: ${e?.message}`);
+        }
     }
 
     /**

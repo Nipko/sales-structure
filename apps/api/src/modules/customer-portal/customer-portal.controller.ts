@@ -7,11 +7,14 @@ import {
     Headers,
     Req,
     Logger,
+    UseGuards,
     UnauthorizedException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { CustomerPortalService } from './customer-portal.service';
+import { AuthThrottle } from '../../common/decorators/auth-throttle.decorator';
+import { AuthThrottleGuard } from '../../common/guards/auth-throttle.guard';
 
 @ApiTags('customer-portal')
 @Controller('portal')
@@ -23,6 +26,8 @@ export class CustomerPortalController {
     // ---- Auth Endpoints (no token required) ----
 
     @Post(':tenantId/request-access')
+    @UseGuards(AuthThrottleGuard)
+    @AuthThrottle(10, 3600) // 10 code sends per hour per IP — caps SMS/email OTP spam (Twilio cost + phone bombing) while tolerating shared-NAT customers
     @ApiOperation({ summary: 'Request portal access — sends a 6-digit code via SMS or email' })
     async requestAccess(
         @Param('tenantId') tenantId: string,
@@ -41,6 +46,8 @@ export class CustomerPortalController {
     }
 
     @Post(':tenantId/verify')
+    @UseGuards(AuthThrottleGuard)
+    @AuthThrottle(10, 900) // 10 verify attempts per 15 min per IP (defense-in-depth over the per-code 5-attempt limit)
     @ApiOperation({ summary: 'Verify 6-digit code and receive a portal JWT' })
     async verify(
         @Param('tenantId') tenantId: string,

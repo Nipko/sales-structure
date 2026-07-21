@@ -95,6 +95,8 @@ export class AuthController {
     ) { }
 
     @Post('exchange-code')
+    @UseGuards(AuthThrottleGuard)
+    @AuthThrottle(20, 900) // 20 redemptions per 15 min per IP — one-time code, brute-force guard
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Exchange a one-time OAuth code for session tokens' })
     async exchangeCode(@Body() body: { code: string }) {

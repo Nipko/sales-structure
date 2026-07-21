@@ -31,8 +31,15 @@ export class AuthThrottleGuard implements CanActivate {
         const request = context.switchToHttp().getRequest();
         const response = context.switchToHttp().getResponse();
 
-        // Extract client IP (handles proxied requests)
+        // Extract client IP. Behind the Cloudflare tunnel, CF-Connecting-IP is set
+        // by Cloudflare to the real client IP and CANNOT be overwritten by the
+        // client. X-Forwarded-For's first entry, by contrast, is spoofable: a
+        // client can send `X-Forwarded-For: 1.2.3.4` and Cloudflare appends the
+        // real IP *after* it, so XFF[0] is attacker-controlled — rotating it would
+        // let an attacker walk past this limiter. Prefer CF-Connecting-IP, and
+        // fall back to XFF/req.ip only for non-Cloudflare paths (dev, direct).
         const ip =
+            request.headers['cf-connecting-ip']?.toString().trim() ||
             request.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() ||
             request.ip ||
             'unknown';

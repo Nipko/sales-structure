@@ -25,9 +25,10 @@ export class WhatsappMessagingService {
     toPhone: string,
     templateName: string,
     language: string,
-    components: any[]
+    components: any[],
+    fromPhoneNumberId?: string,
   ) {
-    const { accessToken, phoneNumberId, channelId } = await this.connectionService.getValidAccessToken(schemaName);
+    const { accessToken, phoneNumberId, channelId } = await this.connectionService.getValidAccessToken(schemaName, fromPhoneNumberId);
     const cleanPhone = toPhone.replace(/[+\s-]/g, '');
 
     const payload = {

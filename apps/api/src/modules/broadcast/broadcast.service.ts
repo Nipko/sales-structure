@@ -27,6 +27,9 @@ export interface CreateCampaignDto {
     recipientPhones?: string[];
     scheduledAt?: string;
     metadata?: Record<string, any>;
+    // Sender account (which WhatsApp number / SMS number) the campaign goes out from
+    // when the tenant has more than one connected account of that channel type.
+    channelAccountId?: string;
     variants?: Array<{ name: string; content: Record<string, any>; percentage: number }>;
     abTestConfig?: Record<string, any>;
 }
@@ -46,6 +49,8 @@ export interface BroadcastJobData {
     emailHtml?: string;
     emailText?: string;
     smsBody?: string;
+    // Sender account resolved from the campaign (multi-account).
+    channelAccountId?: string;
     variantId?: string;
     variantContent?: Record<string, any>;
 }
@@ -107,6 +112,7 @@ export class BroadcastService {
             templateLanguage: channelContent.whatsapp?.templateLanguage || data.templateLanguage || 'es',
             templateComponents: channelContent.whatsapp?.templateComponents || data.templateComponents || [],
             recipientPhones: data.recipientPhones || null,
+            channelAccountId: data.channelAccountId || null,
         };
 
         const status = data.scheduledAt ? 'scheduled' : 'draft';
@@ -308,6 +314,7 @@ export class BroadcastService {
                     emailHtml: jobEmailHtml,
                     emailText: jobEmailText,
                     smsBody: jobSmsBody,
+                    channelAccountId: metadata.channelAccountId || undefined,
                     variantId,
                     variantContent,
                 } as BroadcastJobData,

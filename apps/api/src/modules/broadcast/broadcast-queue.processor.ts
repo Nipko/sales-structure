@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messaging.service';
+import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BroadcastService, BROADCAST_QUEUE, BroadcastJobData } from './broadcast.service';
@@ -20,6 +21,7 @@ export class BroadcastQueueProcessor extends WorkerHost {
 
     constructor(
         private readonly messagingService: WhatsappMessagingService,
+        private readonly cryptoService: WhatsappCryptoService,
         private readonly emailService: EmailService,
         private readonly prisma: PrismaService,
         private readonly broadcastService: BroadcastService,
@@ -91,6 +93,7 @@ export class BroadcastQueueProcessor extends WorkerHost {
             data.templateName,
             data.templateLanguage,
             data.templateComponents,
+            data.channelAccountId, // send FROM this number when the campaign picked one
         );
         return result.messageId;
     }
@@ -114,16 +117,35 @@ export class BroadcastQueueProcessor extends WorkerHost {
         if (!data.phone) throw new Error('No phone number for SMS recipient');
         if (!data.smsBody) throw new Error('No SMS body configured');
 
-        const channels = await this.prisma.$queryRaw<any[]>`
-            SELECT access_token, account_id FROM channel_accounts
-            WHERE tenant_id = ${data.tenantId}::uuid AND channel_type = 'sms' AND is_active = true
-            LIMIT 1
-        `;
+        // Pick the campaign's chosen SMS number, else the oldest active one.
+        const channels = data.channelAccountId
+            ? await this.prisma.$queryRaw<any[]>`
+                SELECT access_token, account_id FROM channel_accounts
+                WHERE tenant_id = ${data.tenantId}::uuid AND channel_type = 'sms' AND is_active = true AND account_id = ${data.channelAccountId}
+                LIMIT 1`
+            : await this.prisma.$queryRaw<any[]>`
+                SELECT access_token, account_id FROM channel_accounts
+                WHERE tenant_id = ${data.tenantId}::uuid AND channel_type = 'sms' AND is_active = true
+                ORDER BY created_at ASC
+                LIMIT 1`;
 
         if (!channels?.length) throw new Error('No active SMS channel configured for this tenant');
 
         const { access_token, account_id } = channels[0];
-        const [accountSid, authToken] = (access_token || '').split(':');
+        // access_token holds the AES-encrypted "accountSid:authToken" (per-account,
+        // multi-account aware). Legacy rows hold the 'encrypted_ref' placeholder →
+        // the real token lives in whatsapp_credentials.sms_token.
+        let combined = '';
+        if (access_token && access_token !== 'encrypted_ref' && access_token !== 'credential_ref') {
+            try { combined = this.cryptoService.decryptToken(access_token); } catch { combined = ''; }
+        } else {
+            const cred = await this.prisma.whatsappCredential.findFirst({
+                where: { tenantId: data.tenantId, credentialType: 'sms_token' },
+                orderBy: { createdAt: 'desc' },
+            });
+            if (cred?.encryptedValue) { try { combined = this.cryptoService.decryptToken(cred.encryptedValue); } catch { combined = ''; } }
+        }
+        const [accountSid, authToken] = combined.split(':');
         if (!accountSid || !authToken) throw new Error('Invalid Twilio credentials');
 
         const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;

@@ -76,6 +76,8 @@ export default function BroadcastPage() {
     const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
     const [toast, setToast] = useState<string | null>(null);
     const [segments, setSegments] = useState<any[]>([]);
+    const [waAccounts, setWaAccounts] = useState<any[]>([]);
+    const [senderAccountId, setSenderAccountId] = useState("");
     const [audienceType, setAudienceType] = useState<"all" | "segment">("all");
     const [selectedSegmentId, setSelectedSegmentId] = useState("");
 
@@ -144,9 +146,17 @@ export default function BroadcastPage() {
 
     const openNewCampaign = async () => {
         setShowNewCampaign(true);
+        setSenderAccountId("");
         if (activeTenantId) {
             const res = await api.getSegments(activeTenantId);
             if (res?.success) setSegments(res.data || []);
+            try {
+                const ov = await api.fetch("/channels/overview");
+                const list = ov?.data || ov;
+                if (Array.isArray(list)) {
+                    setWaAccounts(list.filter((c: any) => (c.channelType || c.channel_type) === "whatsapp"));
+                }
+            } catch { /* non-fatal */ }
         }
     };
 
@@ -215,6 +225,7 @@ export default function BroadcastPage() {
             channels: selectedChannels,
             channelContent: abTestEnabled ? undefined : channelContent,
             templateName: abTestEnabled ? undefined : (channelContent.whatsapp?.templateName || ""),
+            channelAccountId: (selectedChannels.includes("whatsapp") && senderAccountId) ? senderAccountId : undefined,
             targetAudience: audience,
             scheduledAt: newCampaign.scheduledAt || undefined,
             ...abPayload,
@@ -223,6 +234,7 @@ export default function BroadcastPage() {
             setCreating(false);
             setNewCampaign({ name: "", waTemplate: "", emailSubject: "", emailBody: "", smsBody: "", targetAudience: "all", scheduledAt: "" });
             setSelectedChannels(["whatsapp"]);
+            setSenderAccountId("");
             setAudienceType("all");
             setSelectedSegmentId("");
             setAbTestEnabled(false);
@@ -599,6 +611,23 @@ export default function BroadcastPage() {
                                             className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border resize-y"
                                         />
                                         <div className="text-[10px] text-muted-foreground mt-1">{t('modal.templateHint')}</div>
+                                        {waAccounts.length > 1 && (
+                                            <div className="mt-3">
+                                                <label className="block text-xs font-semibold mb-1.5">{t('modal.senderNumberLabel')}</label>
+                                                <select
+                                                    value={senderAccountId}
+                                                    onChange={e => setSenderAccountId(e.target.value)}
+                                                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none box-border"
+                                                >
+                                                    <option value="">{t('modal.senderNumberDefault')}</option>
+                                                    {waAccounts.map((a: any) => (
+                                                        <option key={a.accountId || a.account_id} value={a.accountId || a.account_id}>
+                                                            {a.displayName || a.display_name || a.accountId || a.account_id}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 

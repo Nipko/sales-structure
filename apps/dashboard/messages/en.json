@@ -2642,6 +2642,8 @@
       "waTemplateLabel": "WhatsApp template",
       "templateLabel": "Message template",
       "templateHint": "(use {'{{'}name{'}}'} to personalize)",
+      "senderNumberLabel": "Send from number",
+      "senderNumberDefault": "Primary number (default)",
       "templatePlaceholder": "Hi {'{{'}name{'}}'}! We have a special offer for you...",
       "emailLabel": "Email content",
       "emailSubjectPh": "Email subject",

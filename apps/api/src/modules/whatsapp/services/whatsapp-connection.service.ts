@@ -173,13 +173,24 @@ export class WhatsappConnectionService {
   /**
    * Obtiene el token real desencriptado y los identificadores de Meta.
    */
-  async getValidAccessToken(schemaName: string): Promise<{ accessToken: string, phoneNumberId: string, wabaId: string, channelId: string }> {
-    // 1. Info del canal — el más antiguo (determinístico) cuando hay >1 número.
-    //    (El system_user_token es tenant-wide; solo cambia el phone_number_id de origen.)
-    const channels = await this.prisma.executeInTenantSchema<any[]>(
-      schemaName,
-      `SELECT id, phone_number_id, meta_waba_id FROM whatsapp_channels ORDER BY connected_at ASC NULLS LAST LIMIT 1`
-    );
+  async getValidAccessToken(schemaName: string, phoneNumberId?: string): Promise<{ accessToken: string, phoneNumberId: string, wabaId: string, channelId: string }> {
+    // 1. Info del canal — el número específico si se pide (multi-número), si no el
+    //    más antiguo (determinístico). El system_user_token es tenant-wide; solo
+    //    cambia el phone_number_id de origen.
+    let channels: any[] = [];
+    if (phoneNumberId) {
+      channels = await this.prisma.executeInTenantSchema<any[]>(
+        schemaName,
+        `SELECT id, phone_number_id, meta_waba_id FROM whatsapp_channels WHERE phone_number_id = $1 LIMIT 1`,
+        [phoneNumberId],
+      );
+    }
+    if (!channels || channels.length === 0) {
+      channels = await this.prisma.executeInTenantSchema<any[]>(
+        schemaName,
+        `SELECT id, phone_number_id, meta_waba_id FROM whatsapp_channels ORDER BY connected_at ASC NULLS LAST LIMIT 1`
+      );
+    }
 
     if (!channels || channels.length === 0) {
       throw new NotFoundException('No hay canal de WhatsApp configurado');

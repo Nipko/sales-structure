@@ -2642,6 +2642,8 @@
       "waTemplateLabel": "Modèle WhatsApp",
       "templateLabel": "Message modèle",
       "templateHint": "(utilisez {'{{'}name{'}}'} pour personnaliser)",
+      "senderNumberLabel": "Envoyer depuis le numéro",
+      "senderNumberDefault": "Numéro principal (par défaut)",
       "templatePlaceholder": "Bonjour {'{{'}name{'}}'}! Nous avons une offre spéciale pour vous...",
       "emailLabel": "Contenu de l'email",
       "emailSubjectPh": "Objet de l'email",

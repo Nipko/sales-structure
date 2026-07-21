@@ -34,8 +34,8 @@ const STATIC_FALLBACK: PlanDef[] = [
   {
     nameKey: "starterName",
     descKey: "starterDesc",
-    annualPrice: "$179.000",
-    monthlyPrice: "$215.800",
+    annualPrice: "$229.800",
+    monthlyPrice: "$276.900",
     featuresKey: "starterFeatures",
     ctaKey: "starterCta",
     highlighted: false,
@@ -43,8 +43,8 @@ const STATIC_FALLBACK: PlanDef[] = [
   {
     nameKey: "proName",
     descKey: "proDesc",
-    annualPrice: "$569.000",
-    monthlyPrice: "$679.500",
+    annualPrice: "$628.900",
+    monthlyPrice: "$757.700",
     featuresKey: "proFeatures",
     ctaKey: "proCta",
     highlighted: true,
@@ -73,12 +73,14 @@ function mapApiPlans(apiPlans: ApiPlan[]): PlanDef[] {
   for (const ap of apiPlans) {
     const idx = SLUG_TO_PLAN_INDEX[ap.slug];
     if (idx === undefined) continue;
-    const annualCents = ap.displayPriceCents;
-    const monthlyCents = Math.round(annualCents * 1.2);
+    // displayPriceCents from billing_plans IS the monthly price (MercadoPago
+    // bills monthly). The annual toggle is a marketing discount (~-17%).
+    const monthlyCents = ap.displayPriceCents;
+    const annualCents = Math.round(monthlyCents * 0.83);
     result[idx] = {
       ...result[idx],
-      annualPrice: formatCopPrice(annualCents),
       monthlyPrice: formatCopPrice(monthlyCents),
+      annualPrice: formatCopPrice(annualCents),
     };
   }
   return result;

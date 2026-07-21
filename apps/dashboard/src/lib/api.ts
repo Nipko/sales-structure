@@ -1204,6 +1204,15 @@ export const api = {
     getFeatureRegistry: () => apiGet('/billing-admin/feature-registry'),
     updateAdminPlan: (slug: string, data: any) => apiPut(`/billing-admin/plans/${slug}`, data),
     invalidatePlanCache: (slug: string) => apiPost(`/billing-admin/plans/${slug}/invalidate-cache`, {}),
+    getMpProviderStatus: () =>
+        apiGet<{ mercadopago: { environment: 'sandbox' | 'production' | 'unconfigured'; configured: boolean; webhookConfigured: boolean } }>(
+            '/billing-admin/provider-status',
+        ),
+    syncPlanToMp: (slug: string, body?: { country?: string; fx?: number; force?: boolean }) =>
+        apiPost<{ slug: string; country: string; currency: string; amountCents: number | null; mpPlanId: string; skipped: boolean }>(
+            `/billing-admin/plans/${slug}/sync-mp`,
+            body || {},
+        ),
 
     // --- Coupons (super_admin CRUD + tenant redeem) ---
     listCoupons: (active?: boolean) =>

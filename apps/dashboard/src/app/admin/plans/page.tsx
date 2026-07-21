@@ -91,16 +91,20 @@ export default function PlansPage() {
     const [editBuffer, setEditBuffer] = useState<Plan | null>(null);
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+    const [providerStatus, setProviderStatus] = useState<{ environment: "sandbox" | "production" | "unconfigured"; configured: boolean; webhookConfigured: boolean } | null>(null);
+    const [syncing, setSyncing] = useState<string | null>(null);
 
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [plansRes, regRes] = await Promise.all([
+            const [plansRes, regRes, provRes] = await Promise.all([
                 api.getAdminPlans(),
                 api.getFeatureRegistry(),
+                api.getMpProviderStatus(),
             ]);
             if (plansRes.success) setPlans(plansRes.data);
             if (regRes.success) setRegistry(regRes.data);
+            if (provRes.success && provRes.data) setProviderStatus(provRes.data.mercadopago);
         } catch { /* ignore */ }
         setLoading(false);
     }, []);
@@ -150,6 +154,22 @@ export default function PlansPage() {
             setToast({ type: "error", msg: "Connection error" });
         }
         setSaving(false);
+    };
+
+    const handleSync = async (slug: string, force: boolean) => {
+        setSyncing(slug);
+        try {
+            const res = await api.syncPlanToMp(slug, { country: "CO", force });
+            if (res.success) {
+                setToast({ type: "success", msg: res.data?.skipped ? t("syncMpSkipped") : t("syncMpDone") });
+                load();
+            } else {
+                setToast({ type: "error", msg: res.error || "Error" });
+            }
+        } catch {
+            setToast({ type: "error", msg: "Connection error" });
+        }
+        setSyncing(null);
     };
 
     const updateTopLevel = (key: keyof Plan, val: any) => {
@@ -324,6 +344,20 @@ export default function PlansPage() {
                     <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
                         <Layers size={20} className="text-indigo-600 dark:text-indigo-400" />
                         {t("title")}
+                        {providerStatus && (
+                            <span
+                                title={`${t("providerStatus")}${providerStatus.webhookConfigured ? "" : " · webhook ⚠"}`}
+                                className={`ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                                    providerStatus.environment === "production"
+                                        ? "bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300"
+                                        : providerStatus.environment === "sandbox"
+                                        ? "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500"
+                                }`}
+                            >
+                                MP: {t(providerStatus.environment)}
+                            </span>
+                        )}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
                 </div>
@@ -449,6 +483,29 @@ export default function PlansPage() {
                             })}
                         </tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
+                            <td className={`${tdCls} font-medium`}>{t("mpPlanId")}</td>
+                            {plans.map(p => {
+                                const mpId = p.priceLocalOverrides?.CO?.mpPlanId;
+                                if (p.slug === "custom") {
+                                    return <td key={p.slug} className={tdCls}><span className="text-xs text-neutral-400">—</span></td>;
+                                }
+                                return (
+                                    <td key={p.slug} className={tdCls}>
+                                        {mpId ? (
+                                            <span className="inline-flex items-center gap-1.5" title={mpId}>
+                                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
+                                                <span className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">{String(mpId).slice(0, 14)}…</span>
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+                                                <AlertCircle size={11} /> {t("notSynced")}
+                                            </span>
+                                        )}
+                                    </td>
+                                );
+                            })}
+                        </tr>
+                        <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className={`${tdCls} font-medium`}>{t("trialDays")}</td>
                             {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "trialDays", "")}</td>)}
                         </tr>
@@ -530,6 +587,33 @@ export default function PlansPage() {
                         })}
                     </tbody>
                 </table>
+            </div>
+
+            {/* Sync plans to MercadoPago */}
+            <div className={`${sectionCls} p-4`}>
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-1">{t("syncMpTitle")}</h3>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">{t("syncMpDesc")}</p>
+                <div className="flex flex-wrap gap-2">
+                    {plans.filter(p => p.slug !== "custom").map(p => {
+                        const synced = !!p.priceLocalOverrides?.CO?.mpPlanId;
+                        const busy = syncing === p.slug;
+                        return (
+                            <button
+                                key={p.slug}
+                                disabled={busy}
+                                onClick={() => {
+                                    if (synced && !window.confirm(t("syncMpConfirm"))) return;
+                                    handleSync(p.slug, synced);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:border-indigo-400 transition-colors disabled:opacity-50"
+                            >
+                                {busy ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                                {p.name}
+                                {synced && <span className="text-[10px] text-amber-600 dark:text-amber-400">· {t("resync")}</span>}
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
 
             {/* Cache invalidation buttons */}

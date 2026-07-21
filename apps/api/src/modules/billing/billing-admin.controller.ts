@@ -1,17 +1,25 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsPositive, IsString, Min } from 'class-validator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BillingService } from './billing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { MercadoPagoAdapter } from './adapters/mercadopago.adapter';
+import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
 import {
     PLAN_FEATURE_REGISTRY,
     NESTED_OBJECT_KEYS,
     validatePlanFeatures,
     unknownFeatureKeys,
 } from '../throttle/plan-features.registry';
+
+// Countries for which we can register a MercadoPago preapproval_plan. Mirrors
+// scripts/sync-mp-plans.js — MP subscriptions are per-country.
+const SYNC_CURRENCY_BY_COUNTRY: Record<string, string> = {
+    CO: 'COP', AR: 'ARS', MX: 'MXN', CL: 'CLP', PE: 'PEN', UY: 'UYU', BR: 'BRL',
+};
 
 class RefundPaymentDto {
     @IsOptional()
@@ -59,6 +67,15 @@ class UpdatePlanDto {
     @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
+class SyncMpPlanDto {
+    @IsOptional() @IsString() country?: string;
+    // Only used when the plan has no fixed local price for the country yet.
+    @IsOptional() @IsNumber() @IsPositive() fx?: number;
+    // Recreate the preapproval_plan in MP even if one already exists (e.g. after
+    // a price change). MP cannot delete plans, so this orphans the old one.
+    @IsOptional() @IsBoolean() force?: boolean;
+}
+
 @Controller('billing-admin')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('super_admin')
@@ -67,6 +84,8 @@ export class BillingAdminController {
         private readonly billingService: BillingService,
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
+        private readonly mp: MercadoPagoAdapter,
+        private readonly mpConfig: MercadoPagoConfigService,
     ) {}
 
     // ── Plan Management ─────────────────────────────────────────
@@ -212,6 +231,103 @@ export class BillingAdminController {
     async invalidateCache(@Param('slug') slug: string) {
         const count = await this.throttle.invalidatePlanCacheForSlug(slug);
         return { success: true, invalidatedCount: count };
+    }
+
+    // ── MercadoPago provider status ─────────────────────────────
+    // Powers the sandbox/production badge in /admin/plans so the operator can
+    // confirm which environment is live before/after a credentials cutover.
+    @Get('provider-status')
+    providerStatus() {
+        return {
+            success: true,
+            data: {
+                mercadopago: {
+                    environment: this.mpConfig.environment(),
+                    configured: this.mpConfig.isConfigured(),
+                    webhookConfigured: Boolean(this.mpConfig.webhookSecret),
+                },
+            },
+        };
+    }
+
+    // ── Sync a plan to MercadoPago (register/recreate preapproval_plan) ──
+    // Replaces the SSH-only scripts/sync-mp-plans.js for a single plan+country.
+    // The DB price (edited via PUT plans/:slug) is only what we SHOW; MP charges
+    // the amount frozen in the preapproval_plan, so a price change is not live
+    // until this runs. Existing plans are skipped unless force=true.
+    @Post('plans/:slug/sync-mp')
+    @HttpCode(HttpStatus.OK)
+    async syncPlanToMp(
+        @Param('slug') slug: string,
+        @Body() body: SyncMpPlanDto,
+        @Req() req: any,
+    ) {
+        if (slug === 'custom') {
+            throw new BadRequestException({ error: 'custom_not_syncable', message: 'El plan Custom es sales-led y no se sincroniza con MercadoPago.' });
+        }
+        const plan = await this.prisma.billingPlan.findUnique({ where: { slug } });
+        if (!plan) throw new NotFoundException('Plan not found');
+
+        const country = (body.country || 'CO').toUpperCase();
+        const currency = SYNC_CURRENCY_BY_COUNTRY[country];
+        if (!currency) {
+            throw new BadRequestException({
+                error: 'unsupported_country',
+                message: `País ${country} no soportado. Soportados: ${Object.keys(SYNC_CURRENCY_BY_COUNTRY).join(', ')}.`,
+            });
+        }
+        if (!this.mpConfig.isConfigured()) {
+            throw new BadRequestException({ error: 'mp_not_configured', message: 'MercadoPago no está configurado (falta MP_ACCESS_TOKEN).' });
+        }
+
+        const overrides: Record<string, any> = (plan.priceLocalOverrides && typeof plan.priceLocalOverrides === 'object')
+            ? { ...(plan.priceLocalOverrides as any) }
+            : {};
+        const existing = overrides[country];
+
+        // Idempotent: an already-synced plan is skipped unless force=true.
+        if (existing?.mpPlanId && !body.force) {
+            return { success: true, data: { slug, country, currency, mpPlanId: existing.mpPlanId, amountCents: existing.amountCents ?? null, skipped: true } };
+        }
+
+        let amountCents: number;
+        if (existing?.amountCents) {
+            amountCents = existing.amountCents;
+        } else if (body.fx) {
+            amountCents = Math.round(plan.priceUsdCents * body.fx);
+        } else {
+            throw new BadRequestException({
+                error: 'no_local_price',
+                message: `No hay precio local para ${country} ni se pasó un tipo de cambio. Definí el precio local del plan o pasá fx.`,
+            });
+        }
+
+        const providerPlan = await this.mp.createPlan({
+            slug: plan.slug,
+            name: `${plan.name} — Parallly ${country}`,
+            amountCents,
+            currency,
+            billingInterval: 'month',
+            trialDays: 0,
+        });
+
+        overrides[country] = { ...(existing ?? {}), currency, amountCents, mpPlanId: providerPlan.providerPlanId };
+        const data: any = { priceLocalOverrides: overrides };
+        // Keep the legacy top-level column in sync for CO (resolveProviderPlanId fallback).
+        if (country === 'CO') data.mpPlanId = providerPlan.providerPlanId;
+        await this.prisma.billingPlan.update({ where: { slug }, data });
+
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId: null,
+                userId: req.user?.sub,
+                action: 'billing_plan_synced_mp',
+                resource: `billing-plans/${slug}`,
+                details: { country, currency, amountCents, mpPlanId: providerPlan.providerPlanId, force: !!body.force },
+            },
+        });
+
+        return { success: true, data: { slug, country, currency, amountCents, mpPlanId: providerPlan.providerPlanId, skipped: false } };
     }
 
     // ── Existing Operations ─────────────────────────────────────

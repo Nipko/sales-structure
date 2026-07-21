@@ -8668,6 +8668,9 @@
     "syncMpSkipped": "Le plan était déjà synchronisé",
     "syncMpConfirm": "Ceci recrée le plan dans MercadoPago au prix actuel et rend l'ancien orphelin. Les abonnés actuels conservent l'ancien prix. Continuer ?",
     "resync": "Recréer",
+    "reconcile": "Réconcilier",
+    "reconcileHint": "Interroge MercadoPago et corrige les abonnements désynchronisés, sans attendre le cron",
+    "reconcileDone": "Réconciliation : {scanned} vérifiés, {drift} corrigés",
     "categories": {
       "planInfo": "Informations du plan",
       "resources": "Limites de ressources",

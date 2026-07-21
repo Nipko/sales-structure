@@ -8670,6 +8670,9 @@
     "syncMpSkipped": "O plano já estava sincronizado",
     "syncMpConfirm": "Isto recria o plano no MercadoPago com o preço atual e deixa o anterior órfão. Os assinantes atuais permanecem no preço antigo. Continuar?",
     "resync": "Recriar",
+    "reconcile": "Reconciliar",
+    "reconcileHint": "Consulta o MercadoPago e corrige assinaturas dessincronizadas, sem esperar o cron",
+    "reconcileDone": "Reconciliação: {scanned} verificadas, {drift} corrigidas",
     "categories": {
       "planInfo": "Informações do plano",
       "resources": "Limites de recursos",

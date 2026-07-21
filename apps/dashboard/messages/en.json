@@ -8668,6 +8668,9 @@
     "syncMpSkipped": "Plan was already synced",
     "syncMpConfirm": "This recreates the plan in MercadoPago with the current price and orphans the old one. Existing subscribers stay on the old price. Continue?",
     "resync": "Recreate",
+    "reconcile": "Reconcile",
+    "reconcileHint": "Polls MercadoPago and fixes out-of-sync subscriptions without waiting for the cron",
+    "reconcileDone": "Reconciliation: {scanned} checked, {drift} fixed",
     "categories": {
       "planInfo": "Plan info",
       "resources": "Resource limits",

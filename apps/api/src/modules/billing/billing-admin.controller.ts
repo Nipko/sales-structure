@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MercadoPagoAdapter } from './adapters/mercadopago.adapter';
 import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
+import { BillingReconciliationProcessor } from './processors/reconciliation.processor';
 import {
     PLAN_FEATURE_REGISTRY,
     NESTED_OBJECT_KEYS,
@@ -76,6 +77,10 @@ class SyncMpPlanDto {
     @IsOptional() @IsBoolean() force?: boolean;
 }
 
+class ReconcileDto {
+    @IsOptional() @IsIn(['full', 'past_due']) scope?: 'full' | 'past_due';
+}
+
 @Controller('billing-admin')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('super_admin')
@@ -86,6 +91,7 @@ export class BillingAdminController {
         private readonly throttle: TenantThrottleService,
         private readonly mp: MercadoPagoAdapter,
         private readonly mpConfig: MercadoPagoConfigService,
+        private readonly reconciliation: BillingReconciliationProcessor,
     ) {}
 
     // ── Plan Management ─────────────────────────────────────────
@@ -328,6 +334,36 @@ export class BillingAdminController {
         });
 
         return { success: true, data: { slug, country, currency, amountCents, mpPlanId: providerPlan.providerPlanId, skipped: false } };
+    }
+
+    // ── Reconciliation on-demand ────────────────────────────────
+    // Force a provider poll instead of waiting for the hourly/daily crons —
+    // useful right after a cutover to confirm DB and MercadoPago agree.
+    @Post('reconcile')
+    @HttpCode(HttpStatus.OK)
+    async reconcile(@Body() body: ReconcileDto, @Req() req: any) {
+        const scope = body.scope || 'full';
+        const result = scope === 'past_due'
+            ? await this.reconciliation.reconcilePastDue()
+            : await this.reconciliation.fullReconciliation();
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId: null,
+                userId: req.user?.sub,
+                action: 'billing_reconcile_manual',
+                resource: 'billing/reconcile',
+                details: { scope, ...result },
+            },
+        });
+        return { success: true, data: { scope, ...result } };
+    }
+
+    // Reconcile a single tenant's subscription against the provider.
+    @Post('tenants/:tenantId/reconcile')
+    @HttpCode(HttpStatus.OK)
+    async reconcileTenant(@Param('tenantId') tenantId: string) {
+        const result = await this.billingService.syncFromProvider(tenantId);
+        return { success: true, data: result };
     }
 
     // ── Existing Operations ─────────────────────────────────────

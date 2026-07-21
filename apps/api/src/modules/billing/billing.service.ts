@@ -428,7 +428,7 @@ export class BillingService {
             try {
                 const newPlan = await this.prisma.billingPlan.findUnique({
                     where: { id: sub.pendingPlanId! },
-                    select: { slug: true },
+                    select: { slug: true, mpPlanId: true, stripePlanId: true, priceLocalOverrides: true },
                 });
                 await this.prisma.billingSubscription.update({
                     where: { id: sub.id },
@@ -438,11 +438,14 @@ export class BillingService {
                         pendingPlanChangeAt: null,
                     },
                 });
+                let billingCountry: string | null = null;
                 if (newPlan) {
-                    await this.prisma.tenant.update({
+                    const tenant = await this.prisma.tenant.update({
                         where: { id: sub.tenantId },
                         data: { plan: newPlan.slug },
+                        select: { billingCountry: true },
                     });
+                    billingCountry = tenant.billingCountry;
                 }
                 await this.redis.del(`tenant_plan:${sub.tenantId}`);
                 await this.redis.del(`sub_status:${sub.tenantId}`);
@@ -459,12 +462,64 @@ export class BillingService {
                     },
                 });
                 applied++;
+
+                // Best-effort: move the subscription to the new plan at the
+                // provider so the NEXT charge reflects the lower price. The local
+                // entitlement flip above already succeeded — a provider failure
+                // must never undo it, so this runs in its own try/catch and is
+                // recorded for manual follow-up instead of throwing.
+                if (sub.provider === 'mercadopago' && sub.providerSubscriptionId && newPlan) {
+                    await this.syncDowngradeToProvider(sub, newPlan, billingCountry);
+                }
             } catch (e: any) {
                 this.logger.error(`[Billing] Failed to apply pending change for ${sub.id}: ${e.message}`);
             }
         }
         if (applied > 0) this.logger.log(`[Billing] Applied ${applied} pending plan changes`);
         return { applied };
+    }
+
+    /**
+     * Best-effort push of a scheduled downgrade to MercadoPago so the next charge
+     * uses the new plan's amount. NEVER throws — the local entitlement flip has
+     * already been applied by the caller. MercadoPago has no native proration and
+     * changing a live preapproval's plan "works on some accounts" (see
+     * mercadopago.adapter changeSubscriptionPlan); when it can't, we log an audit
+     * entry (subscription_downgrade_provider_sync_failed) so a super admin can
+     * follow up, since MP may require the customer to re-authorize their card.
+     */
+    private async syncDowngradeToProvider(
+        sub: { id: string; tenantId: string; provider: string; providerSubscriptionId: string | null },
+        newPlan: { mpPlanId: string | null; priceLocalOverrides: any },
+        billingCountry: string | null,
+    ): Promise<void> {
+        try {
+            const overrides = (newPlan.priceLocalOverrides && typeof newPlan.priceLocalOverrides === 'object')
+                ? (newPlan.priceLocalOverrides as Record<string, any>)
+                : {};
+            const country = billingCountry?.toUpperCase();
+            const providerPlanId = (country && overrides[country]?.mpPlanId)
+                ? overrides[country].mpPlanId
+                : newPlan.mpPlanId;
+
+            if (!providerPlanId) {
+                throw new Error(`no MercadoPago plan id for country ${country ?? '(default)'}`);
+            }
+
+            const provider = this.providerFactory.getByName('mercadopago');
+            await provider.changeSubscriptionPlan(sub.providerSubscriptionId!, providerPlanId);
+            this.logger.log(`[Billing] Downgrade sub=${sub.id} synced to MP plan ${providerPlanId}`);
+        } catch (e: any) {
+            this.logger.error(`[Billing] Downgrade sub=${sub.id} MP sync failed (local entitlement already applied): ${e?.message}`);
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId: sub.tenantId,
+                    action: 'subscription_downgrade_provider_sync_failed',
+                    resource: `billing_subscriptions/${sub.id}`,
+                    details: { providerSubscriptionId: sub.providerSubscriptionId, error: e?.message },
+                },
+            });
+        }
     }
 
     // -------------------------------------------------------------------------

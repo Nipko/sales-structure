@@ -45,14 +45,16 @@ export class BillingReconciliationProcessor {
      * Repair subscriptions stuck in past_due by asking the provider directly.
      */
     @Cron(CronExpression.EVERY_HOUR)
-    async reconcilePastDue() {
+    async reconcilePastDue(): Promise<{ scanned: number; repaired: number; errors: number }> {
         const pastDue = await this.prisma.billingSubscription.findMany({
             where: { status: SubscriptionStatus.PAST_DUE },
             select: { id: true, tenantId: true, provider: true, providerSubscriptionId: true },
         });
-        if (pastDue.length === 0) return;
+        if (pastDue.length === 0) return { scanned: 0, repaired: 0, errors: 0 };
         this.logger.log(`[Reconcile] past_due sweep: ${pastDue.length} subscription(s)`);
 
+        let repaired = 0;
+        let errors = 0;
         for (const sub of pastDue) {
             if (!sub.providerSubscriptionId) continue;
             try {
@@ -66,12 +68,15 @@ export class BillingReconciliationProcessor {
                         remote.status,
                         'reconcile_past_due',
                     );
+                    repaired++;
                     this.logger.log(`[Reconcile] sub=${sub.id} past_due → ${remote.status}`);
                 }
             } catch (err: any) {
+                errors++;
                 this.logger.warn(`[Reconcile] sub=${sub.id} provider poll failed: ${err?.message}`);
             }
         }
+        return { scanned: pastDue.length, repaired, errors };
     }
 
     /**
@@ -80,7 +85,7 @@ export class BillingReconciliationProcessor {
      * non-terminal subscription.
      */
     @Cron('0 3 * * *')
-    async fullReconciliation() {
+    async fullReconciliation(): Promise<{ scanned: number; drift: number; repaired: number; errors: number }> {
         const active = await this.prisma.billingSubscription.findMany({
             where: {
                 status: {
@@ -94,10 +99,12 @@ export class BillingReconciliationProcessor {
             },
             select: { id: true, tenantId: true, status: true, provider: true, providerSubscriptionId: true },
         });
-        if (active.length === 0) return;
+        if (active.length === 0) return { scanned: 0, drift: 0, repaired: 0, errors: 0 };
         this.logger.log(`[Reconcile] daily sweep: ${active.length} active subscription(s)`);
 
         let drift = 0;
+        let repaired = 0;
+        let errors = 0;
         for (const sub of active) {
             if (!sub.providerSubscriptionId) continue;
             try {
@@ -119,8 +126,10 @@ export class BillingReconciliationProcessor {
                         remote.status,
                         'full_reconciliation',
                     );
+                    repaired++;
                 }
             } catch (err: any) {
+                errors++;
                 this.logger.warn(`[Reconcile] sub=${sub.id} provider poll failed: ${err?.message}`);
             }
         }
@@ -128,6 +137,7 @@ export class BillingReconciliationProcessor {
         if (drift > 0) {
             this.logger.warn(`[Reconcile] DAILY: ${drift} subscription(s) out of sync — corrected`);
         }
+        return { scanned: active.length, drift, repaired, errors };
     }
 
     /**

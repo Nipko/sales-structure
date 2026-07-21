@@ -93,6 +93,7 @@ export default function PlansPage() {
     const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
     const [providerStatus, setProviderStatus] = useState<{ environment: "sandbox" | "production" | "unconfigured"; configured: boolean; webhookConfigured: boolean } | null>(null);
     const [syncing, setSyncing] = useState<string | null>(null);
+    const [reconciling, setReconciling] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -170,6 +171,22 @@ export default function PlansPage() {
             setToast({ type: "error", msg: "Connection error" });
         }
         setSyncing(null);
+    };
+
+    const handleReconcile = async () => {
+        setReconciling(true);
+        try {
+            const res = await api.reconcileBilling("full");
+            if (res.success) {
+                setToast({ type: "success", msg: t("reconcileDone", { scanned: String(res.data?.scanned ?? 0), drift: String(res.data?.drift ?? 0) }) });
+                load();
+            } else {
+                setToast({ type: "error", msg: res.error || "Error" });
+            }
+        } catch {
+            setToast({ type: "error", msg: "Connection error" });
+        }
+        setReconciling(false);
     };
 
     const updateTopLevel = (key: keyof Plan, val: any) => {
@@ -361,6 +378,15 @@ export default function PlansPage() {
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
                 </div>
+                <button
+                    onClick={handleReconcile}
+                    disabled={reconciling}
+                    title={t("reconcileHint")}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:border-indigo-400 transition-colors disabled:opacity-50"
+                >
+                    {reconciling ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                    {t("reconcile")}
+                </button>
             </div>
 
             <HelpPanel

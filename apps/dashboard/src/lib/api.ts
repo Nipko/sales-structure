@@ -1213,6 +1213,11 @@ export const api = {
             `/billing-admin/plans/${slug}/sync-mp`,
             body || {},
         ),
+    reconcileBilling: (scope?: 'full' | 'past_due') =>
+        apiPost<{ scope: string; scanned: number; drift?: number; repaired: number; errors: number }>(
+            '/billing-admin/reconcile',
+            scope ? { scope } : {},
+        ),
 
     // --- Coupons (super_admin CRUD + tenant redeem) ---
     listCoupons: (active?: boolean) =>

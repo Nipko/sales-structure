@@ -30,6 +30,35 @@ const BRAND_COLOR = "#0084FF";
 const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || "";
 const MESSENGER_CONFIG_ID = process.env.NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID || "1288798860026149";
 
+/**
+ * Page avatar. Prefers the STABLE Graph picture endpoint derived from the page id
+ * (public, never expires, always the current picture) over the signed CDN URL Meta
+ * returns at connect time — that one expires within hours/days and 404s → broken
+ * thumbnail. Falls back to the channel icon if the image fails to load.
+ */
+function PageAvatar({ pageId, storedUrl, alt }: { pageId?: string; storedUrl?: string; alt: string }) {
+    const [errored, setErrored] = useState(false);
+    const src = pageId
+        ? `https://graph.facebook.com/${pageId}/picture?type=square&width=96&height=96`
+        : storedUrl;
+    if (!src || errored) {
+        return (
+            <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND_COLOR }}>
+                <MessageCircle size={20} className="text-white" />
+            </div>
+        );
+    }
+    return (
+        <img
+            src={src}
+            alt={alt}
+            onError={() => setErrored(true)}
+            referrerPolicy="no-referrer"
+            className="w-12 h-12 rounded-full object-cover shrink-0"
+        />
+    );
+}
+
 export default function MessengerSetupPage() {
     const t = useTranslations("channels");
     const tc = useTranslations("common");
@@ -320,17 +349,11 @@ export default function MessengerSetupPage() {
                             <div className="flex flex-col gap-4">
                                 {connectedPages.map((page: any, idx: number) => (
                                     <div key={page.accountId || page.page_id || page.account_id || idx} className="flex items-center gap-4 p-4 rounded-xl bg-[var(--bg-tertiary)] border border-border">
-                                        {page.metadata?.picture || page.profile_picture_url ? (
-                                            <img
-                                                src={page.metadata?.picture || page.profile_picture_url}
-                                                alt={page.displayName || page.display_name || t("messengerPage")}
-                                                className="w-12 h-12 rounded-full object-cover"
-                                            />
-                                        ) : (
-                                            <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: BRAND_COLOR }}>
-                                                <MessageCircle size={20} className="text-white" />
-                                            </div>
-                                        )}
+                                        <PageAvatar
+                                            pageId={page.accountId || page.page_id || page.account_id}
+                                            storedUrl={page.metadata?.picture || page.profile_picture_url}
+                                            alt={page.displayName || page.display_name || t("messengerPage")}
+                                        />
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-semibold text-foreground truncate">
                                                 {page.displayName || page.display_name || "\u2014"}

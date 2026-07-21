@@ -28,6 +28,32 @@ const BRAND_COLOR = "#E4405F";
 const INSTAGRAM_APP_ID = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || "1472258884595741";
 const INSTAGRAM_REDIRECT_URI = process.env.NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI || "https://admin.parallly-chat.cloud/admin/channels/instagram/callback";
 
+/**
+ * IG avatar with graceful fallback. Instagram profile-picture URLs are signed CDN
+ * links that expire (there's no stable public-by-id endpoint like Facebook pages
+ * have), so if the image fails we degrade to the channel icon instead of a broken
+ * thumbnail. (A permanent fix would self-host the avatar at connect time.)
+ */
+function IgAvatar({ src, alt }: { src?: string; alt: string }) {
+    const [errored, setErrored] = useState(false);
+    if (!src || errored) {
+        return (
+            <div className="w-16 h-16 rounded-full flex items-center justify-center border-2 border-border" style={{ background: BRAND_COLOR }}>
+                <Instagram size={28} className="text-white" />
+            </div>
+        );
+    }
+    return (
+        <img
+            src={src}
+            alt={alt}
+            onError={() => setErrored(true)}
+            referrerPolicy="no-referrer"
+            className="w-16 h-16 rounded-full object-cover border-2 border-border"
+        />
+    );
+}
+
 export default function InstagramSetupPage() {
     const t = useTranslations("channels");
     const tc = useTranslations("common");
@@ -305,17 +331,10 @@ export default function InstagramSetupPage() {
                             <div className="flex flex-col gap-4">
                                 {accounts.map((acc: any, idx: number) => (
                                     <div key={acc.accountId || acc.account_id || idx} className="flex items-center gap-4">
-                                        {(acc?.metadata?.profilePicture || acc?.profile_picture_url) ? (
-                                            <img
-                                                src={acc.metadata?.profilePicture || acc.profile_picture_url}
-                                                alt={acc.displayName || acc.display_name || "Instagram"}
-                                                className="w-16 h-16 rounded-full object-cover border-2 border-border"
-                                            />
-                                        ) : (
-                                            <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: BRAND_COLOR }}>
-                                                <Instagram size={28} className="text-white" />
-                                            </div>
-                                        )}
+                                        <IgAvatar
+                                            src={acc?.metadata?.profilePicture || acc?.profile_picture_url}
+                                            alt={acc.displayName || acc.display_name || "Instagram"}
+                                        />
                                         <div className="flex-1 min-w-0">
                                             <p className="text-base font-semibold text-foreground">
                                                 {acc?.displayName || acc?.display_name || "\u2014"}

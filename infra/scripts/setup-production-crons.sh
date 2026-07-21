@@ -55,12 +55,12 @@ echo "Current crontab:"
 crontab -l | grep -A1 "parallext"
 echo ""
 
-# ── 5. Verify pg_dump is available ──
-if command -v pg_dump &> /dev/null; then
-  echo "  OK — pg_dump found: $(pg_dump --version | head -1)"
+# ── 5. Verify pg_dump is reachable (runs inside the postgres container) ──
+if docker exec parallext-postgres pg_dump --version &> /dev/null; then
+  echo "  OK — pg_dump in container: $(docker exec parallext-postgres pg_dump --version | head -1)"
 else
-  echo "  WARN — pg_dump not found. Install: apt-get install postgresql-client-16"
-  echo "         Backup script will fail without it."
+  echo "  WARN — postgres container not reachable. Backups run pg_dump inside"
+  echo "         parallext-postgres, so no host postgresql-client is required."
 fi
 
 # ── 6. Check rclone for offsite (S3-compatible) ──

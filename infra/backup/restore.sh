@@ -33,6 +33,8 @@ BACKUP_DIR="${BACKUP_DIR:-/backup}"
 MEDIA_DIR="${MEDIA_DIR:-/var/lib/docker/volumes/parallext-media-data/_data}"
 INVOICES_DIR="${INVOICES_DIR:-/var/lib/docker/volumes/parallext-fiscal-data/_data}"
 REDIS_CONTAINER="${REDIS_CONTAINER:-parallext-redis}"
+# pg_restore runs inside the postgres container (no host postgresql-client needed).
+PG_CONTAINER="${PG_CONTAINER:-parallext-postgres}"
 
 # Offsite (S3-compatible) — same vars as backup.sh
 OFFSITE_BUCKET="${OFFSITE_BUCKET:-}"
@@ -142,11 +144,10 @@ if [ "${FLAG}" != "--media-only" ]; then
   # Public schema
   if [ -f "public.dump" ]; then
     echo "  Restoring public schema..."
-    pg_restore -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
-      --schema=public \
-      --clean --if-exists \
-      --no-owner --no-privileges \
-      "public.dump" 2>&1 || echo "  WARN: Some public schema restore warnings (usually safe)"
+    docker exec -i -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
+      pg_restore -U "${DB_USER}" -d "${DB_NAME}" \
+      --schema=public --clean --if-exists --no-owner --no-privileges \
+      < "public.dump" 2>&1 || echo "  WARN: Some public schema restore warnings (usually safe)"
     echo "  OK — public schema"
   fi
 
@@ -155,11 +156,10 @@ if [ "${FLAG}" != "--media-only" ]; then
     if [ -f "${DUMP}" ]; then
       SCHEMA="${DUMP%.dump}"
       echo "  Restoring ${SCHEMA}..."
-      pg_restore -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
-        --schema="${SCHEMA}" \
-        --clean --if-exists \
-        --no-owner --no-privileges \
-        "${DUMP}" 2>&1 || echo "  WARN: ${SCHEMA} restore warnings"
+      docker exec -i -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
+        pg_restore -U "${DB_USER}" -d "${DB_NAME}" \
+        --schema="${SCHEMA}" --clean --if-exists --no-owner --no-privileges \
+        < "${DUMP}" 2>&1 || echo "  WARN: ${SCHEMA} restore warnings"
     fi
   done
   echo "  OK — all schemas restored"

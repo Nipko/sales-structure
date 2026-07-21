@@ -36,6 +36,9 @@ BACKUP_DIR="${BACKUP_DIR:-/backup}"
 MEDIA_DIR="${MEDIA_DIR:-/var/lib/docker/volumes/parallext-media-data/_data}"
 INVOICES_DIR="${INVOICES_DIR:-/var/lib/docker/volumes/parallext-fiscal-data/_data}"
 REDIS_CONTAINER="${REDIS_CONTAINER:-parallext-redis}"
+# Run pg_dump/psql INSIDE the postgres container so the host does not need
+# postgresql-client installed and the client version always matches the server.
+PG_CONTAINER="${PG_CONTAINER:-parallext-postgres}"
 
 # ── Offsite (S3-compatible) ──
 # Set these in GitHub Secrets → injected into .env by deploy.yml. Leave
@@ -76,27 +79,28 @@ echo "========================================"
 mkdir -p "${BACKUP_PATH}"
 
 # ── 1. Database: public schema ──
+# pg_dump runs inside the postgres container (socket auth, matching version) and
+# streams the custom-format dump to a file on the host via stdout.
 echo "[1/7] Backing up public schema..."
-pg_dump -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
-  --schema=public \
-  --format=custom \
-  --file="${BACKUP_PATH}/public.dump" \
-  2>&1 || echo "  WARN: Public schema backup had issues"
+docker exec -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
+  pg_dump -U "${DB_USER}" -d "${DB_NAME}" --schema=public --format=custom \
+  > "${BACKUP_PATH}/public.dump" \
+  || echo "  WARN: Public schema backup had issues"
 echo "  OK — public.dump"
 
 # ── 2. Database: each tenant schema ──
 echo "[2/7] Backing up tenant schemas..."
-TENANT_SCHEMAS=$(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
+TENANT_SCHEMAS=$(docker exec -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
+  psql -U "${DB_USER}" -d "${DB_NAME}" \
   -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$' || true)
 
 TENANT_COUNT=0
 for SCHEMA in ${TENANT_SCHEMAS}; do
   if [ -n "${SCHEMA}" ]; then
-    pg_dump -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
-      --schema="${SCHEMA}" \
-      --format=custom \
-      --file="${BACKUP_PATH}/${SCHEMA}.dump" \
-      2>&1 || echo "  WARN: ${SCHEMA} backup had issues"
+    docker exec -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
+      pg_dump -U "${DB_USER}" -d "${DB_NAME}" --schema="${SCHEMA}" --format=custom \
+      > "${BACKUP_PATH}/${SCHEMA}.dump" \
+      || echo "  WARN: ${SCHEMA} backup had issues"
     TENANT_COUNT=$((TENANT_COUNT + 1))
   fi
 done
@@ -104,10 +108,10 @@ echo "  OK — ${TENANT_COUNT} tenant schemas"
 
 # ── 3. Full database backup (safety net) ──
 echo "[3/7] Full database backup..."
-pg_dump -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
-  --format=custom \
-  --file="${BACKUP_PATH}/full_backup.dump" \
-  2>&1 || echo "  WARN: Full backup had issues"
+docker exec -e PGPASSWORD="${DB_PASSWORD:-}" "${PG_CONTAINER}" \
+  pg_dump -U "${DB_USER}" -d "${DB_NAME}" --format=custom \
+  > "${BACKUP_PATH}/full_backup.dump" \
+  || echo "  WARN: Full backup had issues"
 echo "  OK — full_backup.dump"
 
 # ── 4. Redis RDB snapshot ──

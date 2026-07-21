@@ -92,6 +92,9 @@ services:
     volumes:
       - media_data:/data/media
       - api_logs:/data/logs
+      # Legal 5-year retention of DIAN invoices (XML+PDF). Shared with the
+      # worker, which is the one that issues them — the API only serves them.
+      - fiscal_data:/data/invoices
     expose:
       - "3000"
     depends_on:
@@ -143,6 +146,9 @@ services:
       - ../../.env
     volumes:
       - worker_logs:/data/logs
+      # Same fiscal volume as the API — the worker writes DIAN invoices here on
+      # payment.succeeded; the API reads them back to serve/re-download.
+      - fiscal_data:/data/invoices
     depends_on:
       pgbouncer:
         condition: service_healthy
@@ -334,6 +340,8 @@ volumes:
     name: parallext-redis-data
   media_data:
     name: parallext-media-data
+  fiscal_data:
+    name: parallext-fiscal-data
   api_logs:
     name: parallext-api-logs
   worker_logs:

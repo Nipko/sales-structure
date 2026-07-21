@@ -17,6 +17,7 @@ DB_USER="${DATABASE_USER:-parallext}"
 DB_NAME="${DATABASE_NAME:-parallext_engine}"
 BACKUP_DIR="${BACKUP_DIR:-/backup}"
 MEDIA_DIR="${MEDIA_DIR:-/var/lib/docker/volumes/parallext-media-data/_data}"
+INVOICES_DIR="${INVOICES_DIR:-/var/lib/docker/volumes/parallext-fiscal-data/_data}"
 REDIS_CONTAINER="${REDIS_CONTAINER:-parallext-redis}"
 OFFSITE_REMOTE="${OFFSITE_REMOTE:-}"  # e.g. "r2:parallext-backups" or "b2:parallext-backups"
 
@@ -37,7 +38,7 @@ echo "========================================"
 mkdir -p "${BACKUP_PATH}"
 
 # ── 1. Database: public schema ──
-echo "[1/6] Backing up public schema..."
+echo "[1/7] Backing up public schema..."
 pg_dump -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
   --schema=public \
   --format=custom \
@@ -46,7 +47,7 @@ pg_dump -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
 echo "  OK — public.dump"
 
 # ── 2. Database: each tenant schema ──
-echo "[2/6] Backing up tenant schemas..."
+echo "[2/7] Backing up tenant schemas..."
 TENANT_SCHEMAS=$(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
   -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$' || true)
 
@@ -64,7 +65,7 @@ done
 echo "  OK — ${TENANT_COUNT} tenant schemas"
 
 # ── 3. Full database backup (safety net) ──
-echo "[3/6] Full database backup..."
+echo "[3/7] Full database backup..."
 pg_dump -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
   --format=custom \
   --file="${BACKUP_PATH}/full_backup.dump" \
@@ -72,7 +73,7 @@ pg_dump -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
 echo "  OK — full_backup.dump"
 
 # ── 4. Redis RDB snapshot ──
-echo "[4/6] Redis snapshot..."
+echo "[4/7] Redis snapshot..."
 if docker exec "${REDIS_CONTAINER}" redis-cli BGSAVE 2>/dev/null; then
   sleep 3
   docker cp "${REDIS_CONTAINER}:/data/dump.rdb" "${BACKUP_PATH}/redis.rdb" 2>/dev/null \
@@ -83,7 +84,7 @@ else
 fi
 
 # ── 5. Media files ──
-echo "[5/6] Media files..."
+echo "[5/7] Media files..."
 if [ -d "${MEDIA_DIR}" ]; then
   tar -czf "${BACKUP_PATH}/media.tar.gz" -C "${MEDIA_DIR}" . 2>/dev/null \
     || echo "  WARN: Media backup had issues"
@@ -92,8 +93,18 @@ else
   echo "  SKIP — Media directory not found: ${MEDIA_DIR}"
 fi
 
-# ── 6. Compress daily backup ──
-echo "[6/6] Compressing..."
+# ── 6. Fiscal invoices (DIAN XML+PDF — legal 5-year retention) ──
+echo "[6/7] Fiscal invoices..."
+if [ -d "${INVOICES_DIR}" ]; then
+  tar -czf "${BACKUP_PATH}/fiscal-invoices.tar.gz" -C "${INVOICES_DIR}" . 2>/dev/null \
+    || echo "  WARN: Fiscal invoices backup had issues"
+  echo "  OK — fiscal-invoices.tar.gz"
+else
+  echo "  SKIP — Fiscal invoices directory not found: ${INVOICES_DIR}"
+fi
+
+# ── 7. Compress daily backup ──
+echo "[7/7] Compressing..."
 cd "${BACKUP_DIR}/daily"
 tar -czf "${TIMESTAMP}.tar.gz" "${TIMESTAMP}/"
 rm -rf "${TIMESTAMP}/"
@@ -151,6 +162,6 @@ echo "Backup complete!"
 echo "  File: daily/${TIMESTAMP}.tar.gz"
 echo "  Size: ${BACKUP_SIZE}"
 echo "  Schemas: public + ${TENANT_COUNT} tenants"
-echo "  Includes: DB + Redis + Media"
+echo "  Includes: DB + Redis + Media + Fiscal invoices"
 echo "  Total backup dir: ${TOTAL_SIZE}"
 echo "========================================"

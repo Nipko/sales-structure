@@ -539,6 +539,10 @@ jobs:
             echo "FACTUS_CLIENT_SECRET=${PROD_FACTUS_CLIENT_SECRET}" >> .env
             echo "FACTUS_USERNAME=${PROD_FACTUS_USERNAME}" >> .env
             echo "FACTUS_PASSWORD=${PROD_FACTUS_PASSWORD}" >> .env
+            # Fiscal artifact storage — backed by the parallext-fiscal-data volume
+            # mounted on api+worker (legal 5-year retention). Set explicitly for
+            # reproducible deploys even though the code defaults to /data/invoices.
+            echo "FISCAL_STORAGE_PATH=/data/invoices" >> .env
             echo "# External CRM integrations" >> .env
             echo "HUBSPOT_CLIENT_ID=${PROD_HUBSPOT_CLIENT_ID}" >> .env
             echo "HUBSPOT_CLIENT_SECRET=${PROD_HUBSPOT_CLIENT_SECRET}" >> .env

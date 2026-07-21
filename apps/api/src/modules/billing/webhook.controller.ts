@@ -49,8 +49,15 @@ export class BillingWebhookController {
         @Headers() headers: Record<string, string>,
         @Req() req: Request & { rawBody?: Buffer },
     ) {
-        // Normalize provider name — the factory only accepts known values
-        const allowed: PaymentProviderName[] = ['mercadopago', 'stripe', 'mock'];
+        // Normalize provider name — the factory only accepts known values.
+        // 'mock' is a test-only provider whose signature check always returns
+        // true; exposing its public webhook route in production would let an
+        // unauthenticated POST forge PAYMENT_SUCCEEDED events and activate a
+        // subscription for free. Never allow it in production.
+        const allowed: PaymentProviderName[] =
+            process.env.NODE_ENV === 'production'
+                ? ['mercadopago', 'stripe']
+                : ['mercadopago', 'stripe', 'mock'];
         if (!allowed.includes(providerName as PaymentProviderName)) {
             throw new NotImplementedException({ error: 'unknown_provider', provider: providerName });
         }

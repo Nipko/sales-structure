@@ -113,6 +113,7 @@ export class BillingAdminController {
     async updatePlan(
         @Param('slug') slug: string,
         @Body() body: UpdatePlanDto,
+        @Req() req: any,
     ) {
         const existing = await this.prisma.billingPlan.findUnique({ where: { slug } });
         if (!existing) throw new NotFoundException('Plan not found');
@@ -154,6 +155,39 @@ export class BillingAdminController {
         });
 
         const invalidated = await this.throttle.invalidatePlanCacheForSlug(slug);
+
+        // Audit trail — plan catalog edits move real money, so record who changed
+        // what (before → after), the same pattern setTenantPlan uses. tenantId is
+        // null because a plan is global catalog, not a per-tenant resource.
+        const scalarFields = ['name', 'priceUsdCents', 'trialDays', 'requiresCardForTrial', 'maxAgents', 'maxAiMessages', 'isActive'];
+        const changes: Record<string, any> = {};
+        for (const f of scalarFields) {
+            if ((existing as any)[f] !== (updated as any)[f]) {
+                changes[f] = { from: (existing as any)[f], to: (updated as any)[f] };
+            }
+        }
+        if (body.features) {
+            changes.features = Object.fromEntries(
+                Object.keys(body.features).map((k) => [
+                    k,
+                    { from: (existing.features as any)?.[k], to: (updated.features as any)?.[k] },
+                ]),
+            );
+        }
+        if (body.priceLocalOverrides) {
+            changes.priceLocalOverrides = { from: existing.priceLocalOverrides, to: updated.priceLocalOverrides };
+        }
+        if (Object.keys(changes).length > 0) {
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId: null,
+                    userId: req.user?.sub,
+                    action: 'billing_plan_updated',
+                    resource: `billing-plans/${slug}`,
+                    details: { slug, changes },
+                },
+            });
+        }
 
         return { success: true, data: updated, invalidatedTenants: invalidated };
     }

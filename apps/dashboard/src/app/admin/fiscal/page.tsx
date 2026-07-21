@@ -74,6 +74,13 @@ export default function FiscalAdminPage() {
 
     useEffect(() => { loadConfig(); }, [loadConfig]);
     useEffect(() => { if (tab === "invoices") loadInvoices(); }, [tab, loadInvoices]);
+    // Auto-load Factus numbering ranges on mount so the range pickers are populated
+    // (quiet + graceful — the range must be SELECTED from the real list, never typed).
+    useEffect(() => {
+        api.getFactusNumberingRanges().then(res => {
+            if (res.success) setRanges((res.data as any[]) || []);
+        }).catch(() => { /* creds not set yet — the Factus tab button reloads */ });
+    }, []);
 
     const doSave = async (cfg: FiscalConfig) => {
         setSaving(true); setError("");
@@ -223,9 +230,32 @@ export default function FiscalAdminPage() {
                                 <option value="production">{t("production")}</option>
                             </select>
                         </div>
-                        <div><label className={lbl}>{t("numberingRangeId")}</label><input value={config.factusNumberingRangeId || ""} onChange={(e) => setConfig({ ...config, factusNumberingRangeId: e.target.value })} className={inp} placeholder="8" /></div>
-                        <div><label className={lbl}>{t("creditNumberingRangeId")}</label><input value={config.factusCreditNumberingRangeId || ""} onChange={(e) => setConfig({ ...config, factusCreditNumberingRangeId: e.target.value })} className={inp} placeholder="5" /></div>
+                        <div>
+                            <label className={lbl}>{t("numberingRangeId")}</label>
+                            <select value={config.factusNumberingRangeId || ""} onChange={(e) => setConfig({ ...config, factusNumberingRangeId: e.target.value })} className={cn(sel, "w-full")}>
+                                <option value="">{t("rangePickNone")}</option>
+                                {(ranges || []).map((r: any) => (
+                                    <option key={r.id} value={String(r.id)}>{r.id} · {r.document} ({r.prefix}){r.is_active ? "" : " · inactivo"}</option>
+                                ))}
+                                {config.factusNumberingRangeId && !(ranges || []).some((r: any) => String(r.id) === String(config.factusNumberingRangeId)) && (
+                                    <option value={config.factusNumberingRangeId}>{config.factusNumberingRangeId}</option>
+                                )}
+                            </select>
+                        </div>
+                        <div>
+                            <label className={lbl}>{t("creditNumberingRangeId")}</label>
+                            <select value={config.factusCreditNumberingRangeId || ""} onChange={(e) => setConfig({ ...config, factusCreditNumberingRangeId: e.target.value })} className={cn(sel, "w-full")}>
+                                <option value="">{t("rangePickNoneOptional")}</option>
+                                {(ranges || []).map((r: any) => (
+                                    <option key={r.id} value={String(r.id)}>{r.id} · {r.document} ({r.prefix})</option>
+                                ))}
+                                {config.factusCreditNumberingRangeId && !(ranges || []).some((r: any) => String(r.id) === String(config.factusCreditNumberingRangeId)) && (
+                                    <option value={config.factusCreditNumberingRangeId}>{config.factusCreditNumberingRangeId}</option>
+                                )}
+                            </select>
+                        </div>
                     </div>
+                    <p className="-mt-1 text-[11px] text-neutral-400">{t("rangeAutoHint")}</p>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div><label className={lbl}>{t("itemDescription")}</label><input value={config.itemDescription} onChange={(e) => setConfig({ ...config, itemDescription: e.target.value })} className={inp} /></div>
@@ -251,10 +281,8 @@ export default function FiscalAdminPage() {
                                 <option value="Responsable de IVA">{t("regimeResponsable")}</option>
                                 <option value="No responsable de IVA">{t("regimeNoResponsable")}</option>
                             </select>
-                            <input value={config.coIssuer?.dianResolution || ""} onChange={(e) => setConfig({ ...config, coIssuer: { ...config.coIssuer, dianResolution: e.target.value } })} className={inp} placeholder={t("coDianResolution")} />
-                            <input value={config.coIssuer?.authRange || ""} onChange={(e) => setConfig({ ...config, coIssuer: { ...config.coIssuer, authRange: e.target.value } })} className={inp} placeholder={t("coAuthRange")} />
-                            <input value={config.coIssuer?.resolutionValidUntil || ""} onChange={(e) => setConfig({ ...config, coIssuer: { ...config.coIssuer, resolutionValidUntil: e.target.value } })} className={inp} placeholder={t("coValidUntil")} />
                         </div>
+                        <p className="mt-3 text-[11px] text-neutral-400">{t("coResolutionAutoNote")}</p>
                     </div>
 
                     <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
@@ -414,7 +442,7 @@ export default function FiscalAdminPage() {
                                                     <td className="py-2.5 pr-3">{r.prefix}</td>
                                                     <td className="py-2.5 pr-3 text-neutral-500">{r.from}–{r.to}</td>
                                                     <td className="py-2.5 pr-3">{r.is_active ? <CheckCircle2 size={14} className="text-emerald-500" /> : <XCircle size={14} className="text-neutral-400" />}</td>
-                                                    <td className="py-2.5"><button onClick={() => useRange(r.id)} className="text-xs text-teal-600 hover:underline">{t("useThis")}</button></td>
+                                                    <td className="py-2.5">{String(r.id) === String(config?.factusNumberingRangeId) ? <span className="text-xs font-semibold text-emerald-600">{t("rangeInUse")}</span> : <button onClick={() => useRange(r.id)} className="text-xs text-teal-600 hover:underline">{t("useThis")}</button>}</td>
                                                 </tr>
                                             ))}
                                         </tbody>

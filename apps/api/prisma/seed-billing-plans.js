@@ -526,11 +526,24 @@ const PLANS = [
     },
 ];
 
+// The runtime source of truth for prices/features is the billing_plans table,
+// edited from the super-admin panel (/admin/plans → PUT /billing-admin/plans/:slug).
+// So this seed is CREATE-ONLY by default: it bootstraps missing plans on a fresh
+// DB but never overwrites an existing plan, otherwise every deploy would silently
+// revert panel edits. Pass --force to restore a plan to these factory values on
+// purpose (e.g. after a bad manual edit) — that path keeps the old overwrite
+// behaviour and preserves only the MP plan id via the override merge below.
+const FORCE = process.argv.includes('--force');
+
 async function main() {
-    console.log('Seeding billing_plans…');
+    console.log(`Seeding billing_plans… (${FORCE ? 'FORCE: overwriting existing plans' : 'create-only: existing plans are left untouched'})`);
     for (const plan of PLANS) {
         const existing = await prisma.billingPlan.findUnique({ where: { slug: plan.slug } });
         if (existing) {
+            if (!FORCE) {
+                console.log(`  Skipped ${plan.slug} (already exists — panel is source of truth; use --force to restore factory values)`);
+                continue;
+            }
             const mergedOverrides = { ...((existing.priceLocalOverrides && typeof existing.priceLocalOverrides === 'object') ? existing.priceLocalOverrides : {}), ...(plan.priceLocalOverrides ?? {}) };
             for (const [country, vals] of Object.entries(plan.priceLocalOverrides ?? {})) {
                 mergedOverrides[country] = { ...(mergedOverrides[country] ?? {}), ...vals };

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsPositive, IsString, Min } from 'class-validator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -364,6 +364,110 @@ export class BillingAdminController {
     async reconcileTenant(@Param('tenantId') tenantId: string) {
         const result = await this.billingService.syncFromProvider(tenantId);
         return { success: true, data: result };
+    }
+
+    // ── Cross-tenant read views (subscriptions / payments / events) ──
+    // The runbook's psql-by-SSH queries, moved into the panel.
+
+    @Get('subscriptions')
+    async listSubscriptions(
+        @Query('status') status?: string,
+        @Query('provider') provider?: string,
+        @Query('plan') plan?: string,
+        @Query('q') q?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        const pageN = Math.max(1, parseInt(page || '1', 10) || 1);
+        const limitN = Math.min(100, Math.max(1, parseInt(limit || '25', 10) || 25));
+        const where: any = {};
+        if (status) where.status = status;
+        if (provider) where.provider = provider;
+        if (plan) where.plan = { slug: plan };
+        if (q) where.tenant = { OR: [{ name: { contains: q, mode: 'insensitive' } }, { slug: { contains: q, mode: 'insensitive' } }] };
+
+        const [items, total] = await Promise.all([
+            this.prisma.billingSubscription.findMany({
+                where,
+                select: {
+                    id: true, status: true, provider: true, providerSubscriptionId: true,
+                    currentPeriodEnd: true, trialEndsAt: true, cancelAtPeriodEnd: true, pendingPlanChangeAt: true,
+                    tenant: { select: { id: true, name: true, slug: true } },
+                    plan: { select: { slug: true, name: true } },
+                    pendingPlan: { select: { slug: true, name: true } },
+                },
+                orderBy: { updatedAt: 'desc' },
+                skip: (pageN - 1) * limitN,
+                take: limitN,
+            }),
+            this.prisma.billingSubscription.count({ where }),
+        ]);
+        return { success: true, data: { items, total, page: pageN, limit: limitN } };
+    }
+
+    @Get('payments')
+    async listPayments(
+        @Query('status') status?: string,
+        @Query('provider') provider?: string,
+        @Query('tenantId') tenantId?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        const pageN = Math.max(1, parseInt(page || '1', 10) || 1);
+        const limitN = Math.min(100, Math.max(1, parseInt(limit || '25', 10) || 25));
+        const where: any = {};
+        if (status) where.status = status;
+        if (provider) where.provider = provider;
+        if (tenantId) where.tenantId = tenantId;
+
+        const [items, total] = await Promise.all([
+            this.prisma.billingPayment.findMany({
+                where,
+                select: {
+                    id: true, tenantId: true, amountCents: true, currency: true, status: true,
+                    provider: true, providerPaymentId: true, paidAt: true, failureReason: true,
+                    invoiceNumber: true, createdAt: true,
+                    subscription: { select: { tenant: { select: { id: true, name: true, slug: true } } } },
+                },
+                orderBy: { createdAt: 'desc' },
+                skip: (pageN - 1) * limitN,
+                take: limitN,
+            }),
+            this.prisma.billingPayment.count({ where }),
+        ]);
+        return { success: true, data: { items, total, page: pageN, limit: limitN } };
+    }
+
+    @Get('events')
+    async listEvents(
+        @Query('eventType') eventType?: string,
+        @Query('provider') provider?: string,
+        @Query('tenantId') tenantId?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        const pageN = Math.max(1, parseInt(page || '1', 10) || 1);
+        const limitN = Math.min(100, Math.max(1, parseInt(limit || '25', 10) || 25));
+        const where: any = {};
+        if (eventType) where.eventType = eventType;
+        if (provider) where.provider = provider;
+        if (tenantId) where.tenantId = tenantId;
+
+        const [items, total] = await Promise.all([
+            this.prisma.billingEvent.findMany({
+                where,
+                // Omit the raw provider payload from the list — it can be large.
+                select: {
+                    id: true, tenantId: true, subscriptionId: true, provider: true,
+                    providerEventId: true, eventType: true, processedAt: true,
+                },
+                orderBy: { processedAt: 'desc' },
+                skip: (pageN - 1) * limitN,
+                take: limitN,
+            }),
+            this.prisma.billingEvent.count({ where }),
+        ]);
+        return { success: true, data: { items, total, page: pageN, limit: limitN } };
     }
 
     // ── Existing Operations ─────────────────────────────────────

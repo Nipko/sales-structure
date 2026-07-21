@@ -146,6 +146,7 @@
       "verticalAnalytics": "Analítica por vertical",
       "coupons": "Cupones",
       "plans": "Planes",
+      "billingOps": "Billing Ops",
       "aiModels": "Modelos de IA",
       "llmProviders": "Proveedores LLM",
       "aiConfig": "Configuración IA",
@@ -8634,6 +8635,27 @@
     "pushBlocked": "Las notificaciones están bloqueadas. Actívalas en la configuración del navegador.",
     "pushEnable": "Activar",
     "pushDisable": "Desactivar"
+  },
+  "billingOps": {
+    "title": "Operaciones de facturación",
+    "subtitle": "Suscripciones, pagos y eventos de todos los tenants",
+    "tabs": { "subscriptions": "Suscripciones", "payments": "Pagos", "events": "Eventos" },
+    "cols": {
+      "tenant": "Tenant", "plan": "Plan", "status": "Estado", "provider": "Proveedor",
+      "periodEnd": "Fin de período", "pending": "Cambio pendiente", "amount": "Monto",
+      "date": "Fecha", "eventType": "Evento", "eventId": "ID de evento"
+    },
+    "empty": "Sin registros",
+    "refund": "Reembolsar",
+    "refundTitle": "Reembolsar pago",
+    "refundDesc": "Vas a reembolsar {amount}. Esta acción es irreversible.",
+    "refundReason": "Motivo (opcional)",
+    "refundConfirm": "Reembolsar",
+    "refundDone": "Reembolso solicitado",
+    "cancel": "Cancelar",
+    "pageOf": "Página {page} de {total}",
+    "prev": "Anterior",
+    "next": "Siguiente"
   },
   "plansPage": {
     "title": "Gestión de planes",

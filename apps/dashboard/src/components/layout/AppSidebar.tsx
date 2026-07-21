@@ -213,6 +213,7 @@ const platformSections: NavSectionDef[] = [
       { labelKey: "verticalAnalytics", href: "/admin/vertical-analytics", icon: PieChart },
       { labelKey: "coupons", href: "/admin/coupons", icon: Tag },
       { labelKey: "plans", href: "/admin/plans", icon: Layers },
+      { labelKey: "billingOps", href: "/admin/billing-ops", icon: CreditCard, accent: "text-emerald-500 dark:text-emerald-400" },
     ],
   },
   {

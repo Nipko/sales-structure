@@ -1218,6 +1218,37 @@ export const api = {
             '/billing-admin/reconcile',
             scope ? { scope } : {},
         ),
+    listAdminSubscriptions: (p?: { status?: string; provider?: string; plan?: string; q?: string; page?: number; limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (p?.status) qs.set('status', p.status);
+        if (p?.provider) qs.set('provider', p.provider);
+        if (p?.plan) qs.set('plan', p.plan);
+        if (p?.q) qs.set('q', p.q);
+        if (p?.page) qs.set('page', String(p.page));
+        if (p?.limit) qs.set('limit', String(p.limit));
+        const s = qs.toString();
+        return apiGet<{ items: any[]; total: number; page: number; limit: number }>(`/billing-admin/subscriptions${s ? `?${s}` : ''}`);
+    },
+    listAdminPayments: (p?: { status?: string; provider?: string; tenantId?: string; page?: number; limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (p?.status) qs.set('status', p.status);
+        if (p?.provider) qs.set('provider', p.provider);
+        if (p?.tenantId) qs.set('tenantId', p.tenantId);
+        if (p?.page) qs.set('page', String(p.page));
+        if (p?.limit) qs.set('limit', String(p.limit));
+        const s = qs.toString();
+        return apiGet<{ items: any[]; total: number; page: number; limit: number }>(`/billing-admin/payments${s ? `?${s}` : ''}`);
+    },
+    listAdminBillingEvents: (p?: { eventType?: string; provider?: string; tenantId?: string; page?: number; limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (p?.eventType) qs.set('eventType', p.eventType);
+        if (p?.provider) qs.set('provider', p.provider);
+        if (p?.tenantId) qs.set('tenantId', p.tenantId);
+        if (p?.page) qs.set('page', String(p.page));
+        if (p?.limit) qs.set('limit', String(p.limit));
+        const s = qs.toString();
+        return apiGet<{ items: any[]; total: number; page: number; limit: number }>(`/billing-admin/events${s ? `?${s}` : ''}`);
+    },
 
     // --- Coupons (super_admin CRUD + tenant redeem) ---
     listCoupons: (active?: boolean) =>

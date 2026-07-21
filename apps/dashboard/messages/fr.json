@@ -146,6 +146,7 @@
       "verticalAnalytics": "Analytique par verticale",
       "coupons": "Codes promo",
       "plans": "Plans",
+      "billingOps": "Billing Ops",
       "aiModels": "Modèles IA",
       "llmProviders": "Fournisseurs LLM",
       "aiConfig": "Config IA",
@@ -8632,6 +8633,27 @@
     "pushBlocked": "Les notifications sont bloquées. Activez-les dans les paramètres du navigateur.",
     "pushEnable": "Activer",
     "pushDisable": "Désactiver"
+  },
+  "billingOps": {
+    "title": "Opérations de facturation",
+    "subtitle": "Abonnements, paiements et événements de tous les tenants",
+    "tabs": { "subscriptions": "Abonnements", "payments": "Paiements", "events": "Événements" },
+    "cols": {
+      "tenant": "Tenant", "plan": "Plan", "status": "Statut", "provider": "Fournisseur",
+      "periodEnd": "Fin de période", "pending": "Changement en attente", "amount": "Montant",
+      "date": "Date", "eventType": "Événement", "eventId": "ID d'événement"
+    },
+    "empty": "Aucun enregistrement",
+    "refund": "Rembourser",
+    "refundTitle": "Rembourser le paiement",
+    "refundDesc": "Vous allez rembourser {amount}. Cette action est irréversible.",
+    "refundReason": "Motif (facultatif)",
+    "refundConfirm": "Rembourser",
+    "refundDone": "Remboursement demandé",
+    "cancel": "Annuler",
+    "pageOf": "Page {page} sur {total}",
+    "prev": "Précédent",
+    "next": "Suivant"
   },
   "plansPage": {
     "title": "Gestion des plans",

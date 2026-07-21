@@ -146,6 +146,7 @@
       "verticalAnalytics": "Vertical analytics",
       "coupons": "Coupons",
       "plans": "Plans",
+      "billingOps": "Billing Ops",
       "aiModels": "AI models",
       "llmProviders": "LLM providers",
       "aiConfig": "AI config",
@@ -8632,6 +8633,27 @@
     "pushBlocked": "Notifications are blocked. Enable them in your browser settings.",
     "pushEnable": "Enable",
     "pushDisable": "Disable"
+  },
+  "billingOps": {
+    "title": "Billing operations",
+    "subtitle": "Subscriptions, payments and events across all tenants",
+    "tabs": { "subscriptions": "Subscriptions", "payments": "Payments", "events": "Events" },
+    "cols": {
+      "tenant": "Tenant", "plan": "Plan", "status": "Status", "provider": "Provider",
+      "periodEnd": "Period end", "pending": "Pending change", "amount": "Amount",
+      "date": "Date", "eventType": "Event", "eventId": "Event ID"
+    },
+    "empty": "No records",
+    "refund": "Refund",
+    "refundTitle": "Refund payment",
+    "refundDesc": "You are about to refund {amount}. This action is irreversible.",
+    "refundReason": "Reason (optional)",
+    "refundConfirm": "Refund",
+    "refundDone": "Refund requested",
+    "cancel": "Cancel",
+    "pageOf": "Page {page} of {total}",
+    "prev": "Previous",
+    "next": "Next"
   },
   "plansPage": {
     "title": "Plan management",

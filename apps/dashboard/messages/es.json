@@ -5198,6 +5198,8 @@
     "createTitle": "Crear plantilla de WhatsApp",
     "createName": "Nombre de la plantilla",
     "createNameHint": "Solo letras minúsculas, números y guiones bajos. Ej: recordatorio_pago",
+    "createNumber": "Número / cuenta",
+    "createNumberDefault": "Número principal (por defecto)",
     "createLanguage": "Idioma",
     "createCategory": "Categoría",
     "createHeader": "Encabezado (opcional)",

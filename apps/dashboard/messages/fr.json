@@ -5196,6 +5196,8 @@
     "createTitle": "Créer un modèle WhatsApp",
     "createName": "Nom du modèle",
     "createNameHint": "Lettres minuscules, chiffres et underscores uniquement. Ex : rappel_paiement",
+    "createNumber": "Numéro / compte",
+    "createNumberDefault": "Numéro principal (par défaut)",
     "createLanguage": "Langue",
     "createCategory": "Catégorie",
     "createHeader": "En-tête (optionnel)",

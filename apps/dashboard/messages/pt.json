@@ -5198,6 +5198,8 @@
     "createTitle": "Criar template do WhatsApp",
     "createName": "Nome do template",
     "createNameHint": "Apenas letras minúsculas, números e underscores. Ex: lembrete_pagamento",
+    "createNumber": "Número / conta",
+    "createNumberDefault": "Número principal (padrão)",
     "createLanguage": "Idioma",
     "createCategory": "Categoria",
     "createHeader": "Cabeçalho (opcional)",

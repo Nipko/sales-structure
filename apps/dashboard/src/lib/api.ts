@@ -1183,7 +1183,7 @@ export const api = {
     testFiscalInvoice: () => apiPost(`/fiscal-admin/test-invoice`, {}),
 
     // --- WA Template creation ---
-    createWhatsAppTemplate: (data: { name: string; language: string; category: string; components: any[] }) =>
+    createWhatsAppTemplate: (data: { name: string; language: string; category: string; components: any[]; phoneNumberId?: string }) =>
         apiPost('/channels/whatsapp/templates/create', data),
 
     // --- Saved Reports (Custom Report Builder) ---

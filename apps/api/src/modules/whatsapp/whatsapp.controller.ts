@@ -343,6 +343,9 @@ export class WhatsappController {
         example?: any;
         buttons?: any[];
       }>;
+      // Multi-number: which number/WABA to create the template on. Defaults to the
+      // oldest active channel when omitted.
+      phoneNumberId?: string;
     },
   ) {
     const schemaName = await this.resolveSchema(req);
@@ -354,10 +357,16 @@ export class WhatsappController {
       throw new BadRequestException('name, language, category, and components are required');
     }
 
-    const channels: any[] = await this.prisma.executeInTenantSchema(
-      schemaName,
-      `SELECT id, waba_id, access_token FROM whatsapp_channels WHERE is_active = true LIMIT 1`,
-    );
+    const channels: any[] = body.phoneNumberId
+      ? await this.prisma.executeInTenantSchema(
+          schemaName,
+          `SELECT id, waba_id, access_token FROM whatsapp_channels WHERE is_active = true AND phone_number_id = $1 LIMIT 1`,
+          [body.phoneNumberId],
+        )
+      : await this.prisma.executeInTenantSchema(
+          schemaName,
+          `SELECT id, waba_id, access_token FROM whatsapp_channels WHERE is_active = true ORDER BY connected_at ASC NULLS LAST LIMIT 1`,
+        );
 
     if (!channels?.length) {
       throw new BadRequestException('No active WhatsApp channel. Complete Embedded Signup first.');

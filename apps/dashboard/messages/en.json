@@ -5196,6 +5196,8 @@
     "createTitle": "Create WhatsApp Template",
     "createName": "Template name",
     "createNameHint": "Lowercase letters, numbers, and underscores only. E.g.: payment_reminder",
+    "createNumber": "Number / account",
+    "createNumberDefault": "Primary number (default)",
     "createLanguage": "Language",
     "createCategory": "Category",
     "createHeader": "Header (optional)",

@@ -545,13 +545,18 @@ async function main() {
                 console.log(`  Skipped ${plan.slug} (already exists — panel is source of truth; use --force to restore factory values)`);
                 continue;
             }
-            const mergedOverrides = { ...((existing.priceLocalOverrides && typeof existing.priceLocalOverrides === 'object') ? existing.priceLocalOverrides : {}), ...(plan.priceLocalOverrides ?? {}) };
+            const existingOverrides = (existing.priceLocalOverrides && typeof existing.priceLocalOverrides === 'object') ? existing.priceLocalOverrides : {};
+            const mergedOverrides = { ...existingOverrides, ...(plan.priceLocalOverrides ?? {}) };
             for (const [country, vals] of Object.entries(plan.priceLocalOverrides ?? {})) {
-                const prev = mergedOverrides[country] ?? {};
+                // Read `prev` from the DB value (existingOverrides), NOT from
+                // mergedOverrides — the flat spread above already replaced
+                // mergedOverrides[country] with the seed's (id-less) value, so
+                // reading it back would drop the synced ids. From the DB value:
+                // the base spread keeps the monthly override mpPlanId (the seed has
+                // no mpPlanId key) and the deep-merge keeps annual.mpPlanId, while
+                // the seed's AMOUNTS still win (expected --force behaviour).
+                const prev = existingOverrides[country] ?? {};
                 const merged = { ...prev, ...vals };
-                // Deep-merge the nested `annual` object so re-seeding the annual
-                // AMOUNT never wipes an already-synced annual.mpPlanId. (The flat
-                // spread above would replace `annual` wholesale otherwise.)
                 if (prev.annual || vals.annual) {
                     merged.annual = { ...(prev.annual ?? {}), ...(vals.annual ?? {}) };
                 }

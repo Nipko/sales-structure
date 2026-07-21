@@ -1019,7 +1019,11 @@ export default function BillingPage() {
                             const currentCycle = (subscription as any)?.billingCycle === "annual" ? "annual" : "monthly";
                             const isCurrent = subscription?.planId === plan.id && currentCycle === billingCycle;
                             const isCycleSwitch = subscription?.planId === plan.id && currentCycle !== billingCycle;
-                            const isDowngrade = currentPlan && plan.priceUsdCents < currentPlan.priceUsdCents;
+                            // Only a SAME-cycle tier decrease is a scheduled, no-charge downgrade.
+                            // A cross-cycle change (monthly→annual) is an immediate cancel+recreate
+                            // in MP (charges now), so it must NOT show the "scheduled / no charge /
+                            // keep features" downgrade UI — mirror the backend's `!cycleChanged` guard.
+                            const isDowngrade = currentPlan && plan.priceUsdCents < currentPlan.priceUsdCents && currentCycle === billingCycle;
                             const showAnnual = billingCycle === "annual" && !!plan.displayPriceAnnualCents;
                             const priceCents = showAnnual ? plan.displayPriceAnnualCents! : (plan.displayPriceCents ?? plan.priceUsdCents);
                             const Icon = PLAN_ICON[plan.slug] ?? Zap;

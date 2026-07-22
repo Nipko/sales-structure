@@ -1753,7 +1753,7 @@ export class AuthService {
                     ticketId: access.ticketId || null,
                 },
             },
-        }).catch((e) => {
+        }).catch((e: any) => {
             // Never block the session on an audit write, but make the miss loud.
             this.logger.error(`Failed to persist impersonation audit for tenant ${tenantId}: ${e?.message}`);
         });
@@ -1839,7 +1839,7 @@ export class AuthService {
                         : null,
                 },
             },
-        }).catch((e) => {
+        }).catch((e: any) => {
             this.logger.error(`Failed to persist impersonation-end audit for tenant ${params.tenantId}: ${e?.message}`);
         });
 

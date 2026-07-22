@@ -12,6 +12,7 @@ import { FiscalInvoiceService } from './fiscal-invoice.service';
 import { FactusAdapter } from './adapters/factus.adapter';
 import { computeNitDv } from './nit.util';
 import { buildBrandedInvoiceData } from './fiscal-branded.util';
+import { billingCountryRequiresFiscalData, isFiscalDataComplete } from './fiscal-data.util';
 
 /** Acquirer fiscal profile saved on Tenant.settings.fiscalData. */
 class FiscalDataDto {
@@ -70,7 +71,19 @@ export class FiscalController {
         });
         if (!tenant) throw new NotFoundException({ error: 'tenant_not_found' });
         const fiscalData = (tenant.settings as any)?.fiscalData ?? null;
-        return { success: true, data: { fiscalData, billingCountry: tenant.billingCountry } };
+        // `required`/`complete` are computed by the same helpers the billing gate
+        // uses, so the dashboard's pre-check, the status pill and the reminder
+        // banner all agree with assertFiscalDataReady (no client-side re-validation
+        // that could drift on the NIT verification digit).
+        return {
+            success: true,
+            data: {
+                fiscalData,
+                billingCountry: tenant.billingCountry,
+                required: billingCountryRequiresFiscalData(tenant.billingCountry),
+                complete: isFiscalDataComplete(tenant.settings),
+            },
+        };
     }
 
     @Put(':tenantId/data')

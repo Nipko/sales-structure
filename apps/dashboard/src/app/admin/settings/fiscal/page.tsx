@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -45,6 +46,7 @@ const DOC_TYPES = ["6", "3", "5", "7"];
 export default function FiscalPage() {
     const t = useTranslations("settings.fiscalPage");
     const tc = useTranslations("common");
+    const router = useRouter();
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
 
@@ -94,7 +96,20 @@ export default function FiscalPage() {
             const payload: Record<string, any> = { ...data };
             Object.keys(payload).forEach((k) => { if (payload[k] === "" || payload[k] == null) delete payload[k]; });
             const res = await api.updateFiscalData(tenantId, payload);
-            if (res.success) { setSavedData(true); setTimeout(() => setSavedData(false), 3000); }
+            if (res.success) {
+                setSavedData(true); setTimeout(() => setSavedData(false), 3000);
+                // If billing sent us here mid-checkout to complete the fiscal
+                // profile, return and resume the payment (the plan/cycle round-trip
+                // through the URL so nothing is lost).
+                const params = new URLSearchParams(window.location.search);
+                if (params.get("returnTo") === "billing") {
+                    const q = new URLSearchParams();
+                    const plan = params.get("plan"); if (plan) q.set("resumePlan", plan);
+                    const cycle = params.get("cycle"); if (cycle) q.set("cycle", cycle);
+                    router.push(`/admin/settings/billing${q.toString() ? `?${q}` : ""}`);
+                    return;
+                }
+            }
             else setError(res.error || tc("errorSaving"));
         } catch { setError(tc("connectionError")); }
         setSavingData(false);
@@ -157,34 +172,6 @@ export default function FiscalPage() {
                     <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t("dataSubtitle")}</p>
                 </div>
 
-                <div className="flex items-start justify-between gap-4 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
-                    <div>
-                        <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">{t("consumidorFinalLabel")}</p>
-                        <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{t("consumidorFinalHint")}</p>
-                    </div>
-                    <button
-                        type="button"
-                        role="switch"
-                        aria-checked={!!data.consumidorFinal}
-                        onClick={() =>
-                            setData(
-                                data.consumidorFinal
-                                    ? { ...data, consumidorFinal: false, documentType: "6", documentId: "", dv: "", legalOrganizationId: "1", businessName: "", names: "" }
-                                    : { ...data, consumidorFinal: true, documentType: "3", documentId: "222222222222", dv: "", legalOrganizationId: "2", names: "Consumidor Final", businessName: "" },
-                            )
-                        }
-                        className={cn("relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors", data.consumidorFinal ? "bg-teal-600" : "bg-neutral-300 dark:bg-neutral-600")}
-                    >
-                        <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform", data.consumidorFinal ? "translate-x-[22px]" : "translate-x-0.5")} />
-                    </button>
-                </div>
-
-                {data.consumidorFinal ? (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 text-sm text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/5 dark:text-amber-400">
-                        {t("consumidorFinalNotice")}
-                    </div>
-                ) : (
-                <>
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className={labelClasses}>{t("legalOrganization")}</label>
@@ -266,8 +253,6 @@ export default function FiscalPage() {
                         <input value={data.phone || ""} onChange={(e) => setData({ ...data, phone: e.target.value })} className={inputClasses} />
                     </div>
                 </div>
-                </>
-                )}
 
                 <div className="flex justify-end">
                     <button onClick={saveData} disabled={savingData}

@@ -10,9 +10,24 @@ import { Receipt } from "lucide-react";
  * fiscal profile (NIT/cédula) before starting or changing to a paid plan.
  * Routes them to the fiscal-data form, then they retry.
  */
-export function FiscalGateModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function FiscalGateModal({
+    open,
+    onClose,
+    plan,
+    cycle,
+}: {
+    open: boolean;
+    onClose: () => void;
+    /** Plan/cycle the tenant was about to pay — carried through so billing can resume the checkout after the fiscal form is saved. */
+    plan?: string;
+    cycle?: string;
+}) {
     const t = useTranslations("fiscalGate");
     if (!open) return null;
+    const returnParams = new URLSearchParams({ returnTo: "billing" });
+    if (plan) returnParams.set("plan", plan);
+    if (cycle) returnParams.set("cycle", cycle);
+    const completeHref = `/admin/settings/fiscal?${returnParams.toString()}`;
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
             <div
@@ -32,7 +47,7 @@ export function FiscalGateModal({ open, onClose }: { open: boolean; onClose: () 
                         {t("later")}
                     </button>
                     <Link
-                        href="/admin/settings/fiscal"
+                        href={completeHref}
                         onClick={onClose}
                         className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
                     >

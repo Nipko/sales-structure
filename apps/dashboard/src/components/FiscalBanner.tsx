@@ -25,6 +25,10 @@ export function FiscalBanner() {
     const [dismissed, setDismissed] = useState(false);
 
     useEffect(() => {
+        // Reset per-tenant state on switch (super_admin) so the previous tenant's
+        // banner/dismiss state never leaks into the next tenant.
+        setShow(false);
+        setDismissed(false);
         if (!tenantId) return;
         if (typeof window !== "undefined" && sessionStorage.getItem(`fiscalBannerDismissed:${tenantId}`) === "1") {
             setDismissed(true);
@@ -33,11 +37,12 @@ export function FiscalBanner() {
         let active = true;
         api.getFiscalData(tenantId)
             .then((r) => {
-                if (!active || !r?.success) return;
+                if (!active) return;
+                if (!r?.success) { setShow(false); return; }
                 const d = r.data as any;
                 setShow(!!d?.required && !d?.complete && !d?.fiscalData?.consumidorFinal);
             })
-            .catch(() => {});
+            .catch(() => { if (active) setShow(false); });
         return () => { active = false; };
     }, [tenantId]);
 

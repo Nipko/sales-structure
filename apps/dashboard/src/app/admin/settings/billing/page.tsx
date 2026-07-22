@@ -282,12 +282,20 @@ export default function BillingPage() {
             const plan = plans.find((p) => p.slug === planSlug);
             // MP no soporta cambios de plan en suscripciones activas sin recrearlas con un nuevo token.
             const needsCard = !subscription ? plan?.requiresCardForTrial : true;
+            // A same-cycle DOWNGRADE is a no-charge scheduled change (backend
+            // early-returns before the fiscal gate), so the fiscal precheck must not
+            // fire on it — otherwise we'd force a tax profile to LOWER the plan.
+            const curPlanObj = plans.find((p) => p.id === subscription?.planId);
+            const curCycle = (subscription as any)?.billingCycle === "annual" ? "annual" : "monthly";
+            const isPureDowngrade = !!subscription && !!curPlanObj && !!plan
+                && plan.priceUsdCents < curPlanObj.priceUsdCents
+                && curCycle === billingCycle;
             // Proactive fiscal gate: a charge-bearing flow needs a complete tax
             // profile BEFORE the card, so the single-use token isn't wasted and the
             // checkout resumes cleanly after saving. Keyed off the backend's
             // `required` (gate enabled AND DIAN country) — NOT country alone — so
             // with the gate off this is a no-op, matching assertFiscalDataReady.
-            if (needsCard && !cardTokenId && fiscalRequired && !fiscalComplete) {
+            if (needsCard && !cardTokenId && fiscalRequired && !fiscalComplete && !isPureDowngrade) {
                 setFiscalGatePlan(planSlug);
                 setFiscalGate(true);
                 setAction(null);

@@ -1036,6 +1036,22 @@ export const api = {
     cancelPendingDowngrade: (tenantId: string) =>
         apiPost(`/billing/${tenantId}/subscription/cancel-pending-downgrade`, {}),
 
+    // --- SMS credits (monetized notification packages) ---
+    getSmsPackages: () => apiGet(`/sms-credits/packages`),
+    getSmsBalance: (tenantId: string) => apiGet(`/sms-credits/${tenantId}/balance`),
+    getSmsLedger: (tenantId: string, limit?: number) =>
+        apiGet(`/sms-credits/${tenantId}/ledger${limit ? `?limit=${limit}` : ""}`),
+    getSmsOrders: (tenantId: string) => apiGet(`/sms-credits/${tenantId}/orders`),
+    buySmsPackage: (tenantId: string, packageId: string) =>
+        apiPost(`/sms-credits/${tenantId}/checkout`, { packageId }),
+    // super admin
+    getSmsConfig: () => apiGet(`/sms-credits/admin/config`),
+    updateSmsConfig: (data: { senderId?: string; packages: any[] }) =>
+        apiPut(`/sms-credits/admin/config`, data),
+    getSmsBalances: () => apiGet(`/sms-credits/admin/balances`),
+    adjustSmsBalance: (tenantId: string, data: { delta: number; reason: string }) =>
+        apiPost(`/sms-credits/admin/${tenantId}/adjust`, data),
+
     // ─── Public booking config ───
     getPublicBookingConfig: (tenantId: string) =>
         apiGet(`/appointments/${tenantId}/public-booking-config`),

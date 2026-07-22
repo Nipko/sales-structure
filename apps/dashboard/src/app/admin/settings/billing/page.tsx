@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import {
     CreditCard, CheckCircle2, AlertTriangle, XCircle, Clock,
     Zap, Rocket, Briefcase, Sparkles, Loader2, X, Tag, Lightbulb,
-    Mic, Eye, ArrowUpRight, BookOpen, FileText,
+    Mic, Eye, ArrowUpRight, BookOpen, FileText, MessageSquare,
 } from "lucide-react";
 import MpCardForm from "@/components/billing/MpCardForm";
 import { HelpPanel } from "@/components/ui/help-panel";
@@ -157,10 +157,16 @@ export default function BillingPage() {
         monthlyCostCentsUsd: number;
         monthKey: string;
     } | null>(null);
+    const [smsPackages, setSmsPackages] = useState<Array<{ id: string; name: string; credits: number; priceCents: number; currency: string; highlight?: boolean }>>([]);
+    const [smsBalance, setSmsBalance] = useState<{ balance: number; purchased: number; consumed: number; consumedThisMonth: number } | null>(null);
+    const [smsBuying, setSmsBuying] = useState<string | null>(null);
     const [action, setAction] = useState<null | "upgrade" | "cancel" | "reactivate" | "pause" | "resume" | "retry">(null);
     const [targetPlan, setTargetPlan] = useState<string | null>(null);
     // Fiscal profile (DIAN) — undefined = not loaded, null = none on file.
     const [fiscalData, setFiscalData] = useState<{ consumidorFinal?: boolean; documentId?: string; businessName?: string; names?: string } | null | undefined>(undefined);
+    // Authoritative "profile is complete + valid" flag computed by the backend
+    // (same helper as the billing gate) — avoids the client re-validating the NIT DV.
+    const [fiscalComplete, setFiscalComplete] = useState(false);
     const [billingCountry, setBillingCountry] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [toast, setToast] = useState<string | null>(null);
@@ -169,6 +175,9 @@ export default function BillingPage() {
     // that needs a card; "change-card" when rotating the card on an existing sub.
     const [modal, setModal] = useState<null | { kind: "upgrade"; planSlug: string } | { kind: "change-card" }>(null);
     const [fiscalGate, setFiscalGate] = useState(false);
+    // Plan the tenant was about to pay when the fiscal gate fired — carried into
+    // the modal so, after they save their tax profile, billing resumes THAT checkout.
+    const [fiscalGatePlan, setFiscalGatePlan] = useState<string | null>(null);
     const [modalSubmitting, setModalSubmitting] = useState(false);
 
     const load = useCallback(async () => {
@@ -181,16 +190,21 @@ export default function BillingPage() {
             const subRes = await api.getBillingSubscription(activeTenantId);
             if (subRes?.success) setSubscription((subRes.data as any) ?? null);
             const country = (subRes as any)?.billingCountry as string | null;
-            const [plansRes, usageRes, kbRes, fiscalRes] = await Promise.all([
+            const [plansRes, usageRes, kbRes, fiscalRes, smsBalRes, smsPkgRes] = await Promise.all([
                 api.getBillingPlans(country || undefined),
                 api.getBillingUsage(activeTenantId),
                 api.fetch(`/knowledge/usage/${activeTenantId}`).catch(() => null),
                 api.getFiscalData(activeTenantId).catch(() => null),
+                api.getSmsBalance(activeTenantId).catch(() => null),
+                api.getSmsPackages().catch(() => null),
             ]);
             if (plansRes?.success) setPlans((plansRes.data as Plan[]) ?? []);
+            if (smsBalRes?.success) setSmsBalance((smsBalRes.data as any) ?? null);
+            if (smsPkgRes?.success) setSmsPackages((smsPkgRes.data as any[]) ?? []);
             if (fiscalRes?.success) {
                 setFiscalData(((fiscalRes.data as any)?.fiscalData ?? null));
                 setBillingCountry(((fiscalRes.data as any)?.billingCountry ?? country ?? null));
+                setFiscalComplete(!!(fiscalRes.data as any)?.complete);
             }
             if (usageRes?.success) {
                 const d = usageRes.data as any;
@@ -212,6 +226,36 @@ export default function BillingPage() {
 
     useEffect(() => { load(); }, [load]);
 
+    // Returning from the MercadoPago checkout — the webhook credits async, so
+    // show a note and reload the balance shortly after.
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("sms") === "return") {
+            setToast(t("smsReturnProcessing"));
+            const timer = setTimeout(() => { if (activeTenantId) api.getSmsBalance(activeTenantId).then((r) => { if (r?.success) setSmsBalance(r.data as any); }); }, 4000);
+            window.history.replaceState({}, "", window.location.pathname);
+            return () => clearTimeout(timer);
+        }
+    }, [activeTenantId, t]);
+
+    const handleBuySms = useCallback(async (packageId: string) => {
+        if (!activeTenantId) return;
+        setSmsBuying(packageId);
+        try {
+            const res = await api.buySmsPackage(activeTenantId, packageId);
+            if (res?.success && (res.data as any)?.initPoint) {
+                window.location.href = (res.data as any).initPoint;
+            } else {
+                setToast(res?.error || t("smsBuyError"));
+                setSmsBuying(null);
+            }
+        } catch (e: any) {
+            setToast(e?.message || t("smsBuyError"));
+            setSmsBuying(null);
+        }
+    }, [activeTenantId, t]);
+
     const currentPlan = useMemo(
         () => plans.find((p) => p.id === subscription?.planId),
         [plans, subscription?.planId],
@@ -219,9 +263,9 @@ export default function BillingPage() {
 
     const fiscalStatus = useMemo<"complete" | "consumidor_final" | "pending">(() => {
         if (fiscalData?.consumidorFinal) return "consumidor_final";
-        if (fiscalData?.documentId) return "complete";
+        if (fiscalComplete) return "complete";
         return "pending";
-    }, [fiscalData]);
+    }, [fiscalData, fiscalComplete]);
 
     const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
 
@@ -233,6 +277,18 @@ export default function BillingPage() {
             const plan = plans.find((p) => p.slug === planSlug);
             // MP no soporta cambios de plan en suscripciones activas sin recrearlas con un nuevo token.
             const needsCard = !subscription ? plan?.requiresCardForTrial : true;
+            // Proactive fiscal gate (Colombia): a charge-bearing flow needs a
+            // complete tax profile BEFORE the card, so the single-use card token
+            // isn't wasted and the checkout resumes cleanly after saving. The
+            // backend re-checks and is the source of truth (fiscal_data_required).
+            const coRequiresFiscal = (billingCountry || "").trim().toUpperCase() === "CO";
+            if (needsCard && !cardTokenId && coRequiresFiscal && !fiscalComplete) {
+                setFiscalGatePlan(planSlug);
+                setFiscalGate(true);
+                setAction(null);
+                setTargetPlan(null);
+                return;
+            }
             if (needsCard && !cardTokenId) {
                 // Open the card modal; the modal's submit will call back into
                 // handleUpgrade with the token.
@@ -245,14 +301,14 @@ export default function BillingPage() {
             if (!subscription) {
                 const res = await api.startBillingTrial(activeTenantId, { planSlug, cardTokenId, billingCycle });
                 if (!res?.success) {
-                    if ((res as any)?.errorCode === "fiscal_data_required") { setModal(null); setFiscalGate(true); return; }
+                    if ((res as any)?.errorCode === "fiscal_data_required") { setModal(null); setFiscalGatePlan(planSlug); setFiscalGate(true); return; }
                     throw new Error((res as any)?.error || t("actionFailed"));
                 }
                 setToast(t("trialStarted"));
             } else {
                 const res = await api.upgradeBillingPlan(activeTenantId, { planSlug, cardTokenId, billingCycle });
                 if (!res?.success) {
-                    if ((res as any)?.errorCode === "fiscal_data_required") { setModal(null); setFiscalGate(true); return; }
+                    if ((res as any)?.errorCode === "fiscal_data_required") { setModal(null); setFiscalGatePlan(planSlug); setFiscalGate(true); return; }
                     throw new Error((res as any)?.error || t("actionFailed"));
                 }
                 setToast(t("planChanged"));
@@ -266,6 +322,24 @@ export default function BillingPage() {
             setTargetPlan(null);
         }
     };
+
+    // Resume checkout after the fiscal round-trip: the fiscal form sends the tenant
+    // back here with ?resumePlan=<slug>&cycle=<x> once their tax profile is saved.
+    // Re-open the payment for that plan (fiscal is complete now → goes to the card).
+    const resumedRef = useRef(false);
+    useEffect(() => {
+        if (resumedRef.current) return;
+        if (fiscalData === undefined || plans.length === 0) return; // wait for load
+        const params = new URLSearchParams(window.location.search);
+        const resumePlan = params.get("resumePlan");
+        if (!resumePlan) return;
+        resumedRef.current = true;
+        const cycle = params.get("cycle");
+        if (cycle === "annual" || cycle === "monthly") setBillingCycle(cycle);
+        window.history.replaceState({}, "", window.location.pathname);
+        handleUpgrade(resumePlan);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fiscalData, plans]);
 
     const handleChangeCard = async (cardTokenId: string) => {
         if (!activeTenantId) return;
@@ -893,6 +967,74 @@ export default function BillingPage() {
                 </section>
             )}
 
+            {/* SMS notification credits */}
+            {smsPackages.length > 0 && (
+                <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
+                                <MessageSquare size={15} className="text-indigo-500" /> {t("smsTitle")}
+                            </h2>
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t("smsHint")}</p>
+                        </div>
+                        {smsBalance && (
+                            <div className="text-right">
+                                <div className="text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">{smsBalance.balance.toLocaleString()}</div>
+                                <div className="text-[10px] uppercase tracking-wider text-neutral-400">{t("smsCreditsLabel")}</div>
+                            </div>
+                        )}
+                    </div>
+
+                    {smsBalance && smsBalance.balance === 0 && (
+                        <div className="mb-4 p-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 flex items-start gap-2">
+                            <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs font-semibold text-red-700 dark:text-red-300 flex-1">{t("smsEmptyBalance")}</p>
+                        </div>
+                    )}
+                    {smsBalance && smsBalance.balance > 0 && smsBalance.balance < 50 && (
+                        <div className="mb-4 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 flex items-start gap-2">
+                            <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-amber-700 dark:text-amber-300 flex-1">{t("smsLowBalance")}</p>
+                        </div>
+                    )}
+
+                    {smsBalance && (
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
+                            {t("smsConsumedThisMonth", { count: smsBalance.consumedThisMonth.toLocaleString() })}
+                        </p>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {smsPackages.map((pkg) => (
+                            <div
+                                key={pkg.id}
+                                className={cn(
+                                    "rounded-lg border p-4 flex flex-col",
+                                    pkg.highlight ? "border-indigo-400 dark:border-indigo-600 ring-1 ring-indigo-400/30" : "border-neutral-200 dark:border-neutral-800",
+                                )}
+                            >
+                                {pkg.highlight && (
+                                    <span className="self-start text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 mb-2">{t("smsPopular")}</span>
+                                )}
+                                <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{pkg.name}</div>
+                                <div className="text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100 mt-1">{pkg.credits.toLocaleString()}</div>
+                                <div className="text-[11px] text-neutral-500 dark:text-neutral-400">{t("smsMessages")}</div>
+                                <div className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mt-2">
+                                    {new Intl.NumberFormat(locale, { style: "currency", currency: pkg.currency, maximumFractionDigits: 0 }).format(pkg.priceCents / 100)}
+                                </div>
+                                <button
+                                    onClick={() => handleBuySms(pkg.id)}
+                                    disabled={smsBuying !== null}
+                                    className="mt-3 w-full text-xs font-semibold px-3 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white flex items-center justify-center gap-1.5"
+                                >
+                                    {smsBuying === pkg.id ? <Loader2 size={13} className="animate-spin" /> : t("smsBuy")}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
             {/* Knowledge Base Usage */}
             {kbUsage && (kbUsage.embeddings.limit !== null || kbUsage.documents.limit !== null) && (
                 <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
@@ -1124,7 +1266,7 @@ export default function BillingPage() {
             </section>
 
             {/* Card modal — upgrade-to-paid flow and change-card flow */}
-            <FiscalGateModal open={fiscalGate} onClose={() => setFiscalGate(false)} />
+            <FiscalGateModal open={fiscalGate} onClose={() => setFiscalGate(false)} plan={fiscalGatePlan ?? undefined} cycle={billingCycle} />
             {modal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !modalSubmitting && setModal(null)}>
                     <div className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>

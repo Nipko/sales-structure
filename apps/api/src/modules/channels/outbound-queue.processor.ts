@@ -7,6 +7,7 @@ import { ChannelTokenService } from './channel-token.service';
 import { RedisService } from '../redis/redis.service';
 import { OutboundMessage } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
 
 export const OUTBOUND_QUEUE = 'outbound-messages';
 
@@ -29,6 +30,7 @@ export class OutboundQueueProcessor extends WorkerHost {
         private throttle: TenantThrottleService,
         private channelToken: ChannelTokenService,
         private redis: RedisService,
+        private tenantSms: TenantNotificationSmsService,
     ) {
         super();
     }
@@ -46,6 +48,34 @@ export class OutboundQueueProcessor extends WorkerHost {
             this.logger.warn(`[Outbound] Tenant ${outbound.tenantId} rate limited — delaying job ${job.id} 60s (no attempt consumed)`);
             await job.moveToDelayed(Date.now() + 60_000, token);
             throw new DelayedError();
+        }
+
+        // Reseller SMS: text SMS to a tenant's customer goes out via the PLATFORM
+        // Twilio sender and is charged to the tenant's prepaid credit balance —
+        // NOT the tenant's own Twilio. Insufficient credits / unconfigured platform
+        // SMS is a permanent condition for this message: log + drop (don't burn the
+        // 3 retries or fire a Sentry alert). MMS falls through to the legacy path.
+        if (outbound.channelType === 'sms' && outbound.content?.type === 'text' && outbound.content?.text) {
+            const res = await this.tenantSms.send(outbound.tenantId, outbound.to, outbound.content.text, {
+                reason: (outbound.metadata as any)?.notificationReason || 'outbound',
+                ref: (outbound.metadata as any)?.messageId,
+            });
+            if (!res.sent) {
+                if (res.reason === 'insufficient_credits' || res.reason === 'platform_sms_unconfigured') {
+                    this.logger.warn(`[Outbound][SMS] ${res.reason} tenant=${outbound.tenantId} to=${outbound.to} — dropped`);
+                    return `skipped:${res.reason}`;
+                }
+                throw new Error(`SMS send failed to ${outbound.to}: ${res.error || res.reason}`);
+            }
+            await this.throttle.recordUsage(outbound.tenantId, 'outbound').catch(() => {});
+            this.logger.log(`[Outbound][SMS] sent to ${outbound.to} tenant=${outbound.tenantId} segments=${res.segments}`);
+            return res.sid || 'sms-sent';
+        }
+        // Non-text SMS (MMS) is not supported on the reseller platform sender — drop
+        // instead of falling through to a tenant Twilio token the reseller model has none of.
+        if (outbound.channelType === 'sms') {
+            this.logger.warn(`[Outbound][SMS] non-text (MMS) not supported on reseller SMS — dropped tenant=${outbound.tenantId} to=${outbound.to}`);
+            return 'skipped:sms_mms_unsupported';
         }
 
         // Resolve the access token at send time (not stored in the job) — fresh

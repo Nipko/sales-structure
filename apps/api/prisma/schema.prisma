@@ -485,6 +485,73 @@ model BillingCouponRedemption {
 }
 
 // ============================================
+// SMS CREDITS — Monetized one-way notification packages (reseller)
+// ============================================
+// Tenants buy prepaid SMS credit packages to notify their own customers via the
+// PLATFORM Twilio sender (reseller model). 1 credit = 1 Twilio message segment.
+// The conversational SMS channel (BYO, bidirectional) is intentionally out of scope.
+
+// ---- SMS Credit Balance (global) ----
+// Current prepaid balance per tenant. Mutated only through SmsCreditsService
+// (atomic UPDATE ... RETURNING). The ledger is the auditable source of truth;
+// this row is the fast-read cache of the running total.
+model SmsCreditBalance {
+  id             String   @id @default(uuid())
+  tenantId       String   @unique @map("tenant_id")
+  balanceCredits Int      @default(0) @map("balance_credits")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("sms_credit_balances")
+  @@schema("public")
+}
+
+// ---- SMS Credit Ledger (global) ----
+// Append-only movements: +purchase / -consumption / ±adjustment / +refund.
+// balanceAfter snapshots the running total post-movement. (reason, ref) is used
+// for idempotency on purchases (skip if a row with the same ref already exists).
+model SmsCreditLedger {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  delta        Int // signed: positive = credited, negative = consumed
+  reason       String // purchase | consumption | adjustment | refund
+  ref          String? // orderId / campaignId / paymentId / admin userId
+  balanceAfter Int      @map("balance_after")
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, reason, ref])
+  @@map("sms_credit_ledger")
+  @@schema("public")
+}
+
+// ---- SMS Package Order (global) ----
+// One-time purchase of a credit package. The order id is used as the MercadoPago
+// external_reference; the payment webhook resolves the order and credits the
+// balance (idempotent). status: pending | paid | failed | cancelled.
+model SmsPackageOrder {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  packageId   String    @map("package_id") // tier slug at purchase time
+  credits     Int
+  priceCents  Int       @map("price_cents") // minor units of `currency`
+  currency    String    @default("COP")
+  status      String    @default("pending") // pending | paid | failed | cancelled
+  provider    String    @default("mercadopago")
+  providerRef String?   @map("provider_ref") // preference id / payment id
+  initPoint   String?   @map("init_point") // MP hosted checkout URL
+  paidAt      DateTime? @map("paid_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId, status])
+  @@index([status, createdAt])
+  @@map("sms_package_orders")
+  @@schema("public")
+}
+
+// ============================================
 // FINANCIALS — Platform-level SaaS metrics
 // ============================================
 

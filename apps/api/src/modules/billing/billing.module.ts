@@ -20,6 +20,9 @@ import { BillingReconciliationProcessor } from './processors/reconciliation.proc
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { MediaProcessingModule } from '../media-processing/media-processing.module';
 import { FiscalModule } from '../fiscal/fiscal.module';
+import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
+import { SmsCheckoutService } from './sms-checkout.service';
+import { SmsCheckoutController } from './sms-checkout.controller';
 
 /**
  * Billing module — provider-agnostic subscription billing.
@@ -32,8 +35,8 @@ import { FiscalModule } from '../fiscal/fiscal.module';
  * so it is consumable in BillingService without an explicit import here.
  */
 @Module({
-    imports: [PrismaModule, RedisModule, EmailModule, MediaProcessingModule, FiscalModule],
-    controllers: [BillingController, BillingAdminController, BillingPublicController, CouponsController, BillingWebhookController],
+    imports: [PrismaModule, RedisModule, EmailModule, MediaProcessingModule, FiscalModule, SmsCreditsModule],
+    controllers: [BillingController, BillingAdminController, BillingPublicController, CouponsController, BillingWebhookController, SmsCheckoutController],
     providers: [
         BillingService,
         BillingEmailService,
@@ -46,6 +49,7 @@ import { FiscalModule } from '../fiscal/fiscal.module';
         StripeConfigService,
         BillingReconciliationProcessor,
         InvoiceGeneratorService,
+        SmsCheckoutService,
     ],
     exports: [BillingService, CouponsService, InvoiceGeneratorService],
 })

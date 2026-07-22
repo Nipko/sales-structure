@@ -62,6 +62,7 @@ import {
   Camera,
   Tag,
   Layers,
+  MessageSquare,
   Package,
   ShoppingCart,
   Shield,
@@ -214,6 +215,7 @@ const platformSections: NavSectionDef[] = [
       { labelKey: "coupons", href: "/admin/coupons", icon: Tag },
       { labelKey: "plans", href: "/admin/plans", icon: Layers },
       { labelKey: "billingOps", href: "/admin/billing-ops", icon: CreditCard, accent: "text-emerald-500 dark:text-emerald-400" },
+      { labelKey: "smsPackages", href: "/admin/sms-packages", icon: MessageSquare, accent: "text-indigo-500 dark:text-indigo-400" },
     ],
   },
   {

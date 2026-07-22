@@ -14,6 +14,7 @@ import {
 } from './types/provider-types';
 import { FiscalConfigService } from '../fiscal/fiscal-config.service';
 import { billingCountryRequiresFiscalData, isFiscalDataComplete } from '../fiscal/fiscal-data.util';
+import { SmsCreditsService } from '../sms-credits/sms-credits.service';
 
 /**
  * Provider-agnostic subscription billing orchestrator.
@@ -44,6 +45,7 @@ export class BillingService {
         private readonly eventEmitter: EventEmitter2,
         private readonly providerFactory: PaymentProviderFactory,
         private readonly fiscalConfig: FiscalConfigService,
+        private readonly smsCredits: SmsCreditsService,
     ) {}
 
     /**
@@ -956,6 +958,21 @@ export class BillingService {
             return { processed: false, reason: 'duplicate' };
         }
 
+        // SMS credit package — a ONE-TIME payment whose external_reference is an
+        // SmsPackageOrder id (a distinct UUID space from tenant ids). Intercept
+        // before the subscription cascade: credit on success, claw back on refund.
+        if (
+            (event.type === BillingEventType.PAYMENT_SUCCEEDED || event.type === BillingEventType.PAYMENT_REFUNDED) &&
+            event.tenantId && /^[0-9a-f-]{36}$/i.test(event.tenantId)
+        ) {
+            const order = await this.prisma.smsPackageOrder.findUnique({ where: { id: event.tenantId } });
+            if (order) {
+                return event.type === BillingEventType.PAYMENT_SUCCEEDED
+                    ? this.creditSmsPackageOrder(order, event)
+                    : this.reverseSmsPackageOrder(order, event);
+            }
+        }
+
         // Resolve the subscription this event concerns (if any)
         let sub = event.providerSubscriptionId
             ? await this.prisma.billingSubscription.findUnique({ where: { providerSubscriptionId: event.providerSubscriptionId } })
@@ -1042,6 +1059,89 @@ export class BillingService {
         });
 
         this.logger.log(`[Billing] Processed ${event.type} for ${event.provider}/${event.providerEventId}`);
+        return { processed: true };
+    }
+
+    /**
+     * Credit a tenant's SMS balance from a paid one-time package order. Records
+     * the billing event (idempotency), grants credits (idempotent by order id),
+     * and marks the order paid. Safe against webhook redelivery.
+     */
+    private async creditSmsPackageOrder(
+        order: {
+            id: string; tenantId: string; credits: number; priceCents: number;
+            currency: string; packageId: string; status: string; providerRef: string | null;
+        },
+        event: NormalizedBillingEvent,
+    ): Promise<{ processed: boolean; reason?: string }> {
+        // Record the event so any redelivery short-circuits at the duplicate check.
+        await this.prisma.billingEvent
+            .create({
+                data: {
+                    tenantId: order.tenantId,
+                    provider: event.provider,
+                    providerEventId: event.providerEventId,
+                    eventType: event.type,
+                    payload: event.rawPayload as any,
+                },
+            })
+            .catch((e: any) => this.logger.warn(`[Billing][SMS] billing_event insert failed order=${order.id}: ${e.message}`));
+
+        if (order.status === 'paid') {
+            return { processed: false, reason: 'order_already_paid' };
+        }
+
+        // addCredits is idempotent by (reason='purchase', ref=order.id) → no double-credit.
+        const balance = await this.smsCredits.addCredits(order.tenantId, order.credits, 'purchase', order.id, {
+            packageId: order.packageId,
+            paymentId: event.payment?.providerPaymentId,
+            amountCents: order.priceCents,
+            currency: order.currency,
+        });
+
+        await this.prisma.smsPackageOrder.update({
+            where: { id: order.id },
+            data: {
+                status: 'paid',
+                paidAt: event.payment?.paidAt ?? new Date(),
+                providerRef: event.payment?.providerPaymentId ?? order.providerRef,
+            },
+        });
+
+        this.eventEmitter.emit('sms.package.purchased', { tenantId: order.tenantId, credits: order.credits, orderId: order.id, balance });
+        this.logger.log(`[Billing][SMS] Credited ${order.credits} SMS to tenant=${order.tenantId} (order=${order.id}, balance=${balance})`);
+        return { processed: true };
+    }
+
+    /**
+     * Reverse credits when a paid SMS package order is refunded/charged back.
+     * Debits the granted credits, clamped to the tenant's remaining balance (can't
+     * go negative if they already spent them). Idempotent via the order status.
+     */
+    private async reverseSmsPackageOrder(
+        order: { id: string; tenantId: string; credits: number; status: string },
+        event: NormalizedBillingEvent,
+    ): Promise<{ processed: boolean; reason?: string }> {
+        await this.prisma.billingEvent
+            .create({
+                data: {
+                    tenantId: order.tenantId,
+                    provider: event.provider,
+                    providerEventId: event.providerEventId,
+                    eventType: event.type,
+                    payload: event.rawPayload as any,
+                },
+            })
+            .catch((e: any) => this.logger.warn(`[Billing][SMS] refund billing_event insert failed order=${order.id}: ${e.message}`));
+
+        if (order.status !== 'paid') {
+            return { processed: false, reason: `order_not_reversible_${order.status}` };
+        }
+
+        const balance = await this.smsCredits.adjust(order.tenantId, -order.credits, `sms_refund:order:${order.id}`);
+        await this.prisma.smsPackageOrder.update({ where: { id: order.id }, data: { status: 'refunded' } });
+
+        this.logger.log(`[Billing][SMS] Reversed up to ${order.credits} SMS for refunded order=${order.id} tenant=${order.tenantId} (balance=${balance})`);
         return { processed: true };
     }
 

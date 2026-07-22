@@ -19,6 +19,7 @@ import { WebhookTapService } from './webhook-tap.service';
 import { WebhookTapController } from './webhook-tap.controller';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
 // AnalyticsModule removed — compliance check moved to ConversationsService to avoid DI issues in processor
 
 @Module({
@@ -26,6 +27,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
         BullModule.registerQueue({ name: OUTBOUND_QUEUE }),
         forwardRef(() => ConversationsModule),
         forwardRef(() => WhatsappModule),
+        SmsCreditsModule,
     ],
     controllers: [ChannelsController, ChannelManagementController, WebhookTapController, EmailWebhookController],
     providers: [

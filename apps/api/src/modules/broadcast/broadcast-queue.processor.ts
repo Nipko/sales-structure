@@ -8,6 +8,7 @@ import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BroadcastService, BROADCAST_QUEUE, BroadcastJobData } from './broadcast.service';
 import { AbTestService } from './ab-test.service';
+import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
 
 @Processor(BROADCAST_QUEUE, {
     concurrency: 10,
@@ -26,6 +27,7 @@ export class BroadcastQueueProcessor extends WorkerHost {
         private readonly prisma: PrismaService,
         private readonly broadcastService: BroadcastService,
         private readonly abTestService: AbTestService,
+        private readonly tenantSms: TenantNotificationSmsService,
     ) {
         super();
     }
@@ -37,9 +39,9 @@ export class BroadcastQueueProcessor extends WorkerHost {
             `Processing broadcast job ${job.id}: campaign=${campaignId} channel=${channel} attempt=${job.attemptsMade + 1}`,
         );
 
+        // --- SEND: the ONLY step allowed to trigger a BullMQ retry ---
+        let messageId: string;
         try {
-            let messageId: string;
-
             switch (channel) {
                 case 'email':
                     messageId = await this.sendEmail(job.data);
@@ -52,38 +54,49 @@ export class BroadcastQueueProcessor extends WorkerHost {
                     messageId = await this.sendWhatsApp(job.data);
                     break;
             }
-
-            await this.broadcastService.updateRecipientStatus(schemaName, recipientId, 'sent', undefined, messageId);
-
-            // Update variant stats for A/B tests
-            if (job.data.variantId) {
-                try {
-                    await this.abTestService.updateVariantStats(schemaName, job.data.variantId, 'sent');
-                } catch { /* safe to ignore if tables don't exist */ }
-            }
-
-            this.logger.log(`Broadcast sent: campaign=${campaignId} channel=${channel} messageId=${messageId}`);
-            await this.broadcastService.checkCampaignCompletion(schemaName, campaignId);
-            return messageId;
         } catch (error: any) {
             const errorMessage = error?.message || 'Unknown error';
-            this.logger.error(`Broadcast failed: campaign=${campaignId} channel=${channel} attempt=${job.attemptsMade + 1}/3 error=${errorMessage}`);
 
-            if (job.attemptsMade + 1 >= (job.opts?.attempts || 3)) {
-                await this.broadcastService.updateRecipientStatus(schemaName, recipientId, 'failed', errorMessage);
-
-                // Update variant stats for A/B tests
-                if (job.data.variantId) {
-                    try {
-                        await this.abTestService.updateVariantStats(schemaName, job.data.variantId, 'failed');
-                    } catch { /* safe to ignore if tables don't exist */ }
-                }
-
-                await this.broadcastService.checkCampaignCompletion(schemaName, campaignId);
+            // Out-of-credits is permanent for this recipient — mark failed and DO NOT
+            // retry (a retry just re-checks the empty balance; no send, no charge).
+            if (errorMessage === 'INSUFFICIENT_SMS_CREDITS') {
+                this.logger.warn(`Broadcast SMS dropped (no credits): campaign=${campaignId} recipient=${recipientId}`);
+                await this.markFailed(schemaName, campaignId, recipientId, job.data.variantId, 'insufficient_sms_credits');
+                return 'skipped:insufficient_credits';
             }
 
-            throw error;
+            this.logger.error(`Broadcast failed: campaign=${campaignId} channel=${channel} attempt=${job.attemptsMade + 1}/3 error=${errorMessage}`);
+            if (job.attemptsMade + 1 >= (job.opts?.attempts || 3)) {
+                await this.markFailed(schemaName, campaignId, recipientId, job.data.variantId, errorMessage);
+            }
+            throw error; // let BullMQ retry the SEND only
         }
+
+        // --- BOOKKEEPING: must NEVER re-trigger the send ---
+        // The message is already delivered (and, for SMS, already charged). A failure
+        // here must not re-queue the job — otherwise the customer gets a duplicate
+        // message and the tenant is double-charged. So we log and swallow.
+        try {
+            await this.broadcastService.updateRecipientStatus(schemaName, recipientId, 'sent', undefined, messageId);
+            if (job.data.variantId) {
+                try { await this.abTestService.updateVariantStats(schemaName, job.data.variantId, 'sent'); } catch { /* tables may not exist */ }
+            }
+            await this.broadcastService.checkCampaignCompletion(schemaName, campaignId);
+        } catch (bookErr: any) {
+            this.logger.error(`Broadcast post-send bookkeeping failed (message ${messageId} already delivered): ${bookErr?.message || bookErr}`);
+        }
+
+        this.logger.log(`Broadcast sent: campaign=${campaignId} channel=${channel} messageId=${messageId}`);
+        return messageId;
+    }
+
+    /** Mark a recipient failed + update A/B stats + check campaign completion. */
+    private async markFailed(schemaName: string, campaignId: string, recipientId: string, variantId: string | undefined, reason: string): Promise<void> {
+        await this.broadcastService.updateRecipientStatus(schemaName, recipientId, 'failed', reason);
+        if (variantId) {
+            try { await this.abTestService.updateVariantStats(schemaName, variantId, 'failed'); } catch { /* tables may not exist */ }
+        }
+        await this.broadcastService.checkCampaignCompletion(schemaName, campaignId);
     }
 
     private async sendWhatsApp(data: BroadcastJobData): Promise<string> {
@@ -117,60 +130,25 @@ export class BroadcastQueueProcessor extends WorkerHost {
         if (!data.phone) throw new Error('No phone number for SMS recipient');
         if (!data.smsBody) throw new Error('No SMS body configured');
 
-        // Pick the campaign's chosen SMS number, else the oldest active one.
-        const channels = data.channelAccountId
-            ? await this.prisma.$queryRaw<any[]>`
-                SELECT access_token, account_id FROM channel_accounts
-                WHERE tenant_id = ${data.tenantId}::uuid AND channel_type = 'sms' AND is_active = true AND account_id = ${data.channelAccountId}
-                LIMIT 1`
-            : await this.prisma.$queryRaw<any[]>`
-                SELECT access_token, account_id FROM channel_accounts
-                WHERE tenant_id = ${data.tenantId}::uuid AND channel_type = 'sms' AND is_active = true
-                ORDER BY created_at ASC
-                LIMIT 1`;
-
-        if (!channels?.length) throw new Error('No active SMS channel configured for this tenant');
-
-        const { access_token, account_id } = channels[0];
-        // access_token holds the AES-encrypted "accountSid:authToken" (per-account,
-        // multi-account aware). Legacy rows hold the 'encrypted_ref' placeholder →
-        // the real token lives in whatsapp_credentials.sms_token.
-        let combined = '';
-        if (access_token && access_token !== 'encrypted_ref' && access_token !== 'credential_ref') {
-            try { combined = this.cryptoService.decryptToken(access_token); } catch { combined = ''; }
-        } else {
-            const cred = await this.prisma.whatsappCredential.findFirst({
-                where: { tenantId: data.tenantId, credentialType: 'sms_token' },
-                orderBy: { createdAt: 'desc' },
-            });
-            if (cred?.encryptedValue) { try { combined = this.cryptoService.decryptToken(cred.encryptedValue); } catch { combined = ''; } }
-        }
-        const [accountSid, authToken] = combined.split(':');
-        if (!accountSid || !authToken) throw new Error('Invalid Twilio credentials');
-
-        const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-        const params = new URLSearchParams({ To: data.phone, From: account_id, Body: data.smsBody });
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
-            },
-            body: params.toString(),
+        // Reseller model: broadcast SMS is delivered via the PLATFORM Twilio sender
+        // and charged to the tenant's prepaid SMS credit balance (1 credit/segment),
+        // NOT the tenant's own Twilio. `ref` is stable per recipient for audit.
+        const res = await this.tenantSms.send(data.tenantId, data.phone, data.smsBody, {
+            reason: 'broadcast',
+            ref: `bcast:${data.campaignId}:${data.recipientId}`,
+            metadata: { campaignId: data.campaignId },
         });
-
-        const result = await response.json() as any;
-        if (result.error_code || result.status === 'failed') {
-            throw new Error(`Twilio SMS error: ${result.message || 'Unknown error'}`);
-        }
-
-        return result.sid || '';
+        if (res.sent) return res.sid || '';
+        if (res.reason === 'insufficient_credits') throw new Error('INSUFFICIENT_SMS_CREDITS');
+        if (res.reason === 'platform_sms_unconfigured') throw new Error('SMS de plataforma no configurado');
+        throw new Error(`Twilio SMS error: ${res.error || res.reason}`);
     }
 
     @OnWorkerEvent('failed')
     onFailed(job: Job<BroadcastJobData>, error: Error) {
         this.logger.error({ msg: 'Broadcast job failed', jobId: job.id, campaignId: job.data.campaignId, channel: job.data.channel, error: error.message });
+        // Out-of-credits is an expected business condition, not an incident — keep it out of Sentry.
+        if (error.message === 'INSUFFICIENT_SMS_CREDITS') return;
         Sentry.captureException(error, { tags: { queue: 'broadcast-messages', campaignId: job.data.campaignId, channel: job.data.channel }, extra: { jobId: job.id } });
     }
 }

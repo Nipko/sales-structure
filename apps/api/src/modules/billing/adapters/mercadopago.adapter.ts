@@ -201,6 +201,63 @@ export class MercadoPagoAdapter implements IPaymentProvider {
         return this.toProviderSubscription(res, input.providerCustomerId, input.providerPlanId);
     }
 
+    // -------------------------------------------------------------------------
+    // One-time payment (Checkout Pro preference) — SMS credit packages
+    // -------------------------------------------------------------------------
+
+    /**
+     * Create a Checkout Pro preference for a ONE-TIME payment (an SMS credit
+     * package). `orderId` is set as external_reference so the payment webhook
+     * (topic=payment) resolves the SmsPackageOrder and credits the tenant.
+     * Returns the hosted checkout URL the buyer is redirected to.
+     */
+    async createPaymentPreference(input: {
+        orderId: string;
+        tenantId: string;
+        title: string;
+        unitPrice: number; // in the currency's main unit (e.g. COP pesos)
+        currency: string;
+        metadata?: Record<string, any>;
+    }): Promise<{ preferenceId: string; initPoint: string }> {
+        const base = process.env.DASHBOARD_URL || 'https://admin.parallly-chat.cloud';
+        const backUrl = `${base}/admin/settings/billing?sms=return`;
+        const notifyUrl = process.env.MP_WEBHOOK_URL;
+        const body: any = {
+            items: [
+                {
+                    id: input.orderId,
+                    title: input.title,
+                    quantity: 1,
+                    unit_price: input.unitPrice,
+                    currency_id: input.currency,
+                },
+            ],
+            external_reference: input.orderId,
+            back_urls: { success: backUrl, failure: backUrl, pending: backUrl },
+            metadata: { kind: 'sms_package', tenantId: input.tenantId, orderId: input.orderId, ...(input.metadata || {}) },
+        };
+        // MP rejects non-HTTPS notification/auto-return targets — omit them in dev.
+        if (notifyUrl && notifyUrl.startsWith('https')) body.notification_url = notifyUrl;
+        if (backUrl.startsWith('https')) body.auto_return = 'approved';
+
+        let res;
+        try {
+            res = await this.mpConfig.preference.create({ body });
+        } catch (err: any) {
+            const mpMsg =
+                err?.cause?.[0]?.description || err?.cause?.[0]?.message || err?.cause?.message || err?.message ||
+                'MercadoPago rechazó la preferencia de pago';
+            this.logger.error(`MP createPaymentPreference rejected for order=${input.orderId}: ${mpMsg}`);
+            throw new BadRequestException({ error: 'mp_preference_create_rejected', message: mpMsg });
+        }
+        const initPoint = (this.mpConfig.environment() === 'sandbox' ? res.sandbox_init_point : res.init_point) || res.init_point;
+        if (!res.id || !initPoint) {
+            throw new BadRequestException({ error: 'mp_preference_create_failed', response: res });
+        }
+        this.logger.log(`Created MP preference ${res.id} for SMS order=${input.orderId} tenant=${input.tenantId}`);
+        return { preferenceId: res.id, initPoint };
+    }
+
     async cancelSubscription(providerSubscriptionId: string, _opts?: CancelSubscriptionOptions): Promise<void> {
         // MP only has a hard cancel — there is no cancel_at_period_end flag.
         // BillingService still honours the soft-cancel intent by setting its

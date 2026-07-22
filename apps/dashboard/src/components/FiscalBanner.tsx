@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Receipt, X } from "lucide-react";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 
 /**
@@ -20,7 +21,10 @@ export function FiscalBanner() {
     const t = useTranslations("fiscalGate");
     const { activeTenantId } = useTenant();
     const { user } = useAuth();
-    const tenantId = activeTenantId || user?.tenantId;
+    const { isSuperAdmin, impersonating } = useRole();
+    // In platform mode there is no tenant in context, so this banner would
+    // otherwise render a tenant's DIAN status over platform pages.
+    const tenantId = isSuperAdmin && !impersonating ? undefined : (activeTenantId || user?.tenantId);
     const [show, setShow] = useState(false);
     const [dismissed, setDismissed] = useState(false);
 

@@ -1,13 +1,17 @@
 "use client";
 
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
-import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 /**
- * Context that provides the currently selected tenant for super_admin users.
- * For tenant_admin / tenant_agent, it uses their assigned tenantId.
- * For super_admin, it allows selecting any tenant from a dropdown.
+ * Context that provides the tenant whose data the UI is operating on.
+ * For tenant_admin / tenant_agent it is their assigned tenantId, and for a
+ * super_admin it is only ever set while impersonating (the impersonation token
+ * carries the tenant role, so the branch below resolves it).
+ *
+ * A super_admin in platform mode has NO tenant here on purpose: the console
+ * works on all-tenants listings, a single tenant is reviewed at
+ * /admin/tenants/[id], and acting as one requires impersonation.
  */
 
 interface TenantContextType {
@@ -45,16 +49,14 @@ export function TenantProvider({ children }: { children: ReactNode }) {
                 return;
             }
 
-            // Super admin: load all tenants
-            const result = await api.getTenants();
-            if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-                const mapped = result.data.map((t: any) => ({ id: t.id, name: t.name }));
-                setTenants(mapped);
-                // Auto-select first tenant or saved preference
-                const saved = localStorage.getItem("activeTenantId");
-                const validSaved = saved && mapped.some((t: any) => t.id === saved);
-                setActiveTenantId(validSaved ? saved : mapped[0].id);
-            }
+            // Super admin in platform mode: NO implicit tenant. Auto-selecting one
+            // meant pages reached by URL (procedures, api-keys, integrations…) read
+            // and wrote against whichever tenant happened to be first in the list.
+            // Reviewing a tenant goes through /admin/tenants/[id], and acting as one
+            // goes through impersonation — which sets user.tenantId via the branch above.
+            localStorage.removeItem("activeTenantId");
+            setTenants([]);
+            setActiveTenantId(null);
             setIsLoading(false);
         }
         load();
@@ -76,42 +78,4 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
 export function useTenant() {
     return useContext(TenantContext);
-}
-
-/**
- * Tenant selector dropdown — only visible for super_admin.
- */
-export function TenantSelector() {
-    const { user } = useAuth();
-    const { tenants, activeTenantId, activeTenantName, setActiveTenant } = useTenant();
-
-    if (user?.role !== "super_admin" || tenants.length <= 1) return null;
-
-    return (
-        <div style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "6px 12px", borderRadius: 10,
-            background: "rgba(108, 92, 231, 0.08)",
-            border: "1px solid rgba(108, 92, 231, 0.2)",
-        }}>
-            <span style={{ fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
-                Tenant:
-            </span>
-            <select
-                value={activeTenantId || ""}
-                onChange={e => setActiveTenant(e.target.value)}
-                style={{
-                    background: "transparent", border: "none", color: "var(--accent)",
-                    fontSize: 13, fontWeight: 600, cursor: "pointer", outline: "none",
-                    maxWidth: 200,
-                }}
-            >
-                {tenants.map(t => (
-                    <option key={t.id} value={t.id} style={{ background: "var(--bg-secondary)", color: "var(--text-primary)" }}>
-                        {t.name}
-                    </option>
-                ))}
-            </select>
-        </div>
-    );
 }

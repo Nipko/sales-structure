@@ -1710,6 +1710,31 @@ export class AuthService {
             createdAt: Date.now(),
         }, 3600);
 
+        // Persisted trail. Without this the only record of a super_admin entering
+        // a tenant's workspace is a Redis key that self-destructs in an hour, so
+        // "who accessed my account and when" is unanswerable after the fact.
+        // userId is the REAL actor (the super_admin), never the impersonated user.
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId,
+                userId: superAdminId,
+                action: 'super_admin.impersonation_started',
+                resource: 'tenant',
+                details: {
+                    superAdminEmail: superAdmin.email,
+                    impersonatedUserId: targetUser.id,
+                    impersonatedEmail: targetUser.email,
+                    tenantName: tenant.name,
+                    tenantSlug: tenant.slug,
+                    sessionId: tokenId,
+                    expiresInSeconds: 3600,
+                },
+            },
+        }).catch((e) => {
+            // Never block the session on an audit write, but make the miss loud.
+            this.logger.error(`Failed to persist impersonation audit for tenant ${tenantId}: ${e?.message}`);
+        });
+
         return { accessToken, refreshToken };
     }
 

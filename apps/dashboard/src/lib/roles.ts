@@ -81,11 +81,30 @@ interface PageRule {
     roles: Role[];
     /** If true, super_admin can access ONLY through impersonation */
     requiresImpersonationForSuperAdmin?: boolean;
+    /**
+     * Match the path exactly instead of as a prefix. Lets a hub page stay open
+     * while everything nested under it is gated by a separate prefix rule
+     * (used by "/admin" and "/admin/settings").
+     */
+    exact?: boolean;
 }
 
 export const PAGE_RULES: PageRule[] = [
+    // ── Hub pages: exact match so the page itself stays open while the
+    //    tenant-scoped routes nested under it are gated separately ──
+    { prefix: "/admin", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], exact: true },
+    { prefix: "/admin/settings", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], exact: true },
+
     // ── Platform-only (super_admin always; no one else) ──────
     { prefix: "/admin/tenants", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    { prefix: "/admin/ops", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    { prefix: "/admin/incidents", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    { prefix: "/admin/fiscal", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    { prefix: "/admin/managed", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    { prefix: "/admin/storage", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    { prefix: "/admin/plans", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    { prefix: "/admin/billing-ops", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    { prefix: "/admin/sms-packages", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/financials", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/health", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/usage", roles: [ROLE_KEYS.SUPER_ADMIN] },
@@ -119,6 +138,10 @@ export const PAGE_RULES: PageRule[] = [
     { prefix: "/admin/conversations", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/identity", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/crm-analytics", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
+    { prefix: "/admin/analytics-v2", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
+    { prefix: "/admin/report-builder", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
+    { prefix: "/admin/attribution", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
+    { prefix: "/admin/procedures", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/agent-analytics", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/settings/pipeline", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
     { prefix: "/admin/settings/scoring-config", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
@@ -164,7 +187,11 @@ export const PAGE_RULES: PageRule[] = [
     { prefix: "/admin/settings/notifications", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT] },
     { prefix: "/admin/settings/appearance", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT] },
     { prefix: "/admin/settings/change-password", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT] },
-    { prefix: "/admin/settings", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT] },
+
+    // Everything else nested under /admin/settings is tenant-scoped config
+    // (integrations, api-keys, fiscal, nurturing…). The personal pages above
+    // win by longer prefix; the settings hub itself by the `exact` rule.
+    { prefix: "/admin/settings", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT], requiresImpersonationForSuperAdmin: true },
 ];
 
 /**
@@ -178,12 +205,19 @@ export function canAccessPath(
 ): boolean {
     if (!role) return false;
 
-    // Sort by prefix length descending so /admin/settings/billing wins over /admin/settings
-    const sorted = [...PAGE_RULES].sort((a, b) => b.prefix.length - a.prefix.length);
-    const rule = sorted.find(r => pathname === r.prefix || pathname.startsWith(r.prefix + "/") || pathname.startsWith(r.prefix + "?"));
+    // Exact rules win, so a hub page ("/admin", "/admin/settings") stays open
+    // without opening everything nested under it.
+    const exactRule = PAGE_RULES.find(r => r.exact && pathname === r.prefix);
 
-    // No rule matched → allow (don't break unknown pages)
-    if (!rule) return true;
+    // Sort by prefix length descending so /admin/settings/billing wins over /admin/settings
+    const sorted = [...PAGE_RULES].filter(r => !r.exact).sort((a, b) => b.prefix.length - a.prefix.length);
+    const rule = exactRule
+        ?? sorted.find(r => pathname === r.prefix || pathname.startsWith(r.prefix + "/") || pathname.startsWith(r.prefix + "?"));
+
+    // No rule matched → deny for a super_admin outside impersonation, so any new
+    // tenant page ships gated by default instead of silently open. Every platform
+    // page has an explicit rule above; add one there when introducing a new one.
+    if (!rule) return !(isSuperAdmin(role) && !impersonating);
 
     if (!rule.roles.includes(role)) return false;
 

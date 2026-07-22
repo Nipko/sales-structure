@@ -35,7 +35,7 @@ interface TopBarProps {
 export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
-  const { tenants, activeTenantId, setActiveTenant } = useTenant();
+  const { activeTenantId } = useTenant();
   const { theme, setTheme } = useTheme();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -121,7 +121,6 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
   }), [t]);
 
   const isSuperAdmin = user?.role === "super_admin";
-  const showTenantSelector = isSuperAdmin && tenants.length > 1;
 
   // Friendly role label. The raw DB role is tenant_admin / tenant_agent /
   // super_admin / tenant_viewer — we hide the tenant_ prefix since it's
@@ -517,21 +516,6 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
           </div>
         )}
       </div>
-
-      {/* Tenant selector */}
-      {showTenantSelector && (
-        <select
-          value={activeTenantId || ""}
-          onChange={(e) => setActiveTenant(e.target.value)}
-          className="h-8 max-w-[200px] rounded-md border border-neutral-200 dark:border-neutral-700 bg-transparent text-sm text-neutral-700 dark:text-neutral-300 px-2 truncate focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          {tenants.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-      )}
 
       {/* User avatar dropdown */}
       <div ref={userMenuRef} className="relative">

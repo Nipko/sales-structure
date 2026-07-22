@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -159,7 +160,7 @@ export class SmsCreditsService {
         // (e.g. MP payment.created + payment.updated for the same order) fails the
         // insert → the whole transaction rolls back → no double-credit.
         try {
-            return await this.prisma.$transaction(async (tx) => {
+            return await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
                 const balanceId = randomUUID();
                 const rows = await tx.$queryRaw<{ balance_credits: number }[]>`
                     INSERT INTO sms_credit_balances (id, tenant_id, balance_credits, created_at, updated_at)

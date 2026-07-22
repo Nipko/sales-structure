@@ -597,6 +597,13 @@ export class AuthService {
             tenantId: user.tenantId,
             isActive: user.isActive,
             schemaName: user.tenant?.schemaName,
+            // Carry the delegation through. Re-selecting the user from the DB
+            // dropped these, so anything written while impersonating was
+            // attributed to the impersonated tenant_admin — the audit trail
+            // didn't just have gaps, it named the wrong person.
+            impersonatedBy: payload.impersonatedBy,
+            isImpersonation: payload.isImpersonation === true,
+            impersonationSid: payload.impersonationSid,
         };
     }
 
@@ -1651,8 +1658,16 @@ export class AuthService {
      * Generate short-lived tokens (1 hour) for a super_admin to impersonate
      * a tenant_admin in the given tenant. Tokens carry impersonation metadata
      * so audit trails can distinguish real from impersonated sessions.
+     *
+     * A reason is required: an act-as session that nobody can justify after the
+     * fact is indistinguishable from an intrusion. The paired closing row is
+     * written by endImpersonation().
      */
-    async impersonate(superAdminId: string, tenantId: string): Promise<{ accessToken: string; refreshToken: string }> {
+    async impersonate(
+        superAdminId: string,
+        tenantId: string,
+        access: { reason: string; ticketId?: string },
+    ): Promise<{ accessToken: string; refreshToken: string; user: any; sessionId: string; expiresInSeconds: number }> {
         // Verify the caller is actually a super_admin
         const superAdmin = await this.prisma.user.findUnique({ where: { id: superAdminId } });
         if (!superAdmin || superAdmin.role !== 'super_admin') {
@@ -1675,6 +1690,8 @@ export class AuthService {
             throw new NotFoundException(`No active tenant_admin found for tenant ${tenantId}`);
         }
 
+        const tokenId = crypto.randomUUID();
+
         // Generate a short-lived access token (1 hour)
         const payload: JwtPayload = {
             sub: targetUser.id,
@@ -1682,9 +1699,14 @@ export class AuthService {
             role: targetUser.role as UserRole,
             tenantId: targetUser.tenantId || undefined,
         };
+        const delegation = {
+            impersonatedBy: superAdminId,
+            isImpersonation: true,
+            impersonationSid: tokenId,
+        };
 
         const accessToken = this.jwtService.sign(
-            { ...payload, impersonatedBy: superAdminId, isImpersonation: true },
+            { ...payload, ...delegation },
             {
                 secret: this.configService.get<string>('auth.jwtSecret'),
                 expiresIn: '1h',
@@ -1692,9 +1714,8 @@ export class AuthService {
         );
 
         // Generate a matching refresh token (also 1 hour)
-        const tokenId = crypto.randomUUID();
         const refreshToken = this.jwtService.sign(
-            { ...payload, tid: tokenId, impersonatedBy: superAdminId, isImpersonation: true },
+            { ...payload, tid: tokenId, ...delegation },
             {
                 secret: this.configService.get<string>('auth.jwtRefreshSecret'),
                 expiresIn: '1h',
@@ -1728,6 +1749,8 @@ export class AuthService {
                     tenantSlug: tenant.slug,
                     sessionId: tokenId,
                     expiresInSeconds: 3600,
+                    reason: access.reason,
+                    ticketId: access.ticketId || null,
                 },
             },
         }).catch((e) => {
@@ -1735,7 +1758,94 @@ export class AuthService {
             this.logger.error(`Failed to persist impersonation audit for tenant ${tenantId}: ${e?.message}`);
         });
 
-        return { accessToken, refreshToken };
+        this.logger.log(
+            `Impersonation started: super_admin ${superAdmin.email} → tenant ${tenant.slug} (session ${tokenId}, reason: ${access.reason})`,
+        );
+
+        return {
+            accessToken,
+            refreshToken,
+            sessionId: tokenId,
+            expiresInSeconds: 3600,
+            // The dashboard swaps this into its stored session. Without it the
+            // browser kept the super_admin user object, so the UI believed it was
+            // still in platform mode while holding a tenant token.
+            user: {
+                id: targetUser.id,
+                email: targetUser.email,
+                firstName: targetUser.firstName,
+                lastName: targetUser.lastName,
+                role: targetUser.role,
+                tenantId: targetUser.tenantId,
+                tenantName: tenant.name,
+                emailVerified: true,
+                onboardingCompleted: true,
+            },
+        };
+    }
+
+    /**
+     * Close an impersonation session: revoke the short-lived refresh token and
+     * write the paired audit row. Called with the operator's OWN token, so the
+     * actor recorded here is the real super_admin.
+     *
+     * A start without an end is not an audit trail, only a record of intent —
+     * without this the exposure window of a privileged session is unbounded.
+     */
+    async endImpersonation(
+        superAdminId: string,
+        params: { tenantId: string; sessionId?: string; impersonatedUserId?: string },
+    ): Promise<{ ended: boolean }> {
+        const superAdmin = await this.prisma.user.findUnique({ where: { id: superAdminId } });
+        if (!superAdmin || superAdmin.role !== 'super_admin') {
+            throw new UnauthorizedException('Only super_admin can end an impersonation session');
+        }
+
+        // Kill the impersonated refresh token so the session cannot be resumed
+        // from a copied token after the operator "exited".
+        if (params.sessionId && params.impersonatedUserId) {
+            await this.redis
+                .del(`refresh:${params.impersonatedUserId}:${params.sessionId}`)
+                .catch(() => { /* best effort — the key expires within the hour anyway */ });
+        }
+
+        let startedAt: Date | null = null;
+        if (params.sessionId) {
+            const startRow = await this.prisma.auditLog.findFirst({
+                where: {
+                    tenantId: params.tenantId,
+                    action: 'super_admin.impersonation_started',
+                    details: { path: ['sessionId'], equals: params.sessionId },
+                },
+                orderBy: { createdAt: 'desc' },
+                select: { createdAt: true },
+            }).catch(() => null);
+            startedAt = startRow?.createdAt ?? null;
+        }
+
+        await this.prisma.auditLog.create({
+            data: {
+                tenantId: params.tenantId,
+                userId: superAdminId,
+                action: 'super_admin.impersonation_ended',
+                resource: 'tenant',
+                details: {
+                    superAdminEmail: superAdmin.email,
+                    sessionId: params.sessionId || null,
+                    impersonatedUserId: params.impersonatedUserId || null,
+                    startedAt: startedAt ? startedAt.toISOString() : null,
+                    durationSeconds: startedAt
+                        ? Math.round((Date.now() - startedAt.getTime()) / 1000)
+                        : null,
+                },
+            },
+        }).catch((e) => {
+            this.logger.error(`Failed to persist impersonation-end audit for tenant ${params.tenantId}: ${e?.message}`);
+        });
+
+        this.logger.log(`Impersonation ended: super_admin ${superAdmin.email} → tenant ${params.tenantId} (session ${params.sessionId || 'unknown'})`);
+
+        return { ended: true };
     }
 
     /**

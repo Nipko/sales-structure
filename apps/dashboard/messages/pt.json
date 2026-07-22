@@ -2274,8 +2274,6 @@
     "expectedValuePlaceholder": "ex: Lisboa",
     "autoProgressTitle": "Avanço automático de etapas",
     "autoProgressHint": "O agente de IA move as oportunidades pelo funil com base nos sinais da conversa (interesse, preço, intenção de compra). Desative para gerenciar as etapas manualmente.",
-    "autoProgressTitle": "Avanço automático de etapas",
-    "autoProgressHint": "O agente de IA move as oportunidades pelo funil com base nos sinais da conversa (interesse, preço, intenção de compra). Desative para gerenciar as etapas manualmente.",
     "resyncBtn": "Re-sincronizar oportunidades existentes",
     "resyncDone": "{count} sincronizadas",
     "loadPresetBtn": "Carregar predefinições do setor",
@@ -4029,7 +4027,22 @@
     },
     "impersonation": {
       "banner": "Vendo como {name}",
-      "exit": "Sair"
+      "exit": "Sair",
+      "title": "Entrar no espaço do cliente",
+      "notice": "Você vai operar dentro do espaço deste cliente. A sessão dura 1 hora e fica registrada com seu usuário, o motivo e a duração.",
+      "reasonLabel": "Motivo do acesso",
+      "notesLabel": "Detalhe do motivo",
+      "notesPlaceholder": "Descreva brevemente por que precisa entrar",
+      "ticketLabel": "Ticket ou referência (opcional)",
+      "ticketPlaceholder": "Ex: SOP-1234",
+      "confirm": "Entrar como este cliente",
+      "reasons": {
+        "support_request": "Suporte solicitado pelo cliente",
+        "incident": "Incidente ou diagnóstico técnico",
+        "billing": "Revisão de faturamento",
+        "onboarding": "Acompanhamento de onboarding",
+        "other": "Outro (especificar)"
+      }
     }
   },
   "onboarding": {
@@ -7779,7 +7792,8 @@
     "resultsCount": "Mostrando {count} de {total} eventos",
     "empty": "Sem eventos para os filtros aplicados",
     "platformLevel": "(nível plataforma)",
-    "pageOf": "Página {page} de {total}"
+    "pageOf": "Página {page} de {total}",
+    "actorUnknown": "Ator desconhecido"
   },
   "complianceAdmin": {
     "title": "Centro de compliance",
@@ -8657,6 +8671,10 @@
   "smsPackages": {
     "title": "Pacotes SMS",
     "subtitle": "Defina os pacotes de créditos SMS que os tenants compram e gerencie seus saldos.",
+    "switchTitle": "Venda de pacotes SMS",
+    "switchOnHint": "Ativada: os tenants veem o saldo, podem comprar pacotes e os envios consomem créditos por segmento.",
+    "switchOffHint": "Desativada: os tenants não veem a seção de créditos nem podem comprar, e nenhum SMS medido é enviado. Saldos e histórico são preservados.",
+    "switchSaveNote": "A mudança é aplicada ao salvar (botão Salvar abaixo).",
     "tiersTitle": "Pacotes (tiers)",
     "addTier": "Adicionar pacote",
     "senderLabel": "Remetente (sender)",
@@ -8693,11 +8711,22 @@
   "billingOps": {
     "title": "Operações de faturamento",
     "subtitle": "Assinaturas, pagamentos e eventos de todos os tenants",
-    "tabs": { "subscriptions": "Assinaturas", "payments": "Pagamentos", "events": "Eventos" },
+    "tabs": {
+      "subscriptions": "Assinaturas",
+      "payments": "Pagamentos",
+      "events": "Eventos"
+    },
     "cols": {
-      "tenant": "Tenant", "plan": "Plano", "status": "Status", "provider": "Provedor",
-      "periodEnd": "Fim do período", "pending": "Alteração pendente", "amount": "Valor",
-      "date": "Data", "eventType": "Evento", "eventId": "ID do evento"
+      "tenant": "Tenant",
+      "plan": "Plano",
+      "status": "Status",
+      "provider": "Provedor",
+      "periodEnd": "Fim do período",
+      "pending": "Alteração pendente",
+      "amount": "Valor",
+      "date": "Data",
+      "eventType": "Evento",
+      "eventId": "ID do evento"
     },
     "empty": "Sem registros",
     "refund": "Reembolsar",

@@ -4027,7 +4027,22 @@
     },
     "impersonation": {
       "banner": "Consultation en tant que {name}",
-      "exit": "Quitter"
+      "exit": "Quitter",
+      "title": "Accéder à l'espace du client",
+      "notice": "Vous allez travailler dans l'espace de ce client. La session dure 1 heure et est enregistrée avec votre utilisateur, le motif et la durée.",
+      "reasonLabel": "Motif de l'accès",
+      "notesLabel": "Détail du motif",
+      "notesPlaceholder": "Décrivez brièvement pourquoi vous devez entrer",
+      "ticketLabel": "Ticket ou référence (facultatif)",
+      "ticketPlaceholder": "Ex : SOP-1234",
+      "confirm": "Entrer en tant que ce client",
+      "reasons": {
+        "support_request": "Assistance demandée par le client",
+        "incident": "Incident ou diagnostic technique",
+        "billing": "Révision de facturation",
+        "onboarding": "Accompagnement d'onboarding",
+        "other": "Autre (préciser)"
+      }
     }
   },
   "onboarding": {
@@ -7777,7 +7792,8 @@
     "resultsCount": "Affichage de {count} sur {total} événements",
     "empty": "Aucun événement pour les filtres appliqués",
     "platformLevel": "(niveau plateforme)",
-    "pageOf": "Page {page} sur {total}"
+    "pageOf": "Page {page} sur {total}",
+    "actorUnknown": "Acteur inconnu"
   },
   "complianceAdmin": {
     "title": "Centre de conformité",
@@ -8655,6 +8671,10 @@
   "smsPackages": {
     "title": "Forfaits SMS",
     "subtitle": "Définissez les forfaits de crédits SMS que les tenants achètent et gérez leurs soldes.",
+    "switchTitle": "Vente de forfaits SMS",
+    "switchOnHint": "Activée : les tenants voient leur solde, peuvent acheter des forfaits et les envois consomment des crédits par segment.",
+    "switchOffHint": "Désactivée : les tenants ne voient pas la section crédits et ne peuvent pas acheter, et aucun SMS facturé n'est envoyé. Les soldes et l'historique sont conservés.",
+    "switchSaveNote": "Le changement s'applique à l'enregistrement (bouton Enregistrer ci-dessous).",
     "tiersTitle": "Forfaits (paliers)",
     "addTier": "Ajouter un forfait",
     "senderLabel": "Expéditeur (sender)",
@@ -8691,11 +8711,22 @@
   "billingOps": {
     "title": "Opérations de facturation",
     "subtitle": "Abonnements, paiements et événements de tous les tenants",
-    "tabs": { "subscriptions": "Abonnements", "payments": "Paiements", "events": "Événements" },
+    "tabs": {
+      "subscriptions": "Abonnements",
+      "payments": "Paiements",
+      "events": "Événements"
+    },
     "cols": {
-      "tenant": "Tenant", "plan": "Plan", "status": "Statut", "provider": "Fournisseur",
-      "periodEnd": "Fin de période", "pending": "Changement en attente", "amount": "Montant",
-      "date": "Date", "eventType": "Événement", "eventId": "ID d'événement"
+      "tenant": "Tenant",
+      "plan": "Plan",
+      "status": "Statut",
+      "provider": "Fournisseur",
+      "periodEnd": "Fin de période",
+      "pending": "Changement en attente",
+      "amount": "Montant",
+      "date": "Date",
+      "eventType": "Événement",
+      "eventId": "ID d'événement"
     },
     "empty": "Aucun enregistrement",
     "refund": "Rembourser",

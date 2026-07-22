@@ -576,8 +576,10 @@ export const api = {
         apiPost(`/offboarding/${tenantId}/reactivate`, {}),
     extendTrial: (tenantId: string, days: number) =>
         apiPost(`/offboarding/${tenantId}/extend-trial`, { days }),
-    impersonateTenant: (tenantId: string) =>
-        apiPost(`/auth/impersonate/${tenantId}`, {}),
+    impersonateTenant: (tenantId: string, access: { reason: string; ticketId?: string }) =>
+        apiPost(`/auth/impersonate/${tenantId}`, access),
+    exitImpersonation: (payload: { tenantId: string; sessionId?: string; impersonatedUserId?: string }) =>
+        apiPost(`/auth/impersonate/exit`, payload),
     purgeTenant: (tenantId: string) =>
         apiDelete(`/offboarding/${tenantId}/purge`),
     reactivateChannels: (tenantId: string) =>
@@ -1049,7 +1051,7 @@ export const api = {
         apiPost(`/sms-credits/${tenantId}/checkout`, { packageId }),
     // super admin
     getSmsConfig: () => apiGet(`/sms-credits/admin/config`),
-    updateSmsConfig: (data: { senderId?: string; packages: any[] }) =>
+    updateSmsConfig: (data: { enabled?: boolean; senderId?: string; packages: any[] }) =>
         apiPut(`/sms-credits/admin/config`, data),
     getSmsBalances: () => apiGet(`/sms-credits/admin/balances`),
     adjustSmsBalance: (tenantId: string, data: { delta: number; reason: string }) =>

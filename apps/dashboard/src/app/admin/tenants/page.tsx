@@ -21,6 +21,8 @@ import PlatformTab from "./_components/PlatformTab";
 import CreateTenantModal from "./_components/CreateTenantModal";
 import EditTenantModal from "./_components/EditTenantModal";
 import SuspendModal from "./_components/SuspendModal";
+import ImpersonateModal from "./_components/ImpersonateModal";
+import { startImpersonation } from "@/lib/impersonation";
 import type { Tenant, PlatformStats, PlatformBilling, PlatformUsage, PlatformHealth } from "./_components/types";
 
 type TabId = "overview" | "onboarding" | "offboarding" | "billing" | "usage" | "platform";
@@ -44,6 +46,9 @@ export default function TenantsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editTenant, setEditTenant] = useState<Tenant | null>(null);
   const [suspendTenant, setSuspendTenant] = useState<Tenant | null>(null);
+  const [impersonateTarget, setImpersonateTarget] = useState<Tenant | null>(null);
+  const [impersonateBusy, setImpersonateBusy] = useState(false);
+  const [impersonateError, setImpersonateError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -142,25 +147,15 @@ export default function TenantsPage() {
     }
   };
 
-  const handleImpersonate = async (tenant: Tenant) => {
-    const result = await api.impersonateTenant(tenant.id);
-    if (result.success && result.data) {
-      const data = result.data as any;
-      // Store impersonation state
-      localStorage.setItem("impersonation", JSON.stringify({
-        originalAccessToken: localStorage.getItem("accessToken"),
-        originalRefreshToken: localStorage.getItem("refreshToken"),
-        originalUser: localStorage.getItem("user"),
-        tenantName: tenant.name,
-      }));
-      // Replace tokens with impersonated ones
-      if (data.accessToken) localStorage.setItem("accessToken", data.accessToken);
-      if (data.refreshToken) localStorage.setItem("refreshToken", data.refreshToken);
-      if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
-      // Reload to apply
-      window.location.href = "/admin";
-    } else {
-      showToast(result.error || "Impersonation failed");
+  const handleImpersonate = async (access: { reason: string; ticketId?: string }) => {
+    const tenant = impersonateTarget;
+    if (!tenant) return;
+    setImpersonateBusy(true);
+    setImpersonateError(null);
+    const result = await startImpersonation(tenant, access);
+    if (!result.ok) {
+      setImpersonateBusy(false);
+      setImpersonateError(result.error);
     }
   };
 
@@ -213,7 +208,7 @@ export default function TenantsPage() {
           stats={stats}
           onEdit={setEditTenant}
           onSuspend={setSuspendTenant}
-          onImpersonate={handleImpersonate}
+          onImpersonate={(tenant) => { setImpersonateError(null); setImpersonateTarget(tenant); }}
         />
       )}
 
@@ -245,6 +240,15 @@ export default function TenantsPage() {
       <CreateTenantModal open={showCreate} onClose={() => setShowCreate(false)} onCreate={handleCreate} />
       <EditTenantModal tenant={editTenant} onClose={() => setEditTenant(null)} onSave={handleEdit} />
       <SuspendModal tenant={suspendTenant} onClose={() => setSuspendTenant(null)} onSuspend={handleSuspend} />
+      {impersonateTarget && (
+        <ImpersonateModal
+          tenantName={impersonateTarget.name}
+          busy={impersonateBusy}
+          error={impersonateError}
+          onCancel={() => { setImpersonateTarget(null); setImpersonateError(null); }}
+          onConfirm={handleImpersonate}
+        />
+      )}
 
       {/* Toast */}
       {toast && (

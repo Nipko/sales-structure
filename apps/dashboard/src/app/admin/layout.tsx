@@ -63,7 +63,10 @@ export default function AdminLayout({
   }, [pathname, role, impersonating, isLoading, isAuthenticated, router]);
 
   useEffect(() => {
-    if (!user?.tenantId || user.role === "super_admin") return;
+    // While impersonating, the session carries the tenant's role — but an
+    // operator must still be able to work on a suspended tenant, which is
+    // exactly when support is needed.
+    if (!user?.tenantId || user.role === "super_admin" || impersonating) return;
 
     async function checkRestriction() {
       try {
@@ -94,7 +97,7 @@ export default function AdminLayout({
 
   if (!isAuthenticated) return null;
 
-  if (restriction.level === "hard_lock") {
+  if (restriction.level === "hard_lock" && !impersonating) {
     const isBillingPage = pathname === "/admin/settings/billing";
     if (!isBillingPage) {
       return <SuspendedScreen restriction={restriction} />;

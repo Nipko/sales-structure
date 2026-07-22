@@ -583,8 +583,40 @@ export class AuthController {
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Impersonate a tenant admin (super_admin only)' })
-    async impersonate(@Param('tenantId') tenantId: string, @CurrentUser() user: any) {
-        const result = await this.authService.impersonate(user.id, tenantId);
+    async impersonate(
+        @Param('tenantId') tenantId: string,
+        @CurrentUser() user: any,
+        @Body() body: { reason?: string; ticketId?: string },
+    ) {
+        const reason = (body?.reason || '').trim();
+        if (!reason) {
+            throw new BadRequestException('A reason is required to impersonate a tenant');
+        }
+        const result = await this.authService.impersonate(user.id, tenantId, {
+            reason,
+            ticketId: body?.ticketId?.trim() || undefined,
+        });
+        return { success: true, data: result };
+    }
+
+    @Post('impersonate/exit')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Close an impersonation session (super_admin only)' })
+    async exitImpersonation(
+        @CurrentUser() user: any,
+        @Body() body: { tenantId: string; sessionId?: string; impersonatedUserId?: string },
+    ) {
+        if (!body?.tenantId) {
+            throw new BadRequestException('tenantId is required');
+        }
+        const result = await this.authService.endImpersonation(user.id, {
+            tenantId: body.tenantId,
+            sessionId: body.sessionId,
+            impersonatedUserId: body.impersonatedUserId,
+        });
         return { success: true, data: result };
     }
 

@@ -11,6 +11,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { AuthThrottle } from '../../common/decorators/auth-throttle.decorator';
 import { AuthThrottleGuard } from '../../common/guards/auth-throttle.guard';
+import { auditActor } from '../../common/utils/audit-actor.util';
 
 class LoginDto {
     @IsEmail()
@@ -425,13 +426,14 @@ export class AuthController {
         });
 
         // Audit Log entry
+        const updateActor = auditActor(currentUser);
         await this.authService['prisma'].auditLog.create({
             data: {
                 tenantId: targetUser.tenantId,
-                userId: currentUser.id,
+                userId: updateActor.userId,
                 action: 'user_updated',
                 resource: `users/${userId}`,
-                details: { modifiedFields: Object.keys(updateData) },
+                details: { modifiedFields: Object.keys(updateData), ...updateActor.delegation },
             },
         });
 
@@ -475,13 +477,14 @@ export class AuthController {
         await this.authService.revokeAllUserSessions(userId);
 
         // Audit Log entry
+        const deactivateActor = auditActor(currentUser);
         await this.authService['prisma'].auditLog.create({
             data: {
                 tenantId: targetUser.tenantId,
-                userId: currentUser.id,
+                userId: deactivateActor.userId,
                 action: 'user_deactivated',
                 resource: `users/${userId}`,
-                details: { status: 'deactivated' },
+                details: { status: 'deactivated', ...deactivateActor.delegation },
             },
         });
 
@@ -583,8 +586,40 @@ export class AuthController {
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Impersonate a tenant admin (super_admin only)' })
-    async impersonate(@Param('tenantId') tenantId: string, @CurrentUser() user: any) {
-        const result = await this.authService.impersonate(user.id, tenantId);
+    async impersonate(
+        @Param('tenantId') tenantId: string,
+        @CurrentUser() user: any,
+        @Body() body: { reason?: string; ticketId?: string },
+    ) {
+        const reason = (body?.reason || '').trim();
+        if (!reason) {
+            throw new BadRequestException('A reason is required to impersonate a tenant');
+        }
+        const result = await this.authService.impersonate(user.id, tenantId, {
+            reason,
+            ticketId: body?.ticketId?.trim() || undefined,
+        });
+        return { success: true, data: result };
+    }
+
+    @Post('impersonate/exit')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Close an impersonation session (super_admin only)' })
+    async exitImpersonation(
+        @CurrentUser() user: any,
+        @Body() body: { tenantId: string; sessionId?: string; impersonatedUserId?: string },
+    ) {
+        if (!body?.tenantId) {
+            throw new BadRequestException('tenantId is required');
+        }
+        const result = await this.authService.endImpersonation(user.id, {
+            tenantId: body.tenantId,
+            sessionId: body.sessionId,
+            impersonatedUserId: body.impersonatedUserId,
+        });
         return { success: true, data: result };
     }
 

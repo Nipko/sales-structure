@@ -18,8 +18,10 @@ import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-    Clock, AlertTriangle, RefreshCw, Power, Trash2, X, Loader2, CheckCircle, XCircle, Gift, ArrowLeftRight,
+    Clock, AlertTriangle, RefreshCw, Power, Trash2, X, Loader2, CheckCircle, XCircle, Gift, ArrowLeftRight, Eye,
 } from "lucide-react";
+import ImpersonateModal from "./ImpersonateModal";
+import { startImpersonation } from "@/lib/impersonation";
 
 interface TenantSummary {
     id: string;
@@ -40,9 +42,13 @@ type ActionResult = { type: "success" | "error" | "warning"; text: string } | nu
 export default function TenantAdminActions({ tenant, onChange }: Props) {
     const t = useTranslations("tenantAdminActions");
     const tc = useTranslations("common");
+    const tImp = useTranslations("tenants");
 
     const [showExtendTrial, setShowExtendTrial] = useState(false);
     const [showPurge, setShowPurge] = useState(false);
+    const [showImpersonate, setShowImpersonate] = useState(false);
+    const [impersonateBusy, setImpersonateBusy] = useState(false);
+    const [impersonateError, setImpersonateError] = useState<string | null>(null);
     const [showCompPlan, setShowCompPlan] = useState(false);
     const [showChangePlan, setShowChangePlan] = useState(false);
     const [busy, setBusy] = useState<string | null>(null);
@@ -186,6 +192,14 @@ export default function TenantAdminActions({ tenant, onChange }: Props) {
                         <ArrowLeftRight className="h-4 w-4" /> {t("changePlan")}
                     </button>
 
+                    {/* Impersonate — the only audited way into the tenant's workspace */}
+                    <button
+                        onClick={() => { setImpersonateError(null); setShowImpersonate(true); }}
+                        className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-lg text-sm font-medium transition"
+                    >
+                        <Eye className="h-4 w-4" /> {tImp("impersonation.title")}
+                    </button>
+
                     {/* Purge — destructive */}
                     <button
                         onClick={() => setShowPurge(true)}
@@ -208,6 +222,24 @@ export default function TenantAdminActions({ tenant, onChange }: Props) {
                         setShowExtendTrial(false);
                         setFeedback({ type: "success", text: t("trialExtended") });
                         onChange?.();
+                    }}
+                />
+            )}
+
+            {showImpersonate && (
+                <ImpersonateModal
+                    tenantName={tenant.name}
+                    busy={impersonateBusy}
+                    error={impersonateError}
+                    onCancel={() => { setShowImpersonate(false); setImpersonateError(null); }}
+                    onConfirm={async (access) => {
+                        setImpersonateBusy(true);
+                        setImpersonateError(null);
+                        const res = await startImpersonation({ id: tenant.id, name: tenant.name }, access);
+                        if (!res.ok) {
+                            setImpersonateBusy(false);
+                            setImpersonateError(res.error);
+                        }
                     }}
                 />
             )}

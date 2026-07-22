@@ -360,6 +360,16 @@ export interface JwtPayload {
     sid?: string;
     iat?: number;
     exp?: number;
+    /**
+     * Impersonation delegation. The effective identity stays in `sub` while
+     * these carry the REAL actor, so downstream writers can record
+     * "X acting as Y" instead of attributing the action to the impersonated
+     * user. Never overwrite `sub` with the operator's id.
+     */
+    impersonatedBy?: string;
+    isImpersonation?: boolean;
+    /** Id of the impersonation session, used to pair start/end audit rows. */
+    impersonationSid?: string;
 }
 
 // ---- API Response Types ----

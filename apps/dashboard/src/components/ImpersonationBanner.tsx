@@ -2,18 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
-import { LogOut, Eye } from "lucide-react";
+import { LogOut, Eye, Loader2 } from "lucide-react";
+import { api } from "@/lib/api";
 
 interface ImpersonationState {
   originalAccessToken: string;
   originalRefreshToken: string;
   originalUser: string;
   tenantName: string;
+  tenantId?: string;
+  sessionId?: string;
+  impersonatedUserId?: string;
 }
 
 export default function ImpersonationBanner() {
   const t = useTranslations("tenants");
   const [impersonation, setImpersonation] = useState<ImpersonationState | null>(null);
+  const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
     try {
@@ -28,8 +33,12 @@ export default function ImpersonationBanner() {
 
   if (!impersonation) return null;
 
-  const handleExit = () => {
-    // Restore original tokens
+  const handleExit = async () => {
+    setExiting(true);
+
+    // Restore the operator's own tokens FIRST so the close-out call is made as
+    // the real super_admin, then tell the server the session is over. A start
+    // with no end leaves the exposure window of a privileged session unbounded.
     if (impersonation.originalAccessToken) {
       localStorage.setItem("accessToken", impersonation.originalAccessToken);
     }
@@ -39,6 +48,20 @@ export default function ImpersonationBanner() {
     if (impersonation.originalUser) {
       localStorage.setItem("user", impersonation.originalUser);
     }
+
+    if (impersonation.tenantId) {
+      try {
+        await api.exitImpersonation({
+          tenantId: impersonation.tenantId,
+          sessionId: impersonation.sessionId,
+          impersonatedUserId: impersonation.impersonatedUserId,
+        });
+      } catch {
+        // Never trap the operator in an impersonated session over a failed
+        // audit write — the token expires within the hour regardless.
+      }
+    }
+
     localStorage.removeItem("impersonation");
     window.location.href = "/admin/tenants";
   };
@@ -49,9 +72,10 @@ export default function ImpersonationBanner() {
       <span>{t("impersonation.banner", { name: impersonation.tenantName })}</span>
       <button
         onClick={handleExit}
-        className="ml-2 flex items-center gap-1.5 px-3 py-1 rounded-md bg-neutral-900/20 text-neutral-900 text-xs font-semibold cursor-pointer border-none hover:bg-neutral-900/30 transition-colors"
+        disabled={exiting}
+        className="ml-2 flex items-center gap-1.5 px-3 py-1 rounded-md bg-neutral-900/20 text-neutral-900 text-xs font-semibold cursor-pointer border-none hover:bg-neutral-900/30 disabled:opacity-60 transition-colors"
       >
-        <LogOut size={13} />
+        {exiting ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />}
         {t("impersonation.exit")}
       </button>
     </div>

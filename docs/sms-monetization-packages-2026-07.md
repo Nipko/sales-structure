@@ -73,16 +73,55 @@
 - **F3 — UI + gestión:** tenant ve saldo/consumo/compra + alertas de saldo bajo; super admin define
   tiers/precios y puede ajustar saldos. i18n x4.
 
-## Precios propuestos (PLACEHOLDER — editables en /admin, validar contra costo real Twilio CO)
+## INTERRUPTOR MAESTRO (super admin) — apagado por defecto
 
-| Paquete | SMS (créditos) | Precio COP (propuesto) | ~COP/SMS |
-|---|---|---|---|
-| Inicial | 500 | 90.000 | 180 |
-| Pro | 2.000 | 320.000 | 160 |
-| Masivo | 10.000 | 1.400.000 | 140 |
+`sms.packages.enabled` (dentro del blob `sms.packages` de `platform_settings`), toggle en
+`/admin/sms-packages`. **Apagado (default):**
+- `getPackages()` devuelve `[]` → la sección "Créditos SMS" desaparece sola del billing del tenant.
+- `POST sms-credits/:tenantId/checkout` rechaza (gate en backend, no solo ocultar el botón).
+- `TenantNotificationSmsService.send()` devuelve `monetization_disabled` → **no sale ningún SMS y no
+  se cobra nada** (la plataforma nunca adelanta un costo que no puede recuperar). Broadcast marca el
+  destinatario fallido sin reintentar; la cola descarta sin reintentar.
+- **Saldos y ledger se preservan** entre encendidos/apagados.
 
-> El costo Twilio a Colombia (~US$0.04–0.06/SMS ≈ 160–240 COP) debe confirmarse para asegurar margen;
-> por eso los precios son editables en el panel. Créditos sin vencimiento (decisión inicial; revisable).
+Razón: con Twilio la economía no cierra hoy (ver abajo). Se enciende cuando se resuelva el proveedor.
+
+## Realidad de Twilio → Colombia (verificado jul 2026)
+
+- **Costo: US$0.0525 por segmento** ≈ **210 COP** (a ~4.000 COP/USD). Mucho más caro de lo estimado.
+- **Alphanumeric Sender ID: NO soportado** en Colombia → el sender no puede ser "Parallly".
+- **Long code doméstico (número colombiano): NO soportado** por Twilio.
+- **Long code internacional: sí funciona**, pero el operador **sobrescribe el número con un short code**.
+- **Short code dedicado**: 4–10 semanas de provisioning + costo alto.
+- Compliance: las campañas deben soportar **HELP/STOP en idioma local** (hoy NO cableado al reseller).
+- Ojo segmentos: el español con tildes fuerza UCS-2 → **70 chars/segmento**, no 160. Un recordatorio
+  típico de ~120 chars = 2 segmentos = ~420 COP de costo.
+
+Fuentes: `twilio.com/en-us/guidelines/co/sms`, `twilio.com/en-us/sms/pricing/co`.
+
+## Precios (los placeholder originales estaban BAJO COSTO — corregidos)
+
+Los tiers iniciales (140–180 COP/SMS) perdían plata contra los ~210 COP de costo. Propuesta corregida
+(margen ~2x), editable en `/admin/sms-packages`:
+
+| Paquete | SMS | COP | COP/SMS | Margen |
+|---|---|---|---|---|
+| Inicial | 500 | 225.000 | 450 | ~2,1x |
+| Pro | 2.000 | 800.000 | 400 | ~1,9x |
+| Masivo | 10.000 | 3.500.000 | 350 | ~1,7x |
+
+> Créditos sin vencimiento (decisión inicial; revisable).
+
+## Camino para monetizar de verdad
+
+Twilio cotiza Colombia como carrier internacional. Para que el reseller cierre conviene **cambiar a un
+agregador local colombiano** en la ruta CO — el costo baja fuerte y el margen funciona. Todo el envío
+pasa por **una sola clase** (`TenantNotificationSmsService`), así que cambiar de proveedor es contenido.
+
+Modelo alternativo **BYO** (el tenant trae su propia cuenta y paga directo al proveedor): cero costo y
+cero riesgo para la plataforma, cero margen, más fricción de onboarding. Las piezas existen
+(`SmsSenderService`, `SmsAdapter`, credenciales en `channel_accounts`, hoy usadas por el OTP del
+Customer Portal), pero los caminos de notificación apuntan al reseller — habría que re-cablearlos.
 
 ## Decisiones tomadas
 - Reseller (sender de plataforma); canal conversacional descartado; precios propuestos + editables.

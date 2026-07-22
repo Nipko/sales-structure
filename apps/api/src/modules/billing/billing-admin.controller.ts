@@ -15,6 +15,7 @@ import {
     validatePlanFeatures,
     unknownFeatureKeys,
 } from '../throttle/plan-features.registry';
+import { auditActor } from '../../common/utils/audit-actor.util';
 
 // Countries for which we can register a MercadoPago preapproval_plan. Mirrors
 // scripts/sync-mp-plans.js — MP subscriptions are per-country.
@@ -210,7 +211,7 @@ export class BillingAdminController {
             await this.prisma.auditLog.create({
                 data: {
                     tenantId: null,
-                    userId: req.user?.sub,
+                    userId: auditActor(req.user).userId,
                     action: 'billing_plan_updated',
                     resource: `billing-plans/${slug}`,
                     details: { slug, changes },
@@ -355,7 +356,7 @@ export class BillingAdminController {
         await this.prisma.auditLog.create({
             data: {
                 tenantId: null,
-                userId: req.user?.sub,
+                userId: auditActor(req.user).userId,
                 action: 'billing_plan_synced_mp',
                 resource: `billing-plans/${slug}`,
                 details: { country, currency, cycle: isAnnual ? 'year' : 'month', amountCents, mpPlanId: providerPlan.providerPlanId, force: !!body.force },
@@ -378,7 +379,7 @@ export class BillingAdminController {
         await this.prisma.auditLog.create({
             data: {
                 tenantId: null,
-                userId: req.user?.sub,
+                userId: auditActor(req.user).userId,
                 action: 'billing_reconcile_manual',
                 resource: 'billing/reconcile',
                 details: { scope, ...result },
@@ -563,7 +564,7 @@ export class BillingAdminController {
         await this.prisma.auditLog.create({
             data: {
                 tenantId,
-                userId: req.user?.sub,
+                userId: auditActor(req.user).userId,
                 action: 'tenant_plan_changed',
                 resource: `tenants/${tenantId}`,
                 details: { from: tenant.plan, to: body.planSlug, reason: body.reason ?? null },

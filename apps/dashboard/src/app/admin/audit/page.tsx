@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { HelpPanel } from "@/components/ui/help-panel";
 import {
     ShieldCheck, RefreshCw, Loader2, ChevronDown, ChevronRight, Search,
-    Calendar, X, AlertTriangle, CheckCircle, Info,
+    Calendar, X, AlertTriangle, CheckCircle, Info, User,
 } from "lucide-react";
 
 interface AuditRow {
@@ -26,6 +26,11 @@ interface AuditRow {
     tenantId: string | null;
     tenantName: string | null;
     tenantSlug: string | null;
+    userId: string | null;
+    actorEmail: string | null;
+    actorName: string | null;
+    actorRole: string | null;
+    ip: string | null;
     createdAt: string;
 }
 
@@ -236,6 +241,17 @@ export default function AuditPage() {
                                             </Link>
                                         ) : (
                                             <span className="text-xs text-muted-foreground italic">{t("platformLevel")}</span>
+                                        )}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground flex-shrink-0 hidden md:block text-right">
+                                        <div className="flex items-center justify-end gap-1">
+                                            <User className="h-3 w-3" />
+                                            <span className="truncate max-w-[200px]">
+                                                {row.actorName || row.actorEmail || t("actorUnknown")}
+                                            </span>
+                                        </div>
+                                        {row.actorRole && (
+                                            <div className="text-[10px] uppercase tracking-wide opacity-70">{row.actorRole}</div>
                                         )}
                                     </div>
                                     <div className="text-xs text-muted-foreground font-mono flex-shrink-0 hidden sm:block">

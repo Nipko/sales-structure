@@ -61,7 +61,7 @@ export class OutboundQueueProcessor extends WorkerHost {
                 ref: (outbound.metadata as any)?.messageId,
             });
             if (!res.sent) {
-                if (res.reason === 'insufficient_credits' || res.reason === 'platform_sms_unconfigured') {
+                if (res.reason === 'insufficient_credits' || res.reason === 'platform_sms_unconfigured' || res.reason === 'monetization_disabled') {
                     this.logger.warn(`[Outbound][SMS] ${res.reason} tenant=${outbound.tenantId} to=${outbound.to} — dropped`);
                     return `skipped:${res.reason}`;
                 }

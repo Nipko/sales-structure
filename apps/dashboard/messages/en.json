@@ -4027,7 +4027,22 @@
     },
     "impersonation": {
       "banner": "Viewing as {name}",
-      "exit": "Exit"
+      "exit": "Exit",
+      "title": "Enter the customer workspace",
+      "notice": "You are about to operate inside this customer's workspace. The session lasts 1 hour and is recorded with your user, the reason and its duration.",
+      "reasonLabel": "Reason for access",
+      "notesLabel": "Reason detail",
+      "notesPlaceholder": "Briefly describe why you need to enter",
+      "ticketLabel": "Ticket or reference (optional)",
+      "ticketPlaceholder": "e.g. SOP-1234",
+      "confirm": "Enter as this customer",
+      "reasons": {
+        "support_request": "Support requested by the customer",
+        "incident": "Incident or technical diagnosis",
+        "billing": "Billing review",
+        "onboarding": "Onboarding assistance",
+        "other": "Other (specify)"
+      }
     }
   },
   "onboarding": {
@@ -7777,7 +7792,8 @@
     "resultsCount": "Showing {count} of {total} events",
     "empty": "No events match the applied filters",
     "platformLevel": "(platform-level)",
-    "pageOf": "Page {page} of {total}"
+    "pageOf": "Page {page} of {total}",
+    "actorUnknown": "Unknown actor"
   },
   "complianceAdmin": {
     "title": "Compliance center",
@@ -8655,6 +8671,10 @@
   "smsPackages": {
     "title": "SMS Packages",
     "subtitle": "Define the SMS credit packages that tenants buy and manage their balances.",
+    "switchTitle": "SMS package sales",
+    "switchOnHint": "On: tenants see their balance, can buy packages, and sends consume credits per segment.",
+    "switchOffHint": "Off: tenants don't see the credits section and can't buy, and no metered SMS goes out. Balances and history are preserved.",
+    "switchSaveNote": "The change takes effect when you save (Save button below).",
     "tiersTitle": "Packages (tiers)",
     "addTier": "Add package",
     "senderLabel": "Sender",
@@ -8691,11 +8711,22 @@
   "billingOps": {
     "title": "Billing operations",
     "subtitle": "Subscriptions, payments and events across all tenants",
-    "tabs": { "subscriptions": "Subscriptions", "payments": "Payments", "events": "Events" },
+    "tabs": {
+      "subscriptions": "Subscriptions",
+      "payments": "Payments",
+      "events": "Events"
+    },
     "cols": {
-      "tenant": "Tenant", "plan": "Plan", "status": "Status", "provider": "Provider",
-      "periodEnd": "Period end", "pending": "Pending change", "amount": "Amount",
-      "date": "Date", "eventType": "Event", "eventId": "Event ID"
+      "tenant": "Tenant",
+      "plan": "Plan",
+      "status": "Status",
+      "provider": "Provider",
+      "periodEnd": "Period end",
+      "pending": "Pending change",
+      "amount": "Amount",
+      "date": "Date",
+      "eventType": "Event",
+      "eventId": "Event ID"
     },
     "empty": "No records",
     "refund": "Refund",

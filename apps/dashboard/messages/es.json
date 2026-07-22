@@ -2274,8 +2274,6 @@
     "expectedValuePlaceholder": "ej. Bogota",
     "autoProgressTitle": "Avance automático de etapas",
     "autoProgressHint": "El agente de IA mueve las oportunidades por el embudo según las señales de la conversación (interés, precio, intención de compra). Desactívalo para gestionar las etapas manualmente.",
-    "autoProgressTitle": "Avance automático de etapas",
-    "autoProgressHint": "El agente de IA mueve las oportunidades por el embudo según las señales de la conversación (interés, precio, intención de compra). Desactívalo para gestionar las etapas manualmente.",
     "resyncBtn": "Re-sincronizar oportunidades existentes",
     "resyncDone": "{count} sincronizadas",
     "loadPresetBtn": "Cargar preajustes de la industria",
@@ -4029,7 +4027,22 @@
     },
     "impersonation": {
       "banner": "Viendo como {name}",
-      "exit": "Salir"
+      "exit": "Salir",
+      "title": "Entrar al espacio del cliente",
+      "notice": "Vas a operar dentro del espacio de este cliente. La sesión dura 1 hora y queda registrada con tu usuario, el motivo y la duración.",
+      "reasonLabel": "Motivo del acceso",
+      "notesLabel": "Detalle del motivo",
+      "notesPlaceholder": "Describe brevemente por qué necesitas entrar",
+      "ticketLabel": "Ticket o referencia (opcional)",
+      "ticketPlaceholder": "Ej: SOP-1234",
+      "confirm": "Entrar como este cliente",
+      "reasons": {
+        "support_request": "Soporte solicitado por el cliente",
+        "incident": "Incidente o diagnóstico técnico",
+        "billing": "Revisión de facturación",
+        "onboarding": "Acompañamiento de onboarding",
+        "other": "Otro (especificar)"
+      }
     }
   },
   "onboarding": {
@@ -7779,7 +7792,8 @@
     "resultsCount": "Mostrando {count} de {total} eventos",
     "empty": "Sin eventos para los filtros aplicados",
     "platformLevel": "(nivel plataforma)",
-    "pageOf": "Página {page} de {total}"
+    "pageOf": "Página {page} de {total}",
+    "actorUnknown": "Actor desconocido"
   },
   "complianceAdmin": {
     "title": "Centro de cumplimiento",
@@ -8657,6 +8671,10 @@
   "smsPackages": {
     "title": "Paquetes SMS",
     "subtitle": "Definí los paquetes de créditos SMS que compran los tenants y gestioná sus saldos.",
+    "switchTitle": "Venta de paquetes SMS",
+    "switchOnHint": "Activa: los tenants ven su saldo, pueden comprar paquetes y los envíos consumen créditos por segmento.",
+    "switchOffHint": "Desactivada: los tenants no ven la sección de créditos ni pueden comprar, y no sale ningún SMS medido. Los saldos y el historial se conservan.",
+    "switchSaveNote": "El cambio se aplica al guardar (botón Guardar más abajo).",
     "tiersTitle": "Paquetes (tiers)",
     "addTier": "Agregar paquete",
     "senderLabel": "Remitente (sender)",
@@ -8693,11 +8711,22 @@
   "billingOps": {
     "title": "Operaciones de facturación",
     "subtitle": "Suscripciones, pagos y eventos de todos los tenants",
-    "tabs": { "subscriptions": "Suscripciones", "payments": "Pagos", "events": "Eventos" },
+    "tabs": {
+      "subscriptions": "Suscripciones",
+      "payments": "Pagos",
+      "events": "Eventos"
+    },
     "cols": {
-      "tenant": "Tenant", "plan": "Plan", "status": "Estado", "provider": "Proveedor",
-      "periodEnd": "Fin de período", "pending": "Cambio pendiente", "amount": "Monto",
-      "date": "Fecha", "eventType": "Evento", "eventId": "ID de evento"
+      "tenant": "Tenant",
+      "plan": "Plan",
+      "status": "Estado",
+      "provider": "Proveedor",
+      "periodEnd": "Fin de período",
+      "pending": "Cambio pendiente",
+      "amount": "Monto",
+      "date": "Fecha",
+      "eventType": "Evento",
+      "eventId": "ID de evento"
     },
     "empty": "Sin registros",
     "refund": "Reembolsar",

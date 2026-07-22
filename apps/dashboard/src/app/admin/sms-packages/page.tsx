@@ -29,6 +29,7 @@ export default function SmsPackagesAdminPage() {
     const t = useTranslations("smsPackages");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [enabled, setEnabled] = useState(false);
     const [senderId, setSenderId] = useState("");
     const [packages, setPackages] = useState<Pkg[]>([]);
     const [balances, setBalances] = useState<Balance[]>([]);
@@ -46,6 +47,7 @@ export default function SmsPackagesAdminPage() {
             const [cfg, bal] = await Promise.all([api.getSmsConfig(), api.getSmsBalances()]);
             if (cfg?.success) {
                 const d = cfg.data as any;
+                setEnabled(d?.enabled === true);
                 setSenderId(d?.senderId || "");
                 setPackages(d?.packages || []);
             }
@@ -74,7 +76,7 @@ export default function SmsPackagesAdminPage() {
     const save = async () => {
         setSaving(true);
         try {
-            const res = await api.updateSmsConfig({ senderId: senderId || undefined, packages });
+            const res = await api.updateSmsConfig({ enabled, senderId: senderId || undefined, packages });
             if (res?.success) {
                 setToast(t("saved"));
                 if (res.data) setPackages(((res.data as any).packages as Pkg[]) || []);
@@ -134,6 +136,30 @@ export default function SmsPackagesAdminPage() {
                 </div>
             ) : (
                 <>
+                    {/* Master switch */}
+                    <section className={`rounded-xl border p-5 ${enabled
+                        ? "border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20"
+                        : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900"}`}>
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("switchTitle")}</h2>
+                                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 max-w-xl">
+                                    {enabled ? t("switchOnHint") : t("switchOffHint")}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={enabled}
+                                onClick={() => setEnabled((v) => !v)}
+                                className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors ${enabled ? "bg-emerald-500" : "bg-neutral-300 dark:bg-neutral-700"}`}
+                            >
+                                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${enabled ? "translate-x-[22px]" : "translate-x-0.5"}`} />
+                            </button>
+                        </div>
+                        <p className="text-[11px] text-neutral-400 mt-3">{t("switchSaveNote")}</p>
+                    </section>
+
                     {/* Tiers editor */}
                     <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
                         <div className="flex items-center justify-between mb-4">

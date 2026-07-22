@@ -1045,6 +1045,17 @@ export class TenantsService {
             : [];
         const tenantMap = new Map<string, any>(tenants.map((t: any) => [t.id, t]));
 
+        // Same for the actor. Without it the viewer can show WHAT happened but
+        // never WHO did it — which would make the impersonation rows useless.
+        const userIds = Array.from(new Set(rows.map((r: any) => r.userId).filter(Boolean))) as string[];
+        const users = userIds.length > 0
+            ? await this.prisma.user.findMany({
+                where: { id: { in: userIds } },
+                select: { id: true, email: true, firstName: true, lastName: true, role: true },
+            }).catch(() => [])
+            : [];
+        const userMap = new Map<string, any>(users.map((u: any) => [u.id, u]));
+
         return {
             total,
             rows: rows.map((r: any) => ({
@@ -1055,6 +1066,14 @@ export class TenantsService {
                 tenantId: r.tenantId,
                 tenantName: r.tenantId ? tenantMap.get(r.tenantId)?.name : null,
                 tenantSlug: r.tenantId ? tenantMap.get(r.tenantId)?.slug : null,
+                userId: r.userId,
+                actorEmail: r.userId ? userMap.get(r.userId)?.email ?? null : null,
+                actorName: r.userId
+                    ? [userMap.get(r.userId)?.firstName, userMap.get(r.userId)?.lastName]
+                        .filter(Boolean).join(' ').trim() || null
+                    : null,
+                actorRole: r.userId ? userMap.get(r.userId)?.role ?? null : null,
+                ip: r.ip,
                 createdAt: r.createdAt,
             })),
         };

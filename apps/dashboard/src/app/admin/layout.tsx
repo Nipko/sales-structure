@@ -8,6 +8,7 @@ import TrialCountdownBanner from "@/components/TrialCountdownBanner";
 import SuspendedScreen from "@/components/SuspendedScreen";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import MaintenanceBanner from "@/components/MaintenanceBanner";
+import { FiscalBanner } from "@/components/FiscalBanner";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { OfflineIndicator } from "@/components/pwa/OfflineIndicator";
 import { HelpAssistant } from "@/components/HelpAssistant";
@@ -112,6 +113,7 @@ export default function AdminLayout({
           <ImpersonationBanner />
           <TopBar onMobileMenuToggle={() => setMobileOpen(true)} />
           <TrialCountdownBanner restriction={restriction} />
+          <FiscalBanner />
           <div className="flex-1 flex overflow-hidden">
             <main className="flex-1 overflow-auto p-6">{children}</main>
             <OnboardingChecklist />

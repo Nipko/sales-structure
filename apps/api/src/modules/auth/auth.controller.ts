@@ -11,6 +11,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { AuthThrottle } from '../../common/decorators/auth-throttle.decorator';
 import { AuthThrottleGuard } from '../../common/guards/auth-throttle.guard';
+import { auditActor } from '../../common/utils/audit-actor.util';
 
 class LoginDto {
     @IsEmail()
@@ -425,13 +426,14 @@ export class AuthController {
         });
 
         // Audit Log entry
+        const updateActor = auditActor(currentUser);
         await this.authService['prisma'].auditLog.create({
             data: {
                 tenantId: targetUser.tenantId,
-                userId: currentUser.id,
+                userId: updateActor.userId,
                 action: 'user_updated',
                 resource: `users/${userId}`,
-                details: { modifiedFields: Object.keys(updateData) },
+                details: { modifiedFields: Object.keys(updateData), ...updateActor.delegation },
             },
         });
 
@@ -475,13 +477,14 @@ export class AuthController {
         await this.authService.revokeAllUserSessions(userId);
 
         // Audit Log entry
+        const deactivateActor = auditActor(currentUser);
         await this.authService['prisma'].auditLog.create({
             data: {
                 tenantId: targetUser.tenantId,
-                userId: currentUser.id,
+                userId: deactivateActor.userId,
                 action: 'user_deactivated',
                 resource: `users/${userId}`,
-                details: { status: 'deactivated' },
+                details: { status: 'deactivated', ...deactivateActor.delegation },
             },
         });
 

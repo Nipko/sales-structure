@@ -16,6 +16,13 @@ export interface SmsPackage {
 }
 
 export interface SmsPackagesConfig {
+    /**
+     * Master kill switch for the whole reseller model (super admin). OFF by default:
+     * while the platform's per-SMS cost can't be priced competitively, no tenant can
+     * buy credits and no metered send goes out — so the platform never fronts a cost
+     * it can't recover. Balances and ledger are preserved across toggles.
+     */
+    enabled?: boolean;
     senderId?: string; // platform sender override for notification SMS
     packages: SmsPackage[];
 }
@@ -60,7 +67,7 @@ export class SmsCreditsService {
         const cached = await this.redis.getJson<SmsPackagesConfig>(this.CACHE_KEY);
         if (cached) return cached;
 
-        let config: SmsPackagesConfig = { packages: DEFAULT_PACKAGES };
+        let config: SmsPackagesConfig = { enabled: false, packages: DEFAULT_PACKAGES };
         try {
             const rows = await this.prisma.$queryRaw<{ value: string }[]>`
                 SELECT value FROM platform_settings WHERE key = ${this.PACKAGES_KEY} LIMIT 1`;
@@ -75,10 +82,22 @@ export class SmsCreditsService {
         return config;
     }
 
-    /** Active tiers for the tenant purchase UI. */
+    /** True when the super admin has switched the reseller model on. */
+    async isEnabled(): Promise<boolean> {
+        const { enabled } = await this.getConfig();
+        return enabled === true;
+    }
+
+    /**
+     * Active tiers for the tenant purchase UI. Returns [] while the model is off,
+     * which is what makes the tenant-facing "Créditos SMS" section disappear.
+     * `includeInactive` (super admin) ignores the switch so tiers stay editable.
+     */
     async getPackages(includeInactive = false): Promise<SmsPackage[]> {
-        const { packages } = await this.getConfig();
-        return includeInactive ? packages : packages.filter((p) => p.active);
+        const { packages, enabled } = await this.getConfig();
+        if (includeInactive) return packages;
+        if (enabled !== true) return [];
+        return packages.filter((p) => p.active);
     }
 
     async getPackage(id: string): Promise<SmsPackage | null> {
@@ -105,6 +124,7 @@ export class SmsCreditsService {
             }
         }
         const clean: SmsPackagesConfig = {
+            enabled: config.enabled === true,
             senderId: config.senderId?.trim() || undefined,
             packages: packages.map((p) => ({
                 id: p.id,

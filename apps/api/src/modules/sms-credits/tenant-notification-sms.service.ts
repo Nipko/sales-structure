@@ -7,7 +7,7 @@ const TWILIO_API = 'https://api.twilio.com/2010-04-01';
 
 export interface TenantSmsSendResult {
     sent: boolean;
-    reason?: 'invalid' | 'platform_sms_unconfigured' | 'insufficient_credits' | 'send_failed';
+    reason?: 'invalid' | 'monetization_disabled' | 'platform_sms_unconfigured' | 'insufficient_credits' | 'send_failed';
     sid?: string;
     segments?: number;
     balance?: number;
@@ -78,6 +78,9 @@ export class TenantNotificationSmsService {
         opts?: { reason?: string; ref?: string; metadata?: Record<string, any> },
     ): Promise<TenantSmsSendResult> {
         if (!to || !body) return { sent: false, reason: 'invalid' };
+        // Master switch: while the reseller model is off, nothing is sent and nothing
+        // is charged — the platform never fronts a per-SMS cost it can't recover.
+        if (!(await this.smsCredits.isEnabled())) return { sent: false, reason: 'monetization_disabled' };
         if (!this.enabled) return { sent: false, reason: 'platform_sms_unconfigured' };
 
         const sender = (await this.smsCredits.getSenderId()) || this.envSender!;

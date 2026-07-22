@@ -59,10 +59,11 @@ export class BroadcastQueueProcessor extends WorkerHost {
 
             // Out-of-credits is permanent for this recipient — mark failed and DO NOT
             // retry (a retry just re-checks the empty balance; no send, no charge).
-            if (errorMessage === 'INSUFFICIENT_SMS_CREDITS') {
-                this.logger.warn(`Broadcast SMS dropped (no credits): campaign=${campaignId} recipient=${recipientId}`);
-                await this.markFailed(schemaName, campaignId, recipientId, job.data.variantId, 'insufficient_sms_credits');
-                return 'skipped:insufficient_credits';
+            if (errorMessage === 'INSUFFICIENT_SMS_CREDITS' || errorMessage === 'SMS_DISABLED') {
+                const reason = errorMessage === 'SMS_DISABLED' ? 'sms_disabled' : 'insufficient_sms_credits';
+                this.logger.warn(`Broadcast SMS dropped (${reason}): campaign=${campaignId} recipient=${recipientId}`);
+                await this.markFailed(schemaName, campaignId, recipientId, job.data.variantId, reason);
+                return `skipped:${reason}`;
             }
 
             this.logger.error(`Broadcast failed: campaign=${campaignId} channel=${channel} attempt=${job.attemptsMade + 1}/3 error=${errorMessage}`);
@@ -139,7 +140,9 @@ export class BroadcastQueueProcessor extends WorkerHost {
             metadata: { campaignId: data.campaignId },
         });
         if (res.sent) return res.sid || '';
+        // Both are permanent for this message — surfaced as non-retryable in process().
         if (res.reason === 'insufficient_credits') throw new Error('INSUFFICIENT_SMS_CREDITS');
+        if (res.reason === 'monetization_disabled') throw new Error('SMS_DISABLED');
         if (res.reason === 'platform_sms_unconfigured') throw new Error('SMS de plataforma no configurado');
         throw new Error(`Twilio SMS error: ${res.error || res.reason}`);
     }

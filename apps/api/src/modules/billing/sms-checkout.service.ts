@@ -21,6 +21,13 @@ export class SmsCheckoutService {
 
     /** Create a pending order + MP preference. Returns the hosted checkout URL. */
     async createCheckout(tenantId: string, packageId: string): Promise<{ orderId: string; initPoint: string }> {
+        // Server-side gate — hiding the button is not enough; a direct POST must fail too.
+        if (!(await this.smsCredits.isEnabled())) {
+            throw new BadRequestException({
+                error: 'sms_monetization_disabled',
+                message: 'La compra de paquetes SMS no está habilitada',
+            });
+        }
         const pkg = await this.smsCredits.getPackage(packageId);
         if (!pkg || !pkg.active) {
             throw new BadRequestException({ error: 'sms_package_unavailable', message: 'El paquete no está disponible' });

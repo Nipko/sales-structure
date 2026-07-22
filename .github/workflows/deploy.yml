@@ -407,15 +407,13 @@ jobs:
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          # Coordinated cutover to key-based SSH auth. appleboy/ssh-action uses
-          # `key` when it is non-empty and falls back to `password` otherwise, so
-          # while the SERVER_SSH_KEY secret is absent this resolves to an empty
-          # string and deploys keep using the password. The moment you add the
-          # SERVER_SSH_KEY secret (private key), deploys switch to key auth with
-          # no workflow change. Once confirmed, remove `password` here and disable
-          # PasswordAuthentication on the VPS. See docs/deploy-hardening-runbook.md.
+          # Key-based SSH auth via a dedicated deploy key. The private key lives
+          # ONLY in the SERVER_SSH_KEY secret; the matching public key is in the
+          # VPS user's authorized_keys. Password auth was removed after confirming
+          # key auth works (deploy 7c39f1a2). Emergency rollback: re-add
+          # `password: ${{ secrets.SERVER_PASSWORD }}` below. Next hardening step:
+          # set `PasswordAuthentication no` in the VPS sshd_config.
           key: ${{ secrets.SERVER_SSH_KEY }}
-          password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT }}
           envs: |
             GHCR_PAT,GITHUB_ACTOR,GIT_SHA,

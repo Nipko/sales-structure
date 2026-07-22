@@ -71,16 +71,19 @@ export class FiscalController {
         });
         if (!tenant) throw new NotFoundException({ error: 'tenant_not_found' });
         const fiscalData = (tenant.settings as any)?.fiscalData ?? null;
-        // `required`/`complete` are computed by the same helpers the billing gate
-        // uses, so the dashboard's pre-check, the status pill and the reminder
-        // banner all agree with assertFiscalDataReady (no client-side re-validation
-        // that could drift on the NIT verification digit).
+        // `required` is TRUE only when the gate is ENABLED *and* the country needs
+        // it — this mirrors assertFiscalDataReady, which no-ops when the gate is off.
+        // The dashboard's pre-check and reminder banner key off `required`, so with
+        // the gate off (default) the front neither blocks checkout nor nags (soft
+        // mode) — matching the backend instead of enforcing a gate that isn't on.
+        // `complete` uses the same helper as the gate (no client-side DV drift).
+        const gateEnabled = (await this.config.getConfig()).fiscalGateEnabled;
         return {
             success: true,
             data: {
                 fiscalData,
                 billingCountry: tenant.billingCountry,
-                required: billingCountryRequiresFiscalData(tenant.billingCountry),
+                required: gateEnabled && billingCountryRequiresFiscalData(tenant.billingCountry),
                 complete: isFiscalDataComplete(tenant.settings),
             },
         };

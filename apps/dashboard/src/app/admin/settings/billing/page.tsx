@@ -167,6 +167,10 @@ export default function BillingPage() {
     // Authoritative "profile is complete + valid" flag computed by the backend
     // (same helper as the billing gate) — avoids the client re-validating the NIT DV.
     const [fiscalComplete, setFiscalComplete] = useState(false);
+    // Backend says fiscal data is required for THIS tenant (gate enabled AND a DIAN
+    // country) — the precheck keys off this, not the country alone, so with the
+    // gate off it doesn't block checkout.
+    const [fiscalRequired, setFiscalRequired] = useState(false);
     const [billingCountry, setBillingCountry] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [toast, setToast] = useState<string | null>(null);
@@ -205,6 +209,7 @@ export default function BillingPage() {
                 setFiscalData(((fiscalRes.data as any)?.fiscalData ?? null));
                 setBillingCountry(((fiscalRes.data as any)?.billingCountry ?? country ?? null));
                 setFiscalComplete(!!(fiscalRes.data as any)?.complete);
+                setFiscalRequired(!!(fiscalRes.data as any)?.required);
             }
             if (usageRes?.success) {
                 const d = usageRes.data as any;
@@ -277,12 +282,12 @@ export default function BillingPage() {
             const plan = plans.find((p) => p.slug === planSlug);
             // MP no soporta cambios de plan en suscripciones activas sin recrearlas con un nuevo token.
             const needsCard = !subscription ? plan?.requiresCardForTrial : true;
-            // Proactive fiscal gate (Colombia): a charge-bearing flow needs a
-            // complete tax profile BEFORE the card, so the single-use card token
-            // isn't wasted and the checkout resumes cleanly after saving. The
-            // backend re-checks and is the source of truth (fiscal_data_required).
-            const coRequiresFiscal = (billingCountry || "").trim().toUpperCase() === "CO";
-            if (needsCard && !cardTokenId && coRequiresFiscal && !fiscalComplete) {
+            // Proactive fiscal gate: a charge-bearing flow needs a complete tax
+            // profile BEFORE the card, so the single-use token isn't wasted and the
+            // checkout resumes cleanly after saving. Keyed off the backend's
+            // `required` (gate enabled AND DIAN country) — NOT country alone — so
+            // with the gate off this is a no-op, matching assertFiscalDataReady.
+            if (needsCard && !cardTokenId && fiscalRequired && !fiscalComplete) {
                 setFiscalGatePlan(planSlug);
                 setFiscalGate(true);
                 setAction(null);

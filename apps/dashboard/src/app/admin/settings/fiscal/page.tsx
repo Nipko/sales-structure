@@ -95,6 +95,11 @@ export default function FiscalPage() {
         try {
             const payload: Record<string, any> = { ...data };
             Object.keys(payload).forEach((k) => { if (payload[k] === "" || payload[k] == null) delete payload[k]; });
+            // The "consumidor final" toggle was removed — this form only captures a
+            // REAL tax profile now. Force it off so a tenant that previously opted
+            // into consumidor final can migrate to a real NIT (otherwise the backend
+            // keeps treating them as B2C and ignores the NIT they just entered).
+            payload.consumidorFinal = false;
             const res = await api.updateFiscalData(tenantId, payload);
             if (res.success) {
                 setSavedData(true); setTimeout(() => setSavedData(false), 3000);

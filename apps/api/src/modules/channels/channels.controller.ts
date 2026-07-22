@@ -362,12 +362,23 @@ export class ChannelsController {
             }
 
             // ── Twilio signature validation (BEFORE any side effect) ──
-            const authToken = (channelAccount.metadata as any)?.twilioAuthToken
-                || this.configService.get<string>('TWILIO_AUTH_TOKEN');
+            // Resolve the auth token from the per-account encrypted credential
+            // (stored as "accountSid:authToken" in channel_accounts.access_token),
+            // falling back to legacy metadata / a platform-level env var. Without
+            // this the token was never found and the signature check was skipped —
+            // i.e. inbound SMS webhooks were accepted UNVERIFIED.
+            let authToken = (channelAccount.metadata as any)?.twilioAuthToken as string | undefined;
+            if (!authToken) {
+                try {
+                    const creds = await this.channelToken.getChannelToken(channelAccount.tenantId, 'sms', phoneNumber);
+                    authToken = (creds?.accessToken || '').split(':')[1] || undefined;
+                } catch { /* fall through to env / skip */ }
+            }
+            if (!authToken) authToken = this.configService.get<string>('TWILIO_AUTH_TOKEN');
 
             if (!authToken) {
                 this.logger.warn(
-                    `No Twilio Auth Token configured for SMS account ${phoneNumber} — skipping signature validation`,
+                    `No Twilio Auth Token resolvable for SMS account ${phoneNumber} — skipping signature validation`,
                 );
             } else if (!twilioSignature || !webhookUrl) {
                 this.logger.warn(

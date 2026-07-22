@@ -196,7 +196,7 @@ export class BillingService {
                     currentPeriodStart: providerSub.currentPeriodStart ?? null,
                     currentPeriodEnd: providerSub.currentPeriodEnd ?? null,
                     cancelAtPeriodEnd: providerSub.cancelAtPeriodEnd,
-                    metadata: { billingCycle } as Prisma.InputJsonValue,
+                    metadata: { billingCycle } as any,
                 },
             });
 
@@ -338,7 +338,7 @@ export class BillingService {
                 metadata: {
                     ...(sub.metadata && typeof sub.metadata === 'object' ? (sub.metadata as any) : {}),
                     billingCycle: targetCycle,
-                } as Prisma.InputJsonValue,
+                } as any,
             },
         });
         await this.prisma.tenant.update({

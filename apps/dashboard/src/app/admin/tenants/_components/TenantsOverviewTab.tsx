@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
@@ -18,12 +19,13 @@ interface Props {
   onImpersonate: (tenant: Tenant) => void;
 }
 
-const STATUS_FILTERS = ["all", "active", "trialing", "past_due", "cancelled", "suspended"] as const;
+const STATUS_FILTERS = ["all", "active", "trialing", "past_due", "expired", "cancelled", "suspended"] as const;
 
 const statusColor: Record<string, string> = {
   active: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   trialing: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
   past_due: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  expired: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
   cancelled: "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400",
   suspended: "bg-red-500/10 text-red-600 dark:text-red-400",
 };
@@ -79,6 +81,7 @@ function resolveStatus(tenant: Tenant): string {
 }
 
 export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, onImpersonate }: Props) {
+  const router = useRouter();
   const t = useTranslations("tenants");
   const tc = useTranslations("common");
   const [search, setSearch] = useState("");
@@ -180,14 +183,18 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
                     <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.periodEnd")}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.users")}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.channels")}</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.actions")}</th>
+                    <th className="sticky right-0 bg-white dark:bg-neutral-900 px-4 py-3 text-right text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">{t("table.actions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
                   {filtered.map((tenant) => {
                     const status = resolveStatus(tenant);
                     return (
-                      <tr key={tenant.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
+                      <tr
+                        key={tenant.id}
+                        onClick={() => router.push(`/admin/tenants/${tenant.id}`)}
+                        className="group cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
+                      >
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-500/10">
@@ -243,7 +250,10 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
                           </div>
                         </td>
                         <td className="px-4 py-3 text-neutral-600 dark:text-neutral-400">{tenant.channels}</td>
-                        <td className="px-4 py-3 text-right">
+                        <td
+                          className="sticky right-0 bg-white dark:bg-neutral-900 group-hover:bg-neutral-50 dark:group-hover:bg-neutral-800 px-4 py-3 text-right transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <button
                             onClick={(e) => {
                               if (openMenu?.id === tenant.id) {

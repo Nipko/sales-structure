@@ -3902,6 +3902,7 @@
       "active": "Ativo",
       "trialing": "Em teste",
       "past_due": "Vencido",
+      "expired": "Expirado",
       "cancelled": "Cancelado",
       "suspended": "Suspenso",
       "online": "Online",

@@ -3900,6 +3900,7 @@
       "active": "Active",
       "trialing": "Trialing",
       "past_due": "Past Due",
+      "expired": "Expired",
       "cancelled": "Cancelled",
       "suspended": "Suspended",
       "online": "Online",

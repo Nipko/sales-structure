@@ -246,7 +246,10 @@ export class TenantsController {
         @Query('limit') limit = 20,
         @Query('status') status?: string,
     ) {
-        const result = await this.tenantsService.findAll(page, limit, status);
+        // Query params arrive as strings — coerce before Prisma skip/take
+        const safePage = Math.max(Number(page) || 1, 1);
+        const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 500);
+        const result = await this.tenantsService.findAll(safePage, safeLimit, status);
 
         // Enrich each tenant with vertical + healthScore from settings JSONB
         const enriched = result.tenants.map((t: any) => {

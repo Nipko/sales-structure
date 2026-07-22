@@ -3900,6 +3900,7 @@
       "active": "Actif",
       "trialing": "En essai",
       "past_due": "En retard",
+      "expired": "Expiré",
       "cancelled": "Annule",
       "suspended": "Suspendu",
       "online": "En ligne",

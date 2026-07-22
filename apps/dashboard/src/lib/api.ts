@@ -158,7 +158,10 @@ export const api = {
         apiGet(`/persona/${tenantId}/setup-status`),
 
     // --- Tenants ---
-    getTenants: () => apiGet("/tenants"),
+    // Default limit raised from the backend's 20 so super admin views and the
+    // tenant selector see every tenant (backend clamps at 500).
+    getTenants: (params?: { page?: number; limit?: number }) =>
+        apiGet(`/tenants?page=${params?.page ?? 1}&limit=${params?.limit ?? 500}`),
     getTenant: (id: string) => apiGet(`/tenants/${id}`),
     getTenantUsers: (tenantId: string) => apiGet(`/tenants/${tenantId}/users`),
     adminResetPassword: (userId: string, newPassword: string) =>

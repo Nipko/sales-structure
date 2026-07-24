@@ -629,6 +629,44 @@ export class TenantsService {
             this.logger.warn(`Engagement: pipelineStagesCount query failed for ${tenantId}: ${e.message}`);
         }
 
+        // Agent list — the "Config IA" tab renders each agent with its channels.
+        // The frontend accesses `agents.length`/`.map`, so this MUST be an array:
+        // a missing field there throws and blanks the whole tab.
+        let agents: Array<{ id: string; name: string; channels: string[]; isDefault: boolean }> = [];
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT id, name, is_default, channels
+                   FROM agent_personas
+                  WHERE is_active = true
+                  ORDER BY is_default DESC, created_at ASC`,
+                [],
+            );
+            agents = rows.map((r) => ({
+                id: r.id,
+                name: r.name,
+                channels: Array.isArray(r.channels) ? r.channels : [],
+                isDefault: r.is_default === true,
+            }));
+        } catch (e) {
+            this.logger.warn(`Engagement: agents query failed for ${tenantId}: ${e.message}`);
+        }
+
+        // Pipeline stages — same contract requirement (frontend reads `.length`).
+        let pipelineStages: Array<{ name: string; color: string | null; position: number }> = [];
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT name, color, position FROM pipeline_stages ORDER BY position ASC`,
+                [],
+            );
+            pipelineStages = rows.map((r) => ({
+                name: r.name,
+                color: r.color ?? null,
+                position: Number(r.position) || 0,
+            }));
+        } catch (e) {
+            this.logger.warn(`Engagement: pipelineStages query failed for ${tenantId}: ${e.message}`);
+        }
+
         // Channel accounts from global table
         const channelsConnected = await this.prisma.channelAccount.count({
             where: { tenantId, isActive: true },
@@ -658,8 +696,13 @@ export class TenantsService {
             channelsConnected,
             pipelineStagesCount,
             vertical,
+            // `industry` is what the dashboard's EngagementData expects; keep
+            // `vertical` too for any existing consumer.
+            industry: vertical,
             subType,
             healthScore,
+            agents,
+            pipelineStages,
         };
     }
 

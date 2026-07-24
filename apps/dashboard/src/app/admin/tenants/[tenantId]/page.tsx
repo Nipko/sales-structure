@@ -615,11 +615,11 @@ export default function TenantDetailPage() {
               {/* Agents list */}
               <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
                 <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("engagement.agents")}</h3>
-                {engagement.agents.length === 0 ? (
+                {(engagement.agents?.length ?? 0) === 0 ? (
                   <p className="text-sm text-neutral-500 dark:text-neutral-400">{tc("noResults")}</p>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {engagement.agents.map((agent) => (
+                    {(engagement.agents ?? []).map((agent) => (
                       <div
                         key={agent.id}
                         className="flex items-start gap-3 p-3 rounded-lg border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50"
@@ -659,11 +659,11 @@ export default function TenantDetailPage() {
               </div>
 
               {/* Pipeline stages */}
-              {engagement.pipelineStages.length > 0 && (
+              {(engagement.pipelineStages?.length ?? 0) > 0 && (
                 <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
                   <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("engagement.pipelineStages")}</h3>
                   <div className="flex flex-wrap gap-2">
-                    {engagement.pipelineStages
+                    {[...(engagement.pipelineStages ?? [])]
                       .sort((a, b) => a.position - b.position)
                       .map((stage, i) => (
                         <span

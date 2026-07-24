@@ -663,6 +663,7 @@ export const api = {
             tenantName?: string;
             userName: string;
             userRole: string;
+            locale?: string;
         };
         history: { role: string; content: string }[];
     }) =>

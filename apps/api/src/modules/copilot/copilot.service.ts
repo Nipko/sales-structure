@@ -17,8 +17,21 @@ export interface CopilotChatRequest {
         tenantName?: string;
         userName: string;
         userRole: string;
+        /** UI locale (es|en|pt|fr) — drives KB language and reply language. */
+        locale?: string;
     };
     history: { role: string; content: string }[];
+}
+
+/** One functional help article of the assistant KB (kb/assistant/{locale}/*.md). */
+interface KbArticle {
+    id: string;
+    locale: string;
+    title: string;
+    routes: string[];
+    roles: string[];
+    keywords: string[];
+    body: string;
 }
 
 export interface CopilotChatResponse {
@@ -66,112 +79,152 @@ export class CopilotService {
         private knowledgeService: KnowledgeService,
     ) {}
 
-    private manualSections: { title: string; content: string }[] = [];
+    // ─── Assistant Knowledge Base (apps/api/kb/assistant/{locale}/*.md) ─────
+    // The KB ships INSIDE the Docker image (Dockerfile.api copies apps/api/kb),
+    // unlike the old docs/user-manual.md approach where docs/ was never in the
+    // image and the assistant ran blind in production. Articles are functional
+    // user-level ONLY — the KB itself is the primary guardrail: what isn't in
+    // it, the assistant honestly says it doesn't know.
 
-    private loadUserManual(): void {
-        if (this.manualSections.length > 0) return;
+    private kbArticles = new Map<string, KbArticle[]>(); // locale → articles
+    private kbLoadAttempted = new Set<string>();
 
-        const pathsToTry = [
-            path.join(process.cwd(), 'docs', 'user-manual.md'),
-            path.join(process.cwd(), '..', '..', 'docs', 'user-manual.md'),
-            path.join(process.cwd(), 'apps', 'api', '..', '..', 'docs', 'user-manual.md'),
-            path.resolve(__dirname, '../../../../docs/user-manual.md'),
-            path.resolve(__dirname, '../../../../../docs/user-manual.md'),
-        ];
+    private static readonly KB_LOCALES = ['es', 'en', 'pt', 'fr'];
+    private static readonly KB_STOPWORDS = new Set([
+        'como', 'para', 'que', 'con', 'los', 'las', 'del', 'por', 'una', 'este', 'esta',
+        'the', 'and', 'for', 'how', 'can', 'with', 'what', 'una', 'mais', 'pour', 'des',
+        'quiero', 'puedo', 'hago', 'hacer', 'donde', 'cual', 'cuales', 'mis', 'sus',
+    ]);
 
-        let manualContent = '';
-        let foundPath = '';
-        for (const p of pathsToTry) {
-            try {
-                if (fs.existsSync(p)) {
-                    manualContent = fs.readFileSync(p, 'utf-8');
-                    foundPath = p;
-                    break;
-                }
-            } catch (e: any) {
-                // Suppress warning during loop
-            }
-        }
-
-        if (!manualContent) {
-            this.logger.error(`Could not locate user-manual.md in any of the searched locations: ${JSON.stringify(pathsToTry)}`);
-            return;
-        }
-
-        this.logger.log(`Successfully loaded user-manual.md from: ${foundPath}`);
-
-        // Parse sections split by headers (e.g. # or ##)
-        const lines = manualContent.split('\n');
-        let currentTitle = 'General';
-        let currentContent: string[] = [];
-
-        for (const line of lines) {
-            if (line.startsWith('#')) {
-                if (currentContent.length > 0) {
-                    this.manualSections.push({
-                        title: currentTitle,
-                        content: currentContent.join('\n').trim(),
-                    });
-                }
-                currentTitle = line.replace(/#+\s*/, '').trim();
-                currentContent = [line];
-            } else {
-                currentContent.push(line);
-            }
-        }
-        if (currentContent.length > 0) {
-            this.manualSections.push({
-                title: currentTitle,
-                content: currentContent.join('\n').trim(),
-            });
-        }
+    /** Lowercase + strip diacritics so "configuración" matches "configuracion". */
+    private normalize(s: string): string {
+        // eslint-disable-next-line no-misleading-character-class
+        return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     }
 
-    private searchManual(query: string): string {
+    private kbBaseDirs(): string[] {
+        return [
+            path.join(process.cwd(), 'kb', 'assistant'),                    // prod image (/app/kb) + dev cwd=apps/api
+            path.join(process.cwd(), 'apps', 'api', 'kb', 'assistant'),     // dev cwd=repo root
+            path.resolve(__dirname, '../../../kb/assistant'),               // dist-relative fallback
+            path.resolve(__dirname, '../../../../kb/assistant'),
+        ];
+    }
+
+    /** Read one locale directory into a Map keyed by article id (no ES fallback). */
+    private loadLocaleDir(loc: string): Map<string, KbArticle> {
+        const byId = new Map<string, KbArticle>();
+        let dir = '';
+        for (const base of this.kbBaseDirs()) {
+            try {
+                if (fs.existsSync(path.join(base, loc))) { dir = path.join(base, loc); break; }
+            } catch { /* keep trying */ }
+        }
+        if (!dir) return byId;
+
         try {
-            this.loadUserManual();
-        } catch (e: any) {
-            this.logger.error(`Error loading user manual in search: ${e.message}`);
-        }
-
-        if (this.manualSections.length === 0) {
-            return '';
-        }
-
-        const cleanQuery = (query || '').toLowerCase().trim();
-        const words = cleanQuery.split(/\s+/).filter(w => w.length > 3);
-        
-        if (words.length === 0) {
-            return this.manualSections.slice(0, 3).map(s => s.content).join('\n\n---\n\n');
-        }
-
-        // Score sections based on keyword matches
-        const scored = this.manualSections.map(sec => {
-            let score = 0;
-            const text = (sec.title + ' ' + sec.content).toLowerCase();
-            for (const word of words) {
-                if (text.includes(word)) {
-                    score += 1;
-                    if (sec.title.toLowerCase().includes(word)) {
-                        score += 3;
-                    }
+            for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.md')).sort()) {
+                try {
+                    const raw = fs.readFileSync(path.join(dir, file), 'utf-8');
+                    const parsed = this.parseKbArticle(raw, loc, file);
+                    if (parsed) byId.set(parsed.id, parsed);
+                } catch (e: any) {
+                    this.logger.warn(`Skipping malformed KB article ${loc}/${file}: ${e.message}`);
                 }
             }
-            return { sec, score };
+        } catch (e: any) {
+            this.logger.error(`Failed reading assistant KB dir ${dir}: ${e.message}`);
+        }
+        return byId;
+    }
+
+    /**
+     * Returns the full article set for a locale: native articles first, and any
+     * article NOT yet translated is filled in from the Spanish base (100% topic
+     * coverage even with partial translations — the LLM replies in the user's
+     * language regardless of the article's source language). Spanish is the
+     * canonical base and always loads its own directory.
+     */
+    private loadKb(locale: string): KbArticle[] {
+        const loc = CopilotService.KB_LOCALES.includes(locale) ? locale : 'es';
+        if (this.kbArticles.has(loc)) return this.kbArticles.get(loc)!;
+        if (this.kbLoadAttempted.has(loc)) return this.kbArticles.get(loc) ?? [];
+        this.kbLoadAttempted.add(loc);
+
+        const merged = new Map<string, KbArticle>();
+        // Spanish base first (canonical), then overlay native-locale articles.
+        if (loc !== 'es') {
+            for (const [id, a] of this.loadLocaleDir('es')) merged.set(id, a);
+        }
+        let native = 0;
+        for (const [id, a] of this.loadLocaleDir(loc)) { merged.set(id, a); native++; }
+
+        const articles = [...merged.values()];
+        if (articles.length === 0) {
+            this.logger.error(`Assistant KB empty for locale "${loc}" (tried ${this.kbBaseDirs().join(' | ')})`);
+        } else {
+            this.logger.log(`Assistant KB loaded for "${loc}": ${articles.length} articles (${native} native${loc !== 'es' ? `, ${articles.length - native} from es fallback` : ''})`);
+        }
+        this.kbArticles.set(loc, articles);
+        return articles;
+    }
+
+    /** Front-matter: --- delimited; arrays as JSON (["a","b"]), scalars as plain text. */
+    private parseKbArticle(raw: string, locale: string, file: string): KbArticle | null {
+        const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+        if (!m) return null;
+        const meta: Record<string, any> = {};
+        for (const line of m[1].split(/\r?\n/)) {
+            const kv = line.match(/^(\w+):\s*(.*)$/);
+            if (!kv) continue;
+            const [, key, valRaw] = kv;
+            const val = valRaw.trim();
+            if (val.startsWith('[')) {
+                try { meta[key] = JSON.parse(val); } catch { meta[key] = [val]; }
+            } else {
+                meta[key] = val.replace(/^"|"$/g, '');
+            }
+        }
+        return {
+            id: meta.id || file.replace(/\.md$/, ''),
+            locale,
+            title: meta.title || file,
+            routes: Array.isArray(meta.routes) ? meta.routes : [],
+            roles: Array.isArray(meta.roles) ? meta.roles : [],
+            keywords: Array.isArray(meta.keywords) ? meta.keywords : [],
+            body: m[2].trim(),
+        };
+    }
+
+    /** Top-N articles for the query, front-matter keywords weighted highest. */
+    private searchKb(query: string, locale: string, topN = 3): KbArticle[] {
+        const articles = this.loadKb(locale); // already merged with es fallback per-article
+        if (articles.length === 0) return [];
+
+        const words = this.normalize(query)
+            .split(/[^a-z0-9]+/)
+            .filter(w => w.length >= 2 && !CopilotService.KB_STOPWORDS.has(w));
+        if (words.length === 0) return [];
+
+        const scored = articles.map(a => {
+            const nKeywords = a.keywords.map(k => this.normalize(k));
+            const nTitle = this.normalize(a.title);
+            const nBody = this.normalize(a.body);
+            let score = 0;
+            for (const w of words) {
+                if (nKeywords.some(k => k === w)) score += 6;
+                else if (nKeywords.some(k => k.includes(w) || w.includes(k))) score += 4;
+                if (nTitle.includes(w)) score += 3;
+                if (nBody.includes(w)) score += 1;
+            }
+            return { a, score };
         });
 
-        // Filter out 0 scores, sort desc, and take top 4
-        const relevant = scored
+        return scored
             .filter(x => x.score > 0)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 4)
-            .map(x => x.sec.content);
-
-        if (relevant.length === 0) {
-            return this.manualSections.slice(0, 3).map(s => s.content).join('\n\n---\n\n');
-        }
-
-        return relevant.join('\n\n---\n\n');
+            .sort((x, y) => y.score - x.score)
+            .slice(0, topN)
+            .map(x => x.a);
     }
 
     // ─── Conversation Copilot Methods ───────────────────────────────────────
@@ -515,33 +568,39 @@ Reglas estrictas:
 
     async chat(request: CopilotChatRequest): Promise<CopilotChatResponse> {
         const tenantId = request.context.tenantId;
-        const retrievedManualText = this.searchManual(request.message);
+        const locale = (request.context.locale || 'es').slice(0, 2).toLowerCase();
+        const articles = this.searchKb(request.message, locale);
 
-        const systemPrompt = `Eres **Parallly Help Copilot**, el asistente de inteligencia artificial oficial de la plataforma Parallly.
-Tu única misión es ayudar a los usuarios de la plataforma (administradores, supervisores y agentes de negocios) a comprender, configurar y operar la plataforma a nivel funcional.
+        // Each retrieved article is injected with its navigation metadata so the
+        // assistant can give exact menu paths and role requirements.
+        const kbContext = articles.length > 0
+            ? articles.map(a => {
+                const roles = a.roles.length ? ` | Requiere rol: ${a.roles.join(' o ')}` : '';
+                const routes = a.routes.length ? ` | Ruta en el panel: ${a.routes.join(' , ')}` : '';
+                return `### Artículo: ${a.title}${routes}${roles}\n${a.body}`;
+            }).join('\n\n---\n\n')
+            : '(No se encontró información relevante en la base de conocimiento para esta consulta.)';
 
-## INFORMACIÓN DE LA PLATAFORMA (Manual de Usuario):
-${retrievedManualText}
+        const langNames: Record<string, string> = { es: 'español latinoamericano', en: 'English', pt: 'português brasileiro', fr: 'français' };
+        const replyLang = langNames[locale] || langNames.es;
 
-## REGLAS CRÍTICAS DE SEGURIDAD Y COMPORTAMIENTO:
-1. **SOLO NIVEL DE USUARIO FUNCIONAL**: Tus respuestas deben limitarse estrictamente a explicar cómo usar la interfaz del dashboard, menús, configuraciones visuales, campos y flujos desde la perspectiva de un usuario final o administrador de negocio.
-2. **PROHIBIDO DETALLES DE CONSTRUCCIÓN/ARQUITECTURA**:
-   - NUNCA reveles detalles del código fuente, NestJS, Next.js, TypeScript, Docker, Docker Compose, Nginx, o archivos de configuración del servidor.
-   - NUNCA menciones nombres de tablas de la base de datos (como "tenants", "channel_accounts"), esquemas PostgreSQL, scripts de base de datos o el uso de Prisma.
-   - NUNCA des detalles de VPS (como Hostinger), configuraciones de infraestructura, redes de Cloudflare o despliegue.
-   - Si el usuario te pregunta sobre el código o cómo está programada la plataforma, responde amablemente indicando que eres un asistente funcional para usuarios de negocio y no tienes acceso al código fuente.
-3. **IDIOMA Y TONO**:
-   - Responde SIEMPRE en español latinoamericano (cálido, servicial y profesional).
-   - Usa listas ordenadas, viñetas y formato Markdown para estructurar tus explicaciones paso a paso de forma hermosa.
-4. **MENÚS Y NAVEGACIÓN**:
-   - Si el usuario pregunta cómo hacer algo, guíalo indicándole las secciones exactas del menú en mayúsculas (ej: "OPERACIÓN -> Bandeja de entrada" o "GESTIÓN -> Canales").
-5. **ASISTENTE DE CONFIGURACIÓN**:
-   - Si pregunta por el porcentaje de configuración, explícale que se refiere al "Onboarding Checklist" que muestra las tareas esenciales recomendadas para que su negocio comience a operar.
+        const systemPrompt = `Eres **Parallly Assist**, el asistente oficial de ayuda de la plataforma Parallly.
+Tu única misión: ayudar a los usuarios (administradores, supervisores y agentes de negocio) a entender, configurar y usar las funcionalidades de la plataforma.
 
-## Contexto de la consulta actual:
-- **Usuario:** ${request.context.userName} (Rol: ${request.context.userRole})
-- **Página actual en el dashboard:** ${request.context.page}
-- **Tenant:** ${request.context.tenantName || 'Ninguno'}`;
+## BASE DE CONOCIMIENTO (única fuente de verdad sobre la plataforma):
+${kbContext}
+
+## REGLAS CRÍTICAS:
+1. **RESPONDE SOLO DESDE LA BASE DE CONOCIMIENTO.** Toda afirmación sobre la plataforma (menús, funciones, límites, precios, pasos) debe salir de los artículos de arriba. Si la información no está ahí, dilo con honestidad: "No tengo esa información con certeza" y sugiere escribir a soporte (https://parallly-chat.cloud/support). NUNCA inventes menús, funciones, precios ni límites.
+2. **SOLO NIVEL FUNCIONAL.** Explicas cómo usar la plataforma: pantallas, menús, campos, configuraciones y flujos. NUNCA hables de tecnologías, código, bases de datos, servidores, infraestructura ni de cómo está construida la plataforma. Si te lo preguntan, responde exactamente con la idea: "Soy el asistente de ayuda de Parallly y te acompaño en el uso de la plataforma. Sobre temas técnicos internos no tengo información. ¿Te ayudo con alguna configuración o funcionalidad?" (adaptada al idioma del usuario).
+3. **IDIOMA:** responde SIEMPRE en ${replyLang}, con tono cálido, servicial y profesional. Aunque el artículo esté en otro idioma, tu respuesta va en ${replyLang}.
+4. **NAVEGACIÓN EXACTA:** cuando guíes al usuario, usa las rutas de menú tal como aparecen en los artículos (sección y nombre del ítem). Formato paso a paso con listas numeradas.
+5. **ROLES:** si la acción requiere un rol que el usuario no tiene (ver "Requiere rol" del artículo y el rol del usuario abajo), acláralo amablemente ("esto lo configura un administrador de la cuenta").
+6. **FORMATO:** Markdown limpio: pasos numerados, viñetas, **negritas** para nombres de menús y botones. Respuestas concisas; máximo ~10 líneas salvo que pidan detalle.
+
+## Contexto de la consulta:
+- Usuario: ${request.context.userName} (rol: ${request.context.userRole})
+- Página actual del panel: ${request.context.page}`;
 
         const messages = [
             ...request.history.slice(-10).map(m => ({
@@ -557,7 +616,8 @@ ${retrievedManualText}
                 messages,
                 systemPrompt,
                 tenantId,
-                temperature: 0.7,
+                // Low temperature: this is a support assistant — accuracy over creativity.
+                temperature: 0.4,
                 maxTokens: 800,
             });
 
@@ -567,14 +627,14 @@ ${retrievedManualText}
             );
 
             return {
-                reply: response.content || 'No pude generar una respuesta. ¿Podrías reformular tu pregunta?',
+                reply: response.content || this.getFallbackResponse(locale),
                 model: response.routingDecision?.selectedModel?.id,
                 tokensUsed: response.usage?.totalTokens,
             };
         } catch (error: any) {
             this.logger.error('Copilot chat error, returning fallback:', error);
             return {
-                reply: this.getFallbackResponse(request.message, request.context.page)
+                reply: this.getFallbackResponse(locale)
             };
         }
     }
@@ -628,70 +688,17 @@ ${retrievedManualText}
         return this.prisma.getTenantSchemaName(tenantId);
     }
 
-    // ─── System Prompt (platform copilot) ───────────────────────────────────
-
-    private buildSystemPrompt(ctx: {
-        page: string;
-        tenantId?: string;
-        tenantName?: string;
-        userName: string;
-        userRole: string;
-    }): string {
-        return `Eres **Parallext Copilot**, el asistente inteligente de la plataforma Parallext Engine.
-Tu misión es ayudar al usuario a entender, configurar y operar todos los módulos de la plataforma.
-
-## Contexto actual
-- **Usuario:** ${ctx.userName} (Rol: ${ctx.userRole})
-- **Tenant activo:** ${ctx.tenantName || 'Ninguno (Super Admin global)'}
-- **Página actual:** ${ctx.page}
-
-## Plataforma Parallext Engine
-Plataforma SaaS multi-tenant para captura, calificación y calentamiento de leads comerciales vía WhatsApp, con agente IA (Carla), CRM conversacional y analítica.
-
-### Módulos:
-1. **Dashboard** — KPIs comerciales: leads, conversiones, handoffs, costo LLM.
-2. **Tenants** — Gestión de organizaciones con schemas PostgreSQL aislados.
-3. **Contactos / Leads** — CRM de leads con score, etapa, campaña, curso y historial.
-4. **Pipeline** — Kanban comercial: nuevo → contactado → calificado → caliente → listo para cierre → ganado.
-5. **Inbox** — Chat unificado: mensajes, notas internas, handoff a humano, score visible.
-6. **Automatización** — Reglas de nurturing, follow-up, horarios y límites de intentos.
-7. **Broadcast** — Campañas masivas WhatsApp con templates por curso/campaña.
-8. **Conversaciones** — Historial con filtros de etapa, sentimiento e intención.
-9. **AI / LLM Router** — Config de modelos: Tier 1 (GPT-4o/Claude) a Tier 4 (DeepSeek).
-10. **Knowledge Base** — RAG: PDFs, URLs, precios, fichas de curso, políticas.
-11. **Analytics** — Dashboard ejecutivo y operativo, métricas de Carla, campañas.
-12. **Usuarios** — Roles: super_admin, tenant_admin, agent.
-13. **Settings** — API Keys, webhooks, horarios, fallback email.
-
-## Reglas:
-- Responde SIEMPRE en español (Colombia).
-- Sé conciso. Usa listas y Markdown cuando sea útil.
-- Máximo 2-3 emojis por respuesta.
-- Si no sabes algo, dilo honestamente.`;
-    }
-
     // ─── Fallback (platform copilot) ────────────────────────────────────────
+    // Honest, localized fallback for when the LLM is unavailable. Never invents
+    // platform facts (the previous version described a long-gone product era).
 
-    private getFallbackResponse(message: string, page: string): string {
-        const pageName = page.replace('/admin/', '').replace('/admin', 'dashboard').toLowerCase();
-
+    private getFallbackResponse(locale: string): string {
         const fallbacks: Record<string, string> = {
-            'dashboard': '📊 El **Dashboard** muestra tus KPIs comerciales en tiempo real: leads nuevos, calientes, costo LLM y handoffs. Si ves datos mock, el API key de OpenAI aún no está configurado.',
-            'tenants': '🏢 En **Tenants** gestionas las organizaciones. Cada tenant tiene su propio schema PostgreSQL aislado. Crea un tenant y el sistema provisiona el schema automáticamente.',
-            'contacts': '👥 Los **Leads/Contactos** son el corazón del CRM. Cada lead tiene score (1-10), etapa comercial, campaña y curso asociado.',
-            'pipeline': '📈 El **Pipeline** es tu Kanban comercial. Los leads avanzan de "nuevo" a "listo para cierre". Puedes moverlos manualmente o dejar que la IA los avance por score.',
-            'inbox': '💬 El **Inbox** es donde Carla conversa con leads y los humanos hacen handoff. El score y la etapa del lead son visibles en el panel lateral.',
-            'automation': '⚡ En **Automatización** configuras reglas de nurturing: esperas, intentos, horarios y fallback a email si WhatsApp falla.',
-            'broadcast': '📢 **Broadcast** envía campañas masivas de WhatsApp. Cada curso puede tener su propio template de primer contacto.',
-            'conversations': '💬 **Conversaciones** muestra el historial completo con filtros por etapa, sentimiento e intención detectada por la IA.',
-            'ai': '🧠 El **AI Router** selecciona el modelo adecuado según el valor del ticket, complejidad e intención del lead (4 tiers de costo/calidad).',
-            'knowledge': '📚 La **Knowledge Base** alimenta a Carla con PDFs, precios y fichas de curso. Los documentos se vectorizan con pgvector para RAG.',
-            'agent-analytics': '📊 **Analytics** muestra rendimiento de Carla: tasa de handoff, score promedio generado, costo por conversación y conversiones por campaña.',
-            'settings': '⚙️ En **Settings** configuras las API Keys de LLM, webhooks de WhatsApp, horario de oficina y fallback email.',
+            es: 'En este momento no puedo responder tu consulta por un problema temporal del asistente. Intenta de nuevo en unos minutos o escríbenos en https://parallly-chat.cloud/support — con gusto te ayudamos.',
+            en: 'I can\'t answer your question right now due to a temporary issue with the assistant. Please try again in a few minutes or reach us at https://parallly-chat.cloud/support — we\'ll be happy to help.',
+            pt: 'No momento não consigo responder à sua pergunta por um problema temporário do assistente. Tente novamente em alguns minutos ou fale conosco em https://parallly-chat.cloud/support — teremos prazer em ajudar.',
+            fr: 'Je ne peux pas répondre à votre question pour le moment en raison d\'un problème temporaire de l\'assistant. Réessayez dans quelques minutes ou contactez-nous sur https://parallly-chat.cloud/support — nous serons ravis de vous aider.',
         };
-
-        return fallbacks[pageName] ||
-            `¡Hola! 👋 Estoy en modo offline porque la API key de OpenAI no está configurada todavía. ` +
-            `Configúrala en **Settings** para activar el Copilot completo.`;
+        return fallbacks[locale] || fallbacks.es;
     }
 }

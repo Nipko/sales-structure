@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { usePathname } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { api } from "@/lib/api";
 import {
     Sparkles, X, Send, Bot, User, Loader2, Trash2, Minimize2,
@@ -61,6 +61,7 @@ export default function CopilotWidget() {
     const { activeTenantId } = useTenant();
     const pathname = usePathname();
     const t = useTranslations("copilot");
+    const locale = useLocale();
 
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -90,6 +91,7 @@ export default function CopilotWidget() {
                     tenantName: user?.tenantName || undefined,
                     userName: `${user?.firstName || ""} ${user?.lastName || ""}`.trim(),
                     userRole: user?.role || "agent",
+                    locale,
                 },
                 history: messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
             });

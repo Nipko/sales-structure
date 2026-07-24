@@ -7250,8 +7250,8 @@
     "apiKeys": {
       "title": "API Keys y Webhooks",
       "description": "Configura tus claves de API para autenticar peticiones y configurar webhooks para recibir eventos en tiempo real.",
-      "sub1Title": "Firma de Seguridad de Meta",
-      "sub1Desc": "Para validar firmas HMAC-SHA256, usa el encabezado `x-hub-signature-256`. Aquí tienes un ejemplo en JavaScript:",
+      "sub1Title": "Claves de API",
+      "sub1Desc": "Crea claves para conectar Parallly con tus otras herramientas de forma segura. Trátalas como una contraseña: guárdalas bien y no las compartas.",
       "sub2Title": "Sincronización con HubSpot",
       "sub2Desc": "Enruta leads directamente mapeando los campos personalizados a tu CRM usando webhooks."
     },
@@ -7305,7 +7305,7 @@
     },
     "inbox": {
       "title": "Bandeja de Entrada Unificada",
-      "description": "Gestiona conversaciones de WhatsApp, Instagram, Telegram y SMS en un solo lugar y previene colisiones entre tus agentes.",
+      "description": "Gestiona conversaciones de WhatsApp, Instagram, Messenger, Telegram, Email y el chat web en un solo lugar y previene colisiones entre tus agentes.",
       "sub1Title": "Presencia de Agentes",
       "sub1Desc": "Observa indicadores visuales en tiempo real para saber qué compañero está visualizando o escribiendo en el chat de un cliente.",
       "sub2Title": "Handoff Manual e IA",
@@ -7345,7 +7345,7 @@
     },
     "channels": {
       "title": "Conexión de Canales",
-      "description": "Integra WhatsApp Cloud API, Instagram Business, Telegram y SMS para centralizar el flujo de mensajería del negocio.",
+      "description": "Integra WhatsApp, Instagram, Messenger, Telegram, Email y el widget de chat web para centralizar el flujo de mensajería del negocio.",
       "sub1Title": "Embedded Signup",
       "sub1Desc": "Usa Facebook Login integrado para vincular tu número de teléfono y validar el perfil comercial de Meta de forma automática.",
       "sub2Title": "Autenticación OAuth",
@@ -7361,11 +7361,11 @@
     },
     "billing": {
       "title": "Suscripciones y Consumos",
-      "description": "Monitorea las cuotas activas de tu plan (Starter, Pro, Enterprise), actualiza tus métodos de pago y descarga facturas.",
+      "description": "Monitorea las cuotas activas de tu plan (Emprendedor, Starter, Pro, Enterprise o Custom), actualiza tus métodos de pago y descarga facturas.",
       "sub1Title": "Consumo de Tokens e IA",
       "sub1Desc": "Revisa los contadores mensuales acumulados de conversaciones automáticas procesadas por la IA e interacciones de outbound.",
       "sub2Title": "Límites del Plan",
-      "sub2Desc": "Verifica tus límites de agentes (Starter: 1, Pro: 3, Enterprise: 10) y calendarios vinculados en cualquier momento."
+      "sub2Desc": "Consulta en cualquier momento los límites de tu plan: agentes IA, conexiones por canal, calendarios y respuestas de IA al mes."
     },
     "chat": {
       "welcome": "¡Hola! 👋 Soy tu copiloto de ayuda de Parallly. Estoy aquí para responder tus preguntas funcionales sobre la plataforma: configuración de canales, CRM, automatizaciones, citas y más. ¿En qué puedo ayudarte hoy?",

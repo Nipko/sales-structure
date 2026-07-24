@@ -7250,8 +7250,8 @@
     "apiKeys": {
       "title": "API Keys and Webhooks",
       "description": "Configure your API keys to authenticate requests and configure webhooks to receive real-time events.",
-      "sub1Title": "Meta Security Signature",
-      "sub1Desc": "To validate HMAC-SHA256 signatures, check the `x-hub-signature-256` header. Here is a Node.js fetch example:",
+      "sub1Title": "API Keys",
+      "sub1Desc": "Create keys to securely connect Parallly with your other tools. Treat them like a password: store them safely and never share them.",
       "sub2Title": "HubSpot Synchronization",
       "sub2Desc": "Route leads directly by mapping custom properties to your CRM using webhook integrations."
     },
@@ -7305,7 +7305,7 @@
     },
     "inbox": {
       "title": "Unified Inbox",
-      "description": "Manage WhatsApp, Instagram, Telegram, and SMS conversations in one place while preventing collisions between your agents.",
+      "description": "Manage WhatsApp, Instagram, Messenger, Telegram, Email, and web chat conversations in one place while preventing collisions between your agents.",
       "sub1Title": "Agent Presence",
       "sub1Desc": "Observe real-time visual indicators to know which teammate is viewing or typing in a customer's chat.",
       "sub2Title": "Manual & AI Handoff",
@@ -7345,7 +7345,7 @@
     },
     "channels": {
       "title": "Channel Connection",
-      "description": "Integrate WhatsApp Cloud API, Instagram Business, Telegram, and SMS to centralize your business messaging flow.",
+      "description": "Integrate WhatsApp, Instagram, Messenger, Telegram, Email, and the web chat widget to centralize your business messaging flow.",
       "sub1Title": "Embedded Signup",
       "sub1Desc": "Use Facebook Login to link your phone number and validate your Meta business profile automatically.",
       "sub2Title": "OAuth Authentication",
@@ -7361,11 +7361,11 @@
     },
     "billing": {
       "title": "Subscriptions & Usage",
-      "description": "Monitor active plan quotas (Starter, Pro, Enterprise), update payment methods, and download invoices.",
+      "description": "Monitor your active plan quotas (Emprendedor, Starter, Pro, Enterprise, or Custom), update payment methods, and download invoices.",
       "sub1Title": "Tokens & AI Usage",
       "sub1Desc": "Review monthly counters of automatic conversations processed by AI and outbound campaign interactions.",
       "sub2Title": "Plan Limits",
-      "sub2Desc": "Check your agent limits (Starter: 1, Pro: 3, Enterprise: 10) and connected calendars at any time."
+      "sub2Desc": "Check your plan limits at any time: AI agents, connections per channel, calendars, and AI replies per month."
     },
     "chat": {
       "welcome": "Hi! 👋 I'm your Parallly help copilot. I'm here to answer your functional questions about the platform: channel setup, CRM, automations, appointments and more. How can I help you today?",

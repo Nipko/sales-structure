@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
@@ -47,6 +47,7 @@ import {
 
 export function HelpAssistant() {
   const t = useTranslations("helpAssistant");
+  const locale = useLocale();
   const pathname = usePathname();
   const vt = useVerticalTerms();
   const { user } = useAuth();
@@ -156,7 +157,8 @@ export function HelpAssistant() {
           page: pathname,
           tenantId: user?.tenantId,
           userName: user?.firstName || t("chat.defaultUserName"),
-          userRole: user?.role || 'agent'
+          userRole: user?.role || 'agent',
+          locale
         },
         history: chatHistory
       });
@@ -248,14 +250,23 @@ export function HelpAssistant() {
       description: t("overview.description"),
       sub1Title: t("overview.sub1Title"),
       sub1Desc: t("overview.sub1Desc"),
-      code1: `// Fórmula de Contención de IA
-tasaContencion = (conversacionesResueltasPorIA / totalConversaciones) * 100
-
-// Monitorea el ahorro operativo mensual directamente en tu panel principal.`,
+      code1: `Cómo leer tu tasa de contención:
+- Mide el % de conversaciones que la IA resolvió
+  sola, sin pasar a una persona de tu equipo.
+- Ejemplo: de 200 conversaciones del mes, la IA
+  resolvió 160 → 80% de contención.
+- Una tasa saludable supera el 70%.
+- Si baja, refuerza tu Base de Conocimiento y
+  revisa en el Inbox qué preguntas se derivaron.`,
       sub2Title: t("overview.sub2Title"),
       sub2Desc: t("overview.sub2Desc"),
-      code2: `Estimación de Costo de Tokens:
-Costos = tokensEntrada * $0.0015 + tokensSalida * $0.002`
+      code2: `Rutas más usadas del menú lateral:
+- Inbox: responde chats y revisa derivaciones.
+- CRM: perfiles, notas y puntaje de tus leads.
+- Embudo de ventas: oportunidades por etapa.
+- Citas: agenda, disponibilidad y calendarios.
+- Agente IA: personalidad y objetivos del bot.
+- Configuración → Facturación: plan y consumos.`
     },
     {
       id: "inbox",
@@ -264,15 +275,24 @@ Costos = tokensEntrada * $0.0015 + tokensSalida * $0.002`
       description: t("inbox.description"),
       sub1Title: t("inbox.sub1Title"),
       sub1Desc: t("inbox.sub1Desc"),
-      code1: `// Mutex de Conversación (Redis Lock)
-// Previene condiciones de carrera cuando llegan múltiples mensajes simultáneos.
-lockKey = "lock:conv:" + conversationId
-SETNX lockKey "1" EX 30`,
+      code1: `Cómo evitar respuestas duplicadas:
+- Junto a cada conversación verás quién del
+  equipo la está viendo o escribiendo.
+- Si un compañero ya atiende el chat, coordina
+  antes de intervenir.
+- Tu estado (disponible / ausente) controla si
+  el sistema te asigna nuevas conversaciones.`,
       sub2Title: t("inbox.sub2Title"),
       sub2Desc: t("inbox.sub2Desc"),
-      code2: `Asignación manual de agente a conversación:
-POST /api/v1/conversations/:id/assign
-Payload: { "agentId": "agent-uuid" }`
+      code2: `Asignar una conversación a una persona:
+1. Abre la conversación en el Inbox.
+2. Usa el botón de asignar y elige al miembro
+   del equipo indicado.
+3. La persona asignada recibe una notificación
+   al instante.
+
+La IA también deriva sola cuando el cliente
+pide hablar con un humano o se frustra.`
     },
     {
       id: "contacts",
@@ -281,17 +301,26 @@ Payload: { "agentId": "agent-uuid" }`
       description: t("contacts.description"),
       sub1Title: t("contacts.sub1Title"),
       sub1Desc: t("contacts.sub1Desc"),
-      code1: `// Algoritmo de scoring automático de leads (1 al 10)
-score = Math.min(10, Math.max(1, countMessages * 0.5 + stageWeight))`,
+      code1: `Cómo funciona el puntaje (1 a 10):
+- Sube con la actividad del lead: mensajes,
+  respuestas, etiquetas y etapa del embudo.
+- Puntaje alto (8-10) = lead caliente:
+  priorízalo en tu seguimiento comercial.
+- Toca el puntaje en la ficha del lead para
+  ver el desglose de factores.
+- Ajusta las ponderaciones en
+  Configuración → Scoring de leads.`,
       sub2Title: t("contacts.sub2Title"),
       sub2Desc: t("contacts.sub2Desc"),
-      code2: `Ejemplo de esquema de Atributos Personalizados:
-{
-  "custom_attributes": {
-    "preferred_modality": "virtual",
-    "budget_range": "1000-2000"
-  }
-}`
+      code2: `Crear campos propios para tus leads:
+1. Ve a Configuración → Atributos
+   Personalizados.
+2. Crea el campo con su tipo (texto, número,
+   lista, fecha…). Ejemplos: "Presupuesto",
+   "Ciudad", "Modalidad preferida".
+3. Los campos aparecen en la ficha de cada
+   lead y la IA puede completarlos durante
+   la conversación.`
     },
     {
       id: "pipeline",
@@ -300,17 +329,26 @@ score = Math.min(10, Math.max(1, countMessages * 0.5 + stageWeight))`,
       description: t("pipeline.description"),
       sub1Title: t("pipeline.sub1Title"),
       sub1Desc: t("pipeline.sub1Desc"),
-      code1: `Etapas del Embudo Kanban:
-1. Nuevo
-2. Contactado
-3. Calificado
-4. Caliente
-5. Listo para Cierre
-6. Ganado`,
+      code1: `Etapas del embudo (de inicio a cierre):
+1. Nuevo            — acaba de llegar
+2. Contactado       — ya hubo primer contacto
+3. Calificado       — cumple el perfil
+4. Caliente         — muestra intención real
+5. Listo para Cierre — negociación final
+6. Ganado           — venta concretada
+
+Personaliza nombres, colores y etapas en
+Configuración → Embudo de ventas.`,
       sub2Title: t("pipeline.sub2Title"),
       sub2Desc: t("pipeline.sub2Desc"),
-      code2: `Regla de avance automático por Scoring:
-IF lead_score >= 8 THEN MOVE_STAGE("caliente")`
+      code2: `Avance automático y aprobaciones:
+- Activa el avance automático desde el
+  encabezado del embudo: la plataforma mueve
+  el lead de etapa según las señales de la
+  conversación (interés, datos entregados…).
+- Los supervisores pueden exigir aprobación
+  antes de mover una oportunidad a las etapas
+  finales, y aprobar o rechazar con motivo.`
     },
     {
       id: "broadcast",
@@ -319,17 +357,25 @@ IF lead_score >= 8 THEN MOVE_STAGE("caliente")`
       description: t("broadcast.description"),
       sub1Title: t("broadcast.sub1Title"),
       sub1Desc: t("broadcast.sub1Desc"),
-      code1: `// Envío masivo con plantilla aprobada por Meta
-POST /api/v1/broadcast/send
-{
-  "templateName": "bienvenida_cliente",
-  "segmentId": "segment-uuid",
-  "parameters": ["Juan"]
-}`,
+      code1: `Enviar una campaña paso a paso:
+1. Ve a Campañas y crea una nueva.
+2. Elige el canal y la plantilla aprobada por
+   Meta (créalas en Canales → WhatsApp →
+   Plantillas; la aprobación puede tardar).
+3. Selecciona el segmento de contactos.
+4. Completa las variables de la plantilla,
+   por ejemplo {{1}} = nombre del cliente.
+5. Envía ahora o programa fecha y hora.`,
       sub2Title: t("broadcast.sub2Title"),
       sub2Desc: t("broadcast.sub2Desc"),
-      code2: `Métricas del Embudo de Campaña:
-Enviado -> Entregado -> Leído -> Conversión`
+      code2: `Cómo leer los resultados de la campaña:
+Enviado → Entregado → Leído → Respondido
+
+- Entregado bajo: depura números inválidos o
+  contactos que ya no usan ese canal.
+- Leído bajo: prueba otro horario de envío.
+- Respondido bajo: mejora el llamado a la
+  acción del mensaje.`
     },
     {
       id: "agent",
@@ -338,15 +384,28 @@ Enviado -> Entregado -> Leído -> Conversión`
       description: t("agent.description"),
       sub1Title: t("agent.sub1Title"),
       sub1Desc: t("agent.sub1Desc"),
-      code1: `// Arquitectura del Prompt de Turno
-SystemPrompt = Layer1 (Contract) + Layer2 (Persona) + Layer3 (Turn Context)`,
+      code1: `Qué escribir en las instrucciones del agente:
+- Quién es: nombre, rol y negocio que
+  representa.
+- Tono: cercano, formal, enérgico…
+- Objetivo: vender, agendar citas, resolver
+  dudas frecuentes.
+- Límites: qué NO debe prometer ni responder.
+
+Ejemplo: "Eres Laura, asesora de [tu negocio].
+Atiendes con calidez, resuelves dudas de
+precios y guías al cliente a agendar una cita."`,
       sub2Title: t("agent.sub2Title"),
       sub2Desc: t("agent.sub2Desc"),
-      code2: `Configuración de Circuit Breaker (Handoff Express):
-{
-  "maxRepetitions": 3,
-  "forceHandoffKeywords": ["humano", "asesor", "hablar con alguien"]
-}`
+      code2: `Configurar la derivación a humanos:
+1. En el editor del agente define las palabras
+   que fuerzan el paso a una persona, por
+   ejemplo: "humano", "asesor", "hablar con
+   alguien".
+2. Define cuántas respuestas repetidas tolera
+   el bot antes de derivar (recomendado: 3).
+3. Las conversaciones derivadas llegan al
+   Inbox con un resumen de lo conversado.`
     },
     {
       id: "channels",
@@ -355,17 +414,28 @@ SystemPrompt = Layer1 (Contract) + Layer2 (Persona) + Layer3 (Turn Context)`,
       description: t("channels.description"),
       sub1Title: t("channels.sub1Title"),
       sub1Desc: t("channels.sub1Desc"),
-      code1: `// Payloads de Conexión de Canales (Instagram OAuth)
-POST /api/v1/channels/instagram/connect
-{
-  "provider": "instagram",
-  "accessToken": "EAAG...",
-  "pageId": "10492837..."
-}`,
+      code1: `Conectar tu número de WhatsApp:
+1. Ve a Canales → WhatsApp.
+2. Pulsa "Conectar" e inicia sesión con la
+   cuenta de Facebook de tu empresa.
+3. Sigue el asistente de Meta: elige o crea tu
+   cuenta de WhatsApp Business y verifica el
+   número por SMS o llamada.
+4. Al terminar, asigna un agente IA a esa
+   conexión desde la sección Agente IA.`,
       sub2Title: t("channels.sub2Title"),
       sub2Desc: t("channels.sub2Desc"),
-      code2: `Cron de renovación de tokens de API:
-0 6 * * * -> InstagramTokenRefreshService (Ejecución Diaria @6AM)`
+      code2: `Otros canales disponibles:
+- Instagram y Messenger: se conectan con tu
+  cuenta Business de Meta en un par de clics;
+  el acceso se renueva automáticamente.
+- Telegram, Email y chat web para tu sitio:
+  también en Canales, según tu plan.
+
+Recuerda: cada conexión tiene su propio agente
+IA, y tu plan define cuántas conexiones del
+mismo tipo puedes tener (por ejemplo, dos
+números de WhatsApp en el plan Pro).`
     },
     {
       id: "users",
@@ -374,15 +444,25 @@ POST /api/v1/channels/instagram/connect
       description: t("users.description"),
       sub1Title: t("users.sub1Title"),
       sub1Desc: t("users.sub1Desc"),
-      code1: `Jerarquía de Roles de Plataforma:
-- super_admin (Control global)
-- tenant_admin (Ajustes y facturación)
-- tenant_supervisor (Auditoría y CRM)
-- tenant_agent (Atención al cliente)`,
+      code1: `Roles disponibles para tu equipo:
+- Administrador: configura la plataforma y
+  gestiona facturación, usuarios y canales.
+- Supervisor: supervisa conversaciones, CRM
+  y reportes; aprueba avances del embudo.
+- Agente: atiende los chats que tiene
+  asignados en el Inbox.
+
+Invita miembros desde Usuarios; el número de
+usuarios disponible depende de tu plan.`,
       sub2Title: t("users.sub2Title"),
       sub2Desc: t("users.sub2Desc"),
-      code2: `Enrutamiento por Habilidades:
-IF tags CONTAINS "soporte_tecnico" THEN ROUTE_TO_SKILL("soporte")`
+      code2: `Dirigir cada chat al especialista correcto:
+1. En Usuarios, edita al miembro del equipo.
+2. Agrega sus etiquetas de especialidad, por
+   ejemplo: "ventas", "soporte", "facturación".
+3. Cuando una conversación de ese tema pase a
+   humanos, se asignará primero a quien tenga
+   esa habilidad y cupo disponible.`
     },
     {
       id: "billing",
@@ -391,15 +471,30 @@ IF tags CONTAINS "soporte_tecnico" THEN ROUTE_TO_SKILL("soporte")`
       description: t("billing.description"),
       sub1Title: t("billing.sub1Title"),
       sub1Desc: t("billing.sub1Desc"),
-      code1: `Límites de Suscripción por Plan:
-- Starter: 1 agente, 1 calendario
-- Pro: 3 agentes, 3 calendarios
-- Enterprise: 10 agentes, 10 calendarios`,
+      code1: `Planes (precio en USD por mes):
+- Emprendedor  $21  — 1 agente IA,
+  1 calendario, 1.000 respuestas IA/mes.
+- Starter      $49  — 1 agente IA,
+  1 calendario, 5.000 respuestas IA/mes.
+- Pro          $129 — 3 agentes IA,
+  3 calendarios, 25.000 respuestas IA/mes.
+- Enterprise   $349 — 10 agentes IA,
+  10 calendarios, 100.000 respuestas IA/mes.
+- Custom — a cotizar, límites a tu medida.
+
+Ciclo mensual o anual (~15% de descuento
+si pagas el año completo).`,
       sub2Title: t("billing.sub2Title"),
       sub2Desc: t("billing.sub2Desc"),
-      code2: `Cuotas de envío y automatización por hora:
-- Starter: 50 auto + 200 outbound
-- Pro: 500 auto + 2000 outbound`
+      code2: `Revisar consumo y cambiar de plan:
+1. Ve a Configuración → Facturación.
+2. Revisa tus contadores del mes: respuestas
+   de IA, audios/imágenes procesados y
+   almacenamiento.
+3. Al acercarte a un límite verás avisos en
+   el panel; puedes subir de plan ahí mismo.
+4. Desde esa página también actualizas tu
+   método de pago y ves tu historial.`
     },
     {
       id: "apiKeys",
@@ -408,27 +503,30 @@ IF tags CONTAINS "soporte_tecnico" THEN ROUTE_TO_SKILL("soporte")`
       description: t("apiKeys.description"),
       sub1Title: t("apiKeys.sub1Title"),
       sub1Desc: t("apiKeys.sub1Desc"),
-      code1: `// Meta HMAC Validation
-const crypto = require("crypto");
-const signature = req.headers["x-hub-signature-256"];
-const payload = JSON.stringify(req.body);
-const expected = "sha256=" + crypto
-  .createHmac("sha256", process.env.META_APP_SECRET)
-  .update(payload)
-  .digest("hex");
+      code1: `Crear una clave de API:
+1. Ve a Configuración → Claves de API.
+2. Pulsa "Crear clave" y asígnale un nombre
+   que identifique su uso (ej. "Reportes BI").
+3. Copia la clave y guárdala en un lugar
+   seguro: por seguridad solo se muestra
+   una vez.
+4. Revoca cualquier clave que ya no uses.
 
-if (signature === expected) {
-  console.log("Verified Meta Webhook!");
-}`,
+Disponible desde el plan Pro; la cantidad de
+claves depende de tu plan.`,
       sub2Title: t("apiKeys.sub2Title"),
       sub2Desc: t("apiKeys.sub2Desc"),
-      code2: `curl -X POST https://api.parallly-chat.cloud/api/v1/webhooks \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "event": "lead.created",
-    "target_url": "https://yourcrm.hubspot.com/webhooks"
-  }'`
+      code2: `Avisar a tus otras herramientas (webhooks):
+1. Ve a Configuración → Integraciones →
+   Webhooks.
+2. Crea una suscripción: elige el evento
+   (ej. lead creado, cita agendada) y pega
+   la dirección que te entrega tu otra
+   herramienta (CRM, hoja de cálculo, etc.).
+3. Cada vez que ocurra el evento, Parallly
+   le avisará a esa herramienta al instante.
+
+La disponibilidad depende de tu plan.`
     },
     {
       id: "smtp",
@@ -437,17 +535,30 @@ if (signature === expected) {
       description: t("smtp.description"),
       sub1Title: t("smtp.sub1Title"),
       sub1Desc: t("smtp.sub1Desc"),
-      code1: `Host: smtp.mailgun.org
-Port: 587 (TLS)
-Username: postmaster@yourdomain.com
-Password: ••••••••••••••••••••`,
+      code1: `Para que tus correos no caigan en spam:
+1. Pide a tu proveedor de correo (o a quien
+   administre tu dominio) activar SPF y DKIM
+   para el remitente que usas en Parallly.
+2. Usa un remitente con tu dominio propio
+   (ej. hola@tunegocio.com), no direcciones
+   gratuitas.
+3. Envíate un correo de prueba y verifica
+   que llegue a la bandeja principal.`,
       sub2Title: t("smtp.sub2Title"),
       sub2Desc: t("smtp.sub2Desc"),
-      code2: `Hola {{customer_name}},
+      code2: `Ejemplo de plantilla con variables:
 
-Confirmamos tu cita para el servicio de {{service_name}} el día {{appointment_date}}.
+Hola {{customer_name}},
 
-Gracias por confiar en {{business_name}}.`
+Confirmamos tu cita de {{service_name}}
+el día {{appointment_date}}.
+
+Gracias por confiar en {{business_name}}.
+
+Edita tus plantillas en Configuración →
+Plantillas de Email; las variables se
+reemplazan solas con los datos de cada
+cliente al enviar.`
     },
     {
       id: "automation",
@@ -456,23 +567,25 @@ Gracias por confiar en {{business_name}}.`
       description: t("automation.description"),
       sub1Title: t("automation.sub1Title"),
       sub1Desc: t("automation.sub1Desc"),
-      code1: `// Estructura de Regla de Automatización
-{
-  "trigger": "message.received",
-  "conditions": {
-    "lead_score": { "gte": 80 },
-    "channel": "instagram"
-  },
-  "actions": [
-    { "type": "assign_to_agent", "agent_id": "agent-uuid" },
-    { "type": "send_nurturing_email", "delay_hours": 2 }
-  ]
-}`,
+      code1: `Ejemplo de regla en 3 pasos:
+- Disparador: llega un mensaje nuevo.
+- Condiciones: el lead escribió por Instagram
+  y tiene un puntaje alto.
+- Acciones: asignarlo a un asesor y enviarle
+  un correo de seguimiento 2 horas después.
+
+Crea la tuya en Automatización → Nueva regla,
+con el asistente guiado de 4 pasos.`,
       sub2Title: t("automation.sub2Title"),
       sub2Desc: t("automation.sub2Desc"),
-      code2: `1. Espera de Inactividad: 4 Horas
-2. Filtro: Etapa del Lead == "Tibio"
-3. Acción: Enviar mensaje "Hola, ¿pudiste revisar la información anterior?"`
+      code2: `Receta de seguimiento por inactividad:
+1. Espera: 4 horas sin respuesta del cliente.
+2. Filtro: el lead sigue en etapa "Tibio".
+3. Acción: enviar "Hola, ¿pudiste revisar la
+   información que te compartí?"
+
+Consejo: uno o dos recordatorios bastan;
+más pueden sentirse invasivos.`
     },
     {
       id: "knowledge",
@@ -481,17 +594,26 @@ Gracias por confiar en {{business_name}}.`
       description: t("knowledge.description"),
       sub1Title: t("knowledge.sub1Title"),
       sub1Desc: t("knowledge.sub1Desc"),
-      code1: `// Configuración RAG++ Recomendada
-{
-  "search": "hybrid", 
-  "similarityThreshold": 0.75,
-  "topK": 4,
-  "boostKeywords": ["precio", "reserva", "horario"]
-}`,
+      code1: `Ajustar la precisión de las respuestas:
+1. Ve a Agente IA → tu agente → sección de
+   Conocimiento.
+2. Mueve el control de similitud (recomendado
+   0.75): más alto = solo responde con textos
+   casi exactos; más bajo = más cobertura.
+3. Si el agente dice "no lo sé" muy seguido,
+   baja un poco el valor o agrega más
+   artículos a tu Base de Conocimiento.`,
       sub2Title: t("knowledge.sub2Title"),
       sub2Desc: t("knowledge.sub2Desc"),
-      code2: `Ejemplo de citación estructurada en la respuesta del agente IA:
-"De acuerdo con nuestra política de cancelación [Política: cancelacion], puedes cancelar sin cargo hasta 24 horas antes del servicio."`
+      code2: `Ejemplo de cita en una respuesta del agente:
+"De acuerdo con nuestra política de
+cancelación [Política: cancelación], puedes
+cancelar sin cargo hasta 24 horas antes del
+servicio."
+
+Mientras más completa esté tu Base de
+Conocimiento (políticas, precios, FAQs),
+más precisas y confiables serán las citas.`
     },
     {
       id: "alerts",
@@ -500,15 +622,26 @@ Gracias por confiar en {{business_name}}.`
       description: t("alerts.description"),
       sub1Title: t("alerts.sub1Title"),
       sub1Desc: t("alerts.sub1Desc"),
-      code1: `// Umbral de Anomalía Z-Score
-zScore = (x - mean) / stdDev
-Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
+      code1: `Qué vigila el sistema por ti:
+- Subidas o caídas bruscas del volumen de
+  conversaciones en un canal.
+- Aumentos inusuales de errores de envío.
+- Comportamientos fuera de lo normal frente
+  a tus semanas anteriores.
+
+Cuando algo se desvía de tu patrón habitual,
+recibes una alerta automática: no necesitas
+configurar fórmulas ni umbrales.`,
       sub2Title: t("alerts.sub2Title"),
       sub2Desc: t("alerts.sub2Desc"),
-      code2: `{
-  "username": "Parallly Z-Score Monitor",
-  "content": "⚠️ **Alerta Estadística:** El volumen de conversaciones en el canal WhatsApp se ha desviado 2.4σ por encima de la media semanal."
-}`
+      code2: `Recibir las alertas donde trabaja tu equipo:
+1. Ve a Configuración → Integraciones →
+   Slack y conecta tu espacio de trabajo.
+2. Elige el canal donde quieres recibir
+   los avisos.
+3. Ajusta qué notificaciones recibes en
+   Configuración → Alertas y en
+   Configuración → Notificaciones.`
     },
     {
       id: "appointments",
@@ -517,18 +650,25 @@ Flag: zScore > 2.0  // Alerta de desviación > 2σ`,
       description: t("appointments.description"),
       sub1Title: t("appointments.sub1Title"),
       sub1Desc: t("appointments.sub1Desc"),
-      code1: `// Sincronización Google Meet / Teams
-{
-  "modality": "virtual",
-  "autoCreateMeeting": true,
-  "provider": "google_calendar"
-}`,
+      code1: `Citas virtuales con enlace automático:
+1. Ve a Citas → Configuración y conecta tu
+   Google Calendar.
+2. En cada servicio define la modalidad:
+   presencial, virtual o híbrida.
+3. Para servicios virtuales, el enlace de
+   reunión (Google Meet o Teams) se genera
+   solo y se incluye en la confirmación que
+   recibe el cliente.`,
       sub2Title: t("appointments.sub2Title"),
       sub2Desc: t("appointments.sub2Desc"),
-      code2: `Fechas Bloqueadas:
-- 25 Diciembre (Navidad)
-- 1 Enero (Año Nuevo)
-- Domingos (Días no laborables)`
+      code2: `Bloquear días sin atención:
+1. Ve a Citas → Disponibilidad.
+2. Agrega tus fechas bloqueadas: feriados,
+   vacaciones o cierres puntuales.
+   Ej.: 25 de diciembre, 1 de enero.
+3. Define también tus días y horarios no
+   laborables (ej. domingos): el agente IA
+   nunca ofrecerá esos espacios al agendar.`
     }
   ];
 

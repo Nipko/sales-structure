@@ -4,6 +4,28 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { Download, X } from "lucide-react";
 
+// Closing the prompt persists a snooze so it doesn't reappear on every page
+// load. Dismissing the OS dialog snoozes for less time than an explicit close.
+const SNOOZE_KEY = "pwa-install-snooze-until";
+const DISMISS_SNOOZE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days after an explicit X
+const SOFT_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;     // 7 days after declining the OS dialog
+
+function snoozedUntil(): number {
+    try {
+        return Number(localStorage.getItem(SNOOZE_KEY)) || 0;
+    } catch {
+        return 0;
+    }
+}
+
+function snooze(ms: number) {
+    try {
+        localStorage.setItem(SNOOZE_KEY, String(Date.now() + ms));
+    } catch {
+        /* private mode / storage disabled — fall back to in-memory dismissal */
+    }
+}
+
 export function InstallPrompt() {
     const t = useTranslations("pwa");
     const promptRef = useRef<any>(null);
@@ -17,6 +39,11 @@ export function InstallPrompt() {
             (window.navigator as any).standalone === true
         );
 
+        // Respect a previous snooze across reloads/navigations.
+        if (Date.now() < snoozedUntil()) {
+            setDismissed(true);
+        }
+
         const handler = (e: Event) => {
             e.preventDefault();
             promptRef.current = e;
@@ -28,6 +55,7 @@ export function InstallPrompt() {
             promptRef.current = null;
             setCanInstall(false);
             setIsStandalone(true);
+            try { localStorage.removeItem(SNOOZE_KEY); } catch { /* noop */ }
         };
         window.addEventListener("appinstalled", installed);
 
@@ -45,11 +73,19 @@ export function InstallPrompt() {
             prompt.prompt();
             const choice = await prompt.userChoice;
             if (choice.outcome === "dismissed") {
+                // They opened the OS dialog but backed out — hold off a week.
+                snooze(SOFT_SNOOZE_MS);
                 setCanInstall(false);
+                setDismissed(true);
             }
         } catch (_err) {
             setCanInstall(false);
         }
+    }, []);
+
+    const handleDismiss = useCallback(() => {
+        snooze(DISMISS_SNOOZE_MS);
+        setDismissed(true);
     }, []);
 
     if (isStandalone || !canInstall || dismissed) return null;
@@ -100,7 +136,7 @@ export function InstallPrompt() {
                 {t("install")}
             </button>
             <button
-                onClick={() => setDismissed(true)}
+                onClick={handleDismiss}
                 style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}
             >
                 <X size={16} style={{ color: "#9898b0" }} />

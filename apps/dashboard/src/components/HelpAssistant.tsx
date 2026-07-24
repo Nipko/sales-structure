@@ -7,7 +7,6 @@ import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import {
-  HelpCircle,
   Sparkles,
   BookOpen,
   Lightbulb,
@@ -44,6 +43,9 @@ import {
   SheetDescription,
   SheetTrigger
 } from "@/components/ui/sheet";
+import { ParalllyAssistant, type ParalllyState } from "@/components/ParalllyAssistant";
+
+const GREETED_KEY = "parallly:assistant-greeted";
 
 export function HelpAssistant() {
   const t = useTranslations("helpAssistant");
@@ -53,6 +55,24 @@ export function HelpAssistant() {
   const { user } = useAuth();
 
   const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [greeting, setGreeting] = useState(false);
+
+  // Saludo de bienvenida: una sola vez por navegador. Aparece a los 8s, saluda
+  // 6s y se retira — nunca vuelve a interrumpir.
+  useEffect(() => {
+    let hide: ReturnType<typeof setTimeout>;
+    let show: ReturnType<typeof setTimeout>;
+    try {
+      if (typeof window === "undefined" || localStorage.getItem(GREETED_KEY)) return;
+      show = setTimeout(() => {
+        setGreeting(true);
+        try { localStorage.setItem(GREETED_KEY, "1"); } catch { /* ignore */ }
+        hide = setTimeout(() => setGreeting(false), 6000);
+      }, 8000);
+    } catch { /* ignore */ }
+    return () => { clearTimeout(show); clearTimeout(hide); };
+  }, []);
 
   // Allow other parts of the app (e.g. the onboarding tour) to open the copilot.
   useEffect(() => {
@@ -754,12 +774,27 @@ configurar fórmulas ni umbrales.`,
       <SheetTrigger asChild>
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-40 p-4 rounded-full flex items-center justify-center bg-linear-to-r from-indigo-600/90 to-purple-600/90 dark:from-indigo-500/90 dark:to-purple-500/90 hover:from-indigo-600 hover:to-purple-600 text-white shadow-[0_4px_24px_rgba(99,102,241,0.5)] border border-white/10 hover:scale-105 active:scale-95 transition-all duration-300 group cursor-pointer"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          aria-label={t("launcherTooltip")}
+          className="fixed bottom-4 right-6 z-40 flex items-end justify-center hover:scale-105 active:scale-95 transition-transform duration-300 group cursor-pointer drop-shadow-[0_6px_18px_rgba(56,151,240,0.35)]"
         >
-          <HelpCircle className="size-6 transition-transform duration-500 group-hover:rotate-[360deg]" />
-          <span className="absolute -top-12 right-0 scale-0 group-hover:scale-100 transition-all duration-200 bg-neutral-950 text-white text-[11px] font-medium px-2.5 py-1.5 rounded-lg shadow-xl whitespace-nowrap border border-white/10">
+          {/* Globo de bienvenida (una sola vez) + tooltip al pasar el mouse */}
+          <span
+            className={`absolute bottom-full right-0 mb-1 bg-neutral-950 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[11px] font-semibold px-3 py-2 rounded-xl shadow-xl whitespace-nowrap border border-white/10 transition-all duration-300 ${
+              greeting ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1 pointer-events-none"
+            }`}
+          >
+            {t("greetingBubble")}
+          </span>
+          <span className="absolute bottom-full right-0 mb-1 scale-0 group-hover:scale-100 origin-bottom-right transition-transform duration-200 bg-neutral-950 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[11px] font-medium px-2.5 py-1.5 rounded-lg shadow-xl whitespace-nowrap border border-white/10">
             {t("launcherTooltip")}
           </span>
+          <ParalllyAssistant
+            size={64}
+            state={greeting ? "wave" : hovered ? "hover" : "idle"}
+            label={t("launcherTooltip")}
+          />
         </button>
       </SheetTrigger>
       
@@ -767,9 +802,10 @@ configurar fórmulas ni umbrales.`,
         {/* Header section with Glassmorphic Gradient */}
         <div className="p-6 pb-4 border-b border-neutral-200/50 dark:border-neutral-800/50 bg-linear-to-b from-indigo-50/30 to-white/0 dark:from-indigo-950/10 dark:to-transparent">
           <SheetHeader className="p-0 gap-1 select-none">
-            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
-              <Sparkles className="size-5 animate-pulse" />
-              <span className="text-xs font-bold uppercase tracking-wider bg-indigo-100 dark:bg-indigo-900/40 px-2 py-0.5 rounded-md">
+            <div className="flex items-center gap-2 text-[#3897f0]">
+              {/* El mismo personaje del launcher: continuidad visual */}
+              <ParalllyAssistant size={34} state={isSending ? "think" : "idle"} />
+              <span className="text-xs font-bold uppercase tracking-wider bg-[#3897f0]/10 text-[#2b7cd4] dark:text-[#7ab9f5] px-2 py-0.5 rounded-md">
                 Parallly Assist
               </span>
             </div>
@@ -1074,11 +1110,10 @@ configurar fórmulas ni umbrales.`,
               
               {/* Typing indicator */}
               {isSending && (
-                <div className="self-start max-w-[85%] flex items-center gap-1.5 bg-white dark:bg-neutral-900 border border-neutral-200/50 dark:border-neutral-800/50 text-neutral-400 dark:text-neutral-500 rounded-2xl rounded-tl-none px-4 py-3 shadow-2xs text-xs select-none">
-                  <span className="size-1.5 rounded-full bg-indigo-500/80 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="size-1.5 rounded-full bg-indigo-500/80 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="size-1.5 rounded-full bg-indigo-500/80 animate-bounce" style={{ animationDelay: '300ms' }} />
-                  <span className="ml-1 text-[10px] text-neutral-400 dark:text-neutral-500 animate-pulse">
+                <div className="self-start max-w-[85%] flex items-center gap-1.5 bg-white dark:bg-neutral-900 border border-neutral-200/50 dark:border-neutral-800/50 text-neutral-400 dark:text-neutral-500 rounded-2xl rounded-tl-none pl-2 pr-4 py-1.5 shadow-2xs text-xs select-none">
+                  {/* Parallly "pensando": sus checks laten */}
+                  <ParalllyAssistant size={30} state="think" />
+                  <span className="text-[10px] text-neutral-400 dark:text-neutral-500 animate-pulse">
                     {t("chat.typing")}
                   </span>
                 </div>

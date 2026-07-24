@@ -7235,6 +7235,7 @@
   },
   "helpAssistant": {
     "launcherTooltip": "Assistant d'aide",
+    "greetingBubble": "Salut ! Je suis Parallly 👋 Je vous aide ?",
     "drawerTitle": "Guide & Support",
     "drawerSubtitle": "Votre assistant interactif étape par étape",
     "searchPlaceholder": "Rechercher des guides ou FAQ...",

@@ -7235,6 +7235,7 @@
   },
   "helpAssistant": {
     "launcherTooltip": "Help Assistant",
+    "greetingBubble": "Hi! I'm Parallly 👋 Need a hand?",
     "drawerTitle": "Guide & Support",
     "drawerSubtitle": "Your step-by-step interactive assistant",
     "searchPlaceholder": "Search guides or FAQs...",

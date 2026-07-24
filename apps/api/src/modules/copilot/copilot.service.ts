@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -77,7 +78,140 @@ export class CopilotService {
         private redis: RedisService,
         private llmRouter: LLMRouterService,
         private knowledgeService: KnowledgeService,
+        private throttle: TenantThrottleService,
     ) {}
+
+    // ─── Per-plan capability context ────────────────────────────────────────
+    // So the assistant can answer "can I do X on MY plan?" accurately: it knows
+    // the user's current plan and, for anything not included, the minimum plan
+    // that unlocks it. Values are read LIVE from the plan catalog (billing_plans
+    // via seed-billing-plans.js) — never hand-copied, so they can't drift.
+
+    private planCatalog: { at: number; plans: any[] } | null = null;
+
+    // User-facing capabilities in rough order of relevance. kind 'num' = a limit
+    // (count/quota), 'bool' = an on/off feature gate. Internal keys (rate limits,
+    // budgets, per-5min bursts…) are intentionally excluded — not user-relevant.
+    private static readonly PLAN_CAPS: { key: string; label: string; kind: 'num' | 'bool' }[] = [
+        { key: 'maxAgents', label: 'Agentes de IA', kind: 'num' },
+        { key: 'maxAiMessages', label: 'Mensajes de IA por mes', kind: 'num' },
+        { key: 'maxChannelAccounts', label: 'Conexiones por tipo de canal', kind: 'num' },
+        { key: 'maxCalendars', label: 'Calendarios', kind: 'num' },
+        { key: 'broadcastCampaigns', label: 'Campañas de difusión por mes', kind: 'num' },
+        { key: 'automationRules', label: 'Reglas de automatización', kind: 'num' },
+        { key: 'maxDripSequences', label: 'Secuencias de nurturing', kind: 'num' },
+        { key: 'knowledgeArticles', label: 'Artículos de base de conocimiento', kind: 'num' },
+        { key: 'maxPipelines', label: 'Embudos de venta', kind: 'num' },
+        { key: 'maxProperties', label: 'Propiedades (turismo)', kind: 'num' },
+        { key: 'segments', label: 'Segmentos guardados', kind: 'num' },
+        { key: 'mediaStorageMb', label: 'Almacenamiento multimedia (MB)', kind: 'num' },
+        { key: 'widgetTriggers', label: 'Disparadores del widget web', kind: 'num' },
+        { key: 'dataRetentionDays', label: 'Retención de datos (días)', kind: 'num' },
+        { key: 'widget', label: 'Widget de chat web', kind: 'bool' },
+        { key: 'smsNotifications', label: 'Notificaciones por SMS', kind: 'bool' },
+        { key: 'externalCrm', label: 'Integración con CRM externo (HubSpot/Pipedrive)', kind: 'bool' },
+        { key: 'outboundWebhooks', label: 'Webhooks salientes', kind: 'bool' },
+        { key: 'customPrompt', label: 'Personalización avanzada del agente', kind: 'bool' },
+        { key: 'customTemplates', label: 'Plantillas de agente personalizadas', kind: 'bool' },
+        { key: 'aiInsights', label: 'Insights de IA', kind: 'bool' },
+        { key: 'scheduledReports', label: 'Reportes programados', kind: 'bool' },
+        { key: 'abTestBroadcasts', label: 'Pruebas A/B en campañas', kind: 'bool' },
+        { key: 'sso', label: 'Inicio de sesión único (SSO/SAML)', kind: 'bool' },
+        { key: 'auditLog', label: 'Registro de auditoría', kind: 'bool' },
+        { key: 'whiteLabel', label: 'Marca blanca (white-label)', kind: 'bool' },
+        { key: 'customDomainKb', label: 'Dominio propio para el portal de ayuda', kind: 'bool' },
+        { key: 'publicApi', label: 'API pública', kind: 'bool' },
+        { key: 'biApi', label: 'API de BI (analítica)', kind: 'bool' },
+        { key: 'staffScheduling', label: 'Agenda de personal (staff)', kind: 'bool' },
+        { key: 'ecommerce', label: 'Integración e-commerce (Shopify/WooCommerce)', kind: 'bool' },
+        { key: 'channelManager', label: 'Channel manager (hospitalidad)', kind: 'bool' },
+        { key: 'vehicleInventory', label: 'Inventario de vehículos', kind: 'bool' },
+        { key: 'prioritySupport', label: 'Soporte prioritario', kind: 'bool' },
+    ];
+
+    private async loadPlanCatalog(): Promise<any[]> {
+        if (this.planCatalog && (Date.now() - this.planCatalog.at) < 300_000) return this.planCatalog.plans;
+        try {
+            const plans = await this.prisma.billingPlan.findMany({
+                where: { isActive: true },
+                select: { slug: true, name: true, sortOrder: true, maxAgents: true, maxAiMessages: true, features: true },
+                orderBy: { sortOrder: 'asc' },
+            });
+            this.planCatalog = { at: Date.now(), plans };
+            return plans;
+        } catch (e: any) {
+            this.logger.warn(`Could not load plan catalog: ${e.message}`);
+            return this.planCatalog?.plans ?? [];
+        }
+    }
+
+    private planFeatureValue(plan: any, key: string): any {
+        if (key === 'maxAgents') return plan.maxAgents;
+        if (key === 'maxAiMessages') return plan.maxAiMessages;
+        return (plan.features ?? {})[key];
+    }
+
+    /** A plan "has" a capability if the value is truthy / a non-zero limit / -1 (unlimited). */
+    private capIncluded(v: any): boolean {
+        if (typeof v === 'boolean') return v;
+        if (typeof v === 'number') return v !== 0;
+        if (v == null) return false;
+        if (typeof v === 'object') return Object.values(v).some((x) => x !== 0);
+        return !!v;
+    }
+
+    private capValueLabel(v: any, kind: 'num' | 'bool'): string {
+        if (kind === 'bool') return this.capIncluded(v) ? 'Sí' : 'No';
+        if (v === -1) return 'ilimitado';
+        if (v == null) return 'no incluido';
+        if (typeof v === 'object') return Object.entries(v).map(([k, x]) => `${k}: ${x === -1 ? '∞' : x}`).join(', ');
+        return String(v);
+    }
+
+    /**
+     * Builds the plan-awareness block for the assistant prompt: the user's current
+     * plan with what it includes, and — for anything not included — the cheapest
+     * plan that unlocks it (so the assistant can guide upgrades accurately).
+     */
+    private async buildPlanContext(tenantId?: string): Promise<string> {
+        if (!tenantId) return '';
+        try {
+            const plans = await this.loadPlanCatalog();
+            if (!plans.length) return '';
+            const currentSlug = await this.throttle.getTenantPlan(tenantId);
+            const currentFeatures = await this.throttle.getPlanFeatures(tenantId); // overrides applied
+            const current = plans.find((p) => p.slug === currentSlug);
+            const currentName = current?.name || currentSlug;
+
+            const included: string[] = [];
+            const notIncluded: string[] = [];
+
+            for (const cap of CopilotService.PLAN_CAPS) {
+                const val = currentFeatures[cap.key];
+                if (this.capIncluded(val)) {
+                    included.push(`- ${cap.label}: ${this.capValueLabel(val, cap.kind)}`);
+                } else {
+                    // Minimum plan (by sortOrder) that unlocks this capability.
+                    const unlockPlan = plans.find((p) => this.capIncluded(this.planFeatureValue(p, cap.key)));
+                    notIncluded.push(`- ${cap.label}: no incluido${unlockPlan ? ` (disponible desde el plan ${unlockPlan.name})` : ''}`);
+                }
+            }
+
+            return `## PLAN DEL USUARIO (información AUTORITATIVA para preguntas de "¿puedo hacer X en mi plan?")
+El usuario está en el plan **${currentName}**.
+
+Incluido en su plan actual:
+${included.join('\n') || '- (sin datos)'}
+
+NO incluido en su plan actual (y desde qué plan se obtiene):
+${notIncluded.join('\n') || '- (todo incluido)'}
+
+REGLA DE PLAN: estos valores son la ÚNICA fuente válida sobre límites y disponibilidad por plan; si algún artículo muestra cifras por plan distintas, prevalece este bloque. Cuando el usuario pregunte si puede hacer algo, responde según SU plan actual; si requiere un plan superior, dilo con claridad e invítalo a mejorar su plan en Configuración → Facturación. Nunca inventes precios ni límites que no estén aquí o en los artículos.`;
+        } catch (e: any) {
+            this.logger.warn(`buildPlanContext failed: ${e.message}`);
+            return '';
+        }
+    }
 
     // ─── Assistant Knowledge Base (apps/api/kb/assistant/{locale}/*.md) ─────
     // The KB ships INSIDE the Docker image (Dockerfile.api copies apps/api/kb),
@@ -584,11 +718,16 @@ Reglas estrictas:
         const langNames: Record<string, string> = { es: 'español latinoamericano', en: 'English', pt: 'português brasileiro', fr: 'français' };
         const replyLang = langNames[locale] || langNames.es;
 
+        // The user's live plan + per-plan capability matrix, so "can I do X on my
+        // plan?" is answered accurately and personally.
+        const planContext = await this.buildPlanContext(tenantId);
+
         const systemPrompt = `Eres **Parallly Assist**, el asistente oficial de ayuda de la plataforma Parallly.
 Tu única misión: ayudar a los usuarios (administradores, supervisores y agentes de negocio) a entender, configurar y usar las funcionalidades de la plataforma.
 
 ## BASE DE CONOCIMIENTO (única fuente de verdad sobre la plataforma):
 ${kbContext}
+${planContext ? '\n' + planContext + '\n' : ''}
 
 ## REGLAS CRÍTICAS:
 1. **RESPONDE SOLO DESDE LA BASE DE CONOCIMIENTO.** Toda afirmación sobre la plataforma (menús, funciones, límites, precios, pasos) debe salir de los artículos de arriba. Si la información no está ahí, dilo con honestidad: "No tengo esa información con certeza" y sugiere escribir a soporte (https://parallly-chat.cloud/support). NUNCA inventes menús, funciones, precios ni límites.
@@ -597,6 +736,7 @@ ${kbContext}
 4. **NAVEGACIÓN EXACTA:** cuando guíes al usuario, usa las rutas de menú tal como aparecen en los artículos (sección y nombre del ítem). Formato paso a paso con listas numeradas.
 5. **ROLES:** si la acción requiere un rol que el usuario no tiene (ver "Requiere rol" del artículo y el rol del usuario abajo), acláralo amablemente ("esto lo configura un administrador de la cuenta").
 6. **FORMATO:** Markdown limpio: pasos numerados, viñetas, **negritas** para nombres de menús y botones. Respuestas concisas; máximo ~10 líneas salvo que pidan detalle.
+7. **CONSCIENCIA DE PLAN:** si hay un bloque "PLAN DEL USUARIO", úsalo para responder con precisión qué puede o no hacer el usuario según SU plan; para límites/disponibilidad por plan, ese bloque manda sobre cualquier cifra de los artículos. Si algo no está en su plan, indícalo y menciona desde qué plan se obtiene. Si NO hay bloque de plan (p. ej. super_admin sin tenant), responde en términos generales de los planes según los artículos.
 
 ## Contexto de la consulta:
 - Usuario: ${request.context.userName} (rol: ${request.context.userRole})

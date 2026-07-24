@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -120,11 +120,13 @@ export default function TenantDetailPage() {
   const t = useTranslations("tenants");
   const tc = useTranslations("common");
 
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("info");
   const [tenant, setTenant] = useState<TenantDetail | null>(null);
   const [users, setUsers] = useState<TenantUser[]>([]);
   const [channels, setChannels] = useState<ChannelAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [engagement, setEngagement] = useState<EngagementData | null>(null);
   const [engagementLoading, setEngagementLoading] = useState(false);
   const [engagementLoaded, setEngagementLoaded] = useState(false);
@@ -144,6 +146,7 @@ export default function TenantDetailPage() {
     if (!tenantId) return;
     setLoading(true);
 
+    setNotFound(false);
     Promise.all([
       api.getTenant(tenantId),
       api.getTenantUsers(tenantId),
@@ -175,6 +178,11 @@ export default function TenantDetailPage() {
             }))
           );
         }
+      }
+      else {
+        // Tenant fetch failed (e.g. it was just purged, or a stale URL). Show a
+        // not-found state instead of hanging on the "Cargando…" title fallback.
+        setNotFound(true);
       }
       if (usersRes.success && Array.isArray(usersRes.data)) {
         setUsers(usersRes.data);
@@ -270,8 +278,27 @@ export default function TenantDetailPage() {
         </div>
       )}
 
+      {/* Tenant gone (purged) or stale URL — don't hang on the loading title */}
+      {!loading && notFound && (
+        <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+          <div className="w-12 h-12 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+            <Building2 className="h-6 w-6 text-neutral-400" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("detail.notFoundTitle")}</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t("detail.notFoundHint")}</p>
+          </div>
+          <Link
+            href="/admin/tenants"
+            className="mt-1 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium no-underline transition-colors"
+          >
+            {t("detail.backToList")}
+          </Link>
+        </div>
+      )}
+
       {/* INFO TAB */}
-      {!loading && activeTab === "info" && tenant && (
+      {!loading && !notFound && activeTab === "info" && tenant && (
         <div className="space-y-6">
           <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("detail.companyDetails")}</h3>
@@ -305,6 +332,12 @@ export default function TenantDetailPage() {
             onChange={() => {
               // Refetch tenant detail after status change
               if (typeof window !== "undefined") window.location.reload();
+            }}
+            onPurged={() => {
+              // The tenant no longer exists — reloading this page would 404 and
+              // hang on "Cargando…". Go back to the list, which shows the toast.
+              try { sessionStorage.setItem("tenantPurged", tenant.name); } catch { /* noop */ }
+              router.push("/admin/tenants");
             }}
           />
 

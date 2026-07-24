@@ -35,11 +35,12 @@ interface TenantSummary {
 interface Props {
     tenant: TenantSummary;
     onChange?: () => void;  // refetch after successful action
+    onPurged?: () => void;  // tenant deleted — caller should navigate away (page would 404)
 }
 
 type ActionResult = { type: "success" | "error" | "warning"; text: string } | null;
 
-export default function TenantAdminActions({ tenant, onChange }: Props) {
+export default function TenantAdminActions({ tenant, onChange, onPurged }: Props) {
     const t = useTranslations("tenantAdminActions");
     const tc = useTranslations("common");
     const tImp = useTranslations("tenants");
@@ -257,7 +258,10 @@ export default function TenantAdminActions({ tenant, onChange }: Props) {
                                 files: summary.mediaFilesRemoved ?? 0,
                             }),
                         });
-                        onChange?.();
+                        // The tenant is gone. Prefer navigating away (onPurged);
+                        // fall back to the generic refetch only if no handler.
+                        if (onPurged) onPurged();
+                        else onChange?.();
                     }}
                 />
             )}

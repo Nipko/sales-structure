@@ -4023,7 +4023,10 @@
       "subscriptionStatus": "Estado de suscripción",
       "trialEnd": "Fin de prueba",
       "noUsers": "Sin usuarios en este tenant",
-      "noChannels": "Sin canales conectados"
+      "noChannels": "Sin canales conectados",
+      "notFoundTitle": "Este tenant ya no existe",
+      "notFoundHint": "Puede que lo hayas eliminado o que el enlace esté desactualizado.",
+      "backToList": "Volver a la lista"
     },
     "impersonation": {
       "banner": "Viendo como {name}",
@@ -4043,7 +4046,8 @@
         "onboarding": "Acompañamiento de onboarding",
         "other": "Otro (especificar)"
       }
-    }
+    },
+    "purgedToast": "{name} fue eliminado definitivamente"
   },
   "onboarding": {
     "step1Title": "Tu empresa",

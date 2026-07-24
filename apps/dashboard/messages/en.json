@@ -4023,7 +4023,10 @@
       "subscriptionStatus": "Subscription status",
       "trialEnd": "Trial end",
       "noUsers": "No users in this tenant",
-      "noChannels": "No channels connected"
+      "noChannels": "No channels connected",
+      "notFoundTitle": "This tenant no longer exists",
+      "notFoundHint": "You may have deleted it, or the link is out of date.",
+      "backToList": "Back to the list"
     },
     "impersonation": {
       "banner": "Viewing as {name}",
@@ -4043,7 +4046,8 @@
         "onboarding": "Onboarding assistance",
         "other": "Other (specify)"
       }
-    }
+    },
+    "purgedToast": "{name} was permanently deleted"
   },
   "onboarding": {
     "step1Title": "Your company",

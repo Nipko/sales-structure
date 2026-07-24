@@ -103,6 +103,18 @@ export default function TenantsPage() {
     Promise.all([loadTenants(), loadPlatformData()]).finally(() => setLoading(false));
   }, [loadTenants, loadPlatformData]);
 
+  // Surface the confirmation when we arrive here right after purging a tenant
+  // from its (now-deleted) detail page.
+  useEffect(() => {
+    try {
+      const purged = sessionStorage.getItem("tenantPurged");
+      if (purged) {
+        sessionStorage.removeItem("tenantPurged");
+        showToast(t("purgedToast", { name: purged }));
+      }
+    } catch { /* noop */ }
+  }, [showToast, t]);
+
   // Actions
   const handleCreate = async (data: { name: string; slug: string; industry: string; language: string; plan: string }) => {
     const result = await api.createTenant(data);

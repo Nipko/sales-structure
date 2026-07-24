@@ -4023,7 +4023,10 @@
       "subscriptionStatus": "Statut de l'abonnement",
       "trialEnd": "Fin de l'essai",
       "noUsers": "Aucun utilisateur dans ce tenant",
-      "noChannels": "Aucun canal connecte"
+      "noChannels": "Aucun canal connecte",
+      "notFoundTitle": "Ce tenant n'existe plus",
+      "notFoundHint": "Vous l'avez peut-être supprimé, ou le lien est obsolète.",
+      "backToList": "Retour à la liste"
     },
     "impersonation": {
       "banner": "Consultation en tant que {name}",
@@ -4043,7 +4046,8 @@
         "onboarding": "Accompagnement d'onboarding",
         "other": "Autre (préciser)"
       }
-    }
+    },
+    "purgedToast": "{name} a été supprimé définitivement"
   },
   "onboarding": {
     "step1Title": "Votre entreprise",

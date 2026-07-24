@@ -1,7 +1,22 @@
 # 🗂️ Estructura de la API — Parallext Engine
 
-> Referencia rápida de todos los módulos y endpoints del backend.
-> Actualizado: Mayo 27, 2026
+> Referencia rápida de los módulos y endpoints del backend.
+> Actualizado: Julio 23, 2026
+
+> **⚠️ Prefijo global obligatorio.** Toda ruta del API (puerto 3000) lleva el prefijo
+> `api/v1` — se aplica en `main.ts` (`app.setGlobalPrefix('api/v1')`, sin `exclude`).
+> En este documento muchas secciones muestran la ruta "pelada" (`/auth/login`, `/media/...`,
+> `/appointments/...`); la ruta real siempre es `/api/v1/<esa ruta>` (ej. `/api/v1/auth/login`).
+> Base pública: `https://api.parallly-chat.cloud/api/v1`. El servicio WhatsApp (puerto 3002)
+> también usa `api/v1` bajo `https://wa.parallly-chat.cloud/api/v1`.
+
+> **Cobertura.** El API tiene **83 módulos** en `apps/api/src/modules`; este documento detalla
+> los ~27 más usados. Muchos módulos verticales (`restaurants`, `gyms`, `pets`, `education`,
+> `insurance`, `tours`, `photography`, `home-services`, `procedures`, `treatment-plans`,
+> `recall`, `policies`, `intake`, `faqs`, `reviews`, `attribution`, `crm-b2b`, `mcp`,
+> `vertical-integrations`, `vertical-analytics`, `simulation`, `quality`, `slack`, `push`,
+> `trace`, `carla`, etc.) exponen endpoints propios no listados aquí. El dashboard (Next.js,
+> puerto 3001) tiene **139 páginas** (`page.tsx`).
 
 ---
 
@@ -33,8 +48,13 @@
 | White Label | `modules/white-label/` | 4 | Branding personalizado por tenant |
 | E-commerce | `modules/ecommerce/` | 5 | Catálogo de productos, sync con proveedores |
 | Channel Manager | `modules/channel-manager/` | 8 | Listings, reservaciones, disponibilidad (turismo) |
-| Staff Scheduling | `modules/staff/` | 8 | Personal, horarios, servicios, disponibilidad |
-| Vehicle Inventory | `modules/vehicles/` | 8 | Inventario vehicular, test drives, búsqueda IA |
+| Staff Scheduling | `modules/verticals/` | 8 | Personal, horarios, servicios, disponibilidad (`staff-scheduling.controller.ts`) |
+| Vehicle Inventory | `modules/verticals/` | 8 | Inventario vehicular, test drives, búsqueda IA (`vehicle-inventory.controller.ts`) |
+| Billing | `modules/billing/` | 30+ | Suscripciones MercadoPago (ciclo mensual/anual), admin cross-tenant, checkout público, cupones, SMS checkout, webhook |
+| Fiscal DIAN | `modules/fiscal/` | 13 | Facturación electrónica Colombia vía Factus (`IFiscalInvoiceProvider`), gate collect-before-pay |
+| SMS Credits | `modules/sms-credits/` | 7 | Créditos SMS reseller (balance, ledger, paquetes, ajustes admin) |
+| Channel Management | `modules/channels/` | 18 | Multi-canal por tipo: connect/disconnect por-cuenta, OAuth IG/Messenger, Telegram, SMS |
+| Ops Center | `modules/health/` + `modules/tenants/` | 15+ | Salud plataforma (super_admin): incidentes, storage por-tenant, alert-config, banner de mantenimiento |
 | SAML/SSO | `modules/auth/saml/` | 6 | Enterprise SSO via SAML 2.0 |
 | Widget | `modules/widget/` | 10 | Web chat widget embebible + triggers |
 | Dashboard Analytics | `modules/dashboard-analytics/` | 1 | Estadísticas resolución IA |
@@ -64,17 +84,33 @@
 | POST | `/auth/me` | ✅ | any |
 
 ### Agent Console (`/api/v1/agent-console`)
+> `@Controller('agent-console')` + `AuthGuard('jwt')` + RolesGuard + TenantGuard.
 | Método | Ruta | Descripción |
 |--------|------|------------|
-| GET | `/inbox/:tenantId` | Bandeja de entrada |
-| GET | `/conversation/:tenantId/:id` | Detalle |
-| POST | `/conversation/:tenantId/:id/message` | Enviar mensaje |
-| PUT | `/conversation/:tenantId/:id/assign` | Asignar agente |
-| PUT | `/conversation/:tenantId/:id/resolve` | Resolver |
-| POST | `/conversation/:tenantId/:id/note` | Nota interna |
-| GET | `/stats/:tenantId` | Estadísticas |
-| GET | `/canned-responses/:tenantId` | Respuestas rápidas |
-| GET | `/ai-suggest/:tenantId/:id` | Sugerencia IA |
+| GET | `/inbox/:tenantId?agentId=&filter=&limit=&offset=` | Bandeja (filter: all/mine/unassigned/handoff/resolved/ai) |
+| GET | `/conversation/:tenantId/:conversationId?limit=&before=` | Detalle (paginado) |
+| GET | `/conversation/:tenantId/:conversationId/archives` | Mensajes archivados |
+| POST | `/conversation/:tenantId/:conversationId/message` | Enviar mensaje |
+| PUT | `/conversation/:tenantId/:conversationId/assign` | Asignar agente |
+| PUT | `/conversation/:tenantId/:conversationId/resolve` | Resolver |
+| PUT | `/conversation/:tenantId/:conversationId/return-to-ai` | Devolver a IA |
+| POST | `/conversation/:tenantId/:conversationId/reopen` | Reabrir |
+| POST | `/conversation/:tenantId/:conversationId/note` | Nota interna |
+| GET | `/conversation/:tenantId/:conversationId/suggest` | Sugerencia IA (era `ai-suggest`) |
+| GET | `/conversation/:tenantId/:conversationId/next-action` | Próxima mejor acción (AI coach) |
+| PUT | `/conversation/:tenantId/:conversationId/snooze` \| `/unsnooze` | Posponer / reactivar |
+| PUT | `/conversation/:tenantId/:conversationId/archive` | Archivar |
+| DELETE | `/conversation/:tenantId/:conversationId` | Eliminar conversación |
+| DELETE | `/conversation/:tenantId/:conversationId/message/:messageId` | Eliminar mensaje |
+| POST | `/conversations/:tenantId/bulk-archive` \| `/bulk-delete` | Acciones masivas |
+| GET | `/stats/:tenantId/:agentId` | Estadísticas del agente (requiere `:agentId`) |
+| GET/POST | `/canned/:tenantId` | Respuestas rápidas (era `canned-responses`) |
+| PUT | `/canned/:tenantId/:id` | Actualizar respuesta rápida |
+| GET/POST | `/macros/:tenantId` · PUT `/macros/:tenantId/:macroId` · POST `/macros/:tenantId/:macroId/execute` | Macros |
+| PUT | `/status/:userId` | Estado de disponibilidad del agente |
+| GET | `/agents/:tenantId/available` \| `/agents/:tenantId/status` | Agentes disponibles / con estado |
+| POST | `/translate/:tenantId` | Traducir texto (LLM) |
+| POST | `/scan-card/:tenantId` | Escanear tarjeta de presentación (visión) |
 
 ### Pipeline (`/api/v1/pipeline`)
 | Método | Ruta | Descripción |

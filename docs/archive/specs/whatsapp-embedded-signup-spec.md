@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Embedded Signup + coexistencia ya implementados. No refleja el estado actual del código; se conserva como referencia.
+
 # Especificación técnica — Servicio de onboarding de clientes a WhatsApp Business Cloud API con Embedded Signup
 
 ## 1. Objetivo

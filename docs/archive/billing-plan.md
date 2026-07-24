@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Snapshot abr-2026. La matriz viva de planes es apps/api/prisma/seed-billing-plans.js + tabla billing_plans; el planteo de Delaware LLC + Paddle MoR quedo descartado a favor de DIAN/Factus. No refleja el estado actual del código; se conserva como referencia.
+
 # Parallly Billing — Diagnóstico y Plan de Ejecución
 
 **Fecha de creación:** 2026-04-21

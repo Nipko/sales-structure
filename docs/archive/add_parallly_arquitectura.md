@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Superseded por docs/architecture-detail.md. No refleja el estado actual del código; se conserva como referencia.
+
 # Especificación de Arquitectura — Plataforma Multicanal Parallly 
 
 ## 1. Objetivo

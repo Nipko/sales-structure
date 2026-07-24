@@ -1,6 +1,6 @@
 # Parallly Platform — Data Dictionary
 
-> Version 7.0 | May 27, 2026
+> Version 8.0 | July 23, 2026
 > Updates: Add this document whenever DB schema changes are made.
 
 ---
@@ -9,35 +9,113 @@
 
 ```
 parallext_engine (database)
-├── public                    ← Global tables (Prisma-managed)
+├── public                    ← Global tables (33 modelos Prisma + tablas lazy raw SQL)
 ├── tenant_{slug}             ← Per-tenant tables (raw SQL, tenant-schema.sql)
 ├── tenant_{slug_2}           ← Another tenant
 └── ...
 ```
 
 **When tables are created:**
-- **Public schema**: Prisma migrations (`npx prisma migrate deploy`)
+- **Public schema (Prisma)**: Prisma migrations (`npx prisma migrate deploy`) — 33 modelos en `schema.prisma`
+- **Public schema (lazy raw SQL)**: Algunos servicios crean su tabla `public.<t>` en runtime con `CREATE TABLE IF NOT EXISTS` (no están en Prisma). Ver "Tablas public por servicio" abajo
 - **Tenant schema**: On tenant signup (`auth.service.ts:createTenantSchema`) applies `tenant-schema.sql`
 - **Existing tenants**: On deploy, `deploy.yml` applies `tenant-schema.sql` to all active tenants (IF NOT EXISTS)
 
 ---
 
-## PUBLIC SCHEMA (12 tables — Prisma-managed)
+## PUBLIC SCHEMA (33 modelos Prisma + tablas lazy por servicio)
 
-| Table | Purpose | Created by |
-|-------|---------|-----------|
-| `tenants` | Client businesses | Prisma migration |
-| `users` | Dashboard users (admins, agents) | Prisma migration |
-| `channel_accounts` | Connected WhatsApp/IG/Messenger/Telegram accounts | Prisma migration |
-| `audit_logs` | Security audit trail | Prisma migration |
-| `whatsapp_onboardings` | Embedded Signup flow state | Prisma migration |
-| `whatsapp_credentials` | Encrypted Meta tokens | Prisma migration |
-| `platform_settings` | Global key-value config | setup-fresh.sh |
-| `api_keys` | Tenant API keys for external integrations | Prisma migration |
-| `automation_templates` | Reusable automation blueprints (marketplace) | Prisma migration |
-| `email_channel_configs` | Email channel provider configuration per tenant | Prisma migration |
-| `webhook_subscriptions` | Outbound webhook delivery configuration | Prisma migration |
-| `widget_triggers` | Proactive chat widget trigger rules | Prisma migration |
+Global (cross-tenant) tables. 33 modelos gestionados por Prisma migrations (`apps/api/prisma/schema.prisma`), agrupados por dominio. `platform_settings` está modelado en Prisma pero se lee/escribe vía raw SQL. Aparte, algunos servicios crean tablas `public.*` en runtime vía raw SQL (ver la última subsección).
+
+### Core
+
+| Table | Model | Purpose |
+|-------|-------|---------|
+| `tenants` | Tenant | Client businesses (+ columnas denormalizadas de billing/onboarding) |
+| `users` | User | Dashboard users (admins, agents); 2FA, skill_tags |
+| `platform_settings` | PlatformSetting | Global key/value config (modelado en Prisma; accedido vía raw SQL) |
+| `channel_accounts` | ChannelAccount | Cuentas conectadas WA/IG/Messenger/Telegram; token por-cuenta (multi-cuenta) |
+| `audit_logs` | AuditLog | Security/impersonation audit trail (actor real bajo impersonación) |
+| `tenant_invitations` | TenantInvitation | Invitación de usuarios por email (tokens de un solo uso, 14 días) |
+| `trusted_devices` | TrustedDevice | Bypass de 2FA en navegadores recordados (30 días, hash SHA-256) |
+
+### WhatsApp / Onboarding
+
+| Table | Model | Purpose |
+|-------|-------|---------|
+| `whatsapp_onboardings` | WhatsappOnboarding | Estado del Embedded Signup v4 (new/existing/coexistence) |
+| `whatsapp_credentials` | WhatsappCredential | Tokens Meta encriptados (system_user_token, app_secret) |
+
+### API pública
+
+| Table | Model | Purpose |
+|-------|-------|---------|
+| `api_keys` | ApiKey | API keys del tenant (hash SHA-256, scopes, rate limit) |
+| `automation_templates` | AutomationTemplate | Catálogo de automatizaciones prearmadas (marketplace) |
+
+### Billing
+
+| Table | Model | Purpose |
+|-------|-------|---------|
+| `billing_plans` | BillingPlan | Catálogo de planes (5: emprendedor/starter/pro/enterprise/custom); precio USD cents + overrides locales + ciclo anual |
+| `billing_subscriptions` | BillingSubscription | Una suscripción activa por tenant (incl. downgrade programado pendingPlan) |
+| `billing_events` | BillingEvent | Log append-only + idempotencia de webhooks — UNIQUE(provider, provider_event_id) |
+| `billing_payments` | BillingPayment | Historial de cargos (amountCents, currency, provider ref) |
+| `billing_coupons` | BillingCoupon | Códigos promo (percent_off / amount_off / free_months) |
+| `billing_coupon_redemptions` | BillingCouponRedemption | Una fila por tenant×cupón (anti-reuso) |
+
+### Fiscal (DIAN Colombia)
+
+| Table | Model | Purpose |
+|-------|-------|---------|
+| `fiscal_invoices` | FiscalInvoice | Ciclo de factura electrónica DIAN (CUFE/CUDE, XML/PDF/QR), desacoplado del PSP; provider Factus. Snapshot inmutable del adquiriente |
+
+### SMS Credits (reseller monetizado)
+
+| Table | Model | Purpose |
+|-------|-------|---------|
+| `sms_credit_balances` | SmsCreditBalance | Balance prepago por tenant (1 crédito = 1 segmento Twilio) |
+| `sms_credit_ledger` | SmsCreditLedger | Movimientos append-only (+purchase / -consumption / ±adjustment / +refund) |
+| `sms_package_orders` | SmsPackageOrder | Compra de paquete de créditos (pago único MercadoPago) |
+
+### Financials & Ops Center
+
+| Table | Model | Purpose |
+|-------|-------|---------|
+| `financial_snapshots` | FinancialSnapshot | Métricas SaaS mensuales de plataforma (MRR movements, costos) |
+| `tenant_financial_snapshots` | TenantFinancialSnapshot | P&L mensual por tenant (revenue, LLM cost, mensajes) |
+| `storage_snapshots` | StorageSnapshot | Snapshot diario de disco (db_bytes/media_bytes, proyección de llenado) |
+| `platform_incidents` | PlatformIncident | Alertas persistentes del Ops Center (disk/storage/backup) |
+| `infra_costs` | InfraCost | Costos de infraestructura por mes/categoría |
+| `exchange_rates` | ExchangeRate | Tipos de cambio (rateDate, from/to currency) |
+
+### Growth (Feature Requests)
+
+| Table | Model | Purpose |
+|-------|-------|---------|
+| `feature_requests` | FeatureRequest | Board global de features (embedding vector para dedupe) |
+| `feature_request_votes` | FeatureRequestVote | Un voto por usuario×request |
+| `feature_request_comments` | FeatureRequestComment | Comentarios (isAdminReply) |
+| `feature_request_subscribers` | FeatureRequestSubscriber | Suscriptores a cambios de estado |
+
+### Integraciones / Plataforma
+
+| Table | Model | Purpose |
+|-------|-------|---------|
+| `crm_connections` | CrmConnection | OAuth a CRM externo por (tenant, provider); tokens encriptados AES-256-GCM |
+| `system_updates` | SystemUpdate | Changelogs/anuncios de plataforma (multi-idioma JSONB) |
+
+### Tablas public por servicio (raw SQL, NO Prisma)
+
+Creadas lazy por el servicio dueño con `CREATE TABLE IF NOT EXISTS public.<t>` (cache Redis 24h). NO existen en `schema.prisma` ni en migraciones — no marcar como "Prisma migration":
+
+| Table | Creado por | Purpose |
+|-------|-----------|---------|
+| `email_channel_configs` | `channels/email/email-channel.service.ts` | Config del canal Email por tenant (UNIQUE(tenant_id)) |
+| `webhook_subscriptions` | `public-api/webhook-subscription.service.ts` | Suscripciones de webhooks salientes (event singular, secret HMAC) |
+| `widget_configs` | `widget/widget.service.ts` | Config del Web Chat Widget (widget_id, colores, dominios permitidos) |
+| `widget_triggers` | `widget/widget.service.ts` + `widget/widget-triggers.service.ts` | Reglas de disparo proactivo del widget |
+| `widget_sessions` | `widget/widget.service.ts` | Sesiones de visitante del widget (visitor_id, conversation_id) |
 
 ### tenants
 | Column | Type | Description |
@@ -46,11 +124,23 @@ parallext_engine (database)
 | name | TEXT | Company name |
 | slug | TEXT UNIQUE | URL-safe identifier |
 | industry | TEXT | Business sector |
-| language | TEXT | Default language (es-CO, en-US, etc.) |
+| language | TEXT | Default language (default es-CO) |
 | schema_name | TEXT UNIQUE | PostgreSQL schema name (tenant_{slug}) |
-| plan | TEXT | Subscription plan (starter/pro/enterprise/custom) |
+| plan | TEXT | Subscription plan (emprendedor/starter/pro/enterprise/custom), default starter |
 | is_active | BOOLEAN | |
 | settings | JSONB | Config overrides |
+| billing_email, billing_country | TEXT? | Denormalized billing hot-path fields |
+| subscription_status | TEXT? | pending_auth\|trialing\|active\|past_due\|cancelled\|expired |
+| trial_ends_at, current_period_end | TIMESTAMPTZ? | Denormalized from billing_subscriptions para el rate limiter |
+| payment_provider | TEXT? | mercadopago\|stripe\|mock |
+| payment_provider_customer_id | TEXT? | Provider customer ID |
+| onboarding_completed_at | TIMESTAMPTZ? | Onboarding funnel (cohort /admin/funnel) |
+| first_channel_connected_at | TIMESTAMPTZ? | TTFV: primer canal conectado |
+| first_message_at | TIMESTAMPTZ? | Primer mensaje |
+| signup_source | TEXT? | landing_page\|api\|partner\|... |
+| created_at, updated_at | TIMESTAMPTZ | |
+
+> Fuente de verdad de la suscripción: `billing_subscriptions` (relación 1:1). Las columnas de billing en `tenants` son un cache denormalizado que `BillingService` mantiene sincronizado para decidir acceso sin JOIN por request.
 
 ### users
 | Column | Type | Description |
@@ -59,13 +149,24 @@ parallext_engine (database)
 | email | TEXT UNIQUE | |
 | password | TEXT? | bcrypt 12 rounds (null for OAuth-only) |
 | first_name, last_name | TEXT | |
-| role | TEXT | super_admin, tenant_admin, tenant_supervisor, tenant_agent |
-| tenant_id | UUID FK → tenants | |
-| auth_provider | TEXT | email, google, microsoft |
-| google_id, microsoft_id | TEXT | OAuth provider IDs |
+| role | TEXT | super_admin, tenant_admin, tenant_supervisor, tenant_agent (default tenant_agent) |
+| tenant_id | UUID? FK → tenants | null para super_admin (sin tenant implícito, modo plataforma) |
+| is_active | BOOLEAN | |
+| auth_provider | TEXT | email, google, microsoft (default email) |
+| google_id, microsoft_id | TEXT? | OAuth provider IDs |
+| picture | TEXT? | Avatar URL |
 | email_verified | BOOLEAN | |
-| availability_status | TEXT | online, offline, away, dnd |
-| max_capacity | INT | Max concurrent conversations |
+| email_verify_code, email_verify_expires | TEXT?/TIMESTAMPTZ? | Verificación de email |
+| two_factor_enabled | BOOLEAN | 2FA activo |
+| two_factor_secret | TEXT? | Secreto TOTP (encriptado) |
+| two_factor_method | TEXT? | totp \| email \| sms |
+| backup_codes | TEXT[] | Códigos de respaldo 2FA |
+| onboarding_completed | BOOLEAN | |
+| phone, job_title | TEXT? | |
+| availability_status | TEXT | online, offline, away, dnd (default offline) |
+| max_capacity | INT | Max concurrent conversations (default 5) |
+| skill_tags | TEXT[] | Etiquetas para skill-based routing del handoff |
+| last_active_at, last_login_at | TIMESTAMPTZ? | |
 
 ### api_keys
 | Column | Type | Description |

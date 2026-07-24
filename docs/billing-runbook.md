@@ -1,30 +1,62 @@
 # Billing — Guía operativa
 
-Guía operativa para la facturación por suscripción de Parallly. Para el plan estratégico, decisiones de precio y justificaciones, ver [`docs/billing-plan.md`](./billing-plan.md). Para la arquitectura del código, ver [`apps/api/src/modules/billing/README.md`](../apps/api/src/modules/billing/README.md).
+> **Actualizado: jul 2026.** 5 planes (emprendedor / starter / pro / enterprise / custom). MercadoPago (Colombia) para suscripciones + pago único de créditos SMS. Factus para facturación electrónica DIAN (cross-ref abajo). La **fuente de verdad de precios/límites en runtime es la tabla `billing_plans`**, editada desde el panel super_admin (`/admin/plans`) — el seed sólo bootstrapea planes faltantes.
 
-Este documento es el **runbook**: qué pasa en cada deploy, cómo agregar un país, cómo actualizar precios, cómo recuperar de incidentes.
+Guía operativa para la facturación por suscripción de Parallly. Para el plan estratégico, decisiones de precio y justificaciones, ver [`docs/archive/billing-plan.md`](./archive/billing-plan.md) y [`docs/plan-profitability-2026-07.md`](./plan-profitability-2026-07.md). Para la puesta a punto de MercadoPago, ver [`docs/billing-mp-setup.md`](./billing-mp-setup.md). Para la arquitectura del código, ver [`apps/api/src/modules/billing/README.md`](../apps/api/src/modules/billing/README.md).
+
+Este documento es el **runbook**: qué pasa en cada deploy, cómo operar desde el panel Billing Ops, cómo agregar un país, cómo actualizar precios, cómo recuperar de incidentes.
+
+> **Vía primaria = panel, no SSH.** Casi todo lo operativo (ver suscripciones/pagos/eventos cross-tenant, refund, reconciliar, sincronizar planes a MP, editar el catálogo, comp-plans) se hace desde el panel super_admin sin tocar la VPS. Ver [Panel Billing Ops](#panel-billing-ops-super_admin--vía-primaria-sin-ssh). Los comandos SSH de las secciones 5–6 quedan como fallback.
+
+---
+
+## Panel Billing Ops (super_admin) — vía primaria (sin SSH)
+
+Controlador `apps/api/src/modules/billing/billing-admin.controller.ts` bajo `/api/v1/billing-admin` (guard `AuthGuard('jwt') + RolesGuard`, `@Roles('super_admin')`). Es la superficie de operación por defecto y reemplaza casi todos los `docker exec … psql` y los scripts por-SSH de abajo. UI en el dashboard: **`/admin/billing-ops`** (subs/pagos/eventos + refund + reconcile) y **`/admin/plans`** (editor de catálogo + sync-MP + badge sandbox/prod).
+
+**Vistas cross-tenant (read):**
+- `GET /billing-admin/subscriptions` — filtros `status`, `provider`, `plan`, `q` (nombre/slug de tenant), paginado. Reemplaza el `SELECT … FROM billing_subscriptions`.
+- `GET /billing-admin/payments` — filtros `status`, `provider`, `tenantId`, paginado.
+- `GET /billing-admin/events` — filtros `eventType`, `provider`, `tenantId`, paginado (omite el payload crudo, que puede ser grande).
+
+**Acciones:**
+- `POST /billing-admin/payments/:paymentId/refund` — refund inline (parcial vía `amountCents` o total) con `reason`.
+- `POST /billing-admin/reconcile` — reconciliación on-demand (`scope: 'full' | 'past_due'`) sin esperar los crons. Útil justo tras un cutover para confirmar que DB y MP coinciden.
+- `POST /billing-admin/tenants/:tenantId/reconcile` — reconciliar la suscripción de un solo tenant contra el provider (`BillingService.syncFromProvider`).
+- `POST /billing-admin/plans/:slug/sync-mp` — registra/recrea el `preapproval_plan` en MP para `{ country, fx?, force?, cycle: 'month' | 'year' }` desde el panel (equivale a `sync-mp-plans.js`, sin SSH). `custom` no es sincronizable (sales-led).
+- `PUT /billing-admin/plans/:slug` — editor del catálogo (precio, trial, `maxAgents`, `features`, `priceLocalOverrides`). **Valida `features` contra `plan-features.registry.ts`** (merge, no reemplazo → un payload parcial no borra claves omitidas) e invalida el cache de plan de los tenants afectados.
+- `POST /billing-admin/tenants/:tenantId/comp-plan` — regalo temporal de plan (`planSlug`, `durationDays`, `reason` obligatorio).
+- `PUT /billing-admin/tenants/:tenantId/plan` — cambio de plan permanente (entitlement override; NO toca la suscripción de pago).
+- `GET /billing-admin/provider-status` — entorno MP (`sandbox`/`production`), `configured`, `webhookConfigured`. Alimenta el badge sandbox/prod en `/admin/plans`.
+- `GET /billing-admin/plans` / `GET /billing-admin/feature-registry` — catálogo (con `tenantCount` por plan) + registry de features conocidas.
+
+Todas las mutaciones escriben en `audit_log` con el **actor real** (`audit-actor.util.ts`): en modo impersonación queda registrado el super_admin real, no el tenant.
 
 ---
 
 ## 1. Lo que hace el deploy automáticamente
 
-Cada push a `main` dispara `.github/workflows/deploy.yml`. Después de compilar imágenes y correr migraciones, el deploy ejecuta tres pasos específicos de billing en este orden:
+Cada push a `main` dispara `.github/workflows/deploy.yml`. Después de compilar imágenes y correr migraciones, el deploy ejecuta tres pasos específicos de billing en este orden. **Comportamiento ante fallo**: `prisma migrate deploy` y el seed **abortan el deploy** si fallan (dejan corriendo los contenedores viejos, que funcionan); sólo el sync a MercadoPago es best-effort (`|| true`). Antes de migrar, el deploy toma un **pg_dump completo en `/backup/pre-deploy/`** (dentro del contenedor `parallext-postgres`) como punto de rollback — ver §6.
 
 ### 1.1 Migración de schema Prisma
 ```bash
 docker compose run --rm api npx prisma migrate deploy --schema=prisma/schema.prisma
 ```
-Aplica cualquier `prisma/migrations/*/migration.sql` nuevo al schema global `public`. Idempotente — migraciones ya aplicadas se saltean.
+Aplica cualquier `prisma/migrations/*/migration.sql` nuevo al schema global `public`. Idempotente — migraciones ya aplicadas se saltean. En el pipeline corre **fail-fast** (sin `|| true`): un fallo aborta el deploy sin recrear contenedores.
 
-El schema de billing viene en la migración `20260423000000_add_billing`:
-- 7 columnas nuevas en `tenants` (billingEmail, billingCountry, subscriptionStatus, trialEndsAt, currentPeriodEnd, paymentProvider, paymentProviderCustomerId)
-- 4 tablas nuevas: `billing_plans`, `billing_subscriptions`, `billing_events`, `billing_payments`
+El schema de billing arrancó en la migración `20260423000000_add_billing`:
+- columnas nuevas en `tenants` (billingEmail, billingCountry, subscriptionStatus, trialEndsAt, currentPeriodEnd, paymentProvider, paymentProviderCustomerId)
+- 4 tablas base: `billing_plans`, `billing_subscriptions`, `billing_events`, `billing_payments`
+
+Migraciones posteriores extendieron el modelo (p. ej. `20260507120000_add_billing_coupons` → cupones; y columnas de ciclo anual / cambio de plan pendiente como `pendingPlanId`, `pendingPlanChangeAt`, `cancelAtPeriodEnd` en `billing_subscriptions`). El schema vivo está en `apps/api/prisma/schema.prisma`.
 
 ### 1.2 Seed de billing_plans
 ```bash
 docker compose run --rm api node prisma/seed-billing-plans.js
 ```
-Upsertea los 4 planes (`starter`, `pro`, `enterprise`, `custom`) en `billing_plans`. Los precios están en USD cents — son la fuente de verdad. Correrlo en cada deploy es seguro; actualiza nombre/precio/límites si cambian en el archivo fuente, sino es no-op.
+Bootstrapea los **5 planes** (`emprendedor` USD $21, `starter` $49, `pro` $129, `enterprise` $349, `custom` a cotizar) en `billing_plans`. Corre **fail-fast** en el pipeline (sin `|| true`): un fallo indica un problema real de DB y aborta el deploy.
+
+**El seed es CREATE-ONLY por default** (no upsert): en un DB fresco crea los planes faltantes, pero **si un plan ya existe lo saltea y NO lo sobreescribe**. La razón: la fuente de verdad en runtime es la tabla `billing_plans` editada desde el panel (`PUT /billing-admin/plans/:slug`), así que un seed en cada deploy no debe pisar las ediciones del panel. Para restaurar un plan a los valores de fábrica del archivo (p. ej. tras una mala edición manual) hay que pasar **`--force`** — ese path sí sobreescribe, preservando sólo los `mpPlanId` ya sincronizados vía el merge de overrides. Los precios en el archivo están en USD cents; los precios locales (COP, mensual y anual) viven en `priceLocalOverrides`.
 
 ### 1.3 Sync de planes a MercadoPago (Colombia)
 ```bash

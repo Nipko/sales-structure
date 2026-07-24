@@ -1,6 +1,138 @@
 # 📋 Changelog — Parallext Engine
 
 > Registro de todos los cambios significativos del proyecto.
+> **Última actualización: 2026-07-23 · Versión actual: v6.7.0**
+
+---
+
+## v6.7.0 — Jul 22-23, 2026 (Gobernanza de super_admin + backup offsite + hardening del deploy)
+
+> Endurecimiento de plataforma: se cierra el modelo de acceso del super_admin, se blinda el pipeline de deploy y se añade respaldo offsite verificable. Ver `docs/superadmin-governance.md` y `docs/backup-restore-runbook.md`.
+
+### Gobernanza de super_admin e impersonación auditada (`84f4a509`, `9e95aebd`, `9e2ba98c`)
+- **Sin tenant implícito**: el super_admin ya no "es" un tenant al entrar; opera en modo plataforma. `roles.ts` deniega por defecto (cada página nueva necesita su regla) y las rutas de tenant sin regla quedan cerradas.
+- **`impersonate(superAdminId, tenantId, { reason, ticketId })`**: motivo obligatorio, tokens de vida corta (1h), sesión emparejada vía `impersonationSid` para distinguir sesiones reales de impersonadas.
+- **Actor real en auditoría**: las escrituras hechas durante una impersonación registran al super_admin real (`impersonatedBy`, `impersonatedUserId`, `impersonatedEmail`), nunca al tenant_admin suplantado.
+- Fix tenants (super admin): acciones visibles (sticky + fila clickeable), `status.expired` i18n, límite de listado 20→500.
+
+### Backup offsite + restore de facturas DIAN (`aaa89512`, `395d7849`, `436fa730`, `f95e0719`)
+- **pg_dump/pg_restore DENTRO del contenedor `parallext-postgres`** (antes fallaba por cliente ausente en el host); `.env` leído sin `source` (valores sin comillas rompían el shell).
+- **Sincronización offsite S3-compatible vía rclone** (AWS S3 / Cloudflare R2 / Backblaze B2), configurable por `.env` (`OFFSITE_BUCKET/PROVIDER/REGION/ENDPOINT/ACCESS_KEY/SECRET_KEY`); vacío = solo local.
+- **Volumen persistente + backup de las facturas fiscales DIAN** (`fiscal-invoices.tar.gz`) por retención legal.
+- **Heartbeat `backup:last_success`** en Redis: `PlatformMonitorService` levanta el incidente `backup:stale` cuando la edad supera `backupStaleHours` (default **26h**).
+- **Fix (2026-07-23)**: los scripts de infra (`infra/backup/*.sh`, `infra/scripts/*.sh`) se marcan ejecutables en git (**`100755`**) para que el checkout del VPS los pueda correr.
+
+### Hardening del deploy (`3505f32b`, `f112d423`, `38a6a984`)
+- **SSH key-only auth**: se retira la password del deploy; claves de deploy en `.gitignore` (`deploy_key`, `*.pem`, `id_ed25519/rsa`).
+- **Throttling por IP real** (`CF-Connecting-IP` detrás de Cloudflare) + más endpoints protegidos.
+- **Backup pre-migración + fail-fast** en migrate/seed + alertas de webhook de pago; gate de pre-conexión SSH con backoff antes del deploy.
+
+---
+
+## v6.6.0 — Jul 20-22, 2026 (SMS: notificación transaccional Fases 1-3 + monetización reseller F0-F3)
+
+> Dos pistas de SMS: **transaccional** (plataforma y tenant→agente) y **monetizada** (tenant→cliente por créditos). El canal SMS **conversacional** quedó **descartado**. Ver `docs/sms-monetization-packages-2026-07.md` y `docs/sms-notifications-implementation-plan-2026-07.md`.
+
+### SMS transaccional — Fases 1-3 (`7e818017`)
+- **Nuevo módulo `sms-notifications/`**: alertas a super admin (Fase 1), notificación de handoff al agente (Fase 2), OTP del Customer Portal + 2FA por SMS del dashboard (Fase 3).
+- **WhatsApp-first + SMS fallback**; operador **Twilio + Verify**; planos plataforma vs tenant, gating por plan + cuotas.
+
+### SMS monetizado por paquetes — modelo reseller F0-F3 (`192d074a`)
+- **Nuevo módulo `sms-credits/`**: los tenants compran créditos (1 crédito = 1 segmento) para notificar **one-way** a sus clientes vía el Twilio de la plataforma.
+- **Balance + ledger atómico**, envío medido (broadcast + cola), compra por **MercadoPago (pago único)** vía `billing/sms-checkout`; UI tenant + super admin (tiers editables).
+- **Kill switch maestro** del modelo reseller (`SmsCreditsService.isEnabled()`), **apagado por defecto**: mientras esté off no se envía ni se cobra nada (`11df2352`).
+
+### Firma del webhook Twilio (`5c7da544`)
+- **Validación HMAC-SHA1 de `X-Twilio-Signature`** antes de cualquier efecto secundario (antes se aceptaba el webhook SMS sin verificar).
+
+---
+
+## v6.5.0 — Jul 21, 2026 (Billing: planes anuales + Billing Ops cross-tenant + Stripe US LLC + landing /precios)
+
+> Los 5 planes — **Emprendedor USD $21 · Starter $49 · Pro $129 · Enterprise $349 · Custom** (fuente: `apps/api/prisma/seed-billing-plans.js` + tabla `billing_plans`) — pasan a soportar ciclo **mensual/anual** (~15% de descuento anual). Ver `docs/billing-annual-cycle.md`.
+
+### Ciclo mensual/anual en MercadoPago (`bec1e560`, `bb2b0c0f`)
+- **Backend**: `billing.service` resuelve `providerPlanId` por (plan × país × ciclo); `BillingCycle` (year/month) persistido en signup para que la conversión trial→pago vincule el plan correcto.
+- **Frontend**: toggle mensual/anual en checkout + panel admin; `priceLocalOverrides` con `annual.amountCents` por moneda (COP).
+
+### Billing Ops cross-tenant (`445ce9a5`, `7c3711ef`, `f5c34de6`)
+- **`billing-admin.controller`** + página `/admin/billing-ops`: vistas cross-tenant de suscripciones/pagos/eventos, **refund inline**, **reconciliación on-demand** (`reconciliation.processor`), downgrade que sincroniza con MercadoPago, sync de planes con MP desde el panel + badge de entorno.
+- **Auditoría** en cambios de precio/plan del catálogo; seed de planes **create-only** para no pisar ediciones hechas desde el panel; **editor de planes registry-driven** con overrides completos.
+
+### Stripe adapter (US LLC) (`billing/adapters/stripe.adapter.ts`)
+- **Adapter Stripe desacoplado** (`payment-provider.interface`) para la vía **US LLC**, en paralelo al de MercadoPago (CO).
+
+### Landing /precios data-driven (`f57f5f35`, `6d4805c9`)
+- **`/precios`** de la landing se alimenta de `billing_plans` reales (antes hardcodeada); precios COP de Starter/Pro actualizados + fix del toggle mensual/anual.
+
+---
+
+## v6.4.0 — Jul 20, 2026 (Multi-canal por tipo de canal — N conexiones del mismo tipo)
+
+> Un tenant puede conectar **varias cuentas del mismo tipo** (2 números WhatsApp, 2 IG…), gateado por **plan × canal**. Ver `docs/multi-channel-per-type-implementation-2026-07.md`.
+
+### Multi-cuenta por tipo (`268966aa`, `e589a705`, `0107d1cf`)
+- **Gating**: `features.maxChannelAccounts` (default **1**) + override por tenant.
+- **Tokens por-cuenta** vía `channel_accounts.access_token` (**sin migración global**).
+- **Un agente por conexión**: `agent_personas.channel_bindings` mapea persona → cuenta; **anti-conflación** de conversaciones entre cuentas.
+- **UI**: editor adaptativo + overview con contador/límite + **disconnect por-cuenta** que des-suscribe al proveedor (`39391597`).
+- **Broadcast**: selector de número de origen en campañas (`3528de0f`); **WhatsApp**: selector de número/WABA al crear plantillas (`52c65005`).
+
+---
+
+## v6.3.0 — Jun 14 – Jul 10, 2026 (Facturación electrónica DIAN Colombia vía Factus + gate fiscal)
+
+> **T1.9 «factura fiscal» dejó de estar aplazado.** Se implementó como **factura electrónica de venta (FEV) colombiana vía DIAN**, con **Factus** como proveedor tecnológico (PT) — NO CFDI (MX) ni NF-e (BR). Ver `docs/facturacion-electronica-colombia-2026-06.md`.
+
+### Módulo fiscal (`f6c9904a`, `43b1691c`)
+- **Nuevo módulo `fiscal/`** con capa `IFiscalInvoiceProvider` desacoplada del PSP; adapter **Factus** (`factus.adapter.ts`) + adapter remoto US (`us-remote.adapter.ts`).
+- **Modelo `FiscalInvoice`** (`fiscal_invoices`), migración `20260614000000_add_fiscal_invoices`, cola BullMQ + processor; **rollout por fases** (no emite hasta que el proveedor esté configurado).
+- **Payload alineado a la doc oficial de Factus**: códigos DIAN (`identification_document_code`, `tribute_code` 01/ZZ), IVA excluido, nota crédito, **QR construido desde el CUFE**, auto-recuperación en **409** (factura pendiente por enviar a la DIAN).
+- **Representación gráfica propia** (marca azul Parallly `#3897f0`): valor en letras, prefijo/rango, TRM, adquirente real; envío por correo (Factus con `send_email=false`) con **PDF + XML firmado en .zip**.
+
+### Gate de datos fiscales (`1767c6f7`, `a01321bf`, `23596e92`)
+- **Colecta antes de cobrar** (patrón Stripe/MoR): exige NIT/cédula del tenant CO antes de un flujo con cobro; **el trial gratis no se bloquea**.
+- **Toggle super-admin** `fiscal.gate_enabled` (**apagado por defecto**), modal de checkout "completa tus datos fiscales" (`FiscalGateModal`), **`FiscalBanner`** montado en el admin layout (`c615596a`).
+- **Opt-in "consumidor final"** (DIAN `222222222222`) como fallback; selector de municipio (DANE); script de backfill de tenants CO sin datos fiscales.
+
+### Super-admin fiscal (`0e113e1b`, `2399cfa2`, `93fb2670`)
+- Módulo super-admin: preview de PDF sin Factus, emitir factura de prueba real, descarga solo del **PDF propio** (no el de Factus), acción **"Re-emitir (forzar)"** para facturas sin CUFE, archivado por retención.
+
+---
+
+## v6.2.0 — Jun 23-25, 2026 (Ops Center / Centro de Operaciones + purga de tenant + bootstrap canónico)
+
+### Ops Center — Centro de Operaciones (`3d2a269f`, `0a00658b`, `9d49ddab`, `7c7a0663`)
+- **Hub super_admin `/admin/ops`** (`health/platform-monitor.service`, `incident.service`, `platform-storage.service`, `sms-alert.service`): centro de incidentes + señales de riesgo cross-tenant.
+- **Señales**: saturación de conexiones PG, saturación de PgBouncer (`SHOW POOLS`), profundidad de colas BullMQ, breach de SLA cross-tenant, tasa de errores de la app (Sentry), `backup:stale`, canal Telegram/SMS de alertas.
+- **Umbrales de alerta configurables por UI** (`alert-config.service`); badge de incidentes en el sidebar; botón **"Ejecutar chequeos ahora"**.
+- **Monitoreo de almacenamiento por tenant** + enforcement de cuota + alerta temprana (snapshots, proyección, tendencia).
+
+### Purga de tenant limpia (`8a69c8cc`)
+- **`purgeTenant`**: cancela la suscripción en el PSP, revoca OAuth y cierra huérfanos; **retiene lo fiscal (DIAN)** por retención legal y **nunca revoca** el `system_user_token` compartido de WhatsApp.
+
+### Bootstrap canónico (`4e931798`)
+- Scripts canónicos completos y autosuficientes (schema global, plantilla de tenant, deploy, env): una DB fresca o un tenant nuevo salen **completos**; no re-añadir SQL crudo a `deploy.yml` (usar migraciones). Gemini env es `GOOGLE_GENERATIVE_AI_API_KEY`.
+
+---
+
+## v6.1.0 — Jun 11-19, 2026 (App móvil + Onboarding guiado + WhatsApp Flows + i18n 4-idiomas + feature-gating por plan)
+
+### App móvil — Parallly Mobile (Expo / React Native)
+- **Nueva app `apps/mobile`** (`@parallext/mobile`, Expo SDK 54): inbox + CRM + agenda + analíticas; outbound (WhatsApp, notas de voz, plantillas con variables), traducción inline, escáner de tarjeta de visita, tiempo real vía socket con refresh de token; tipos compartidos vía `@parallext/shared`.
+- **Push nativo Expo** (nuevo módulo `push/` en API, `exp.host` — FCM/APNS sin VAPID); build **EAS** + Sentry source maps + readiness Play Store.
+
+### Onboarding guiado (`a89068b2`, `0e49947e`, `36df08f6`)
+- **Ruta crítica trial-first** + checklist en 3 niveles; pre-check de prerrequisitos WhatsApp antes del ESU; **tour guiado interactivo (Onborda)** vertical-aware; CTA "probá tu agente" tras conectar WhatsApp; evento TTFV `activation_first_channel_connected`; empty-state guiado en el dashboard. Ver `docs/onboarding-redesign-2026-q2.md`.
+
+### WhatsApp Flows en booking (`3401bcdb`, `3af3e6e7`, `2b7fe7f1`)
+- **Emitir WhatsApp Flow** al inicio del booking + fast-forward `nfm_reply`→confirm con fallback a texto; toggle + Flow ID en config de citas; parseo `nfm_reply` en el webhook (coexistencia prod).
+
+### Feature-gating por plan + circuit breaker de costo LLM (`31817e36`, `7daa5a5f`)
+- **Blindaje del feature-gating por plan** + validación de planes + **circuit breaker de costo LLM** (techo de gasto mensual → degrada a modelos más baratos; el agente sigue respondiendo).
+
+### i18n — cierre 4 idiomas (`94896820`, `e70006d2`, `340ca75a`, `d8534b32`)
+- **Barrido completo de hardcode** de cara al usuario (dashboard + landing + backend + emails) en **es/en/pt/fr**; email-templates con infra multi-idioma (columna `language` + slug único por idioma + selección con fallback); cobertura mundial de zonas horarias (fuente única en `@parallext/shared`); routing LLM por valor del turno + presupuesto de historial por tokens.
 
 ---
 
@@ -48,7 +180,9 @@
 - **Nuevo módulo `managed/`** (super-admin): marca tenants como gestionados con **garantía de % de resolución** y trackea lo real vs. objetivo (apalanca T0.1 + T1.8). Página `/admin/managed`.
 
 ### Aplazados (no trabajados)
-T0.3 payment-at-booking · T1.9 factura fiscal (CFDI/NF-e) · T2.15 SaaS Mode/rebilling · T3.18 Voice AI.
+T0.3 payment-at-booking · T2.15 SaaS Mode/rebilling · T3.18 Voice AI.
+
+> **Actualización jun-jul 2026:** T1.9 «factura fiscal» dejó de estar aplazado — se implementó como **factura electrónica de venta (FEV) colombiana vía DIAN/Factus**, NO como CFDI (MX) ni NF-e (BR). Ver **v6.3.0** (Facturación electrónica DIAN vía Factus).
 
 ---
 

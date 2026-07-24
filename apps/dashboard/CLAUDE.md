@@ -1,7 +1,9 @@
 # Dashboard — Claude Code Context
 
+_Última actualización: jul-2026_
+
 ## Overview
-Next.js 16 admin panel. Port 3001. React 19. App Router. Dark theme with inline CSS.
+Next.js 16 admin panel. Port 3001. React 19. App Router. Tailwind + shadcn/ui + CSS variables, temas dark/light/system vía next-themes. i18n next-intl (es/en/pt/fr). 126 páginas admin (139 `page.tsx` en total). Nota: la app mobile React Native/Expo (`@parallext/mobile`) es un proyecto aparte que sale por EAS, no por el deploy web.
 
 ## Structure
 ```
@@ -15,9 +17,14 @@ src/
     forgot-password/page.tsx — Password reset (OTP + new password)
     setup-password/page.tsx  — Google OAuth password setup
     verify-email/page.tsx    — 6-digit OTP verification  
-    onboarding/page.tsx      — 4-step company wizard
+    onboarding/page.tsx      — Wizard trial-first (3 pasos: empresa → audiencia → objetivos), vertical-aware (18 industrias + sub-tipos). Arranca trial plan "emprendedor" sin tarjeta; el upgrade vive en Configuración → Billing
+    accept-invite/page.tsx   — Aceptar invitación de usuario
+    auth/                    — Callbacks OAuth (Google, etc.)
+    book/                    — Reserva pública (booking sin auth)
+    offline/page.tsx         — Fallback PWA offline
     admin/
-      layout.tsx        — Authenticated layout with Sidebar
+      layout.tsx        — Authenticated layout con AppSidebar + banners (Fiscal, Trial, Maintenance) + session/timeout modals
+      setup-wizard/     — Onboarding guiado post-registro: conectar primer canal + probar agente (AgentTestChat) + canales secundarios (SecondaryChannels) + ToolsTour
       page.tsx          — Dashboard overview
       inbox/            — Agent console (WhatsApp-style chat + bell notifications)
       contacts/         — CRM contacts + lead detail (edit mode + custom fields + score breakdown)
@@ -30,8 +37,7 @@ src/
       agent/[agentId]/    — Agent editor (hub card grid + channel assignment + sticky save bar)
       agent/_components/  — 9 extracted components (ConfigCard, IdentitySection, etc.)
       agent-analytics/  — Reports (4 tabs: Overview/Agents/Channels/CSAT)
-      ai/               — LLM router config
-      broadcast/        — Multi-channel campaign manager (WA/Email/SMS)
+      broadcast/        — Campaign manager multi-canal (WA/Email + SMS one-way por créditos). Selector de cuenta/número emisor (`senderAccountId` → `channelAccountId`) cuando el tenant tiene >1 conexión WhatsApp
       report-builder/   — Custom report builder (16 metrics, 4 chart types, save/edit/duplicate/favorite)
       channels/         — Channel overview (WhatsApp/IG/Messenger + agent assignment status)
       channels/whatsapp/ — WhatsApp Embedded Signup
@@ -43,7 +49,7 @@ src/
       channels/sms/      — SMS/Twilio setup
       identity/         — Merge suggestions (approve/reject)
       knowledge/        — RAG document management
-      analytics/        — Platform analytics
+      analytics-v2/     — Analytics overview del tenant (reemplaza al antiguo `analytics/`)
       crm-analytics/    — CRM analytics (funnel, velocity, win/loss, leaderboard)
       compliance/       — Privacy & consent (5 tabs: legal texts, consents, opt-outs, deletions, audit). Legal texts: named, typed (7 types), multi-channel chips, multi-agent chips
       inventory/        — Stock management
@@ -51,7 +57,7 @@ src/
       landings/         — Landing page builder
       catalog/courses/  — Course management
       catalog/campaigns/ — Campaign management
-      settings/         — Platform config
+      settings/         — Hub de configuración. Secciones registradas en `settings/_settings-config.ts` (fuente de verdad). ~29 subpáginas
       settings/custom-attributes/ — Dynamic field definitions
       settings/macros/  — Saved action sequences
       settings/prechat/ — Pre-chat form builder
@@ -59,30 +65,63 @@ src/
       settings/email-templates/     — Template editor with preview
       settings/change-password/     — Change password form
       settings/pipeline/            — Pipeline stages customization (drag-to-reorder)
+      settings/fiscal/              — Datos fiscales del tenant (NIT/cédula, DIAN) — feeds el gate collect-before-pay
+      settings/ai-config/, settings/ai-providers/ — Config de agente/LLM y proveedores (reemplaza al antiguo `ai/`)
+      settings/integrations/        — crm, slack, webhooks, mcp, reviews, vertical (Toast/Mindbody/Cliniko), web-chat (widget + triggers), sms-notifications
+      settings/billing/             — Tenant billing (plan info, ciclo mensual/anual, countdown, upgrade/downgrade, payment history)
+      settings/security/            — 2FA + SSO (SAML IdP settings, force-SSO toggle, SP metadata download)
       appointments/          — Calendar, list, availability config
       users/            — User management
       tenants/          — Tenant management (6 tabs: Overview/Onboarding/Offboarding/Billing/Usage/Platform)
-      tenants/[tenantId]/ — Tenant detail (4 tabs: Info/Users/Channels/Billing + impersonation)
+      tenants/[tenantId]/ — Tenant detail (Info/Users/Channels/Billing + impersonación con motivo)
       financials/       — SaaS financial metrics (5 tabs: Overview/Revenue/Customers/Costs/Settings)
-      settings/billing/ — Tenant billing (plan info, countdown, actions, payment history)
-      settings/security/ — 2FA + SSO configuration (SAML IdP settings, force-SSO toggle, SP metadata download)
       automation/_components/FlowBuilder.tsx — Visual automation builder using @xyflow/react (React Flow canvas with trigger, condition, action, delay nodes)
-      ... (65+ pages total)
+
+      # ── Platform mode (super_admin, sin tenant implícito) ──
+      ops/, ops/alerts/  — Ops Center: platform-monitor, salud de contenedores/backup, alertas
+      incidents/         — Incidentes de plataforma
+      health/            — Platform health (uptime, dependencias)
+      storage/           — Per-tenant storage monitoring + quota enforcement
+      plans/             — Editor de planes/tiers (billing_plans) cross-tenant
+      billing-ops/       — Billing Ops: subs/pagos/eventos cross-tenant, refund inline, sync + reconciliación con MercadoPago, auditoría de precios
+      sms-packages/      — SMS reseller: tiers de créditos editables, kill-switch, uso
+      fiscal/            — Fiscal DIAN cross-tenant (FiscalInvoice, reintentos Factus)
+      managed/           — Done-for-you tier: tracking de garantías (target vs verified)
+      usage/             — Platform usage cross-tenant
+      audit/             — Platform audit log
+      llm-stats/         — LLM router health/uso
+      webhooks/          — Webhook tap (debug de webhooks entrantes)
+      compliance-admin/  — Compliance a nivel plataforma
+      funnel/            — Funnel de adquisición de tenants
+      vertical-analytics/ — Analytics por vertical/industria (plataforma)
+      coupons/           — Cupones de descuento
+      feature-requests/  — Feature requests board (tenant + platform)
+      carla/             — Copiloto interno super_admin
+      ... (126 páginas admin; 139 `page.tsx` en total)
   components/
     layout/TopBar.tsx       — Breadcrumbs, theme toggle, notification bell (7 categories), tenant selector, user menu
-    Sidebar.tsx         — Navigation (role-based, 16 items)
+    layout/AppSidebar.tsx — Navegación seccionada + capability-based. `tenantSections` (operation/growth/management/config) vs `platformSections` (super_admin platform mode). ~60 hrefs; items filtrados por capability y por vertical del tenant; accordions
     Providers.tsx       — Client providers wrapper
-    ImpersonationBanner.tsx — Amber banner shown during super_admin impersonation (localStorage-based state)
+    ImpersonationBanner.tsx — Amber banner durante impersonación super_admin (muestra tenant + motivo; localStorage)
+    SuperAdminGuard.tsx     — Gate de rutas solo-plataforma
+    FiscalBanner.tsx        — Aviso de datos fiscales faltantes (DIAN); usado en admin/layout + settings/billing
+    FiscalGateModal.tsx     — Modal bloqueante collect-before-pay (NIT/cédula) antes de cobrar
+    TrialCountdownBanner.tsx / MaintenanceBanner.tsx — Banners de estado (trial / mantenimiento)
+    SessionTimeoutModal.tsx / SessionConflictModal.tsx — Timeout de sesión 60min + conflicto de sesión
+    TwoFactorVerification.tsx — Verificación 2FA (TOTP/email/backup)
     SuspendedScreen.tsx     — Full-page block for suspended tenants (only action: logout)
     OnboardingChecklist.tsx — Progress checklist (generic "connect channel" step)
-    SetupBanner.tsx         — Agent personalization prompt
+    SetupBanner.tsx / AgentReadinessBanner.tsx — Prompts de personalización/readiness del agente
+    CopilotWidget.tsx / HelpAssistant.tsx — Copiloto y asistente de ayuda
+    tour/ProductTour.tsx    — Tour guiado del producto
+    pwa/                    — InstallPrompt, OfflineIndicator, PushNotificationToggle, ServiceWorkerRegistrar
   contexts/
     AuthContext.tsx      — JWT auth + auto-refresh + tenant switching
     TenantContext.tsx    — Multi-tenant context for API calls
   hooks/
     useApiData.tsx      — API hook with LIVE/DEMO badge
   lib/
-    api.ts              — HTTP client (110+ methods wrapping fetch)
+    api.ts              — HTTP client (fetch wrapper; ~1.8k líneas, cientos de métodos)
 ```
 
 ## Key patterns
@@ -99,9 +138,18 @@ src/
 - Notification bell in TopBar: WebSocket-driven, 7 categories
 - Media URLs: API_URL.replace('/api/v1', '') + file.url
 - Navigation: PageHeader (all pages), TabNav (sub-navigation), Breadcrumbs (detail pages), SkeletonLoader (loading states)
-- i18n: next-intl with 4 languages (es/en/pt/fr), cookie-based locale switching, 0 hardcoded strings
-- Multi-agent: Agent list → template picker → agent editor with channel assignment
+- i18n: next-intl with 4 languages (es/en/pt/fr), cookie-based locale switching, 0 hardcoded strings. **Toda página nueva/editada actualiza los 4 JSON**
+- Sidebar (`AppSidebar.tsx`): items filtrados por **capability** (`canHandleConversations`, `canEditAgent`, `canManageBilling`…) y por **vertical** del tenant, no solo por rol. Super_admin sin tenant activo ve `platformSections`; al impersonar ve `tenantSections`
+- **Super_admin platform mode**: sin tenant implícito. Cada página de plataforma nueva necesita su regla en `roles.ts` (deny-by-default). Para operar dentro de un tenant se impersona con motivo obligatorio (`{reason, ticketId}`) → banner ámbar + sesión emparejada (`impersonationSid`); el actor real queda en auditoría
+- Multi-agent: **un agente por conexión** (`agent_personas.channel_bindings`), gateado por `features.maxChannelAccounts` (default 1). El editor de agente enlaza cuentas concretas (`ChannelAccountLite`: channelType/accountId/displayName), no "un agente por canal"
 - Pipeline stage labels: use `tc('stages.{key}')` from common namespace (not hardcoded)
+
+## New Features (Jun-Jul 2026)
+- **Multi-canal por tipo**: N conexiones del mismo tipo (2 números WhatsApp, 2 IG…) gateado por `features.maxChannelAccounts` (default 1) + override por tenant. Tokens por-cuenta (`channel_accounts.access_token`), disconnect por-cuenta, un agente por conexión (`channel_bindings`). UI: overview con contador/límite, editor de agente que enlaza cuentas, selector de número emisor en broadcast/plantillas
+- **Billing anual + Billing Ops**: planes con ciclo mensual/anual (~15% desc anual) sincronizados a MercadoPago. `/admin/billing-ops` — vistas cross-tenant de subs/pagos/eventos, refund inline, reconciliación on-demand, downgrade que sincroniza con MP, auditoría de cambios de precio. `/admin/plans` edita tiers (`billing_plans`). Landing `/precios` es data-driven contra los planes
+- **Fiscal DIAN (Colombia)**: facturación electrónica vía Factus (`IFiscalInvoiceProvider`, modelo `FiscalInvoice`). Gate collect-before-pay (NIT/cédula) **OFF por defecto** → `FiscalBanner` + `FiscalGateModal`. `/admin/fiscal` cross-tenant; `settings/fiscal/` por tenant
+- **Ops Center (super_admin)**: `/admin/ops` (platform-monitor) — salud de contenedores/backup, alertas; incluye `/admin/storage` (monitoreo + quota por tenant), `/admin/health`, `/admin/incidents`. Alerta si el heartbeat `backup:last_success` supera ~26h
+- **SMS reseller monetizado**: SMS conversacional **descartado**; SMS = notificación one-way por créditos (1 crédito = 1 segmento) vía Twilio de plataforma. `/admin/sms-packages` (tiers editables + kill-switch OFF por defecto); tenant compra créditos con MercadoPago (pago único); ledger atómico + firma de webhook Twilio
 
 ## New Features (May 2026)
 - **Visual Automation Builder**: React Flow canvas (@xyflow/react), toggleable with existing 4-step wizard, same data format. Trigger, condition, action, delay node types

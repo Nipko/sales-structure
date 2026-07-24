@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Roadmap de marzo-2026, ejecutado/superado. No refleja el estado actual del código; se conserva como referencia.
+
 
 # Parallly — Guía maestra de alineación del producto, análisis del estado actual y ruta de construcción
 

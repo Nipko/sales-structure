@@ -145,19 +145,22 @@ getPersonaForChannel(tenantId, channelType, accountId?): TenantConfig  // bindin
 - **`getValidAccessToken` determinístico (ARREGLADO)**: el `LIMIT 1` sin `ORDER BY` elegía número
   arbitrario; ahora `ORDER BY connected_at` (primer número = más antiguo) para el path `sendTemplate`.
 
-## Diferido a v2 (aditivo, no bloquea)
-- **Broadcast: selector de número de origen** cuando hay >1 (falta campo en `CreateCampaignDto`,
-  tabla `campaigns`, `BroadcastJobData` y UI; hoy sale por la primera cuenta activa, no elegible).
-- **Envíos sistémicos por cuenta específica**: nurturing-plantilla, drip, recordatorios de cita,
-  recall, acciones de automatización y OTP/SMS de portal salen por la cuenta primaria (para WhatsApp
-  el token es tenant-wide, solo varía el número de origen). El pipeline principal y nurturing-texto
-  (dentro de 24h) sí van por-conexión.
-- **Desconexión por-cuenta**: hace limpieza local (routing + whatsapp_channels + bindings + caché)
-  pero NO des-suscribe el webhook de esa cuenta en el proveedor (queda inerte porque el routing está
-  inactivo, pero el proveedor sigue enviando). La desconexión por-TIPO sí avisa al proveedor.
-- Selector de número en plantillas de WhatsApp cuando hay >1 (backend fija el canal con `LIMIT 1`;
-  las plantillas son a nivel WABA, así que suele bastar).
-- Expiración de token IG por-cuenta en la UI (hoy se muestra una sola, del slot legacy).
+## v2 — COMPLETADO (segunda tanda)
+- **Broadcast: selector de número de origen** — `channelAccountId` en la campaña (guardado en metadata,
+  sin cambio de tabla) → `sendTemplate(phoneNumberId)` / SMS por-cuenta (con descifrado). UI con selector
+  "Enviar desde el número" cuando hay >1.
+- **Desconexión por-cuenta des-suscribe al proveedor** — Telegram deleteWebhook, Messenger DELETE
+  subscribed_apps, IG revoke (best-effort, resuelve el token antes de desactivar).
+- **Selector de número/WABA en plantillas de WhatsApp** — `createTemplate` acepta `phoneNumberId`; UI
+  con selector cuando hay >1.
+
+## Diferido (menor, no bloquea)
+- **Envíos sistémicos auxiliares por cuenta específica**: nurturing-plantilla, drip, recordatorios de
+  cita, recall y OTP/SMS de portal salen por la cuenta primaria cuando no hay conversación en contexto
+  (para WhatsApp el token es tenant-wide; solo varía el número de origen). El pipeline principal,
+  nurturing-texto (24h) y broadcast (con selector) sí van por-conexión.
+- Expiración de token IG por-cuenta en la UI (hoy se muestra una sola, del slot legacy; el refresh sí
+  es por-cuenta).
 
 ## Pendiente del usuario (al cierre)
 - Re-correr el seed en prod para materializar `maxChannelAccounts`: `docker exec parallext-api node prisma/seed-billing-plans.js`

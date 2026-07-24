@@ -1,5 +1,7 @@
 # WhatsApp Coexistence Mode — Manual Técnico
 
+> **Actualizado**: 2026-07-23 — Verificado contra el código. Ingesta de coexistencia en `apps/whatsapp` (puerto 3002); el procesamiento de IA vive en la API (`apps/api`, puerto 3000). Incluye multi-canal por tipo (gate de plan) y marca los guards `metadata.source` que **todavía no** están implementados en la API.
+
 ## Resumen
 
 El modo Coexistencia permite que un número de WhatsApp Business App opere simultáneamente
@@ -39,11 +41,21 @@ Meta Cloud API
 
 ### Diferencia entre tipos de mensaje
 
-| Campo webhook          | Job BullMQ             | `metadata.source` | Dirección   | Trigger IA | Trigger automación | Abre ventana 24h |
-|------------------------|------------------------|--------------------|-------------|------------|--------------------|--------------------|
-| `messages`             | `process-message`      | (ninguno/normal)   | `inbound`   | Sí         | Sí                 | Sí                 |
-| `smb_message_echoes`   | `process-coex-echo`    | `waba_echo`        | `outbound`  | **No**     | **No**             | **No**             |
-| `history`              | `process-coex-history` | `historical`       | Ambas       | **No**     | **No**             | **No**             |
+| Campo webhook          | Job BullMQ             | `metadata.source` | Dirección   | Trigger IA¹ | Trigger automación¹ | Abre ventana 24h¹ |
+|------------------------|------------------------|--------------------|-------------|-------------|---------------------|--------------------|
+| `messages`             | `process-message`      | (ninguno/normal)   | `inbound`   | Sí          | Sí                  | Sí                 |
+| `smb_message_echoes`   | `process-coex-echo`    | `waba_echo`        | `outbound`  | **No** (objetivo) | **No** (objetivo) | **No** (objetivo) |
+| `history`              | `process-coex-history` | `historical`       | Ambas       | **No** (objetivo) | **No** (objetivo) | **No** (objetivo) |
+
+> ⚠️ **¹ Estado real (jul-2026): este guard NO está implementado en la API.**
+> El microservicio de WhatsApp (`apps/whatsapp/src/modules/jobs/webhook.processor.ts`, `processCoexEcho`/`processCoexHistory`)
+> reenvía echoes e historial a `POST /internal/inbound-message` con `metadata.source = 'waba_echo' | 'historical'`
+> y `direction: 'outbound'`, **esperando** que la API los guarde sin procesarlos. Pero
+> `ConversationsService.processIncomingMessage` (`apps/api/src/modules/conversations/conversations.service.ts`)
+> **no ramifica por `metadata.source` ni por `direction`**: hoy todo mensaje reenviado a `/internal/inbound-message`
+> corre el pipeline completo (debounce → `resolveConversation` → IA). Las celdas marcadas "No (objetivo)" describen
+> el comportamiento **deseado**, no el vigente. Cierre pendiente: agregar el guard en `processIncomingMessage`
+> (early-return de solo-almacenar cuando `metadata.source ∈ {waba_echo, historical}`). Ver **Pendiente #5**.
 
 ---
 
@@ -103,7 +115,7 @@ Meta Cloud API
 2. `progress=100` indica que la sincronización está completa
 3. Si no hay datos para una fase, Meta no envía webhook para esa fase
 4. **Ventana de 24h**: El negocio tiene 24 horas post-onboarding para autorizar el sync
-5. Media con `media_id` (solo <14 días): descargar vía `GET graph.facebook.com/v25.0/{media_id}`
+5. Media con `media_id` (solo <14 días): descargar vía `GET graph.facebook.com/v21.0/{media_id}` (versión Graph alineada con `apps/api/src/modules/media-processing/media-download.service.ts`). **Nota**: la descarga de media histórica **aún no está implementada** — `processCoexHistory` hoy solo guarda metadata vía `parseContent` (ver Pendiente #2)
 6. Media >14 días: solo metadata (tipo, timestamp), sin archivo disponible
 
 ### Deduplicación
@@ -172,6 +184,10 @@ Cuando `progress=100`:
 5. Si el contacto no existe, se crea automáticamente
 6. Aparece en el timeline de la conversación en el inbox
 
+> ⚠️ Los puntos 2–4 son el **comportamiento objetivo**: la API todavía no respeta `metadata.source`
+> (`processIncomingMessage` no lo lee), así que hoy el echo reenviado dispararía el pipeline como
+> cualquier inbound. Ver la nota de la tabla arriba y **Pendiente #5**.
+
 ### Deduplicación
 
 - Redis key: `wa:echo:{messageId}` (TTL 24h)
@@ -219,6 +235,63 @@ Cuando `progress=100`:
 
 1. **Batch inicial**: Después del onboarding, Meta envía todos los contactos
 2. **Incremental**: Cada nuevo contacto agregado/modificado en la app dispara un webhook individual
+
+---
+
+## Coexistencia y multi-canal por tipo
+
+Un tenant puede conectar **N conexiones del mismo tipo** (varios números de WhatsApp, varias cuentas IG…),
+y un número en coexistencia es simplemente **una conexión más**. El routing y el aislamiento son por-cuenta.
+
+### Gate por plan (`features.maxChannelAccounts`)
+
+- Límite **por tipo de canal**, objeto `{ whatsapp, instagram, messenger, telegram, sms }`, **default 1** por tipo;
+  admite override por tenant (`quotaOverrides.maxChannelAccounts`). Fuente de verdad: `billing_plans.features`
+  (`apps/api/prisma/seed-billing-plans.js`), resuelto en runtime por `TenantThrottleService`.
+- Matriz por plan (WhatsApp / Instagram / Messenger / Telegram / SMS):
+
+  | Plan | WhatsApp | Instagram | Messenger | Telegram | SMS |
+  |------|:--------:|:---------:|:---------:|:--------:|:---:|
+  | Emprendedor ($21) | 1 | 1 | 1 | 1 | 1 |
+  | Starter ($49)     | 1 | 1 | 1 | 1 | 1 |
+  | Pro ($129)        | 2 | 1 | 3 | 1 | 1 |
+  | Enterprise ($349) | 3 | 2 | 5 | 2 | 2 |
+  | Custom            | ∞ | ∞ | ∞ | ∞ | ∞ |
+
+  (`-1` = ilimitado en runtime.)
+
+### Enforcement en el onboarding de un número adicional
+
+```
+OnboardingService.registerChannelAccount(tenantId, phone)
+  → assertChannelAccountQuotaViaApi(tenantId, 'whatsapp', phone.id)     [apps/whatsapp]
+       → POST /internal/channel-account-quota-check { tenantId, channelType, excludeAccountId }
+            → TenantThrottleService.enforceChannelAccountLimit(...)      [apps/api]
+                 → 403 { error: 'plan_limit_reached', limitKey: 'maxChannelAccounts', ... }  (sobre cuota)
+       → onboarding re-lanza BadRequestException({ code: 'PLAN_LIMIT_REACHED', userMessage })
+  → si pasa: upsert en channel_accounts (tabla global)
+```
+
+- El gate es **autoritativo en la API** (incluye overrides por tenant). Un **403 aborta** la conexión del número
+  adicional; fallos de red/infra se **loguean y se dejan pasar** para no romper el onboarding por un hipo transitorio.
+- `excludeAccountId` = `phone_number_id` permite **reconectar/actualizar** un número ya existente sin contarlo
+  contra el límite.
+
+### Registro y routing por-cuenta (`channel_accounts`)
+
+- `registerChannelAccount` hace **upsert** en la tabla global `channel_accounts`
+  (`channel_type = 'whatsapp'`, `account_id = phone_number_id`, `is_active = true`, `access_token = 'encrypted_ref'`).
+- El routing webhook→tenant es por **`phone_number_id` → `channel_accounts`**
+  (`PrismaService.getTenantByPhoneNumberId`), lo que soporta varios números del mismo tenant **sin conflación
+  de conversaciones**.
+- Cada mensaje normalizado que el microservicio reenvía lleva **`channelAccountId: phoneNumberId`**
+  (echoes e historial incluidos), para que la API resuelva conversación, token y respuesta con la cuenta correcta.
+
+### Un agente por conexión
+
+- La regla es **un agente por conexión**, no un agente por canal: `agent_personas.channel_bindings` (índice GIN)
+  enlaza cada agente a cuentas concretas (`channelType` / `accountId`). El editor de agente del dashboard
+  enlaza cuentas (`ChannelAccountLite`), no tipos de canal.
 
 ---
 
@@ -276,6 +349,29 @@ extras: {
 SELECT is_coexistence FROM whatsapp_channels WHERE phone_number_id = '...';
 ```
 
+### Tokens y credenciales (coexistencia y estándar)
+
+El onboarding (`OnboardingService`, paso ~11) intenta un **System User Token permanente**
+(`metaGraph.generateSystemUserToken`, flujo Tech Partner; **no bloqueante**: si falla se conserva el
+long-lived ~60 días). El mejor token disponible se guarda **cifrado AES-256-GCM**
+(`storeEncryptedCredential` → `encryptToken`) en la tabla `whatsapp_credentials`
+(`credential_type = 'system_user_token'`, `rotation_state = 'active'`), con verificación de persistencia.
+
+Los registros de canal **no guardan el token en claro**, solo punteros a la credencial cifrada:
+
+```sql
+-- whatsapp_channels: puntero, no el token
+SELECT access_token_ref FROM whatsapp_channels WHERE phone_number_id = '...';
+-- → 'credential_ref'
+
+-- channel_accounts (tabla global, routing de webhooks): placeholder, NO texto plano
+SELECT access_token FROM channel_accounts WHERE account_id = '<phone_number_id>';
+-- → 'encrypted_ref'
+```
+
+En runtime, `ChannelTokenService.getChannelToken(tenantId, 'whatsapp', accountId?)` resuelve el token
+real por-cuenta desde la credencial cifrada (cache 5 min en Redis), sin migración global de esquema.
+
 ---
 
 ## Limitaciones del modo Coexistencia
@@ -299,7 +395,7 @@ SELECT is_coexistence FROM whatsapp_channels WHERE phone_number_id = '...';
 |---|---|---|
 | `wa:echo:{messageId}` | 24h | Deduplicación de message echoes |
 | `wa:hist:{phoneNumberId}:p{phase}:c{chunk}` | 24h | Deduplicación de chunks de historial |
-| `coex:sync:{tenantId}:{phoneNumberId}` | 1h | Progreso de sincronización (para dashboard) |
+| `coex:sync:{tenantId}:{phoneNumberId}` | 1h por chunk / 24h al completar | Progreso de sincronización. Se escribe por chunk (TTL 1h, `webhooks.service.ts`) y, cuando `progress=100`, se reescribe con `completedAt` y TTL 24h (`webhook.processor.ts`) |
 
 ---
 
@@ -309,19 +405,35 @@ SELECT is_coexistence FROM whatsapp_channels WHERE phone_number_id = '...';
 |---|---|
 | `apps/whatsapp/src/modules/webhooks/webhooks.service.ts` | 3 nuevos handlers: `handleMessageEchoEvent`, `handleHistoryEvent`, `handleContactSyncEvent` |
 | `apps/whatsapp/src/modules/jobs/webhook.processor.ts` | 3 nuevos procesadores: `processCoexEcho`, `processCoexHistory`, `processCoexContacts` |
-| `apps/whatsapp/src/modules/onboarding/onboarding.service.ts` | Log de campos webhook esperados en modo coexistencia |
-| `apps/whatsapp/src/modules/meta-graph/meta-graph.service.ts` | Sin cambios (campos se configuran en Meta Dashboard) |
+| `apps/whatsapp/src/modules/onboarding/onboarding.service.ts` | Modos `NEW/EXISTING/COEXISTENCE`; System User Token cifrado (`storeEncryptedCredential`); `registerChannelAccount` + gate `assertChannelAccountQuotaViaApi` |
+| `apps/whatsapp/src/modules/meta-graph/meta-graph.service.ts` | `generateSystemUserToken` (Tech Partner); los campos de webhook se configuran en Meta Dashboard |
+| `apps/api/src/modules/internal/internal.controller.ts` | `POST /internal/channel-account-quota-check` (gate `maxChannelAccounts`, 403 `plan_limit_reached`) |
+| `apps/api/src/modules/throttle/tenant-throttle.service.ts` | `enforceChannelAccountLimit` (plan × canal + override por tenant) |
 | `apps/dashboard/src/app/admin/channels/whatsapp/page.tsx` | UI con 3 rutas de conexión |
 | `apps/dashboard/src/app/admin/channels/whatsapp/WhatsAppEmbeddedSignup.tsx` | Prop `mode` para toggle standard/coexistence |
 
 ---
 
-## Pendiente (futuro)
+## Pendiente (estado real jul-2026)
 
-1. **Dashboard de progreso de sync**: Mostrar barra de progreso en el dashboard usando `coex:sync:*` Redis keys
-2. **Descarga de media histórica**: Implementar descarga de archivos vía `GET graph.facebook.com/v25.0/{media_id}` para media <14 días
-3. **Indicador visual en inbox**: Badge "Enviado desde app" para mensajes con `source=waba_echo`
-4. **Indicador visual en inbox**: Badge "Histórico" para mensajes con `source=historical`
-5. **API `/conversations/service`**: Filtrar mensajes `historical` y `waba_echo` del procesamiento de IA (verificar que `metadata.source` se respeta)
-6. **Reconexión automática**: Detectar `account_update` con evento `PARTNER_REMOVED` (expiración por 14 días sin abrir app) y notificar al usuario
-7. **Webhook field subscription via API**: Meta no expone API para suscribir campos individuales — requiere configuración manual en App Dashboard
+Estado verificado contra el código. Los items 1, 3, 4, 5 y 6 siguen **abiertos**.
+
+1. 🔴 **Abierto — Dashboard de progreso de sync**: mostrar barra de progreso en el dashboard usando las keys
+   `coex:sync:*`. El backend ya las escribe (por chunk 1h + al completar 24h), pero **no hay UI** que las consuma.
+2. 🔴 **Abierto — Descarga de media histórica**: `processCoexHistory` guarda solo metadata; falta descargar los
+   archivos vía `GET graph.facebook.com/v21.0/{media_id}` para media <14 días (endpoint alineado con
+   `media-download.service.ts`).
+3. 🔴 **Abierto — Indicador visual en inbox**: badge "Enviado desde app" para mensajes con `source=waba_echo`.
+4. 🔴 **Abierto — Indicador visual en inbox**: badge "Histórico" para mensajes con `source=historical`.
+5. 🔴 **Abierto (crítico) — Guard `metadata.source` en la API**: `ConversationsService.processIncomingMessage`
+   **no ramifica** por `metadata.source` ni `direction`, así que los echoes/históricos reenviados a
+   `/internal/inbound-message` **corren el pipeline de IA completo**. Hay que agregar el early-return de
+   solo-almacenar para `waba_echo` / `historical`. (Esto es lo que las tablas de este manual describen como
+   "objetivo", no como vigente.)
+6. 🔴 **Abierto — Reconexión automática**: `WebhookProcessor.processAccountUpdate` hoy solo mapea
+   `FLAGGED → flagged` y `DISABLED → disconnected`; **cualquier otro evento** (incluido `PARTNER_REMOVED` por
+   expiración de 14 días sin abrir la app) cae al default `connected`. Falta detectar la expiración y notificar
+   al usuario.
+7. ⚪ **Limitación permanente de Meta — Webhook field subscription via API**: Meta no expone API para suscribir
+   campos individuales; `history`, `smb_message_echoes` y `smb_app_state_sync` se habilitan **manualmente** en el
+   App Dashboard. No es deuda propia.

@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Spec de OAuth Meta, implementado. No refleja el estado actual del código; se conserva como referencia.
+
 # Parallly — Spec técnica: OAuth automatizado para Messenger e Instagram
 
 ## 0. Contexto del producto

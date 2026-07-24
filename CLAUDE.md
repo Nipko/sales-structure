@@ -1,14 +1,14 @@
 # Parallext Engine — Claude Code Context
 
 ## What is this project?
-Multi-tenant conversational AI SaaS platform (Parallly) for automating sales across WhatsApp, Instagram, Messenger, Telegram, and SMS.
-Monorepo with 4 NestJS/Next.js apps (78 API modules, 94 dashboard pages), deployed on Hostinger VPS via Docker + Cloudflare Tunnel.
+Multi-tenant conversational AI SaaS platform (Parallly) for automating sales across WhatsApp, Instagram, Messenger, Telegram, Email, and a Web Chat Widget. (SMS is a one-way reseller-credits notification product, not a conversational channel — conversational SMS was discarded.)
+Monorepo with 5 apps (83 API modules, 139 dashboard pages), deployed on Hostinger VPS via Docker + Cloudflare Tunnel.
 
 ## Architecture (high-level)
 
 ```
 Customer (WA/IG/Messenger/Telegram/SMS) → Channel API → API (port 3000) → ConversationsService
-    → IdentityService → PersonaService.getPersonaForChannel(tenantId, channelType)
+    → IdentityService → PersonaService.getPersonaForChannel(tenantId, channelType, accountId?)
     → BusinessInfoService + KnowledgeService (RAG) + BookingEngine
     → PromptAssemblerService (L1 contract + L2 persona + L3 turn) → LLMRouter → Provider
     → OutboundQueueService (BullMQ) → ChannelGatewayService → Customer
@@ -23,14 +23,15 @@ For full message flow + module dependency graph see **`docs/architecture-detail.
 
 ```
 apps/
-  api/          — NestJS 10, port 3000. 40 modules
-  dashboard/    — Next.js 16, port 3001. React 19, Tailwind + shadcn/ui + recharts
+  api/          — NestJS 10, port 3000. 83 modules
+  dashboard/    — Next.js 16, port 3001. React 19, Tailwind + shadcn/ui + recharts. 139 pages
   whatsapp/     — NestJS 10, port 3002. Embedded Signup v4 + Meta webhook router
   landing/      — Next.js static export, port 80. parallly-chat.cloud, 4-language i18n
+  mobile/       — React Native / Expo (@parallext/mobile). Agent inbox app. EAS build, Firebase, Sentry. Ships via EAS, NOT the web deploy pipeline (docs/ + apps/mobile are paths-ignored in deploy.yml)
 packages/shared/ — TypeScript types
-infra/docker/    — docker-compose.yml (dev), docker-compose.prod.yml, 5 Dockerfiles
+infra/docker/    — docker-compose.yml (dev), docker-compose.prod.yml, Dockerfiles
 infra/nginx/     — Reverse proxy config (WebSocket upgrade enabled)
-infra/scripts/   — setup-vps.sh, setup-fresh.sh, reset-db.sh
+infra/scripts/   — setup-vps.sh, setup-fresh.sh, reset-db.sh, setup-production-crons.sh, harden-vps.sh
 docs/            — Detailed reference (see Index at bottom)
 ```
 
@@ -42,6 +43,7 @@ docs/            — Detailed reference (see Index at bottom)
 - **Global tables**: Prisma client directly (`prisma.tenant.findUnique(...)`)
 - **Raw SQL column names**: snake_case (`is_active`, not `"isActive"`) — Prisma `@map` only applies to Prisma client. `users.name` is a generated column
 - **Auth**: JWT with refresh token rotation (Redis-backed). 4 roles: super_admin, tenant_admin, tenant_supervisor, tenant_agent. Session timeout 60min with warning modal
+- **Super_admin governance**: super_admin has NO implicit tenant (platform mode); `roles.ts` is deny-by-default — every new super_admin page/endpoint needs an explicit rule or access is denied. Acting on a tenant requires **impersonation** with a mandatory reason (`impersonate(superAdminId, tenantId, {reason, ticketId})`), 1h tokens, a paired session (`impersonationSid`), and audit writes attributed to the REAL super_admin (not the impersonated user). See `docs/superadmin-governance.md`
 - **Database pooling**: PgBouncer (transaction mode) between apps and PostgreSQL. Use `DIRECT_DATABASE_URL` for Prisma migrations. Multi-statement SQL must be split into individual queries
 - **Error tracking**: Sentry (@sentry/nestjs + profiling). `instrument.ts` must load before all modules
 - **Guards**: `@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)` on protected endpoints
@@ -52,11 +54,11 @@ docs/            — Detailed reference (see Index at bottom)
 - **LLM Router**: Task-based routing (conversation vs tool_calling). 4-tier fallback with circuit breaker. Plan-gated tier access
 - **Redis**: noeviction policy (never allkeys-lru). BullMQ jobs must not be silently evicted
 - **BigInt**: `BigInt.toJSON` polyfill in main.ts and worker.main.ts for PostgreSQL COUNT(*)
-- **Channels**: Adapter pattern via `IChannelAdapter`. One AI agent per channel (hard rule)
+- **Channels**: Adapter pattern via `IChannelAdapter` (WhatsApp, Instagram, Messenger, Telegram, Email, Web Chat Widget). **One AI agent per _connection_** — with multi-channel-per-type a tenant can hold N connections of the same type (2 WhatsApp numbers, 2 IG accounts…), each bound to its own agent via `agent_personas.channel_bindings`, gated by `features.maxChannelAccounts` (default 1). Tokens are per-account (`channel_accounts.access_token`)
 - **Conversation mutex**: Redis SETNX lock per conversation ID (`lock:conv:{conversationId}`, 30s TTL)
 - **Booking state**: Redis (`booking:{conversationId}`, 1h TTL) primary, PostgreSQL backup. In directive mode, only last 4 messages sent to LLM
-- **Multi-agent**: Plan-gated (starter=1, pro=3, enterprise=10, custom=unlimited). One agent per channel
-- **Subscription plans**: 4 plans control agent count, template access, rate limits, calendar count, property count
+- **Multi-agent**: Plan-gated agent count. One agent per _connection_ (see Channels above)
+- **Subscription plans**: **5 plans** — emprendedor (USD $21), starter ($49), pro ($129), enterprise ($349), custom (quote). Control agent count, template access, rate limits, calendar count, property count, SMS credits, media quotas. Source of truth: `apps/api/prisma/seed-billing-plans.js` + `billing_plans` table. Monthly/annual billing cycle (~15% annual discount) — see `docs/billing-annual-cycle.md`
 - **Multi-calendar**: Plan-gated (starter:1, pro:3, enterprise:10, custom:999). 3-tier resolution: service → staff → general fallback
 - **Vacation Rental**: `Propiedades` sidebar item visible only when `verticalConfig.industry === 'turismo'`
 - **Test in production**: User tests in production, never locally. Deploy via `git push` → GitHub Actions
@@ -101,14 +103,15 @@ See `.env.example`. Critical:
 
 - Landing: https://parallly-chat.cloud (static, nginx, 4-lang i18n)
 - Dashboard: https://admin.parallly-chat.cloud (Next.js)
-- API: https://api.parallly-chat.cloud (NestJS, 67 modules)
+- API: https://api.parallly-chat.cloud (NestJS, 83 modules)
 - WhatsApp: https://wa.parallly-chat.cloud (NestJS, Embedded Signup)
 - KB Portal: https://admin.parallly-chat.cloud/kb/{tenant-slug}
 - BI API: https://api.parallly-chat.cloud/api/v1/bi-api/ (X-API-Key auth)
 - GitHub: https://github.com/Nipko/sales-structure
-- VPS: Hostinger Ubuntu, Docker (10 containers incl. PgBouncer), Cloudflare Tunnel
-- Deploy: Push to main → GitHub Actions → build 5 images → SSH → regenerate .env → migrate → rolling restart (worker→API→frontend)
-- Backups: Daily 2AM (DB + media + Redis), weekly/monthly copies, offsite via rclone (if configured)
+- VPS: Hostinger Ubuntu, Docker (~15 containers: api, worker, dashboard, whatsapp, landing, postgres, redis, pgbouncer, tunnel, watchtower + observability stack: grafana, loki, promtail, uptime-kuma, dozzle), Cloudflare Tunnel
+- Deploy: Push to main → GitHub Actions → build 5 images → SSH (key-only auth) → `git reset --hard origin/main` → regenerate .env → migrate → rolling restart (worker→API→frontend). NOTE: `git reset --hard` restores tracked file modes — infra scripts MUST stay `100755` in git or cron loses the +x (see `docs/backup-restore-runbook.md`)
+- Backups: Daily 2AM (DB public+tenant schemas + media + fiscal invoices + Redis), 7/4/2 daily/weekly/monthly rotation, offsite S3-compatible via rclone (Cloudflare R2). Honest heartbeat `backup:last_success` watched by the Ops Center (alerts if stale >26h). See `docs/backup-restore-runbook.md`
+- Ops Center: super_admin `/admin/ops` + `health/platform-monitor.service.ts` — monitors disk/RAM/Redis/PgBouncer/queues/Sentry/LLM/SLA/backup-heartbeat/channel-tokens/payment-webhooks, raises incidents, Telegram/SMS/email alerts
 - Cleanup: Weekly Sunday 5AM (Docker prune, temp files, journal logs)
 
 ---
@@ -120,8 +123,8 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | Topic | File |
 |-------|------|
 | **Detailed architecture, prompt layers (3-tier), 5-tier knowledge, language detection, auth/sessions, OAuth flows, calendar, observability, BullMQ, pipeline hardening, production resilience, LLM Router task-based routing** | `docs/architecture-detail.md` |
-| **68+ modules reference + all endpoints + 78 dashboard pages + 6 BullMQ queues + 28 cron jobs** | `docs/modules-reference.md` |
-| **Platform audit (May 2026): functionality inventory, i18n gaps, industry scorecard, vertical matrix, improvement roadmap** | `docs/platform-audit-2026-05.md` |
+| **83 modules reference + all endpoints + 139 dashboard pages + 11 BullMQ queues + ~46 cron jobs** | `docs/modules-reference.md` |
+| **Platform audit (May 2026, ARCHIVED — historical snapshot)** | `docs/archive/platform-audit-2026-05.md` |
 | **Analytics endpoints (12 dashboard + 7 BI), Redis keys, tenant/global schemas, billing, offboarding, financials, super admin, vertical adaptation, vacation rental, CRM overhaul, handoff system, AI usage dashboard** | `docs/analytics-billing-reference.md` |
 | **Historical changelog (Session entries, navigation redesigns, security fixes, UX overhauls)** | `docs/CHANGELOG.md` |
 | **Vertical adaptation strategy** | `docs/vertical-strategy.md` |
@@ -136,11 +139,23 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **Server installation** | `docs/server-installation.md` |
 | **Infrastructure capacity, scaling projections, cost analysis, 1000-tenant scenario, provider comparison** | `docs/infrastructure-capacity-analysis.md` |
 | **User manual** | `docs/user-manual.md` |
-| **Competitive analysis (May 2026 Q2 — DEFINITIVO): ~40 competidores en 6 clusters (AI-native, incumbentes, messaging, LatAm, booking/vertical/all-in-one), 31 dimensiones code-grounded, joya de la corona + UX + blueprint por competidor, 8 macro-tendencias, pricing WhatsApp/Meta, plan priorizado** | `docs/competitive-analysis-2026-q2.md` (supersede `competitive-analysis-2026-05.md` y `-enhanced.md`) |
-| **Platform test plan (May 2026): ~450 test items, 27 sections, 68 modules** | `docs/test-plan-2026-05.md` |
+| **Competitive analysis (Q2 2026 — canonical): ~40 competidores en 6 clusters, 31 dimensiones code-grounded, blueprint por competidor, 8 macro-tendencias, pricing WhatsApp/Meta, plan priorizado** | `docs/competitive-analysis-2026-q2.md` (las versiones `-2026-05` y `-05-enhanced` están en `docs/archive/`) |
+| **Platform test plan (May 2026, ARCHIVED — historical snapshot)** | `docs/archive/test-plan-2026-05.md` |
 | **Onboarding redesign (Q2 2026): research + proposal — guided/mandatory first-channel flow, 13-competitor teardown, WhatsApp Embedded Signup deep-dive, feature normalization into 5 levels, cohesive with `/onboarding`** | `docs/onboarding-redesign-2026-q2.md` |
 | **Onboarding redesign — technical implementation plan (file-by-file, endpoints, i18n, phases). Reuses existing `WhatsAppEmbeddedSignup` + route cards + ESU/coexistence backend; mostly wiring not building** | `docs/onboarding-redesign-implementation-plan.md` |
 | **Facturación electrónica DIAN Colombia (Jun 2026): decisión proveedor/API (PT) vs integración directa; ganador Factus, 2º Alegra; capa `IFiscalInvoiceProvider` desacoplada del PSP; modelo `FiscalInvoice`; impacto LLC/Stripe (IVA servicios digitales del exterior); plan por fases, bloqueantes y TCO** | `docs/facturacion-electronica-colombia-2026-06.md` |
 | **Notificaciones por SMS (Jul 2026): plan de implementación por fases (alertas super admin → handoff → OTP/2FA → suscriptores); WhatsApp‑first + SMS fallback; operador Twilio + Verify; planos plataforma vs tenant; gating por plan + cuotas; deuda del canal SMS a cerrar** | `docs/sms-notifications-implementation-plan-2026-07.md` |
 | **SMS monetizado por paquetes (Jul 2026, IMPLEMENTADO F0-F3): modelo reseller — tenants compran créditos (1=1 segmento) para notificar one-way a sus clientes vía Twilio de plataforma; balance/ledger atómico, envío medido (broadcast + cola), compra MercadoPago pago único, UI tenant + super admin (tiers editables); canal conversacional descartado** | `docs/sms-monetization-packages-2026-07.md` |
 | **Multi-cuenta por tipo de canal (Jul 2026): N conexiones del mismo tipo (2 números WhatsApp, 2 IG…) gateado por plan×canal (`features.maxChannelAccounts`, default 1) + override por tenant; tokens por-cuenta vía `channel_accounts.access_token` (sin migración global); agente por conexión (`agent_personas.channel_bindings`); anti-conflación de conversaciones; UI editor adaptativa + overview con contador/límite + disconnect por-cuenta. Fases 1-5 codificadas. Contratos + checklist + limitaciones v1** | `docs/multi-channel-per-type-implementation-2026-07.md` |
+| **WhatsApp coexistence manual** | `docs/coexistence-manual.md` |
+| **Operations runbook + Ops Center (platform-monitor: disk/RAM/Redis/PgBouncer/queues/Sentry/LLM/SLA/backup/tokens/webhooks)** | `docs/operations-runbook.md` |
+| **Backup / restore runbook (verificación, restore, drills, postmortem incidente exec-bit 2026-07-23) + offsite setup (R2/S3)** | `docs/backup-restore-runbook.md`, `docs/backup-offsite-setup.md` |
+| **Deploy hardening runbook (SSH key-only, throttling por IP real CF-Connecting-IP, backup pre-migración)** | `docs/deploy-hardening-runbook.md` |
+| **Security specification (threat model, controles)** | `docs/security-specification.md` |
+| **Super_admin governance & impersonación (platform mode, roles.ts deny-by-default, sesión emparejada, actor real en auditoría)** | `docs/superadmin-governance.md` |
+| **Billing: ciclo anual/mensual, sync a MercadoPago, billing-ops cross-tenant, refund inline, reconciliación** | `docs/billing-annual-cycle.md` |
+| **Pricing / rentabilidad (precios COP por país, márgenes)** | `docs/plan-profitability-2026-07.md` |
+| **App móvil (`apps/mobile`, React Native/Expo): plan, EAS build, Sentry sourcemaps, GATE 0, Play Store, audit** | `docs/mobile-app-plan.md`, `docs/mobile-eas-build.md`, `docs/mobile-sentry-sourcemaps.md`, `docs/mobile-gate0-checklist.md`, `docs/play-store-publish-checklist.md`, `docs/mobile-app-audit-2026-q2.md` |
+| **Onboarding audit (Jun 2026, estado fases 0-4)** | `docs/onboarding-audit-2026-06.md` |
+| **Research: mercado LatAm, CRM externo, feature board** | `docs/market-research-latam.md`, `docs/external-crm-integration-research.md`, `docs/feature-board-research.md` |
+| **Histórico / superseded** | `docs/archive/` (competitive-05/-enhanced, platform-audit, test-plan, security-audit, platform-excellence, roadmap/*, specs/*, billing-plan, add_parallly_arquitectura, guia-tema-visual) |

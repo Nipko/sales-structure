@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Spec de marzo-2026, implementado. No refleja el estado actual del código; se conserva como referencia.
+
 # WhatsApp Automation Blueprint
 
 Guía completa para implementar automatización de WhatsApp con agente conversacional IA en cualquier proyecto. Abstracción de la implementación de Parallext.

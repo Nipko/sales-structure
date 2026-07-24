@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Sprint tecnico Tier 1 cerrado. No refleja el estado actual del código; se conserva como referencia.
+
 # Sprint Tier 1 — Technical Reference
 
 Internal architecture of the May 2026 vertical sprints. For developers extending or operating these modules.

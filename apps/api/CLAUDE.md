@@ -1,25 +1,26 @@
 # API Service — Claude Code Context
+_Actualizado: jul 2026_
 
 ## Overview
-NestJS 10 backend with 67 modules. Port 3000. Global prefix: `/api/v1`.
+NestJS 10 backend with 83 modules (folders in `src/modules/`). Port 3000. Global prefix: `/api/v1`.
 
 ## Module categories
 
 **Infrastructure** (always available, global):
 - `prisma/` — DB access. `executeInTenantSchema(schema, sql, params)` for tenant queries. ALWAYS use `::uuid` casts
 - `redis/` — Cache, counters, rate limiting. Methods: get/set/del/getJson/setJson/tenantKey/isRateLimited
-- `health/` — GET /health, GET /health/llm-providers (super_admin — per-provider health status)
-- `throttle/` — @Global. TenantThrottleService: plan-based rate limiting (starter/pro/enterprise)
+- `health/` — **Ops Center** (super_admin). Liveness `GET /health` + `GET /health/detailed` (Docker healthcheck + Uptime Kuma). Services: `platform-monitor.service` (cron checks + alerting con cooldown vía email/Telegram/SMS; incluye backup heartbeat en Redis `backup:last_success`, alerta si > `backupStaleHours` (default 26h), y LLM budget/provider health), `incident.service`, `platform-storage.service` (disco + storage por-tenant + quota + history), `alert-config.service`, `sms-alert.service`, `telegram-alert.service`, `sentry-stats.service`. Endpoints: `/health/llm-providers`, `/health/storage[ /overview | /tenants | /history ]`, `/health/incidents[ /summary | /:id/ack | /:id/resolve ]`, `GET|PUT /health/alert-config`, `POST /health/checks/run`, `POST /health/media-cleanup`
+- `throttle/` — @Global. `TenantThrottleService` + `plan-features.registry.ts`: plan-based rate limiting (emprendedor/starter/pro/enterprise/custom). Lee `features` de `billing_plans` en runtime (rateLimits, maxChannelAccounts, llmCostBudget, etc.)
 - `internal/` — Service-to-service endpoint (POST /internal/inbound-message)
 
 **Auth & Tenants**:
-- `auth/` — JWT login/register/refresh. Bcrypt 12 rounds. `signupWithTenant()` creates tenant+user atomically. `impersonate(tenantId)` generates 1h tokens with audit trail (super_admin only)
+- `auth/` — JWT login/register/refresh. Bcrypt 12 rounds. `signupWithTenant()` creates tenant+user atomically. Impersonación gobernada: `impersonate(superAdminId, tenantId, {reason, ticketId})` — **motivo obligatorio** (400 sin él), tokens de 1h con `impersonatedBy`/`impersonationSid`, sesión emparejada (`endImpersonation` mata el refresh en Redis) y **actor real** en auditoría (`super_admin.impersonation_started`, `userId` = super_admin, nunca el usuario impersonado). `common/utils/audit-actor.util.ts` resuelve el actor real en escrituras hechas durante una impersonación. También aquí: SAML/SSO (`saml.service`/`saml.strategy`/`saml.controller`), 2FA + trusted devices
 - `tenants/` — CRUD tenants. Each gets a PostgreSQL schema `tenant_{slug}`
 - `settings/` — Platform settings CRUD from `platform_settings` table
 
 **Message pipeline** (the core flow):
-- `channels/` — Adapter pattern. WhatsApp/Instagram/Messenger/Telegram/SMS. `ChannelGatewayService` routes
-- `channels/channel-token.service.ts` — Resolves access tokens per tenant (cached 5min in Redis)
+- `channels/` — Adapter pattern (`IChannelAdapter`). WhatsApp/Instagram/Messenger/Telegram/Email (subcarpetas `whatsapp`,`instagram`,`messenger`,`telegram`,`email`). `ChannelGatewayService` routes. El Web Chat Widget vive en su propio módulo `widget/`. **SMS conversacional descartado**: `channels/sms/sms.adapter.ts` (Twilio) queda como legacy; SMS hoy es solo notificación one-way (ver `sms-credits/` + `sms-notifications/`)
+- `channels/channel-token.service.ts` — Resolves access tokens per tenant (cached 5min in Redis). **Multi-cuenta por tipo**: acepta `accountId` opcional y lee el token por-cuenta desde `channel_accounts.access_token` (sin migración global); `getChannelToken(tenantId, channelType, accountId?)`
 - `channels/outbound-queue.service.ts` — BullMQ queue (3 retries, priority by tenant plan)
 - `channels/channel-management.controller.ts` — Generic channel connect/status/config endpoints + Instagram OAuth + Messenger FB SDK token exchange
 - `channels/meta-signature.util.ts` — Shared HMAC-SHA256 webhook validator
@@ -54,7 +55,7 @@ NestJS 10 backend with 67 modules. Port 3000. Global prefix: `/api/v1`.
 - `analytics/` — Redis counters + DB persistence. CSAT surveys + trigger. Agent performance reports. Custom report builder (saved_reports CRUD). Scheduled reports (weekly/monthly email)
 
 **Billing & Finance**:
-- `billing/` — MercadoPago integration. Subscription lifecycle (create/cancel/pause/resume/change). Webhook verification (HMAC-SHA256) + idempotency. Plan quotas enforcement. 5 billing email templates. Card tokenization for self-serve checkout
+- `billing/` — MercadoPago integration. Subscription lifecycle (create/cancel/pause/resume/change). Webhook verification (HMAC-SHA256) + idempotency. Plan quotas enforcement. 5 billing email templates. Card tokenization for self-serve checkout. **Ciclo mensual/anual** (~15% desc anual): el anual crea un preapproval_plan MP separado, id en `priceLocalOverrides[country].annual.mpPlanId`. `billing-admin.controller.ts` (super_admin, billing-ops): sync de plan+país a MP (`POST plans/:slug/sync-mp`), reconciliación on-demand (`POST reconcile`, `POST tenants/:tenantId/reconcile`), refund inline (`POST payments/:paymentId/refund`), comp plans, auditoría de cambios de precio. `coupons.controller.ts` (percent_off/amount_off/free_months). `sms-checkout.*` cobra paquetes de créditos SMS (pago único MP)
 - `billing/adapters/mercadopago.adapter.ts` — IPaymentProvider implementation for MercadoPago Preapproval API
 - `billing/webhook.controller.ts` — POST /billing/webhooks/mercadopago (verify + dispatch)
 - `billing/processors/reconciliation.processor.ts` — Hourly past_due sweep + daily drift detection

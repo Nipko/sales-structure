@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Snapshot de auditoria de mayo-2026, mayormente ejecutado. No refleja el estado actual del código; se conserva como referencia.
+
 # Parallly — Auditoría Exhaustiva de Plataforma (Mayo 2026)
 
 ## Resumen Ejecutivo

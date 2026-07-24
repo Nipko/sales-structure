@@ -1,6 +1,8 @@
 # Operations Runbook — Parallext Engine
 
-Operational procedures for super_admin. Aimed at production maintenance: tenant lifecycle, channel diagnostics, recall configuration, and recovery from common edge cases.
+_Actualizado: jul 2026._
+
+Operational procedures for super_admin. Aimed at production maintenance: tenant lifecycle, channel diagnostics, recall configuration, backups/restore, platform monitoring (Ops Center), SMS credits, fiscal DIAN, billing/MercadoPago, deploy/auth hardening, and recovery from common edge cases.
 
 ---
 
@@ -32,9 +34,12 @@ The endpoint returns a summary:
       "billing_events": 0,
       "billing_payments": 0,
       "billing_subscriptions": 1,
+      "billing_coupon_redemptions": 0,
       "audit_logs": 17,
       "channel_accounts": 2,
+      "api_keys": 1,
       "users": 3,
+      "fiscal_invoices_retained": 4,
       "tenants": 1
     },
     "schemaDropped": true,
@@ -56,12 +61,15 @@ PARALLLY_SUPER_ADMIN_TOKEN="$JWT" \
 ```
 
 **What gets deleted (both paths):**
-- Public schema rows: `billing_events`, `billing_payments`, `billing_subscriptions`, `audit_logs`, `channel_accounts`, `whatsapp_onboardings`, `whatsapp_credentials`, `tenant_financial_snapshots`, `crm_connections`, `feature_request_*`, `users`, `tenants`
+- Public schema rows: `billing_events`, `billing_payments`, `billing_subscriptions`, `billing_coupon_redemptions`, `audit_logs`, `channel_accounts`, `whatsapp_onboardings`, `whatsapp_credentials`, `tenant_financial_snapshots`, `crm_connections`, `api_keys`, `feature_request_*`, `users`, `tenants`
 - The tenant's PostgreSQL schema (`DROP SCHEMA tenant_<slug> CASCADE`) — wipes contacts, conversations, messages, properties, listings, tour_packages, treatment_plans, etc.
 - Filesystem: `/data/media/{tenantId}/` (logos, product photos, property photos, attachments)
 - Redis: `tenant:<id>:*`, `vertical:<id>`, `tenant_plan:<id>`, `offboard:past_due:<id>`, `refresh:<userId>:*` for every user
+- External access is revoked before the drop: MP/Stripe subscription cancelled (`billing.cancelSubscription`), Google Calendar + Google Business Profile OAuth tokens revoked
 
-**Difference between paths:** API path also calls Meta/Telegram/Twilio to unsubscribe webhooks. SQL fallback skips that — Meta might keep firing webhooks until you clean it up manually in their console.
+**RETAINED on purpose (NOT deleted, both paths):** `fiscal_invoices` rows and the `/data/invoices/{tenantId}/` XML+PDF artifacts. Colombian DIAN requires keeping issued electronic invoices ~5 years. Since the `tenants` row disappears, each retained invoice's `metadata` is stamped (`tenantPurgedAt`, `tenantNameSnapshot`, `tenantSchemaSnapshot`) so it stays identifiable; the count comes back in the summary as `fiscal_invoices_retained` (NOT `*_deleted`). `mediaService.deleteAllTenantFiles` only touches `/data/media`, never `/data/invoices`.
+
+**Difference between paths:** API path also calls Meta/Telegram/Instagram/Twilio to unsubscribe webhooks and cancels the payment-provider subscription. SQL fallback skips that — Meta might keep firing webhooks until you clean it up manually in their console, and an active MP/Stripe subscription may stay open.
 
 ### 1.2 Suspend / cancel a tenant (reversible)
 
@@ -106,7 +114,15 @@ The `needsReconnect` count are channels with `metadata.disconnected_at_provider=
 
 ## 2. Diagnose a tenant's channels
 
+> **Multi-account per type (jul 2026).** A tenant can now hold **more than one connection of the same `channel_type`** (e.g. 2 WhatsApp numbers, 2 Instagram accounts). The number allowed is gated per plan × channel via `features.maxChannelAccounts` (default 1) in `billing_plans`, with an optional per-tenant override. This changes several assumptions below:
+> - `channel_accounts` can return **>1 row for the same `channel_type`** — always disambiguate by `account_id` (WhatsApp: phone_number_id).
+> - Tokens are now **per-account**: `channel_accounts.access_token` (encrypted) is preferred; legacy rows with the `credential_ref`/`encrypted_ref` placeholder fall back to the shared `whatsapp_credentials` row. Token cache key is `${channel}_token:{tenantId}:{accountId}`.
+> - Agents bind **per connection**, not per channel: `agent_personas.channel_bindings` holds `"{type}:{accountId}"` entries (an exact binding wins over the type-level `channels` array). "One agent per connection".
+> - Disconnect is **per-account** (`DELETE .../disconnect` targets one `accountId`); disconnecting one number leaves the tenant's other same-type connections online.
+
 ### 2.1 What channels does a tenant have?
+
+> A tenant may have several rows per `channel_type` — the `ORDER BY channel_type` groups them; read `account_id` to tell them apart.
 
 ```sql
 SELECT
@@ -282,17 +298,60 @@ The next deploy from GitHub Actions regenerates `.env` from secrets — **also u
 
 ### 5.2 Sync MP plan IDs after price change
 
-```bash
-docker exec parallext-api sh -c 'node scripts/sync-mp-plans.js --country=CO --fx=4000'
+Plans are the source of truth in the `billing_plans` table (seeded by `apps/api/prisma/seed-billing-plans.js`, then editable from **`/admin/plans`**). Prices are **data-driven** — there are no hardcoded COP amounts anymore. USD anchors: emprendedor $21, starter $49, pro $129, enterprise $349, custom (sales-led, not syncable). Local overrides (e.g. COP) and the yearly total live in `priceLocalOverrides[country]` / `...annual`.
 
-# Output:
-#   [starter] creating MP plan: COP 196000.00, trial=7d… OK mpPlanId=...
-#   [pro] creating MP plan: COP 516000.00, trial=15d… OK mpPlanId=...
+Preferred path is the panel, which replaces the SSH-only `scripts/sync-mp-plans.js` for a single plan+country and registers the preapproval_plan **per cycle** (monthly vs annual are SEPARATE MP plans):
+
+```bash
+# Panel: /admin/plans → "Sincronizar con MercadoPago" (per plan+country+cycle)
+# API:  POST /billing-admin/plans/:slug/sync-mp   { "country": "CO", "cycle": "month" | "year", "force": false }
+#   → creates the MP plan and stores mpPlanId under priceLocalOverrides[CO].mpPlanId (monthly)
+#     or priceLocalOverrides[CO].annual.mpPlanId (annual). Idempotent per cycle.
+```
+
+`cycle:"year"` requires an annual local price already set (`priceLocalOverrides.CO.annual.amountCents` = full-year total in cents, ≈ −15% vs 12× monthly); it 400s with `no_annual_price` otherwise. `Custom` returns `custom_not_syncable`. Every sync writes an `billing_plan_synced_mp` audit row.
+
+The legacy batch script still exists for bulk/one-off use:
+
+```bash
+docker exec parallext-api sh -c 'node scripts/sync-mp-plans.js --country=CO'
 ```
 
 ### 5.3 Why is starter trial returning 400?
 
 `starter` is free-trial without card. The MP adapter requires `card_token_id` always — if `BillingService.createTrialSubscription` calls the adapter, it 400s. The fix in `b0e9c53` makes `createTrialSubscription` skip the provider call for free trials and create the subscription locally in `trialing` state. If you see the bug again, check `plan.requiresCardForTrial` is `false` for starter and `cardTokenId` is empty in the payload.
+
+### 5.4 Monthly vs annual billing cycle
+
+Every plan (except custom) can be billed **monthly or annually** (annual ≈ −15% vs 12× monthly). The two cycles are distinct MercadoPago `preapproval_plan`s with their own `mpPlanId` (`priceLocalOverrides[country].mpPlanId` vs `...annual.mpPlanId`), synced independently via §5.2. The landing `/precios` page and the in-app plan toggle read these amounts data-driven from `billing_plans`.
+
+### 5.5 Cross-tenant billing views + inline refund (super_admin)
+
+Billing-ops screens are backed by `/billing-admin/*` (super_admin):
+
+```bash
+GET  /billing-admin/subscriptions          # all tenants' subscriptions
+GET  /billing-admin/payments               # all payments
+GET  /billing-admin/events                 # all billing_events
+POST /billing-admin/payments/:paymentId/refund   # inline refund (audited)
+POST /billing-admin/tenants/:tenantId/comp-plan   # grant a comped plan
+PUT  /billing-admin/tenants/:tenantId/plan        # change/downgrade a tenant's plan
+```
+
+### 5.6 Reconciliation (on-demand + downgrade sync)
+
+Beyond the hourly `ReconciliationProcessor`, super_admin can trigger it by hand:
+
+```bash
+POST /billing-admin/reconcile              { "scope": "past_due" | "full" }   # platform-wide
+POST /billing-admin/tenants/:tenantId/reconcile    # single tenant: syncFromProvider
+```
+
+Downgrades through `PUT /billing-admin/tenants/:tenantId/plan` also sync the change down to MercadoPago (the preapproval amount is updated), so the provider and our DB don't drift.
+
+### 5.7 Price-change auditing
+
+Editing a plan in `/admin/plans` (`PUT /billing-admin/plans/:slug`) is a create-only-safe upsert (the seed never overwrites panel values without `--force`) and writes an audit row on price/plan changes. MP syncs and manual reconciles are audited too (`billing_plan_synced_mp`, `billing_reconcile_manual`).
 
 ---
 

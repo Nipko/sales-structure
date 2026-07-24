@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Superseded por el design system + rediseno de navegacion (ver CHANGELOG). No refleja el estado actual del código; se conserva como referencia.
+
 # Guía de tema visual y sistema de navegación para la plataforma
 
 ## Objetivo

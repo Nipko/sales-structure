@@ -1,21 +1,71 @@
-// Parallly Platform — Database Schema (DBML format)
-// Open at: https://dbdiagram.io/d
-// Last updated: 2026-04-22
+// ═══════════════════════════════════════════════════════════════════════
+// Parallly Platform — Database Schema (DBML)
+// Proyecto: Parallext Engine — SaaS conversacional multi-tenant
+// Última actualización: 2026-07-23   ·   Versión del doc: v3 (jul 2026)
+// Abrir en: https://dbdiagram.io/d
+// ═══════════════════════════════════════════════════════════════════════
+//
+// FUENTES CANÓNICAS (este doc se deriva de ellas — si difieren, GANA EL CÓDIGO):
+//   • PUBLIC  (global, gestionado por Prisma):  apps/api/prisma/schema.prisma        (~33 modelos)
+//   • TENANT  (schema-per-tenant, SQL crudo):   apps/api/prisma/tenant-schema.sql    (~154 tablas)
+//   Para frenar el drift conviene regenerar este .dbml desde ambas fuentes
+//   (idealmente scripteado), no editarlo a mano tabla por tabla.
+//
+// ARQUITECTURA DE DATOS:
+//   • Multi-tenancy = schema-per-tenant en PostgreSQL. El nombre de schema sale de
+//     public.tenants.schema_name (patrón `tenant_{slug}`). Las tablas TENANT de abajo
+//     usan el prefijo convencional `tenant.` — en runtime viven en el schema del tenant.
+//   • Tablas globales → cliente Prisma tipado. Tablas de tenant → $queryRawUnsafe con ::uuid.
+//   • Extensiones: pgvector (embedding vector(1536)) + uuid-ossp. FTS con tsvector.
+//   • Pooling PgBouncer (transaction mode); migraciones vía DIRECT_DATABASE_URL.
+//
+// STACK (contexto): 5 apps — api (NestJS, 3000, 83 módulos), dashboard (Next.js, 3001,
+//   139 páginas), whatsapp (NestJS, 3002), landing (Next static, 80), mobile
+//   (React Native/Expo, @parallext/mobile). ~15 contenedores en prod.
+//
+// CANALES: WhatsApp · Instagram · Messenger · Telegram · Email · Web Chat Widget.
+//   SMS conversacional DESCARTADO → SMS = notificación one-way por créditos (reseller).
+//   UN AGENTE POR CONEXIÓN (agent_personas.channel_bindings) gateado por
+//   features.maxChannelAccounts (default 1) del plan.
+//
+// NOTA DBML: `vector` y `tsvector` se anotan como tipos crudos (dbdiagram no los
+//   soporta nativamente). Índices GIN/ivfflat se documentan como notas en `indexes`.
+//   Los tipos `text[]`/`uuid[]` son arrays de PostgreSQL.
+//
+// CONTEO:  PUBLIC ≈ 33 tablas Prisma (+ tablas públicas lazy: widget_*,
+//   push_subscriptions, email_channel_configs, creadas en boot vía onModuleInit).
+//   TENANT ≈ 154 tablas (core + CRM/console + KB/AI-observability + verticales + roadmap Q2).
 
-// ═══════════════════════════════════════════════
-// PUBLIC SCHEMA (global, Prisma-managed)
-// ═══════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════
+// PUBLIC SCHEMA — Tablas globales (Prisma-managed)
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Tenancy & Auth ──
 
 Table public.tenants {
   id uuid [pk]
   name text [not null]
   slug text [unique, not null]
-  industry text
+  industry text [not null]
   language text [default: 'es-CO']
   schema_name text [unique, not null]
-  plan text [default: 'starter', note: 'starter/pro/enterprise/custom']
   is_active boolean [default: true]
-  settings jsonb [default: '{}']
+  plan text [default: 'starter', note: 'emprendedor/starter/pro/enterprise/custom']
+  settings jsonb [default: '{}', note: 'saml, verticalIntegrations, googleBusiness, managed, whiteLabel...']
+  // Billing denormalizado (hot-path del rate limiter/middleware; sincronizado por BillingService)
+  billing_email text
+  billing_country text
+  subscription_status text [note: 'pending_auth|trialing|active|past_due|cancelled|expired']
+  trial_ends_at timestamptz
+  current_period_end timestamptz
+  payment_provider text [note: 'mercadopago|stripe|mock']
+  payment_provider_customer_id text
+  // Funnel onboarding (/admin/funnel)
+  onboarding_completed_at timestamptz
+  first_channel_connected_at timestamptz [note: 'TTFV']
+  first_message_at timestamptz
+  signup_source text
   created_at timestamptz [default: `now()`]
   updated_at timestamptz
 }
@@ -23,72 +73,66 @@ Table public.tenants {
 Table public.users {
   id uuid [pk]
   email text [unique, not null]
-  password text [note: 'bcrypt 12 rounds, null for OAuth']
+  password text [note: 'bcrypt 12 rounds, null para OAuth']
   first_name text
   last_name text
   role text [not null, note: 'super_admin/tenant_admin/tenant_supervisor/tenant_agent']
-  tenant_id uuid [ref: > public.tenants.id]
+  tenant_id uuid [ref: > public.tenants.id, note: 'null para super_admin (sin tenant implícito)']
+  is_active boolean [default: true]
   auth_provider text [default: 'email', note: 'email/google/microsoft']
   google_id text
   microsoft_id text
-  email_verified boolean [default: false]
   picture text
+  email_verified boolean [default: false]
+  email_verify_code text
+  email_verify_expires timestamptz
+  two_factor_enabled boolean [default: false]
+  two_factor_secret text
+  two_factor_method text [note: 'totp/email']
+  backup_codes text[] [default: '{}']
+  onboarding_completed boolean [default: false]
+  phone text
+  job_title text
   availability_status text [default: 'offline', note: 'online/offline/away/dnd']
   max_capacity int [default: 5]
+  skill_tags text[] [default: '{}']
   last_active_at timestamptz
-  onboarding_completed boolean [default: false]
+  last_login_at timestamptz
   created_at timestamptz [default: `now()`]
   updated_at timestamptz
+  indexes { tenant_id }
 }
 
-Table public.channel_accounts {
+Table public.tenant_invitations {
   id uuid [pk]
   tenant_id uuid [ref: > public.tenants.id]
-  channel_type text [not null, note: 'whatsapp/instagram/messenger/telegram/sms']
-  account_id text [not null]
-  display_name text
-  access_token text [note: 'AES-256-GCM encrypted']
-  is_active boolean [default: true]
-  metadata jsonb [default: '{}']
-  created_at timestamptz [default: `now()`]
-  updated_at timestamptz
-
-  indexes {
-    (channel_type, account_id) [unique]
-  }
-}
-
-Table public.audit_logs {
-  id uuid [pk]
-  user_id text
-  tenant_id text
-  action text [note: 'created/updated/deleted/logged_in']
-  resource text
-  details jsonb
-  ip text
-  created_at timestamptz [default: `now()`]
-}
-
-Table public.whatsapp_onboardings {
-  id uuid [pk]
-  tenant_id text
-  status text [note: 'CREATED/CODE_REQUESTED/EXCHANGE_COMPLETED/ASSETS_SYNCED']
-  meta_business_id text
-  waba_id text
-  phone_number_id text
-  display_phone_number text
-  created_at timestamptz [default: `now()`]
-  updated_at timestamptz
-}
-
-Table public.whatsapp_credentials {
-  id uuid [pk]
-  tenant_id text
-  credential_type text [note: 'system_user_token/app_secret']
-  encrypted_value text [note: 'AES-256-GCM']
-  rotation_state text [default: 'active']
+  email text [note: 'lowercased']
+  role text [note: 'tenant_admin|tenant_supervisor|tenant_agent']
+  skill_tags text[] [default: '{}']
+  token text [unique, note: 'magic link, single-use, 14d']
+  invited_by_user_id uuid
   expires_at timestamptz
+  accepted_at timestamptz
+  accepted_user_id uuid
+  revoked_at timestamptz
+  resent_at timestamptz
   created_at timestamptz [default: `now()`]
+  indexes { (tenant_id, accepted_at); email }
+}
+
+Table public.trusted_devices {
+  id uuid [pk]
+  user_id uuid [ref: > public.users.id]
+  token_hash text [unique, note: 'SHA-256; skip 2FA 30d']
+  device_name text
+  user_agent text
+  fingerprint_hash text
+  ip_address text
+  expires_at timestamptz
+  last_used_at timestamptz [default: `now()`]
+  is_revoked boolean [default: false]
+  created_at timestamptz [default: `now()`]
+  indexes { user_id }
 }
 
 Table public.platform_settings {
@@ -96,97 +140,860 @@ Table public.platform_settings {
   key text [unique, not null]
   value text
   is_secret boolean [default: false]
-  category text
+  category text [default: 'general']
   created_at timestamptz [default: `now()`]
+  updated_at timestamptz [note: 'accedida vía raw SQL, no por el cliente tipado']
 }
 
-// ═══════════════════════════════════════════════
-// TENANT SCHEMA (per-tenant, 65+ tables)
-// ═══════════════════════════════════════════════
+Table public.audit_logs {
+  id uuid [pk]
+  user_id text [note: 'actor REAL — en impersonación es el super_admin, nunca el impersonado']
+  tenant_id text
+  action text [note: 'created/updated/deleted/logged_in/super_admin.impersonation_started...']
+  resource text
+  details jsonb [default: '{}']
+  ip text
+  created_at timestamptz [default: `now()`]
+  indexes { (tenant_id, created_at); user_id }
+}
+
+// ── Channels ──
+
+Table public.channel_accounts {
+  id uuid [pk]
+  tenant_id uuid [ref: > public.tenants.id]
+  channel_type text [not null, note: 'whatsapp/instagram/messenger/telegram/email/sms']
+  account_id text [not null, note: 'phone number / page id / bot token']
+  display_name text
+  access_token text [note: 'AES-256-GCM — token POR-CUENTA (multi-cuenta por tipo, sin migración global)']
+  refresh_token text [note: 'AES-256-GCM']
+  webhook_secret text
+  is_active boolean [default: true]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  indexes {
+    (channel_type, account_id) [unique]
+    tenant_id
+  }
+}
+
+Table public.whatsapp_onboardings {
+  id uuid [pk]
+  tenant_id text
+  config_id text
+  mode text [default: 'new', note: 'new/existing/coexistence']
+  status text [default: 'CREATED', note: 'CREATED→CODE_RECEIVED→EXCHANGE_COMPLETED→ASSETS_SYNCED→completed']
+  is_coexistence boolean [default: false]
+  coexistence_acknowledged boolean [default: false]
+  meta_business_id text
+  waba_id text
+  phone_number_id text
+  display_phone_number text
+  verified_name text
+  exchange_payload jsonb
+  error_code text
+  error_message text
+  started_by_user_id text
+  code_received_at timestamptz
+  exchange_completed_at timestamptz
+  assets_synced_at timestamptz
+  webhook_validated_at timestamptz
+  completed_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  indexes { tenant_id; status }
+}
+
+Table public.whatsapp_credentials {
+  id uuid [pk]
+  tenant_id text
+  credential_type text [note: 'system_user_token/app_secret']
+  encrypted_value text [note: 'AES-256-GCM']
+  rotation_state text [default: 'active', note: 'active/rotating/revoked']
+  expires_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  indexes { (tenant_id, credential_type) }
+}
+
+// ── Billing (cross-tenant) ──
+
+Table public.billing_plans {
+  id uuid [pk]
+  slug text [unique, note: 'emprendedor|starter|pro|enterprise|custom']
+  name text
+  price_usd_cents int [note: 'emprendedor=2100 · starter=4900 · pro=12900 · enterprise=34900 · custom=0']
+  trial_days int [default: 0]
+  requires_card_for_trial boolean [default: false]
+  max_agents int
+  max_ai_messages int
+  features jsonb [default: '{}', note: 'maxChannelAccounts, rateLimits, mediaProcessing, maxCalendars, llmCostBudget...']
+  mp_plan_id text
+  stripe_plan_id text
+  price_local_overrides jsonb [default: '{}', note: 'por país + ciclo anual: [country].annual.mpPlanId (~15% desc)']
+  is_active boolean [default: true]
+  sort_order int [default: 0]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table public.billing_subscriptions {
+  id uuid [pk]
+  tenant_id uuid [unique, ref: - public.tenants.id]
+  plan_id uuid [ref: > public.billing_plans.id]
+  status text [note: 'pending_auth|trialing|active|past_due|cancelled|expired']
+  provider text [note: 'mercadopago|stripe|mock']
+  provider_subscription_id text [unique]
+  provider_customer_id text
+  trial_started_at timestamptz
+  trial_ends_at timestamptz
+  current_period_start timestamptz
+  current_period_end timestamptz
+  cancel_at_period_end boolean [default: false]
+  cancelled_at timestamptz
+  cancellation_reason text
+  pending_plan_id uuid [ref: > public.billing_plans.id, note: 'downgrade programado a fin de período']
+  pending_plan_change_at timestamptz
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  indexes { status; trial_ends_at; current_period_end }
+}
+
+Table public.billing_events {
+  id uuid [pk]
+  tenant_id uuid
+  subscription_id uuid [ref: > public.billing_subscriptions.id]
+  provider text
+  provider_event_id text
+  event_type text
+  payload jsonb [note: 'raw provider payload (auditoría)']
+  processed_at timestamptz [default: `now()`]
+  indexes {
+    (provider, provider_event_id) [unique, note: 'idempotencia webhooks']
+    (tenant_id, processed_at)
+    event_type
+  }
+}
+
+Table public.billing_payments {
+  id uuid [pk]
+  subscription_id uuid [ref: > public.billing_subscriptions.id]
+  tenant_id uuid
+  amount_cents int
+  currency text [note: 'USD|ARS|MXN|COP|CLP|PEN|UYU|BRL']
+  status text [note: 'succeeded|failed|refunded|pending']
+  provider text
+  provider_payment_id text [unique]
+  paid_at timestamptz
+  failure_reason text
+  invoice_number text
+  invoice_pdf_url text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  indexes { (tenant_id, created_at); status }
+}
+
+Table public.fiscal_invoices {
+  id uuid [pk, note: 'Facturación electrónica DIAN Colombia — desacoplada del PSP']
+  tenant_id uuid
+  payment_id uuid [unique, ref: - public.billing_payments.id, note: 'null para notas crédito sueltas']
+  type text [default: 'invoice', note: 'invoice|credit_note|debit_note']
+  status text [default: 'pending', note: 'pending|issued|failed|cancelled']
+  provider text [note: 'factus|us_remote|...']
+  provider_ref text [note: 'Factus bill_id']
+  cufe text [note: 'CUFE/CUDE asignado por DIAN']
+  invoice_number text [note: 'prefijo+consecutivo, ej SETP990000001']
+  xml_url text
+  pdf_url text
+  qr_url text
+  amount_cents int
+  currency text [note: 'COP (moneda fiscal)']
+  tax_cents int [default: 0, note: 'IVA']
+  related_invoice_id uuid [note: 'nota crédito → factura original']
+  failure_reason text
+  attempts int [default: 0]
+  metadata jsonb [default: '{}']
+  acquirer_snapshot jsonb [note: 'copia inmutable de datos fiscales del adquirente al emitir']
+  issued_at timestamptz
+  created_at timestamptz [default: `now()`]
+  indexes { (tenant_id, created_at); status; payment_id }
+}
+
+Table public.billing_coupons {
+  id uuid [pk]
+  code text [unique, note: 'uppercase']
+  description text
+  type text [note: 'percent_off|amount_off|free_months']
+  percent_discount int
+  amount_off_cents int
+  free_months int
+  duration_cycles int [note: 'null = forever']
+  applies_to_plan_ids text[] [default: '{}']
+  max_redemptions int
+  redemption_count int [default: 0]
+  expires_at timestamptz
+  is_active boolean [default: true]
+  created_by_user_id uuid
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  indexes { (is_active, expires_at) }
+}
+
+Table public.billing_coupon_redemptions {
+  id uuid [pk]
+  coupon_id uuid [ref: > public.billing_coupons.id]
+  tenant_id uuid
+  subscription_id uuid
+  redeemed_at timestamptz [default: `now()`]
+  cycles_remaining int
+  metadata jsonb [default: '{}']
+  indexes {
+    (coupon_id, tenant_id) [unique]
+    tenant_id
+  }
+}
+
+// ── SMS Credits (paquetes monetizados, modelo reseller — 1 crédito = 1 segmento) ──
+
+Table public.sms_credit_balances {
+  id uuid [pk]
+  tenant_id uuid [unique]
+  balance_credits int [default: 0, note: 'cache del total; mutado atómicamente por SmsCreditsService']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table public.sms_credit_ledger {
+  id uuid [pk, note: 'append-only, fuente de verdad auditable']
+  tenant_id uuid
+  delta int [note: 'signed: + acreditado / - consumido']
+  reason text [note: 'purchase|consumption|adjustment|refund']
+  ref text [note: 'orderId/campaignId/paymentId/adminUserId — idempotencia (reason, ref)']
+  balance_after int
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  indexes { (tenant_id, created_at); (tenant_id, reason, ref) }
+}
+
+Table public.sms_package_orders {
+  id uuid [pk, note: 'compra pago único; id = external_reference de MercadoPago']
+  tenant_id uuid
+  package_id text [note: 'tier slug al comprar']
+  credits int
+  price_cents int
+  currency text [default: 'COP']
+  status text [default: 'pending', note: 'pending|paid|failed|cancelled']
+  provider text [default: 'mercadopago']
+  provider_ref text
+  init_point text [note: 'checkout MP']
+  paid_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  indexes { (tenant_id, status); (status, created_at) }
+}
+
+// ── Financials / Ops Center (plataforma) ──
+
+Table public.financial_snapshots {
+  id uuid [pk]
+  snapshot_month timestamptz [unique]
+  mrr_cents int [default: 0]
+  new_mrr_cents int [default: 0]
+  expansion_mrr_cents int [default: 0]
+  contraction_mrr_cents int [default: 0]
+  churned_mrr_cents int [default: 0]
+  reactivation_mrr_cents int [default: 0]
+  active_customers int [default: 0]
+  new_customers int [default: 0]
+  churned_customers int [default: 0]
+  trialing_customers int [default: 0]
+  trials_started int [default: 0]
+  trials_converted int [default: 0]
+  revenue_collected_cents int [default: 0]
+  payments_succeeded int [default: 0]
+  payments_failed int [default: 0]
+  llm_cost_cents int [default: 0]
+  infra_cost_cents int [default: 0]
+  plan_distribution jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table public.tenant_financial_snapshots {
+  id uuid [pk]
+  tenant_id uuid
+  snapshot_month timestamptz
+  plan_slug text
+  mrr_cents int [default: 0]
+  status text
+  revenue_cents int [default: 0]
+  llm_cost_cents int [default: 0]
+  ai_messages int [default: 0]
+  conversations int [default: 0]
+  created_at timestamptz [default: `now()`]
+  indexes { (tenant_id, snapshot_month) [unique] }
+}
+
+Table public.storage_snapshots {
+  id uuid [pk, note: 'monitoreo de almacenamiento por-tenant + disco plataforma']
+  snapshot_date timestamptz
+  tenant_id text [note: "uuid del tenant, o 'platform' para la fila global"]
+  db_bytes bigint [default: 0]
+  media_bytes bigint [default: 0]
+  disk_used_pct int [note: "sólo en la fila 'platform'"]
+  created_at timestamptz [default: `now()`]
+  indexes { (snapshot_date, tenant_id) [unique] }
+}
+
+Table public.platform_incidents {
+  id uuid [pk, note: 'alertas persistentes del Ops Center (platform-monitor)']
+  key text [note: "ej 'disk:critical', 'storage:tenant:<id>', 'backup:stale'"]
+  severity text [default: 'warning', note: 'info|warning|critical']
+  title text
+  body text
+  value float
+  status text [default: 'active', note: 'active|acknowledged|resolved']
+  count int [default: 1]
+  first_seen_at timestamptz [default: `now()`]
+  last_seen_at timestamptz [default: `now()`]
+  acknowledged_at timestamptz
+  acknowledged_by text
+  resolved_at timestamptz
+  resolved_by text [note: "email, o 'system' para auto-resolve"]
+  created_at timestamptz [default: `now()`]
+  indexes { (status, severity); key }
+}
+
+Table public.infra_costs {
+  id uuid [pk]
+  month timestamptz
+  category text
+  description text
+  amount_cents int
+  created_by text
+  created_at timestamptz [default: `now()`]
+  indexes { (month, category) [unique] }
+}
+
+Table public.exchange_rates {
+  id uuid [pk]
+  rate_date timestamptz
+  from_currency text
+  to_currency text
+  rate decimal
+  source text [default: 'manual']
+  created_at timestamptz [default: `now()`]
+  indexes { (rate_date, from_currency, to_currency) [unique] }
+}
+
+// ── Feature Requests (board global cross-tenant) ──
+
+Table public.feature_requests {
+  id uuid [pk]
+  title text
+  description text
+  status text [default: 'open', note: 'open|under_review|planned|in_progress|shipped|declined']
+  category text [note: 'ai|integrations|analytics|crm|billing|ux|other']
+  author_user_id uuid
+  author_tenant_id uuid [note: 'null si autor super_admin']
+  vote_count int [default: 0]
+  weighted_score float [default: 0, note: 'ranking recomputado nightly']
+  comment_count int [default: 0]
+  embedding vector [note: 'vector(1536) — detección de duplicados']
+  merged_into_id uuid [ref: > public.feature_requests.id]
+  shipped_at timestamptz
+  declined_reason text
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  indexes { (status, weighted_score); author_tenant_id; category }
+}
+
+Table public.feature_request_votes {
+  id uuid [pk]
+  request_id uuid [ref: > public.feature_requests.id]
+  user_id uuid
+  tenant_id uuid
+  created_at timestamptz [default: `now()`]
+  indexes { (request_id, user_id) [unique]; user_id; tenant_id }
+}
+
+Table public.feature_request_comments {
+  id uuid [pk]
+  request_id uuid [ref: > public.feature_requests.id]
+  user_id uuid
+  tenant_id uuid
+  body text
+  is_admin_reply boolean [default: false]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  indexes { (request_id, created_at) }
+}
+
+Table public.feature_request_subscribers {
+  id uuid [pk]
+  request_id uuid [ref: > public.feature_requests.id]
+  user_id uuid
+  created_at timestamptz [default: `now()`]
+  indexes { (request_id, user_id) [unique] }
+}
+
+// ── Integraciones / plataforma ──
+
+Table public.crm_connections {
+  id uuid [pk, note: 'OAuth por (tenant, provider) a CRM externo']
+  tenant_id uuid
+  provider text [note: 'hubspot|pipedrive|kommo|zoho|salesforce']
+  status text [default: 'active', note: 'active|expired|revoked|error']
+  external_account_id text
+  external_account_name text
+  access_token text [note: 'AES-256-GCM']
+  refresh_token text [note: 'AES-256-GCM']
+  token_expires_at timestamptz
+  scopes text[] [default: '{}']
+  sync_mode text [default: 'outbound', note: 'outbound|bidirectional']
+  last_sync_at timestamptz
+  last_error_at timestamptz
+  last_error_message text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  indexes { (tenant_id, provider) [unique]; tenant_id; status }
+}
+
+Table public.system_updates {
+  id uuid [pk, note: 'changelog/anuncios in-app']
+  version text
+  date timestamptz [default: `now()`]
+  title jsonb [note: 'i18n { es, en, pt, fr }']
+  description jsonb
+  features jsonb [note: 'array { type:new|improved|fixed, title, desc, image? }']
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table public.api_keys {
+  id uuid [pk, note: 'auth de la REST API pública (BI API, X-API-Key)']
+  tenant_id uuid
+  key_prefix varchar(12)
+  key_hash varchar(128) [unique]
+  name varchar(255)
+  scopes text[] [default: '{}']
+  rate_limit_rpm int [default: 60]
+  last_used_at timestamptz
+  expires_at timestamptz
+  is_active boolean [default: true]
+  created_by text
+  revoked_at timestamptz
+  created_at timestamptz [default: `now()`]
+  indexes { tenant_id; key_prefix }
+}
+
+Table public.automation_templates {
+  id uuid [pk, note: 'catálogo global de automatizaciones pre-armadas']
+  name jsonb [note: 'i18n']
+  description jsonb
+  category varchar(100)
+  industry varchar(100)
+  icon varchar(50)
+  trigger_config jsonb
+  actions_config jsonb
+  variables jsonb [default: '[]']
+  is_active boolean [default: true]
+  popularity_count int [default: 0]
+  created_at timestamptz [default: `now()`]
+  indexes { category; industry }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// TENANT SCHEMA — Tablas por-tenant (~154). Prefijo `tenant.` es convención.
+// ═══════════════════════════════════════════════════════════════════════
 
 // ── Core Messaging ──
 
 Table tenant.contacts {
   id uuid [pk]
-  external_id text [not null]
-  channel_type text [not null]
-  name text
-  phone text
-  email text
-  first_contact_at timestamptz
+  external_id varchar(255) [not null]
+  channel_type varchar(50) [not null]
+  name varchar(255)
+  phone varchar(50)
+  phone_normalized varchar(20) [note: 'E.164 para dedup']
+  email varchar(255)
+  avatar_url text
+  metadata jsonb [default: '{}']
+  tags text[] [default: '{}']
+  last_appointment_at timestamptz [note: 'recall vertical salud/vet']
+  next_recall_at timestamptz
+  first_contact_at timestamptz [default: `now()`]
+  last_contact_at timestamptz [default: `now()`]
   created_at timestamptz [default: `now()`]
-  updated_at timestamptz
-
+  updated_at timestamptz [default: `now()`]
   indexes {
-    (external_id, channel_type) [unique]
+    (channel_type, external_id) [unique]
+    phone_normalized
+    next_recall_at
   }
 }
 
 Table tenant.conversations {
   id uuid [pk]
   contact_id uuid [ref: > tenant.contacts.id]
-  channel_type text
-  channel_account_id uuid
-  status text [default: 'active', note: 'active/waiting_human/with_human/resolved/archived']
-  stage text [default: 'greeting']
-  assigned_to uuid
-  sentiment text
-  metadata jsonb [default: '{}', note: 'Contains bookingState, toolContext']
+  channel_type varchar(50) [not null]
+  channel_account_id varchar(255) [not null, note: 'multi-cuenta por tipo: qué conexión (anti-conflación)']
+  status varchar(50) [default: 'active', note: 'active/waiting_human/with_human/resolved/archived']
+  stage varchar(50) [default: 'greeting', note: 'greeting/discovery/negotiation/closing/support/complaint']
+  assigned_to varchar(255)
+  summary text
+  estimated_ticket_value decimal(15,2) [default: 0]
+  metadata jsonb [default: '{}', note: 'bookingState, toolContext, booking_state backup']
+  snoozed_until timestamptz
+  was_handed_off boolean [default: false]
+  handoff_at timestamptz
+  ai_message_count int [default: 0]
+  resolution_type varchar(50)
+  resolution_verified boolean
+  resolved_at timestamptz
   created_at timestamptz [default: `now()`]
-  updated_at timestamptz
+  updated_at timestamptz [default: `now()`, note: 'tocado en CADA mensaje']
+  indexes { contact_id; status; created_at; snoozed_until }
 }
 
 Table tenant.messages {
   id uuid [pk]
   conversation_id uuid [ref: > tenant.conversations.id]
-  direction text [not null, note: 'inbound/outbound']
+  direction varchar(20) [not null, note: 'inbound/outbound']
+  content_type varchar(50) [not null, default: 'text']
   content_text text
-  content_type text [default: 'text']
-  sender_type text [note: 'contact/agent/ai/system']
-  sender_id text
-  llm_model_used text
-  routing_tier text
+  media_url text
+  media_mime_type varchar(100)
+  caption text
+  status varchar(50) [default: 'pending', note: 'pending/sent/delivered/read/failed']
+  llm_model_used varchar(100)
+  llm_tokens_used int [default: 0]
+  llm_cost decimal(10,6) [default: 0]
+  routing_tier varchar(50)
+  routing_score decimal(5,2)
+  external_id varchar(255) [note: 'provider message id']
   metadata jsonb [default: '{}']
   created_at timestamptz [default: `now()`]
+  indexes { (conversation_id, created_at) }
 }
 
-// ── AI Agent System ──
+Table tenant.conversation_memory {
+  id uuid [pk, note: 'resúmenes de largo plazo por contacto']
+  contact_id uuid [ref: > tenant.contacts.id]
+  conversation_id uuid [ref: > tenant.conversations.id]
+  summary text [not null]
+  key_facts jsonb [default: '[]']
+  created_at timestamptz [default: `now()`]
+  indexes { (contact_id, created_at) }
+}
+
+// ── AI Agent System (multi-agente) ──
 
 Table tenant.agent_personas {
   id uuid [pk]
-  name text [not null]
-  template_id text
+  name varchar(255) [not null]
+  template_id varchar(100)
   is_active boolean [default: true]
   is_default boolean [default: false]
   config_json jsonb [not null, note: 'PersonaConfig: persona, behavior, hours, llm, tools']
-  channels text[] [default: '{}', note: 'whatsapp/instagram/messenger/telegram/sms']
-  schedule_mode text [default: '24_7']
+  channels text[] [default: '{}', note: 'whatsapp/instagram/messenger/telegram/email/web']
+  channel_bindings text[] [default: '{}', note: 'UN AGENTE POR CONEXIÓN — cuenta específica; índice GIN']
+  schedule_mode varchar(20) [default: '24_7']
   version int [default: 1]
-  created_by text
+  created_by varchar(255)
   created_at timestamptz [default: `now()`]
-  updated_at timestamptz
+  updated_at timestamptz [default: `now()`]
+  indexes {
+    is_active
+    channels [note: 'GIN']
+    channel_bindings [note: 'GIN']
+    is_default [note: 'parcial WHERE is_default = true']
+  }
 }
 
 Table tenant.agent_templates {
-  id uuid [pk]
-  name text [not null]
+  id uuid [pk, note: '6 built-in + guardados del usuario']
+  name varchar(255) [not null]
   description text
-  icon text [default: 'bot']
+  icon varchar(50) [default: 'bot']
   config_json jsonb [not null]
   is_builtin boolean [default: false]
-  created_by text
+  created_by varchar(255)
   created_at timestamptz [default: `now()`]
 }
 
 Table tenant.persona_config {
-  id uuid [pk, note: 'LEGACY — deprecated in favor of agent_personas']
-  version int
-  is_active boolean
-  config_yaml text
-  config_json jsonb
-  created_by text
-  created_at timestamptz
-  updated_at timestamptz
+  id uuid [pk, note: 'LEGACY — reemplazado por agent_personas (auto-migración)']
+  version int [default: 1]
+  is_active boolean [default: true]
+  config_yaml text [not null]
+  config_json jsonb [not null]
+  created_by varchar(255)
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// Carla (V4 legacy — orquestación de ventas / contexto de conversación)
+Table tenant.carla_personality_profiles {
+  id uuid [pk]
+  tenant_id varchar(255) [not null]
+  name varchar(255) [not null]
+  tone varchar(50) [default: 'professional']
+  language varchar(10) [default: 'es']
+  objectives_json jsonb [default: '[]']
+  rules_json jsonb [default: '[]']
+  disclaimers text
+  active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.carla_prompt_templates {
+  id uuid [pk]
+  tenant_id varchar(255) [not null]
+  name varchar(255) [not null]
+  campaign_id uuid
+  course_id uuid
+  template_type varchar(50) [default: 'system']
+  content text [not null]
+  version int [default: 1]
+  active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.carla_conversation_context {
+  id uuid [pk]
+  conversation_id uuid [not null]
+  lead_id uuid
+  intent_primary varchar(100)
+  intent_secondary varchar(100)
+  confidence decimal(5,2)
+  score_delta int [default: 0]
+  should_handoff boolean [default: false]
+  handoff_reason text
+  summary_for_agent text
+  tags_to_apply text[] [default: '{}']
+  suggested_stage varchar(50)
+  context_json jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+}
+
+// ── Knowledge Base / RAG (pgvector + FTS) ──
+
+Table tenant.knowledge_documents {
+  id uuid [pk]
+  title varchar(500) [not null]
+  file_name varchar(500)
+  file_url text
+  file_type varchar(50)
+  file_size int [default: 0]
+  content_text text
+  chunk_count int [default: 0]
+  status varchar(50) [default: 'pending', note: 'pending/processing/ready/error']
+  error_message text
+  // crawling + categorías + portal público
+  source_type varchar(20) [default: 'upload', note: 'upload/web_scraped/manual']
+  source_url varchar(2000)
+  last_crawled_at timestamptz
+  crawl_hash varchar(64)
+  category varchar(100)
+  is_public boolean [default: false]
+  slug varchar(255)
+  excerpt text
+  auto_recrawl boolean [default: true]
+  language varchar(10) [default: 'auto']
+  version int [default: 1]
+  satisfaction_score decimal(3,2)
+  feedback_count int [default: 0]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.knowledge_embeddings {
+  id uuid [pk]
+  document_id uuid [ref: > tenant.knowledge_documents.id]
+  chunk_index int [not null]
+  chunk_text text [not null]
+  embedding vector [note: 'vector(1536) — OpenAI text-embedding-3-small; índice ivfflat cosine (lists=100)']
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.knowledge_document_versions {
+  id uuid [pk]
+  document_id uuid [ref: > tenant.knowledge_documents.id]
+  version int [not null]
+  title varchar(500)
+  content_text text
+  chunk_count int [default: 0]
+  changed_by varchar(255)
+  change_summary varchar(500)
+  created_at timestamptz [default: `now()`]
+  indexes { (document_id, version) }
+}
+
+Table tenant.kb_retrieval_log {
+  id uuid [pk]
+  document_id uuid [ref: > tenant.knowledge_documents.id]
+  chunk_id uuid
+  query text [not null]
+  score decimal(5,4)
+  was_used boolean [default: false]
+  conversation_id uuid
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.kb_unanswered_queries {
+  id uuid [pk]
+  query text [not null]
+  query_hash varchar(64) [not null]
+  occurrences int [default: 1]
+  last_seen_at timestamptz [default: `now()`]
+  resolved boolean [default: false]
+  created_at timestamptz [default: `now()`]
+  indexes { query_hash [note: 'unique parcial WHERE resolved=false'] }
+}
+
+Table tenant.kb_feedback {
+  id uuid [pk]
+  conversation_id uuid
+  message_id uuid
+  document_id uuid
+  query text
+  rating smallint [not null]
+  is_false_positive boolean [default: false]
+  comment text
+  created_by varchar(255)
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.kb_health_issues {
+  id uuid [pk]
+  type varchar(30) [not null, note: 'stale/duplicate/contradiction/gap']
+  document_id uuid
+  related_document_id uuid
+  detail text
+  suggestion text
+  status varchar(20) [default: 'open']
+  created_at timestamptz [default: `now()`]
+}
+
+// Knowledge V4 (resources/chunks/approvals — pipeline curado)
+Table tenant.knowledge_resources {
+  id uuid [pk]
+  tenant_id varchar(255) [not null]
+  type varchar(50) [default: 'manual']
+  title varchar(500) [not null]
+  source varchar(100)
+  source_url text
+  content text
+  content_hash varchar(64)
+  course_id uuid
+  campaign_id uuid
+  version int [default: 1]
+  status varchar(50) [default: 'draft']
+  category varchar(255)
+  is_public boolean [default: false]
+  slug varchar(255)
+  published_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.knowledge_chunks {
+  id uuid [pk]
+  resource_id uuid [ref: > tenant.knowledge_resources.id]
+  chunk_index int [not null]
+  content text [not null]
+  metadata_json jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.knowledge_approvals {
+  id uuid [pk]
+  resource_id uuid [ref: > tenant.knowledge_resources.id]
+  approved_by varchar(255)
+  approved_at timestamptz [default: `now()`]
+  notes text
+}
+
+// Customer memory (estilo Mem0)
+Table tenant.customer_memories {
+  contact_id uuid [pk]
+  facts jsonb [not null, default: '[]']
+  summary text
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.customer_memory_facts {
+  id uuid [pk]
+  owner_kind varchar(16) [not null, default: 'profile', note: 'profile/contact']
+  owner_id uuid [not null]
+  fact_text text [not null]
+  embedding vector [note: 'vector(1536)']
+  seen_count int [not null, default: 1]
+  created_at timestamptz [default: `now()`]
+  last_seen_at timestamptz [default: `now()`]
+  indexes { (owner_kind, owner_id) }
+}
+
+// ── Business Knowledge (identidad + FAQs + políticas) ──
+
+Table tenant.companies {
+  id uuid [pk]
+  name varchar(500) [not null]
+  industry varchar(255)
+  about text
+  phone varchar(50)
+  email varchar(255)
+  website text
+  address text
+  logo_url varchar(500)
+  city varchar(255)
+  country varchar(100) [default: 'CO']
+  size varchar(50)
+  domain varchar(255)
+  notes text
+  social_links jsonb [default: '{}']
+  is_primary boolean [default: false, note: 'única primary por tenant (fuente de verdad del agente)']
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.faqs {
+  id uuid [pk]
+  question text [not null]
+  answer text [not null]
+  category varchar(100)
+  tags text[] [default: '{}']
+  order_index int [default: 0]
+  is_published boolean [default: true]
+  views int [default: 0]
+  search_tsv tsvector [note: 'FTS — índice GIN']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { is_published; category; order_index; search_tsv [note: 'GIN']; tags [note: 'GIN'] }
+}
+
+Table tenant.policies {
+  id uuid [pk]
+  type varchar(50) [not null, note: 'shipping|return|warranty|cancellation|terms|privacy']
+  title varchar(500) [not null]
+  content text [not null]
+  version int [not null, default: 1]
+  effective_from timestamptz [default: `now()`]
+  effective_to timestamptz
+  is_active boolean [default: true, note: 'única activa por type']
+  created_by varchar(255)
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
 }
 
 // ── CRM & Sales ──
@@ -194,89 +1001,416 @@ Table tenant.persona_config {
 Table tenant.leads {
   id uuid [pk]
   contact_id uuid [ref: > tenant.contacts.id]
-  first_name text
-  last_name text
-  phone text
-  stage text [default: 'nuevo', note: 'nuevo/contactado/calificado/caliente/ganado/perdido']
-  score int [default: 0]
-  campaign_id uuid
-  source text
+  company_id uuid [ref: > tenant.companies.id]
+  first_name varchar(255)
+  last_name varchar(255)
+  phone varchar(50) [not null, note: 'E.164']
+  phone_normalized varchar(20)
+  email varchar(255)
+  score int [default: 0, note: 'CHECK 0..10']
+  stage varchar(50) [default: 'nuevo', note: 'nuevo/contactado/respondio/calificado/tibio/caliente/listo_cierre/ganado/perdido/no_interesado']
+  primary_intent varchar(100) [note: 'precio/fecha/modalidad/certificacion/financiacion/objecion_*/hablar_humano...']
+  secondary_intent varchar(100)
+  is_vip boolean [default: false]
+  preferred_contact varchar(50) [default: 'whatsapp']
+  campaign_id uuid [ref: > tenant.campaigns.id]
+  course_id uuid [ref: > tenant.courses.id]
+  utm_source varchar(255)
+  utm_medium varchar(255)
+  utm_campaign varchar(255)
+  utm_content varchar(255)
+  referrer_url text
+  gclid text
+  fbclid text
+  assigned_to varchar(255)
+  opted_out boolean [default: false]
+  opted_out_at timestamptz
+  last_contacted_at timestamptz
+  metadata jsonb [default: '{}']
+  archived_at timestamptz
   created_at timestamptz [default: `now()`]
-  updated_at timestamptz
+  updated_at timestamptz [default: `now()`]
+  indexes {
+    phone; phone_normalized; stage; score; campaign_id; course_id; opted_out
+    (phone, campaign_id) [unique, note: 'parcial WHERE campaign_id IS NOT NULL']
+  }
 }
 
 Table tenant.opportunities {
   id uuid [pk]
   lead_id uuid [ref: > tenant.leads.id]
+  course_id uuid [ref: > tenant.courses.id]
+  campaign_id uuid [ref: > tenant.campaigns.id]
   conversation_id uuid [ref: > tenant.conversations.id]
-  stage text
-  value decimal
-  probability int
+  stage varchar(50) [default: 'nuevo', note: 'mismos stages que lead']
+  score int [default: 0, note: 'snapshot al crear/actualizar']
+  estimated_value decimal(15,2)
+  currency varchar(10) [default: 'COP']
   sla_deadline timestamptz
+  won_at timestamptz
+  lost_at timestamptz
+  loss_reason text
+  assigned_to varchar(255)
+  approval_status varchar(20) [note: 'pending|approved|rejected']
+  approval_stage varchar(50)
+  approved_by varchar(255)
+  metadata jsonb [default: '{}']
   created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { lead_id; stage; campaign_id }
+}
+
+Table tenant.pipeline_stages {
+  id uuid [pk]
+  tenant_id uuid [not null]
+  name varchar(100) [not null]
+  slug varchar(100)
+  color varchar(20) [default: '#3498db']
+  position int [not null, default: 0]
+  default_probability int [default: 0]
+  sla_hours int
+  is_terminal boolean [default: false]
+  transition_rules jsonb [default: '[]']
+  pipeline_id uuid
+  created_at timestamptz [default: `now()`]
+  indexes { tenant_id; position }
 }
 
 Table tenant.deals {
   id uuid [pk]
   contact_id uuid [ref: > tenant.contacts.id]
+  title varchar(255) [not null]
+  value decimal(14,2) [default: 0]
+  currency varchar(10) [default: 'COP']
   stage_id uuid [ref: > tenant.pipeline_stages.id]
-  value decimal
+  probability int [default: 0]
+  expected_close_date date
   assigned_agent_id uuid
+  notes text
+  tags text[] [default: '{}']
+  status varchar(20) [default: 'open']
+  sla_deadline timestamptz
+  sla_status varchar(20) [default: 'on_track']
+  stage_entered_at timestamptz [default: `now()`]
+  pipeline_id uuid
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { stage_id; contact_id; status; sla_deadline }
+}
+
+Table tenant.stage_history {
+  id uuid [pk, note: 'auditoría de transiciones de lead/opportunity']
+  lead_id uuid [ref: > tenant.leads.id]
+  opportunity_id uuid [ref: > tenant.opportunities.id]
+  from_stage varchar(50)
+  to_stage varchar(50) [not null]
+  reason text
+  triggered_by varchar(50) [default: 'system', note: 'system/agent/ai']
+  agent_id varchar(255)
+  created_at timestamptz [default: `now()`]
+  indexes { (lead_id, created_at) }
+}
+
+Table tenant.stage_transitions {
+  id uuid [pk, note: 'auditoría de movimientos de deal']
+  deal_id uuid [ref: > tenant.deals.id]
+  from_stage text
+  to_stage text [not null]
+  changed_by text [not null, default: 'system']
+  reason text
+  created_at timestamptz [default: `now()`]
+  indexes { (deal_id, created_at) }
+}
+
+Table tenant.tasks {
+  id uuid [pk]
+  lead_id uuid [ref: > tenant.leads.id]
+  opportunity_id uuid [ref: > tenant.opportunities.id]
+  title varchar(500) [not null]
+  description text
+  type varchar(50) [default: 'follow_up', note: 'follow_up/call/meeting/email/handoff']
+  status varchar(50) [default: 'pending', note: 'pending/in_progress/done/cancelled']
+  due_at timestamptz
+  completed_at timestamptz
+  assigned_to varchar(255)
+  created_by varchar(255)
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { lead_id; status; due_at }
+}
+
+Table tenant.notes {
+  id uuid [pk, note: 'notas internas (no visibles al lead)']
+  lead_id uuid [ref: > tenant.leads.id]
+  opportunity_id uuid [ref: > tenant.opportunities.id]
+  conversation_id uuid [ref: > tenant.conversations.id]
+  content text [not null]
+  created_by varchar(255)
   created_at timestamptz [default: `now()`]
 }
 
-Table tenant.pipeline_stages {
+Table tenant.tags {
   id uuid [pk]
-  name text [not null]
-  sort_order int [default: 0]
-  color text
+  name varchar(100) [unique, not null]
+  color varchar(20) [default: '#6c5ce7']
   created_at timestamptz [default: `now()`]
 }
 
-Table tenant.companies {
+Table tenant.lead_tags {
+  lead_id uuid [ref: > tenant.leads.id]
+  tag_id uuid [ref: > tenant.tags.id]
+  indexes { (lead_id, tag_id) [pk] }
+}
+
+Table tenant.scoring_config {
   id uuid [pk]
-  name text
-  industry text
-  about text
-  phone text
-  email text
-  website text
-  address text
-  city text
-  country text
-  social_links jsonb [default: '{}']
+  tenant_id uuid [not null]
+  weights jsonb [not null, note: 'engagement/intent/recency/stageProgress/profileCompleteness']
+  purchase_keywords text[] [default: '{}']
+  decay_enabled boolean [default: false]
+  decay_days int [default: 30]
+  decay_factor decimal(3,2) [default: 0.50]
+  is_active boolean [default: true]
   created_at timestamptz [default: `now()`]
-  updated_at timestamptz
+  updated_at timestamptz [default: `now()`]
 }
 
 Table tenant.contact_segments {
   id uuid [pk]
-  name text [not null]
-  filter_rules jsonb
+  tenant_id varchar(255) [not null]
+  name varchar(255) [not null]
+  description text
+  filter_rules jsonb [not null, default: '[]']
+  contact_count int [default: 0]
+  is_dynamic boolean [default: false]
+  created_by varchar(255)
   created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.custom_attribute_definitions {
+  id uuid [pk]
+  tenant_id varchar(255) [not null]
+  entity_type varchar(50) [not null, default: 'contact']
+  attribute_key varchar(100) [not null]
+  attribute_label varchar(255) [not null]
+  attribute_type varchar(50) [not null]
+  options jsonb [default: '[]']
+  required boolean [default: false]
+  position int [default: 0]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { (tenant_id, entity_type, attribute_key) [unique] }
+}
+
+Table tenant.custom_attribute_values {
+  id uuid [pk]
+  definition_id uuid [ref: > tenant.custom_attribute_definitions.id]
+  entity_id uuid [not null]
+  entity_type varchar(50) [not null, default: 'lead']
+  value_text text
+  value_number decimal(15,4)
+  value_boolean boolean
+  value_date timestamptz
+  value_json jsonb
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { (definition_id, entity_id) [unique]; (entity_id, entity_type) }
+}
+
+// External CRM sync (field mapping + correlación + log + import backfill)
+Table tenant.crm_field_mappings {
+  id uuid [pk]
+  provider varchar(50) [not null]
+  entity varchar(20) [not null]
+  parallly_field varchar(100) [not null]
+  external_field varchar(200) [not null]
+  direction varchar(20) [not null, default: 'outbound']
+  transform varchar(50)
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { (provider, entity, parallly_field) [unique] }
+}
+
+Table tenant.crm_external_links {
+  id uuid [pk]
+  provider varchar(50) [not null]
+  entity varchar(20) [not null]
+  internal_id uuid [not null]
+  external_id varchar(200) [not null]
+  external_url text
+  last_synced_at timestamptz
+  checksum varchar(64)
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { (provider, entity, internal_id) [unique]; (provider, entity, external_id) [unique] }
+}
+
+Table tenant.crm_sync_log {
+  id uuid [pk]
+  provider varchar(50) [not null]
+  entity varchar(20) [not null]
+  internal_id uuid
+  external_id varchar(200)
+  operation varchar(20) [not null]
+  direction varchar(20) [not null, default: 'outbound']
+  status varchar(20) [not null]
+  error_message text
+  duration_ms int
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.crm_imports {
+  id uuid [pk]
+  provider varchar(50) [not null]
+  connection_id uuid [not null]
+  entity varchar(20) [not null, default: 'contact']
+  status varchar(20) [not null, default: 'pending', note: 'pending|running|completed|failed|cancelled']
+  cursor varchar(500)
+  total_pulled int [default: 0]
+  matched int [default: 0]
+  created int [default: 0]
+  skipped int [default: 0]
+  errors int [default: 0]
+  last_error text
+  started_by uuid
+  started_at timestamptz [default: `now()`]
+  completed_at timestamptz
+  updated_at timestamptz [default: `now()`]
+}
+
+// ── Identity Service (perfiles unificados cross-channel) ──
+
+Table tenant.customer_profiles {
+  id uuid [pk]
+  display_name varchar(255)
+  phone varchar(50)
+  email varchar(255)
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { phone; email }
+}
+
+Table tenant.contact_identities {
+  id uuid [pk]
+  customer_profile_id uuid [ref: > tenant.customer_profiles.id]
+  contact_id uuid [ref: > tenant.contacts.id]
+  channel_type varchar(50) [not null]
+  external_id varchar(255) [not null]
+  is_primary boolean [default: false]
+  linked_at timestamptz [default: `now()`]
+  indexes { contact_id [unique] }
+}
+
+Table tenant.merge_suggestions {
+  id uuid [pk]
+  customer_profile_id_a uuid [ref: > tenant.customer_profiles.id]
+  customer_profile_id_b uuid [ref: > tenant.customer_profiles.id]
+  contact_id_a uuid [ref: > tenant.contacts.id]
+  contact_id_b uuid [ref: > tenant.contacts.id]
+  match_type varchar(50) [not null]
+  confidence decimal(3,2) [default: 0.00]
+  status varchar(20) [default: 'pending']
+  reviewed_by uuid
+  reviewed_at timestamptz
+  created_at timestamptz [default: `now()`]
+}
+
+// ── Agent Console (handoff / bandeja) ──
+
+Table tenant.conversation_assignments {
+  id uuid [pk]
+  conversation_id uuid [ref: > tenant.conversations.id]
+  agent_id uuid [not null]
+  assigned_at timestamptz [default: `now()`]
+  first_response_at timestamptz
+  resolved_at timestamptz [note: 'SLA 5 min default']
+  created_at timestamptz [default: `now()`]
+  indexes { conversation_id; agent_id; resolved_at }
+}
+
+Table tenant.internal_notes {
+  id uuid [pk]
+  conversation_id uuid [ref: > tenant.conversations.id]
+  agent_id uuid
+  content text [not null]
+  created_at timestamptz [default: `now()`]
+  indexes { conversation_id }
+}
+
+Table tenant.canned_responses {
+  id uuid [pk]
+  tenant_id varchar(255)
+  shortcode varchar(100) [not null]
+  title varchar(255) [not null]
+  content text [not null]
+  category varchar(100) [default: 'general']
+  created_at timestamptz [default: `now()`]
+  indexes { shortcode }
+}
+
+Table tenant.macros {
+  id uuid [pk]
+  tenant_id varchar(255)
+  name varchar(255) [not null]
+  description text
+  actions_json jsonb [not null, default: '[]']
+  visibility varchar(50) [default: 'team']
+  created_by varchar(255)
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { tenant_id }
+}
+
+Table tenant.csat_surveys {
+  id uuid [pk]
+  conversation_id uuid [ref: > tenant.conversations.id]
+  contact_id uuid [ref: > tenant.contacts.id]
+  agent_id uuid
+  rating int [not null, note: 'CHECK 1..5']
+  feedback text
+  sent_at timestamptz
+  responded_at timestamptz
+  appointment_id uuid
+  created_at timestamptz [default: `now()`]
+  indexes { conversation_id [unique]; agent_id; rating }
+}
+
+Table tenant.pre_chat_forms {
+  id uuid [pk]
+  tenant_id varchar(255) [not null]
+  name varchar(255) [default: 'default']
+  fields_json jsonb [not null, default: '[]']
+  greeting_message text
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
 }
 
 // ── Products & Commerce ──
 
 Table tenant.products {
   id uuid [pk]
-  name text [not null]
+  name varchar(500) [not null]
   description text
-  category text
-  price decimal [default: 0]
-  currency text [default: 'COP']
+  category varchar(255)
+  price decimal(15,2) [not null, default: 0]
+  currency varchar(10) [default: 'COP']
   is_available boolean [default: true]
   stock int
-  images text[]
+  images text[] [default: '{}']
   metadata jsonb [default: '{}']
   created_at timestamptz [default: `now()`]
-  updated_at timestamptz
+  updated_at timestamptz [default: `now()`]
+  indexes { category; is_available }
 }
 
 Table tenant.product_categories {
   id uuid [pk]
-  name text [not null]
-  color text [default: '#6c5ce7']
+  name varchar(255) [not null]
+  color varchar(50) [default: '#6c5ce7']
   sort_order int [default: 0]
   created_at timestamptz [default: `now()`]
 }
@@ -284,59 +1418,148 @@ Table tenant.product_categories {
 Table tenant.stock_movements {
   id uuid [pk]
   product_id uuid [ref: > tenant.products.id]
-  type text [not null, note: 'inbound/outbound/adjustment']
+  type varchar(30) [not null, note: 'inbound/outbound/adjustment']
   quantity int [not null]
   previous_stock int
   new_stock int
   reason text
-  created_by text
+  created_by varchar(255)
   created_at timestamptz [default: `now()`]
 }
 
 Table tenant.orders {
   id uuid [pk]
   contact_id uuid [ref: > tenant.contacts.id]
-  total_amount decimal [default: 0]
-  currency text [default: 'COP']
-  status text [default: 'pending', note: 'pending/confirmed/processing/completed/cancelled']
-  payment_status text [default: 'pending']
+  conversation_id uuid [ref: > tenant.conversations.id]
+  items jsonb [not null, default: '[]']
+  total_amount decimal(15,2) [not null, default: 0]
+  currency varchar(10) [default: 'COP']
+  status varchar(50) [default: 'pending', note: 'pending/confirmed/processing/completed/cancelled/refunded']
+  payment_status varchar(50) [default: 'pending', note: 'pending/paid/failed/refunded']
+  payment_reference varchar(255)
   notes text
+  metadata jsonb [default: '{}']
   created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { contact_id; status }
 }
 
 Table tenant.order_items {
   id uuid [pk]
   order_id uuid [ref: > tenant.orders.id]
   product_id uuid [ref: > tenant.products.id]
-  product_name text
-  quantity int [default: 1]
-  unit_price decimal [default: 0]
-  total_price decimal [default: 0]
+  product_name varchar(500)
+  quantity int [not null, default: 1]
+  unit_price decimal(15,2) [not null, default: 0]
+  total_price decimal(15,2) [not null, default: 0]
+  notes text
   created_at timestamptz [default: `now()`]
 }
 
 Table tenant.commercial_offers {
   id uuid [pk]
-  name text [not null]
-  description text
-  discount_type text [note: 'percentage/fixed']
-  discount_value decimal
+  tenant_id varchar(255)
+  course_id uuid [ref: > tenant.courses.id]
+  campaign_id uuid [ref: > tenant.campaigns.id]
+  offer_type varchar(100) [not null, note: 'discount/promo/bundle']
+  title varchar(500) [not null]
+  conditions_json jsonb [default: '{}']
   valid_from timestamptz
   valid_to timestamptz
-  conditions jsonb
-  is_active boolean [default: true]
+  active boolean [default: true]
   created_at timestamptz [default: `now()`]
+}
+
+Table tenant.courses {
+  id uuid [pk, note: 'catálogo — comercial + vertical educación (subject/level/modality)']
+  code varchar(50)
+  name varchar(500) [not null]
+  slug varchar(255) [unique]
+  description text
+  subject varchar(100) [note: 'ingles/frances/programacion...']
+  level varchar(50) [note: 'A1/A2/B1/B2/...']
+  price decimal(15,2) [not null, default: 0]
+  currency varchar(10) [default: 'COP']
+  duration_hours int
+  duration_weeks int
+  modality varchar(50) [default: 'presencial', note: 'presencial/virtual/hibrido/online/hybrid']
+  certification varchar(255)
+  prerequisites text
+  syllabus_url varchar(500)
+  brochure_url text
+  image_url varchar(500)
+  faq_version int [default: 1]
+  policy_version int [default: 1]
+  is_active boolean [default: true]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { is_active; code; (subject, level) }
+}
+
+// ── Campaigns / Broadcast ──
+
+Table tenant.campaigns {
+  id uuid [pk]
+  code varchar(50)
+  name varchar(500) [not null]
+  course_id uuid [ref: > tenant.courses.id]
+  source_type varchar(50) [default: 'landing', note: 'landing/csv/api/meta_ads']
+  channel varchar(50) [default: 'whatsapp', note: 'whatsapp/email/mixed']
+  wa_template_name varchar(255)
+  status varchar(50) [default: 'draft', note: 'draft/active/paused/finished']
+  starts_at timestamptz
+  ends_at timestamptz
+  schedule_json jsonb [default: '{}']
+  office_hours_start int [default: 8]
+  office_hours_end int [default: 20]
+  default_owner_rule varchar(255)
+  automation_profile_id uuid
+  max_attempts int [default: 3]
+  retry_delay_hours int [default: 24]
+  fallback_email boolean [default: false]
+  is_ab_test boolean [default: false]
+  ab_test_config jsonb [default: '{}']
+  scheduled_at timestamptz
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { status; course_id; code }
+}
+
+Table tenant.campaign_courses {
+  campaign_id uuid [ref: > tenant.campaigns.id]
+  course_id uuid [ref: > tenant.courses.id]
+  is_primary boolean [default: false]
+  indexes { (campaign_id, course_id) [pk] }
 }
 
 Table tenant.campaign_recipients {
   id uuid [pk]
-  campaign_id uuid
+  campaign_id uuid [ref: > tenant.campaigns.id]
   contact_id uuid
-  phone text
-  status text [default: 'pending', note: 'pending/queued/sent/delivered/read/failed']
+  phone varchar(50)
+  email varchar(255) [default: '']
+  channel varchar(50) [default: 'whatsapp']
+  variant_id uuid [ref: > tenant.campaign_variants.id]
+  status varchar(30) [default: 'pending', note: 'pending/queued/sent/delivered/read/failed']
+  error_message text
   sent_at timestamptz
   delivered_at timestamptz
   read_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { (campaign_id, status) }
+}
+
+Table tenant.campaign_variants {
+  id uuid [pk, note: 'A/B testing de broadcast']
+  campaign_id uuid [ref: > tenant.campaigns.id]
+  name text [not null]
+  content jsonb [not null]
+  percentage int [not null, default: 50]
+  is_winner boolean [default: false]
+  stats jsonb [default: '{}']
   created_at timestamptz [default: `now()`]
 }
 
@@ -344,217 +1567,1556 @@ Table tenant.campaign_recipients {
 
 Table tenant.services {
   id uuid [pk]
-  name text [not null]
+  name varchar(255) [not null]
   description text
-  duration_minutes int [default: 30]
-  buffer_minutes int [default: 0]
-  price decimal [default: 0]
-  currency text [default: 'COP']
-  color text [default: '#6c5ce7']
+  category varchar(100)
+  duration_minutes int [not null, default: 30]
+  duration_minutes_max int
+  duration_type varchar(20) [default: 'fixed']
+  buffer_minutes int [not null, default: 0]
+  price decimal(15,2) [default: 0]
+  currency varchar(10) [default: 'COP']
+  color varchar(20) [default: '#6c5ce7']
+  location_type varchar(50) [default: 'in_person', note: 'in_person/online/hybrid']
+  location_address text
+  meeting_link text
+  max_concurrent int [default: 1]
+  required_fields jsonb [default: '["name","phone"]']
   is_active boolean [default: true]
   is_public boolean [default: true]
   sort_order int [default: 0]
+  metadata jsonb [default: '{}']
   created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
 }
 
-Table tenant.availability_slots {
+Table tenant.service_staff {
   id uuid [pk]
-  user_id uuid
-  day_of_week int [note: '0=Sun, 1=Mon ... 6=Sat']
-  start_time time [not null]
-  end_time time [not null]
-  is_active boolean [default: true]
+  service_id uuid [ref: > tenant.services.id]
+  user_id uuid [not null]
+  is_primary boolean [default: false]
+  sort_order int [default: 0]
   created_at timestamptz [default: `now()`]
+  indexes { (service_id, user_id) [unique] }
+}
+
+Table tenant.calendar_integrations {
+  id uuid [pk, note: 'multi-calendar; asignación service→staff→general']
+  user_id uuid [not null]
+  provider varchar(50) [not null, default: 'google', note: 'google/microsoft']
+  encrypted_refresh_token text [not null]
+  calendar_id varchar(255) [default: 'primary']
+  account_email varchar(255)
+  sync_token text
+  watch_channel_id varchar(255)
+  watch_resource_id varchar(255)
+  watch_expiration timestamptz
+  label varchar(255)
+  assignment_type varchar(20) [default: 'general', note: 'general/service/staff']
+  assignment_id uuid
+  is_active boolean [default: true]
+  connected_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { (user_id, provider) }
 }
 
 Table tenant.appointments {
   id uuid [pk]
   contact_id uuid [ref: > tenant.contacts.id]
-  service_id uuid [ref: > tenant.services.id]
-  service_name text
+  conversation_id uuid [ref: > tenant.conversations.id]
   assigned_to uuid
+  service_id uuid
+  service_name varchar(500)
   start_at timestamptz [not null]
   end_at timestamptz [not null]
-  status text [default: 'confirmed', note: 'confirmed/completed/cancelled/no_show']
-  customer_name text
-  customer_phone text
-  customer_email text
+  status varchar(50) [default: 'pending', note: 'pending/confirmed/cancelled/completed/no_show']
+  location varchar(500)
   notes text
+  reminder_sent boolean [default: false]
+  reminder_24h_sent boolean [default: false]
+  reminder_1h_sent boolean [default: false]
+  reminder_2h_sent boolean [default: false]
+  google_event_id varchar(255)
+  outlook_event_id varchar(255)
+  customer_name varchar(255)
+  customer_email varchar(255)
+  customer_phone varchar(50)
+  source varchar(50) [default: 'manual']
+  cancellation_reason text
+  no_show_followed_up boolean [default: false]
+  completed_at timestamptz
+  completed_by varchar(50)
+  rating int
+  rating_feedback text
+  recurring_group_id uuid
+  recurrence_rule jsonb
+  metadata jsonb [default: '{}']
   created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { contact_id; assigned_to; start_at; status }
+}
+
+Table tenant.availability_slots {
+  id uuid [pk]
+  user_id uuid [not null]
+  day_of_week int [not null, note: '0=Dom ... 6=Sab']
+  start_time time [not null]
+  end_time time [not null]
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  indexes { (user_id, day_of_week) }
 }
 
 Table tenant.blocked_dates {
   id uuid [pk]
   user_id uuid
   blocked_date date [not null]
-  reason text
+  reason varchar(255)
   created_at timestamptz [default: `now()`]
+  indexes { (user_id, blocked_date) }
 }
 
-Table tenant.calendar_integrations {
-  id uuid [pk]
-  user_id uuid [not null]
-  provider text [not null, note: 'google/microsoft']
-  encrypted_refresh_token text
-  calendar_id text [default: 'primary']
-  account_email text
-  is_active boolean [default: true]
-  connected_at timestamptz
-  updated_at timestamptz
-
-  indexes {
-    (user_id, provider) [unique]
-  }
-}
-
-// ── Knowledge & Content ──
-
-Table tenant.knowledge_documents {
-  id uuid [pk]
-  title text
-  content text
-  source_type text [note: 'uploaded/web_scraped/manual']
-  is_active boolean [default: true]
-  created_at timestamptz [default: `now()`]
-}
-
-Table tenant.knowledge_embeddings {
-  id uuid [pk]
-  document_id uuid [ref: > tenant.knowledge_documents.id]
-  chunk_text text
-  embedding vector [note: 'vector(1536) — OpenAI text-embedding-3-small']
-  created_at timestamptz [default: `now()`]
-}
-
-Table tenant.faqs {
-  id uuid [pk]
-  question text [not null]
-  answer text [not null]
-  category text
-  is_active boolean [default: true]
-  search_vector tsvector
-  created_at timestamptz [default: `now()`]
-  updated_at timestamptz
-}
-
-Table tenant.policies {
-  id uuid [pk]
-  type text [not null, note: 'returns/shipping/privacy/terms/cancellation']
-  title text [not null]
-  content text [not null]
-  version int [default: 1]
-  is_active boolean [default: true]
-  created_at timestamptz [default: `now()`]
-  updated_at timestamptz
-}
-
-// ── Automation ──
+// ── Automation & Workflow ──
 
 Table tenant.automation_rules {
   id uuid [pk]
-  name text [not null]
-  trigger_type text [not null]
-  conditions_json jsonb
-  actions_json jsonb
-  is_active boolean [default: true]
+  tenant_id varchar(255) [not null]
+  name varchar(255) [not null]
+  trigger_type varchar(100) [not null]
+  conditions_json jsonb [default: '{}']
+  actions_json jsonb [default: '[]']
+  active boolean [default: false]
   created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { trigger_type }
 }
 
 Table tenant.automation_executions {
   id uuid [pk]
   rule_id uuid [ref: > tenant.automation_rules.id]
-  conversation_id uuid
-  status text
-  result_json jsonb
-  created_at timestamptz [default: `now()`]
+  entity_type varchar(50) [not null]
+  entity_id uuid [not null]
+  status varchar(50) [default: 'pending', note: 'pending/success/failed']
+  started_at timestamptz [default: `now()`]
+  finished_at timestamptz
+  result_json jsonb [default: '{}']
+  indexes { rule_id; (entity_type, entity_id) }
 }
 
-// ── Analytics ──
+Table tenant.wait_jobs {
+  id uuid [pk, note: 'delays de secuencias de nurturing']
+  tenant_id varchar(255) [not null]
+  job_type varchar(50) [not null]
+  run_at timestamptz [not null]
+  payload_json jsonb [default: '{}']
+  status varchar(50) [default: 'pending']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { (status, run_at) }
+}
+
+Table tenant.drip_sequences {
+  id uuid [pk]
+  tenant_id uuid [not null]
+  name varchar(255) [not null]
+  trigger_event varchar(100) [not null]
+  trigger_conditions jsonb [default: '{}']
+  steps jsonb [not null, default: '[]']
+  is_active boolean [default: false]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.drip_enrollments {
+  id uuid [pk]
+  sequence_id uuid [ref: > tenant.drip_sequences.id]
+  contact_id uuid [not null]
+  conversation_id uuid
+  current_step int [default: 0]
+  status varchar(50) [default: 'active']
+  enrolled_at timestamptz [default: `now()`]
+  last_step_at timestamptz
+  completed_at timestamptz
+  stop_reason text
+  indexes { (sequence_id, contact_id) [unique, note: 'parcial WHERE status=active'] }
+}
+
+Table tenant.procedures {
+  id uuid [pk, note: 'SOP/AOP determinista (T2.12) — NL→graph, 1 directiva/turno']
+  name text [not null]
+  description text
+  trigger jsonb [not null, default: '{"keywords":[]}']
+  steps jsonb [not null, default: '[]', note: 'message/ask/tool/condition/handoff']
+  status varchar(20) [not null, default: 'draft']
+  vertical varchar(50)
+  version int [not null, default: 1]
+  source_sop text
+  created_by varchar(120)
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// ── Analytics / Compliance / Reporting ──
 
 Table tenant.analytics_events {
   id uuid [pk]
-  event_type text [not null]
+  event_type varchar(100) [not null]
   conversation_id uuid
   contact_id uuid
-  data jsonb
+  data jsonb [default: '{}']
   created_at timestamptz [default: `now()`]
+  indexes { (event_type, created_at); conversation_id }
 }
 
-Table tenant.csat_surveys {
+Table tenant.daily_metrics {
   id uuid [pk]
-  conversation_id uuid
-  agent_id uuid
-  rating int [note: '1-5']
-  feedback text
+  tenant_id varchar(255) [not null]
+  metric_date date [not null]
+  dimension_type varchar(50) [not null]
+  dimension_id varchar(255)
+  metrics_json jsonb [default: '{}']
   created_at timestamptz [default: `now()`]
+  indexes { (metric_date, dimension_type); (tenant_id, metric_date) }
 }
 
-// ── Compliance ──
+Table tenant.alert_rules {
+  id uuid [pk]
+  tenant_id varchar(255) [not null]
+  name varchar(255) [not null]
+  metric varchar(100) [not null]
+  operator varchar(20) [not null]
+  threshold decimal(15,2) [not null]
+  channel varchar(50) [default: 'in_app']
+  notify_emails text[] [default: '{}']
+  is_active boolean [default: true]
+  last_triggered_at timestamptz
+  cooldown_minutes int [default: 60]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { (tenant_id, is_active) }
+}
+
+Table tenant.alert_history {
+  id uuid [pk]
+  rule_id uuid [ref: > tenant.alert_rules.id]
+  metric_value decimal(15,2) [not null]
+  threshold decimal(15,2) [not null]
+  notified_via varchar(50) [default: 'in_app']
+  created_at timestamptz [default: `now()`]
+  indexes { (rule_id, created_at) }
+}
+
+Table tenant.scheduled_reports {
+  id uuid [pk]
+  tenant_id varchar(255) [not null]
+  frequency varchar(20) [not null, default: 'weekly']
+  recipients text[] [not null]
+  is_active boolean [default: true]
+  last_sent_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { tenant_id }
+}
+
+Table tenant.saved_reports {
+  id uuid [pk, note: 'custom report builder']
+  name varchar(255) [not null]
+  description text
+  config jsonb [not null, default: '{}']
+  created_by uuid
+  is_favorite boolean [default: false]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.dashboard_preferences {
+  id uuid [pk]
+  user_id uuid [not null]
+  layout_json jsonb [default: '[]']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { user_id [unique] }
+}
 
 Table tenant.consent_records {
   id uuid [pk]
-  contact_id uuid
-  consent_type text
-  granted boolean
+  lead_id uuid [ref: > tenant.leads.id]
+  channel varchar(50) [not null, default: 'web_form']
+  legal_version varchar(50) [not null]
+  legal_text_hash varchar(64)
+  ip_address varchar(45)
+  user_agent text
+  origin_url text
   created_at timestamptz [default: `now()`]
+  indexes { lead_id }
 }
 
 Table tenant.opt_out_records {
   id uuid [pk]
-  phone text
-  channel text
-  trigger_message text
-  status text [default: 'pending', note: 'pending/confirmed/rejected']
+  lead_id uuid [ref: > tenant.leads.id]
+  phone varchar(50)
+  channel varchar(50) [not null, default: 'whatsapp']
+  trigger_msg text
+  detected_from varchar(20) [default: 'keyword', note: 'keyword/ai/manual']
+  status varchar(20) [default: 'pending', note: 'pending/confirmed/rejected']
+  reviewed_by uuid
+  reviewed_at timestamptz
+  review_notes text
   created_at timestamptz [default: `now()`]
+  indexes { phone; lead_id; status }
 }
 
-// ── Agent Console ──
-
-Table tenant.conversation_assignments {
+Table tenant.legal_text_versions {
   id uuid [pk]
+  tenant_id varchar(255) [not null]
+  name varchar(255) [not null, default: '']
+  description text
+  type varchar(50) [not null, default: 'general']
+  channel varchar(50) [not null, default: 'web']
+  channels text[] [default: '{web}']
+  agent_ids uuid[] [default: '{}']
+  version int [not null, default: 1]
+  text text [not null]
+  active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { (tenant_id, type, active) }
+}
+
+Table tenant.deletion_requests {
+  id uuid [pk, note: 'GDPR erasure']
+  tenant_id varchar(255) [not null]
+  lead_id uuid
+  requested_by varchar(255)
+  status varchar(50) [default: 'pending']
+  requested_at timestamptz [default: `now()`]
+  processed_at timestamptz
+  indexes { status }
+}
+
+// ── AI Observability & Eval Gate (roadmap Q2) ──
+
+Table tenant.conversation_traces {
+  id uuid [pk]
+  conversation_id uuid [not null]
+  provider varchar(40)
+  model varchar(80)
+  tier varchar(40)
+  task varchar(40) [note: 'conversation/tool_calling']
+  latency_ms int
+  prompt_tokens int
+  completion_tokens int
+  total_tokens int
+  fallback_used boolean [default: false]
+  kb_sources jsonb [default: '[]']
+  stage varchar(40)
+  created_at timestamptz [default: `now()`]
+  indexes { (conversation_id, created_at) }
+}
+
+Table tenant.turn_traces {
+  id uuid [pk]
+  conversation_id uuid [not null]
+  message_id uuid
+  total_duration_ms int
+  step_count int
+  steps jsonb [default: '[]']
+  created_at timestamptz [default: `now()`]
+  indexes { (conversation_id, created_at) }
+}
+
+Table tenant.conversation_quality_scores {
+  id uuid [pk, note: 'QualityService.judgeTranscript']
+  conversation_id uuid [not null]
+  overall_score numeric
+  resolution_score numeric
+  tone_score numeric
+  accuracy_score numeric
+  empathy_score numeric
+  flags jsonb [default: '[]']
+  resolution_type varchar(50)
+  resolution_verified boolean
+  verification_reason text
+  scored_by varchar(20) [default: 'ai']
+  rubric_version varchar(20) [default: 'v1']
+  created_at timestamptz [default: `now()`]
+  indexes { conversation_id; created_at }
+}
+
+Table tenant.simulation_runs {
+  id uuid [pk, note: 'simulación pre-deploy del agente (T2.13)']
   agent_id uuid
-  conversation_id uuid [ref: > tenant.conversations.id]
-  assigned_at timestamptz [default: `now()`]
-  first_response_at timestamptz
-  resolved_at timestamptz
+  channel_type varchar(40) [default: 'whatsapp']
+  persona_version int
+  persona_snapshot jsonb
+  scenario_source varchar(20) [not null, default: 'synthetic', note: 'synthetic/replay']
+  vertical varchar(50)
+  status varchar(20) [not null, default: 'pending']
+  scenario_count int [default: 0]
+  avg_score numeric
+  resolved_rate numeric
+  results jsonb [default: '[]']
+  summary jsonb
+  baseline_run_id uuid
+  error text
+  created_by varchar(120)
+  created_at timestamptz [default: `now()`]
+  completed_at timestamptz
+  indexes { created_at; agent_id }
 }
 
-Table tenant.internal_notes {
+Table tenant.eval_scenarios {
   id uuid [pk]
+  key text [unique, not null]
+  title text [not null]
+  vertical text
+  language text [not null, default: 'es']
+  messages jsonb [not null, default: '[]']
+  criteria text
+  expected_actions jsonb [not null, default: '[]']
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.eval_runs {
+  id uuid [pk, note: 'gate de activación de agente (pass@k)']
   agent_id uuid
-  conversation_id uuid [ref: > tenant.conversations.id]
-  content text
+  k int [not null, default: 1]
+  threshold numeric
+  passed boolean
+  avg_score numeric
+  eval_activable boolean [not null, default: false]
+  results jsonb [not null, default: '[]']
+  trigger text
   created_at timestamptz [default: `now()`]
+  indexes { agent_id }
 }
 
-Table tenant.macros {
-  id uuid [pk]
-  name text [not null]
-  actions_json jsonb
-  visibility text [default: 'private']
-  created_at timestamptz [default: `now()`]
-}
-
-// ── WhatsApp ──
+// ── Channels: WhatsApp / Email / Attribution ──
 
 Table tenant.whatsapp_channels {
   id uuid [pk]
-  phone_number_id text
-  waba_id text
-  display_name text
-  display_phone_number text
-  is_active boolean [default: true]
+  provider_type varchar(50) [default: 'meta_cloud']
+  meta_business_id varchar(255)
+  meta_waba_id varchar(255)
+  phone_number_id varchar(255)
+  display_phone_number varchar(50)
+  display_name varchar(255)
+  display_name_status varchar(50)
+  quality_rating varchar(50)
+  messaging_limit_tier varchar(50)
+  access_token_ref text
+  app_id varchar(255)
+  webhook_verify_token_ref varchar(255)
+  webhook_callback_url text
+  webhook_subscription_status varchar(50)
+  channel_status varchar(50) [default: 'pending', note: 'pending/connected/disconnected/restricted']
+  is_coexistence boolean [default: false]
+  coexistence_status varchar(50)
+  onboarding_id uuid [note: 'ref public.whatsapp_onboardings.id']
   seeds_submitted boolean [default: false]
+  seeds_submitted_at timestamptz
+  connected_at timestamptz
+  last_healthcheck_at timestamptz
   created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
 }
 
 Table tenant.whatsapp_templates {
   id uuid [pk]
-  template_id text
-  name text [not null]
-  language text [default: 'es']
-  category text
-  components jsonb
-  approval_status text [default: 'PENDING']
+  channel_id uuid [ref: > tenant.whatsapp_channels.id]
+  course_id uuid [ref: > tenant.courses.id]
+  campaign_id uuid [ref: > tenant.campaigns.id]
+  name varchar(255) [not null]
+  language varchar(10) [default: 'es']
+  category varchar(50)
+  components_json jsonb [default: '[]']
+  approval_status varchar(50) [default: 'PENDING']
+  meta_template_id varchar(100)
+  rejected_reason varchar(100)
+  is_seed boolean [default: false]
+  submitted_at timestamptz
+  last_sync_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { channel_id; name; meta_template_id }
+}
+
+Table tenant.whatsapp_webhook_events {
+  id uuid [pk]
+  channel_id uuid [ref: > tenant.whatsapp_channels.id]
+  event_type varchar(100) [not null]
+  payload_json jsonb [not null]
+  dedupe_key varchar(255) [unique, note: 'idempotencia']
+  processing_status varchar(50) [default: 'pending', note: 'pending/processed/failed']
+  processing_result text
+  processed_at timestamptz
+  created_at timestamptz [default: `now()`]
+  indexes { processing_status; dedupe_key }
+}
+
+Table tenant.whatsapp_message_logs {
+  id uuid [pk]
+  channel_id uuid [ref: > tenant.whatsapp_channels.id]
+  conversation_id uuid [ref: > tenant.conversations.id]
+  provider_message_id varchar(255)
+  template_name varchar(255)
+  direction varchar(20) [not null]
+  status varchar(50) [default: 'pending', note: 'pending/sent/delivered/read/failed']
+  error_code varchar(50)
+  error_message text
+  request_payload_json jsonb
+  response_payload_json jsonb
+  sent_at timestamptz
+  delivered_at timestamptz
+  read_at timestamptz
+  created_at timestamptz [default: `now()`]
+  indexes { (channel_id, status); provider_message_id }
+}
+
+Table tenant.email_threads {
+  id uuid [pk, note: 'metadata de hilos del canal Email']
+  conversation_id uuid [not null]
+  subject text
+  message_id_header text
+  in_reply_to text
+  references_header text
+  cc text[]
+  bcc text[]
+  created_at timestamptz [default: `now()`]
+  indexes { conversation_id }
+}
+
+Table tenant.ctwa_attributions {
+  id uuid [pk, note: 'Click-to-WhatsApp referral (T3.22)']
+  contact_id uuid [not null]
+  conversation_id uuid
+  source_id text [not null]
+  source_type text
+  source_url text
+  headline text
+  body text
+  media_type text
+  ctwa_clid text
+  captured_at timestamptz [default: `now()`]
+  indexes { (contact_id, source_id) [unique]; captured_at }
+}
+
+// ── Intake / Landing ──
+
+Table tenant.landing_pages {
+  id uuid [pk]
+  slug varchar(255) [unique, not null]
+  course_id uuid [ref: > tenant.courses.id]
+  campaign_id uuid [ref: > tenant.campaigns.id]
+  title varchar(500) [not null]
+  subtitle text
+  hero_json jsonb [default: '{}']
+  sections_json jsonb [default: '[]']
+  status varchar(50) [default: 'draft', note: 'draft/published/archived']
+  published_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { slug; status }
+}
+
+Table tenant.form_definitions {
+  id uuid [pk]
+  landing_page_id uuid [ref: > tenant.landing_pages.id]
+  name varchar(255) [not null]
+  version int [default: 1]
+  fields_json jsonb [default: '[]']
+  consent_text_version varchar(50)
+  active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  indexes { landing_page_id }
+}
+
+Table tenant.form_submissions {
+  id uuid [pk]
+  landing_page_id uuid [ref: > tenant.landing_pages.id]
+  form_definition_id uuid [ref: > tenant.form_definitions.id]
+  campaign_id uuid [ref: > tenant.campaigns.id]
+  course_id uuid [ref: > tenant.courses.id]
+  lead_id uuid [ref: > tenant.leads.id]
+  raw_payload_json jsonb [not null]
+  normalized_payload_json jsonb
+  source_url text
+  referrer text
+  utm_json jsonb [default: '{}']
+  ip_address varchar(45)
+  user_agent text
+  created_at timestamptz [default: `now()`]
+  indexes { landing_page_id; lead_id; created_at }
+}
+
+Table tenant.intake_sources {
+  id uuid [pk]
+  tenant_id varchar(255)
+  type varchar(50) [not null, note: 'webhook/api/manual']
+  name varchar(255) [not null]
+  config_json jsonb [default: '{}']
+  active boolean [default: true]
   created_at timestamptz [default: `now()`]
 }
+
+// ── Media & Email Templates & Config ──
+
+Table tenant.media_files {
+  id uuid [pk]
+  entity_type varchar(50) [not null, default: 'general', note: 'general/product/tenant_logo/course/email_template']
+  entity_id uuid
+  original_name varchar(500)
+  file_name varchar(255) [not null]
+  mime_type varchar(100) [not null]
+  size_bytes int [default: 0]
+  width int
+  height int
+  thumbnail_name varchar(255)
+  label varchar(255)
+  description text
+  tags text[] [default: '{}']
+  created_at timestamptz [default: `now()`]
+  indexes { (entity_type, entity_id) }
+}
+
+Table tenant.email_templates {
+  id uuid [pk, note: 'unique (slug, language); es = base canónica']
+  name varchar(255) [not null]
+  slug varchar(100) [not null]
+  subject varchar(500) [not null]
+  body_html text [not null]
+  body_json jsonb [default: '{}']
+  variables text[] [default: '{}']
+  is_active boolean [default: true]
+  language varchar(10) [default: 'es']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { (slug, language) [unique] }
+}
+
+Table tenant.tool_configs {
+  id uuid [pk, note: 'herramientas del agente (internal/external)']
+  name varchar(255) [not null]
+  description text
+  type varchar(50) [not null, default: 'internal']
+  endpoint varchar(500)
+  auth_type varchar(50)
+  auth_credentials text [note: 'encriptado']
+  parameters_schema jsonb [default: '{}']
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.business_rules {
+  id uuid [pk]
+  name varchar(255) [not null]
+  description text
+  rule_type varchar(100) [not null, note: 'greeting/faq/escalation/routing/validation']
+  conditions jsonb [not null, default: '{}']
+  actions jsonb [not null, default: '{}']
+  priority int [default: 0]
+  is_active boolean [default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// ── Outbound Webhooks (API pública) ──
+
+Table tenant.webhook_endpoints {
+  id uuid [pk]
+  url text [not null]
+  events text[] [not null, default: '{}']
+  secret text [not null]
+  description text
+  is_active boolean [not null, default: true]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.webhook_deliveries {
+  id uuid [pk]
+  endpoint_id uuid [ref: > tenant.webhook_endpoints.id]
+  event text [not null]
+  payload jsonb [not null, default: '{}']
+  status_code int
+  response_body text
+  error text
+  attempt int [not null, default: 1]
+  delivered_at timestamptz [default: `now()`]
+}
+
+// ── External integrations cache (T3.19 / T3.23) ──
+
+Table tenant.vi_items {
+  id uuid [pk, note: 'cache de integraciones verticales (Toast/Mindbody/Cliniko)']
+  provider varchar(20) [not null]
+  item_type varchar(40) [not null]
+  external_id text [not null]
+  title text
+  subtitle text
+  price_cents int
+  currency varchar(10)
+  data jsonb [default: '{}']
+  synced_at timestamptz [default: `now()`]
+  indexes { (provider, item_type, external_id) [unique]; (provider, item_type) }
+}
+
+Table tenant.gbp_reviews {
+  id uuid [pk, note: 'Google Business Profile reviews + auto-reply IA (T3.23)']
+  review_name text [unique, not null]
+  reviewer_name text
+  reviewer_photo text
+  rating int
+  comment text
+  create_time timestamptz
+  reply_comment text
+  reply_status varchar(20) [default: 'none']
+  ai_suggestion text
+  synced_at timestamptz [default: `now()`]
+  indexes { create_time }
+}
+
+Table tenant.ecommerce_products {
+  id uuid [pk, note: 'sync Shopify/WooCommerce']
+  external_id text [not null]
+  provider text [not null]
+  title text [not null]
+  description text
+  handle text
+  vendor text
+  product_type text
+  price_cents int
+  currency text [default: 'USD']
+  compare_at_price_cents int
+  image_url text
+  images text[] [default: '{}']
+  variants jsonb [default: '[]']
+  tags text[] [default: '{}']
+  status text [default: 'active']
+  inventory_quantity int [default: 0]
+  synced_at timestamptz [default: `now()`]
+  created_at timestamptz [default: `now()`]
+  indexes { (external_id, provider) [unique]; status; provider }
+}
+
+Table tenant.abandoned_carts {
+  id uuid [pk]
+  external_id text
+  provider text [not null]
+  contact_id uuid
+  contact_phone text
+  contact_email text
+  items jsonb [default: '[]']
+  total_cents int [default: 0]
+  currency text [default: 'USD']
+  checkout_url text
+  status text [default: 'abandoned']
+  recovery_sent_at timestamptz
+  recovered_at timestamptz
+  created_at timestamptz [default: `now()`]
+  indexes { contact_id; status }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TENANT — Verticales (gateadas por verticalConfig.industry)
+// ═══════════════════════════════════════════════════════════════════════
+
+// Alojamiento vacacional (turismo)
+Table tenant.properties {
+  id uuid [pk]
+  name varchar(255) [not null]
+  description text
+  address text
+  city varchar(255)
+  max_guests int [default: 4]
+  bedrooms int [default: 1]
+  bathrooms int [default: 1]
+  night_price decimal(15,2) [default: 0]
+  cleaning_fee decimal(15,2) [default: 0]
+  currency varchar(10) [default: 'COP']
+  min_nights int [default: 1]
+  check_in_time time [default: '15:00']
+  check_out_time time [default: '11:00']
+  amenities jsonb [default: '[]']
+  house_rules text
+  check_in_instructions text
+  images jsonb [default: '[]']
+  is_active boolean [default: true]
+  sort_order int [default: 0]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.ical_blocks {
+  id uuid [pk]
+  property_id uuid [ref: > tenant.properties.id]
+  external_uid text [not null]
+  source varchar(50) [not null]
+  check_in date [not null]
+  check_out date [not null]
+  summary text
+  last_seen_at timestamptz [default: `now()`]
+  is_deleted boolean [default: false]
+  created_at timestamptz [default: `now()`]
+  indexes { (property_id, external_uid) [unique] }
+}
+
+Table tenant.ical_feeds {
+  id uuid [pk]
+  property_id uuid [ref: > tenant.properties.id]
+  feed_name varchar(100)
+  source varchar(50) [not null]
+  import_url text
+  export_token varchar(255) [not null]
+  is_active boolean [default: true]
+  last_sync_at timestamptz
+  last_sync_status varchar(20) [default: 'pending']
+  last_sync_error text
+  events_imported int [default: 0]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.property_bookings {
+  id uuid [pk]
+  property_id uuid [ref: > tenant.properties.id]
+  contact_id uuid
+  conversation_id uuid
+  guest_name varchar(255)
+  guest_email varchar(255)
+  guest_phone varchar(50)
+  guests_count int [default: 1]
+  check_in date [not null]
+  check_out date [not null]
+  nights int [not null]
+  night_price decimal(15,2)
+  cleaning_fee decimal(15,2) [default: 0]
+  total_price decimal(15,2)
+  currency varchar(10) [default: 'COP']
+  status varchar(50) [default: 'pending']
+  notes text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// Channel manager (vacation rental — Hostaway)
+Table tenant.cm_listings {
+  id uuid [pk]
+  external_id text [not null]
+  provider text [not null]
+  name text [not null]
+  address text
+  check_in_time text [default: '15:00']
+  check_out_time text [default: '11:00']
+  max_guests int [default: 4]
+  base_price_cents int [default: 0]
+  currency text [default: 'USD']
+  status text [default: 'active']
+  amenities text[] [default: '{}']
+  photos text[] [default: '{}']
+  property_id uuid
+  last_synced_at timestamptz [default: `now()`]
+  created_at timestamptz [default: `now()`]
+  indexes { (external_id, provider) [unique]; provider; status }
+}
+
+Table tenant.cm_reservations {
+  id uuid [pk]
+  listing_id uuid [ref: > tenant.cm_listings.id]
+  external_id text
+  provider text [not null]
+  guest_name text [not null]
+  guest_email text
+  guest_phone text
+  check_in date [not null]
+  check_out date [not null]
+  guests int [default: 1]
+  total_cents int [default: 0]
+  currency text [default: 'USD']
+  status text [default: 'confirmed']
+  source text
+  notes text
+  contact_id uuid
+  synced_at timestamptz [default: `now()`]
+  created_at timestamptz [default: `now()`]
+  indexes { (external_id, provider) [unique]; listing_id; status }
+}
+
+Table tenant.cm_availability {
+  id uuid [pk]
+  listing_id uuid [ref: > tenant.cm_listings.id]
+  date date [not null]
+  is_available boolean [default: true]
+  price_cents int
+  min_nights int [default: 1]
+  notes text
+  indexes { (listing_id, date) [unique]; listing_id }
+}
+
+// Tours & paquetes (turismo)
+Table tenant.tour_packages {
+  id uuid [pk]
+  name varchar(255) [not null]
+  description text
+  duration_type varchar(10) [not null, default: 'hours', note: 'hours (tour) / days (paquete)']
+  duration_value int [not null, default: 1]
+  price decimal(15,2) [default: 0]
+  currency varchar(10) [default: 'COP']
+  max_capacity int [default: 10]
+  min_party_size int [default: 1]
+  departure_location text
+  destination varchar(255)
+  languages jsonb [default: '[]']
+  includes jsonb [default: '[]']
+  excludes jsonb [default: '[]']
+  what_to_bring text
+  child_discount_pct int [default: 0]
+  cancellation_policy text
+  images jsonb [default: '[]']
+  tags jsonb [default: '[]']
+  is_active boolean [default: true]
+  sort_order int [default: 0]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.tour_inventory {
+  id uuid [pk]
+  package_id uuid [ref: > tenant.tour_packages.id]
+  departure_date date [not null]
+  departure_time time
+  available_seats int [not null, default: 0]
+  total_seats int [not null, default: 0]
+  price_override decimal(15,2)
+  is_active boolean [default: true]
+  notes text
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { (package_id, departure_date, departure_time) [unique] }
+}
+
+Table tenant.tour_bookings {
+  id uuid [pk]
+  package_id uuid [ref: > tenant.tour_packages.id]
+  inventory_id uuid [ref: > tenant.tour_inventory.id]
+  contact_id uuid
+  conversation_id uuid
+  guest_name varchar(255)
+  guest_email varchar(255)
+  guest_phone varchar(50)
+  departure_date date [not null]
+  departure_time time
+  party_size int [not null, default: 1]
+  adults int [not null, default: 1]
+  children int [default: 0]
+  unit_price decimal(15,2)
+  total_price decimal(15,2)
+  currency varchar(10) [default: 'COP']
+  language varchar(10)
+  special_requests text
+  status varchar(50) [default: 'reserved']
+  payment_status varchar(50) [default: 'pending']
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// Salud (dental/fisio/estética): planes multi-sesión
+Table tenant.treatment_plans {
+  id uuid [pk]
+  contact_id uuid [ref: > tenant.contacts.id]
+  name varchar(255) [not null]
+  plan_type varchar(100)
+  total_sessions int [not null, default: 1]
+  completed_sessions int [not null, default: 0]
+  frequency_days int
+  total_cost decimal(15,2)
+  currency varchar(10) [default: 'COP']
+  started_at date
+  expected_end_at date
+  completed_at date
+  status varchar(50) [default: 'active', note: 'active|completed|paused|cancelled']
+  notes text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.treatment_sessions {
+  id uuid [pk]
+  plan_id uuid [ref: > tenant.treatment_plans.id]
+  appointment_id uuid
+  session_number int [not null]
+  scheduled_at timestamptz
+  completed_at timestamptz
+  status varchar(50) [default: 'pending', note: 'pending|scheduled|completed|cancelled|no_show']
+  notes text
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// Inmobiliaria (venta/arriendo — largo plazo)
+Table tenant.real_estate_listings {
+  id uuid [pk]
+  name varchar(255) [not null]
+  transaction_type varchar(20) [not null, note: 'sale|rent']
+  property_kind varchar(50) [not null, default: 'apartment']
+  price decimal(15,2)
+  currency varchar(10) [default: 'COP']
+  rent_period varchar(20) [default: 'monthly']
+  hoa_fee decimal(15,2)
+  deposit decimal(15,2)
+  min_rental_months int
+  financing_available boolean [default: false]
+  bedrooms int [default: 1]
+  bathrooms decimal(3,1) [default: 1]
+  area_m2 decimal(10,2)
+  parking_spots int [default: 0]
+  stratum int [note: 'estrato LatAm']
+  year_built int
+  address text
+  neighborhood varchar(255)
+  city varchar(255)
+  country varchar(10) [default: 'CO']
+  latitude decimal(10,7)
+  longitude decimal(10,7)
+  description text
+  amenities jsonb [default: '[]']
+  images jsonb [default: '[]']
+  external_url varchar(500)
+  status varchar(20) [default: 'available', note: 'available|reserved|sold|rented|inactive']
+  assigned_agent_id uuid
+  is_active boolean [default: true]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.listing_zone_agents {
+  id uuid [pk, note: 'routing barrio→agente']
+  neighborhood varchar(255) [not null]
+  city varchar(255)
+  agent_id uuid [not null]
+  created_at timestamptz [default: `now()`]
+  indexes { (neighborhood, city) [unique] }
+}
+
+// Veterinaria
+Table tenant.pets {
+  id uuid [pk]
+  contact_id uuid [ref: > tenant.contacts.id, note: 'el tutor/dueño']
+  name varchar(255) [not null]
+  species varchar(50) [not null, default: 'dog']
+  breed varchar(255)
+  sex varchar(20)
+  is_neutered boolean
+  birth_date date
+  weight_kg decimal(6,2)
+  color varchar(100)
+  microchip_id varchar(100)
+  allergies text
+  chronic_conditions text
+  current_medications text
+  photo_url varchar(500)
+  is_active boolean [default: true]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.pet_vaccinations {
+  id uuid [pk]
+  pet_id uuid [ref: > tenant.pets.id]
+  vaccine_name varchar(255) [not null]
+  applied_at date [not null]
+  next_due_at date
+  lot_number varchar(100)
+  vet_name varchar(255)
+  notes text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// Restaurantes
+Table tenant.menu_categories {
+  id uuid [pk]
+  name varchar(255) [not null]
+  description text
+  sort_order int [default: 0]
+  is_active boolean [default: true]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.menu_items {
+  id uuid [pk]
+  category_id uuid [ref: > tenant.menu_categories.id]
+  name varchar(255) [not null]
+  description text
+  price decimal(10,2) [not null, default: 0]
+  currency varchar(10) [default: 'COP']
+  image_url varchar(500)
+  allergens jsonb [default: '[]']
+  tags jsonb [default: '[]']
+  prep_time_minutes int
+  calories int
+  is_available boolean [default: true]
+  is_active boolean [default: true]
+  sort_order int [default: 0]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.food_orders {
+  id uuid [pk]
+  contact_id uuid
+  conversation_id uuid
+  order_type varchar(20) [not null, default: 'delivery', note: 'delivery|pickup|dine_in']
+  customer_name varchar(255)
+  customer_phone varchar(50)
+  delivery_address text
+  delivery_notes text
+  table_number varchar(50)
+  subtotal decimal(10,2) [default: 0]
+  delivery_fee decimal(10,2) [default: 0]
+  discount decimal(10,2) [default: 0]
+  total decimal(10,2) [default: 0]
+  currency varchar(10) [default: 'COP']
+  payment_method varchar(50)
+  payment_status varchar(20) [default: 'pending']
+  status varchar(20) [default: 'received', note: 'received|preparing|ready|delivered|cancelled']
+  estimated_delivery_at timestamptz
+  notes text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.food_order_items {
+  id uuid [pk]
+  order_id uuid [ref: > tenant.food_orders.id]
+  menu_item_id uuid [ref: > tenant.menu_items.id]
+  name_snapshot varchar(255) [not null]
+  quantity int [not null, default: 1]
+  unit_price decimal(10,2) [not null, default: 0]
+  modifiers jsonb [default: '[]']
+  special_instructions text
+  subtotal decimal(10,2) [not null, default: 0]
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.menu_promotions {
+  id uuid [pk]
+  title varchar(255) [not null]
+  description text
+  discount_type varchar(20) [default: 'percent']
+  discount_value decimal(10,2) [default: 0]
+  valid_from timestamptz
+  valid_to timestamptz
+  applicable_days jsonb [default: '[]']
+  applicable_hours varchar(50)
+  min_order_amount decimal(10,2)
+  is_active boolean [default: true]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// Gimnasios
+Table tenant.membership_plans {
+  id uuid [pk]
+  name varchar(255) [not null]
+  description text
+  duration_days int [not null]
+  price decimal(10,2) [not null, default: 0]
+  currency varchar(10) [default: 'COP']
+  class_credits_per_period int
+  personal_training_credits int [default: 0]
+  guest_passes int [default: 0]
+  freeze_allowance_days int [default: 0]
+  perks jsonb [default: '[]']
+  is_active boolean [default: true]
+  sort_order int [default: 0]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.members {
+  id uuid [pk]
+  contact_id uuid [ref: > tenant.contacts.id]
+  plan_id uuid [ref: > tenant.membership_plans.id]
+  member_number varchar(50)
+  joined_at date
+  current_period_start date
+  current_period_end date
+  frozen_from date
+  frozen_until date
+  frozen_days_used int [default: 0]
+  class_credits_remaining int
+  personal_training_remaining int [default: 0]
+  guest_passes_remaining int [default: 0]
+  auto_renew boolean [default: false]
+  status varchar(20) [default: 'active', note: 'active|frozen|expired|cancelled']
+  notes text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.fitness_classes {
+  id uuid [pk]
+  name varchar(255) [not null]
+  description text
+  class_type varchar(100)
+  instructor_name varchar(255)
+  instructor_user_id uuid
+  scheduled_at timestamptz [not null]
+  duration_minutes int [not null, default: 60]
+  max_capacity int [not null, default: 20]
+  available_spots int [not null, default: 20]
+  room varchar(100)
+  level varchar(50)
+  credits_required int [default: 1]
+  is_cancelled boolean [default: false]
+  cancellation_reason text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.class_bookings {
+  id uuid [pk]
+  class_id uuid [ref: > tenant.fitness_classes.id]
+  member_id uuid [ref: > tenant.members.id]
+  contact_id uuid
+  status varchar(20) [default: 'confirmed', note: 'confirmed|waitlist|cancelled|attended|no_show']
+  booked_at timestamptz [default: `now()`]
+  cancelled_at timestamptz
+  credits_used int [default: 1]
+  metadata jsonb [default: '{}']
+  indexes { (class_id, member_id) [unique, note: 'parcial confirmed/waitlist/attended']; (member_id, booked_at) }
+}
+
+Table tenant.member_check_ins {
+  id uuid [pk]
+  member_id uuid [ref: > tenant.members.id]
+  checked_in_at timestamptz [default: `now()`]
+  method varchar(20) [default: 'manual', note: 'manual|qr|rfid|facial']
+  class_id uuid
+  metadata jsonb [default: '{}']
+}
+
+// Educación (cohorts/enrollments/placement) — courses arriba
+Table tenant.course_cohorts {
+  id uuid [pk]
+  course_id uuid [ref: > tenant.courses.id]
+  cohort_code varchar(100)
+  instructor_name varchar(255)
+  instructor_user_id uuid
+  starts_at date [not null]
+  ends_at date
+  schedule varchar(255)
+  max_capacity int [not null, default: 20]
+  available_seats int [not null, default: 20]
+  room varchar(100)
+  meeting_url varchar(500)
+  status varchar(20) [default: 'open', note: 'open|full|cancelled|finished']
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.enrollments {
+  id uuid [pk]
+  cohort_id uuid [ref: > tenant.course_cohorts.id]
+  course_id uuid [ref: > tenant.courses.id]
+  contact_id uuid
+  student_name varchar(255) [not null]
+  student_email varchar(255)
+  student_phone varchar(50)
+  enrolled_at timestamptz [default: `now()`]
+  status varchar(20) [default: 'enrolled', note: 'enrolled|active|completed|dropped|refunded']
+  payment_status varchar(20) [default: 'pending']
+  amount_paid decimal(10,2) [default: 0]
+  completion_percent int [default: 0]
+  final_grade varchar(20)
+  completed_at date
+  notes text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.placement_tests {
+  id uuid [pk]
+  contact_id uuid
+  subject varchar(100)
+  scheduled_at timestamptz
+  completed_at timestamptz
+  result_level varchar(50)
+  score decimal(5,2)
+  test_url varchar(500)
+  status varchar(20) [default: 'pending', note: 'pending|scheduled|completed|expired']
+  notes text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// Seguros
+Table tenant.insurance_plans {
+  id uuid [pk]
+  name varchar(255) [not null]
+  description text
+  insurance_type varchar(50) [not null, note: 'vida|salud|auto|hogar|empresarial|viaje']
+  coverage_level varchar(50)
+  monthly_premium_min decimal(10,2)
+  monthly_premium_max decimal(10,2)
+  deductible decimal(10,2)
+  max_coverage decimal(15,2)
+  currency varchar(10) [default: 'COP']
+  covers jsonb [default: '[]']
+  excludes jsonb [default: '[]']
+  min_age int
+  max_age int
+  is_active boolean [default: true]
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.insurance_quotes {
+  id uuid [pk]
+  contact_id uuid
+  plan_id uuid [ref: > tenant.insurance_plans.id]
+  applicant_name varchar(255)
+  applicant_age int
+  applicant_email varchar(255)
+  applicant_phone varchar(50)
+  applicant_data jsonb [default: '{}']
+  monthly_premium decimal(10,2)
+  annual_premium decimal(10,2)
+  currency varchar(10) [default: 'COP']
+  valid_until date
+  status varchar(20) [default: 'draft', note: 'draft|sent|accepted|rejected|expired']
+  agent_user_id uuid
+  notes text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.insurance_policies {
+  id uuid [pk]
+  policy_number varchar(100) [unique, not null]
+  contact_id uuid
+  plan_id uuid [ref: > tenant.insurance_plans.id]
+  quote_id uuid [ref: > tenant.insurance_quotes.id]
+  policyholder_name varchar(255) [not null]
+  monthly_premium decimal(10,2) [not null]
+  currency varchar(10) [default: 'COP']
+  starts_at date [not null]
+  ends_at date
+  status varchar(20) [default: 'active', note: 'active|suspended|expired|cancelled']
+  next_payment_at date
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.insurance_claims {
+  id uuid [pk]
+  policy_id uuid [ref: > tenant.insurance_policies.id]
+  claim_number varchar(100)
+  incident_type varchar(100)
+  incident_at date
+  description text
+  claimed_amount decimal(15,2)
+  approved_amount decimal(15,2)
+  status varchar(30) [default: 'submitted', note: 'submitted|reviewing|approved|paid|rejected']
+  filed_via varchar(20) [default: 'whatsapp']
+  documents jsonb [default: '[]']
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// Servicios a domicilio (plomería/electricidad/...)
+Table tenant.service_requests {
+  id uuid [pk]
+  contact_id uuid
+  conversation_id uuid
+  service_type varchar(100) [not null, note: 'plomeria|electricidad|fumigacion|limpieza|jardineria|other']
+  urgency varchar(20) [default: 'normal', note: 'emergencia|alta|normal|flexible']
+  customer_name varchar(255)
+  customer_phone varchar(50)
+  address text
+  address_notes text
+  city varchar(100)
+  issue_description text
+  preferred_date date
+  preferred_time_window varchar(50)
+  estimated_duration_minutes int
+  estimated_cost decimal(10,2)
+  currency varchar(10) [default: 'COP']
+  assigned_technician_id uuid
+  assigned_technician_name varchar(255)
+  scheduled_at timestamptz
+  completed_at timestamptz
+  status varchar(30) [default: 'pending', note: 'pending|quoted|scheduled|dispatched|in_progress|completed|cancelled']
+  photos jsonb [default: '[]']
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// Fotografía
+Table tenant.photo_sessions {
+  id uuid [pk]
+  contact_id uuid
+  conversation_id uuid
+  session_type varchar(50) [not null, note: 'wedding|portrait|event|product|family|newborn|other']
+  package_name varchar(255)
+  package_description text
+  client_name varchar(255)
+  client_phone varchar(50)
+  scheduled_at timestamptz
+  duration_minutes int
+  location text
+  deliverables jsonb [default: '[]']
+  deliverable_count int
+  delivered_count int [default: 0]
+  gallery_url text
+  gallery_password varchar(100)
+  delivery_due_at date
+  delivered_at timestamptz
+  price decimal(10,2)
+  currency varchar(10) [default: 'COP']
+  deposit_paid decimal(10,2) [default: 0]
+  status varchar(30) [default: 'scheduled', note: 'scheduled|in_progress|delivered|cancelled']
+  notes text
+  metadata jsonb [default: '{}']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// Staff scheduling (verticales con agenda por profesional)
+Table tenant.staff_members {
+  id uuid [pk]
+  name text [not null]
+  email text
+  phone text
+  role text [default: 'stylist']
+  avatar_url text
+  specialties text[] [default: '{}']
+  is_active boolean [default: true]
+  sort_order int [default: 0]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+Table tenant.staff_schedules {
+  id uuid [pk]
+  staff_id uuid [ref: > tenant.staff_members.id]
+  day_of_week int [not null, note: '0..6']
+  start_time time [not null]
+  end_time time [not null]
+  is_active boolean [default: true]
+  indexes { (staff_id, day_of_week) [unique] }
+}
+
+Table tenant.staff_service_links {
+  id uuid [pk]
+  staff_id uuid [ref: > tenant.staff_members.id]
+  service_id uuid
+  duration_override_min int
+  price_override int
+  indexes { (staff_id, service_id) [unique] }
+}
+
+Table tenant.staff_breaks {
+  id uuid [pk]
+  staff_id uuid [ref: > tenant.staff_members.id]
+  date date [not null]
+  start_time time [not null]
+  end_time time [not null]
+  reason text
+}
+
+// Concesionarios / vehículos
+Table tenant.vehicles {
+  id uuid [pk]
+  make text [not null]
+  model text [not null]
+  year int [not null]
+  trim_level text
+  vin text
+  license_plate text
+  color text
+  fuel_type text [default: 'gasoline']
+  transmission text [default: 'automatic']
+  mileage_km int [default: 0]
+  condition text [default: 'new']
+  price_cents int [not null]
+  currency text [default: 'COP']
+  status text [default: 'available']
+  category text [default: 'sedan']
+  features text[] [default: '{}']
+  photos text[] [default: '{}']
+  description text
+  location text
+  is_featured boolean [default: false]
+  acquired_at date
+  sold_at date
+  sold_price_cents int
+  buyer_contact_id uuid
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  indexes { status; (make, model) }
+}
+
+Table tenant.vehicle_inquiries {
+  id uuid [pk]
+  vehicle_id uuid [ref: > tenant.vehicles.id]
+  contact_id uuid
+  contact_name text
+  contact_phone text
+  contact_email text
+  inquiry_type text [default: 'info']
+  notes text
+  status text [default: 'new']
+  assigned_to uuid
+  created_at timestamptz [default: `now()`]
+}
+
+Table tenant.test_drives {
+  id uuid [pk]
+  vehicle_id uuid [ref: > tenant.vehicles.id]
+  contact_id uuid
+  contact_name text [not null]
+  contact_phone text
+  scheduled_date date [not null]
+  scheduled_time time [not null]
+  duration_min int [default: 30]
+  status text [default: 'scheduled']
+  notes text
+  assigned_to uuid
+  created_at timestamptz [default: `now()`]
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// Relaciones cross-schema (lógicas — sin FK real por schema-per-tenant)
+// ═══════════════════════════════════════════════════════════════════════
+// • public.tenants.schema_name  ──▶  nombre del schema que contiene todas las tablas tenant.*
+// • public.channel_accounts     ──▶  tenant.conversations.channel_account_id (multi-cuenta por tipo)
+// • public.whatsapp_onboardings ──▶  tenant.whatsapp_channels.onboarding_id
+// • public.fiscal_invoices      ──▶  cobros reales (billing_payments) → factura DIAN vía Factus

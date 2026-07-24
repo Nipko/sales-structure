@@ -1,7 +1,12 @@
 # Parallly — Estrategia de Verticalización por Tipo de Negocio
+_Actualizado: jul 2026 · v2_
+
+> **Alcance de este doc**: cubre SOLO la verticalización del producto — agente IA, terminología, pipeline, FAQs, KPIs, herramientas IA por sector y adaptación de dashboard/onboarding. Facturación/planes, fiscal DIAN, SMS y el Centro de Operaciones (super_admin) son **ortogonales** a la vertical y viven en sus propios docs: `billing-annual-cycle.md`, `facturacion-electronica-colombia-2026-06.md`, `sms-monetization-packages-2026-07.md`, `superadmin-governance.md`, y Ops Center en `observability-manual.md`.
 
 ## Visión
 Cuando un negocio completa el onboarding en Parallly, el sistema ya debe "entender" su industria: el agente IA usa vocabulario del sector, el pipeline tiene las etapas correctas, las FAQs más comunes están pre-cargadas, y el dashboard muestra KPIs relevantes. El objetivo es que el 80% de la configuración esté resuelta automáticamente.
+
+La fuente única de verdad es `apps/api/src/modules/verticals/vertical-definitions.ts` → `VERTICAL_REGISTRY`, un `Record<industrySlug, VerticalDefinition>` con **17 verticales + `otro`** (fallback genérico). `getVerticalDefinition(industry)` resuelve cualquier slug desconocido a `otro`.
 
 ---
 
@@ -177,15 +182,63 @@ Cuando un negocio completa el onboarding en Parallly, el sistema ya debe "entend
 
 ---
 
+## Herramientas IA por vertical (IMPLEMENTADO)
+
+Cada vertical activa un set de tool-definitions específicas. Se registran en `apps/api/src/modules/conversations/tools/` y se enchufan por **feature flag por-agente** (`persona.config.tools.<key>.enabled`), tanto en el pipeline real (`conversations.service.ts`) como en el simulador (`agent-test.service.ts`). Un agente combina sus tools verticales con las **transversales**.
+
+| Vertical(es) | Flag (`tools.<key>`) | Archivo | Herramientas (nombres reales) |
+|--------------|----------------------|---------|-------------------------------|
+| salud (odontología/estética/psicología…) | `treatments` | `treatment-tools.ts` | `get_treatment_plan`, `list_upcoming_sessions` |
+| inmobiliaria | `realEstate` | `listings-tools.ts` | `search_listings`, `get_listing_details`, `send_listing_image` |
+| automotriz | `vehicles` | `vehicle-tools.ts` | `search_vehicles`, `get_vehicle_details`, `send_vehicle_image` |
+| restaurantes | `restaurants` | `restaurants-tools.ts` | `get_menu`, `get_promotions`, `place_order`, `check_order_status`, `cancel_order`, `list_my_orders` |
+| turismo — alojamientos | `properties` | `vacation-rental-tools.ts` | `list_properties`, `check_property_availability`, `get_property_details`, `get_check_in_instructions`, `create_property_booking`, `cancel_property_booking`, `list_my_property_bookings`, `send_property_image` |
+| turismo — agencias/tours | `tours` | `tours-tools.ts` | `search_packages`, `get_package_details`, `check_package_availability`, `create_tour_booking`, `cancel_tour_booking`, `list_my_tour_bookings` |
+| gimnasios | `gyms` | `gyms-tools.ts` | `get_membership_plans`, `get_class_schedule`, `get_my_membership`, `book_class`, `freeze_membership`, `cancel_class_booking` |
+| education | `education` | `education-tools.ts` | `get_courses`, `get_course_schedule`, `enroll_student`, `get_placement_test_link`, `cancel_enrollment`, `list_my_enrollments` |
+| seguros | `insurance` | `insurance-tools.ts` | `get_insurance_plans`, `calculate_quote`, `check_policy_status`, `file_claim`, `list_my_claims`, `cancel_quote` |
+| veterinaria | `pets` | `pets-tools.ts` | `list_pets_for_contact`, `register_pet`, `get_vaccination_status`, `triage_pet_emergency`, `update_pet` |
+| servicios_hogar | `homeServices` | `tier3-tools.ts` | `create_service_request`, `check_request_status`, `cancel_service_request` |
+| pet_services | `petServices` | `tier3-tools.ts` | `list_pet_services`, `check_daycare_availability` |
+| fotografia | `photography` | `tier3-tools.ts` | `list_photo_packages`, `check_date_availability`, `request_photo_quote`, `cancel_photo_session` |
+| retail / e-commerce | `ecommerce` / `catalog` | `ecommerce-tools.ts` + `catalog-tools.ts` | `recommend_products`, `get_order_status`, `apply_discount`, `search_products`, `check_stock`, `send_product_image`, `list_active_offers` |
+
+**Transversales** (disponibles a cualquier vertical con la feature activa):
+- `appointment-tools.ts` (flag `appointments`) — motor de agenda determinístico: `list_services`, `check_availability`, `create_appointment`, `reschedule_appointment`, `cancel_appointment`, `list_customer_appointments`, `get_appointment_details`, `send_booking_link`
+- `knowledge-tools.ts` — RAG/KB: `search_faqs`, `get_policy`, `search_knowledge_base`
+- `crm-tools.ts` — contexto de cliente: `list_customer_orders`, `get_customer_context`
+- `vertical-integration-tools.ts` — gateado por proveedor externo conectado (ver módulo `vertical-integrations`): `get_restaurant_menu` (Toast), `get_fitness_schedule` (Mindbody), `list_clinic_services` / `check_clinic_availability` (Cliniko)
+
+> Todas las tools de escritura pasan por `WRITE_TOOLS` (confirmación/side-effects controlados) y, en simulación, corren con `{disableTools:true}` para cero efectos en prod.
+
+---
+
+## Módulos backend de verticalización (IMPLEMENTADO)
+
+Además de las tools, la verticalización se apoya en módulos NestJS dedicados:
+
+| Módulo | Ubicación | Qué hace |
+|--------|-----------|----------|
+| **VerticalsModule** | `modules/verticals/` (service + controller) | Sirve `VERTICAL_REGISTRY`, resuelve terminología/sidebar/KPIs y ejecuta `bootstrapVertical()` en `completeOnboarding` (pipeline, agente, FAQs, servicios, horario) |
+| **Vehicle Inventory** | `verticals/vehicle-inventory.{service,controller}.ts` | Inventario automotriz. Tablas lazy `vehicles`, `vehicle_inquiries`, `test_drives`. CRUD, `markSold()`, `scheduleTestDrive()` con detección de conflictos, búsqueda IA, stats. Rutas `/vehicles/:tenantId` |
+| **Staff Scheduling** | `verticals/staff-scheduling.{service,controller}.ts` | Agenda de personal para salud/belleza. Tablas lazy `staff_members`, `staff_schedules`, `staff_service_links`, `staff_breaks`. Disponibilidad resolviendo servicio/horario/descanso/cita. Rutas `/staff/:tenantId` |
+| **Vertical Analytics** | `modules/vertical-analytics/` | Analítica cross-vertical (super_admin): `GET /vertical-analytics/overview` (distribución + brechas de activación), `/industry/:industry` (drilldown por industria), `/tenant/:tenantId` (KPIs verticales del tenant) |
+| **Vertical Integrations** | `modules/vertical-integrations/` | Adaptadores a SaaS verticales externos (Toast POS, Mindbody, Cliniko). Config en `tenant.settings.verticalIntegrations.{provider}`, tabla `vi_items`. Habilita las tools de `vertical-integration-tools.ts` sólo por proveedor conectado (`getConnectedProviders` cacheado) |
+| **Channel Manager** | `modules/channel-manager/` | Integración PMS para alquiler vacacional. **Hostaway** con intercambio OAuth real + sync de listings/reservas (`api.hostaway.com/v1`). Tablas lazy `cm_listings`, `cm_reservations`, `cm_availability`. Detección de conflictos + calendario de disponibilidad. `provider` enum admite `hostaway`/`guesty`/`ical`/`direct`; sólo Hostaway tiene sync en vivo |
+
+> **Nota sobre alquiler vacacional**: existen DOS módulos complementarios — `vacation-rental` (propiedades propias + KB por propiedad + iCal, sección abajo) y `channel-manager` (sincroniza con un PMS externo tipo Hostaway). Un tenant puede usar cualquiera de los dos.
+
+---
+
 ## Adaptación del Onboarding (Propuesta)
 
-### Paso 1: Selección de industria (ya existe) + Sub-tipo (NUEVO)
-Después de seleccionar industria, mostrar un segundo selector:
-- `salud` → Clínica dental | Consultorio médico | Centro de estética | Farmacia
-- `inmobiliaria` → Venta | Arriendo | Ambos | Administración de propiedades
-- `restaurantes` → Restaurante | Dark kitchen | Cafetería | Bar
-- `turismo` → Hotel | Apartamentos turísticos | Agencia de viajes | Tour operator
-- `automotriz` → Concesionario nuevo | Usado | Taller | Lavadero
+### Paso 1: Selección de industria + Sub-tipo (IMPLEMENTADO)
+Tras seleccionar industria se muestra un segundo selector de sub-tipo. Los sub-tipos viven en `VerticalDefinition.subTypes` (cada uno con `key` + `label` en 4 idiomas) y cubren las 17 verticales. Ejemplos reales del registro:
+- `salud` → Odontología | Medicina general | Estética y dermatología | Psicología y terapia | Farmacia
+- `inmobiliaria` → Venta | Arriendo | Inmuebles comerciales | Construcción y proyectos
+- `restaurantes` → Restaurante casual | Comida rápida | Cafetería | Dark kitchen / Delivery
+- `automotriz` → Concesionario | Taller mecánico | Repuestos y accesorios | Alquiler de vehículos
+- `moda_belleza` → Salón de belleza | Barbería | Spa y bienestar | Boutique de moda
 
 ### Paso 2: Lo que `completeOnboarding` debe pre-configurar automáticamente
 
@@ -197,7 +250,7 @@ Después de seleccionar industria, mostrar un segundo selector:
 | **Servicios** | 3 servicios placeholder para industrias con booking |
 | **Horario** | Default por industria (restaurantes nocturno, oficinas diurno) |
 | **Handoff triggers** | Palabras clave de escalación por industria |
-| **Vertical context** | customer_noun, transaction_noun, service_noun para el LLM |
+| **Vertical context** | Bloque `<vertical_context>` en el turno L3 con los 5 campos de `terminology`: `customerNoun`, `customerNounPlural`, `transactionNoun`, `serviceNoun`, `pipelineNoun` (+ `industryGuidance`). El contrato L1 lleva la **regla #13** que obliga al LLM a usar esa terminología |
 
 ### Paso 3: Adaptación del Dashboard
 
@@ -219,9 +272,9 @@ Después de seleccionar industria, mostrar un segundo selector:
 | Airbnb | Cerrada (solo partners invitados) | ❌ No accesible directamente |
 | Booking.com | Connectivity API | ⏸️ Pausada para nuevos partners |
 | Vrbo/Expedia | Rapid API | ✅ Requiere aprobación |
-| **Hostaway** | REST API pública | ✅ **Mejor opción** — sandbox disponible |
-| **Guesty** | OAuth 2.0 REST API | ✅ Enterprise segment |
-| **Lodgify** | REST API | ✅ Entry-level operators |
+| **Hostaway** | REST API pública | ✅ **IMPLEMENTADO** — módulo `channel-manager` (OAuth + sync de listings/reservas) |
+| **Guesty** | OAuth 2.0 REST API | 🔜 Pendiente (adaptador en backlog; `provider` ya contemplado) |
+| **Lodgify** | REST API | 🔜 Pendiente (adaptador en backlog) |
 | **Rentals United** | REST API | ✅ Único con Despegar |
 | **Cloudbeds** | REST API | ✅ Hotels + vacation rental |
 | iCal | .ics universal | ✅ Fallback (solo lectura, 6-12h delay) |
@@ -264,52 +317,57 @@ Huésped (WhatsApp/Instagram)
 
 ## Prioridad de Implementación
 
-### Fase 1 — Backend bootstrap (1-2 sprints)
-- `verticalBootstrap(industry)` en `completeOnboarding`
+### Fase 1 — Backend bootstrap ✅ COMPLETADO
+- `bootstrapVertical(industry)` en `completeOnboarding`
 - Pre-seed pipeline stages, agente IA, FAQs, servicios, horario
-- `vertical_context` XML en `PromptAssemblerService`
+- `vertical_context` XML en `PromptAssemblerService` (regla #13 del contrato L1)
 
-### Fase 2 — Dashboard adaptation (2-3 sprints)
-- Sidebar labels dinámicos por industria
-- KPIs verticales en analytics
-- Sub-tipo en onboarding wizard
+### Fase 2 — Dashboard adaptation ✅ COMPLETADO
+- Sidebar labels dinámicos por industria (`labelOverrides` + `hiddenItems`)
+- KPIs verticales en analytics + `vertical-analytics` cross-tenant (super_admin)
+- Sub-tipo en onboarding wizard (`subTypes` en las 17 verticales)
 
-### Fase 3 — Vacation Rental module (3-4 sprints)
-- Hostaway adapter
-- Property sync + KB por propiedad
+### Fase 3 — Vacation Rental module ✅ COMPLETADO
+- Módulo `vacation-rental` (propiedades, iCal import/export, 5 tools IA, dashboard)
+- KB por propiedad
 - Motor de reservas multi-noche
 - Workflow de check-in automático
 
-### Fase 4 — Más integraciones (ongoing)
-- Guesty adapter
-- Lodgify adapter
-- Integraciones por vertical (portales inmobiliarios, POS restaurantes, etc.)
+### Fase 4 — Más integraciones (en curso)
+- ✅ Hostaway adapter (`channel-manager`)
+- ✅ Adaptadores POS/PMS externos por vertical (`vertical-integrations`: Toast, Mindbody, Cliniko)
+- 🔜 Guesty adapter · Lodgify adapter
+- 🔜 Portales inmobiliarios (FincaRaiz, Metrocuadrado, Inmuebles24…)
 
 ---
 
-## Implementation Status (Apr 30, 2026)
+## Implementation Status (jul 2026)
 
 ### Completed
-- [x] 12 vertical definitions with 4 languages (vertical-definitions.ts)
+- [x] 17 verticales + `otro` con 4 idiomas en `VERTICAL_REGISTRY` (vertical-definitions.ts)
 - [x] VerticalsModule (service + controller + module)
 - [x] bootstrapVertical() in completeOnboarding (pipeline, agent, FAQs, services)
-- [x] Prompt assembler `<vertical_context>` with LLM rule #11
+- [x] Prompt assembler `<vertical_context>` con la **regla #13** del contrato L1 y los 5 campos de `terminology`
 - [x] Sidebar dynamic labels + hidden items + reordering
-- [x] Dashboard KPIs dynamic per vertical
+- [x] Dashboard KPIs dynamic per vertical + módulo `vertical-analytics` cross-tenant (super_admin)
 - [x] Dashboard welcome contextual per industry
 - [x] Dashboard homepage view (agenda for clinics, leads for real estate)
 - [x] Empty states per industry on 5 pages
 - [x] Onboarding checklist adapted per industry
 - [x] useVerticalTerms() hook + propagation to 8+ pages
-- [x] Onboarding sub-type dropdown (11 industries × 3-5 sub-types)
+- [x] Onboarding sub-type dropdown (17 verticales + `otro`, cada una con `subTypes`)
+- [x] Herramientas IA por vertical (17 tool-files) gateadas por `tools.<key>.enabled` — inmobiliaria (`search_listings`), restaurantes (`get_menu`), automotriz (`search_vehicles`), etc.
+- [x] Vehicle Inventory + Staff Scheduling (dentro de `verticals/`)
+- [x] Vertical Integrations (Toast / Mindbody / Cliniko) con tools gateadas por proveedor conectado
+- [x] Channel Manager — Hostaway (OAuth + sync de listings/reservas)
 - [x] Vacation Rental module (properties, iCal sync, AI tools, dashboard)
-- [x] 5 AI tools for vacation rental (list, check, details, check-in, book)
+- [x] 8 AI tools for vacation rental (list, check availability, details, check-in, book, cancel, list bookings, send image)
 - [x] iCal import from Airbnb/Booking.com (cron every 30 min)
 - [x] iCal export public endpoint for platforms
 - [x] Properties dashboard pages (list + detail with 5 tabs)
 
-### Deferred
-- [ ] Channel manager API integrations (Hostaway, Guesty, Lodgify)
-- [ ] Real-time webhooks from Airbnb/Booking (requires partner approval)
-- [ ] More AI tools per vertical (search_properties for inmobiliaria, get_menu for restaurants)
-- [ ] Vertical-specific automation templates
+### Pendiente
+- [ ] Adaptadores channel manager Guesty y Lodgify (`provider` ya contemplado; falta el sync en vivo)
+
+### Bloqueado por terceros
+- [ ] Webhooks en tiempo real de Airbnb/Booking (requiere aprobación de partner; hoy sólo iCal read-only con 6-12h de delay)

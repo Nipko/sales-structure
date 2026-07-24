@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Snapshot de plan de test de mayo-2026. No refleja el estado actual del código; se conserva como referencia.
+
 # Plan de Pruebas Exhaustivo — Parallly Platform
 
 **Fecha:** 2026-05-27  

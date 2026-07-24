@@ -1,22 +1,34 @@
 # 🔐 Seguridad y Autenticación — Parallext Engine
 
-> Versión 1.1 · Actualizado: Marzo 29, 2026
+> Versión 1.2 · Actualizado: Julio 23, 2026
+
+Aplica a las 5 apps del monorepo: **api** (NestJS, 3000), **dashboard** (Next.js, 3001),
+**whatsapp** (NestJS, 3002), **landing** (Next static, 80) y **mobile** (React Native/Expo,
+`@parallext/mobile`, que se distribuye por EAS y NO por el deploy web). La superficie de auth
+descrita vive mayormente en `apps/api/src/modules/auth` (83 módulos API en total).
 
 ---
 
 ## Tabla de Contenidos
 
 1. [Flujo de Autenticación](#1-flujo-de-autenticación)
-2. [JWT — Tokens de Acceso](#2-jwt--tokens-de-acceso)
+2. [JWT — Tokens de Acceso y Rotación](#2-jwt--tokens-de-acceso-y-rotación)
 3. [bcrypt — Contraseñas](#3-bcrypt--contraseñas)
 4. [Roles y Permisos (RBAC)](#4-roles-y-permisos-rbac)
 5. [Guards y Decoradores](#5-guards-y-decoradores)
 6. [Protección del Dashboard](#6-protección-del-dashboard)
 7. [Infraestructura de Seguridad](#7-infraestructura-de-seguridad)
-8. [Seguridad del Servicio WhatsApp](#8-seguridad-del-servicio-whatsapp)
-9. [Idempotencia y Protección contra Duplicados](#9-idempotencia-y-protección-contra-duplicados)
-10. [Gestión de Usuarios](#10-gestión-de-usuarios)
-11. [Buenas Prácticas](#11-buenas-prácticas)
+8. [Cifrado de Tokens y Secretos (AES-256-GCM)](#8-cifrado-de-tokens-y-secretos-aes-256-gcm)
+9. [Seguridad del Servicio WhatsApp y Webhooks Meta](#9-seguridad-del-servicio-whatsapp-y-webhooks-meta)
+10. [2FA (TOTP + backup + OTP email/SMS)](#10-2fa-totp--backup--otp-emailsms)
+11. [Trusted Devices (dispositivos de confianza)](#11-trusted-devices-dispositivos-de-confianza)
+12. [SSO / SAML y OAuth (Google, Microsoft)](#12-sso--saml-y-oauth-google-microsoft)
+13. [Customer Portal — Magic Link](#13-customer-portal--magic-link)
+14. [Gobernanza de la Impersonación (super_admin)](#14-gobernanza-de-la-impersonación-super_admin)
+15. [Throttling anti-spoof y Firmas de Webhooks (Twilio, MercadoPago)](#15-throttling-anti-spoof-y-firmas-de-webhooks-twilio-mercadopago)
+16. [Idempotencia y Protección contra Duplicados](#16-idempotencia-y-protección-contra-duplicados)
+17. [Provisión de Usuarios (bootstrap)](#17-provisión-de-usuarios-bootstrap)
+18. [Buenas Prácticas](#18-buenas-prácticas)
 
 ---
 
@@ -48,7 +60,7 @@
 │                                                                  │
 │  5. DASHBOARD guarda en localStorage:                            │
 │     - accessToken    (15 min)                                    │
-│     - refreshToken   (7 días)                                    │
+│     - refreshToken   (8h; 14 días con "Recordarme")              │
 │     - user           (JSON con perfil)                           │
 │                                                                  │
 │  6. Redirige a /admin → AdminLayout verifica token               │
@@ -60,27 +72,66 @@
 │                                                                  │
 │  8. ACCESS TOKEN expira (15 min):                                │
 │     POST /auth/refresh { refreshToken }                          │
-│     → Genera nuevo Access Token                                  │
+│     → Valida contra Redis, ROTA el refresh (nuevo tid) y         │
+│       revoca el anterior. Reuse detection: si el tid ya no       │
+│       existe → revoca TODAS las sesiones del usuario.            │
 │                                                                  │
-│  9. LOGOUT: borra localStorage → redirige /login                 │
+│  9. LOGOUT: POST /auth/logout { refreshToken } →                 │
+│     revoca ese refresh en Redis + destruye la sesión →           │
+│     el front borra localStorage → redirige /login                │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Endpoints de Auth:
+> Antes de `AuthService.login()` el flujo pasa por `AuthThrottleGuard` (10 intentos / 15 min
+> por IP real, ver §15), por la verificación 2FA si el usuario la tiene activa (§10) y por el
+> reconocimiento de dispositivo de confianza (§11). El login OAuth (Google/Microsoft) y SAML
+> devuelven un `code` de un solo uso (`oauth_exchange:{code}`, TTL corto) que el dashboard
+> canjea vía `POST /auth/exchange-code`.
+
+### Endpoints de Auth (`auth.controller.ts` + `saml.controller.ts`):
 
 | Endpoint | Método | Auth | Descripción |
 |----------|--------|------|------------|
-| `/auth/login` | POST | ❌ | Login → tokens + user |
-| `/auth/register` | POST | ✅ admin | Crear usuario |
-| `/auth/refresh` | POST | ❌ | Renovar access token |
+| `/auth/login` | POST | ❌ (throttle 10/15m) | Login email+password → tokens + user (o reto 2FA) |
+| `/auth/signup` | POST | ❌ (throttle 5/1h) | Alta self-service: crea empresa + admin |
+| `/auth/register` | POST | ✅ super_admin/tenant_admin | Crear usuario (admin crea solo agents de su tenant) |
+| `/auth/refresh` | POST | ❌ | Renovar access token (**rota** el refresh) |
+| `/auth/logout` | POST | ❌ | Revoca el refresh + destruye sesión |
+| `/auth/exchange-code` | POST | ❌ (throttle 20/15m) | Canjea code OAuth/SAML de un solo uso por tokens |
 | `/auth/me` | POST | ✅ | Info del usuario actual |
+| `/auth/activity-ping` | POST | ✅ | Mantiene viva la sesión (cada 5 min) |
+| `/auth/google` | POST | ❌ | Login/registro con Google OAuth |
+| `/auth/microsoft/url` · `/auth/microsoft/callback` | GET | ❌ | Inicio y callback de Microsoft OAuth |
+| `/auth/forgot-password` | POST | ❌ (throttle 5/1h) | Solicitar código de reseteo |
+| `/auth/reset-password` | POST | ❌ (throttle 10/15m) | Confirmar reseteo con código |
+| `/auth/change-password` | POST | ✅ | Cambiar contraseña (requiere la actual) |
+| `/auth/setup-password` | POST | ✅ | Fijar contraseña a usuarios de Google |
+| `/auth/send-verification` · `/auth/verify-email` | POST | ✅ | Verificación de email (OTP 6 dígitos) |
+| `/auth/update-profile` | POST | ✅ | Actualizar nombre/teléfono/cargo |
+| `/auth/complete-onboarding` | POST | ✅ | Crear empresa + tenant al terminar onboarding |
+| `/auth/users` | GET | ✅ | Listar usuarios del tenant (o todos si super_admin) |
+| `/auth/users/:id` | PATCH/DELETE | ✅ super_admin/tenant_admin | Editar / desactivar usuario (soft delete + revoca sesiones) |
+| `/auth/users/:id/skills` | PUT | ✅ super_admin/tenant_admin | Editar skill tags |
+| `/auth/admin/reset-password` | POST | ✅ super_admin | Reset de contraseña de un usuario |
+| `/auth/impersonate/:tenantId` | POST | ✅ super_admin | Impersonar tenant admin (motivo obligatorio, §14) |
+| `/auth/impersonate/exit` | POST | ✅ super_admin | Cerrar sesión de impersonación |
+| `/auth/2fa/status` · `/setup` · `/verify-setup` · `/disable` | GET/POST | ✅ | Gestión de 2FA TOTP (§10) |
+| `/auth/2fa/verify` | POST | ❌ (throttle 10/15m) | Verificar código 2FA en login (usa `twoFAToken`) |
+| `/auth/2fa/send-email` · `/auth/2fa/send-sms` | POST | ❌ | Enviar OTP fallback por email / SMS |
+| `/auth/2fa/backup-codes` | POST | ✅ | Regenerar backup codes (requiere password) |
+| `/auth/trusted-devices` | GET | ✅ | Listar dispositivos de confianza (§11) |
+| `/auth/trusted-devices/:id/revoke` · `/revoke-all` | POST | ✅ | Revocar uno / todos |
+| `/auth/saml/check` · `/login` · `/acs` · `/metadata/:tenantId` | GET/POST | ❌ | Flujo SAML público (§12) |
+| `/auth/saml/config` · `/auth/saml/forced/:tenantId` | GET/PUT | ✅/❌ | Config IdP por tenant + estado force-SSO |
+
+*(La tabla resume el set real; para firmas y DTOs exactos ver `auth.controller.ts`.)*
 
 ### Payloads:
 
 **Request Login:**
 ```json
-{ "email": "admin@parallext.com", "password": "Parallext2026!" }
+{ "email": "admin@empresa.com", "password": "••••••••", "rememberMe": true }
 ```
 
 **Response Login:**
@@ -105,30 +156,56 @@
 
 ---
 
-## 2. JWT — Tokens de Acceso
+## 2. JWT — Tokens de Acceso y Rotación
 
 ### Estructura del token (payload):
 
 ```json
 {
   "sub": "user-uuid",
-  "email": "admin@parallext.com",
+  "email": "admin@empresa.com",
   "role": "super_admin",
   "tenantId": null,
+  "sid": "session-uuid",
+  "tid": "token-uuid (solo en el refresh)",
   "iat": 1709500000,
   "exp": 1709500900
 }
 ```
 
+En sesiones de impersonación el refresh y el access llevan además `impersonatedBy`,
+`isImpersonation: true` e `impersonationSid` (ver §14).
+
 ### Configuración:
 
-| Parámetro | Valor | Variable de entorno |
-|-----------|-------|-------------------|
-| Access Token TTL | 15 minutos | `JWT_EXPIRATION` |
-| Refresh Token TTL | 7 días | `JWT_REFRESH_EXPIRATION` |
+| Parámetro | Valor | Fuente |
+|-----------|-------|--------|
+| Access Token TTL | 15 minutos | `auth.jwtExpiration` (env `JWT_EXPIRATION`, default `15m`) |
+| Refresh Token TTL (normal) | **8 horas** (`REFRESH_TTL_DEFAULT`) | constante en `auth.service.ts` |
+| Refresh Token TTL (rememberMe) | **14 días** (`REFRESH_TTL_REMEMBER`) | constante en `auth.service.ts` |
+| Token de impersonación | 1 hora (access + refresh) | `auth.service.ts` |
 | Algoritmo | HS256 | — |
-| Secret (access) | Aleatorio, 64 chars | `JWT_SECRET` |
-| Secret (refresh) | Aleatorio, 64 chars | `JWT_REFRESH_SECRET` |
+| Secret (access) | Aleatorio, 64 chars hex | `JWT_SECRET` |
+| Secret (refresh) | Aleatorio, 64 chars hex (**debe diferir** del access) | `JWT_REFRESH_SECRET` |
+
+> El TTL del refresh **no** se controla por `JWT_REFRESH_EXPIRATION`; son constantes
+> (8h / 14d) en `AuthService`. No existe un TTL de "7 días" en el código.
+
+### Rotación y revocación de refresh tokens (implementado):
+
+La rotación **ya está activa**, no es un pendiente:
+
+- Cada refresh se emite con un `tid` (UUID) y se registra en Redis: `refresh:{userId}:{tokenId}`
+  con TTL igual al del token.
+- En `POST /auth/refresh` se valida el `tid` contra Redis, se **revoca el token viejo**
+  (`del`) y se emite un par nuevo (rotación). Se comprueba también que el `sid` del token
+  coincida con la sesión activa (`session:{userId}`).
+- **Reuse detection**: si el `tid` presentado ya no existe en Redis (fue rotado antes), se
+  interpreta como robo → `revokeAllUserSessions(userId)` borra todos los `refresh:{userId}:*`
+  y destruye la sesión.
+- `POST /auth/logout` revoca ese refresh puntual y destruye la sesión.
+- En cambio de contraseña, desactivación de usuario o `revoke-all`, se purgan todas las
+  sesiones del usuario.
 
 ### Generación de secrets (producción):
 ```bash

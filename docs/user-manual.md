@@ -10,7 +10,11 @@
 </p>
 
 <p align="center">
-  Versión 4.2 — Mayo 2026
+  Versión 4.3 — Julio 2026
+</p>
+
+<p align="center">
+  <sub>Manual para <strong>tenants</strong> (administradores, supervisores y agentes). Las funciones de <strong>super_admin</strong> de plataforma — Centro de Operaciones, impersonación, backups y Billing Ops (subs/pagos/reembolsos cross-tenant) — quedan fuera de este manual.</sub>
 </p>
 
 ---
@@ -60,7 +64,7 @@
 
 # 1. Introducción
 
-Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar conversaciones de ventas, soporte y atención al cliente a través de **WhatsApp, Instagram, Messenger, Telegram y SMS** — con agentes de inteligencia artificial que operan sobre tu catálogo, tu agenda y tu base de clientes reales.
+Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar conversaciones de ventas, soporte y atención al cliente a través de **WhatsApp, Instagram, Messenger, Telegram, Email y un Web Chat Widget** — con agentes de inteligencia artificial que operan sobre tu catálogo, tu agenda y tu base de clientes reales. El **SMS dejó de ser un canal conversacional**: hoy se usa solo para **notificaciones salientes** por créditos (ver sección 20.14).
 
 ### ¿Para quién es Parallly?
 
@@ -129,7 +133,7 @@ El título y opciones se adaptan al nombre del agente IA recomendado:
 ¿Cómo conociste Parallly? (Google, Instagram, recomendación, etc.)
 
 ### Paso 5 — Plan
-Seleccionas plan (Starter, Pro o Enterprise) y método de pago si es necesario.
+Tu cuenta arranca con una **prueba del plan Emprendedor sin tarjeta**. Podés cambiar a Starter, Pro, Enterprise o Custom cuando quieras desde **Configuración → Facturación** (ver sección 20).
 
 ### Configuración automática al terminar
 
@@ -176,7 +180,7 @@ Parallly tiene **3 roles para tenants**, cada uno con permisos específicos. Los
 
 **Puede:**
 - ✅ Todo lo del Supervisor y Agent
-- ✅ Conectar y desconectar canales (WhatsApp, Instagram, Messenger, Telegram, SMS)
+- ✅ Conectar y desconectar canales (WhatsApp, Instagram, Messenger, Telegram, Email) — incluyendo varias conexiones del mismo tipo según el plan
 - ✅ Configurar agentes IA (crear, editar, asignar canales, eliminar)
 - ✅ Gestionar usuarios (invitar, cambiar roles, desactivar)
 - ✅ Cambiar plan de facturación, método de pago, pausar/cancelar
@@ -374,7 +378,7 @@ Pills arriba de la lista:
 - **Con humano** — ya tienen agente
 - **Resueltas** — cerradas hace 72h o manualmente
 
-Filtros por canal: WhatsApp, Instagram, Messenger, Telegram, SMS.
+Filtros por canal: WhatsApp, Instagram, Messenger, Telegram y Email.
 
 ## 6.3 Notificaciones de handoff
 
@@ -613,6 +617,7 @@ En la parte superior de la vista kanban hay un **selector de pestañas** con tod
 
 | Plan | Pipelines |
 |------|-----------|
+| Emprendedor | 1 |
 | Starter | 1 |
 | Pro | 3 |
 | Enterprise | 10 |
@@ -655,6 +660,7 @@ Si tienes canales conectados sin agente asignado, aparece banner rojo: "Tienes X
 
 | Plan | Agentes IA | Plantillas custom |
 |------|-----------|-------------------|
+| Emprendedor | 1 | No |
 | Starter | 1 | No |
 | Pro | 3 | Sí |
 | Enterprise | 10 | Sí |
@@ -688,9 +694,9 @@ Hub con cards organizadas:
 - Modo respuesta (siempre IA, siempre humano, híbrido)
 - Activación / horario
 
-### Asignación de canales
+### Asignación de conexiones
 
-Selector de canales que este agente atiende. **Regla dura**: un canal solo puede tener UN agente.
+Selector de **conexiones** que este agente atiende. La regla es **un agente por conexión** (`agent_personas.channel_bindings`): cada agente se enlaza a cuentas concretas (por ejemplo, "WhatsApp — Ventas +57 300…" y "WhatsApp — Soporte +57 301…"), no a un canal genérico. Así podés tener un agente distinto por cada número o cuenta conectada. Cuántas conexiones del mismo tipo podés tener lo define tu plan (ver 9.8).
 
 ### Herramientas
 
@@ -799,13 +805,16 @@ Cron diario @6AM revisa y renueva tokens que expiran en menos de 30 días. Recib
 3. Parallly configura el webhook automáticamente
 4. Listo
 
-## 9.5 SMS (Twilio)
+## 9.5 SMS — notificación saliente (no es un canal conversacional)
 
-### Conectar
-1. Canales → SMS → "Conectar"
-2. Ingresar Account SID, Auth Token y número Twilio
-3. Configurar webhook en Twilio: `https://api.parallly-chat.cloud/api/v1/sms/webhook/{tenantId}`
-4. Listo
+El **SMS conversacional fue descartado**: la tarjeta de auto-conexión de Twilio ya no aparece en Canales. Hoy el SMS se usa únicamente como **notificación saliente one-way** hacia tus clientes, mediante un sistema de **créditos** (1 crédito = 1 segmento de SMS) que salen por el Twilio de la plataforma.
+
+- No necesitás conectar tu propia cuenta de Twilio.
+- La compra de paquetes y el saldo se gestionan en **Configuración → Facturación** (ver 20.14).
+- El envío se hace desde Campañas/broadcast eligiendo el canal SMS (consume créditos).
+- Está sujeto a un **interruptor maestro** de plataforma que puede estar apagado (ver 20.14).
+
+> Los canales realmente **conectables y conversacionales** son: WhatsApp, Instagram, Messenger, Telegram y Email. El Web Chat Widget se configura aparte (Configuración → Integraciones → Web Chat).
 
 ## 9.6 Email
 
@@ -833,17 +842,41 @@ Parallly ahora soporta **email como canal de comunicación**, permitiendo que lo
 
 ### Asignar agente IA al email
 
-Igual que cualquier otro canal: en el editor del agente IA, asigna el canal "Email". Recuerda la regla de un agente por canal.
+Igual que cualquier otra conexión: en el editor del agente IA, asigná la conexión de Email. Recordá la regla de **un agente por conexión** (ver 8.2).
 
 > **Tip:** Configura un Reply-to diferente al From si quieres que las respuestas de clientes lleguen a una bandeja específica monitoreada por Parallly.
 
 ## 9.7 Desconectar un canal
 
-1. Canales → click en el canal → "Desconectar"
+La desconexión es **por cuenta/conexión**: si tenés varios números o cuentas del mismo tipo, cada uno se desconecta de forma independiente sin afectar a los demás.
+
+1. Canales → click en el canal → elegí la conexión → "Desconectar"
 2. Modal confirmación con resultado real:
    - **Verde** ✅ "Desconectado completamente": proveedor confirmó la desuscripción
    - **Amarillo** ⚠️ "Desconectado en plataforma — revisar el proveedor": tu BD se actualizó pero el proveedor podría seguir enviando. Causas: token expirado, cambio de permisos. Hay que entrar manualmente al proveedor (Meta Business Suite, etc.)
    - **Rojo** ❌: error de red — reintenta
+
+## 9.8 Varias conexiones del mismo tipo (multi-cuenta)
+
+Podés conectar **más de una cuenta del mismo canal** — por ejemplo dos números de WhatsApp, dos cuentas de Instagram o dos bots de Telegram — sin que sus conversaciones se mezclen.
+
+- **Límite por plan y canal**: cada plan define cuántas conexiones del mismo tipo permite (`features.maxChannelAccounts`, **por defecto 1** por canal). Un super_admin puede subir el límite por tenant.
+- **Contador visible**: cada tarjeta de canal en **Canales** muestra "**X de Y cuentas**" (Y = tu límite; ∞ si es ilimitado) y un enlace **"Conectar otra"** cuando todavía tenés cupo.
+- **Tokens por cuenta**: cada conexión guarda su propio token de acceso (`channel_accounts.access_token`), de modo que los mensajes salen por el número o cuenta correctos.
+- **Un agente por conexión**: podés asignar un agente IA distinto a cada cuenta (ver 8.2).
+- **Emisor en campañas**: cuando tenés más de una conexión, al enviar un broadcast o una plantilla elegís desde qué número/cuenta sale.
+
+Límites de fábrica por plan (conexiones del mismo tipo):
+
+| Plan | WhatsApp | Instagram | Messenger | Telegram |
+|------|:--------:|:---------:|:---------:|:--------:|
+| Emprendedor | 1 | 1 | 1 | 1 |
+| Starter | 1 | 1 | 1 | 1 |
+| Pro | 2 | 1 | 3 | 1 |
+| Enterprise | 3 | 2 | 5 | 2 |
+| Custom | ∞ | ∞ | ∞ | ∞ |
+
+> Estos son los valores de fábrica; tu super_admin puede ajustarlos por tenant.
 
 ---
 
@@ -900,6 +933,7 @@ Bloquea días específicos (vacaciones, feriados) — el agente IA no ofrecerá 
 
 | Plan | Calendarios |
 |------|-------------|
+| Emprendedor | 1 |
 | Starter | 1 |
 | Pro | 3 |
 | Enterprise | 10 |
@@ -1095,9 +1129,11 @@ Las plantillas también se filtran por **industria** — si tu tenant es de salu
 
 | Plan | Campañas/mes |
 |------|--------------|
+| Emprendedor | 0 (no incluido) |
 | Starter | 3 |
 | Pro | Ilimitadas |
 | Enterprise | Ilimitadas |
+| Custom | Ilimitadas |
 
 ## 12.4 Pruebas A/B
 
@@ -1266,7 +1302,7 @@ Widget dedicado en la vista de Analytics que muestra qué porcentaje de conversa
 
 - **Porcentaje de resolución IA**: conversaciones resueltas sin handoff / total de conversaciones × 100
 - **Gráfico de tendencia**: evolución de la tasa a lo largo del tiempo (últimos 7, 30 o 90 días)
-- **Desglose por canal**: tasa de resolución separada por WhatsApp, Instagram, Messenger, Telegram, SMS y Email. Esto ayuda a identificar en qué canales el agente rinde mejor o peor
+- **Desglose por canal**: tasa de resolución separada por WhatsApp, Instagram, Messenger, Telegram y Email. Esto ayuda a identificar en qué canales el agente rinde mejor o peor
 
 ### Cómo se calcula
 
@@ -1592,10 +1628,13 @@ Cada conversación asignada tiene un SLA de 5 minutos por defecto:
 
 | Plan | Precio mensual | Agentes IA | Mensajes IA/mes | Calendarios | Trial |
 |------|----------------|-----------|-----------------|-------------|-------|
-| **Starter** | USD $39 | 1 | 5.000 | 1 | 7 días |
-| **Pro** | USD $129 | 3 | 25.000 | 3 | 15 días |
-| **Enterprise** | USD $349 | 10 | 100.000 | 10 | 15 días |
+| **Emprendedor** | USD $21 | 1 | 1.000 | 1 | 7 días (sin tarjeta) |
+| **Starter** | USD $49 | 1 | 5.000 | 1 | 7 días (sin tarjeta) |
+| **Pro** | USD $129 | 3 | 25.000 | 3 | 15 días (con tarjeta) |
+| **Enterprise** | USD $349 | 10 | 100.000 | 10 | 15 días (con tarjeta) |
 | **Custom** | A medida | Ilimitados | Ilimitados | Ilimitados | — |
+
+> **Emprendedor** es el plan de entrada: 1 agente, **solo WhatsApp**, 1.000 mensajes IA/mes, **sin automatizaciones ni campañas**, 1 pipeline y 1 calendario. Ideal para arrancar; subís de plan para desbloquear más canales y funciones. Los precios son los valores de fábrica (USD); el super_admin puede ajustarlos y cada país puede tener precio local (ver 20.2).
 
 ## 20.2 Precio en moneda local
 
@@ -1713,6 +1752,43 @@ Cuando un cobro falla, MercadoPago reintenta automáticamente con su lógica de 
 3. Banner en dashboard
 4. Después de 7 días sin recuperar → suspensión automática del tenant
 
+## 20.13 Ciclo de facturación: mensual o anual
+
+Cada plan de pago puede cobrarse en **ciclo mensual** o **anual**. El ciclo anual aplica un **descuento (~15%)** sobre el total del año frente a pagar 12 meses sueltos.
+
+- En **Configuración → Facturación** hay un selector **Mensual / Anual**; al elegir Anual, las tarjetas de plan muestran el precio anual y el porcentaje de ahorro.
+- **Cambiar de ciclo** (por ejemplo, pasar de mensual a anual) es un cambio **inmediato**: MercadoPago no permite editar el ciclo de una suscripción existente, así que el sistema **cancela la suscripción actual y crea una nueva** con el ciclo elegido (mismo mecanismo que un cambio de plan).
+- Una **bajada de plan dentro del mismo ciclo** se programa sin cobro para el final del período; un **cambio de ciclo** siempre recrea la suscripción.
+
+## 20.14 Créditos SMS (notificaciones salientes)
+
+El envío de **SMS es one-way** (notificaciones a tus clientes) y funciona con **créditos**: **1 crédito = 1 segmento** de SMS. No es un canal conversacional (ver 9.5).
+
+- **Comprar**: en **Configuración → Facturación**, sección de créditos SMS, elegís un paquete y pagás con **MercadoPago** como **pago único** (no es suscripción). Tras el pago, los créditos se acreditan automáticamente (vía webhook, unos segundos).
+- **Saldo**: la misma página muestra tu **saldo** de créditos, comprados y consumidos (total y del mes). Cuando el saldo llega a 0, aparece un aviso para recargar.
+- **Envío medido**: cada notificación descuenta créditos según la cantidad de segmentos; el consumo queda registrado en un **ledger** (histórico) atómico.
+- **Interruptor maestro (kill-switch)**: el modelo de SMS reseller puede estar **apagado a nivel plataforma** (por defecto OFF). Si está apagado, no se pueden comprar ni enviar créditos aunque tu plan lo permita.
+- Los paquetes, precios y el número emisor los define la plataforma (super_admin) y pueden variar por país.
+
+## 20.15 Datos fiscales — Facturación electrónica DIAN (Colombia)
+
+Para tenants en Colombia, Parallly puede emitir **factura electrónica DIAN** de tus cobros a través de un proveedor tecnológico autorizado (Factus).
+
+**Ruta:** Configuración → **Datos fiscales**
+
+Cargás el perfil fiscal del adquirente:
+- **Tipo de organización**: persona jurídica o natural
+- **Tipo de documento** y **número** (NIT, cédula, etc.); si es NIT, el **dígito de verificación (DV)** se calcula automáticamente
+- **Responsabilidad tributaria** (responsable / no responsable de IVA)
+- **Razón social** (jurídica) o **nombres** (natural)
+- **Municipio** (con su **código DANE**), **dirección**, email y teléfono
+
+En la misma página ves el **historial de facturas** emitidas (número, estado, monto, PDF/XML) y podés **reintentar** una que haya quedado pendiente o fallida.
+
+### Gate "cobrar con datos fiscales" (opcional)
+
+La plataforma puede exigir que completes tus datos fiscales **antes de cobrarte** (gate collect-before-pay). Este gate viene **desactivado por defecto**; cuando está activo, al intentar pagar aparece un aviso/modal que te lleva a **Datos fiscales** y, una vez guardados, retoma el pago automáticamente.
+
 ---
 
 # 21. Adaptación por Industria — Verticales
@@ -1771,10 +1847,11 @@ Parallly opera 16 industrias verticales. Cada una activa funcionalidades especí
 
 | Plan | Propiedades |
 |------|-------------|
-| Starter | 1 |
-| Pro | 3 |
-| Enterprise | 10 |
-| Custom | 999 |
+| Emprendedor | 0 |
+| Starter | 2 |
+| Pro | 10 |
+| Enterprise | 50 |
+| Custom | Ilimitadas |
 
 ### 21.1.3 Calendario y sincronización iCal
 
@@ -2271,16 +2348,16 @@ Cuando un cliente envía un **audio** o **imagen** por cualquier canal (WhatsApp
 
 Cada plan tiene cuotas mensuales de procesamiento multimedia:
 
-| Límite | Starter | Pro | Enterprise | Custom |
-|--------|---------|-----|------------|--------|
-| Audios/mes | 150 | 500 | 2.000 | Ilimitado |
-| Imágenes/mes | 250 | 1.000 | 5.000 | Ilimitado |
-| Duración máx. audio | 3 min | 5 min | 5 min | 10 min |
-| Por contacto/día | 20 | 30 | 50 | 100 |
+| Límite | Emprendedor | Starter | Pro | Enterprise | Custom |
+|--------|-------------|---------|-----|------------|--------|
+| Audios/mes | 30 | 150 | 500 | 2.000 | Ilimitado |
+| Imágenes/mes | 50 | 250 | 1.000 | 5.000 | Ilimitado |
+| Duración máx. audio | 2 min | 3 min | 5 min | 5 min | 10 min |
+| Por contacto/día | 10 | 20 | 30 | 50 | 100 |
 
 Además hay protecciones automáticas contra abuso:
 - Límite por conversación (ráfaga de 3-5 archivos en 5 minutos)
-- Límite por tenant por hora (50-1.000 según plan)
+- Límite por tenant por hora (20-1.000 según plan)
 - Presupuesto diario de costo (para evitar picos inesperados)
 
 ## 27.4 ¿Qué pasa cuando se alcanza el límite?
@@ -2522,10 +2599,10 @@ Pulsa **Conectar Google Business** y autoriza el acceso. Luego configura tu Acco
 ## General
 
 **¿Cuánto cuesta Parallly?**
-Desde USD $39/mes (Starter). Ver tabla completa en sección 20.1.
+Desde USD $21/mes (Emprendedor) o USD $49/mes (Starter). Ver tabla completa en sección 20.1. Se puede pagar en ciclo mensual o anual (~15% de descuento — ver 20.13).
 
 **¿Puedo probar antes de pagar?**
-Sí: 7 días en Starter, 15 días en Pro y Enterprise. Sin tarjeta para Starter.
+Sí: 7 días en Emprendedor y Starter (sin tarjeta), 15 días en Pro y Enterprise (con tarjeta).
 
 **¿En qué países funciona?**
 Toda Latinoamérica. Soporte de moneda local: COP, ARS, MXN, CLP, PEN, UYU, BRL, USD.
@@ -2548,7 +2625,7 @@ Sí — palabras clave de handoff (ej: "hablar con persona") + reglas de baja co
 Carga FAQs, documentos y URLs en Base de Conocimiento. El agente busca con RAG cuando necesita info.
 
 **¿Puedo tener varios agentes diferentes?**
-Sí — uno por canal según tu plan. Por ejemplo: Sofía formal en email, Sofía amigable en Instagram.
+Sí — **uno por conexión** según tu plan. Por ejemplo: un agente formal en un número de WhatsApp y otro más informal en tu Instagram.
 
 ## Canales
 
@@ -2559,7 +2636,7 @@ Solo para mensajes salientes fuera de la ventana de 24h. Para conversaciones que
 No — solo Instagram Business. Es un requisito de Meta, no de Parallly.
 
 **¿Cuántos canales puedo conectar?**
-Sin límite por número de canales — el límite real es por agentes IA (1 agente = 1 canal).
+Podés conectar todos los canales de tu plan, e incluso **varias conexiones del mismo tipo** (p. ej. 2 números de WhatsApp) según `maxChannelAccounts` (por defecto 1 por canal). Cada conexión puede tener su propio agente. Ver secciones 9.8 y 8.2.
 
 ## Citas
 
@@ -2581,7 +2658,7 @@ Sí — transcribe notas de voz (Whisper) y describe imágenes (visión IA). Ver
 Los mensajes se reciben pero no se procesan con IA. El agente responde pidiendo que el cliente escriba por texto. Ver límites en sección 27.3.
 
 **¿Me cobran extra por multimedia?**
-No — está incluido en tu plan con cuotas mensuales. Los límites varían según plan (Starter: 150 audios, Pro: 500, Enterprise: 2.000).
+No — está incluido en tu plan con cuotas mensuales. Los límites varían según plan (Emprendedor: 30 audios, Starter: 150, Pro: 500, Enterprise: 2.000).
 
 ## Seguridad
 
@@ -2606,7 +2683,7 @@ Sí — configúralo en Canales → Email con SMTP o SendGrid. Los correos apare
 Sí — al crear una campaña, activa el toggle "Prueba A/B". Disponible en planes Pro y superiores. Ver sección 12.4.
 
 **¿Puedo tener más de un pipeline?**
-Sí — según tu plan (Starter: 1, Pro: 3, Enterprise: 10). Ver sección 7.9.
+Sí — según tu plan (Emprendedor: 1, Starter: 1, Pro: 3, Enterprise: 10). Ver sección 7.9.
 
 **¿Qué son las secuencias drip?**
 Son flujos automatizados de mensajes con delays entre cada paso. Ideales para nurturing de leads. Se detienen si el contacto responde o convierte. Ver sección 11.5.

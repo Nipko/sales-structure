@@ -1,9 +1,32 @@
-# Facturación Electrónica DIAN (Colombia) para Parallly — Documento de Decisión
+# Facturación Electrónica DIAN (Colombia) para Parallly — Decisión + Implementación (as-built)
 
-**Autor:** Arquitectura + Asesoría fiscal · **Fecha:** 14-jun-2026 · **Estado:** Para decisión del fundador
-**Alcance:** Cómo emitir factura electrónica de venta (FEV) válida ante la DIAN cuando Parallly cobre suscripciones a clientes en Colombia, comparando (A) integrar un proveedor tecnológico vía API y (B) integración directa con la DIAN con software propio.
+**Autor:** Arquitectura + Asesoría fiscal · **Fecha:** 14-jun-2026 · **Actualizado:** 23-jul-2026 · **Versión:** 2.0
+**Estado:** ✅ **IMPLEMENTADO (Factus) — pendiente configuración de go-live.** El camino A (proveedor tecnológico) se construyó completo en el módulo `apps/api/src/modules/fiscal/` (20 archivos) + 2 páginas dashboard + gate en billing. La capa está desplegada pero **dormida** (`isProviderReady` = false) hasta cargar credenciales Factus + rango de numeración y activar el gate — ver **§12 Runbook de go-live**. El documento se conserva como decisión de arquitectura + referencia de operación.
+**Alcance:** Cómo emitir factura electrónica de venta (FEV) válida ante la DIAN cuando Parallly cobre suscripciones a clientes en Colombia, comparando (A) integrar un proveedor tecnológico vía API y (B) integración directa con la DIAN con software propio. **Decisión tomada y ejecutada: camino A vía Factus, ya codificado.**
 
-> ⚠️ **Aviso fiscal:** Este documento es un insumo técnico-arquitectónico. Las decisiones tributarias señaladas (régimen de IVA / exclusión cloud computing, responsabilidades RUT) requieren validación de un contador o asesor tributario colombiano antes de implementarse. Donde hay incertidumbre, está marcado explícitamente.
+> ⚠️ **Aviso fiscal:** Este documento es un insumo técnico-arquitectónico. Las decisiones tributarias señaladas (régimen de IVA / exclusión cloud computing, responsabilidades RUT) requieren validación de un contador o asesor tributario colombiano antes de activar la emisión en producción. Donde hay incertidumbre, está marcado explícitamente.
+
+> ✅ **Mapa propuesta → implementación (as-built, jul 2026).** Cada pieza propuesta en este documento ya vive en el código. Rutas relativas a la raíz del repo salvo el módulo fiscal (`apps/api/src/modules/fiscal/`).
+>
+> | Propuesta (este doc) | Dónde se cumple |
+> |----|----|
+> | Capa `IFiscalInvoiceProvider` (§7.2) | `fiscal/interfaces/fiscal-provider.interface.ts` |
+> | Factory por modo+país `FiscalProviderFactory` (§7.2/§8.4) | `fiscal/fiscal-provider.factory.ts` |
+> | Modelo `FiscalInvoice` (§7.3) | `apps/api/prisma/schema.prisma:405-434` (tabla `fiscal_invoices`, schema `public`) |
+> | Listener `@OnEvent(payment.succeeded / payment.refunded)` + encolado | `fiscal/fiscal-invoice.service.ts` |
+> | Worker async (BullMQ, `attempts:5`, concurrency 3) | `fiscal/processors/fiscal-invoice.processor.ts` |
+> | Adapter Factus (v2: emisión, NC, 409, descarga PDF/XML) | `fiscal/adapters/factus.adapter.ts` |
+> | Adapter `UsRemoteAdapter` (modo total, recibo comercial) | `fiscal/adapters/us-remote.adapter.ts` |
+> | Config global `fiscalMode`/`coIvaTreatment`/rango/emisor (§8.4) | `fiscal/fiscal-config.service.ts` (`platform_settings` `fiscal.*` + Redis 5 min) |
+> | Toggle modo fiscal + guardas + `AuditLog` (§8.4) | `fiscal/fiscal-admin.controller.ts` (`PUT /fiscal-admin/config`) |
+> | Operaciones Fiscales super_admin (listado cross-tenant, retry, re-emitir, factura de prueba, preview) | `fiscal/fiscal-admin.controller.ts` + `apps/dashboard/src/app/admin/fiscal/page.tsx` |
+> | Datos fiscales del adquirente + validación NIT (módulo 11) / DANE | `fiscal/fiscal.controller.ts` + `fiscal/nit.util.ts` + `fiscal/fiscal-data.util.ts` |
+> | UI datos fiscales + facturas del tenant | `apps/dashboard/src/app/admin/settings/fiscal/page.tsx` |
+> | Gate "colecta antes del pago" (dormido por defecto) | `billing.service.ts` `assertFiscalDataReady` + `FiscalGateModal.tsx` / `FiscalBanner.tsx` |
+> | PDF con marca propia + envío por correo (`send_email:false`) | `fiscal/fiscal-pdf.service.ts` + `fiscal/fiscal-email.service.ts` |
+> | Retención legal en disco (XML+PDF firmados, 5 años) | `fiscal/fiscal-storage.service.ts` (`FISCAL_STORAGE_PATH`, default `/data/invoices`) |
+> | Fallback "consumidor final" (adquirente no identificado 222222222222) | `fiscal/fiscal.constants.ts` `CONSUMIDOR_FINAL_ACQUIRER` |
+> | Env/secrets Factus + storage | `.env.example:132-144`, `.github/workflows/deploy.yml` |
 
 ---
 
@@ -20,15 +43,18 @@
 
 3. **Encaje natural con la arquitectura existente.** Parallly ya tiene `OutboundQueueService` (BullMQ, 3 reintentos), patrón `@OnEvent('billing.payment.succeeded')`, cifrado AES-256-GCM, idempotencia por `providerPaymentId`. Factus ofrece emisión **síncrona** (una llamada devuelve CUFE+QR+PDF), **idempotencia nativa por `reference_code`** (clave para reintentos de webhook) y un objeto `billing_period` ideal para suscripciones. El esfuerzo de integración es bajo precisamente porque la plomería ya existe.
 
-### Qué hacer ahora (orden de ejecución)
+### Estado de ejecución (as-built jul 2026)
 
-| # | Acción | Quién | Cuándo |
+La **ingeniería está completa** (tareas 4 y 5); lo pendiente para producción es **trámite + configuración**, no código. El detalle de go-live está en **§12**.
+
+| # | Acción | Quién | Estado |
 |---|--------|-------|--------|
-| 1 | **IVA decidido → excluido** (cloud computing). Obtener concepto escrito del contador para auditoría (respaldo, ya no bloquea) | Contador CO | Semana 0 |
-| 2 | Trámites DIAN: RUT (responsabilidad 52 + IVA), resolución de numeración (MUISCA), set de pruebas, vincular rango a Factus | Fundador + contador | Semanas 0–3 (calendario, en paralelo) |
-| 3 | Cotizar paquetes Factus + Alegra por WhatsApp/comercial (precios no públicos) | Fundador | Semana 0 |
-| 4 | Construir capa `IFiscalInvoiceProvider` + modelo `FiscalInvoice` + adapter Factus + cola async | Ingeniería | Semanas 1–6 |
-| 5 | Capturar datos fiscales del adquirente (faltan en modelo Tenant) en onboarding/settings | Ingeniería | Semanas 1–6 |
+| 1 | **IVA decidido → excluido** (cloud computing). Concepto escrito del contador para auditoría | Contador CO | ⏳ Pendiente concepto (no bloquea; `coIvaTreatment='excluido'` codificado, conmutable a `gravado_19`) |
+| 2 | Trámites DIAN: RUT (responsabilidad 52 + IVA), resolución de numeración (MUISCA), set de pruebas, vincular rango a Factus | Fundador + contador | ⏳ Pendiente (bloqueante de go-live) |
+| 3 | Cotizar paquetes Factus + Alegra por WhatsApp/comercial (precios no públicos) | Fundador | ⏳ Pendiente |
+| 4 | Construir capa `IFiscalInvoiceProvider` + modelo `FiscalInvoice` + adapter Factus + cola async | Ingeniería | ✅ **Hecho** — `apps/api/src/modules/fiscal/` |
+| 5 | Capturar datos fiscales del adquirente en onboarding/settings + validadores NIT/DANE | Ingeniería | ✅ **Hecho** — `fiscal.controller.ts` + UI + gate |
+| 6 | Cargar credenciales Factus + `numbering_range_id`, activar gate y flip a producción | Fundador + ing | ⏳ Pendiente — **§12 Runbook de go-live** |
 
 ### Qué hacer cuando llegue Stripe/LLC
 La emisión DIAN **NO se vuelve obsoleta** si Parallly mantiene una entidad colombiana que factura a clientes colombianos (escenario más probable durante un buen tiempo). El cambio Stripe/LLC afecta el **emisor** (qué entidad factura, qué impuestos) y el **proveedor de pago**, no la obligación de FEV en Colombia. La capa `IFiscalInvoiceProvider` se diseña **agnóstica al proveedor de pago** (escucha el evento normalizado `PAYMENT_SUCCEEDED`, que ya abstrae MercadoPago/Stripe), de modo que el trabajo es reutilizable. Ver §8.
@@ -37,19 +63,23 @@ La emisión DIAN **NO se vuelve obsoleta** si Parallly mantiene una entidad colo
 
 ## 2. Contexto: qué tiene Parallly hoy y qué exige la DIAN
 
-### 2.1 Estado actual del sistema (verificado en código)
+### 2.1 Estado del sistema (as-built jul 2026)
+
+El sistema fiscal **ya existe** y cuelga del pipeline de billing, que sigue siendo **provider-agnostic**. La emisión NO vive dentro del adapter de pago: se dispara desde el evento normalizado `billing.payment.succeeded`, de modo que MercadoPago hoy y Stripe mañana se comportan igual.
 
 | Componente | Estado | Archivo |
 |------------|--------|---------|
-| Generación de recibo PDF | **No fiscal** — `pdfkit`, on-demand, **no persistido** | `invoice-generator.service.ts:21` |
-| Captura de pago exitoso | `BillingPayment.create()` en transacción + `emit('billing.payment.succeeded')` | `billing.service.ts:889-901`, `:926` |
-| Webhook de pago | Verificación HMAC + idempotencia Redis (SET NX 48h) | `webhook.controller.ts:62-92` |
-| Abstracción de pago | `IPaymentProvider` + `PaymentProviderFactory` (MercadoPago / Stripe) | `payment-provider.factory.ts` |
-| Patrón de listener | `@OnEvent(PAYMENT_SUCCEEDED)` → email confirmación | `billing-email.service.ts:62-71` |
-| Campos reservados para fiscal | `invoiceNumber` (null), `invoicePdfUrl` (null) | `schema.prisma:367-368` |
-| Cola asíncrona reutilizable | BullMQ, 3 reintentos, prioridad por plan | `OutboundQueueService` |
+| Emisión FEV DIAN | ✅ **Implementada** — módulo `fiscal/` (Factus): async, idempotente, con nota crédito | `apps/api/src/modules/fiscal/` (20 archivos) |
+| Modelo de factura fiscal | ✅ Tabla `fiscal_invoices` (schema `public`) — ciclo pending→issued→failed→cancelled, NC, snapshot legal | `apps/api/prisma/schema.prisma:405-434` |
+| Captura de pago + re-emisión de evento | `BillingPayment.create()` en tx + `eventEmitter.emit(billing.payment.*)` | `billing/billing.service.ts:~1018-1055` |
+| Enganche fiscal | `FiscalInvoiceService.@OnEvent(payment.succeeded/refunded)` → crea `FiscalInvoice` + encola | `fiscal/fiscal-invoice.service.ts` |
+| Abstracción de pago | `IPaymentProvider` + `PaymentProviderFactory` (MercadoPago / Stripe) | `billing/payment-provider.factory.ts` |
+| Recibo PDF comercial (no fiscal) | `pdfkit`, on-demand — sigue en uso para `US_REMOTE` (modo total, sin FEV) | `billing/invoice-generator.service.ts` |
+| Representación gráfica fiscal (marca propia) | ✅ PDF propio con QR DIAN, valor en letras, resolución/rango, datos de pago reales | `fiscal/fiscal-pdf.service.ts` |
+| Campos espejo en el pago | `invoiceNumber` / `invoicePdfUrl` los puebla el processor tras emitir | `apps/api/prisma/schema.prisma:385-386` |
+| Cola asíncrona | BullMQ `fiscal-invoice`, `attempts:5`, backoff exponencial 30 s, concurrency 3 | `fiscal/processors/fiscal-invoice.processor.ts` |
 
-**Conclusión:** El billing es **provider-agnostic** y tiene los puntos de enganche listos. El recibo PDF actual **no tiene validez fiscal** (sin CUFE, sin firma, sin validación DIAN, sin QR). Faltan: servicio fiscal, abstracción `IFiscalProvider`, modelo de factura fiscal, datos fiscales del adquirente, y rutina de reintento.
+**Conclusión:** Ya no falta nada de la base — servicio fiscal, abstracción `IFiscalInvoiceProvider`, modelo `FiscalInvoice`, captura de datos del adquirente, cola + reintentos + escalamiento a Sentry: **todo construido**. Lo que resta es **configurar** (credenciales Factus + `numbering_range_id`) y **activar** (gate + flip a producción). Ver §12. La capa se mantiene **dormida** mientras `isProviderReady` sea false (sin credenciales o sin rango), así que desplegarla no genera facturas condenadas ni ruido en Sentry sobre pagos reales.
 
 ### 2.2 Lo que exige la DIAN (resumen normativo)
 
@@ -202,12 +232,12 @@ El modelo dominante es **paquete prepago de documentos** (se consume 1 por emisi
 | **IVA** (decidido: excluido cloud computing) | Fiscal | Contador CO | **Decidido → excluido**, implementado como `coIvaTreatment` configurable (default `excluido`). Pendiente solo el concepto escrito del contador para auditoría. No bloquea construir |
 | **Resolución de numeración** (MUISCA) | Trámite | Fundador | Obligatorio en ambas rutas. Vigencia ~2 años → monitorear consumo/caducidad |
 | **Set de pruebas + vinculación al PT** | Trámite | Fundador + ing | 1–3 semanas calendario |
-| **Datos fiscales del adquirente faltan en el modelo** | Código | Ingeniería | `Tenant` solo tiene `billingCountry`, `billingEmail`. Faltan: `documentType`, `documentId`, `businessName`, `businessAddress`, `city`, `department`, `daneCode`, `taxResponsibility`, `email` |
-| **Datos de la empresa emisora** | Config | Fundador | NIT, razón social, dirección, resolución, prefijo — en env/config global |
+| ✅ **Datos fiscales del adquirente** | Código | Ingeniería | **Resuelto** — `Tenant.settings.fiscalData` (JSONB): `documentType`, `documentId`, `dv`, `legalOrganizationId`, `businessName`/`names`, `tributeId`, `address`, `municipalityId`/`daneCode`, `email`, `phone`. Endpoints `GET/PUT /fiscal/:tenantId/data` + UI |
+| ✅ **Datos de la empresa emisora** | Config | Fundador | **Resuelto (movido de env a DB)** — `coIssuer` en `platform_settings` (`fiscal.issuer_co`): NIT, razón social, dirección, régimen, resolución, rango. Editable desde super admin. Cargar en go-live (§12) |
 | **Pagos históricos pre-FEV (backfill)** | Fiscal / decisión | Contador + Fundador | ¿Qué pasa con suscripciones ya cobradas vía MercadoPago **antes** de activar FEV? ¿Facturación retroactiva dentro del plazo permitido, o arrancar limpio desde la fecha de activación? **Decisión del contador** — nombrarla, no ignorarla (puede haber obligación retroactiva) |
-| **Retención legal de XML (5 años)** | Código / infra | Ingeniería | La DIAN exige conservar XML + ApplicationResponse **5 años**. Si el PT los borra al expirar el plan, Parallly queda sin respaldo → descargar y archivar en R2/storage propio |
+| ✅ **Retención legal de XML (5 años)** | Código / infra | Ingeniería | **Resuelto** — `FiscalStorageService` descarga y archiva XML+PDF firmados en `{FISCAL_STORAGE_PATH}/{tenantId}/{invoiceId}.{pdf\|xml}` (default `/data/invoices`), independiente del hosting de Factus |
 | **Certificado de firma** | Externo | (solo camino B) | En camino A lo aporta el PT |
-| **Validación NIT (módulo 11) + código DANE** | Código | Ingeniería | Validadores en captura de datos fiscales |
+| ✅ **Validación NIT (módulo 11) + código DANE** | Código | Ingeniería | **Resuelto** — `nit.util.ts` (`computeNitDv`, valida/computa DV) en `PUT /fiscal/:tenantId/data`; DANE (5 díg.) → `municipality_id` de Factus resuelto en el adapter |
 
 ---
 
@@ -225,63 +255,70 @@ La emisión fiscal **no debe vivir dentro del adapter de pago**. Razones:
 PAYMENT_SUCCEEDED (evento normalizado, agnóstico de pago)
         │
         ▼
-FiscalInvoiceService.@OnEvent('billing.payment.succeeded')
-        │  crea FiscalInvoice(status=PENDING) + encola job (BullMQ, attempts:5)
+FiscalInvoiceService.@OnEvent('billing.payment.succeeded')          [fiscal/fiscal-invoice.service.ts]
+        │  resuelve provider; si !isProviderReady (sin credenciales / sin rango) → SALE (capa dormida)
+        │  crea FiscalInvoice(status='pending') + acquirerSnapshot + encola job (BullMQ, attempts:5)
         ▼
-fiscal-invoice.processor (worker)
+FiscalInvoiceProcessor (worker, concurrency 3)                      [fiscal/processors/fiscal-invoice.processor.ts]
         │
         ▼
-FiscalInvoiceFactory.resolve(fiscalMode, tenant.billingCountry)  →  IFiscalInvoiceProvider
-        │   modo CO_LOCAL (híbrido) → FactusAdapter si billingCountry='CO'; si no, NoopAdapter
+FiscalProviderFactory.resolve(cfg.mode, tenant.billingCountry)  →  IFiscalInvoiceProvider | null
+        │   modo CO_LOCAL (híbrido) → FactusAdapter si billingCountry='CO'; si no → null (no se emite)
         │   modo US_REMOTE (total)  → UsRemoteAdapter (recibo comercial, SIN FEV DIAN; IVA-exterior aparte)
-        │   (fiscalMode = setting global controlado desde superadmin — ver §8.4)
+        │   (cfg.mode = setting global en platform_settings, editable desde super admin — ver §8.4)
+        │   sin datos fiscales del adquirente → fallback CONSUMIDOR_FINAL_ACQUIRER (222222222222)
+        │   moneda ≠ COP → convierte a COP con la TRM de ExchangeRate (registra trmApplied)
         ▼
-provider.issue(invoiceData)  →  { cufe, invoiceNumber, pdfUrl, providerRef, status }
-        │  idempotente por reference_code = FiscalInvoice.id (o providerPaymentId)
+provider.issue(data: FiscalInvoiceData)  →  { status, cufe, invoiceNumber, providerRef, qrUrl, pdfUrl, taxCents }
+        │  idempotente por reference_code = FiscalInvoice.id  ·  status='pending' sin CUFE = NO emitida (reintenta + sondea)
         ▼
-UPDATE FiscalInvoice + BillingPayment.invoiceNumber / invoicePdfUrl
+descarga XML+PDF firmados → archiva en disco (retención 5 años) → URLs propias /fiscal/{tenant}/invoices/{id}/{pdf,xml}
+        ▼
+UPDATE FiscalInvoice(status='issued') + espejo BillingPayment.invoiceNumber / invoicePdfUrl
         │
         ▼
-emit('fiscal.invoice.issued')  →  FiscalEmailService (si el PT no envió el email)
+FiscalEmailService.sendIssuedInvoice()  →  NUESTRA factura de marca (.zip PDF+XML); Factus NO envía (send_email:false)
 ```
 
-**Interfaz:**
+**Interfaz (as-built — `fiscal/interfaces/fiscal-provider.interface.ts`):**
 ```typescript
 interface IFiscalInvoiceProvider {
-  issue(data: FiscalInvoiceData): Promise<FiscalInvoiceResult>;
-  issueCreditNote(originalRef: string, data: CreditNoteData): Promise<FiscalInvoiceResult>;
-  getStatus(providerRef: string): Promise<FiscalStatus>;
+  readonly name: string;                                              // id del adapter: 'factus' | 'us_remote'
+  issue(data: FiscalInvoiceData): Promise<FiscalIssueResult>;         // idempotente en data.referenceCode
+  issueCreditNote(data: CreditNoteData): Promise<FiscalIssueResult>;  // CreditNoteData lleva originalProviderRef + originalInvoiceNumber
+  getStatus(providerRef: string): Promise<FiscalStatusResult>;
 }
 ```
+Notas de contrato reales: la NC recibe **un solo** `CreditNoteData` (no `(originalRef, data)`); el `referenceCode` que se pasa es `FiscalInvoice.id`; y `FiscalIssueResult.status` distingue `'issued'` (CUFE presente, validada DIAN), `'pending'` (aceptada por Factus, sin CUFE aún — se sondea) y `'failed'` (rechazo no reintentable). El factory es **`FiscalProviderFactory`** y puede devolver `null` ("nada que emitir aquí"), no un `NoopAdapter`.
 
-### 7.3 Modelo `FiscalInvoice` (nuevo, schema `public`)
+### 7.3 Modelo `FiscalInvoice` (implementado — `schema.prisma:405-434`, schema `public`)
 
-Se crea una tabla dedicada en vez de meter todo en `BillingPayment`, para soportar el ciclo de vida fiscal (PENDING→ISSUED→FAILED), notas crédito y auditoría legal:
+Tabla dedicada (`fiscal_invoices`) en vez de meter todo en `BillingPayment`, para soportar el ciclo de vida fiscal (pending→issued→failed→cancelled), notas crédito y auditoría legal. Esquema real desplegado:
 
 ```prisma
 model FiscalInvoice {
-  id              String   @id @default(uuid())
-  tenantId        String   @map("tenant_id")
-  paymentId       String?  @unique @map("payment_id")   // null para NC sin factura
-  type            String   // invoice | credit_note | debit_note
-  status          String   // pending | issued | failed | cancelled
-  provider        String   // factus | alegra | ...
-  providerRef     String?  @map("provider_ref")          // bill_id del PT
-  cufe            String?                                  // CUFE/CUDE
-  invoiceNumber   String?  @map("invoice_number")         // prefijo+consecutivo DIAN
-  xmlUrl          String?  @map("xml_url")
-  pdfUrl          String?  @map("pdf_url")
-  qrUrl           String?  @map("qr_url")
-  amountCents     Int      @map("amount_cents")
-  currency        String   // COP
-  taxCents        Int      @default(0) @map("tax_cents")  // IVA
-  relatedInvoiceId String? @map("related_invoice_id")     // NC → factura original
-  failureReason   String?  @map("failure_reason")
-  attempts        Int      @default(0)
-  metadata        Json?                                    // trmApplied, paymentProvider, raw errors
-  acquirerSnapshot Json?   @map("acquirer_snapshot")       // copia INMUTABLE de los datos fiscales del adquirente al momento de emitir — trazabilidad legal aunque el tenant cambie su NIT después
-  issuedAt        DateTime? @map("issued_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id               String    @id @default(uuid())
+  tenantId         String    @map("tenant_id")
+  paymentId        String?   @unique @map("payment_id")   // BillingPayment.id; null para NC standalone
+  type             String    @default("invoice")          // invoice | credit_note | debit_note
+  status           String    @default("pending")          // pending | issued | failed | cancelled
+  provider         String                                  // factus | us_remote | ...
+  providerRef      String?   @map("provider_ref")          // bill_id interno de Factus (para NC)
+  cufe             String?                                  // CUFE/CUDE asignado por la DIAN
+  invoiceNumber    String?   @map("invoice_number")        // prefijo+consecutivo (ej. SETP990000001)
+  xmlUrl           String?   @map("xml_url")
+  pdfUrl           String?   @map("pdf_url")
+  qrUrl            String?   @map("qr_url")
+  amountCents      Int       @map("amount_cents")
+  currency         String                                  // COP (moneda fiscal; la original va en metadata)
+  taxCents         Int       @default(0) @map("tax_cents") // IVA
+  relatedInvoiceId String?   @map("related_invoice_id")    // NC → FiscalInvoice.id original
+  failureReason    String?   @map("failure_reason")
+  attempts         Int       @default(0)
+  metadata         Json      @default("{}")                // trmApplied, paymentProvider, numberingRange, consumidorFinalFallback, raw
+  acquirerSnapshot Json?     @map("acquirer_snapshot")     // copia INMUTABLE de los datos fiscales del adquirente al emitir — trazabilidad legal aunque el tenant cambie su NIT después
+  issuedAt         DateTime? @map("issued_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   @@index([tenantId, createdAt])
   @@index([status])
@@ -290,7 +327,7 @@ model FiscalInvoice {
   @@schema("public")
 }
 ```
-`BillingPayment.invoiceNumber` / `invoicePdfUrl` se siguen poblando (caché/compat con el endpoint de descarga existente).
+`BillingPayment.invoiceNumber` / `invoicePdfUrl` se siguen poblando (espejo/compat con el endpoint de descarga de recibos existente). El `acquirerSnapshot` lo persiste el processor con el adquirente **realmente** usado en la emisión (datos reales o el fallback consumidor final), no solo el capturado al crear la fila.
 
 **Retención legal (5 años):** la DIAN exige conservar los documentos electrónicos (XML firmado + ApplicationResponse) **5 años**. No basta guardar la URL del PT: si Factus borra los archivos al expirar/cambiar de plan, Parallly queda sin respaldo legal. Plan: tras emitir, **descargar el XML+PDF y archivarlos en storage propio** (R2/volumen `/data/invoices/{tenantId}/`) y guardar la ruta en `xmlUrl`/`pdfUrl`; un job de verificación confirma que el archivo existe.
 
@@ -350,7 +387,7 @@ coIvaTreatment: 'excluido' | 'gravado_19' // default 'excluido' (cloud computing
 | **`US_REMOTE`** (total) | LLC US | **Sin FEV DIAN** — recibo comercial US | IVA servicios digitales del exterior gestionado aparte (Stripe Tax/Quaderno) | `UsRemoteAdapter` |
 
 **Cómo funciona el switch:**
-- `FiscalInvoiceFactory.resolve()` lee `fiscalMode` **antes** que el país del tenant (§7.2). Flip del setting → la siguiente emisión ya usa el otro adapter. **Cero redeploy.**
+- `FiscalProviderFactory.resolve(cfg.mode, billingCountry)` lee `fiscalMode` **antes** que el país del tenant (§7.2). Flip del setting → la siguiente emisión ya usa el otro adapter. **Cero redeploy.**
 - El **bloque emisor** (datos de la empresa que factura) también se resuelve por modo: config `issuer.CO_LOCAL` (NIT, razón social, resolución de numeración) vs `issuer.US_REMOTE` (legal name, EIN/dirección US). Switchear cambia el emisor automáticamente.
 - **Forward-only:** el modo aplica solo a facturas **nuevas**. Las históricas conservan su `acquirerSnapshot` + emisor del momento (trazabilidad intacta).
 
@@ -367,12 +404,14 @@ coIvaTreatment: 'excluido' | 'gravado_19' // default 'excluido' (cloud computing
 ## 9. Plan de implementación por fases
 
 > Estimaciones en días-ingeniero. El camino crítico de calendario es el **trámite DIAN** (1–3 semanas), que corre en paralelo a las fases 1–3.
+>
+> **Estado jul 2026:** las fases 1–5 están ✅ **codificadas** (módulo `apps/api/src/modules/fiscal/` + UI + gate en billing). Pendiente: el **trámite DIAN** (Fase 0) y la **estabilización con emisión real** (Fase 6) — ver el **§12 Runbook de go-live**.
 
 ### Fase 0 — Decisiones y trámites (calendario, no ingeniería)
 - IVA ya decidido (excluido) → obtener concepto escrito del contador para auditoría; RUT; resolución de numeración; cotizar Factus+Alegra; iniciar set de pruebas y vinculación al PT.
 - **Esfuerzo:** 0 ing · **Calendario:** 1–3 semanas (bloqueante para producción, no para construir).
 
-### Fase 1 — Datos fiscales del adquirente y emisor (≈5–7 días)
+### Fase 1 — Datos fiscales del adquirente y emisor (≈5–7 días) ✅
 - **Prisma:** extender `Tenant.settings.fiscalData` (JSONB): `documentType`, `documentId`, `businessName`, `businessAddress`, `city`, `department`, `daneCode`, `taxResponsibility`, `email`.
 - **API:** `GET/PUT /billing/:tenantId/fiscal-data` (DTO + validadores: NIT módulo 11, código DANE 5 dígitos). Guard: si `billingCountry='CO'` y el cliente es **empresa**, `fiscalData` con **NIT válido es obligatorio** antes de activar la suscripción; persona natural → mínimo nombre + documento (o consumidor final).
 - **Snapshot del adquirente:** al emitir, copiar los `fiscalData` vigentes a `FiscalInvoice.acquirerSnapshot` (inmutable) para que las facturas históricas conserven el dato exacto facturado aunque el tenant cambie su NIT después.
@@ -380,7 +419,7 @@ coIvaTreatment: 'excluido' | 'gravado_19' // default 'excluido' (cloud computing
 - **UI dashboard:** sección “Datos Fiscales” en `apps/dashboard/src/app/admin/settings/billing/page.tsx` (collapsible, required si CO) + paso 1.5 en `onboarding/page.tsx` si país=CO.
 - **i18n:** claves nuevas en `es.json`, `en.json`, `pt.json`, `fr.json` (`tipoDocumento`, `nit`, `responsabilidadTributaria`, `codigoDANE`, etc.) — **los 4 archivos**.
 
-### Fase 2 — Capa fiscal genérica + modo fiscal (≈6–8 días)
+### Fase 2 — Capa fiscal genérica + modo fiscal (≈6–8 días) ✅
 - **Módulo nuevo** `apps/api/src/modules/fiscal/`:
   - `fiscal.module.ts`, `fiscal-invoice.service.ts` (`@OnEvent('billing.payment.succeeded')`), `interfaces/fiscal-provider.interface.ts`, `fiscal-provider.factory.ts` (routing por **`fiscalMode` global → luego `tenant.billingCountry`**; ver §8.4).
   - `processors/fiscal-invoice.processor.ts` (BullMQ, `attempts:5`).
@@ -390,7 +429,7 @@ coIvaTreatment: 'excluido' | 'gravado_19' // default 'excluido' (cloud computing
 - **Endpoint:** `GET /billing/:tenantId/fiscal-invoices` (listado dashboard).
 - **Patrón:** seguir `billing-email.service.ts:62-71` para el listener y `reconciliation.processor.ts` para el cron de reintento.
 
-### Fase 3 — Adapter Factus (≈4–6 días)
+### Fase 3 — Adapter Factus (≈4–6 días) ✅
 - `adapters/factus.adapter.ts` implementa `IFiscalInvoiceProvider`:
   - Cliente OAuth (password grant, cache+refresh token 1h, **cifrar credenciales** AES-256-GCM con `ENCRYPTION_KEY` existente).
   - `issue()` → `POST /v2/bills/validate` con `reference_code=FiscalInvoice.id`, `billing_period`, líneas, IVA.
@@ -399,16 +438,17 @@ coIvaTreatment: 'excluido' | 'gravado_19' // default 'excluido' (cloud computing
   - Manejo `409` (eliminar por referencia + recrear), `429` (rate limit 80/min), errores DIAN en `data.errors`.
 - **Sandbox:** pruebas contra `api-sandbox.factus.com.co` (no consumen cuota).
 
-### Fase 4 — Reembolsos, B2C y endurecimiento (≈3–4 días)
+### Fase 4 — Reembolsos, B2C y endurecimiento (≈3–4 días) ✅
 - `@OnEvent('billing.payment.refunded')` → nota crédito.
 - Manejo consumidor final (CO sin NIT).
 - Conversión COP/TRM vía `ExchangeRate` si moneda ≠ COP.
 - Cron de barrido `FiscalInvoice` pendientes/fallidas.
 - Monitoreo de saldo de paquete (`GET /v2/subscriptions`) + alerta.
 
-### Fase 5 — Env vars, secrets, verificación (≈1–2 días)
-- **Env vars nuevas:** `FACTUS_CLIENT_ID`, `FACTUS_CLIENT_SECRET`, `FACTUS_USERNAME`, `FACTUS_PASSWORD`, `FACTUS_BASE_URL`, `FISCAL_EMITTER_NIT`, `FISCAL_NUMBERING_PREFIX`, `FISCAL_RESOLUTION_NUMBER`.
-- **CRÍTICO:** añadir a **GitHub Secrets Y `.github/workflows/deploy.yml`** (si no, se pierden en el próximo deploy — el `.env` se regenera en cada despliegue).
+### Fase 5 — Env vars, secrets, verificación (≈1–2 días) ✅
+- **Env vars (solo secrets Factus + ruta de archivo):** `FACTUS_BASE_URL`, `FACTUS_CLIENT_ID`, `FACTUS_CLIENT_SECRET`, `FACTUS_USERNAME` (email), `FACTUS_PASSWORD`, `FISCAL_STORAGE_PATH` (default `/data/invoices`). Ver `.env.example:132-144`.
+- **NO van en env (corrección vs. el plan original):** el **emisor** (NIT, razón social, dirección, régimen, resolución de numeración), el **`numbering_range_id`** (venta y nota crédito), el **modo fiscal**, el **tratamiento de IVA** y los **catálogos por defecto** viven en `platform_settings` bajo el namespace `fiscal.*` (cacheados en Redis), editables desde el super admin **sin redeploy**. Se **descartaron** las variables `FISCAL_EMITTER_NIT` / `FISCAL_NUMBERING_PREFIX` / `FISCAL_RESOLUTION_NUMBER` que este plan proponía en env.
+- **CRÍTICO:** las claves Factus están en **GitHub Secrets Y `.github/workflows/deploy.yml`** (líneas ~373-376, 435, 556-564) — si no, se pierden en el próximo deploy (el `.env` se regenera). `FISCAL_STORAGE_PATH=/data/invoices` ya se escribe en el `.env` del deploy.
 - **Verificación:**
   ```
   cd apps/api && npx tsc --noEmit
@@ -463,9 +503,45 @@ Como Parallly **prueba en producción** (regla del proyecto), reservar un buffer
 
 ---
 
-## Apéndice A — Valores de catálogo DIAN para Parallly (fijar antes de codificar)
+## 12. Runbook de go-live (activación en producción)
 
-Para un SaaS el producto es siempre "servicio de suscripción", así que los catálogos son acotables (esto evita la fricción típica del mapeo DIAN). Valores **tentativos a confirmar con el PT/contador** al implementar el adapter:
+La capa está desplegada y **dormida**. Estos son los pasos para pasar a emisión real, en orden — nada aquí es código nuevo, es **configuración + trámite**.
+
+**Precondición (trámite DIAN, calendario 1–3 sem):** RUT con responsabilidad 52; **resolución de numeración** aprobada en MUISCA (prefijo, rango, clave técnica); **set de pruebas** aprobado; rango **vinculado a la cuenta Factus**; paquete Factus contratado.
+
+1. **Cargar credenciales Factus** en GitHub Secrets (`FACTUS_CLIENT_ID/SECRET/USERNAME/PASSWORD`; `FACTUS_BASE_URL` = sandbox mientras se prueba). Deploy → el `.env` se regenera con ellas.
+2. **Verificar conexión** en super admin → Operaciones Fiscales → Factus (`GET /fiscal-admin/factus/health` debe dar OK).
+3. **Fijar `numbering_range_id`** (venta; opcional el de nota crédito): `GET /fiscal-admin/factus/numbering-ranges` → guardar `fiscal.factus_numbering_range_id` (y `…_credit_…`). **Esto despierta la capa**: `isProviderReady` pasa a true solo con credenciales **y** rango.
+4. **Configurar el emisor CO** (`coIssuer`: razón social, NIT, dirección, régimen, resolución/rango, vigencia) y el **ítem** (`itemDescription`, UNSPSC real en `defaultStandardCode`, `defaultUnitMeasureCode`). Ajustar `coIvaTreatment` si el contador cambia la exclusión.
+5. **Emitir una factura de prueba** contra sandbox (`POST /fiscal-admin/test-invoice`) → debe devolver CUFE + QR consultable en el catálogo de **habilitación** DIAN. Revisar el **preview** del PDF de marca (`GET /fiscal-admin/preview-invoice`).
+6. **Backfill de datos fiscales** de los tenants CO existentes (pedirles NIT/cédula desde la UI de datos fiscales) **antes** de activar el gate, para no bloquear cobros en curso.
+7. **Activar el gate** `fiscal.gate_enabled=true` (super admin): a partir de ahí billing exige datos fiscales completos antes de cobrar a tenants CO (con opción "consumidor final" para personas naturales).
+8. **Flip a producción:** `FACTUS_BASE_URL` al endpoint productivo, `fiscal.factus_environment='production'` y el `numbering_range_id` al de **producción**. La primera emisión real es el criterio de aceptación (§9 Fase 6): 1 FEV validada + 1 nota crédito.
+
+**Rollback:** apagar el gate (`gate_enabled=false`) devuelve billing a soft-mode sin bloquear cobros; vaciar `factus_numbering_range_id` **re-duerme** la capa sin tocar código. El toggle `US_REMOTE` (§8.4) es la vía para dejar de emitir FEV cuando la LLC opere (con sus guardas).
+
+---
+
+## 13. As-built — detalles de implementación no anticipados por el plan original
+
+Piezas que se construyeron y que el borrador de jun 2026 no había especificado:
+
+- **Doble contrato de Factus (códigos + IDs) simultáneo.** El adapter envía a `/v2/bills/validate` el contrato **por códigos** vigente (`identification_document_code`, `tribute_code`, `municipality_code`, `unit_measure_code`, `standard_code`, `taxes[]`, `payment_details[]`) **y además** los campos legacy **por IDs internos** (`identification_document_id`, `tribute_id`, `unit_measure_id`…). La validación actual ignora claves desconocidas, así que enviar ambos maximiza compatibilidad. Hay mapeos explícitos id→código DIAN (`dianDocTypeCode`: 3→13 cédula, 6→31 NIT…; `dianTributeCode`: 18→'01' IVA, 21→'ZZ' no aplica). Ver `fiscal-config.service.ts` (`default*Id` vs `default*Code`) y `adapters/factus.adapter.ts`.
+- **IVA excluido vs. gravado bien modelado.** `excluido` (art. 476, NO sujeto) emite `taxes:[{is_excluded:true}]` sin tasa; `gravado_19` trata el cobro como IVA-inclusivo y factura el neto (monto/1.19) para que Factus recalcule un IVA que cuadre el total.
+- **CUFE-first / QR determinístico.** Un documento sin CUFE **no** se marca `issued` (queda `pending` y se sondea con reintentos BullMQ). El QR se reconstruye desde el CUFE (URL del catálogo DIAN, host de habilitación vs. producción) cuando Factus no devuelve el campo `qr`.
+- **Recuperación de 409 con cuidado.** Ante "factura pendiente por enviar a la DIAN", primero **reconcilia por referencia** (si ya tiene CUFE, la recupera); solo si no está validada la **elimina por referencia y recrea**. Nunca borra a ciegas una factura ya validada (inmutable). El botón super-admin "Re-emitir (forzar)" solo actúa sobre facturas **sin** CUFE.
+- **PDF con marca propia + correo propio (`send_email:false`).** Factus no envía nada; Parallly genera su representación gráfica (paleta de marca, QR, valor en letras, resolución/rango autoritativos del `numbering-range`) y la manda en un `.zip` con **PDF + XML firmado**. Endpoints propios `/fiscal/{tenant}/invoices/{id}/{pdf,xml}` como URL canónica.
+- **Retención legal en disco.** `FiscalStorageService` descarga y archiva XML+PDF en `{FISCAL_STORAGE_PATH}/{tenantId}/{invoiceId}.{pdf|xml}` (default `/data/invoices`, mismo patrón/volumen que media) para los 5 años DIAN, independiente del hosting del PT.
+- **Fallback "consumidor final".** Colombia exige documento por **toda** venta: si el tenant fue cobrado sin completar su perfil fiscal, se emite al adquirente no identificado `222222222222` (lo que hace un POS) en vez de fallar, y se persiste ese snapshot. Hay además un opt-in explícito de "consumidor final" en la UI de datos fiscales (`fiscal.constants.ts` + `fiscal.controller.ts`).
+- **Gate "colecta antes del pago", dormido por defecto.** `assertFiscalDataReady` en `billing.service.ts` bloquea inicio/cambio de plan sin datos fiscales completos **solo** con `fiscal.gate_enabled=true` y país que lo requiera. UI: `FiscalGateModal` + `FiscalBanner`. Con el gate apagado (default) ni bloquea checkout ni molesta.
+- **Operaciones Fiscales (super_admin).** Página `admin/fiscal/page.tsx` + `FiscalAdminController`: listado cross-tenant, filtros por estado/tenant, **retry** y **re-emitir**, **factura de prueba** (sandbox) con QR renderizado, **preview** del PDF, salud Factus y edición de toda la config (incluido el toggle de modo con guardas + `AuditLog`). La página `admin/settings/fiscal/page.tsx` es la vista del tenant (datos fiscales + sus facturas + descarga PDF/XML + retry).
+- **Escalamiento de fallo permanente.** Tras agotar `attempts:5`, el processor marca `failed`, registra en Sentry (`module: fiscal`, `tenantId`) y la factura queda visible en el panel para acción manual.
+
+---
+
+## Apéndice A — Valores de catálogo DIAN para Parallly (configurables en `platform_settings`)
+
+Para un SaaS el producto es siempre "servicio de suscripción", así que los catálogos son acotables (esto evita la fricción típica del mapeo DIAN). Valores **por defecto codificados**, ajustables **sin redeploy** desde la config fiscal (`fiscal.*` en `platform_settings`, vía Operaciones Fiscales); confirmar con el PT/contador al hacer go-live:
 
 | Campo (Anexo 1.9) | Valor sugerido para Parallly |
 |-------------------|------------------------------|
@@ -500,12 +576,14 @@ Para un SaaS el producto es siempre "servicio de suscripción", así que los cat
 - Implementaciones open-source de referencia — github.com/soenac/api-dian, github.com/Stenfrank/soap-dian, github.com/DarwinMMC/FIRMA-XAdES-EPES-DIAN
 - Certificados ONAC — certicamara.com, gse.com.co, thomas-signe.com
 
-**Código Parallly (puntos de enganche)**
-- `apps/api/src/modules/billing/billing.service.ts:889-926` — `PAYMENT_SUCCEEDED`
-- `apps/api/src/modules/billing/billing-email.service.ts:62-71` — patrón `@OnEvent`
-- `apps/api/src/modules/billing/types/billing-event.enum.ts:24-26` — eventos `payment.*`
-- `apps/api/prisma/schema.prisma:356-378` — `BillingPayment` (`invoiceNumber`/`invoicePdfUrl`)
-- `apps/api/src/modules/billing/payment-provider.factory.ts` — patrón factory a replicar
+**Código Parallly (implementación fiscal)**
+- `apps/api/src/modules/fiscal/` — módulo completo (20 archivos): interfaz, factory, adapters Factus/US, servicio+processor, config, storage, PDF/email, controllers
+- `apps/api/src/modules/billing/billing.service.ts:~1018-1055` — `BillingPayment.create()` + `eventEmitter.emit(billing.payment.*)`; `assertFiscalDataReady` (gate)
+- `apps/api/src/modules/billing/types/billing-event.enum.ts:24-26` — eventos `payment.*` (succeeded/failed/refunded)
+- `apps/api/prisma/schema.prisma:405-434` — `FiscalInvoice`; `:385-386` — `BillingPayment.invoiceNumber`/`invoicePdfUrl`
+- `apps/api/src/modules/billing/payment-provider.factory.ts` — patrón factory replicado en `fiscal/fiscal-provider.factory.ts`
+- `apps/dashboard/src/app/admin/fiscal/page.tsx` (Operaciones Fiscales, super_admin) · `apps/dashboard/src/app/admin/settings/fiscal/page.tsx` (datos fiscales del tenant) · `components/FiscalGateModal.tsx`, `components/FiscalBanner.tsx`
+- `.env.example:132-144` · `.github/workflows/deploy.yml` — secrets Factus + `FISCAL_STORAGE_PATH`
 
 ---
 

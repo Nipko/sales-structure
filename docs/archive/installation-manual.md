@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — consolidado en [../server-installation.md](../server-installation.md).** Documento duplicado; el canónico (referenciado por CLAUDE.md y setup-vps.sh) es server-installation.md.
+
 # Parallly Platform — Installation Manual
 
 > Complete guide from blank Ubuntu VPS to fully running platform.

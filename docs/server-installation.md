@@ -1,5 +1,8 @@
 # Parallly — Guia de Instalacion en Servidor Nuevo
 
+> Version jul-2026 | Guia de referencia para levantar la plataforma desde un VPS Ubuntu en blanco.
+> Consolida el antiguo `installation-manual.md` (troubleshooting, monitoreo, backups) en un solo documento.
+
 ## Requisitos del Servidor
 
 - **OS**: Ubuntu 22.04+ (LTS)
@@ -11,17 +14,27 @@
 
 ## Cuentas Externas Necesarias
 
-Antes de empezar, necesitas tener configuradas estas cuentas:
+Antes de empezar, necesitas tener configuradas estas cuentas. Solo Cloudflare, Meta,
+GitHub y ≥1 LLM son obligatorias para arrancar; el resto habilita features concretas
+(billing, facturacion electronica, alertas, CRM externo, push, backups offsite).
 
-| Servicio | Que necesitas | Donde obtenerlo |
-|----------|--------------|-----------------|
-| **Cloudflare** | Cuenta + dominio configurado | dash.cloudflare.com |
-| **Meta Developer** | App ID, App Secret, Config ID, Verify Token | developers.facebook.com |
-| **GitHub** | Personal Access Token (para GHCR) | github.com/settings/tokens |
-| **Sentry** | DSN del proyecto | sentry.io |
-| **SMTP** | Host, user, password (para emails) | Tu proveedor de email |
-| **Google OAuth** | Client ID | console.cloud.google.com |
-| **OpenAI/Anthropic/etc** | Al menos 1 API key de LLM | platform.openai.com / console.anthropic.com |
+| Servicio | Requerido | Que necesitas | Donde obtenerlo |
+|----------|-----------|--------------|-----------------|
+| **Cloudflare** | Si | Cuenta + dominio + Tunnel token | dash.cloudflare.com |
+| **Meta Developer** | Si | App ID, App Secret, Config ID, Business ID, Solution ID, Verify Token, System User ID | developers.facebook.com |
+| **GitHub** | Si | PAT para GHCR (o el GITHUB_TOKEN de Actions) | github.com/settings/tokens |
+| **LLM (OpenAI/Anthropic/Gemini/xAI/DeepSeek)** | Si (≥1) | Al menos 1 API key | platform.openai.com / console.anthropic.com / … |
+| **Instagram / Messenger** | Opcional | App ID + App Secret + Config ID (misma app Meta) | developers.facebook.com |
+| **Google OAuth + Calendar** | Opcional | Client ID + Secret (login + sync de calendario) | console.cloud.google.com |
+| **Microsoft OAuth + Calendar** | Opcional | Client ID + Secret (login + Outlook Calendar) | portal.azure.com |
+| **MercadoPago** | Opcional (billing) | Access Token, Public Key, Webhook Secret | mercadopago.com.co/developers |
+| **Factus (DIAN Colombia)** | Opcional (factura electronica) | Base URL, Client ID/Secret, Username/Password | factus.com.co |
+| **Twilio** | Opcional (alertas + SMS creditos) | Account SID, Auth Token, numero/sender | twilio.com |
+| **S3-compatible (Cloudflare R2 / Backblaze B2 / AWS S3)** | Opcional (backups offsite) | Bucket, endpoint, access/secret key | dash.cloudflare.com (R2) / backblaze.com |
+| **HubSpot / Pipedrive** | Opcional (CRM externo) | OAuth Client ID + Secret | developers.hubspot.com / pipedrive.com |
+| **Sentry** | Opcional | DSN + Auth Token/Org/Project (source maps) | sentry.io |
+| **SMTP** | Opcional | Host, user, password (emails) | Tu proveedor de email |
+| **VAPID (Web Push)** | Opcional | Par de llaves publica/privada (`npx web-push generate-vapid-keys`) | genera localmente |
 
 ---
 
@@ -70,6 +83,7 @@ ENCRYPTION_KEY=$(openssl rand -hex 32)
 INTERNAL_API_KEY=$(openssl rand -base64 32)
 INTERNAL_JWT_SECRET=$(openssl rand -base64 48)
 DB_PASSWORD="p4r4ll3xt$(openssl rand -hex 4)"
+REDIS_PASSWORD=$(openssl rand -hex 24)
 BULL_BOARD_TOKEN=$(openssl rand -hex 32)
 GRAFANA_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
 META_VERIFY_TOKEN=$(openssl rand -hex 32)
@@ -79,31 +93,36 @@ cat > .env << EOF
 # Parallly — Production Configuration
 # Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # ============================================
+# NOTA: este es el conjunto COMPLETO de variables que el deploy
+# (.github/workflows/deploy.yml) regenera en cada push. En produccion NO se
+# edita a mano: la fuente de verdad son los GitHub Secrets (ver Paso 11). Los
+# valores CAMBIAR son placeholders — dejalos vacios si no usas esa integracion.
 
 # ---- General ----
 NODE_ENV=production
+LOG_LEVEL=info
 
-# ---- Database ----
+# ---- Database (via PgBouncer, transaction mode) ----
 DB_PASSWORD=${DB_PASSWORD}
-DATABASE_URL=postgresql://parallext:\${DB_PASSWORD}@pgbouncer:5432/parallext_engine?pgbouncer=true
+DATABASE_URL=postgresql://parallext:\${DB_PASSWORD}@pgbouncer:6432/parallext_engine
 DIRECT_DATABASE_URL=postgresql://parallext:\${DB_PASSWORD}@postgres:5432/parallext_engine
+# docker-compose.prod.yml fija el puerto interno efectivo de PgBouncer (5432)
+# para api/worker/whatsapp via 'environment:' (precede a env_file).
 
-# ---- Redis ----
+# ---- Redis (noeviction; password requerido en prod) ----
 REDIS_HOST=redis
 REDIS_PORT=6379
+REDIS_PASSWORD=${REDIS_PASSWORD}
 
-# ---- JWT Auth ----
+# ---- JWT Auth (los 3 secrets deben diferir) ----
 JWT_SECRET=${JWT_SECRET}
 JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-JWT_EXPIRATION=15m
-JWT_REFRESH_EXPIRATION=8h
+INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET}
 
-# ---- Encryption (AES-256-GCM) ----
+# ---- Encryption (AES-256-GCM, 64 hex) ----
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
 # ---- Internal Service Auth ----
-INTERNAL_JWT_SECRET=${INTERNAL_JWT_SECRET}
-API_INTERNAL_URL=http://api:3000/api/v1
 INTERNAL_API_KEY=${INTERNAL_API_KEY}
 
 # ---- Meta / WhatsApp ----
@@ -112,11 +131,16 @@ META_APP_SECRET=CAMBIAR
 META_CONFIG_ID=CAMBIAR
 META_VERIFY_TOKEN=${META_VERIFY_TOKEN}
 WHATSAPP_VERIFY_TOKEN=${META_VERIFY_TOKEN}
-SYSTEM_USER_ID=
+SYSTEM_USER_ID=CAMBIAR
 
-# ---- Google OAuth ----
-GOOGLE_OAUTH_CLIENT_ID=CAMBIAR
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=CAMBIAR
+# ---- Messenger OAuth ----
+MESSENGER_FB_LOGIN_CONFIG_ID=CAMBIAR
+MESSENGER_REDIRECT_URI=https://admin.TU-DOMINIO.com/admin/channels/messenger
+
+# ---- Instagram OAuth ----
+INSTAGRAM_APP_ID=CAMBIAR
+INSTAGRAM_APP_SECRET=CAMBIAR
+INSTAGRAM_REDIRECT_URI=https://admin.TU-DOMINIO.com/admin/channels/instagram/callback
 
 # ---- AI Providers (al menos 1 requerido) ----
 OPENAI_API_KEY=
@@ -125,8 +149,26 @@ GOOGLE_GENERATIVE_AI_API_KEY=
 XAI_API_KEY=
 DEEPSEEK_API_KEY=
 
+# ---- Google OAuth + Calendar ----
+GOOGLE_OAUTH_CLIENT_ID=CAMBIAR
+GOOGLE_OAUTH_CLIENT_SECRET=CAMBIAR
+GOOGLE_CALENDAR_REDIRECT_URI=https://api.TU-DOMINIO.com/api/v1/calendar/google/callback
+
+# ---- Microsoft OAuth + Calendar (misma app) ----
+MS_AUTH_CLIENT_ID=CAMBIAR
+MS_AUTH_CLIENT_SECRET=CAMBIAR
+MS_AUTH_REDIRECT_URI=https://api.TU-DOMINIO.com/api/v1/auth/microsoft/callback
+MS_CLIENT_ID=CAMBIAR
+MS_CLIENT_SECRET=CAMBIAR
+MS_TENANT_ID=common
+MS_CALENDAR_REDIRECT_URI=https://api.TU-DOMINIO.com/api/v1/calendar/microsoft/callback
+
 # ---- Sentry ----
 SENTRY_DSN=CAMBIAR
+SENTRY_AUTH_TOKEN=CAMBIAR
+SENTRY_ORG=CAMBIAR
+SENTRY_PROJECT=CAMBIAR
+SENTRY_API_URL=
 
 # ---- SMTP (email) ----
 SMTP_HOST=CAMBIAR
@@ -135,15 +177,70 @@ SMTP_USER=CAMBIAR
 SMTP_PASS=CAMBIAR
 SMTP_FROM=Parallly <no-reply@parallly-chat.cloud>
 
-# ---- Frontend URLs ----
+# ---- Frontend / App URLs ----
 NEXT_PUBLIC_API_URL=https://api.TU-DOMINIO.com/api/v1
 NEXT_PUBLIC_WA_SERVICE_URL=https://wa.TU-DOMINIO.com/api/v1
 NEXT_PUBLIC_META_APP_ID=CAMBIAR
 NEXT_PUBLIC_META_CONFIG_ID=CAMBIAR
 DASHBOARD_URL=https://admin.TU-DOMINIO.com
+NEXT_PUBLIC_DASHBOARD_URL=https://admin.TU-DOMINIO.com
+API_URL=https://api.TU-DOMINIO.com
+API_PUBLIC_URL=https://api.TU-DOMINIO.com/api/v1
 
-# ---- Media ----
+# ---- Media / embeddings ----
 MEDIA_STORAGE_PATH=/data/media
+BODY_SIZE_LIMIT=50mb
+EMAIL_LOGO_URL=https://TU-DOMINIO.com/parallly-logo.svg
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIMENSIONS=1536
+
+# ---- MercadoPago (Billing) ----
+MP_ACCESS_TOKEN=CAMBIAR
+MP_WEBHOOK_SECRET=CAMBIAR
+MP_PUBLIC_KEY=CAMBIAR
+MP_WEBHOOK_URL=https://api.TU-DOMINIO.com/api/v1/billing/webhook/mercadopago
+
+# ---- Factus (DIAN — factura electronica Colombia) ----
+FACTUS_BASE_URL=https://api-sandbox.factus.com.co
+FACTUS_CLIENT_ID=CAMBIAR
+FACTUS_CLIENT_SECRET=CAMBIAR
+FACTUS_USERNAME=CAMBIAR
+FACTUS_PASSWORD=CAMBIAR
+# Retencion legal 5 anios (XML+PDF) en el volumen parallext-fiscal-data
+FISCAL_STORAGE_PATH=/data/invoices
+
+# ---- SMS platform alerts (Twilio) ----
+SMS_ALERT_ACCOUNT_SID=CAMBIAR
+SMS_ALERT_AUTH_TOKEN=CAMBIAR
+SMS_ALERT_FROM=CAMBIAR
+SMS_ALERT_TO=CAMBIAR
+SMS_SENDER_ID=CAMBIAR
+
+# ---- Telegram platform alerts (Ops Center) ----
+TELEGRAM_ALERT_BOT_TOKEN=CAMBIAR
+TELEGRAM_ALERT_CHAT_ID=CAMBIAR
+
+# ---- External CRM integrations ----
+HUBSPOT_CLIENT_ID=CAMBIAR
+HUBSPOT_CLIENT_SECRET=CAMBIAR
+PIPEDRIVE_CLIENT_ID=CAMBIAR
+PIPEDRIVE_CLIENT_SECRET=CAMBIAR
+
+# ---- VAPID (Web Push) ----
+VAPID_PUBLIC_KEY=CAMBIAR
+VAPID_PRIVATE_KEY=CAMBIAR
+
+# ---- Offsite backups (S3-compatible via rclone; vacio = solo local) ----
+OFFSITE_BUCKET=
+OFFSITE_PATH=parallext
+OFFSITE_PROVIDER=AWS
+OFFSITE_REGION=us-east-1
+OFFSITE_ENDPOINT=
+OFFSITE_ACCESS_KEY=
+OFFSITE_SECRET_KEY=
+
+# ---- Cloudflare Tunnel ----
+CLOUDFLARE_TUNNEL_TOKEN=CAMBIAR
 
 # ---- Observabilidad ----
 BULL_BOARD_TOKEN=${BULL_BOARD_TOKEN}

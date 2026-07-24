@@ -1,12 +1,12 @@
 # Modules Reference
 
-Complete reference for all 78 API modules, 94 dashboard pages, 7 BullMQ queues, and 31 cron jobs.
+Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 públicas), 11 BullMQ queues, and 46 cron jobs.
 
-**Last updated:** May 31, 2026 — Roadmap Q2 complete (+8 modules)
+**Last updated:** jul 2026 — Multi-canal por tipo, billing anual + billing-ops, fiscal DIAN (Factus), backup offsite, SMS reseller, Ops Center, gobernanza super_admin
 
 ---
 
-## API Modules (78 total)
+## API Modules (83 total)
 
 ### Infrastructure (6 modules)
 
@@ -24,19 +24,43 @@ Complete reference for all 78 API modules, 94 dashboard pages, 7 BullMQ queues, 
 - **Controller:** None (infrastructure)
 - **Notes:** noeviction policy (never allkeys-lru). BullMQ jobs must not be silently evicted
 
-#### 3. health
-- **Purpose:** Health check + LLM provider monitoring
+#### 3. health (Ops Center)
+- **Purpose:** Liveness/readiness + **Centro de Operaciones** del super_admin: monitoreo de plataforma (disco, memoria, colas, SLA, tokens de canal, presupuesto LLM, backups), incidentes, storage por-tenant y umbrales de alerta configurables
+- **Services:** `platform-monitor.service.ts` (crons de chequeo + alerting con cooldown vía email/Telegram/SMS; incluye heartbeat de backup en Redis `backup:last_success`, alerta si edad > `backupStaleHours` default 26h), `incident.service.ts` (abrir/ack/resolver, dedup por clave), `platform-storage.service.ts` (disco + storage por-tenant + quota + history), `alert-config.service.ts` (umbrales), `sms-alert.service.ts`, `telegram-alert.service.ts`, `sentry-stats.service.ts`
 - **Controller:** `health.controller.ts`
 - **Endpoints:**
-  - `GET /health` — Health check (no auth)
-  - `GET /health/llm-providers` — LLM provider health status (super_admin, JWT required)
+  - `GET /health` — Liveness (no auth; usado por Docker healthcheck + Uptime Kuma)
+  - `GET /health/detailed` — Memoria/CPU/colas/latencias + alertas activas (no auth)
+  - `GET /health/llm-providers` — Estado de salud de proveedores LLM (super_admin)
+  - `GET /health/storage` — Reporte de almacenamiento de media (super_admin)
+  - `GET /health/storage/overview` — Totales de disco + storage (super_admin)
+  - `GET /health/storage/tenants` — Storage por-tenant (schema DB + media + quota) (super_admin)
+  - `GET /health/storage/history` — Serie histórica para gráfico de tendencia (super_admin)
+  - `GET /health/incidents` — Lista de incidentes (filtros status/severity, paginado) (super_admin)
+  - `GET /health/incidents/summary` — Conteos por status/severity (super_admin)
+  - `POST /health/incidents/:id/ack` — Reconocer incidente (super_admin)
+  - `POST /health/incidents/:id/resolve` — Resolver incidente (super_admin)
+  - `GET /health/alert-config` — Leer umbrales de alerta (super_admin)
+  - `PUT /health/alert-config` — Actualizar umbrales (super_admin)
+  - `POST /health/checks/run` — Ejecutar todos los chequeos on-demand (super_admin)
+  - `POST /health/media-cleanup` — Limpieza de media huérfana (dryRun por defecto) (super_admin)
+- **Cron jobs:**
+  - `*/10 * * * *` — checkSystem: disco + memoria
+  - `2,7,12,...,57 * * * *` — checkQueues: profundidad/estancamiento de colas BullMQ
+  - `8,18,28,38,48,58 * * * *` — checkSlaBreaches: violaciones de SLA de handoff
+  - `0 * * * *` — refreshAdmins: refresca emails de super_admins destinatarios de alertas
+  - `0 * * * *` — checkChannelTokens: credenciales de canal con refresh fallido
+  - `15 3 * * *` — checkStorage: alerta por disco/quota
+  - `30 7 * * *` — checkRiskSignals: fallos de pago/webhook, presupuesto LLM y heartbeat de backup
+- **Backups:** `pg_dump` corre DENTRO del contenedor `parallext-postgres`; offsite vía rclone a Cloudflare R2; heartbeat `backup:last_success` en Redis. Ver `docs/backup-restore-runbook.md` y `docs/backup-offsite-setup.md`
 
 #### 4. throttle
-- **Purpose:** Plan-based rate limiting and feature flags. `@Global()` module
-- **Services:** `tenant-throttle.service.ts`, `feature-flags.service.ts`
-- **Controller:** None (consumed by other modules)
-- **Plan limits:** starter (1 agent, 200 outbound/h), pro (3 agents, 2000/h), enterprise (10 agents, 20000/h), custom (unlimited)
+- **Purpose:** Rate limiting por plan y feature flags. `@Global()` module. Lee `features` de `billing_plans` en runtime (cacheado; invalidado en cambios de plan)
+- **Services:** `tenant-throttle.service.ts`, `feature-flags.service.ts`, `plan-features.registry.ts` (registro canónico de claves de `features` + validación)
+- **Controller:** None (consumido por otros módulos)
+- **5 planes:** emprendedor (USD $21), starter ($49), pro ($129), enterprise ($349), custom. Fuente: `prisma/seed-billing-plans.js` + tabla `billing_plans`
 - **Calendar limits:** starter=1, pro=3, enterprise=10, custom=999
+- **Multi-cuenta por tipo de canal:** `features.maxChannelAccounts` es un objeto `{ whatsapp, instagram, messenger, telegram, sms }` (default 1 por tipo). Resolución: override por-tenant (`quotaOverrides.maxChannelAccounts`) → feature del plan → default 1. Ej. pro: `{ whatsapp: 2, messenger: 3 }`; custom: `-1` (ilimitado). Consumido por los flujos de conexión de canal para gatear conexiones adicionales del mismo tipo
 
 #### 5. internal
 - **Purpose:** Service-to-service message injection (WhatsApp service → API)
@@ -84,7 +108,7 @@ Complete reference for all 78 API modules, 94 dashboard pages, 7 BullMQ queues, 
   - `POST /auth/change-password` — Change password (authenticated)
   - `POST /auth/admin/reset-password` — Admin reset user password
   - `POST /auth/update-profile` — Update user profile
-  - `POST /auth/impersonate/:tenantId` — Super admin impersonation (1h token, audit trail)
+  - `POST /auth/impersonate/:tenantId` — Impersonación gobernada del super_admin. `impersonate(superAdminId, tenantId, {reason, ticketId})`: **motivo obligatorio** (400 sin él), token de 1h con `impersonatedBy`/`impersonationSid`, sesión emparejada (`endImpersonation` mata el refresh en Redis) y **actor real en auditoría** (`super_admin.impersonation_started`, `userId` = super_admin, nunca el usuario impersonado). `common/utils/audit-actor.util.ts` resuelve el actor real en las escrituras hechas durante la impersonación. Sin tenant implícito en modo plataforma; `roles.ts` deny-by-default. Ver `docs/superadmin-governance.md`
   - `GET /auth/tenant/timezone` — Get tenant timezone
   - `POST /auth/tenant/timezone` — Set tenant timezone
   - `GET /auth/users` — List tenant users
@@ -228,11 +252,17 @@ Complete reference for all 78 API modules, 94 dashboard pages, 7 BullMQ queues, 
   - `GET /channels/sms/status` — SMS status
   - `DELETE /channels/sms/disconnect` — Disconnect SMS
   - `POST /channels/sms/test` — Test SMS
+  - > **Nota:** el **canal SMS conversacional fue descartado**. `channels/sms/sms.adapter.ts` (Twilio) queda como legacy; hoy SMS es solo **notificación one-way** (ver módulos `sms-credits` + `sms-notifications`). Los canales conversacionales activos son WhatsApp, Instagram, Messenger, Telegram, Email y Web Chat Widget (`widget/`)
   - **Email Channel:**
     - `GET /channels/email/config` — Email channel config
     - `PUT /channels/email/config` — Update email config (SMTP/SendGrid)
     - `DELETE /channels/email/disconnect` — Disconnect email channel
+  - **Multi-cuenta por tipo (jul 2026):**
+    - `POST /channels/:channelType/connect` — Conectar una cuenta ADICIONAL del mismo tipo (gateada por `features.maxChannelAccounts[type]`)
+    - `DELETE /channels/:channelType/account/:accountId` — Desconectar una cuenta específica por `accountId` (no toca las demás)
+    - `GET /channels/overview` y `GET /channels/:channelType/status` devuelven ahora `accounts[]` (una entrada por conexión) con su agente asignado
   - `GET /webhook-tap` — Debug: last captured webhook payload
+- **Multi-cuenta por tipo:** N conexiones del mismo tipo (2 números WhatsApp, 2 IG…). Cada conexión es una fila en `channel_accounts` (unique `[channelType, accountId]`) con su propio `access_token` (tokens por-cuenta, sin migración global). `channel-token.service.ts` acepta `accountId` opcional: `getChannelToken(tenantId, channelType, accountId?)`. El binding agente↔conexión vive en `agent_personas.channel_bindings` (`"type:accountId"`); anti-conflación de conversaciones por `accountId`
 - **Tenant tables (email):** `email_channel_configs` (id, provider, smtp_config, thread_tracking_enabled), `email_threads` (id, thread_id, conversation_id, subject)
 - **BullMQ:** `outbound-messages` queue (concurrency: 5, 3 retries, priority by plan)
 - **Cron:** `0 6 * * *` — refreshExpiringSoonTokens: Instagram token refresh (30-day window)
@@ -354,9 +384,10 @@ Complete reference for all 78 API modules, 94 dashboard pages, 7 BullMQ queues, 
   - Cost tracking in Redis per tenant/date/category/provider
 
 #### 18. persona
-- **Purpose:** Multi-agent management, templates, channel assignment
+- **Purpose:** Gestión multi-agente, plantillas, asignación por canal y **por conexión**
 - **Services:** `persona.service.ts`
 - **Templates:** 6 built-in (Sales Advisor, Support Agent, FAQ Bot, Appointment Scheduler, Lead Qualifier, Blank)
+- **Un agente por conexión:** columna `agent_personas.channel_bindings TEXT[]` (índice GIN) con formato `"type:accountId"` (p. ej. `"whatsapp:15551234567"`). `getPersonaForChannel(tenantId, channelType, accountId?)` resuelve: binding exacto `type:accountId` → canal a nivel tipo → default → legacy. Escribir un binding lo remueve de otros agentes (exclusividad); gateado por `features.maxChannelAccounts`
 - **Controller:** `persona.controller.ts`
 - **Endpoints:**
   - `GET /persona/templates` — List all templates
@@ -570,39 +601,50 @@ Complete reference for all 78 API modules, 94 dashboard pages, 7 BullMQ queues, 
 ### Billing & Finance (4 modules)
 
 #### 26. billing
-- **Purpose:** Subscription lifecycle, MercadoPago integration, invoices, coupons
-- **Services:** `billing.service.ts`, `billing-email.service.ts`, `invoice-generator.service.ts`, `coupons.service.ts`, `payment-provider.factory.ts`
-- **Adapters:** `mercadopago.adapter.ts`, `mercadopago-config.service.ts`, `mock-payment-provider.adapter.ts`
+- **Purpose:** Ciclo de vida de suscripción, integración MercadoPago (Stripe alternativo), facturas, cupones, **ciclo mensual/anual (~15% desc)**, panel billing-ops cross-tenant (super_admin) y compra de paquetes de créditos SMS
+- **Services:** `billing.service.ts`, `billing-email.service.ts`, `invoice-generator.service.ts`, `coupons.service.ts`, `payment-provider.factory.ts`, `sms-checkout.service.ts`
+- **Adapters:** `mercadopago.adapter.ts`, `mercadopago-config.service.ts`, `stripe.adapter.ts`, `stripe-config.service.ts`, `mock-payment-provider.adapter.ts`
 - **Processors:** `reconciliation.processor.ts`
-- **Controllers:** `billing.controller.ts`, `billing-admin.controller.ts`, `coupons.controller.ts`, `webhook.controller.ts`
-- **Endpoints:**
-  - `GET /billing/plans` — List plans
-  - `GET /billing/:tenantId/subscription` — Current subscription
-  - `POST /billing/:tenantId/subscription` — Create subscription
-  - `POST /billing/:tenantId/subscription/upgrade` — Upgrade plan
-  - `POST /billing/:tenantId/subscription/cancel` — Cancel
-  - `POST /billing/:tenantId/subscription/pause` — Pause
-  - `POST /billing/:tenantId/subscription/resume` — Resume
-  - `POST /billing/:tenantId/subscription/payment-method` — Update payment method
-  - `POST /billing/:tenantId/subscription/cancel-pending-downgrade` — Cancel pending downgrade
-  - `POST /billing/:tenantId/subscription/sync` — Force sync with provider
-  - `GET /billing/:tenantId/usage` — Plan quota usage (includes media processing stats: audio/image used/limit/percent, daily cost)
-  - `GET /billing/:tenantId/payments/:paymentId/invoice` — Download invoice PDF
-  - `POST /billing-admin/payments/:paymentId/refund` — Refund (super_admin)
-  - `POST /billing-admin/tenants/:tenantId/comp-plan` — Grant comp plan (super_admin)
-  - `GET /billing-coupons/admin` — List coupons
-  - `POST /billing-coupons/admin` — Create coupon
-  - `PUT /billing-coupons/admin/:id` — Update coupon
-  - `DELETE /billing-coupons/admin/:id` — Delete coupon
-  - `GET /billing-coupons/admin/:id/redemptions` — Redemption history
-  - `POST /billing-coupons/validate/:tenantId` — Validate coupon code
-  - `POST /billing-coupons/redeem/:tenantId` — Redeem coupon
-  - `POST /billing/webhook/:provider` — Payment provider webhook (HMAC verified)
+- **Controllers:** `billing.controller.ts` (tenant), `billing-admin.controller.ts` (super_admin, billing-ops), `billing-public.controller.ts` (catálogo público), `coupons.controller.ts`, `sms-checkout.controller.ts`, `webhook.controller.ts`
+- **Ciclo anual (~15% desc):** el anual crea un `preapproval_plan` de MP separado; su id se guarda en `priceLocalOverrides[country].annual.mpPlanId`. El precio en DB (editable vía `PUT /billing-admin/plans/:slug`) es solo lo que se MUESTRA; MP cobra el monto congelado en el `preapproval_plan`, así que un cambio de precio no es efectivo hasta correr `sync-mp`. Ver `docs/billing-annual-cycle.md`
+- **Tenant endpoints (`/billing`):**
+  - `GET /billing/plans` — Lista de planes (con overrides por país/moneda + anual)
+  - `GET /billing/:tenantId/subscription` — Suscripción actual
+  - `POST /billing/:tenantId/subscription` — Crear suscripción
+  - `POST /billing/:tenantId/subscription/upgrade` — Cambiar de plan
+  - `POST /billing/:tenantId/subscription/cancel|pause|resume` — Cancelar/pausar/reanudar
+  - `POST /billing/:tenantId/subscription/payment-method` — Actualizar medio de pago
+  - `POST /billing/:tenantId/subscription/cancel-pending-downgrade` — Cancelar downgrade pendiente
+  - `POST /billing/:tenantId/subscription/sync` — Forzar sync con el proveedor
+  - `GET /billing/:tenantId/usage` — Uso de cuotas del plan (incluye media: audio/imagen usado/límite/%, costo diario)
+  - `GET /billing/:tenantId/restriction-status` — Estado de restricción (past_due/soft_lock)
+  - `GET /billing/:tenantId/payments/:paymentId/invoice` — Descargar factura PDF
+- **Public / catálogo:**
+  - `GET /billing/public/plans` — Catálogo de planes público (para la landing `/precios` data-driven)
+- **Billing-ops (super_admin, `/billing-admin`) — ~15 endpoints:**
+  - `GET /billing-admin/plans` — Lista de planes con conteo de tenants + claves de feature desconocidas
+  - `GET /billing-admin/feature-registry` — Registro canónico de claves de `features`
+  - `GET /billing-admin/plans/:slug` — Detalle de plan
+  - `PUT /billing-admin/plans/:slug` — Editar plan (features validadas + merge, precio, overrides país/anual; con auditoría before→after)
+  - `POST /billing-admin/plans/:slug/invalidate-cache` — Invalidar caché de plan/features
+  - `POST /billing-admin/plans/:slug/sync-mp` — Registrar/recrear el `preapproval_plan` de MP para plan+país (reemplaza el script SSH)
+  - `GET /billing-admin/provider-status` — Badge sandbox/producción de MP
+  - `POST /billing-admin/reconcile` — Reconciliación on-demand (scope past_due|full)
+  - `POST /billing-admin/tenants/:tenantId/reconcile` — Reconciliar un tenant contra el proveedor
+  - `GET /billing-admin/subscriptions` — Vista cross-tenant de suscripciones (filtros + paginado)
+  - `GET /billing-admin/payments` — Vista cross-tenant de pagos
+  - `GET /billing-admin/events` — Vista cross-tenant de billing_events
+  - `POST /billing-admin/payments/:paymentId/refund` — Reembolso inline
+  - `POST /billing-admin/tenants/:tenantId/comp-plan` — Otorgar plan de cortesía (time-boxed, motivo obligatorio)
+  - `PUT /billing-admin/tenants/:tenantId/plan` — Cambio permanente de plan (override de entitlement; invalida cachés + auditoría)
+- **Cupones (`/billing-coupons`):** `GET|POST /admin`, `PUT|DELETE /admin/:id`, `GET /admin/:id/redemptions`, `POST /validate/:tenantId`, `POST /redeem/:tenantId` (percent_off / amount_off / free_months)
+- **Créditos SMS (`sms-checkout` → path `/sms-credits`):** `POST /sms-credits/:tenantId/checkout` (compra de paquete, pago único MP), `GET /sms-credits/:tenantId/orders` (historial de compras)
+- **Webhook:** `POST /billing/webhook/:provider` — Webhook del proveedor (HMAC verificado + idempotencia)
 - **Cron jobs:**
-  - `EVERY_HOUR` — reconcilePastDue: sweep past-due subscriptions
-  - `0 3 * * *` — fullReconciliation: daily drift detection
-  - `30 2 * * *` — applyPendingDowngrades: apply scheduled downgrades
-  - `0 9 * * *` — emitTrialEndingSoon: trial expiry notifications
+  - `EVERY_HOUR` — reconcilePastDue: barrido de suscripciones en mora
+  - `0 3 * * *` — fullReconciliation: detección diaria de drift
+  - `30 2 * * *` — applyPendingDowngrades: aplica downgrades programados
+  - `0 9 * * *` — emitTrialEndingSoon: notificaciones de fin de trial
 
 #### 27. financials
 - **Purpose:** SaaS metrics dashboard (MRR, ARR, ARPU, churn, LTV, forecast)
@@ -1429,6 +1471,75 @@ Complete reference for all 78 API modules, 94 dashboard pages, 7 BullMQ queues, 
   - `media:cost:{tenantId}:{YYYY-MM-DD}` — Daily cost accumulator (cents)
 - **Dashboard integration:** Billing page shows audio/image usage bars with 80%/95% threshold warnings + upgrade CTA. Super admin tenant detail includes TenantMediaStats component
 
+### Notificaciones, Integraciones, Fiscal y Ops (10 módulos — jun–jul 2026)
+
+#### 68. fiscal
+- **Purpose:** Facturación electrónica **DIAN Colombia** vía proveedor **Factus** (capa `IFiscalInvoiceProvider` desacoplada del PSP). Emite el documento oficial en Factus y adjunta un **PDF branded propio**; gate "cobrar-solo-con-datos-fiscales" (NIT/cédula)
+- **Services:** `fiscal-invoice.service.ts`, `fiscal-config.service.ts`, `fiscal-pdf.service.ts` + `fiscal-branded.util.ts`, `fiscal-email.service.ts`, `fiscal-storage.service.ts`, `fiscal-provider.factory.ts` (+ `adapters/` Factus). Modos `CO_LOCAL` y `US_REMOTE`
+- **Controllers:** `fiscal.controller.ts` (tenant, `/fiscal`), `fiscal-admin.controller.ts` (super_admin, `/fiscal-admin`)
+- **Tenant endpoints:** `GET|PUT /fiscal/:tenantId/data` (datos fiscales del tenant), `GET /fiscal/:tenantId/invoices`, `POST /fiscal/:tenantId/invoices/:id/retry`, `GET /fiscal/:tenantId/invoices/:id/pdf`, `GET /fiscal/:tenantId/invoices/:id/xml`
+- **Admin endpoints:** `GET|PUT /fiscal-admin/config`, `GET /fiscal-admin/invoices`, `POST /fiscal-admin/invoices/:id/retry`, `POST /fiscal-admin/invoices/:id/reissue` (recuperación 409: borrar+reemitir/reconciliar), `GET /fiscal-admin/preview-invoice`, `POST /fiscal-admin/test-invoice`, `GET /fiscal-admin/factus/health`, `GET /fiscal-admin/factus/numbering-ranges`
+- **BullMQ:** `fiscal-invoice` (concurrency 3)
+- **Model:** `FiscalInvoice` (global). Ver `docs/facturacion-electronica-colombia-2026-06.md`
+
+#### 69. sms-credits
+- **Purpose:** **SMS monetizado modelo reseller** — los tenants compran créditos (1 crédito = 1 segmento Twilio) para notificar one-way a sus clientes vía el Twilio de la plataforma. Balance/ledger atómico, envío medido, tiers editables por super_admin, **kill-switch** maestro (apagado por defecto)
+- **Services:** `sms-credits.service.ts` (paquetes + balance/ledger), `tenant-notification-sms.service.ts` (envío medido one-way, broadcast + cola, firma Twilio)
+- **Controller:** `sms-credits.controller.ts` (`/sms-credits`)
+- **Endpoints:** `GET /sms-credits/packages` (tiers públicos), `GET|PUT /sms-credits/admin/config` (tiers + kill-switch, super_admin), `GET /sms-credits/admin/balances` (super_admin), `POST /sms-credits/admin/:tenantId/adjust` (ajuste manual, super_admin), `GET /sms-credits/:tenantId/balance`, `GET /sms-credits/:tenantId/ledger`
+- **Compra:** vía `billing/sms-checkout` (`POST /sms-credits/:tenantId/checkout`, pago único MercadoPago). Ver `docs/sms-monetization-packages-2026-07.md`
+
+#### 70. sms-notifications
+- **Purpose:** SMS **transaccional** de plataforma (WhatsApp-first + **SMS fallback**): alertas super_admin, handoff al agente, OTP/2FA. Gate por plan (`smsNotifications`) + opt-in per-tenant. Operador Twilio (+ Verify para OTP)
+- **Services:** `sms-notifications.service.ts`, `sms-notification-listener.service.ts` (@OnEvent handoff/escalación), `sms-sender.service.ts`, `sms-notification-i18n.ts`
+- **Controller:** `sms-notifications.controller.ts` (`/sms-notifications`)
+- **Endpoints:** `GET|PUT /sms-notifications/:tenantId/config` (opt-in + números destino). Ver `docs/sms-notifications-implementation-plan-2026-07.md`
+
+#### 71. push
+- **Purpose:** Notificaciones push a agentes/admins — **Web Push** (navegador) y **Expo** (app móvil `@parallext/mobile`). Escucha eventos de handoff/escalación y entrega push
+- **Services:** `push.service.ts` (suscripciones + envío), `push-listener.service.ts` (@OnEvent), `push-i18n.ts`
+- **Controller:** `push.controller.ts` (`/push`)
+- **Endpoints:** `POST /push/subscribe` (Web Push), `POST /push/unsubscribe`, `POST /push/expo-subscribe` (token Expo de la app móvil)
+
+#### 72. slack
+- **Purpose:** Notificaciones a Slack en eventos de negocio clave (T2.16) vía webhook de Slack por-tenant. Mismo patrón listener que push
+- **Services:** `slack.service.ts`, `slack-listener.service.ts` (@OnEvent)
+- **Controller:** `slack.controller.ts` (`/slack`)
+- **Endpoints:** `GET|PUT /slack/:tenantId/config`, `POST /slack/:tenantId/test`
+
+#### 73. webhooks
+- **Purpose:** **Webhooks salientes por-tenant** gestionables desde el dashboard (Settings → Integraciones → Webhooks): endpoints suscritos a eventos, firma HMAC, historial de entregas y reintento de prueba (complementa los hooks del `public-api`)
+- **Services:** `webhooks.service.ts`, `webhooks-listener.service.ts` (@OnEvent → dispatch)
+- **Controller:** `webhooks.controller.ts` (`/webhooks`)
+- **Endpoints:** `GET /webhooks/events` (catálogo de eventos), `GET|POST /webhooks/:tenantId`, `PUT|DELETE /webhooks/:tenantId/:endpointId`, `POST /webhooks/:tenantId/:endpointId/regenerate-secret`, `GET /webhooks/:tenantId/:endpointId/deliveries`, `POST /webhooks/:tenantId/:endpointId/test`
+
+#### 74. system-updates
+- **Purpose:** Novedades/changelog de plataforma publicadas por super_admin y visibles a los tenants (con imágenes)
+- **Services:** `system-updates.service.ts` (CRUD + almacenamiento de imágenes, máx 5MB, resize a 1200px)
+- **Controller:** `system-updates.controller.ts` (`/system-updates`)
+- **Endpoints:** `GET /system-updates` (feed publicado), `GET /system-updates/:id`, `GET /system-updates/image/:fileName` (público), `GET /system-updates/admin` (todas, super_admin), `POST /system-updates`, `PUT /system-updates/:id`, `DELETE /system-updates/:id`, `POST /system-updates/upload-image`
+
+#### 75. trace
+- **Purpose:** Traza de LLM **por turno** (T1.7) — pasos del pipeline por turno para observabilidad/depuración. Escrituras best-effort async desde el evento `llm.turn` / `llm.turn.steps`
+- **Services:** `trace.service.ts`, `trace-listener.service.ts` (@OnEvent), `trace-maintenance.service.ts` (poda por retención)
+- **Controller:** `trace.controller.ts` (`/trace`)
+- **Endpoints:** `GET /trace/:tenantId/:conversationId`, `GET /trace/:tenantId/:conversationId/turns`
+- **Cron:** `45 4 * * 0` — pruneOldTurnTraces: poda de trazas antiguas
+
+#### 76. quality
+- **Purpose:** **QA scoring** de conversaciones resueltas (T1.6) con LLM-judge; expone puntajes y conversaciones marcadas (flagged). Alimenta el gate de simulación (`QualityService.judgeTranscript`)
+- **Services:** `quality.service.ts`, `quality-listener.service.ts` (@OnEvent resolución → encola), `quality.processor.ts`
+- **Controller:** `quality.controller.ts` (`/quality`)
+- **Endpoints:** `GET /quality/:tenantId` (resumen/puntajes), `GET /quality/:tenantId/flagged`
+- **BullMQ:** `quality-scoring` (concurrency 5; registrada sin adaptador BullBoard)
+
+#### 77. kb-health
+- **Purpose:** **KB auto-healing** (T2.14, estilo Maven) — escaneo semanal que detecta docs obsoletos, consultas sin respuesta y baja cobertura; genera reporte de gaps y estado
+- **Services:** `kb-health.service.ts`
+- **Controller:** `kb-health.controller.ts` (`/kb-health`)
+- **Endpoints:** `GET /kb-health/:tenantId`, `POST /kb-health/:tenantId/scan`, `POST /kb-health/:tenantId/:id/status`
+- **Cron:** `0 5 * * 0` — weeklyScan: escaneo semanal de salud de KB
+
 ### Roadmap Q2 modules (8 modules — May 31, 2026)
 
 | Module | Purpose | Key endpoints | Dashboard |
@@ -1444,7 +1555,7 @@ Complete reference for all 78 API modules, 94 dashboard pages, 7 BullMQ queues, 
 
 ---
 
-## BullMQ Queues (7 total)
+## BullMQ Queues (11 total)
 
 | Queue | Module | Processor | Concurrency | Purpose |
 |-------|--------|-----------|-------------|---------|
@@ -1452,55 +1563,74 @@ Complete reference for all 78 API modules, 94 dashboard pages, 7 BullMQ queues, 
 | `broadcast-messages` | broadcast | `broadcast-queue.processor.ts` | 10 | Mass template campaigns (80 msg/s rate limit) |
 | `automation-jobs` | automation | `automation-jobs.processor.ts` | 10 | Deferred rule actions (3 retries) |
 | `nurturing` | automation | `nurturing-queue.processor.ts` | rate-limited | Lead nurturing sequences |
+| `conversation-snooze` | agent-console | delayed `unsnooze` jobs (`snooze.service.ts`) | delayed | Auto-reactivación de conversaciones en snooze al vencer el plazo |
 | `crm-sync` | external-crm | `external-crm.processor.ts` | 10 | Bidirectional CRM sync (HubSpot/Pipedrive) |
 | `crm-import` | external-crm | `crm-import.processor.ts` | 2 | Batch contact import from external CRMs |
 | `agent-simulation` | simulation | `simulation.processor.ts` | 2 | Pre-deploy agent simulation runs (T2.13, attempts:1) |
+| `eval-gate` | simulation | `eval-gate.processor.ts` | 1 | Pre-deploy eval gate (LLM-judge multi-turno, attempts:1; sin BullBoard) |
+| `fiscal-invoice` | fiscal | `fiscal-invoice.processor.ts` | 3 | Emisión de factura electrónica DIAN vía Factus |
+| `quality-scoring` | quality | `quality.processor.ts` | 5 | QA scoring de conversaciones resueltas (T1.6; sin BullBoard) |
 
-> Note: `quality-scoring` (T1.6) is also a BullMQ queue but registered without a BullBoard adapter.
+> BullBoard expone 9 de las 11 colas. `quality-scoring` y `eval-gate` se registran sin adaptador BullBoard.
 
 ---
 
-## Cron Jobs (31 total)
+## Cron Jobs (46 total)
 
 | Schedule | Module | Method | Purpose |
 |----------|--------|--------|---------|
+| `* * * * *` | broadcast | (auto-launch) | Lanzar campañas programadas |
 | `*/2 * * * *` | agent-console | escalateStaleHandoffs | Escalate handoffs >5min → supervisor alert |
 | `*/5 * * * *` | agent-console | checkInactivity | Mark agents idle after 15min |
 | `*/5 * * * *` | pipeline | checkAllTenantSLAs | SLA violation detection |
+| `*/10 * * * *` | health | checkSystem | Chequeo de disco + memoria |
 | `*/15 * * * *` | appointments | send24hReminders | 24h appointment reminders |
 | `*/15 * * * *` | analytics | evaluateAlerts | Threshold alert rule evaluation |
 | `*/30 * * * *` | whatsapp | pollAll | Meta template status polling |
 | `*/30 * * * *` | vacation-rental | syncAllFeeds | External iCal feed sync |
+| `*/30 * * * *` | offboarding | trialExpiryDetector | Detect expired trials → past_due (dedup via billing_events) |
+| `2,7,…,57 * * * *` | health | checkQueues | Profundidad/estancamiento de colas BullMQ |
 | `3,18,33,48 * * * *` | appointments | send1hReminders | 1h appointment reminders |
 | `5,35 * * * *` | appointments | markNoShows | Mark no-show appointments |
-| `10 * * * *` | analytics | sendPostAppointmentCSAT | Post-appointment survey |
+| `8,18,28,38,48,58 * * * *` | health | checkSlaBreaches | Violaciones de SLA de handoff |
 | `20 * * * *` | appointments | autoCompleteAppointments | Auto-complete ended 2+h ago |
 | `0 * * * *` | crm | refreshDynamicSegments | Hourly segment membership refresh |
-| `0 */2 * * *` | automation | checkStaleConversations | Stale conversation detection |
-| `0 */6 * * *` | automation | autoResolveStale | Auto-resolve stale nurturing (72h) |
-| `0 */12 * * *` | appointments | renewWatchChannels | Renew Google Calendar push channels |
+| `0 * * * *` | health | refreshAdmins | Refresca super_admins destinatarios de alertas |
+| `0 * * * *` | health | checkChannelTokens | Credenciales de canal con refresh fallido |
 | `EVERY_HOUR` | billing | reconcilePastDue | Sweep past-due subscriptions |
+| `0 */2 * * *` | automation | checkStaleConversationsAllTenants | Stale conversation detection |
+| `30 */2 * * *` | automation | checkAbandonedBookingsAllTenants | Detección de reservas abandonadas |
+| `0 */6 * * *` | automation | autoResolveStale | Auto-resolve stale nurturing (72h) |
+| `0 */6 * * *` | crm-b2b | detectRotting | Flag stale open opportunities (per-tenant rottingDays) |
+| `30 */6 * * *` | reviews | syncAll | Sync GBP reviews + auto-reply |
+| `0 */12 * * *` | appointments | renewWatchChannels | Renew Google Calendar push channels |
+| `0 1 1 * *` | financials | generateMonthlySnapshot | Monthly SaaS financial snapshot |
 | `0 2 * * *` | analytics | aggregateYesterday | Nightly metrics aggregation |
 | `30 2 * * *` | billing | applyPendingDowngrades | Apply scheduled plan downgrades |
-| `*/30 * * * *` | offboarding | trialExpiryDetector | Detect expired trials → past_due (dedup via billing_events) |
-| `0 3 * * *` | offboarding | graceEnforcer | Past-due >7d → offboard (dedup via billing_events) |
 | `0 3 * * *` | billing | fullReconciliation | Daily billing drift detection |
+| `0 3 * * *` | offboarding | graceEnforcer | Past-due >7d → offboard (dedup via billing_events) |
+| `15 3 * * *` | health | checkStorage | Alerta por disco/quota |
+| `30 3 * * *` | offboarding | handleDailyArchiving | Archivado diario de historial de chat |
 | `EVERY_DAY_AT_3AM` | feature-requests | recomputeRanking | Re-rank feature requests |
 | `0 4 * * *` | offboarding | archiveCleaner | Drop schemas inactive >90d |
+| `0 4 * * 0` | knowledge | handleWeeklyRecrawl | Recrawl semanal de URLs de KB (dom) |
+| `30 4 * * 0` | media | scheduledCleanup | Limpieza semanal de media huérfana (dom) |
+| `45 4 * * 0` | trace | pruneOldTurnTraces | Poda de trazas LLM por turno (dom) |
 | `EVERY_DAY_AT_4AM` | feature-requests | extractConversationalSignals | Mine conversations for feature requests |
 | `0 5 * * *` | offboarding | purgeStaleInactiveChannels | Clean stale channel credentials |
+| `0 5 * * 0` | kb-health | weeklyScan | Escaneo semanal de salud de KB (dom) |
 | `0 6 * * *` | channels | refreshExpiringSoonTokens | Instagram token refresh (30d window) |
+| `30 7 * * *` | health | checkRiskSignals | Fallos de pago/webhook + presupuesto LLM + heartbeat de backup |
 | `0 8 * * 1` | analytics | sendWeeklyReports | Weekly email reports (Monday 8AM) |
+| `0 8 1 * *` | analytics | sendMonthlyReports | Monthly email reports |
 | `0 9 * * *` | billing | emitTrialEndingSoon | Trial expiry notifications |
 | `0 9 * * *` | recall | processRecalls | Daily re-engagement campaigns |
-| `0 8 1 * *` | analytics | sendMonthlyReports | Monthly email reports |
-| `0 1 1 * *` | financials | generateMonthlySnapshot | Monthly SaaS financial snapshot |
-| `0 */6 * * *` | crm-b2b | detectRotting | Flag stale open opportunities (T3.21, per-tenant rottingDays) |
-| `30 */6 * * *` | reviews | syncAll | Sync GBP reviews + auto-reply for connected tenants (T3.23) |
 
 ---
 
-## Dashboard Pages (94 total)
+## Dashboard Pages (139 total — 126 admin + 13 públicas)
+
+> Las tablas por sección de abajo cubren la navegación principal; no son exhaustivas de las 126 páginas admin (existen páginas nuevas de verticales, integraciones en `settings/integrations/*` — mcp, reviews, slack, sms-notifications, vertical, webhooks — y de super_admin listadas abajo).
 
 ### Public Pages (13)
 
@@ -1631,7 +1761,7 @@ Complete reference for all 78 API modules, 94 dashboard pages, 7 BullMQ queues, 
 | `/admin/pets` | Veterinaria | Pet registry + vaccinations | ✅ |
 | `/admin/photo-sessions` | Fotografía | Photo sessions | ✅ |
 
-### Super Admin Platform (11)
+### Super Admin Platform (20)
 
 | Route | Purpose | i18n |
 |-------|---------|------|
@@ -1640,6 +1770,14 @@ Complete reference for all 78 API modules, 94 dashboard pages, 7 BullMQ queues, 
 | `/admin/financials` | SaaS financials (5 tabs + CSV export) | ✅ |
 | `/admin/usage` | Platform usage / quota tracking | ✅ |
 | `/admin/health` | Platform health + BullMQ inspection | ✅ |
+| `/admin/ops` | Ops Center — monitoreo de plataforma + incidentes | ✅ |
+| `/admin/ops/alerts` | Configuración de umbrales de alerta | ✅ |
+| `/admin/incidents` | Incidentes de plataforma (ack/resolve) | ✅ |
+| `/admin/storage` | Storage por-tenant (schema DB + media + quota + history) | ✅ |
+| `/admin/plans` | Gestión de planes (features, precios, sync-mp, badge sandbox/prod) | ✅ |
+| `/admin/billing-ops` | Billing-ops cross-tenant (suscripciones/pagos/eventos, reconcile, refund, comp-plan) | ✅ |
+| `/admin/sms-packages` | Tiers de créditos SMS + kill-switch + balances | ✅ |
+| `/admin/fiscal` | Facturación electrónica DIAN (config Factus, facturas, reemisión) | ✅ |
 | `/admin/audit` | Audit log viewer | ✅ |
 | `/admin/llm-stats` | LLM observability (cost/model/tenant) | ✅ |
 | `/admin/webhooks` | Webhook live-tail | ✅ |

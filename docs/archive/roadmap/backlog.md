@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Backlog de marzo-2026. No refleja el estado actual del código; se conserva como referencia.
+
 # Parallly — Backlog técnico ejecutable
 ## Basado en el estado actual del sistema + ajustes requeridos para el producto objetivo
 

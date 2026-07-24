@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Roadmap de modulos v4 (marzo); mayormente implementado. No refleja el estado actual del código; se conserva como referencia.
+
 > **ROADMAP** — Especificaciones de módulos v4. No todos están implementados aún.
 > Estado de progreso en [backlog.md](backlog.md).
 

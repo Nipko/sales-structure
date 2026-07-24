@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Auditoria point-in-time; los findings vigentes viven en docs/security-specification.md. No refleja el estado actual del código; se conserva como referencia.
+
 # Parallext Engine — Security Audit Report
 
 **Date:** 2026-05-12

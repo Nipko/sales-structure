@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Plan de jun-2026, mayormente ejecutado. No refleja el estado actual del código; se conserva como referencia.
+
 # Plan Maestro de Excelencia — Junio 2026
 
 > Auditoría integral multi-agente (9 jun 2026): motor de chat, caza de bugs con verificación

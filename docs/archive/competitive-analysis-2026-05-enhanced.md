@@ -1,3 +1,5 @@
+> ⚠️ **ARCHIVADO (2026-07-23) — documento histórico.** Superseded por docs/competitive-analysis-2026-q2.md. No refleja el estado actual del código; se conserva como referencia.
+
 # Parallly — Análisis Competitivo y Arquitectura de Dominio Tecnológico (Mayo 2026)
 
 ## Resumen Ejecutivo y Posicionamiento

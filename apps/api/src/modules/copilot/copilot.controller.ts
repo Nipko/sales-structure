@@ -33,7 +33,11 @@ export class CopilotController {
         @Req() req: any,
     ) {
         this.logger.log(`Copilot chat from user ${body.context.userName} on ${body.context.page}`);
-        return this.copilotService.chat(body);
+        const result = await this.copilotService.chat(body);
+        // Standard {success,data} envelope — the dashboard's apiPost returns the
+        // backend JSON verbatim and both chat surfaces check `success`/`data.reply`.
+        // Returning the bare object made every reply render as an error.
+        return { success: true, data: result };
     }
 
     // ─── Conversation Copilot Endpoints ─────────────────────────────────────

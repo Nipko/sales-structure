@@ -7377,7 +7377,7 @@
       "suggestions": {
         "connectWhatsApp": "Comment connecter WhatsApp ?",
         "leadScoring": "Comment fonctionne le Lead Scoring ?",
-        "configureRag": "Comment configurer le RAG++ ?",
+        "configureRag": "Comment donner plus d'informations à mon agent ?",
         "syncCalendar": "Comment synchroniser mon calendrier ?"
       }
     },

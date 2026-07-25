@@ -17,6 +17,7 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { NurturingService } from '../automation/nurturing.service';
 import { DripSequenceService } from '../automation/drip-sequence.service';
 import { NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem, ModelTier, RoutingFactors } from '@parallext/shared';
+import { outboundDedupeId } from '../../common/utils/provider-message-id.util';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { ResponseValidatorService } from './response-validator.service';
@@ -454,7 +455,7 @@ export class ConversationsService {
                             );
                             this.logger.log(`[Reminder] Client confirmed appointment ${upcomingAppt[0].id}`);
                             const confirmMsg = apptReplies(apptReplyLang).confirmed(upcomingAppt[0].service_name);
-                            await this.sendResponse(tenantId, confirmMsg, normalizedMsg);
+                            await this.sendResponse(tenantId, confirmMsg, normalizedMsg, undefined, 'appt:confirm');
                             await this.saveAiMessage(tenantId, conversation.id, confirmMsg, normalizedMsg.channelType);
                         } else {
                             this.logger.log(`[Reminder] Client wants to reschedule appointment ${upcomingAppt[0].id}`);
@@ -466,7 +467,7 @@ export class ConversationsService {
                             const bookingLink = slug ? `${dashboardUrl}/book/${slug}` : '';
                             const R = apptReplies(apptReplyLang);
                             const rescheduleMsg = bookingLink ? R.rescheduleLink(bookingLink) : R.rescheduleNoLink;
-                            await this.sendResponse(tenantId, rescheduleMsg, normalizedMsg);
+                            await this.sendResponse(tenantId, rescheduleMsg, normalizedMsg, undefined, 'appt:reschedule');
                             await this.saveAiMessage(tenantId, conversation.id, rescheduleMsg, normalizedMsg.channelType);
                         }
                         return;
@@ -505,7 +506,7 @@ export class ConversationsService {
                             );
                             this.logger.log(`[Attendance] Client confirmed attendance for appointment ${apptId}`);
                             const thankYou = apptReplies(apptReplyLang).attendanceThanks(pendingAppt[0].service_name);
-                            await this.sendResponse(tenantId, thankYou, normalizedMsg);
+                            await this.sendResponse(tenantId, thankYou, normalizedMsg, undefined, 'appt:thankyou');
                             await this.saveAiMessage(tenantId, conversation.id, thankYou, normalizedMsg.channelType);
                         } else {
                             await this.prisma.executeInTenantSchema(schemaName,
@@ -514,7 +515,7 @@ export class ConversationsService {
                             );
                             this.logger.log(`[Attendance] Client confirmed no-show for appointment ${apptId}`);
                             const noShowMsg = apptReplies(apptReplyLang).noShow(pendingAppt[0].service_name);
-                            await this.sendResponse(tenantId, noShowMsg, normalizedMsg);
+                            await this.sendResponse(tenantId, noShowMsg, normalizedMsg, undefined, 'appt:noshow');
                             await this.saveAiMessage(tenantId, conversation.id, noShowMsg, normalizedMsg.channelType);
                         }
                         return; // Don't process through AI — attendance handled
@@ -564,7 +565,7 @@ export class ConversationsService {
                 const position = Number(queueCount?.[0]?.cnt || 1);
                 handoffMsg = position <= 1 ? hl.queueHead : hl.queueN(position);
             }
-            await this.sendResponse(tenantId, handoffMsg, normalizedMsg);
+            await this.sendResponse(tenantId, handoffMsg, normalizedMsg, undefined, 'handoff');
             await this.saveAiMessage(tenantId, conversation.id, handoffMsg, normalizedMsg.channelType);
             return;
         }
@@ -590,7 +591,7 @@ export class ConversationsService {
             this.logger.warn(`[Pipeline] Tenant ${tenantId} exhausted AI message quota for the month. Sending fallback.`);
             const fallback = await this.buildQuotaFallbackMessage(tenantId);
             if (fallback) {
-                await this.sendResponse(tenantId, fallback, normalizedMsg);
+                await this.sendResponse(tenantId, fallback, normalizedMsg, undefined, 'fallback');
                 await this.saveAiMessage(tenantId, conversation.id, fallback, channelType);
             }
             this.eventEmitter.emit('billing.quota.ai_messages_exhausted', { tenantId });
@@ -648,7 +649,7 @@ export class ConversationsService {
                 const CHUNK_GAP_MS = 1200;
                 this.logger.log(`[Pipeline] Sending response via outbound queue (${chunks.length} bubble(s))...`);
                 for (let i = 0; i < chunks.length; i++) {
-                    await this.sendResponse(tenantId, chunks[i], normalizedMsg, i * CHUNK_GAP_MS);
+                    await this.sendResponse(tenantId, chunks[i], normalizedMsg, i * CHUNK_GAP_MS, `reply:${i}`);
                     await this.saveAiMessage(tenantId, conversation.id, chunks[i], normalizedMsg.channelType);
                 }
                 this.logger.log(`[Pipeline] Response sent and saved`);
@@ -1125,7 +1126,13 @@ export class ConversationsService {
         }, conversationId);
     }
 
-    private async sendResponse(tenantId: string, text: string, inboundMsg: NormalizedMessage, delayMs?: number) {
+    /**
+     * @param dedupe stable identity of this send WITHIN the turn (e.g. 'reply:0',
+     * 'handoff'), turned into a BullMQ jobId so a replay of the turn cannot send
+     * the same message to the customer twice. Omit only where no stable position
+     * exists; then the send behaves exactly as before (un-deduped).
+     */
+    private async sendResponse(tenantId: string, text: string, inboundMsg: NormalizedMessage, delayMs?: number, dedupe?: string) {
         const outbound: OutboundMessage = {
             tenantId,
             channelType: inboundMsg.channelType,
@@ -1135,6 +1142,7 @@ export class ConversationsService {
             // Server-receipt time (see inboundTs) → the outbound processor computes the
             // customer→reply latency on send, both ends on the server clock.
             metadata: { inboundTs: this.inboundTs(inboundMsg) },
+            ...(dedupe ? { dedupeId: outboundDedupeId(inboundMsg, dedupe) } : {}),
         };
 
         const accessToken = await this.resolveAccessToken(tenantId, inboundMsg.channelType, inboundMsg.channelAccountId);

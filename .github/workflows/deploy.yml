@@ -472,12 +472,15 @@ jobs:
             echo "$GHCR_PAT" | docker login ghcr.io \
               -u "$GITHUB_ACTOR" --password-stdin
 
-            echo "===> Pulling latest images..."
-            docker pull ghcr.io/nipko/parallext-api:latest
-            docker pull ghcr.io/nipko/parallext-worker:latest
-            docker pull ghcr.io/nipko/parallext-dashboard:latest
-            docker pull ghcr.io/nipko/parallext-whatsapp:latest
-            docker pull ghcr.io/nipko/parallext-landing:latest
+            echo "===> Pulling images for this commit ($GIT_SHA)..."
+            # Pull the IMMUTABLE sha tags, not :latest. compose resolves IMAGE_TAG
+            # from .env (written below), so a rollback is IMAGE_TAG=<previous-sha>
+            # plus a re-up, with no rebuild.
+            docker pull ghcr.io/nipko/parallext-api:$GIT_SHA
+            docker pull ghcr.io/nipko/parallext-worker:$GIT_SHA
+            docker pull ghcr.io/nipko/parallext-dashboard:$GIT_SHA
+            docker pull ghcr.io/nipko/parallext-whatsapp:$GIT_SHA
+            docker pull ghcr.io/nipko/parallext-landing:$GIT_SHA
 
             echo "===> Generating production .env from GitHub Secrets..."
             > .env
@@ -596,6 +599,9 @@ jobs:
             echo "EMBEDDING_MODEL=text-embedding-3-small" >> .env
             echo "EMBEDDING_DIMENSIONS=1536" >> .env
             echo "GIT_SHA=${GIT_SHA}" >> .env
+            # Image pin read by docker-compose.prod.yml. Rollback: set this to a
+            # previous SHA and re-up (see docs/deploy-hardening-runbook.md).
+            echo "IMAGE_TAG=${GIT_SHA}" >> .env
             chmod 600 .env
             echo "  [OK] .env generated and secured"
 
@@ -629,12 +635,17 @@ jobs:
             # not block the deploy (the nightly backup is the fallback). Keep only
             # the last 3 pre-deploy dumps so this never fills the disk.
             mkdir -p /backup/pre-deploy
+            # FAIL-FAST: migrations are the destructive step, so refusing to run
+            # them without a fresh rollback point is the entire purpose of this
+            # dump. It used to only warn and continue, leaving the nightly backup
+            # (up to 26h old) as the only recovery from a bad migration.
             if docker exec -e PGPASSWORD="${PROD_DB_PASSWORD}" parallext-postgres \
                  pg_dump -U parallext -d parallext_engine --format=custom \
-                 > "/backup/pre-deploy/predeploy_$(date +%Y%m%d_%H%M%S).dump" 2>/dev/null; then
+                 > "/backup/pre-deploy/predeploy_$(date +%Y%m%d_%H%M%S).dump"; then
               echo "  [OK] pre-migration dump saved"
             else
-              echo "  [WARN] pre-migration backup failed — continuing (nightly backup is the fallback)"
+              echo "::error::Pre-migration backup FAILED - aborting before migrations (no rollback point). Check /backup disk space and parallext-postgres health."
+              exit 1
             fi
             ls -t /backup/pre-deploy/predeploy_*.dump 2>/dev/null | tail -n +4 | xargs -r rm -f
 

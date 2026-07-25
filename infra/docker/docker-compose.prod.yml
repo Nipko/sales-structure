@@ -1,4 +1,8 @@
 # Parallext Engine - Production Docker Compose
+#
+# Images are pinned by IMAGE_TAG (the deploy writes the commit SHA into .env).
+# Rollback = set IMAGE_TAG to a previous SHA and re-up, no rebuild required.
+# Falls back to :latest so a manual `docker compose up` still works.
 # Deploys happen ONLY via .github/workflows/deploy.yml (migrations first, then
 # rolling force-recreate). Watchtower was removed: it raced the deploy script —
 # restarting containers onto new :latest images BEFORE migrations ran (new code
@@ -28,7 +32,7 @@ services:
 
   # ---- Landing Page (static site) ----
   landing:
-    image: ghcr.io/nipko/parallext-landing:latest
+    image: ghcr.io/nipko/parallext-landing:${IMAGE_TAG:-latest}
     container_name: parallext-landing
     restart: unless-stopped
     expose:
@@ -76,7 +80,7 @@ services:
 
   # ---- API Server ----
   api:
-    image: ghcr.io/nipko/parallext-api:latest
+    image: ghcr.io/nipko/parallext-api:${IMAGE_TAG:-latest}
     container_name: parallext-api
     restart: unless-stopped
     # Must exceed the drain ceiling in main.ts (40s) or Docker SIGKILLs mid-drain.
@@ -119,7 +123,7 @@ services:
 
   # ---- Dashboard ----
   dashboard:
-    image: ghcr.io/nipko/parallext-dashboard:latest
+    image: ghcr.io/nipko/parallext-dashboard:${IMAGE_TAG:-latest}
     container_name: parallext-dashboard
     restart: unless-stopped
     environment:
@@ -134,7 +138,7 @@ services:
 
   # ---- Background Worker (BullMQ processors + cron jobs) ----
   worker:
-    image: ghcr.io/nipko/parallext-worker:latest
+    image: ghcr.io/nipko/parallext-worker:${IMAGE_TAG:-latest}
     container_name: parallext-worker
     restart: unless-stopped
     # worker.main.ts awaits app.close() with no timer of its own, so this is the
@@ -166,7 +170,7 @@ services:
 
   # ---- WhatsApp Onboarding Service ----
   whatsapp:
-    image: ghcr.io/nipko/parallext-whatsapp:latest
+    image: ghcr.io/nipko/parallext-whatsapp:${IMAGE_TAG:-latest}
     container_name: parallext-whatsapp
     restart: unless-stopped
     # Drain window for the graceful shutdown in apps/whatsapp/src/main.ts —

@@ -145,3 +145,56 @@ primero seteá un valor fuerte: `gh secret set GRAFANA_PASSWORD` y redeploy.
   podía saltar el límite). Cobertura ampliada a `exchange-code` y a los endpoints
   OTP del customer-portal (`request-access` 10/h, `verify` 10/15min).
 - **`deploy.yml`**: `key` SSH preparado (fallback a password hasta que exista el secret).
+
+---
+
+## 5. Rollback por SHA (jul 2026)
+
+`docker-compose.prod.yml` ya no fija `:latest`: cada servicio de app usa
+`image: ghcr.io/nipko/parallext-<svc>:${IMAGE_TAG:-latest}`, y el deploy escribe
+`IMAGE_TAG=<commit sha>` en el `.env`. Las imágenes se publican con tag `:latest`
+**y** `:<sha>`, así que volver atrás no requiere reconstruir nada.
+
+```bash
+# en el VPS — volver al commit anterior (sin rebuild ni pipeline):
+cd /opt/parallext-engine
+sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=<sha-anterior>/" .env
+docker compose --env-file .env -f infra/docker/docker-compose.prod.yml \
+  up -d --no-deps api worker dashboard whatsapp landing
+```
+
+Avisos:
+
+- **El rollback de código NO deshace una migración.** Si el deploy fallido migró
+  el schema, restaurá primero el dump de `/backup/pre-deploy/` (ver
+  `backup-restore-runbook.md`). Por eso el dump previo a migrar ahora **aborta el
+  deploy si falla** en vez de solo advertir.
+- `docker image prune --filter "until=24h"` corre al final de cada deploy: las
+  imágenes de menos de 24h sobreviven, así que el rollback same-day es seguro.
+  Para volver a algo más viejo, `docker pull ghcr.io/nipko/parallext-api:<sha>`.
+
+---
+
+## 6. Regla de migraciones: expand-contract (obligatoria)
+
+El deploy corre **las migraciones antes** de recrear los contenedores (a
+propósito: si fallan, aborta y quedan corriendo los contenedores viejos, que
+siguen funcionando). La consecuencia es que **el código viejo convive varios
+minutos con el schema nuevo** — el bucle por tenant y los seeds tardan.
+
+Por eso toda migración debe ser **aditiva respecto al código desplegado**:
+
+| Permitido en un solo deploy | Prohibido en un solo deploy |
+|---|---|
+| `ADD COLUMN` nullable o con default | `DROP COLUMN` de una columna que el código vivo lee |
+| `CREATE TABLE` / `CREATE INDEX` | `RENAME COLUMN` / `RENAME TABLE` |
+| Ampliar un tipo (`VARCHAR(50)`→`VARCHAR(255)`) | Estrechar un tipo o agregar `NOT NULL` sin default |
+| Backfill idempotente | `DROP TABLE` en uso |
+
+Un rename o un drop se hace en **dos deploys**: (1) agregar lo nuevo y escribir
+en ambos lados; (2) una vez que ningún contenedor lee lo viejo, eliminarlo.
+
+Precedente real en el repo: `tenant-schema.sql` llegó a traer `RENAME` condicionales
+y un `DROP COLUMN` sobre `automation_rules`. Sobrevivieron por suerte (tablas
+poco usadas); sobre una tabla caliente como `messages` habrían roto la plataforma
+durante toda la ventana.

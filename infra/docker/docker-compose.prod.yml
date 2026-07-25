@@ -79,7 +79,8 @@ services:
     image: ghcr.io/nipko/parallext-api:latest
     container_name: parallext-api
     restart: unless-stopped
-    stop_grace_period: 15s
+    # Must exceed the drain ceiling in main.ts (40s) or Docker SIGKILLs mid-drain.
+    stop_grace_period: 45s
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:5432/parallext_engine?pgbouncer=true&connection_limit=8
@@ -88,6 +89,10 @@ services:
       REDIS_PORT: 6379
       MEDIA_STORAGE_PATH: /data/media
       GIT_SHA: ${GIT_SHA:-unknown}
+      # The worker does the heavy lifting, but keeping ONE consumer alive on the
+      # API means BullMQ's stalled-job sweep never stops while the worker
+      # restarts. Concurrency is per process, so these add up.
+      INBOUND_CONCURRENCY: "1"
     env_file:
       - ../../.env
     volumes:
@@ -132,13 +137,18 @@ services:
     image: ghcr.io/nipko/parallext-worker:latest
     container_name: parallext-worker
     restart: unless-stopped
-    stop_grace_period: 30s
+    # worker.main.ts awaits app.close() with no timer of its own, so this is the
+    # real budget. 30s was under the ~100s p99 AI turn: every deploy SIGKILLed
+    # turns mid-flight, and each kill burns the ONE stalled-job rescue BullMQ
+    # grants per job (maxStalledCount: 1).
+    stop_grace_period: 150s
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@pgbouncer:5432/parallext_engine?pgbouncer=true&connection_limit=8
       DIRECT_DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      INBOUND_CONCURRENCY: "4"
     env_file:
       - ../../.env
     volumes:

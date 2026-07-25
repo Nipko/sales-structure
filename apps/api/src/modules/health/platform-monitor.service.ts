@@ -47,6 +47,7 @@ export class PlatformMonitorService implements OnModuleInit {
         @InjectQueue('broadcast-messages') private broadcastQueue: Queue,
         @InjectQueue('automation-jobs') private automationQueue: Queue,
         @InjectQueue('nurturing') private nurturingQueue: Queue,
+        @InjectQueue('inbound-messages') private inboundQueue: Queue,
     ) { }
 
     async onModuleInit() {
@@ -90,6 +91,9 @@ export class PlatformMonitorService implements OnModuleInit {
             { name: 'broadcast-messages', queue: this.broadcastQueue },
             { name: 'automation-jobs', queue: this.automationQueue },
             { name: 'nurturing', queue: this.nurturingQueue },
+            // Most important queue on the platform: a backlog here means
+            // customers are writing in and getting no answer.
+            { name: 'inbound-messages', queue: this.inboundQueue },
         ];
 
         for (const q of queues) {

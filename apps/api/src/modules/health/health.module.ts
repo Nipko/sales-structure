@@ -20,6 +20,7 @@ import { AIModule } from '../ai/ai.module';
             { name: 'broadcast-messages' },
             { name: 'automation-jobs' },
             { name: 'nurturing' },
+            { name: 'inbound-messages' },
         ),
     ],
     controllers: [HealthController],

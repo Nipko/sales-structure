@@ -152,16 +152,33 @@ async function bootstrap() {
     app.enableShutdownHooks();
 
     const server = app.getHttpServer();
+    let shuttingDown = false;
     const shutdown = async (signal: string) => {
+        if (shuttingDown) return;
+        shuttingDown = true;
         console.log(`\n${signal} received — draining connections...`);
-        server.close(() => {
-            console.log('HTTP server closed');
-        });
-        // Give in-flight requests up to 10s to finish
-        setTimeout(async () => {
+
+        // A CEILING, not a guillotine. The previous version exited at a fixed
+        // 10s regardless of progress, which severed any in-flight work past
+        // that mark — on this codebase an AI turn runs 10-60s, so a rolling
+        // restart cut nearly every conversation mid-reply. enableShutdownHooks
+        // makes Nest close the BullMQ workers properly (bullmq's worker.close()
+        // waits for active jobs), so the right move is to AWAIT that and keep
+        // the timer only as a backstop against a hung close.
+        const hard = setTimeout(() => {
+            console.error('Forced exit after 40s — drain did not finish');
+            process.exit(1);
+        }, 40_000);
+        hard.unref?.();
+
+        server.close(() => console.log('HTTP server closed'));
+        try {
             await app.close();
-            process.exit(0);
-        }, 10_000);
+        } catch (err) {
+            console.error('Error during graceful close:', err);
+        }
+        clearTimeout(hard);
+        process.exit(0);
     };
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));

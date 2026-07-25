@@ -22,8 +22,7 @@ async function bootstrapWorker() {
     });
 
     console.log('🔧 Parallext Worker started — processing queues and cron jobs');
-    console.log('   Queues: outbound-messages, broadcast-messages, nurturing, automation-jobs');
-    console.log('   Crons: SLA check (5min), stale conversations (2h)');
+    console.log('   Runs every @Processor and @Cron in AppModule (same graph as the API).');
 
     // Keep alive — NestFactory.createApplicationContext doesn't listen on a port
     // but BullMQ workers and @Cron decorators run in the background.

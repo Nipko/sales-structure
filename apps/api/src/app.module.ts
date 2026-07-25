@@ -18,6 +18,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { ChannelsModule } from './modules/channels/channels.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
+import { InboundQueueModule } from './modules/inbound/inbound-queue.module';
+import { InboundProcessorModule } from './modules/inbound/inbound-processor.module';
 import { AIModule } from './modules/ai/ai.module';
 import { PersonaModule } from './modules/persona/persona.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
@@ -168,6 +170,7 @@ import llmConfig from './config/llm.config';
         BullBoardModule.forFeature({ name: 'crm-import', adapter: BullMQAdapter }),
         BullBoardModule.forFeature({ name: 'agent-simulation', adapter: BullMQAdapter }),
         BullBoardModule.forFeature({ name: 'fiscal-invoice', adapter: BullMQAdapter }),
+        BullBoardModule.forFeature({ name: 'inbound-messages', adapter: BullMQAdapter }),
 
         // Core infrastructure
         PrismaModule,
@@ -180,6 +183,10 @@ import llmConfig from './config/llm.config';
         TenantsModule,
         ChannelsModule,
         ConversationsModule,
+        // Inbound queue: producer (leaf, imported by webhook modules) and the
+        // consumer sink that actually runs the AI turn.
+        InboundQueueModule,
+        InboundProcessorModule,
         AIModule,
         PersonaModule,
         KnowledgeModule,

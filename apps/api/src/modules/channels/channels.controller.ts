@@ -29,6 +29,7 @@ import { ConversationsService } from '../conversations/conversations.service';
 import { WhatsappWebhookService } from '../whatsapp/services/whatsapp-webhook.service';
 import { ChannelTokenService } from './channel-token.service';
 import { validateMetaSignature } from './meta-signature.util';
+import { InboundQueueService } from '../inbound/inbound-queue.service';
 
 @ApiTags('channels')
 @Controller('channels')
@@ -49,6 +50,7 @@ export class ChannelsController {
         private configService: ConfigService,
         private redis: RedisService,
         private channelToken: ChannelTokenService,
+        private inboundQueue: InboundQueueService,
     ) { }
 
     // ==========================================
@@ -505,16 +507,27 @@ export class ChannelsController {
 
         normalized.tenantId = channelAccount.tenantId;
 
-        // Heavy tail: photo fetch + full AI turn. Deliberately NOT awaited —
-        // holding Telegram's HTTP request open for a 10-60s LLM turn would make
-        // it time out and redeliver mid-processing. The mid-turn kill window
-        // that remains here is the queue-backed-inbound work, not this fix.
-        this.finishTelegramProcessing(channelAccount, normalized).catch((error) => {
-            this.logger.error(`Error processing Telegram webhook: ${error}`);
-        });
+        // Enrich BEFORE enqueuing: the profile photo is written onto the message
+        // metadata, so it has to be there when the job is created. It is a
+        // best-effort external call that swallows its own errors, and it sits
+        // before the ACK — if it ever hangs, Telegram simply redelivers, which
+        // is safe. (Meta's 5s webhook budget would not tolerate this; Telegram's
+        // retry-until-200 contract does.)
+        await this.enrichTelegramProfile(channelAccount, normalized);
+
+        // Durable handoff: the message is in Redis (AOF) before the caller ACKs
+        // Telegram. A failing add() propagates → the route returns non-200 →
+        // Telegram redelivers (it retains updates ~24h). Previously the AI turn
+        // ran as a floating promise and an API restart killed it with nothing
+        // left to retry.
+        await this.inboundQueue.enqueue(normalized);
     }
 
-    private async finishTelegramProcessing(channelAccount: any, normalized: any): Promise<void> {
+    /**
+     * Best-effort avatar lookup, written onto the message metadata before the
+     * job is enqueued. Never throws: a missing avatar must not cost a message.
+     */
+    private async enrichTelegramProfile(channelAccount: any, normalized: any): Promise<void> {
         try {
             // Telegram: get profile photo via Bot API if available
             if (normalized.contactId && !(normalized.metadata as any)?.contactProfilePic) {
@@ -550,9 +563,8 @@ export class ChannelsController {
             }
 
             this.logger.log(`Incoming Telegram message for tenant ${channelAccount.tenantId} from ${normalized.contactId}`);
-            await this.conversationsService.processIncomingMessage(normalized);
         } catch (error) {
-            this.logger.error(`Error processing Telegram webhook: ${error}`);
+            this.logger.warn(`Telegram profile enrichment failed: ${error}`);
         }
     }
 

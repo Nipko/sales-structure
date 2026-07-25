@@ -1,9 +1,9 @@
 import { Controller, Post, Body, UseGuards, Logger } from '@nestjs/common';
-import { ConversationsService } from '../conversations/conversations.service';
 import { NormalizedMessage } from '@parallext/shared';
 import { InternalAuthGuard } from '../../common/guards/internal-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { InboundQueueService } from '../inbound/inbound-queue.service';
 
 /**
  * Internal endpoints — callable by trusted internal microservices (via
@@ -17,9 +17,9 @@ export class InternalController {
   private readonly logger = new Logger(InternalController.name);
 
   constructor(
-    private readonly conversationsService: ConversationsService,
     private readonly prisma: PrismaService,
     private readonly throttle: TenantThrottleService,
+    private readonly inboundQueue: InboundQueueService,
   ) {}
 
   /**
@@ -34,14 +34,13 @@ export class InternalController {
       `[Internal] Received inbound message for tenant ${payload.tenantId} from ${payload.contactId}`,
     );
 
-    // Fire-and-forget — respond 200 immediately, process async
-    this.conversationsService
-      .processIncomingMessage(payload)
-      .catch((err) =>
-        this.logger.error(
-          `[Internal] Error processing inbound message: ${err.message}`,
-        ),
-      );
+    // Enqueue, THEN ack. This used to be a floating promise behind an immediate
+    // {received:true}: an API restart mid-turn killed the AI reply with nothing
+    // left to retry, and the WhatsApp service — already ACKed — considered the
+    // message delivered. Now the job is durable in Redis before we answer, and
+    // a failing add() returns 500 so the caller's BullMQ job retries (it
+    // re-throws on non-2xx, with 8 attempts of exponential backoff).
+    await this.inboundQueue.enqueue(payload);
 
     return { received: true };
   }

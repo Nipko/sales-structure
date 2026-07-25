@@ -239,6 +239,23 @@ export class ConversationsService {
         const { tenantId, contactId, channelType, content } = normalizedMsg;
         this.logger.log(`Processing inbound message from ${contactId} on ${channelType} for tenant ${tenantId}`);
 
+        // Store-only sources: NEVER run an AI turn for them.
+        //  - 'waba_echo': a message the BUSINESS sent from its own WhatsApp app
+        //    (coexistence). Replying to it would mean the AI answering our own
+        //    outbound text.
+        //  - 'historical': coexistence backfill of up to 6 MONTHS of past chats.
+        //    One onboarding would otherwise fire thousands of LLM turns and
+        //    message customers about long-closed conversations.
+        // The whatsapp microservice has always sent these to this same endpoint
+        // assuming the API filtered them (see its comments at
+        // jobs/webhook.processor.ts), but nothing here ever read metadata.source
+        // or direction — so both ran the full pipeline.
+        const source = (normalizedMsg.metadata as any)?.source;
+        if (source === 'waba_echo' || source === 'historical') {
+            await this.storeOnlyMessage(normalizedMsg, source);
+            return;
+        }
+
         // Server-clock receipt time (transient, not persisted) for the customer→reply
         // latency metric — avoids mixing the provider's clock (msg.timestamp) with the
         // worker's clock at send time. Same VPS for API + worker → negligible skew.
@@ -978,6 +995,50 @@ export class ConversationsService {
 
         const accessToken = await this.resolveAccessToken(tenantId, msg.channelType, msg.channelAccountId);
         await this.outboundQueue.enqueue(outbound, accessToken);
+    }
+
+    /**
+     * Persist a message into its conversation WITHOUT running the AI pipeline.
+     *
+     * Used by coexistence sources ('waba_echo' = the business replying from its
+     * own WhatsApp app, 'historical' = the 6-month chat backfill). They must
+     * appear in the inbox timeline and keep the contact/conversation threaded,
+     * but must never trigger a reply, a handoff, booking, or automations.
+     *
+     * Direction is honoured here (an echo is OUTBOUND); saveMessage() hardcodes
+     * 'inbound' because that is all the live pipeline ever produces.
+     */
+    private async storeOnlyMessage(msg: NormalizedMessage, source: string): Promise<void> {
+        const { tenantId, contactId, channelType } = msg;
+        try {
+            // Same contact lock as the live path: two near-simultaneous first
+            // messages would otherwise each create a duplicate lead/conversation.
+            const contactLockKey = `lock:contact:${tenantId}:${channelType}:${contactId}`;
+            let contactLockToken: string | null = null;
+            for (let i = 0; i < 6 && !contactLockToken; i++) {
+                contactLockToken = await this.redis.acquireLockToken(contactLockKey, 10).catch(() => null);
+                if (!contactLockToken) await new Promise(r => setTimeout(r, 300));
+            }
+            let conversation: any;
+            try {
+                ({ conversation } = await this.resolveConversation(tenantId, contactId, channelType, msg));
+            } finally {
+                if (contactLockToken) await this.redis.releaseLockToken(contactLockKey, contactLockToken).catch(() => {});
+            }
+
+            const schemaName = await this.tenantSchema(tenantId);
+            const direction = msg.direction === 'outbound' ? 'outbound' : 'inbound';
+            await this.prisma.executeInTenantSchema(schemaName,
+                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata)
+                 VALUES ($1::uuid, $2, $3, $4, 'delivered', $5::jsonb)`,
+                [conversation.id, direction, msg.content.type, msg.content.text, JSON.stringify(msg.metadata || {})],
+            );
+
+            this.logger.log(`[StoreOnly] Stored ${source} message (${direction}) for tenant ${tenantId} — AI skipped`);
+        } catch (err: any) {
+            this.logger.error(`[StoreOnly] Failed to store ${source} message for tenant ${tenantId}: ${err.message}`);
+            throw err;
+        }
     }
 
     private async saveMessage(tenantId: string, conversationId: string, msg: NormalizedMessage): Promise<string | undefined> {

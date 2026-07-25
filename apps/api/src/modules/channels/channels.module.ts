@@ -17,8 +17,8 @@ import { ChannelManagementController } from './channel-management.controller';
 import { InstagramTokenRefreshService } from './instagram-token-refresh.service';
 import { WebhookTapService } from './webhook-tap.service';
 import { WebhookTapController } from './webhook-tap.controller';
-import { ConversationsModule } from '../conversations/conversations.module';
 import { InboundQueueModule } from '../inbound/inbound-queue.module';
+import { ConversationsModule } from '../conversations/conversations.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
 // AnalyticsModule removed — compliance check moved to ConversationsService to avoid DI issues in processor
@@ -29,6 +29,12 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
         // Plain import: InboundQueueModule is a dependency leaf (queue + a
         // service injecting only globals), so it cannot close a cycle.
         InboundQueueModule,
+        // No provider here injects from ConversationsModule any more (webhooks
+        // hand off via InboundQueueModule). The edge stays because removing it
+        // reorders module resolution and leaves an AppointmentsModule import
+        // undefined at boot — a latent CJS circular-import that this forwardRef
+        // masks. Verified with `npm run test:bootstrap`, which is the only thing
+        // that catches it; tsc passes either way.
         forwardRef(() => ConversationsModule),
         forwardRef(() => WhatsappModule),
         SmsCreditsModule,

@@ -25,7 +25,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ChannelType } from '@parallext/shared';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
-import { ConversationsService } from '../conversations/conversations.service';
 import { WhatsappWebhookService } from '../whatsapp/services/whatsapp-webhook.service';
 import { ChannelTokenService } from './channel-token.service';
 import { validateMetaSignature } from './meta-signature.util';
@@ -43,8 +42,6 @@ export class ChannelsController {
         private messengerAdapter: MessengerAdapter,
         private telegramAdapter: TelegramAdapter,
         private prisma: PrismaService,
-        @Inject(forwardRef(() => ConversationsService))
-        private conversationsService: ConversationsService,
         @Inject(forwardRef(() => WhatsappWebhookService))
         private whatsappWebhookService: WhatsappWebhookService,
         private configService: ConfigService,

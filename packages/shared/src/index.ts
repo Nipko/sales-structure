@@ -46,6 +46,15 @@ export interface OutboundMessage {
     channelAccountId: string;
     content: MessageContent;
     metadata?: Record<string, unknown>;
+    /**
+     * Stable identity of this logical reply, used as the BullMQ jobId so the
+     * same reply is never queued twice. Derived from the inbound turn (provider
+     * message id + a per-turn sequence), so replaying a turn — a retry, or a
+     * queue-backed re-run after a restart — re-derives the SAME ids and BullMQ
+     * drops the duplicates. Omit for sends with no natural identity (broadcasts
+     * already carry their own dedupe upstream).
+     */
+    dedupeId?: string;
 }
 
 // ---- LLM Router Types ----

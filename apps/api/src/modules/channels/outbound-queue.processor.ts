@@ -35,9 +35,35 @@ export class OutboundQueueProcessor extends WorkerHost {
         super();
     }
 
+    /**
+     * Marker proving THIS job already reached the provider. The deterministic
+     * jobId stops a turn from queueing the same reply twice, but it cannot help
+     * when the very same job runs again — which happens whenever the worker is
+     * SIGKILLed mid-send and BullMQ's stalled-job recovery re-runs it.
+     *
+     * The marker is written AFTER a successful send, never before: a crash in
+     * the sub-second gap between send and marker costs a rare duplicate, while
+     * marking first would silently DROP a reply that was never delivered. For a
+     * customer-facing message a duplicate is far cheaper than a loss.
+     */
+    private sentMarkerKey(jobId: string | undefined): string {
+        return `outbound:sent:${jobId}`;
+    }
+
     async process(job: Job<OutboundJobData>, token?: string): Promise<string | null> {
         const { outbound } = job.data;
         const startTime = Date.now();
+
+        const sentKey = this.sentMarkerKey(job.id as string | undefined);
+        if (job.id) {
+            const alreadySent = await this.redis.get(sentKey).catch(() => null);
+            if (alreadySent) {
+                this.logger.warn(
+                    `[Outbound] Job ${job.id} already delivered (${alreadySent}) — skipping re-send to ${outbound.to}`,
+                );
+                return alreadySent;
+            }
+        }
 
         // Per-tenant rate limit — read-only check (isOverLimit) so a delayed job's
         // repeated re-checks don't keep incrementing the counter and pin the tenant
@@ -68,6 +94,7 @@ export class OutboundQueueProcessor extends WorkerHost {
                 throw new Error(`SMS send failed to ${outbound.to}: ${res.error || res.reason}`);
             }
             await this.throttle.recordUsage(outbound.tenantId, 'outbound').catch(() => {});
+            if (job.id) await this.redis.set(sentKey, res.sid || 'sms-sent', 86400).catch(() => {});
             this.logger.log(`[Outbound][SMS] sent to ${outbound.to} tenant=${outbound.tenantId} segments=${res.segments}`);
             return res.sid || 'sms-sent';
         }
@@ -91,6 +118,10 @@ export class OutboundQueueProcessor extends WorkerHost {
         if (!result) {
             throw new Error(`Failed to send message to ${outbound.to} via ${outbound.channelType}`);
         }
+
+        // Delivered — mark before any post-send bookkeeping so a crash in the
+        // lines below re-runs the job without re-sending to the customer.
+        if (job.id) await this.redis.set(sentKey, String(result), 86400).catch(() => {});
 
         // Count the quota only on a SUCCESSFUL send (not on every check/retry).
         await this.throttle.recordUsage(outbound.tenantId, 'outbound').catch(() => {});

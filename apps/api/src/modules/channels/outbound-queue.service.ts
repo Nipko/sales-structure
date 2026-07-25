@@ -49,6 +49,11 @@ export class OutboundQueueService {
                 attempts: 3,
                 backoff: { type: 'exponential', delay: 2000 },
                 ...(delayMs && delayMs > 0 ? { delay: delayMs } : {}),
+                // Deterministic jobId when the caller supplied one: BullMQ ignores
+                // an add whose jobId already exists, so re-playing a turn cannot
+                // queue the same reply twice. Retention (1h completed) comfortably
+                // covers any retry window.
+                ...(outbound.dedupeId ? { jobId: outbound.dedupeId } : {}),
                 removeOnComplete: { age: 3600 },
                 removeOnFail: { age: 86400 },
             },

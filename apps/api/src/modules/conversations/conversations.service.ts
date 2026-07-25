@@ -17,7 +17,7 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { NurturingService } from '../automation/nurturing.service';
 import { DripSequenceService } from '../automation/drip-sequence.service';
 import { NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem, ModelTier, RoutingFactors } from '@parallext/shared';
-import { outboundDedupeId } from '../../common/utils/provider-message-id.util';
+import { outboundDedupeId, providerMessageId } from '../../common/utils/provider-message-id.util';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { ResponseValidatorService } from './response-validator.service';
@@ -422,8 +422,12 @@ export class ConversationsService {
             return;
         }
 
-        // 4. Save User Message
-        const inboundMessageId = await this.saveMessage(tenantId, conversation.id, normalizedMsg);
+        // 4. Save User Message. A duplicate means the provider redelivered a
+        // message we already stored (and already answered) — abort before the
+        // AI turn instead of replying to the customer a second time.
+        const saved = await this.saveMessage(tenantId, conversation.id, normalizedMsg);
+        if (saved.duplicate) return;
+        const inboundMessageId = saved.id;
         this.logger.log(`[Pipeline] Message saved for conversation ${conversation.id}`);
 
         // Customer language for the deterministic appointment-button replies below:
@@ -992,6 +996,10 @@ export class ConversationsService {
             content: { type: 'text', text },
             // Keep e2e latency coverage consistent with sendResponse/sendMedia.
             metadata: { inboundTs: this.inboundTs(msg) },
+            // This branch replies and returns WITHOUT saving the inbound message,
+            // so the external_id dedupe never sees it — the jobId is the only
+            // thing stopping a redelivery from sending the notice twice.
+            dedupeId: outboundDedupeId(msg, 'after-hours'),
         };
 
         const accessToken = await this.resolveAccessToken(tenantId, msg.channelType, msg.channelAccountId);
@@ -1042,15 +1050,58 @@ export class ConversationsService {
         }
     }
 
-    private async saveMessage(tenantId: string, conversationId: string, msg: NormalizedMessage): Promise<string | undefined> {
+    /**
+     * Persist the inbound message. Returns `{ duplicate: true }` when the
+     * provider already delivered this exact message before.
+     *
+     * The dedupe is the DB's partial unique index on `external_id` (the
+     * provider's own message id), so it holds across processes, restarts and
+     * Redis flushes — the durable backstop under every edge-level `idem:*` key.
+     * On conflict NOTHING downstream runs: no timeline event, no push, no
+     * tenant webhook, and the caller aborts the turn instead of replying twice.
+     */
+    private async saveMessage(tenantId: string, conversationId: string, msg: NormalizedMessage): Promise<{ id?: string; duplicate: boolean }> {
         const schemaName = await this.tenantSchema(tenantId);
         const metadataJson = JSON.stringify(msg.metadata || {});
+        const externalId = providerMessageId(msg);
 
-        const result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata)
-             VALUES ($1::uuid, 'inbound', $2, $3, 'delivered', $4::jsonb) RETURNING *`,
-            [conversationId, msg.content.type, msg.content.text, metadataJson],
-        );
+        // The WHERE clause must match the index predicate literally or Postgres
+        // cannot infer the partial unique index (runtime error, not compile-time).
+        const params = [conversationId, msg.content.type, msg.content.text, externalId, metadataJson];
+        let result: any[];
+        try {
+            result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, external_id, metadata)
+                 VALUES ($1::uuid, 'inbound', $2, $3, 'delivered', $4, $5::jsonb)
+                 ON CONFLICT ("external_id") WHERE "external_id" IS NOT NULL DO NOTHING
+                 RETURNING *`,
+                params,
+            );
+        } catch (err: any) {
+            // 42P10 = no unique/exclusion constraint matches the ON CONFLICT spec,
+            // i.e. uidx_messages_external_id is missing from THIS tenant schema
+            // (the deploy applies tenant-schema.sql tolerantly, so one schema can
+            // lag). Degrade to a plain insert — losing dedupe for this tenant is
+            // vastly better than failing every inbound message it receives — and
+            // log loudly so the missing index gets fixed.
+            const code = err?.code || err?.meta?.code;
+            if (code !== '42P10' && !/no unique or exclusion constraint/i.test(err?.message || '')) throw err;
+            this.logger.error(
+                `[Pipeline] uidx_messages_external_id missing on ${schemaName} — inserting without dedupe. ` +
+                `Re-apply prisma/tenant-schema.sql to this schema.`,
+            );
+            result = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, external_id, metadata)
+                 VALUES ($1::uuid, 'inbound', $2, $3, 'delivered', $4, $5::jsonb) RETURNING *`,
+                params,
+            );
+        }
+
+        if (result.length === 0) {
+            // Only reachable with a non-null external_id — a genuine redelivery.
+            this.logger.warn(`[Pipeline] Duplicate inbound ${externalId} for tenant ${tenantId} — already stored`);
+            return { duplicate: true };
+        }
 
         // Funnel stage 3: stamp first inbound message arrival on the tenant
         // exactly once. The conditional UPDATE is idempotent so subsequent
@@ -1085,7 +1136,7 @@ export class ConversationsService {
             text: msg.content.text,
         });
 
-        return result[0]?.id as string | undefined;
+        return { id: result[0]?.id as string | undefined, duplicate: false };
     }
 
     private async saveAiMessage(tenantId: string, conversationId: string, text: string, channelType?: string) {

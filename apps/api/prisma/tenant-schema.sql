@@ -70,6 +70,13 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."messages" (
     "created_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "idx_messages_conversation_id_created_at" ON "{{SCHEMA_NAME}}"."messages" ("conversation_id", "created_at");
+-- Inbound idempotency: external_id holds the PROVIDER's message id (wamid, IG/FB
+-- mid, Telegram update, Twilio sid, email Message-ID). The partial unique index
+-- lets the inbound INSERT use ON CONFLICT DO NOTHING, so a redelivery or a retry
+-- can never store the same customer message twice — nor re-run the turn that
+-- would reply to it. Partial (WHERE NOT NULL) because paths without a provider
+-- id (widget, test messages) legitimately insert many NULLs.
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_messages_external_id" ON "{{SCHEMA_NAME}}"."messages" ("external_id") WHERE "external_id" IS NOT NULL;
 
 -- ---- Persona Config ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."persona_config" (

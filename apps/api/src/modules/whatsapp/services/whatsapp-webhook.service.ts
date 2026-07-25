@@ -267,6 +267,13 @@ export class WhatsappWebhookService {
              this.logger.error(`Error processing incoming message: ${error.message}`, error.stack);
              // Release the idempotency claim so Meta's retry re-delivers this message
              // instead of it being lost forever (we claimed the key before processing).
+             //
+             // Safe ONLY because the inbound insert is deduped by the partial unique
+             // index on messages.external_id (conversations.service saveMessage): if
+             // the failure happened AFTER the message was stored — i.e. possibly after
+             // we already replied — the redelivery hits that conflict and aborts the
+             // turn instead of answering the customer twice. If that dedupe is ever
+             // removed, this release becomes a double-reply generator.
              if (waMessageId) await this.redis.del(`idem:wa:${waMessageId}`).catch(() => {});
          }
      }

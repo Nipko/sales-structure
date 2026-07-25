@@ -57,11 +57,14 @@ export class WebhookProcessor extends WorkerHost {
     this.logger.log(`Processing message ${message.id} for tenant ${tenantId}`);
 
     try {
-      // 1. Guardar evento de webhook para auditoría
+      // 1. Guardar evento de webhook para auditoría. Entra como 'received' y
+      // solo pasa a 'processed' cuando el forward a la API tuvo éxito — antes
+      // se estampaba 'processed' aquí mismo, así que la tabla no servía para
+      // detectar mensajes persistidos cuyo turno de IA nunca corrió.
       await this.prisma.executeInTenantSchema(
         schemaName,
-        `INSERT INTO whatsapp_webhook_events (event_type, payload_json, dedupe_key, processing_status, processed_at)
-         VALUES ($1, $2, $3, 'processed', NOW())
+        `INSERT INTO whatsapp_webhook_events (event_type, payload_json, dedupe_key, processing_status)
+         VALUES ($1, $2, $3, 'received')
          ON CONFLICT (dedupe_key) DO NOTHING`,
         ['message', JSON.stringify({ phoneNumberId, message, contacts }), `msg:${message.id}`],
       );
@@ -98,6 +101,15 @@ export class WebhookProcessor extends WorkerHost {
         },
       });
 
+      // 4. Marcar como procesado — el turno de IA quedó disparado de verdad.
+      await this.prisma.executeInTenantSchema(
+        schemaName,
+        `UPDATE whatsapp_webhook_events
+            SET processing_status = 'processed', processed_at = NOW()
+          WHERE dedupe_key = $1`,
+        [`msg:${message.id}`],
+      ).catch(() => { /* best-effort: no reprocesar un forward exitoso por el stamp */ });
+
       this.logger.debug(`Message ${message.id} processed and forwarded for tenant ${tenantId}`);
     } catch (error: any) {
       this.logger.error(`Failed to process message ${message.id}: ${error.message}`);
@@ -115,8 +127,11 @@ export class WebhookProcessor extends WorkerHost {
       || this.configService.get<string>('INTERNAL_JWT_SECRET'); // fallback for backward compat
 
     if (!internalKey) {
-      this.logger.warn('INTERNAL_API_KEY not set — skipping AI forwarding');
-      return;
+      // Antes esto retornaba "en verde": el mensaje quedaba persistido, el job
+      // completaba, y la IA jamás corría — un drop total silencioso si el
+      // secret se pierde en una regeneración del .env. Fallar hace el problema
+      // visible: el job cae al failed set (monitoreado) y es re-ejecutable.
+      throw new Error('INTERNAL_API_KEY/INTERNAL_JWT_SECRET not configured — cannot forward inbound message to the API');
     }
 
     try {

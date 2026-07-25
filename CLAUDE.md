@@ -108,7 +108,7 @@ See `.env.example`. Critical:
 - KB Portal: https://admin.parallly-chat.cloud/kb/{tenant-slug}
 - BI API: https://api.parallly-chat.cloud/api/v1/bi-api/ (X-API-Key auth)
 - GitHub: https://github.com/Nipko/sales-structure
-- VPS: Hostinger Ubuntu, Docker (~15 containers: api, worker, dashboard, whatsapp, landing, postgres, redis, pgbouncer, tunnel, watchtower + observability stack: grafana, loki, promtail, uptime-kuma, dozzle), Cloudflare Tunnel
+- VPS: Hostinger Ubuntu, Docker (~14 containers: api, worker, dashboard, whatsapp, landing, postgres, redis, pgbouncer, tunnel + observability stack: grafana, loki, promtail, uptime-kuma, dozzle), Cloudflare Tunnel. Watchtower fue eliminado (jul 2026): competía con el deploy script — reiniciaba contenedores con código nuevo ANTES de las migraciones
 - Deploy: Push to main → GitHub Actions → build 5 images → SSH (key-only auth) → `git reset --hard origin/main` → regenerate .env → migrate → rolling restart (worker→API→frontend). NOTE: `git reset --hard` restores tracked file modes — infra scripts MUST stay `100755` in git or cron loses the +x (see `docs/backup-restore-runbook.md`)
 - Backups: Daily 2AM (DB public+tenant schemas + media + fiscal invoices + Redis), 7/4/2 daily/weekly/monthly rotation, offsite S3-compatible via rclone (Cloudflare R2). Honest heartbeat `backup:last_success` watched by the Ops Center (alerts if stale >26h). See `docs/backup-restore-runbook.md`
 - Ops Center: super_admin `/admin/ops` + `health/platform-monitor.service.ts` — monitors disk/RAM/Redis/PgBouncer/queues/Sentry/LLM/SLA/backup-heartbeat/channel-tokens/payment-webhooks, raises incidents, Telegram/SMS/email alerts

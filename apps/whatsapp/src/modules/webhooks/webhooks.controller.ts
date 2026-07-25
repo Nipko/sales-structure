@@ -69,11 +69,14 @@ export class WebhooksController {
       throw new UnauthorizedException('invalid_signature');
     }
 
-    // 2. Responder 200 inmediatamente y procesar en background
-    // Meta requiere <5s de response time
-    this.processWebhookAsync(body).catch(err => {
-      this.logger.error(`Webhook processing error: ${err.message}`);
-    });
+    // 2. Encolar ANTES de responder 200. La primera copia durable del mensaje
+    // es el queue.add a BullMQ (Redis AOF); confirmarle a Meta antes de eso
+    // significa que un kill del contenedor (deploy) pierde el payload para
+    // siempre — Meta no reintenta entregas ya confirmadas. Todo el camino es
+    // local (cache/Redis/queue.add ≈ ms), muy dentro del budget de 5s de Meta.
+    // Si algo falla, el 500 hace que Meta reintente el payload completo; los
+    // jobIds determinísticos y las claves de dedupe hacen no-op lo ya encolado.
+    await this.processWebhookAsync(body);
 
     return { status: 'received' };
   }
@@ -118,7 +121,14 @@ export class WebhooksController {
   }
 
   /**
-   * Procesamiento asíncrono del webhook
+   * Procesa todos los changes del payload ANTES del 200 a Meta.
+   *
+   * Cada change queda aislado (un template update malformado no aborta los
+   * mensajes de cliente del mismo payload), pero si ALGUNO falló se relanza
+   * al final: el 500 resultante hace que Meta reintente el payload completo,
+   * y el dedupe (jobId determinístico + clave Redis post-enqueue) convierte
+   * en no-op lo que sí alcanzó a encolarse. Tragarse el error aquí era pérdida
+   * silenciosa: Meta ya tenía su 200 y nunca reenvía lo confirmado.
    */
   private async processWebhookAsync(body: any) {
     const object = body?.object;
@@ -127,19 +137,20 @@ export class WebhooksController {
       return;
     }
 
+    let firstError: any = null;
     const entries = body?.entry || [];
     for (const entry of entries) {
       const changes = entry?.changes || [];
       for (const change of changes) {
-        // Isolate each change: a failure in one (e.g. a malformed template
-        // update) must not abort the remaining changes in the same payload,
-        // which would silently drop real customer messages bundled with it.
         try {
           await this.webhooksService.processChange(entry.id, change);
         } catch (err: any) {
           this.logger.error(`processChange failed (field=${change?.field}, waba=${entry?.id}): ${err.message}`);
+          firstError = firstError ?? err;
         }
       }
     }
+
+    if (firstError) throw firstError;
   }
 }

@@ -82,50 +82,51 @@ export class WebhooksService implements OnModuleDestroy {
       return;
     }
 
-    // Generar dedupe key para idempotencia
+    // Dedupe: la clave se marca DESPUÉS de encolar, nunca antes. Si el proceso
+    // muere entre claim y enqueue, la clave quedaba 24h sin job asociado y el
+    // reintento de Meta se descartaba como "duplicado" — pérdida silenciosa.
+    // La carrera entre dos entregas simultáneas la resuelve el jobId
+    // determinístico: BullMQ hace no-op el segundo add del mismo jobId.
     const messages = value?.messages || [];
     for (const msg of messages) {
       const dedupeKey = `wa:msg:${msg.id}`;
 
-      // Claim atomically (SET NX EX) — a GET-then-SET let two simultaneous
-      // deliveries of the same message both pass the check and enqueue twice.
-      const claimed = await this.redis.set(dedupeKey, '1', 'EX', 86400, 'NX');
-      if (claimed !== 'OK') {
+      const seen = await this.redis.get(dedupeKey);
+      if (seen) {
         this.logger.debug(`Duplicate message ignored: ${msg.id}`);
         continue;
       }
 
-      // Encolar para procesamiento
-      try {
-        await this.webhookQueue.add('process-message', {
-          tenantId: tenantInfo.tenantId,
-          schemaName: tenantInfo.schemaName,
-          wabaId,
-          phoneNumberId,
-          message: msg,
-          contacts: value?.contacts || [],
-          statuses: value?.statuses || [],
-          timestamp: new Date().toISOString(),
-        }, {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 2000 },
-          jobId: `process-message-${msg.id}`,
-          removeOnComplete: 100,
-          removeOnFail: 1000,
-        });
-      } catch (err) {
-        // Release the claim so Meta's retry re-processes (we never enqueued).
-        await this.redis.del(dedupeKey).catch(() => {});
-        throw err;
-      }
+      // Encolar para procesamiento. attempts:8 con backoff exponencial base 2s
+      // (2+4+8+16+32+64+128s ≈ 4.2 min) cubre el reinicio de la API durante un
+      // deploy (60-120s) — con attempts:3 el presupuesto se agotaba en ~6-21s,
+      // dentro de la ventana, y el job caía a failed sin nadie que lo reviva.
+      await this.webhookQueue.add('process-message', {
+        tenantId: tenantInfo.tenantId,
+        schemaName: tenantInfo.schemaName,
+        wabaId,
+        phoneNumberId,
+        message: msg,
+        contacts: value?.contacts || [],
+        statuses: value?.statuses || [],
+        timestamp: new Date().toISOString(),
+      }, {
+        attempts: 8,
+        backoff: { type: 'exponential', delay: 2000 },
+        jobId: `process-message-${msg.id}`,
+        removeOnComplete: 100,
+        removeOnFail: 1000,
+      });
+
+      await this.redis.set(dedupeKey, '1', 'EX', 86400);
     }
 
     // También procesar status updates (delivered, read, etc.)
     const statuses = value?.statuses || [];
     for (const status of statuses) {
       const dedupeKey = `wa:status:${status.id}:${status.status}`;
-      const claimed = await this.redis.set(dedupeKey, '1', 'EX', 86400, 'NX');
-      if (claimed !== 'OK') continue;
+      const seen = await this.redis.get(dedupeKey);
+      if (seen) continue;
 
       await this.webhookQueue.add('process-status', {
         tenantId: tenantInfo.tenantId,
@@ -138,8 +139,10 @@ export class WebhooksService implements OnModuleDestroy {
         backoff: { type: 'exponential', delay: 1000 },
         jobId: `process-status-${status.id}-${status.status}`,
         removeOnComplete: 100,
+        removeOnFail: 500,
       });
-      // (dedupe key already claimed atomically above)
+
+      await this.redis.set(dedupeKey, '1', 'EX', 86400);
     }
   }
 

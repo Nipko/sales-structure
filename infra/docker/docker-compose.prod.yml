@@ -1,5 +1,8 @@
 # Parallext Engine - Production Docker Compose
-# Auto-deploys via Watchtower when new images are pushed to GHCR
+# Deploys happen ONLY via .github/workflows/deploy.yml (migrations first, then
+# rolling force-recreate). Watchtower was removed: it raced the deploy script —
+# restarting containers onto new :latest images BEFORE migrations ran (new code
+# on old schema) and doubling the restart windows per deploy.
 
 x-logging: &default-logging
   driver: json-file
@@ -35,8 +38,6 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
     logging: *default-logging
 
   # ---- PgBouncer (Connection Pooler) ----
@@ -109,8 +110,6 @@ services:
       start_period: 30s
       retries: 3
     mem_limit: 768m
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
     logging: *default-logging
 
   # ---- Dashboard ----
@@ -126,8 +125,6 @@ services:
     depends_on:
       - api
     mem_limit: 512m
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
     logging: *default-logging
 
   # ---- Background Worker (BullMQ processors + cron jobs) ----
@@ -155,8 +152,6 @@ services:
       redis:
         condition: service_healthy
     mem_limit: 512m
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
     logging: *default-logging
 
   # ---- WhatsApp Onboarding Service ----
@@ -164,6 +159,9 @@ services:
     image: ghcr.io/nipko/parallext-whatsapp:latest
     container_name: parallext-whatsapp
     restart: unless-stopped
+    # Drain window for the graceful shutdown in apps/whatsapp/src/main.ts —
+    # in-flight Meta webhooks must reach the BullMQ enqueue before exit.
+    stop_grace_period: 30s
     mem_limit: 384m
     environment:
       NODE_ENV: production
@@ -187,8 +185,6 @@ services:
       timeout: 10s
       start_period: 20s
       retries: 3
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
     logging: *default-logging
 
   # ---- PostgreSQL + pgvector ----
@@ -240,21 +236,6 @@ services:
       retries: 5
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-    logging: *default-logging
-
-  # ---- Watchtower (auto-deploys new images) ----
-  watchtower:
-    image: containrrr/watchtower
-    container_name: parallext-watchtower
-    restart: unless-stopped
-    environment:
-      DOCKER_API_VERSION: "1.45"
-      WATCHTOWER_CLEANUP: "true"
-      WATCHTOWER_POLL_INTERVAL: 300
-      WATCHTOWER_LABEL_ENABLE: "true"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /root/.docker/config.json:/config.json:ro
     logging: *default-logging
 
   # ============================================

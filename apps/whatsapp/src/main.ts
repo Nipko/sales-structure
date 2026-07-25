@@ -39,6 +39,24 @@ async function bootstrap() {
     logger.log('Swagger docs available at /docs');
   }
 
+  // Graceful shutdown. Sin esto, node (PID 1) IGNORA el SIGTERM de docker stop
+  // y el contenedor muere por SIGKILL a los 10s con webhooks en vuelo: Meta ya
+  // recibió su 200 y el payload aún no llegó a la cola — pérdida permanente.
+  // Con el drain, las requests en curso terminan (el enqueue es ms) y los
+  // workers de BullMQ cierran esperando sus jobs activos.
+  app.enableShutdownHooks();
+  const server = app.getHttpServer();
+  const shutdown = async (signal: string) => {
+    logger.log(`${signal} received — draining connections...`);
+    server.close(() => logger.log('HTTP server closed'));
+    setTimeout(async () => {
+      await app.close();
+      process.exit(0);
+    }, 20_000);
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
   const port = process.env.PORT || 3002;
   await app.listen(port);
   logger.log(`WhatsApp Service running on port ${port}`);

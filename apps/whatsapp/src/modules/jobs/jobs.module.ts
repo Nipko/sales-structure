@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import { WebhookProcessor } from './webhook.processor';
+import { WebhookRedriveService } from './webhook-redrive.service';
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { WebhookProcessor } from './webhook.processor';
       { name: 'ops' },
     ),
   ],
-  providers: [WebhookProcessor],
+  providers: [WebhookProcessor, WebhookRedriveService],
 })
 export class JobsModule {}
 

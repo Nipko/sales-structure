@@ -460,6 +460,14 @@ jobs:
             git checkout ${{ github.ref_name }}
             git reset --hard "origin/${{ github.ref_name }}"
 
+            echo "===> Removing Watchtower (deploys happen only via this script)..."
+            # Watchtower raced this pipeline: it pulled the :latest images pushed
+            # minutes ago and restarted containers BEFORE the migrations below ran
+            # (new code on old schema) and doubled every restart window. Removing
+            # it here (idempotent) also kills the instance already running on the
+            # VPS, which the compose file no longer defines.
+            docker rm -f parallext-watchtower 2>/dev/null || true
+
             echo "===> Logging into GHCR..."
             echo "$GHCR_PAT" | docker login ghcr.io \
               -u "$GITHUB_ACTOR" --password-stdin

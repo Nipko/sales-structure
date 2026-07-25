@@ -139,6 +139,33 @@ export class PlatformMonitorService implements OnModuleInit {
                 this.logger.warn(`Queue check failed for ${q.name}: ${e.message}`);
             }
         }
+
+        // La cola de ingesta de WhatsApp vive en el servicio whatsapp bajo el
+        // prefijo BullMQ 'wa' — no es inyectable aquí, así que se lee el failed
+        // set directo de Redis (ZSET wa:webhooks:failed). Un job varado ahí es
+        // un MENSAJE DE CLIENTE persistido cuyo turno de IA nunca corrió: el
+        // redrive-cron del servicio whatsapp los reintenta (hasta 5 veces);
+        // esta alerta cubre los que superan el tope o se acumulan.
+        try {
+            const cfg = await this.alertConfig.get();
+            const client = (this.redis as any).client;
+            const waFailed: number = await client.zcard('wa:webhooks:failed');
+            if (waFailed > cfg.queueFailed) {
+                await this.alert(
+                    `queue:wa-webhooks:failed`,
+                    `Ingesta WhatsApp — ${waFailed} webhooks fallidos`,
+                    `La cola <b>wa:webhooks</b> (ingesta de mensajes WhatsApp) tiene <b>${waFailed}</b> jobs fallidos.<br>
+                     Son mensajes de clientes cuyo procesamiento por IA no corrió. El cron de re-drive los
+                     reintenta automáticamente; si el número no baja, revisa la conectividad whatsapp→API
+                     (INTERNAL_API_KEY, salud de la API) y el Bull Board del servicio whatsapp.`,
+                    waFailed,
+                );
+            } else {
+                await this.incidents.resolveByKey(`queue:wa-webhooks:failed`);
+            }
+        } catch (e: any) {
+            this.logger.warn(`Queue check failed for wa:webhooks: ${e.message}`);
+        }
     }
 
     // ── Disk usage ──

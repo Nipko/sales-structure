@@ -424,8 +424,14 @@ export class ChannelsController {
         @Headers('x-telegram-bot-api-secret-token') secretToken: string,
         @Res() res: Response,
     ) {
-        res.status(200).send('OK');
+        // ACK only AFTER the cheap synchronous stage (resolve+validate+idem,
+        // milliseconds). Telegram retries an update until it sees a 200 and
+        // keeps it ~24h — acking first threw that guarantee away: an update
+        // arriving while the API drains for a deploy got its 200 and then the
+        // processing died with the process. Now that update gets a 5xx/timeout
+        // and Telegram redelivers it to the new container.
         await this.processTelegramUpdate(body, botUsername, secretToken);
+        res.status(200).send('OK');
     }
 
     @Post('webhook/telegram')
@@ -435,63 +441,81 @@ export class ChannelsController {
         @Headers('x-telegram-bot-api-secret-token') secretToken: string,
         @Res() res: Response,
     ) {
-        res.status(200).send('OK');
         await this.processTelegramUpdate(body, null, secretToken);
+        res.status(200).send('OK');
     }
 
+    /**
+     * Cheap synchronous stage of a Telegram update. Runs BEFORE the 200 to
+     * Telegram, so an infrastructure failure here (DB/Redis down, restart)
+     * propagates as a non-200 and Telegram redelivers. Expected discards
+     * (unknown bot, secret mismatch, duplicate, non-message update) return
+     * normally — those SHOULD be acked so Telegram stops retrying them.
+     * The heavy tail (profile photo + AI turn) stays fire-and-forget.
+     */
     private async processTelegramUpdate(body: any, botUsername: string | null, secretToken?: string): Promise<void> {
+        // Resolve the EXACT bot first. NEVER fall back to "any active telegram
+        // bot" — with more than one tenant on Telegram that routed updates to
+        // the wrong tenant (cross-tenant message leak).
+        let channelAccount: any = null;
+
+        if (botUsername) {
+            channelAccount = await this.prisma.channelAccount.findFirst({
+                where: { channelType: 'telegram', accountId: botUsername, isActive: true },
+            });
+        }
+
+        // Generic route (no botUsername in the URL): identify the bot by its
+        // per-bot webhook secret token. Only matches a bot that actually has a
+        // secret configured, so it can never silently pick the wrong one.
+        if (!channelAccount && secretToken) {
+            const candidates = await this.prisma.channelAccount.findMany({
+                where: { channelType: 'telegram', isActive: true },
+            });
+            channelAccount = candidates.find((c: any) => {
+                const s = (c.metadata as any)?.webhookSecret;
+                return s && s === secretToken;
+            }) || null;
+        }
+
+        if (!channelAccount) {
+            this.logger.warn(`No tenant resolved for Telegram update (bot=${botUsername || 'generic'}) — discarding`);
+            return;
+        }
+
+        // Validate webhook secret if configured on this bot (defense in depth).
+        const expectedSecret = (channelAccount.metadata as any)?.webhookSecret;
+        if (expectedSecret && secretToken !== expectedSecret) {
+            this.logger.warn(`Telegram webhook secret mismatch for bot ${botUsername || channelAccount.accountId}`);
+            return;
+        }
+
+        // Idempotency — namespaced by bot (update_id is per-bot, so a bare
+        // idem:tg:{update_id} collided across tenants) and claimed atomically
+        // via SET NX, only after the bot is resolved.
+        const updateId = body?.update_id;
+        if (updateId) {
+            const idemKey = `idem:tg:${channelAccount.accountId}:${updateId}`;
+            const claimed = await this.redis.acquireLock(idemKey, 86400);
+            if (!claimed) return;
+        }
+
+        const normalized = await this.gateway.processIncomingWebhook('telegram', body, channelAccount.accountId);
+        if (!normalized) return;
+
+        normalized.tenantId = channelAccount.tenantId;
+
+        // Heavy tail: photo fetch + full AI turn. Deliberately NOT awaited —
+        // holding Telegram's HTTP request open for a 10-60s LLM turn would make
+        // it time out and redeliver mid-processing. The mid-turn kill window
+        // that remains here is the queue-backed-inbound work, not this fix.
+        this.finishTelegramProcessing(channelAccount, normalized).catch((error) => {
+            this.logger.error(`Error processing Telegram webhook: ${error}`);
+        });
+    }
+
+    private async finishTelegramProcessing(channelAccount: any, normalized: any): Promise<void> {
         try {
-            // Resolve the EXACT bot first. NEVER fall back to "any active telegram
-            // bot" — with more than one tenant on Telegram that routed updates to
-            // the wrong tenant (cross-tenant message leak).
-            let channelAccount: any = null;
-
-            if (botUsername) {
-                channelAccount = await this.prisma.channelAccount.findFirst({
-                    where: { channelType: 'telegram', accountId: botUsername, isActive: true },
-                });
-            }
-
-            // Generic route (no botUsername in the URL): identify the bot by its
-            // per-bot webhook secret token. Only matches a bot that actually has a
-            // secret configured, so it can never silently pick the wrong one.
-            if (!channelAccount && secretToken) {
-                const candidates = await this.prisma.channelAccount.findMany({
-                    where: { channelType: 'telegram', isActive: true },
-                });
-                channelAccount = candidates.find((c: any) => {
-                    const s = (c.metadata as any)?.webhookSecret;
-                    return s && s === secretToken;
-                }) || null;
-            }
-
-            if (!channelAccount) {
-                this.logger.warn(`No tenant resolved for Telegram update (bot=${botUsername || 'generic'}) — discarding`);
-                return;
-            }
-
-            // Validate webhook secret if configured on this bot (defense in depth).
-            const expectedSecret = (channelAccount.metadata as any)?.webhookSecret;
-            if (expectedSecret && secretToken !== expectedSecret) {
-                this.logger.warn(`Telegram webhook secret mismatch for bot ${botUsername || channelAccount.accountId}`);
-                return;
-            }
-
-            // Idempotency — namespaced by bot (update_id is per-bot, so a bare
-            // idem:tg:{update_id} collided across tenants) and claimed atomically
-            // via SET NX, only after the bot is resolved.
-            const updateId = body?.update_id;
-            if (updateId) {
-                const idemKey = `idem:tg:${channelAccount.accountId}:${updateId}`;
-                const claimed = await this.redis.acquireLock(idemKey, 86400);
-                if (!claimed) return;
-            }
-
-            const normalized = await this.gateway.processIncomingWebhook('telegram', body, channelAccount.accountId);
-            if (!normalized) return;
-
-            normalized.tenantId = channelAccount.tenantId;
-
             // Telegram: get profile photo via Bot API if available
             if (normalized.contactId && !(normalized.metadata as any)?.contactProfilePic) {
                 try {

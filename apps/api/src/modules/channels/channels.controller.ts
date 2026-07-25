@@ -116,8 +116,11 @@ export class ChannelsController {
             return res.status(401).send('Invalid signature');
         }
 
-        res.status(200).send('OK');
-
+        // ACK only AFTER every message in the payload is durable in the queue.
+        // Acking first meant an API restart killed the in-flight turn while
+        // Meta, already satisfied, never redelivered. On failure we return
+        // non-200 so Meta retries the payload; the deterministic jobId makes
+        // whatever did get enqueued a no-op.
         try {
             // Process EVERY entry/messaging event — Meta can batch several in one
             // webhook; taking only entry[0].messaging[0] silently dropped the rest.
@@ -137,26 +140,31 @@ export class ChannelsController {
                 const messagingItems = Array.isArray(entry?.messaging) ? entry.messaging : [];
                 for (const messagingItem of messagingItems) {
                     // Per-message idempotency (atomic SET NX).
-                    const messageId = messagingItem?.message?.mid;
-                    if (messageId) {
-                        const claimed = await this.redis.acquireLock(`idem:ig:${messageId}`, 86400);
-                        if (!claimed) continue;
-                    }
                     // Synthesize a single-item payload for the adapter (it reads entry[0].messaging[0]).
                     const singlePayload = { ...body, entry: [{ ...entry, messaging: [messagingItem] }] };
                     const normalized = await this.gateway.processIncomingWebhook('instagram', singlePayload, igUserId);
                     if (!normalized) continue;
                     normalized.tenantId = channelAccount.tenantId;
-                    await this.enrichIgProfileAndProcess(normalized, channelAccount.tenantId);
+                    // Enrich BEFORE enqueuing: the profile is written onto the
+                    // message metadata, so it must be present in the job.
+                    await this.enrichIgProfile(normalized, channelAccount.tenantId);
+                    // Dedupe is now the queue's deterministic jobId (derived from
+                    // the same mid). The old idem:ig claim was taken BEFORE any
+                    // durable work and never released, so a crash left the message
+                    // unprocessable for 24h.
+                    await this.inboundQueue.enqueue(normalized);
                 }
             }
         } catch (error) {
             this.logger.error(`Error processing Instagram webhook: ${error}`);
+            return res.status(500).send('retry');
         }
+
+        return res.status(200).send('OK');
     }
 
     /** Fetch the IG sender profile (cached 1h) and dispatch the message to the pipeline. */
-    private async enrichIgProfileAndProcess(normalized: any, tenantId: string): Promise<void> {
+    private async enrichIgProfile(normalized: any, tenantId: string): Promise<void> {
         if (normalized.contactId) {
             const igCacheKey = `ig_profile:${normalized.contactId}`;
             const cachedProfile = await this.redis.getJson<any>(igCacheKey);
@@ -188,7 +196,6 @@ export class ChannelsController {
         }
 
         this.logger.log(`Incoming Instagram DM for tenant ${tenantId} from ${normalized.contactId}`);
-        await this.conversationsService.processIncomingMessage(normalized);
     }
 
     // ==========================================
@@ -218,8 +225,11 @@ export class ChannelsController {
             return res.status(401).send('Invalid signature');
         }
 
-        res.status(200).send('OK');
-
+        // ACK only AFTER every message in the payload is durable in the queue.
+        // Acking first meant an API restart killed the in-flight turn while
+        // Meta, already satisfied, never redelivered. On failure we return
+        // non-200 so Meta retries the payload; the deterministic jobId makes
+        // whatever did get enqueued a no-op.
         try {
             // Process EVERY entry/messaging event — Meta can batch several in one
             // webhook; taking only entry[0].messaging[0] silently dropped the rest.
@@ -238,25 +248,30 @@ export class ChannelsController {
 
                 const messagingItems = Array.isArray(entry?.messaging) ? entry.messaging : [];
                 for (const messagingItem of messagingItems) {
-                    const messageId = messagingItem?.message?.mid;
-                    if (messageId) {
-                        const claimed = await this.redis.acquireLock(`idem:fb:${messageId}`, 86400);
-                        if (!claimed) continue;
-                    }
                     const singlePayload = { ...body, entry: [{ ...entry, messaging: [messagingItem] }] };
                     const normalized = await this.gateway.processIncomingWebhook('messenger', singlePayload, pageId);
                     if (!normalized) continue;
                     normalized.tenantId = channelAccount.tenantId;
-                    await this.enrichFbProfileAndProcess(normalized, channelAccount.tenantId);
+                    // Enrich BEFORE enqueuing: the profile is written onto the
+                    // message metadata, so it must be present in the job.
+                    await this.enrichFbProfile(normalized, channelAccount.tenantId);
+                    // Dedupe is now the queue's deterministic jobId (derived from
+                    // the same mid). The old idem:fb claim was taken BEFORE any
+                    // durable work and never released, so a crash left the message
+                    // unprocessable for 24h.
+                    await this.inboundQueue.enqueue(normalized);
                 }
             }
         } catch (error) {
             this.logger.error(`Error processing Messenger webhook: ${error}`);
+            return res.status(500).send('retry');
         }
+
+        return res.status(200).send('OK');
     }
 
     /** Fetch the Messenger sender profile (cached 1h) and dispatch the message to the pipeline. */
-    private async enrichFbProfileAndProcess(normalized: any, tenantId: string): Promise<void> {
+    private async enrichFbProfile(normalized: any, tenantId: string): Promise<void> {
         if (normalized.contactId) {
             const fbCacheKey = `fb_profile:${normalized.contactId}`;
             const cachedFbProfile = await this.redis.getJson<any>(fbCacheKey);
@@ -285,7 +300,6 @@ export class ChannelsController {
         }
 
         this.logger.log(`Incoming Messenger message for tenant ${tenantId} from ${normalized.contactId}`);
-        await this.conversationsService.processIncomingMessage(normalized);
     }
 
     // ==========================================
@@ -409,7 +423,7 @@ export class ChannelsController {
             if (!normalized) return;
 
             normalized.tenantId = channelAccount.tenantId;
-            await this.conversationsService.processIncomingMessage(normalized);
+            await this.inboundQueue.enqueue(normalized);
             this.logger.log(`Incoming SMS from ${body?.From} to ${phoneNumber}`);
         } catch (error) {
             this.logger.error(`Error processing SMS webhook: ${error}`);
@@ -579,26 +593,15 @@ export class ChannelsController {
         @Body() body: any,
         @Res() res: Response,
     ) {
-        if (channelType === 'whatsapp') {
-            return res.status(400).send('Use /channels/webhook/whatsapp');
-        }
-
-        res.status(200).send('OK');
-
-        try {
-            const normalized = await this.gateway.processIncomingWebhook(channelType as ChannelType, body, '');
-            if (!normalized) return;
-
-            if (!normalized.tenantId) {
-                this.logger.warn(`Skipping ${channelType} inbound message without tenant context`);
-                return;
-            }
-
-            await this.conversationsService.processIncomingMessage(normalized);
-            this.logger.log(`Incoming ${channelType} message: ${normalized.contactId}`);
-        } catch (error) {
-            this.logger.error(`Error processing ${channelType} webhook: ${error}`);
-        }
+        // RETIRED. Every registered adapter (whatsapp, instagram, messenger,
+        // telegram, sms, email) has its own route with signature validation,
+        // tenant resolution and idempotency. This fallback had NONE of those:
+        // an unauthenticated POST could inject a message straight into the AI
+        // pipeline for any tenant an adapter happened to resolve. Kept as an
+        // explicit rejection (rather than deleted) so anything still calling it
+        // shows up in the logs instead of failing as a silent 404.
+        this.logger.warn(`Rejected retired generic webhook route for channelType=${channelType}`);
+        return res.status(410).send('Use the channel-specific webhook route');
     }
 }
 

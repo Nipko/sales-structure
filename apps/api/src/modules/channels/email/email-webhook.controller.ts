@@ -3,16 +3,14 @@ import {
     Post,
     Body,
     Logger,
-    Inject,
-    forwardRef,
     Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Response } from 'express';
 import { ChannelGatewayService } from '../channel-gateway.service';
 import { RedisService } from '../../redis/redis.service';
-import { ConversationsService } from '../../conversations/conversations.service';
 import { EmailChannelService } from './email-channel.service';
+import { InboundQueueService } from '../../inbound/inbound-queue.service';
 
 /**
  * Email Inbound Webhook Controller
@@ -33,9 +31,8 @@ export class EmailWebhookController {
     constructor(
         private readonly gateway: ChannelGatewayService,
         private readonly redis: RedisService,
-        @Inject(forwardRef(() => ConversationsService))
-        private readonly conversationsService: ConversationsService,
         private readonly emailChannelService: EmailChannelService,
+        private readonly inboundQueue: InboundQueueService,
     ) {}
 
     @Post('inbound')
@@ -44,9 +41,10 @@ export class EmailWebhookController {
         @Body() body: any,
         @Res() res: Response,
     ) {
-        // Respond immediately to avoid webhook timeout
-        res.status(200).send('OK');
-
+        // ACK after the message is durable in the queue, not before: the reply
+        // used to run as a floating promise behind this early 200, so an API
+        // restart killed it with nothing left to retry. SendGrid retries a
+        // non-2xx for ~72h, so a failure here is recoverable.
         try {
             // 1. Extract recipient email to resolve tenant
             const toRaw = body?.to || body?.envelope?.to?.[0] || '';
@@ -54,7 +52,7 @@ export class EmailWebhookController {
 
             if (!toEmail) {
                 this.logger.warn('Inbound email webhook missing recipient address');
-                return;
+                return res.status(200).send('OK');
             }
 
             // 2. Extract Message-ID for idempotency
@@ -63,13 +61,15 @@ export class EmailWebhookController {
                 || body?.['message-id']
                 || '';
 
+            // Idempotency: SET NX is atomic. The previous GET-then-SET let two
+            // concurrent deliveries of the same Message-ID both pass the check.
+            // (The queue's deterministic jobId is the durable backstop.)
             if (messageId) {
-                const idemKey = `idem:email:${messageId}`;
-                if (await this.redis.get(idemKey)) {
+                const claimed = await this.redis.acquireLock(`idem:email:${messageId}`, 86400);
+                if (!claimed) {
                     this.logger.debug(`Duplicate email webhook ignored: ${messageId}`);
-                    return;
+                    return res.status(200).send('OK');
                 }
-                await this.redis.set(idemKey, '1', 86400);
             }
 
             // 3. Resolve tenant by matching recipient email to email_channel_configs
@@ -77,30 +77,25 @@ export class EmailWebhookController {
 
             if (!tenantId) {
                 this.logger.warn(`No tenant found for inbound email to: ${toEmail}`);
-                return;
+                return res.status(200).send('OK');
             }
 
             // 4. Process through the gateway adapter
             const normalized = await this.gateway.processIncomingWebhook('email', body, toEmail);
-            if (!normalized) return;
+            if (!normalized) return res.status(200).send('OK');
 
             normalized.tenantId = tenantId;
 
             this.logger.log(`Incoming email for tenant ${tenantId} from ${normalized.contactId} subject="${(normalized.metadata as any)?.emailSubject || ''}"`.substring(0, 200));
 
-            // 5. Feed into the conversation pipeline
-            await this.conversationsService.processIncomingMessage(normalized);
-
-            // 6. Save thread metadata for reply threading
-            const emailMeta = normalized.metadata as any;
-            if (normalized.conversationId || true) {
-                // Thread save will happen after conversation is created/found
-                // We save best-effort with available data
-                // The conversationId will be set by processIncomingMessage
-            }
+            // 5. Hand to the inbound queue (durable) and only then ACK.
+            await this.inboundQueue.enqueue(normalized);
         } catch (error) {
             this.logger.error(`Error processing inbound email webhook: ${error}`);
+            return res.status(500).send('retry');
         }
+
+        return res.status(200).send('OK');
     }
 
     private extractEmailAddress(raw: string): string {

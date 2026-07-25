@@ -54,9 +54,34 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 [session.conversation_id],
             );
             client.emit('widget:history', { messages: (history || []).reverse() });
+
+            // If the newest message is inbound, the previous turn never produced a
+            // reply - the API was restarted or crashed mid-stream. The widget is
+            // the one channel with no queue behind it, so nothing would ever retry
+            // and the visitor would sit in front of an unanswered question.
+            const newest = (history || [])[0];
+            if (newest && newest.direction === 'inbound' && newest.content_text) {
+                this.logger.warn(
+                    `[Widget] Conversation ${session.conversation_id} reconnected with an unanswered message - regenerating`,
+                );
+                this.regenerateReply(client, session, newest.content_text).catch((err) =>
+                    this.logger.error(`[Widget] Regeneration failed: ${err?.message}`),
+                );
+            }
         }
 
         client.emit('widget:connected', { sessionId: session.id });
+    }
+
+    /**
+     * Re-run the AI turn for a message left unanswered by a restart. Streams
+     * through the same path as a live message so the visitor sees a normal reply.
+     */
+    private async regenerateReply(client: Socket, session: any, text: string): Promise<void> {
+        const schemaName = await this.prisma.getTenantSchemaName(session.tenant_id);
+        await this.streamAssistantReply(
+            client, session.tenant_id, schemaName, session.conversation_id, session.contact_id, text,
+        );
     }
 
     handleDisconnect(client: Socket) {
@@ -105,17 +130,46 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
             session.contact_id = contactId;
         }
 
-        await this.prisma.executeInTenantSchema(schemaName,
+        const inboundRows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `INSERT INTO messages (conversation_id, direction, content_text, metadata, created_at)
-             VALUES ($1::uuid, 'inbound', $2, '{"channel":"web_widget"}'::jsonb, NOW())`,
+             VALUES ($1::uuid, 'inbound', $2, '{"channel":"web_widget"}'::jsonb, NOW())
+             RETURNING id`,
             [conversationId, data.content],
         );
+
+        // Delivery ack. Without it the widget rendered every message as sent even
+        // when socket.io had silently dropped it (its send buffer is discarded
+        // once the reconnection attempts run out), so a visitor could be talking
+        // to nobody and never know.
+        client.emit('widget:message-received', {
+            id: inboundRows?.[0]?.id,
+            content: data.content,
+            timestamp: new Date().toISOString(),
+        });
 
         await this.prisma.executeInTenantSchema(schemaName,
             `UPDATE conversations SET updated_at = NOW() WHERE id = $1::uuid`,
             [conversationId],
         );
 
+        await this.streamAssistantReply(client, tenantId, schemaName, conversationId, contactId, data.content);
+    }
+
+    /**
+     * Stream the AI reply for an already-persisted visitor message.
+     *
+     * Split out of handleMessage so a reconnect can regenerate an unanswered
+     * turn WITHOUT re-inserting the visitor's message (which would duplicate it
+     * in the history the visitor is looking at).
+     */
+    private async streamAssistantReply(
+        client: Socket,
+        tenantId: string,
+        schemaName: string,
+        conversationId: string,
+        contactId: string,
+        text: string,
+    ): Promise<void> {
         client.emit('widget:typing', { isTyping: true });
         const messageId = randomUUID();
         let full = '';
@@ -123,7 +177,7 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         try {
             for await (const chunk of this.conversations.streamWidgetMessage(
-                tenantId, schemaName, conversationId, contactId, data.content,
+                tenantId, schemaName, conversationId, contactId, text,
             )) {
                 if (!chunk) continue;
                 if (!started) {

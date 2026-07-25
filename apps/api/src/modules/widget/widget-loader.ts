@@ -85,13 +85,36 @@ function connectWS(){
     if(last&&last.streaming){last.streaming=false;if(!last.content){last.content='⚠️';}}
     st.streamingId=null;renderMsgs();
   });
+  // Delivery ack: the server persisted the visitor's message. Until this
+  // arrives the bubble stays 'pending' - socket.io drops its send buffer
+  // once reconnection attempts run out, so an un-acked message never made it.
+  st.sock.on('widget:message-received',function(d){
+    for(var i=st.msgs.length-1;i>=0;i--){
+      var m=st.msgs[i];
+      if(m.role==='user'&&m.pending&&m.content===d.content){m.pending=false;break}
+    }
+    renderMsgs()
+  });
+  // Anything still pending when the socket dies was never delivered.
+  st.sock.on('disconnect',function(){markPendingFailed()});
+  st.sock.io.on('reconnect_failed',function(){markPendingFailed()});
   st.sock.on('widget:typing',function(d){st.typing=d.isTyping;renderTyping()});
   st.sock.on('widget:error',function(d){console.warn('Parallly:',d.message)});
 }
 
+function markPendingFailed(){
+  var changed=false;
+  for(var i=0;i<st.msgs.length;i++){
+    if(st.msgs[i].role==='user'&&st.msgs[i].pending){st.msgs[i].pending=false;st.msgs[i].failed=true;changed=true}
+  }
+  if(changed)renderMsgs()
+}
+
 function send(txt){
   if(!txt.trim()||!st.sock)return;
-  st.msgs.push({role:'user',content:txt.trim(),ts:new Date().toISOString()});
+  // pending until the server acks it - previously every message rendered as
+  // delivered even when it was silently dropped by a dead socket.
+  st.msgs.push({role:'user',content:txt.trim(),ts:new Date().toISOString(),pending:true});
   renderMsgs();
   st.sock.emit('widget:message',{content:txt.trim()})
 }
@@ -323,8 +346,13 @@ function renderMsgs(){
     d.className='pw-msg '+(m.role==='user'?'out':'in');
     if(m.role==='user')d.style.background=st.cfg.primaryColor||'#6c5ce7';
     d.textContent=m.content||'';
+    if(m.pending)d.style.opacity='0.6';
+    if(m.failed)d.style.opacity='0.6';
     var t=document.createElement('div');t.className='pw-msg-time';
     try{t.textContent=new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}catch(e){t.textContent=''}
+    // Visitors must be able to tell 'delivered' from 'never left the browser'.
+    if(m.pending)t.textContent+=' · ↻';
+    if(m.failed)t.textContent+=' · ⚠ no enviado';
     d.appendChild(t);frag.appendChild(d)
   });
   container.insertBefore(frag,st.el.typing);

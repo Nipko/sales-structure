@@ -193,6 +193,15 @@ const isWriteTool = (name: string): boolean => name.startsWith('mcp__') || WRITE
 // messages. We wait this long for follow-ups and process the batch as one turn.
 const DEBOUNCE_MS = 800;
 
+/**
+ * Marks that a turn ran to completion for a given provider message id.
+ *
+ * Deliberately a NEW namespace, separate from every edge-level `idem:*` key:
+ * those answer "did we see this webhook", which a retry INSIDE the API sails
+ * straight past. This answers "did we already finish answering it".
+ */
+const turnDoneKey = (tenantId: string, providerMsgId: string) => `turn:done:${tenantId}:${providerMsgId}`;
+
 @Injectable()
 export class ConversationsService {
     private readonly logger = new Logger(ConversationsService.name);
@@ -256,6 +265,26 @@ export class ConversationsService {
             await this.storeOnlyMessage(normalizedMsg, source);
             return;
         }
+
+        await this.runTurn(normalizedMsg);
+
+        // The turn finished without throwing. Mark it so a LATER provider
+        // redelivery of the same message is recognised as already answered and
+        // aborted — while a retry of an INTERRUPTED turn (no marker, because we
+        // never got here) is allowed to resume and finally reply to the customer.
+        // That distinction is what lets the inbound path be retried safely:
+        // without it, the external_id dedupe would abort the very retry that a
+        // restart-interrupted turn depends on, and the customer would get no
+        // answer at all.
+        const pmid = providerMessageId(normalizedMsg);
+        if (pmid) {
+            await this.redis.set(turnDoneKey(tenantId, pmid), '1', 86400).catch(() => { /* best-effort */ });
+        }
+    }
+
+    /** The full AI turn. Split out so processIncomingMessage can stamp completion. */
+    private async runTurn(normalizedMsg: NormalizedMessage): Promise<void> {
+        const { tenantId, contactId, channelType, content } = normalizedMsg;
 
         // Server-clock receipt time (transient, not persisted) for the customer→reply
         // latency metric — avoids mixing the provider's clock (msg.timestamp) with the
@@ -422,11 +451,27 @@ export class ConversationsService {
             return;
         }
 
-        // 4. Save User Message. A duplicate means the provider redelivered a
-        // message we already stored (and already answered) — abort before the
-        // AI turn instead of replying to the customer a second time.
+        // 4. Save User Message. A duplicate row means this exact provider message
+        // was stored before — but that alone does NOT mean it was answered:
+        //   · turn marked done  → a genuine redelivery of an answered message:
+        //                         abort, or the customer gets a second reply.
+        //   · no marker         → an earlier attempt stored it and then died
+        //                         (deploy restart mid-LLM). Resume the turn so
+        //                         the customer finally gets an answer; anything
+        //                         that attempt already sent is dropped by the
+        //                         outbound dedupeId, so no duplicate reaches them.
         const saved = await this.saveMessage(tenantId, conversation.id, normalizedMsg);
-        if (saved.duplicate) return;
+        if (saved.duplicate) {
+            const dupPmid = providerMessageId(normalizedMsg);
+            const alreadyAnswered = dupPmid
+                ? await this.redis.get(turnDoneKey(tenantId, dupPmid)).catch(() => null)
+                : null;
+            if (alreadyAnswered) {
+                this.logger.warn(`[Pipeline] Redelivery of already-answered ${dupPmid} — skipping turn`);
+                return;
+            }
+            this.logger.warn(`[Pipeline] Resuming interrupted turn for ${dupPmid} (message already stored)`);
+        }
         const inboundMessageId = saved.id;
         this.logger.log(`[Pipeline] Message saved for conversation ${conversation.id}`);
 

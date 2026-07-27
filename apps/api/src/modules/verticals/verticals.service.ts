@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { getVerticalDefinition } from './vertical-definitions';
+import { PERSONA_CACHE_CHANNELS } from '../../common/utils/persona-cache.util';
 import { TenantVerticalConfig, VerticalDefinition } from '@parallext/shared';
 
 @Injectable()
@@ -36,13 +38,33 @@ export class VerticalsService {
         // 2. Patch default agent with vertical persona
         await this.patchDefaultAgent(schemaName, definition, l);
 
-        // 3. Seed FAQs
+        // 3. Seed FAQs + turn the FAQ tool on. Sembrarlas sin encender
+        // `tools.faqs` las dejaba visibles solo en el portal público: el
+        // registro de FAQ_TOOL en el pipeline exige el flag
+        // (`conversations.service.ts`, `cfgTools?.faqs?.enabled === true`).
         await this.seedFaqs(schemaName, definition, l);
+        await this.enableSimpleTool(schemaName, 'faqs');
 
         // 4. Seed services (if booking-enabled)
         if (definition.bookingEnabled && definition.services.length > 0) {
             await this.seedServices(schemaName, definition, l);
         }
+
+        // 4a. Seed la disponibilidad semanal. Va junto con los servicios porque
+        // el agendador necesita las dos cosas: con servicios pero sin slots el
+        // bot ofrece turnos y después responde "no hay disponibilidad" siempre.
+        if (definition.bookingEnabled) {
+            await this.seedAvailability(tenantId, schemaName, definition);
+        }
+
+        // 4a-bis. Con la agenda ya sembrada, devolver la herramienta de citas al estado
+        // que pedía la plantilla. `createDefaultAgentFromGoals` corre ANTES que este
+        // bootstrap (auth.service), así que ahí el schema todavía no tenía servicios ni
+        // horarios y la apagó dejando un marcador; sin este paso los tenants de
+        // salud/belleza/veterinaria/… arrancarían sin agendador. Va fuera del `if` a
+        // propósito: aunque la vertical no sea de agenda hay que limpiar el marcador
+        // (el método no toca nada si no está, y decide por los contadores reales).
+        await this.restoreAppointmentsTool(schemaName);
 
         // 4b. Sub-type specific extras: tours / agencia_viajes get extra FAQs
         // tailored to the operational reality (transfer, child discount,
@@ -133,6 +155,10 @@ export class VerticalsService {
             },
         });
 
+        // 6. Tirar abajo los caches calientes que sirven lo que acabamos de
+        // escribir (persona por canal, servicios del agendador, verticalConfig).
+        await this.invalidateRuntimeCaches(tenantId);
+
         this.logger.log(`Vertical bootstrap complete for tenant ${tenantId}: ${definition.pipeline.stages.length} stages, ${definition.faqs.length} FAQs, ${definition.services.length} services`);
     }
 
@@ -205,11 +231,15 @@ export class VerticalsService {
             for (let i = 0; i < definition.pipeline.stages.length; i++) {
                 const stage = definition.pipeline.stages[i];
                 const name = stage.name[lang] || stage.name['es'] || stage.slug;
+                // El target tiene que ser el índice real: `uidx_pipeline_stages_pipeline_slug`
+                // es (pipeline_id, slug) NULLS NOT DISTINCT — no (slug) a secas — porque un
+                // segundo embudo reutiliza legítimamente los mismos slugs. El bootstrap
+                // inserta con pipeline_id NULL, y ahí el índice sí muerde.
                 await this.prisma.$queryRawUnsafe(
                     `INSERT INTO "${schemaName}"."pipeline_stages"
                      (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, transition_rules)
                      VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-                     ON CONFLICT DO NOTHING`,
+                     ON CONFLICT (pipeline_id, slug) DO NOTHING`,
                     tenantId, name, stage.slug, stage.color, i, stage.probability, stage.slaHours || null, stage.isTerminal,
                     JSON.stringify((stage as any).transitionRules || []),
                 );
@@ -220,6 +250,26 @@ export class VerticalsService {
         }
     }
 
+    /**
+     * Funde la persona de la vertical dentro de `config_json` respetando el
+     * shape canónico que lee el ensamblador del prompt: `config.persona.*` y
+     * `config.behavior.*` (`PersonaService.buildGuidedPersonaBlock`). Hasta
+     * ahora esto escribía name/role/greeting/rules/forbiddenTopics/
+     * handoffTriggers en la RAÍZ del JSON, un lugar sin ningún lector en
+     * runtime: la persona de las 18 industrias se cortaba ahí en silencio.
+     *
+     * DECISIÓN DE DISEÑO — el patch RELLENA HUECOS, no pisa:
+     *  - La plantilla vertical que `createDefaultAgentFromGoals` insertó un
+     *    paso antes es la fuente real y está mejor escrita (reglas por
+     *    producto, requiredFields, fallbackMessage); el registry es un resumen.
+     *  - Este método también corre en cualquier re-seed sobre un tenant vivo,
+     *    donde pisar borraría lo que el dueño del negocio editó a mano.
+     * Excepción deliberada: `forbiddenTopics` y `handoffTriggers` se UNEN en
+     * vez de rellenarse. Son restricciones aditivas —prohibir de más nunca
+     * hace que el bot afirme algo falso, y escalar de más termina en un
+     * humano—, así que los límites propios de la industria entran igual
+     * aunque la plantilla ya traiga su propia lista.
+     */
     private async patchDefaultAgent(
         schemaName: string,
         definition: VerticalDefinition,
@@ -229,33 +279,54 @@ export class VerticalsService {
             // Find the default agent
             const agents = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+                `SELECT id, name, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
             );
             if (!agents || agents.length === 0) return;
 
             const agent = agents[0];
             const existingConfig = agent.config_json || {};
             const agentDef = definition.agent;
+            const pick = (loc: Record<string, string> | undefined): string =>
+                (loc?.[lang] || loc?.['es'] || '').trim();
 
-            // Merge vertical persona into existing config
-            const patchedConfig = {
-                ...existingConfig,
-                name: agentDef.name[lang] || agentDef.name['es'],
+            const existingPersona = existingConfig.persona || {};
+            const existingPersonality = existingPersona.personality || {};
+            const existingBehavior = existingConfig.behavior || {};
+            const existingRules = Array.isArray(existingBehavior.rules) ? existingBehavior.rules.filter(Boolean) : [];
+
+            const persona = {
+                ...existingPersona,
+                name: this.orFallback(existingPersona.name, pick(agentDef.name)),
+                role: this.orFallback(existingPersona.role, pick(agentDef.role)),
+                greeting: this.orFallback(existingPersona.greeting, pick(agentDef.greeting)),
                 personality: {
-                    ...(existingConfig.personality || {}),
-                    tone: agentDef.tone,
-                    formality: agentDef.formality,
+                    ...existingPersonality,
+                    tone: this.orFallback(existingPersonality.tone, agentDef.tone),
+                    formality: this.orFallback(existingPersonality.formality, agentDef.formality),
                 },
-                role: agentDef.role[lang] || agentDef.role['es'],
-                greeting: agentDef.greeting[lang] || agentDef.greeting['es'],
-                rules: agentDef.rules[lang] || agentDef.rules['es'],
-                forbiddenTopics: (agentDef.forbiddenTopics[lang] || agentDef.forbiddenTopics['es'] || '')
-                    .split('|')
-                    .filter(Boolean),
-                handoffTriggers: (agentDef.handoffTriggers[lang] || agentDef.handoffTriggers['es'] || '')
-                    .split('|')
-                    .filter(Boolean),
             };
+
+            const behavior = {
+                ...existingBehavior,
+                // `rules` viene como un párrafo en el registry y el lector espera
+                // un array: mismo criterio de corte que los otros dos campos.
+                rules: existingRules.length > 0 ? existingRules : this.splitDefinitionRules(pick(agentDef.rules)),
+                forbiddenTopics: this.mergeStringList(
+                    existingBehavior.forbiddenTopics,
+                    this.splitDefinitionList(pick(agentDef.forbiddenTopics)),
+                ),
+                handoffTriggers: this.mergeStringList(
+                    existingBehavior.handoffTriggers,
+                    this.splitDefinitionList(pick(agentDef.handoffTriggers)),
+                ),
+            };
+
+            const patchedConfig = { ...existingConfig, persona, behavior };
+
+            // La columna `name` sigue al nombre EFECTIVO de la persona. Antes se
+            // pisaba con el del registry mientras el bot se presentaba con el de
+            // la plantilla: la lista decía "Roberto" y el cliente leía "Andrés".
+            const displayName = persona.name || agent.name || 'Asistente';
 
             await this.prisma.executeInTenantSchema(
                 schemaName,
@@ -264,16 +335,57 @@ export class VerticalsService {
                     config_json = $2::jsonb
                  WHERE id = $3::uuid`,
                 [
-                    patchedConfig.name,
+                    displayName,
                     JSON.stringify(patchedConfig),
                     agent.id,
                 ],
             );
 
-            this.logger.debug(`Patched default agent with vertical persona: "${patchedConfig.name}"`);
+            this.logger.debug(`Patched default agent with vertical persona: "${displayName}"`);
         } catch (error: any) {
             this.logger.warn(`Failed to patch default agent: ${error.message}`);
         }
+    }
+
+    /** Devuelve el valor actual si tiene contenido; si no, el de la vertical. */
+    private orFallback(current: any, fallback: string): string {
+        return typeof current === 'string' && current.trim().length > 0 ? current : fallback;
+    }
+
+    /** 'a|b|c' → ['a','b','c'] (formato del registry para listas). */
+    private splitDefinitionList(raw: string): string[] {
+        if (!raw) return [];
+        return raw.split('|').map((item) => item.trim()).filter(Boolean);
+    }
+
+    /**
+     * Las reglas del registry son prosa ("Haz X. Nunca hagas Y."), no una lista
+     * separada por '|'. Cortamos por oración para que cada una baje al prompt
+     * como un <rule> propio, y soportamos igual el separador '|' por si alguna
+     * definición futura lo usa.
+     */
+    private splitDefinitionRules(raw: string): string[] {
+        if (!raw) return [];
+        if (raw.includes('|')) return this.splitDefinitionList(raw);
+        return raw
+            .split(/\.\s+/)
+            .map((item) => item.trim())
+            .filter(Boolean)
+            .map((item) => (item.endsWith('.') ? item : `${item}.`));
+    }
+
+    /** Une dos listas de strings sin duplicados (comparación case-insensitive). */
+    private mergeStringList(current: any, extra: string[]): string[] {
+        const base = Array.isArray(current) ? current.filter((item: any) => typeof item === 'string' && item.trim()) : [];
+        const seen = new Set(base.map((item: string) => item.trim().toLowerCase()));
+        const merged = [...base];
+        for (const item of extra) {
+            const key = item.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            merged.push(item);
+        }
+        return merged;
     }
 
     private async seedFaqs(
@@ -289,7 +401,7 @@ export class VerticalsService {
                     `INSERT INTO "${schemaName}"."faqs"
                      (question, answer, category, is_published, search_tsv)
                      VALUES ($1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2))
-                     ON CONFLICT DO NOTHING`,
+                     ON CONFLICT (question) DO NOTHING`,
                     question, answer, faq.category,
                 );
             }
@@ -313,13 +425,133 @@ export class VerticalsService {
                     `INSERT INTO "${schemaName}"."services"
                      (name, description, duration_minutes, price, currency, category, is_active, sort_order)
                      VALUES ($1, $2, $3, $4, $5, $6, true, $7)
-                     ON CONFLICT DO NOTHING`,
+                     ON CONFLICT (name) DO NOTHING`,
                     name, description, svc.durationMinutes, svc.price, svc.currency, svc.category, i,
                 );
             }
             this.logger.debug(`Seeded ${definition.services.length} services`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed services: ${error.message}`);
+        }
+    }
+
+    /**
+     * Siembra la disponibilidad semanal desde `definition.businessHours`, el
+     * único horario que la plataforma ya tiene escrito y traducido para las 18
+     * verticales. Sin filas en `availability_slots` el agendador arranca
+     * encendido pero `check_availability` devuelve siempre "no hay
+     * disponibilidad": el bot ofrece turnos que no puede tomar.
+     *
+     * Las filas replican exactamente el shape que escribe
+     * `AppointmentsService.saveAvailability`, así que el tenant puede
+     * reemplazarlas desde Citas → Config sin ninguna sorpresa.
+     */
+    private async seedAvailability(
+        tenantId: string,
+        schemaName: string,
+        definition: VerticalDefinition,
+    ): Promise<void> {
+        try {
+            const schedule = definition.businessHours?.schedule || {};
+            const days: Array<[string, unknown]> = Object.entries(schedule);
+            if (days.length === 0) return;
+
+            // La tabla no tiene UNIQUE sobre el que apoyar un ON CONFLICT, así
+            // que la idempotencia es este guard: si el tenant ya tiene horarios
+            // (propios o de un bootstrap anterior) no tocamos nada.
+            const existing = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT COUNT(*)::int AS cnt FROM availability_slots`,
+            );
+            if (Number(existing?.[0]?.cnt || 0) > 0) {
+                this.logger.debug('Availability already configured — skipping seed');
+                return;
+            }
+
+            // `availability_slots.user_id` es NOT NULL y el runtime lo resuelve
+            // contra public.users (nombre del staff en los turnos ofrecidos), así
+            // que tiene que ser un usuario real: el dueño del tenant.
+            const owner =
+                (await this.prisma.user.findFirst({
+                    where: { tenantId, isActive: true, role: 'tenant_admin' },
+                    orderBy: { createdAt: 'asc' },
+                    select: { id: true },
+                })) ||
+                (await this.prisma.user.findFirst({
+                    where: { tenantId, isActive: true },
+                    orderBy: { createdAt: 'asc' },
+                    select: { id: true },
+                }));
+
+            if (!owner) {
+                this.logger.warn(`No user found for tenant ${tenantId} — skipping availability seed`);
+                return;
+            }
+
+            // 0=domingo … 6=sábado, igual que `availability_slots.day_of_week`.
+            const dayIndex: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+            const toMinutes = (hhmm: string): number => {
+                const [h, m] = hhmm.split(':').map(Number);
+                return h * 60 + m;
+            };
+
+            let inserted = 0;
+            for (const [day, range] of days) {
+                const dow = dayIndex[day.toLowerCase()];
+                if (dow === undefined || typeof range !== 'string') continue;
+
+                const [rawStart, rawEnd] = range.split('-').map((part) => part.trim());
+                if (!/^\d{1,2}:\d{2}$/.test(rawStart || '') || !/^\d{1,2}:\d{2}$/.test(rawEnd || '')) continue;
+
+                // Cierres a medianoche ('11:00-00:00'): la columna es TIME sin
+                // fecha, y un fin <= inicio genera cero turnos en el generador.
+                const end = toMinutes(rawEnd) <= toMinutes(rawStart) ? '23:59' : rawEnd;
+
+                await this.prisma.executeInTenantSchema(
+                    schemaName,
+                    `INSERT INTO availability_slots (id, user_id, day_of_week, start_time, end_time, is_active, created_at)
+                     VALUES ($1::uuid, $2::uuid, $3, $4::time, $5::time, true, NOW())`,
+                    [randomUUID(), owner.id, dow, rawStart, end],
+                );
+                inserted++;
+            }
+
+            this.logger.debug(`Seeded ${inserted} availability slots from vertical business hours`);
+        } catch (error: any) {
+            this.logger.warn(`Failed to seed availability slots: ${error.message}`);
+        }
+    }
+
+    /**
+     * El bootstrap reescribe `config_json` y siembra servicios, pero los caches
+     * que los sirven en caliente sobreviven: persona por canal (600s),
+     * servicios del agendador (300s) y el propio verticalConfig. En el alta
+     * están fríos; esto hace seguro cualquier re-seed sobre un tenant vivo.
+     *
+     * `PersonaService.invalidatePersonaCaches` hace exactamente esto, pero es
+     * privado, así que replicamos el borrado con el RedisService ya inyectado.
+     */
+    private async invalidateRuntimeCaches(tenantId: string): Promise<void> {
+        try {
+            await this.redis.del(`vertical:${tenantId}`);
+            await this.redis.del(`booking:services:${tenantId}`);
+            await this.redis.del(`persona:${tenantId}:active`);
+
+            for (const ch of PERSONA_CACHE_CHANNELS) {
+                await this.redis.del(`persona:${tenantId}:channel:${ch}`);
+            }
+
+            // El pipeline lee siempre la variante por-cuenta cuando hay conexión
+            // (`persona:{tenant}:channel:{type}:acct:{accountId}`).
+            const accounts = await this.prisma.channelAccount.findMany({
+                where: { tenantId, isActive: true },
+                select: { channelType: true, accountId: true },
+            });
+            for (const acct of accounts) {
+                await this.redis.del(`persona:${tenantId}:channel:${acct.channelType}:acct:${acct.accountId}`);
+            }
+        } catch (error: any) {
+            this.logger.warn(`Failed to invalidate caches after vertical bootstrap: ${error.message}`);
         }
     }
 
@@ -353,10 +585,10 @@ export class VerticalsService {
                         fr: 'Y a-t-il une réduction pour les enfants?',
                     },
                     answer: {
-                        es: 'Sí, ofrecemos descuento para niños según el paquete. Cuéntame las edades para darte el precio exacto.',
-                        en: 'Yes, child discount applies depending on the package. Share the ages and I\'ll give you the exact price.',
-                        pt: 'Sim, oferecemos desconto para crianças conforme o pacote. Me diga as idades.',
-                        fr: 'Oui, une réduction enfant s\'applique selon le forfait. Indiquez-moi les âges.',
+                        es: 'Las tarifas para niños dependen del paquete y de la edad. Contame cuántos van y qué edades tienen, y te confirmo el precio exacto.',
+                        en: 'Child rates depend on the package and the age. Tell me how many children and their ages, and I\'ll confirm the exact price.',
+                        pt: 'As tarifas para crianças dependem do pacote e da idade. Me diga quantas vão e as idades, e confirmo o preço exato.',
+                        fr: 'Les tarifs enfants dépendent du forfait et de l\'âge. Dites-moi combien d\'enfants et leurs âges, et je vous confirme le prix exact.',
                     },
                     category: 'tours',
                 },
@@ -368,10 +600,10 @@ export class VerticalsService {
                         fr: 'Dans quelles langues le tour est-il offert?',
                     },
                     answer: {
-                        es: 'Trabajamos con guías en español, inglés y según disponibilidad portugués y francés. Indícame tu idioma preferido.',
-                        en: 'We have guides in Spanish, English and depending on availability Portuguese and French. Let me know your preferred language.',
-                        pt: 'Temos guias em espanhol, inglês e conforme disponibilidade português e francês.',
-                        fr: 'Nous avons des guides en espagnol, anglais et selon disponibilité portugais et français.',
+                        es: 'Depende del tour y de la disponibilidad de guías. Decime qué idioma preferís y te confirmo si lo tenemos para la fecha que buscás.',
+                        en: 'It depends on the tour and guide availability. Tell me your preferred language and I\'ll confirm whether we have it for your date.',
+                        pt: 'Depende do passeio e da disponibilidade de guias. Me diga o idioma que prefere e confirmo se temos para a sua data.',
+                        fr: 'Cela dépend du tour et de la disponibilité des guides. Dites-moi la langue que vous préférez et je vous confirme pour votre date.',
                     },
                     category: 'tours',
                 },
@@ -383,10 +615,10 @@ export class VerticalsService {
                         fr: 'Quelle est la politique d\'annulation?',
                     },
                     answer: {
-                        es: 'Cancelaciones con 48h de anticipación tienen reembolso completo. Menos de 48h aplica cargo del 50%. Sin aviso (no-show) no hay reembolso.',
-                        en: 'Cancellations 48h in advance get a full refund. Within 48h a 50% fee applies. No-shows are non-refundable.',
-                        pt: 'Cancelamentos com 48h de antecedência têm reembolso total. Menos de 48h aplica taxa de 50%.',
-                        fr: 'Annulations 48h à l\'avance : remboursement intégral. Moins de 48h : 50% de frais.',
+                        es: 'Tenemos condiciones de cancelación según cuánto falte para la salida. Contame la fecha de tu reserva y te confirmo exactamente cómo aplica en tu caso.',
+                        en: 'Cancellation terms depend on how far ahead of departure you cancel. Tell me your booking date and I\'ll confirm exactly how it applies to you.',
+                        pt: 'As condições de cancelamento dependem de quanto falta para a saída. Me diga a data da sua reserva e confirmo exatamente como se aplica.',
+                        fr: 'Les conditions d\'annulation dépendent du délai avant le départ. Dites-moi la date de votre réservation et je vous confirme ce qui s\'applique.',
                     },
                     category: 'politicas',
                 },
@@ -414,7 +646,7 @@ export class VerticalsService {
                     schemaName,
                     `INSERT INTO faqs (question, answer, category, is_published, search_tsv)
                      VALUES ($1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2))
-                     ON CONFLICT DO NOTHING`,
+                     ON CONFLICT (question) DO NOTHING`,
                     [q, a, f.category],
                 );
             }
@@ -483,10 +715,10 @@ export class VerticalsService {
                         fr: 'Combien coûte un détartrage?',
                     },
                     answer: {
-                        es: 'El costo de la limpieza varía según el tipo (rutinaria o profunda). Te lo confirmamos exactamente en la valoración previa, que es gratuita.',
-                        en: 'Cleaning cost depends on the type (routine or deep). We\'ll confirm at your free initial assessment.',
-                        pt: 'O custo varia conforme o tipo (rotina ou profunda). Confirmamos na avaliação prévia gratuita.',
-                        fr: 'Le coût varie selon le type (routine ou profond). Nous confirmons à l\'évaluation gratuite.',
+                        es: 'El costo varía según el tipo de limpieza (rutinaria o profunda). Te lo confirmamos en la valoración previa. ¿Querés que te agende una?',
+                        en: 'The cost depends on the type of cleaning (routine or deep). We\'ll confirm it at the initial assessment. Want me to book you one?',
+                        pt: 'O custo varia conforme o tipo de limpeza (rotina ou profunda). Confirmamos na avaliação prévia. Quer que eu agende uma?',
+                        fr: 'Le coût dépend du type de nettoyage (routine ou profond). Nous le confirmons lors de l\'évaluation. Voulez-vous que je vous en réserve une ?',
                     },
                     category: 'costos',
                 },
@@ -498,10 +730,10 @@ export class VerticalsService {
                         fr: 'Comment gérez-vous la peur du dentiste ou la douleur?',
                     },
                     answer: {
-                        es: 'Trabajamos con anestesia local en todos los procedimientos. Para pacientes con ansiedad alta podemos coordinar sedación consciente con la doctora — agenda valoración para evaluarlo.',
-                        en: 'We use local anaesthesia for all procedures. For high anxiety we can coordinate conscious sedation — book an assessment to discuss.',
-                        pt: 'Usamos anestesia local em todos os procedimentos. Para alta ansiedade podemos coordenar sedação consciente.',
-                        fr: 'Nous utilisons l\'anesthésie locale. Pour l\'anxiété élevée, nous pouvons coordonner une sédation consciente.',
+                        es: 'Es una preocupación muy común y la tenemos en cuenta. Las opciones de manejo del dolor y de la ansiedad las evalúa la profesional según tu caso — agendá una valoración y lo conversan.',
+                        en: 'It\'s a very common concern and we take it seriously. Pain and anxiety management options are assessed case by case — book an assessment and you can discuss it.',
+                        pt: 'É uma preocupação muito comum e levamos a sério. As opções de manejo da dor e da ansiedade são avaliadas caso a caso — agende uma avaliação para conversar.',
+                        fr: 'C\'est une préoccupation très courante et nous en tenons compte. Les options de gestion de la douleur et de l\'anxiété s\'évaluent au cas par cas — réservez une évaluation pour en parler.',
                     },
                     category: 'dolor',
                 },
@@ -528,10 +760,10 @@ export class VerticalsService {
                         fr: 'Traitez-vous les urgences dentaires?',
                     },
                     answer: {
-                        es: 'Sí, manejamos urgencias en horario regular. Si tienes dolor intenso, traumatismo o sangrado abundante, te conecto YA con la clínica para coordinar cita inmediata.',
-                        en: 'Yes, we handle emergencies during business hours. If you have severe pain, trauma or heavy bleeding, I\'ll connect you with the clinic right away.',
-                        pt: 'Sim, atendemos emergências em horário regular. Para dor intensa, trauma ou sangramento, conecto você imediatamente.',
-                        fr: 'Oui, nous traitons les urgences pendant les heures d\'ouverture. Pour douleur intense, traumatisme ou saignement, je vous connecte immédiatement.',
+                        es: 'Si tenés dolor intenso, un golpe o sangrado abundante, te conecto YA con la clínica para que lo vean cuanto antes. No esperes a que pase.',
+                        en: 'If you have severe pain, an injury or heavy bleeding, I\'ll connect you with the clinic right now so they can see you as soon as possible. Don\'t wait it out.',
+                        pt: 'Se você está com dor intensa, uma pancada ou sangramento abundante, conecto você AGORA com a clínica para atenderem o quanto antes. Não espere passar.',
+                        fr: 'Si vous avez une douleur intense, un choc ou un saignement abondant, je vous mets en relation avec la clinique tout de suite. N\'attendez pas que ça passe.',
                     },
                     category: 'urgencias',
                 },
@@ -544,7 +776,7 @@ export class VerticalsService {
                     schemaName,
                     `INSERT INTO faqs (question, answer, category, is_published, search_tsv)
                      VALUES ($1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2))
-                     ON CONFLICT DO NOTHING`,
+                     ON CONFLICT (question) DO NOTHING`,
                     [q, a, f.category],
                 );
             }
@@ -569,10 +801,10 @@ export class VerticalsService {
                         fr: 'Avez-vous des options de financement / prêt hypothécaire?',
                     },
                     answer: {
-                        es: 'Sí, varias propiedades aplican a crédito hipotecario y/o subsidios (Mi Casa Ya, VIS). Cuéntame el rango de precio y zona, y te muestro las opciones que aplican.',
-                        en: 'Yes, several listings qualify for mortgage and/or housing subsidies. Tell me your price range and area and I\'ll show what applies.',
-                        pt: 'Sim, vários imóveis aceitam financiamento bancário e/ou subsídios habitacionais.',
-                        fr: 'Oui, plusieurs biens sont éligibles au financement bancaire et/ou aides au logement.',
+                        es: 'La financiación depende de cada propiedad y de tu perfil. Contame el rango de precio y la zona que te interesa, y reviso qué opciones aplican en tu caso.',
+                        en: 'Financing depends on the property and your profile. Tell me your price range and the area you\'re after, and I\'ll check which options apply.',
+                        pt: 'O financiamento depende de cada imóvel e do seu perfil. Me diga a faixa de preço e a região, e verifico quais opções se aplicam.',
+                        fr: 'Le financement dépend du bien et de votre profil. Dites-moi votre budget et le quartier, et je vérifie les options possibles.',
                     },
                     category: 'financiacion',
                 },
@@ -599,10 +831,10 @@ export class VerticalsService {
                         fr: 'Quelle est votre commission / honoraires?',
                     },
                     answer: {
-                        es: 'Para arriendo: el equivalente al primer mes (compartido o asumido por el arrendador, depende del caso). Para venta: porcentaje sobre el cierre, te confirma el asesor al momento de la visita.',
-                        en: 'Rentals: typically equivalent to the first month (split varies). Sales: a percentage of the deal — the agent confirms at the viewing.',
-                        pt: 'Aluguel: equivalente ao primeiro mês. Venda: percentual sobre o fechamento — confirmado na visita.',
-                        fr: 'Location : équivalent au premier mois. Vente : pourcentage sur la transaction — confirmé à la visite.',
+                        es: 'Los honorarios dependen de si es arriendo o venta y del inmueble. Te los confirma el asesor sobre la propiedad concreta que te interese, antes de cualquier compromiso.',
+                        en: 'Fees depend on whether it\'s a rental or a sale, and on the property. The agent confirms them for the specific listing you\'re interested in, before any commitment.',
+                        pt: 'Os honorários dependem de ser aluguel ou venda e do imóvel. O corretor confirma para o imóvel específico que te interessa, antes de qualquer compromisso.',
+                        fr: 'Les honoraires dépendent s\'il s\'agit d\'une location ou d\'une vente, et du bien. Le conseiller vous les confirme pour le bien qui vous intéresse, avant tout engagement.',
                     },
                     category: 'comisiones',
                 },
@@ -645,7 +877,7 @@ export class VerticalsService {
                     schemaName,
                     `INSERT INTO faqs (question, answer, category, is_published, search_tsv)
                      VALUES ($1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2))
-                     ON CONFLICT DO NOTHING`,
+                     ON CONFLICT (question) DO NOTHING`,
                     [q, a, f.category],
                 );
             }
@@ -821,6 +1053,67 @@ export class VerticalsService {
             this.logger.debug(`Enabled ${toolKey} tool on default agent`);
         } catch (error: any) {
             this.logger.warn(`Failed to enable ${toolKey} tool: ${error.message}`);
+        }
+    }
+
+    /**
+     * Devuelve la herramienta de citas al estado que pedía la plantilla, una vez
+     * que el bootstrap ya sembró servicios y disponibilidad.
+     *
+     * `PersonaService.createDefaultAgentFromGoals` corre antes que este bootstrap
+     * y apaga las citas si el schema recién creado todavía no tiene agenda (un
+     * throw ahí dejaría al tenant sin ningún agente). Deja el marcador
+     * `tools.appointments.pendingPrerequisites`, que es lo único que distingue
+     * "la apagamos nosotros" de "la plantilla la trae apagada a propósito"
+     * (tpl_sales, tpl_faq): sin ese marcador no se toca nada.
+     *
+     * El marcador se borra siempre al evaluarlo — si la siembra no alcanzó, la
+     * herramienta queda apagada de forma limpia y el tenant puede encenderla
+     * desde Agente → Herramientas cuando complete su agenda (el gate de
+     * `updateAgent` la validará ahí).
+     */
+    private async restoreAppointmentsTool(schemaName: string): Promise<void> {
+        try {
+            const agents = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+            );
+            const agent = agents?.[0];
+            if (!agent) return;
+
+            const config = agent.config_json || {};
+            const appointments = config.tools?.appointments;
+            if (!appointments || appointments.pendingPrerequisites !== true) return;
+
+            // Mismos dos contadores que exige `assertAppointmentsPrerequisites`.
+            const [counts] = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT
+                    (SELECT COUNT(*)::int FROM services WHERE is_active = true) AS services,
+                    (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true) AS slots`,
+            );
+            const services = Number(counts?.services || 0);
+            const slots = Number(counts?.slots || 0);
+
+            const restored = { ...appointments, enabled: services > 0 && slots > 0 };
+            delete restored.pendingPrerequisites;
+
+            const newConfig = { ...config, tools: { ...config.tools, appointments: restored } };
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                [JSON.stringify(newConfig), agent.id],
+            );
+
+            if (restored.enabled) {
+                this.logger.debug(`Re-enabled appointments tool (services=${services}, slots=${slots})`);
+            } else {
+                this.logger.warn(
+                    `Appointments tool left OFF after vertical bootstrap (services=${services}, slots=${slots}) — the tenant must finish setting up the agenda`,
+                );
+            }
+        } catch (error: any) {
+            this.logger.warn(`Failed to restore appointments tool: ${error.message}`);
         }
     }
 

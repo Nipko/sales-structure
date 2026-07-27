@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { randomUUID } from 'crypto';
@@ -55,15 +55,25 @@ export class ServicesService {
         const duration = durationType === 'open' ? 0 : (data.durationMinutes || data.duration || 30);
         const buffer = data.bufferMinutes || data.buffer || 0;
         const durationMax = durationType === 'flexible' ? (data.durationMinutesMax || null) : null;
-        await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, created_at, updated_at)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, NOW(), NOW())`,
-            [id, data.name, data.description || null, duration,
-             buffer, data.price || 0, data.currency || 'COP', data.color || '#6c5ce7',
-             data.category || null, data.maxConcurrent || 1,
-             JSON.stringify(data.requiredFields || []),
-             durationType, durationMax],
-        );
+        try {
+            await this.prisma.executeInTenantSchema(schemaName,
+                `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, created_at, updated_at)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, NOW(), NOW())`,
+                [id, data.name, data.description || null, duration,
+                 buffer, data.price || 0, data.currency || 'COP', data.color || '#6c5ce7',
+                 data.category || null, data.maxConcurrent || 1,
+                 JSON.stringify(data.requiredFields || []),
+                 durationType, durationMax],
+            );
+        } catch (e: any) {
+            // uidx_services_name (tenant-schema.sql): el motor de reservas lista los
+            // servicios por nombre, así que dos con el mismo nombre son indistinguibles
+            // para el cliente. Sin este catch el usuario recibía un 500 crudo.
+            if (`${e?.code || ''} ${e?.message || ''}`.includes('23505')) {
+                throw new ConflictException(`Ya existe un servicio con el nombre "${data.name}"`);
+            }
+            throw e;
+        }
         // Invalidate booking services cache so next conversation gets fresh list
         if (tenantId) await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
         return this.getById(schemaName, id);

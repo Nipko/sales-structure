@@ -130,20 +130,26 @@ export class PersonaController {
         config.persona.greeting = config.persona.greeting.replace('{company}', companyName).replace('{agentName}', config.persona.name);
         config.persona.fallbackMessage = config.persona.fallbackMessage.replace('{company}', companyName).replace('{agentName}', config.persona.name);
 
-        // Auto-disable appointments if prerequisites (availability slots) aren't configured yet.
-        // The vertical bootstrap seeds services but not slots, so templates with
-        // appointments enabled would be rejected by savePersonaFromYaml otherwise.
+        // Auto-disable appointments if the prerequisites aren't configured yet. Se
+        // chequean LOS DOS (servicios y horarios), que son los mismos que exige el gate
+        // de persona.service: mirando solo los horarios, un tenant con horarios pero sin
+        // servicios hacía fallar el asistente entero con un 400 en vez de degradar.
         if (config.tools?.appointments?.enabled) {
             try {
                 const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { schemaName: true } });
                 const sn = t?.schemaName;
                 if (sn) {
-                    const [slotsRow] = (await this.prisma.$queryRawUnsafe(
-                        `SELECT COUNT(*)::int AS cnt FROM "${sn}".availability_slots WHERE is_active = true`,
+                    // Una sola sentencia: PgBouncer en modo transacción no admite multi-statement.
+                    const [prereqRow] = (await this.prisma.$queryRawUnsafe(
+                        `SELECT
+                            (SELECT COUNT(*)::int FROM "${sn}".availability_slots WHERE is_active = true) AS slots,
+                            (SELECT COUNT(*)::int FROM "${sn}".services WHERE is_active = true) AS services`,
                     )) as any[];
-                    if (Number(slotsRow?.cnt || 0) === 0) {
+                    const slots = Number(prereqRow?.slots || 0);
+                    const services = Number(prereqRow?.services || 0);
+                    if (slots === 0 || services === 0) {
                         config.tools.appointments.enabled = false;
-                        this.logger.log(`Setup wizard: auto-disabled appointments for tenant ${tenantId} (no availability slots configured yet)`);
+                        this.logger.log(`Setup wizard: auto-disabled appointments for tenant ${tenantId} (slots=${slots}, services=${services})`);
                     }
                 }
             } catch {

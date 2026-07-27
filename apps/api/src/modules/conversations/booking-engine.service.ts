@@ -39,6 +39,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
             'Disculpa, no encontré espacios el {date}. ¿Qué otro día te gustaría intentar?'
         ],
         slotUnavailable: 'El horario de las {time} no está disponible. Horarios disponibles: {slots}. ¿Cuál te funciona?',
+        schedulingUnavailable: 'Todavía no tenemos la agenda disponible por acá. Te paso con alguien del equipo para coordinar tu cita.',
+        bookingFailedHandoff: 'No pude completar la reserva por acá. Te paso con alguien del equipo para confirmarla contigo.',
         askName: '{time} seleccionado para {service}. ¿Cuál es tu nombre completo?',
         askEmail: '¡Gracias {name}! Necesito tu correo electrónico para la invitación del calendario.',
         confirmPrompt: 'Por favor confirma:\n{summary}\n¿Lo agendo?',
@@ -71,6 +73,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotsAvailable: 'Available times for {service} on {date}: {slots}. Which time do you prefer?',
         noAvailability: 'No availability on {date}. Would you like to try another date?',
         slotUnavailable: 'The {time} slot is not available. Available times: {slots}. Which one works for you?',
+        schedulingUnavailable: 'Our booking calendar is not available here yet. Let me connect you with someone from our team to arrange your appointment.',
+        bookingFailedHandoff: 'I could not complete the booking here. Let me connect you with someone from our team to confirm it with you.',
         askName: '{time} selected for {service}. What is your full name?',
         askEmail: 'Thanks {name}! I need your email for the calendar invitation.',
         confirmPrompt: 'Please confirm:\n{summary}\nShall I book this?',
@@ -98,6 +102,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotsAvailable: 'Horários disponíveis para {service} em {date}: {slots}. Qual horário prefere?',
         noAvailability: 'Sem disponibilidade em {date}. Gostaria de tentar outra data?',
         slotUnavailable: 'O horário das {time} não está disponível. Horários disponíveis: {slots}. Qual funciona para você?',
+        schedulingUnavailable: 'Ainda não temos a agenda disponível por aqui. Vou te passar para alguém da equipe para combinar seu horário.',
+        bookingFailedHandoff: 'Não consegui concluir o agendamento por aqui. Vou te passar para alguém da equipe para confirmar com você.',
         askName: '{time} selecionado para {service}. Qual é seu nome completo?',
         askEmail: 'Obrigado {name}! Preciso do seu e-mail para o convite do calendário.',
         confirmPrompt: 'Por favor confirme:\n{summary}\nAgendar?',
@@ -125,6 +131,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotsAvailable: 'Créneaux disponibles pour {service} le {date} : {slots}. Quel horaire préférez-vous ?',
         noAvailability: 'Pas de disponibilité le {date}. Souhaitez-vous essayer une autre date ?',
         slotUnavailable: 'Le créneau de {time} n\'est pas disponible. Créneaux disponibles : {slots}. Lequel vous convient ?',
+        schedulingUnavailable: 'La prise de rendez-vous n\'est pas encore disponible par ici. Je vous mets en relation avec une personne de l\'équipe pour organiser votre rendez-vous.',
+        bookingFailedHandoff: 'Je n\'ai pas pu finaliser la réservation par ici. Je vous mets en relation avec une personne de l\'équipe pour la confirmer avec vous.',
         askName: '{time} sélectionné pour {service}. Quel est votre nom complet ?',
         askEmail: 'Merci {name} ! J\'ai besoin de votre e-mail pour l\'invitation du calendrier.',
         confirmPrompt: 'Veuillez confirmer :\n{summary}\nJe réserve ?',
@@ -165,6 +173,16 @@ function msg(lang: string, key: string, vars: Record<string, string> = {}): stri
     return text;
 }
 
+/**
+ * Tool errors the booking flow can NOT recover from by itself:
+ *  - `appointments_not_configured` → the tenant never loaded availability_slots,
+ *    so every date will come back empty (ai-tool-executor.service.ts).
+ *  - `tool_failed` → generic tool crash (DB down, bad schema…), same executor.
+ * Answering "no availability, try another date" to these loops forever, so the
+ * engine tells the truth and escalates to a human instead.
+ */
+const UNRECOVERABLE_TOOL_ERRORS = new Set(['appointments_not_configured', 'tool_failed']);
+
 export interface BookingState {
     step: 'idle' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_name' | 'ask_email' | 'confirm' | 'booked' | 'waiting_flow';
     services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number; currency: string }>;
@@ -184,6 +202,15 @@ export interface EngineResult {
     handled: boolean;
     state: BookingState;
     text?: string;
+    /**
+     * The booking flow hit a dead end that only a human can solve (agenda never
+     * configured, tool failure). Same contract as ProcedureEngineService: the
+     * engine only FLAGS it, the caller runs HandoffService.executeHandoff().
+     * `text` is always populated too, so a caller that ignores these fields still
+     * gives the customer an honest answer instead of a "no availability" loop.
+     */
+    handoff?: boolean;
+    handoffReason?: string;
     listMessage?: {
         body: string;
         buttonText: string;
@@ -262,6 +289,11 @@ export class BookingEngineService {
                 if (result?.services?.length) {
                     state.services = result.services;
                     await this.redis.set(cacheKey, JSON.stringify(result.services), 300); // 5 min TTL
+                } else if (result?.error) {
+                    // The tool FAILED (it didn't answer "there are no services"). Wiping
+                    // the list would make the engine act as if the tenant sold nothing;
+                    // keep whatever we had, same as the catch below.
+                    this.logger.warn(`[Engine] list_services failed (${result.error}) — keeping previous services`);
                 } else {
                     state.services = [];
                 }
@@ -311,6 +343,12 @@ export class BookingEngineService {
                     const avail = await this.toolExecutor.execute(schemaName, tenantId, contactId, 'check_availability', {
                         date: state.date, serviceId: state.serviceId,
                     });
+                    // Dead end (agenda not configured / tool failure): re-asking for a
+                    // date would loop, so be honest and hand over to a human.
+                    const availFatal = this.unrecoverableToolError(avail);
+                    if (availFatal) {
+                        return this.escalateToHuman(state, L, 'schedulingUnavailable', `booking_unavailable:${availFatal}`);
+                    }
                     const realSlots: Array<{ time: string; endTime: string }> = (avail?.available && avail.slots?.length) ? avail.slots : [];
                     if (realSlots.some(s => s.time === state.time)) {
                         state.step = 'confirm';
@@ -690,6 +728,32 @@ export class BookingEngineService {
         return { handled: false, state };
     }
 
+    /**
+     * Returns the tool's error code when the booking flow can't recover from it,
+     * null otherwise. A tool answering `{available:false}` WITHOUT an error code
+     * (e.g. "the business doesn't work that weekday") is a normal outcome and
+     * must keep the existing "try another date" behaviour.
+     */
+    private unrecoverableToolError(result: any): string | null {
+        const code = typeof result?.error === 'string' ? result.error : null;
+        return code && UNRECOVERABLE_TOOL_ERRORS.has(code) ? code : null;
+    }
+
+    /**
+     * Abort the booking flow honestly and ask for a human. Resets the state like
+     * a cancel so nothing keeps re-prompting, and flags the handoff for the caller
+     * (the engine has no conversationId, so it can't run HandoffService itself —
+     * exactly how ProcedureEngineService does it).
+     */
+    private escalateToHuman(state: BookingState, lang: string, msgKey: string, reason: string): EngineResult {
+        this.logger.warn(`[Decide] Booking dead end (${reason}) — escalating to a human`);
+        Object.assign(state, {
+            step: 'idle', serviceId: undefined, serviceName: undefined,
+            date: undefined, slots: undefined, time: undefined, flowStartedAt: undefined,
+        });
+        return { handled: true, state, text: msg(lang, msgKey), handoff: true, handoffReason: reason };
+    }
+
     // ── Show services ──
     private showServices(state: BookingState, lang: string): EngineResult {
         state.step = 'show_services';
@@ -729,6 +793,14 @@ export class BookingEngineService {
                 handled: true, state,
                 text: msg(lang, 'slotsAvailable', { service: state.serviceName || '', date: state.date || '', slots: slotList }),
             };
+        }
+
+        // The tool distinguishes "closed that weekday" (retry another date) from a
+        // dead end (agenda never configured / tool failure). Offering another date
+        // for a dead end loops forever and never reaches a human, so escalate.
+        const fatal = this.unrecoverableToolError(result);
+        if (fatal) {
+            return this.escalateToHuman(state, lang, 'schedulingUnavailable', `booking_unavailable:${fatal}`);
         }
 
         const noDate = state.date;
@@ -808,6 +880,13 @@ export class BookingEngineService {
                 handled: true, state,
                 text: msg(lang, 'booked', { service: state.serviceName || '', date: state.date || '', time: state.time || '', name: state.customerName || '', email: state.customerEmail || '' }),
             };
+        }
+        // Same criterion as checkAvailability: on an unrecoverable failure the
+        // appointment was NOT created and "try another time" is both a lie and a
+        // way to leak the internal error code into the customer's chat.
+        const fatal = this.unrecoverableToolError(result);
+        if (fatal) {
+            return this.escalateToHuman(state, lang, 'bookingFailedHandoff', `booking_failed:${fatal}`);
         }
         return { handled: true, state, text: msg(lang, 'bookingError', { error: result?.error || 'Unknown' }) };
     }

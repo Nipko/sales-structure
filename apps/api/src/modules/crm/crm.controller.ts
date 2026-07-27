@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards, ForbiddenException, Header } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards, ConflictException, ForbiddenException, Header } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { LeadsRepository } from './repositories/leads.repository';
 import { OpportunitiesRepository } from './repositories/opportunities.repository';
@@ -664,11 +664,22 @@ export class CrmController {
             `SELECT COUNT(*)::int AS c FROM pipeline_stages WHERE tenant_id = $1::uuid`, [tenantId]);
         await this.throttle.enforcePlanLimit(tenantId, 'pipelineStages', cnt?.[0]?.c || 0, 'etapas de pipeline');
         const slug = body.slug || body.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-        const result = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, transition_rules)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) RETURNING *`,
-            [tenantId, body.name, slug, body.color || '#3498db', body.position ?? 0, body.default_probability ?? 0, body.sla_hours || null, body.is_terminal ?? false, JSON.stringify(body.transition_rules || [])],
-        );
+        let result: any[] | undefined;
+        try {
+            result = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, transition_rules)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) RETURNING *`,
+                [tenantId, body.name, slug, body.color || '#3498db', body.position ?? 0, body.default_probability ?? 0, body.sla_hours || null, body.is_terminal ?? false, JSON.stringify(body.transition_rules || [])],
+            );
+        } catch (e: any) {
+            // uidx_pipeline_stages_pipeline_slug (tenant-schema.sql): el slug se deriva
+            // del nombre, así que repetir el nombre en el mismo embudo choca. Sin esto
+            // el usuario veía un 500 con el texto crudo de Postgres.
+            if (`${e?.code || ''} ${e?.message || ''}`.includes('23505')) {
+                throw new ConflictException(`Ya existe una etapa con el nombre "${body.name}" en este embudo`);
+            }
+            throw e;
+        }
         return { success: true, data: result?.[0] };
     }
 

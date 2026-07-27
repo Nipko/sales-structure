@@ -1715,6 +1715,23 @@ export class ConversationsService {
                     engineProducedText = engineResult.text || null;
                     tools = []; // NO TOOLS for express phase
                     await this.persistBookingState(schemaName, conversation.id, engineResult.state);
+
+                    // Dead end the booking flow can't solve alone (agenda never
+                    // configured, tool failure): the engine only FLAGS it, we run the
+                    // escalation — same contract as the procedure engine below. Without
+                    // this the customer gets an honest message but no human ever hears
+                    // about it. `escalateToHuman` never returns a flowMessage, so the
+                    // Flow short-circuit above can't skip this.
+                    if (engineResult.handoff) {
+                        if (!engineProducedText) engineProducedText = handoffText(userLanguage).transferring;
+                        try {
+                            await this.handoffService.executeHandoff(
+                                tenantId, conversation.id, msg, engineResult.handoffReason || 'booking_unavailable',
+                            );
+                        } catch (e: any) {
+                            this.logger.warn(`[Booking] handoff failed: ${e.message}`);
+                        }
+                    }
                 } else {
                     // Not booking-related — LLM handles.
                     if (bookingState.services?.length) {

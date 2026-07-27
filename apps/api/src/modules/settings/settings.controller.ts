@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Delete, Body, Param, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { SettingsService } from './settings.service';
@@ -7,6 +7,14 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
+/**
+ * Configuración de PLATAFORMA (tabla global `platform_settings`): claves de
+ * LLM, credenciales de Meta, defaults del motor. Nada de acá es por-tenant,
+ * así que todo el controlador es super_admin: un `tenant_admin` no tiene nada
+ * suyo que leer ni escribir en este store, y sí podía pisar config compartida.
+ * La identidad del negocio del tenant vive en el módulo `business-info` y la
+ * industria en `tenants.industry` (PATCH /tenants/:id).
+ */
 @Controller('settings')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 @ApiBearerAuth()
@@ -18,21 +26,21 @@ export class SettingsController {
     ) { }
 
     @Get()
-    @Roles('super_admin', 'tenant_admin')
+    @Roles('super_admin')
     async getSettings() {
         const settings = await this.settingsService.getSettingsForDisplay();
         return { success: true, data: settings };
     }
 
     @Put()
-    @Roles('super_admin', 'tenant_admin')
-    async updateSettings(@Body() body: Record<string, string>, @Req() req: any) {
-        const isSuperAdmin = req.user?.role === 'super_admin';
+    @Roles('super_admin')
+    async updateSettings(@Body() body: Record<string, string>) {
         const otherSettings: Record<string, string> = {};
 
         for (const [key, value] of Object.entries(body)) {
+            // El body no está validado: un valor no-string reventaría en .includes()
+            if (typeof value !== 'string') continue;
             if (this.llmKeyService.isLlmKeyField(key)) {
-                if (!isSuperAdmin) continue;
                 if (value.includes('•••')) continue;
                 const provider = this.llmKeyService.resolveProviderFromDbKey(key);
                 if (provider) await this.llmKeyService.setKey(provider, value);

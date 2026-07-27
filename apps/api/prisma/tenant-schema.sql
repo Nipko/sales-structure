@@ -2966,3 +2966,66 @@ ALTER TABLE "{{SCHEMA_NAME}}"."deals" ADD COLUMN IF NOT EXISTS "pipeline_id" UUI
 ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "size" VARCHAR(50);
 ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "domain" VARCHAR(255);
 ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "notes" TEXT;
+
+-- ============================================
+-- PARALLLY — Vertical bootstrap idempotency (conflict targets)
+-- ============================================
+-- The per-industry seeder (verticals.service.ts) inserts pipeline stages,
+-- services and FAQs with ON CONFLICT DO NOTHING. Without a unique index that
+-- clause can never fire, so any re-seed (industry change, retry, a future
+-- re-bootstrap endpoint) silently duplicates the seeded content. The indexes
+-- below are the conflict targets the seeder points at.
+--
+-- Additive only (expand-contract safe): a duplicate cleanup plus
+-- CREATE UNIQUE INDEX. Nothing is renamed or dropped.
+--
+-- Ordering note: this block lives at the end of the template on purpose — it
+-- references appointments / service_staff / staff_service_links / deals and the
+-- pipeline_id column added above, all of which must already exist.
+--
+-- Pre-existing duplicates: the cleanup below only removes rows that nothing
+-- else references, so it can never cascade away staff assignments or orphan an
+-- appointment. When a duplicate IS referenced it survives and the
+-- CREATE UNIQUE INDEX fails for that tenant. That is deliberate and safe: all
+-- three paths that apply this template tolerate per-statement failures
+-- (prisma.service.ts splitSqlStatements, scripts/migrate-tenants.js and the
+-- psql pass in deploy.yml), so the deploy continues and only that one tenant is
+-- left without the index. Destroying referenced tenant data to gain an index
+-- would be a far worse trade.
+
+-- ---- pipeline_stages: unique per (pipeline_id, slug) ----
+-- NOT keyed on slug alone: pipeline_stages.pipeline_id exists (multi-pipeline,
+-- plan-gated via maxPipelines) and a second pipeline legitimately reuses the
+-- same slugs ("ganado", "perdido"), which are auto-derived from the stage name.
+-- A unique on slug alone would turn that paid flow into an untranslated 23505.
+-- NULLS NOT DISTINCT (PG15+) is what makes the index still bite for tenants
+-- whose stages have pipeline_id NULL — exactly where the bootstrap writes.
+DELETE FROM "{{SCHEMA_NAME}}"."pipeline_stages" a
+USING "{{SCHEMA_NAME}}"."pipeline_stages" b
+WHERE a."slug" IS NOT NULL
+  AND a."slug" = b."slug"
+  AND a."pipeline_id" IS NOT DISTINCT FROM b."pipeline_id"
+  AND (COALESCE(a."created_at", 'epoch'::timestamp), a."id") > (COALESCE(b."created_at", 'epoch'::timestamp), b."id")
+  AND NOT EXISTS (SELECT 1 FROM "{{SCHEMA_NAME}}"."deals" d WHERE d."stage_id" = a."id");
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_pipeline_stages_pipeline_slug" ON "{{SCHEMA_NAME}}"."pipeline_stages" ("pipeline_id", "slug") NULLS NOT DISTINCT;
+
+-- ---- services: unique per name ----
+-- The booking engine reads services back to the customer as a plain numbered
+-- list, so two rows with the same name are indistinguishable to them anyway.
+DELETE FROM "{{SCHEMA_NAME}}"."services" a
+USING "{{SCHEMA_NAME}}"."services" b
+WHERE a."name" = b."name"
+  AND (COALESCE(a."created_at", 'epoch'::timestamp), a."id") > (COALESCE(b."created_at", 'epoch'::timestamp), b."id")
+  AND NOT EXISTS (SELECT 1 FROM "{{SCHEMA_NAME}}"."appointments" ap WHERE ap."service_id" = a."id")
+  AND NOT EXISTS (SELECT 1 FROM "{{SCHEMA_NAME}}"."service_staff" ss WHERE ss."service_id" = a."id")
+  AND NOT EXISTS (SELECT 1 FROM "{{SCHEMA_NAME}}"."staff_service_links" sl WHERE sl."service_id" = a."id");
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_services_name" ON "{{SCHEMA_NAME}}"."services" ("name");
+
+-- ---- faqs: unique per question ----
+-- No table references faqs, so an exact-duplicate question can be dropped
+-- outright. Oldest row wins.
+DELETE FROM "{{SCHEMA_NAME}}"."faqs" a
+USING "{{SCHEMA_NAME}}"."faqs" b
+WHERE a."question" = b."question"
+  AND (COALESCE(a."created_at", 'epoch'::timestamp), a."id") > (COALESCE(b."created_at", 'epoch'::timestamp), b."id");
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_faqs_question" ON "{{SCHEMA_NAME}}"."faqs" ("question");

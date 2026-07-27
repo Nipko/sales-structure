@@ -42,6 +42,24 @@ export class SettingsService {
     private readonly CACHE_KEY = 'platform:settings';
     private readonly CACHE_TTL = 300; // 5 minutes
 
+    /**
+     * Categorías que este endpoint administra. `platform_settings` es un store
+     * global compartido: además de estas guarda config de otros módulos
+     * (`fiscal.*`, `ops.alert_config`, `sms.packages`) con su propio endpoint y
+     * su propio shape JSON. Un upsert genérico desde acá las pisaría con un
+     * string plano, así que se rechazan.
+     *
+     * Las cuatro primeras son las del shape `PlatformSettings`. Las tres de canal
+     * NO están tipadas ahí pero SÍ las escribe y relee la pantalla super_admin de
+     * Configuración → Canales (`/admin/settings/channels`), que guarda el set
+     * completo de credenciales de plataforma de Meta y Telegram: dejarlas fuera
+     * hacía que esos campos se descartaran en silencio al guardar.
+     */
+    private static readonly ALLOWED_CATEGORIES = [
+        'llm', 'whatsapp', 'chatwoot', 'general',
+        'instagram', 'messenger', 'telegram',
+    ];
+
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
@@ -81,21 +99,30 @@ export class SettingsService {
      * Update one or more settings
      */
     async updateSettings(updates: Record<string, string>): Promise<void> {
+        let applied = 0;
+
         for (const [key, value] of Object.entries(updates)) {
-            if (value === undefined || value === null) continue;
+            if (typeof value !== 'string') continue;
             // Skip masked values (user didn't change them)
             if (value.includes('•••')) continue;
+
+            const category = key.split('.')[0];
+            if (!SettingsService.ALLOWED_CATEGORIES.includes(category)) {
+                this.logger.warn(`Rejected write to out-of-scope platform setting "${key}"`);
+                continue;
+            }
 
             await this.prisma.$executeRaw`
         INSERT INTO platform_settings (key, value, updated_at)
         VALUES (${key}, ${value}, NOW())
         ON CONFLICT (key) DO UPDATE SET value = ${value}, updated_at = NOW()
       `;
+            applied++;
         }
 
         // Invalidate cache
         await this.redis.del(this.CACHE_KEY);
-        this.logger.log(`Updated ${Object.keys(updates).length} settings`);
+        this.logger.log(`Updated ${applied} settings`);
     }
 
     /**

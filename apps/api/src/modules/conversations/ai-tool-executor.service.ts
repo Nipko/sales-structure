@@ -980,24 +980,7 @@ export class AIToolExecutorService {
         );
 
         if (!slots.length) {
-            // Distinguish "tenant never configured any hours" from "tenant does not
-            // work this specific weekday". The first case is a misconfiguration that
-            // must surface — otherwise the bot silently tells every customer there
-            // is no availability and the tenant never finds out.
-            const [anyRow] = (await this.prisma.$queryRawUnsafe(
-                `SELECT COUNT(*)::int AS cnt FROM "${schema}".availability_slots WHERE is_active = true`,
-            )) as any[];
-            const hasAnySlots = Number(anyRow?.cnt || 0) > 0;
-            if (!hasAnySlots) {
-                this.logger.warn(`[Tool] check_availability for schema=${schema} but no active availability_slots exist — misconfiguration`);
-                return {
-                    available: false,
-                    error: 'appointments_not_configured',
-                    message: 'The scheduling system is not configured for this business yet. Tell the customer that automatic booking is not available right now and offer to escalate to a human agent.',
-                    slots: [],
-                };
-            }
-            return { available: false, message: 'Not available on this day of the week. Suggest an alternative date.', slots: [] };
+            return this.buildNoSlotsResult(schema);
         }
 
         // Get existing appointments for that date
@@ -1112,6 +1095,29 @@ export class AIToolExecutorService {
         };
     }
 
+    /**
+     * Result for "no availability slots matched this weekday", distinguishing the
+     * tenant that never configured ANY hours from the one that simply doesn't work
+     * that weekday. The first case is a misconfiguration that must surface: the
+     * booking engine escalates to a human on `appointments_not_configured`, while a
+     * plain `available: false` keeps the normal "try another date" flow.
+     */
+    private async buildNoSlotsResult(schema: string): Promise<any> {
+        const [anyRow] = (await this.prisma.$queryRawUnsafe(
+            `SELECT COUNT(*)::int AS cnt FROM "${schema}".availability_slots WHERE is_active = true`,
+        )) as any[];
+        if (Number(anyRow?.cnt || 0) === 0) {
+            this.logger.warn(`[Tool] check_availability for schema=${schema} but no active availability_slots exist — misconfiguration`);
+            return {
+                available: false,
+                error: 'appointments_not_configured',
+                message: 'The scheduling system is not configured for this business yet. Tell the customer that automatic booking is not available right now and offer to escalate to a human agent.',
+                slots: [],
+            };
+        }
+        return { available: false, message: 'Not available on this day of the week. Suggest an alternative date.', slots: [] };
+    }
+
     private async checkAvailabilityOpen(
         schema: string, date: string, svc: any, staffId?: string,
     ): Promise<any> {
@@ -1127,7 +1133,11 @@ export class AIToolExecutorService {
         );
 
         if (!slots.length) {
-            return { available: false, message: 'Not available on this day of the week. Suggest an alternative date.', slots: [] };
+            // Same distinction as the fixed-duration path: an open-duration service
+            // (tourism, photography…) whose tenant never loaded any hours must surface
+            // the misconfiguration, otherwise the booking engine loops "no availability"
+            // forever and never escalates.
+            return this.buildNoSlotsResult(schema);
         }
 
         // For open services, return the availability windows as "slots" (no specific times)

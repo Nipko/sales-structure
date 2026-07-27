@@ -4,6 +4,8 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { VERTICAL_REGISTRY, getVerticalDefinition } from '../verticals/vertical-definitions';
+import type { TenantVerticalConfig } from '@parallext/shared';
 
 @Injectable()
 export class TenantsService {
@@ -204,14 +206,64 @@ export class TenantsService {
     }
 
     /**
-     * Update tenant settings
+     * Update tenant settings.
+     *
+     * Ojo con `industry`: escribir la columna no alcanza. Lo que el runtime
+     * lee (terminología del prompt, etiquetas del sidebar, KPIs del panel) es
+     * `settings.verticalConfig`, cacheado en Redis bajo `vertical:{tenantId}`
+     * — y `getVerticalConfig` prioriza ese objeto sobre la columna. Sin
+     * reconstruirlo e invalidar esa clave, el tenant que corrige su industria
+     * se queda con la vertical vieja para siempre (el bot le sigue diciendo
+     * "paciente" después de pasar de salud a retail).
      */
     async update(id: string, data: Partial<{ name: string; industry: string; language: string; isActive: boolean; settings: any }>) {
+        // Una sola lectura previa: las settings actuales para fusionarlas y la
+        // industria actual para saber si realmente cambió.
+        const existing = await this.prisma.tenant.findUnique({
+            where: { id },
+            select: { industry: true, settings: true },
+        });
+        if (!existing) {
+            throw new NotFoundException(`Tenant ${id} not found`);
+        }
+        const existingSettings = (existing.settings as any) || {};
+
         // Merge settings with existing instead of replacing
         if (data.settings) {
-            const existing = await this.prisma.tenant.findUnique({ where: { id }, select: { settings: true } });
-            const existingSettings = (existing?.settings as any) || {};
             data.settings = { ...existingSettings, ...data.settings };
+        }
+
+        const nextIndustry = typeof data.industry === 'string' && data.industry.length > 0
+            ? data.industry
+            : null;
+        let industryChanged = false;
+
+        if (nextIndustry && nextIndustry !== existing.industry) {
+            industryChanged = true;
+
+            if (!Object.prototype.hasOwnProperty.call(VERTICAL_REGISTRY, nextIndustry)) {
+                // getVerticalDefinition cae a "otro" en silencio; al menos que quede
+                // el rastro de por qué el tenant terminó con terminología genérica.
+                this.logger.warn(
+                    `Tenant ${id}: industry "${nextIndustry}" is not a known vertical slug — falling back to "otro"`,
+                );
+            }
+
+            const definition = getVerticalDefinition(nextIndustry);
+            const base: any = data.settings ?? existingSettings;
+            const rebuilt: TenantVerticalConfig = {
+                industry: nextIndustry,
+                // El subType pertenece a la vertical anterior ("dental" dentro de
+                // salud, "tours" dentro de turismo): no sobrevive al cambio.
+                subType: null,
+                terminology: definition.terminology,
+                sidebar: definition.sidebar,
+                dashboard: definition.dashboard,
+                bookingEnabled: definition.bookingEnabled,
+            };
+            const nextSettings = { ...base, verticalConfig: rebuilt };
+            delete nextSettings.subType;
+            data.settings = nextSettings;
         }
 
         const tenant = await this.prisma.tenant.update({
@@ -222,6 +274,31 @@ export class TenantsService {
         // Invalidate cache
         await this.redis.del(`tenant:${id}:config`);
         await this.redis.del(`tenant:${id}:schema`);
+
+        if (industryChanged) {
+            // Clave propia de la config vertical: la leen VerticalsService y el
+            // pipeline de conversaciones (TTL 10 min). Sin este del, el cambio
+            // ni siquiera se ve en la conversación en curso.
+            await this.redis.del(`vertical:${id}`);
+            this.logger.log(`Tenant ${id}: industry ${existing.industry} → ${nextIndustry}, verticalConfig rebuilt`);
+
+            // Rastro para diagnóstico: el cambio NO re-siembra el contenido de la
+            // vertical (etapas del embudo, FAQs, servicios ni la persona del
+            // agente siguen siendo los de la industria anterior).
+            await this.prisma.auditLog.create({
+                data: {
+                    tenantId: id,
+                    action: 'tenant_industry_changed',
+                    resource: 'tenant',
+                    details: {
+                        from: existing.industry,
+                        to: nextIndustry,
+                        verticalConfigRebuilt: true,
+                        contentReseeded: false,
+                    },
+                },
+            }).catch(() => { });
+        }
 
         return tenant;
     }

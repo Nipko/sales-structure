@@ -6,6 +6,8 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as yaml from 'js-yaml';
 import { TenantConfig } from '@parallext/shared';
+import { VERTICAL_REGISTRY } from '../verticals/vertical-definitions';
+import { PERSONA_CACHE_CHANNELS } from '../../common/utils/persona-cache.util';
 
 /**
  * Persona Configuration Engine
@@ -306,6 +308,32 @@ export class PersonaService {
     }
 
     /**
+     * Fusiona la clave `tools` del config entrante con la del agente ya guardado.
+     *
+     * Por qué: el asistente guiado guarda un config recién clonado de la plantilla, y
+     * ninguna plantilla declara los flags de herramienta que el bootstrap vertical
+     * enciende (gimnasios, restaurantes, seguros, educación, servicios del hogar, pet
+     * services, fotografía). Con un REPLACE del config_json esos flags se borraban
+     * para siempre al completar el asistente, sin forma de recuperarlos desde la UI.
+     *
+     * Cómo se resuelve la tensión con apagar una herramienta a propósito: toda clave
+     * PRESENTE en el config entrante pisa a la guardada (el editor de agente manda
+     * siempre el set completo de capacidades que conoce, incluidas las apagadas con
+     * `enabled: false`), y solo se conservan las claves que el emisor ni menciona.
+     */
+    private mergeAgentTools(incomingConfig: any, existingConfig: any): any {
+        const existingTools = existingConfig?.tools;
+        if (!existingTools || typeof existingTools !== 'object' || Array.isArray(existingTools)) {
+            return incomingConfig;
+        }
+        const incomingTools = incomingConfig?.tools;
+        const mergedTools = (incomingTools && typeof incomingTools === 'object' && !Array.isArray(incomingTools))
+            ? this.deepMergeConfig(existingTools, incomingTools)
+            : { ...existingTools };
+        return { ...(incomingConfig || {}), tools: mergedTools };
+    }
+
+    /**
      * Build a sensible default persona for tenants that haven't configured one yet.
      * Uses the tenant name from the DB if available.
      */
@@ -578,8 +606,12 @@ export class PersonaService {
      */
     private async invalidatePersonaCaches(tenantId: string, bindings: string[] = []): Promise<void> {
         await this.redis.del(`persona:${tenantId}:active`);
-        const allChannels = ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'];
-        for (const ch of allChannels) {
+        // Debe cubrir TODO tipo de canal que llegue a getPersonaForChannel. 'email' y
+        // 'web_widget' faltaban: el widget lo llama explícitamente
+        // (conversations.service.ts, hilo del widget) y quedaba sirviendo la persona
+        // vieja hasta que venciera el TTL. VerticalsService.invalidateRuntimeCaches
+        // comparte esta misma constante.
+        for (const ch of PERSONA_CACHE_CHANNELS) {
             await this.redis.del(`persona:${tenantId}:channel:${ch}`);
         }
         // Per-account keys: the live pipeline ALWAYS reads the per-account key
@@ -631,6 +663,15 @@ export class PersonaService {
                 currentCount,
                 maxAgents: planFeatures.maxAgents,
             });
+        }
+
+        // Mismo gate que el camino legacy (`savePersonaFromYaml`): no se crea un agente
+        // con la herramienta de citas encendida si el tenant todavía no tiene servicios
+        // ni horarios de disponibilidad. Sin esto el agendador ofrece turnos, pide fecha
+        // y responde "no hay disponibilidad" para siempre. Va ANTES de tocar los canales
+        // de otros agentes para que un rechazo no deje efectos a medias.
+        if (data.configJson?.tools?.appointments?.enabled === true) {
+            await this.assertAppointmentsPrerequisites(tenantId, schemaName);
         }
 
         // If setting as default, unset other defaults
@@ -712,12 +753,31 @@ export class PersonaService {
         await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
 
-        // Capture prior bindings so we can invalidate their per-account caches too.
+        // Capture prior bindings so we can invalidate their per-account caches too,
+        // and the stored config so `tools` can be merged instead of replaced.
         const priorAgent = await this.prisma.$queryRawUnsafe(
-            `SELECT channel_bindings FROM "${schemaName}".agent_personas WHERE id = $1::uuid`,
+            `SELECT channel_bindings, config_json FROM "${schemaName}".agent_personas WHERE id = $1::uuid`,
             agentId,
         ) as any[];
         const priorBindings: string[] = priorAgent[0]?.channel_bindings || [];
+        const priorConfig: any = priorAgent[0]?.config_json || {};
+
+        // `tools` se FUSIONA con lo guardado (ver mergeAgentTools): lo que el emisor
+        // manda gana, lo que no menciona sobrevive. Así el asistente guiado deja de
+        // borrar los flags de herramienta que sembró el bootstrap vertical.
+        const configToSave = data.configJson !== undefined
+            ? this.mergeAgentTools(data.configJson, priorConfig)
+            : undefined;
+
+        // Gate de prerrequisitos de agenda: se aplica cuando este guardado ENCIENDE las
+        // citas. Deliberadamente no se bloquea cuando ya venían encendidas — si no, un
+        // tenant con la agenda incompleta no podría editar ni el saludo de su agente, ni
+        // llegar a apagar la herramienta, que es justo el arreglo que necesita.
+        const appointmentsWasOn = priorConfig?.tools?.appointments?.enabled === true;
+        const appointmentsWillBeOn = configToSave?.tools?.appointments?.enabled === true;
+        if (appointmentsWillBeOn && !appointmentsWasOn) {
+            await this.assertAppointmentsPrerequisites(tenantId, schemaName);
+        }
 
         if (data.isDefault) {
             await this.prisma.$executeRawUnsafe(
@@ -755,7 +815,7 @@ export class PersonaService {
         let paramIdx = 1;
 
         if (data.name !== undefined) { sets.push(`name = $${paramIdx}`); params.push(data.name); paramIdx++; }
-        if (data.configJson !== undefined) { sets.push(`config_json = $${paramIdx}::jsonb`); params.push(JSON.stringify(data.configJson)); paramIdx++; }
+        if (configToSave !== undefined) { sets.push(`config_json = $${paramIdx}::jsonb`); params.push(JSON.stringify(configToSave)); paramIdx++; }
         if (data.channels !== undefined) { sets.push(`channels = $${paramIdx}::text[]`); params.push(data.channels); paramIdx++; }
         if (data.channelBindings !== undefined) { sets.push(`channel_bindings = $${paramIdx}::text[]`); params.push(data.channelBindings); paramIdx++; }
         if (data.scheduleMode !== undefined) { sets.push(`schedule_mode = $${paramIdx}`); params.push(data.scheduleMode); paramIdx++; }
@@ -1172,9 +1232,12 @@ export class PersonaService {
     /**
      * Vertical-specific agent templates by industry (Spanish primary market).
      * Returns null when the industry has no registered templates.
+     *
+     * Para `lang !== 'es'` la persona se reconstruye desde VERTICAL_REGISTRY, que ya
+     * tiene cada industria traducida a los 4 idiomas (ver localizeVerticalTemplates).
      */
     getVerticalTemplates(industry: string, lang = 'es'): any[] | null {
-        // Currently only Spanish vertical templates — English fallback returns the generic builtins
+        // Las ~40 plantillas de abajo están escritas solo en español
         const salud = [
             {
                 id: 'tpl_salud_recepcion',
@@ -2508,7 +2571,88 @@ export class PersonaService {
             otro,
         };
 
-        return templateMap[industry.toLowerCase()] || null;
+        const templates = templateMap[industry.toLowerCase()] || null;
+        if (!templates || templates.length === 0 || lang === 'es') return templates;
+        return this.localizeVerticalTemplates(templates, industry, lang);
+    }
+
+    /** El registro de verticales usa 'education'; el mapa de plantillas acepta ambos. */
+    private static readonly VERTICAL_REGISTRY_ALIASES: Record<string, string> = {
+        educacion: 'education',
+    };
+
+    /** Parte un párrafo de reglas en frases: el registro las guarda como texto corrido
+     *  y el lector del prompt (buildGuidedPersonaBlock) espera un array. */
+    private splitRuleSentences(text: string): string[] {
+        return (text || '')
+            .split('.')
+            .map(s => s.trim())
+            .filter(Boolean)
+            .map(s => `${s}.`);
+    }
+
+    /**
+     * Construye la plantilla vertical en el idioma del tenant.
+     *
+     * Las plantillas verticales están escritas solo en español, así que hasta ahora un
+     * tenant brasileño o francés veía el panel, las FAQs y las etapas en su idioma y el
+     * bot le hablaba en castellano (`lang` se declaraba y nunca se usaba). Traducir las
+     * ~40 plantillas a mano es inviable; VERTICAL_REGISTRY, en cambio, ya tiene la
+     * persona de cada industria en es/en/pt/fr.
+     *
+     * Se conserva TODO lo estructural de la plantilla española (id, icono, `tools`,
+     * `rag`, `requiredFields`) y se reemplaza solo lo textual. Se devuelve UNA plantilla
+     * por industria porque el registro define una sola persona: clonarla en las 2-4
+     * variantes daría tarjetas indistinguibles con las mismas reglas.
+     */
+    private localizeVerticalTemplates(templates: any[], industry: string, lang: string): any[] {
+        const key = industry.toLowerCase();
+        const definition = VERTICAL_REGISTRY[PersonaService.VERTICAL_REGISTRY_ALIASES[key] || key];
+        const agentDef = definition?.agent;
+        // Sin definición traducida es preferible la plantilla española a un agente vacío.
+        if (!agentDef) return templates;
+
+        const pick = (field: Record<string, string> | undefined): string =>
+            (field?.[lang] || field?.['es'] || '');
+
+        // El registro no define mensaje de fallback; dejarlo en español metería
+        // castellano en un agente francés.
+        const fallbackByLang: Record<string, string> = {
+            es: 'Déjame conectarte con alguien del equipo para ayudarte mejor.',
+            en: 'Let me connect you with a team member who can help you further.',
+            pt: 'Vou te conectar com alguém da equipe para te ajudar melhor.',
+            fr: 'Je vous mets en relation avec un membre de l\'équipe pour mieux vous aider.',
+        };
+
+        const base = templates[0];
+        const config = JSON.parse(JSON.stringify(base.config_json || {}));
+        config.persona = {
+            ...(config.persona || {}),
+            name: pick(agentDef.name),
+            role: pick(agentDef.role),
+            greeting: pick(agentDef.greeting),
+            fallbackMessage: fallbackByLang[lang] || fallbackByLang['es'],
+            personality: {
+                ...(config.persona?.personality || {}),
+                tone: agentDef.tone,
+                formality: agentDef.formality,
+            },
+        };
+        config.behavior = {
+            ...(config.behavior || {}),
+            rules: this.splitRuleSentences(pick(agentDef.rules)),
+            forbiddenTopics: pick(agentDef.forbiddenTopics).split('|').map(s => s.trim()).filter(Boolean),
+            handoffTriggers: pick(agentDef.handoffTriggers).split('|').map(s => s.trim()).filter(Boolean),
+        };
+
+        return [{
+            ...base,
+            // El nombre de la tarjeta es también el que se guarda en agent_personas.name:
+            // usar el del registro evita el desfase "la lista dice X, el bot dice Y".
+            name: pick(agentDef.name),
+            description: pick(agentDef.role),
+            config_json: config,
+        }];
     }
 
     /**
@@ -2562,13 +2706,40 @@ export class PersonaService {
             }
         }
 
+        const configJson = this.deepMergeConfig(this.buildDefaultPersona(tenantId), template.config_json);
+
+        // Gate de prerrequisitos de agenda, versión BLANDA. Este método corre durante el
+        // alta y ANTES del bootstrap vertical (auth.service: primero el agente, después
+        // bootstrapVertical), así que el schema recién creado todavía no tiene servicios
+        // ni horarios: un throw acá dejaría al tenant sin ningún agente (el llamador
+        // traga la excepción), que es peor que el problema. Se apaga la herramienta y se
+        // deja rastro; el bootstrap vertical la vuelve a encender cuando siembra
+        // servicios + disponibilidad.
+        //
+        // El marcador `pendingPrerequisites` es lo que distingue "la apagamos
+        // nosotros" de "la plantilla la trae apagada a propósito" (tpl_sales,
+        // tpl_faq…). `VerticalsService.restoreAppointmentsTool` solo reenciende
+        // cuando ve ese marcador, y lo borra al evaluarlo.
+        if (configJson?.tools?.appointments?.enabled === true) {
+            const { services, slots } = await this.countAppointmentsPrerequisites(schemaName);
+            if (services === 0 || slots === 0) {
+                configJson.tools = {
+                    ...configJson.tools,
+                    appointments: { ...configJson.tools.appointments, enabled: false, pendingPrerequisites: true },
+                };
+                this.logger.warn(
+                    `Default agent for tenant ${tenantId}: appointments tool disabled at signup (services=${services}, slots=${slots}) — the vertical bootstrap re-enables it once the agenda is seeded`,
+                );
+            }
+        }
+
         try {
             await this.prisma.$executeRawUnsafe(
                 `INSERT INTO "${schemaName}".agent_personas (name, template_id, config_json, is_active, is_default, channels, schedule_mode, created_by)
                  VALUES ($1, $2, $3::jsonb, true, true, $4::text[], '24_7', $5)`,
                 template.name,
                 template.id,
-                JSON.stringify(this.deepMergeConfig(this.buildDefaultPersona(tenantId), template.config_json)),
+                JSON.stringify(configJson),
                 ['whatsapp', 'instagram', 'messenger', 'telegram', 'sms'],
                 createdBy || 'onboarding',
             );
@@ -2578,15 +2749,31 @@ export class PersonaService {
         }
     }
 
+    /**
+     * Cuenta los prerrequisitos del agendador (servicios + horarios activos).
+     * Si las tablas todavía no existen se devuelve 0/0: para el llamador es lo mismo
+     * que una agenda sin configurar, y evita convertir un schema a medio crear en un 500.
+     */
+    private async countAppointmentsPrerequisites(schemaName: string): Promise<{ services: number; slots: number }> {
+        try {
+            const [servicesRow] = (await this.prisma.$queryRawUnsafe(
+                `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".services WHERE is_active = true`,
+            )) as any[];
+            const [slotsRow] = (await this.prisma.$queryRawUnsafe(
+                `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".availability_slots WHERE is_active = true`,
+            )) as any[];
+            return {
+                services: Number(servicesRow?.cnt || 0),
+                slots: Number(slotsRow?.cnt || 0),
+            };
+        } catch (e: any) {
+            this.logger.warn(`Could not count appointment prerequisites for schema ${schemaName}: ${e.message}`);
+            return { services: 0, slots: 0 };
+        }
+    }
+
     private async assertAppointmentsPrerequisites(tenantId: string, schemaName: string): Promise<void> {
-        const [servicesRow] = (await this.prisma.$queryRawUnsafe(
-            `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".services WHERE is_active = true`,
-        )) as any[];
-        const [slotsRow] = (await this.prisma.$queryRawUnsafe(
-            `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".availability_slots WHERE is_active = true`,
-        )) as any[];
-        const services = Number(servicesRow?.cnt || 0);
-        const slots = Number(slotsRow?.cnt || 0);
+        const { services, slots } = await this.countAppointmentsPrerequisites(schemaName);
 
         if (services === 0 || slots === 0) {
             const missing: string[] = [];

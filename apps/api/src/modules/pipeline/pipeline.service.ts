@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -329,22 +329,38 @@ export class PipelineService {
             posParams,
         );
 
-        await this.prisma.executeInTenantSchema(
-            schema,
-            `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, pipeline_id)
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::uuid)`,
-            [
-                tenantId,
-                data.name,
-                data.slug || data.name.toLowerCase().replace(/\s+/g, '_'),
-                data.color,
-                maxPos?.[0]?.next_pos || 0,
-                data.defaultProbability || 0,
-                data.slaHours ?? null,
-                data.isTerminal ?? false,
-                data.pipelineId || null,
-            ],
-        );
+        try {
+            await this.prisma.executeInTenantSchema(
+                schema,
+                `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, pipeline_id)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::uuid)`,
+                [
+                    tenantId,
+                    data.name,
+                    data.slug || data.name.toLowerCase().replace(/\s+/g, '_'),
+                    data.color,
+                    maxPos?.[0]?.next_pos || 0,
+                    data.defaultProbability || 0,
+                    data.slaHours ?? null,
+                    data.isTerminal ?? false,
+                    data.pipelineId || null,
+                ],
+            );
+        } catch (e: any) {
+            // uidx_pipeline_stages_pipeline_slug: el slug se deriva del nombre, así que
+            // dos etapas con el mismo nombre en el mismo embudo chocan. Sin este catch
+            // el usuario recibía un 500 con el texto crudo de Postgres.
+            if (this.isDuplicateStageError(e)) {
+                throw new ConflictException(`Ya existe una etapa con el nombre "${data.name}" en este embudo`);
+            }
+            throw e;
+        }
+    }
+
+    /** 23505 sobre el índice único de (pipeline_id, slug). */
+    private isDuplicateStageError(e: any): boolean {
+        const msg = `${e?.code || ''} ${e?.message || ''}`;
+        return msg.includes('23505') || msg.includes('uidx_pipeline_stages_pipeline_slug');
     }
 
     // ============================================

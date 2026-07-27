@@ -1,8 +1,26 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
 import type { FAQ } from '@parallext/shared';
+
+/**
+ * Plegado de diacríticos para la búsqueda de FAQs.
+ *
+ * `search_tsv` se indexa y se consulta con la configuración `simple`, que es
+ * sensible a tildes: quien escribe "horario de atencion" no encuentra "¿Cuál es
+ * el horario de atención?" y viceversa. En un teclado de celular pasan las dos
+ * cosas todo el tiempo, y las FAQs semilla de las 18 verticales ahora vienen
+ * correctamente acentuadas.
+ *
+ * Se usa `translate()` (inmutable, sin extensiones) en vez de `unaccent`, que
+ * exigiría CREATE EXTENSION en la base de producción. Se aplica solo como rama
+ * extra del OR sobre las columnas vivas, así que no hace falta reindexar
+ * `search_tsv` ni migrar nada: las FAQs ya cargadas por los tenants siguen
+ * matcheando igual que antes y además ganan el match sin tildes.
+ */
+const FOLD_FROM = 'áàâãäéèêëíìîïóòôõöúùûüçñýÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝ';
+const FOLD_TO = 'aaaaaeeeeiiiiooooouuuucnyAAAAAEEEEIIIIOOOOOUUUUCNY';
 
 /**
  * FAQs service — first-class structured Q&A pairs.
@@ -83,17 +101,27 @@ export class FaqsService {
 
     async create(tenantId: string, input: UpsertFaqInput): Promise<FAQ> {
         const schemaName = await this.ensureSchema(tenantId);
-        const rows = await this.prisma.$queryRawUnsafe(
-            `INSERT INTO "${schemaName}"."faqs" (question, answer, category, tags, order_index, is_published, search_tsv)
-             VALUES ($1, $2, $3, $4::text[], $5, $6,
-                     to_tsvector('simple', $1 || ' ' || $2 || ' ' || COALESCE($3, '')))
-             RETURNING id, question, answer, category, tags, order_index, is_published, views, created_at, updated_at`,
-            input.question, input.answer,
-            input.category ?? null,
-            input.tags ?? [],
-            input.orderIndex ?? 0,
-            input.isPublished ?? true,
-        ) as any[];
+        let rows: any[];
+        try {
+            rows = await this.prisma.$queryRawUnsafe(
+                `INSERT INTO "${schemaName}"."faqs" (question, answer, category, tags, order_index, is_published, search_tsv)
+                 VALUES ($1, $2, $3, $4::text[], $5, $6,
+                         to_tsvector('simple', $1 || ' ' || $2 || ' ' || COALESCE($3, '')))
+                 RETURNING id, question, answer, category, tags, order_index, is_published, views, created_at, updated_at`,
+                input.question, input.answer,
+                input.category ?? null,
+                input.tags ?? [],
+                input.orderIndex ?? 0,
+                input.isPublished ?? true,
+            ) as any[];
+        } catch (e: any) {
+            // uidx_faqs_question (tenant-schema.sql): la pregunta es la clave de
+            // idempotencia del sembrado por vertical, así que no puede repetirse.
+            if (`${e?.code || ''} ${e?.message || ''}`.includes('23505')) {
+                throw new ConflictException('Ya existe una pregunta frecuente con ese mismo texto');
+            }
+            throw e;
+        }
         await this.invalidateCache(tenantId);
         return this.rowToFaq(rows[0]);
     }
@@ -140,6 +168,7 @@ export class FaqsService {
      */
     async search(tenantId: string, query: string, limit = 5): Promise<FAQ[]> {
         const schemaName = await this.ensureSchema(tenantId);
+        const fold = (expr: string) => `translate(${expr}, '${FOLD_FROM}', '${FOLD_TO}')`;
         const rows = await this.prisma.$queryRawUnsafe(
             `SELECT id, question, answer, category, tags, order_index, is_published, views, created_at, updated_at,
                     ts_rank(search_tsv, plainto_tsquery('simple', $1)) AS rank
@@ -147,7 +176,9 @@ export class FaqsService {
              WHERE is_published = true
                AND (search_tsv @@ plainto_tsquery('simple', $1)
                     OR question ILIKE '%' || $1 || '%'
-                    OR answer ILIKE '%' || $1 || '%')
+                    OR answer ILIKE '%' || $1 || '%'
+                    OR ${fold('question')} ILIKE '%' || ${fold('$1')} || '%'
+                    OR ${fold('answer')} ILIKE '%' || ${fold('$1')} || '%')
              ORDER BY rank DESC, order_index ASC
              LIMIT $2`,
             query, limit,

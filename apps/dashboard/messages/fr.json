@@ -2928,7 +2928,10 @@
     "callbackUrl": "URL de Callback",
     "messengerTitle": "Facebook Messenger",
     "messengerPage": "Page",
-    "instagramTitle": "Instagram DM"
+    "instagramTitle": "Instagram DM",
+    "credentialExpiring": "Identifiants expirent dans {days} j",
+    "credentialNeedsReauth": "Reconnecter : identifiants expires",
+    "credentialHint": "Le canal apparait connecte, mais ses identifiants ne permettent plus d'envoyer. Reconnectez le canal pour reautoriser."
   },
   "agent": {
     "title": "Agent IA",

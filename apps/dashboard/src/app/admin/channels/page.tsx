@@ -74,6 +74,9 @@ export default function ChannelsOverviewPage() {
     const router = useRouter();
     const [connectedChannels, setConnectedChannels] = useState<string[]>([]);
     const [accountCounts, setAccountCounts] = useState<Record<string, number>>({});
+    // Credential health per channel: a channel can be "connected" and still be
+    // unable to send (expired/revoked token), which used to be invisible here.
+    const [credHealth, setCredHealth] = useState<Record<string, { status: string; days: number | null }>>({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -84,11 +87,20 @@ export default function ChannelsOverviewPage() {
                 if (Array.isArray(list)) {
                     setConnectedChannels(list.map((ch: any) => ch.channel_type || ch.channelType));
                     const counts: Record<string, number> = {};
+                    const health: Record<string, { status: string; days: number | null }> = {};
                     for (const ch of list) {
                         const type = ch.channel_type || ch.channelType;
-                        if (type) counts[type] = (counts[type] || 0) + 1;
+                        if (type) {
+                            counts[type] = (counts[type] || 0) + 1;
+                            const st = ch.credentialStatus;
+                            // Keep the worst status across accounts of the same type.
+                            if (st && st !== 'ok' && st !== 'unknown') {
+                                health[type] = { status: st, days: ch.credentialDaysToExpiry ?? null };
+                            }
+                        }
                     }
                     setAccountCounts(counts);
+                    setCredHealth(health);
                 }
             } catch (err) {
                 console.error("Failed to load channel overview", err);
@@ -176,6 +188,26 @@ export default function ChannelsOverviewPage() {
                                     {isConnected ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
                                     {isConnected ? t('connected') : t('disconnected')}
                                 </div>
+
+                                {/* Credential health: "connected" is not the same as
+                                    "able to send". An expired or revoked token kept
+                                    showing a green badge while replies silently failed. */}
+                                {isConnected && credHealth[ch.key] && (
+                                    <div
+                                        className={cn(
+                                            "flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold border",
+                                            credHealth[ch.key].status === 'expiring'
+                                                ? "bg-[rgba(255,170,0,0.12)] text-[var(--warning)] border-[rgba(255,170,0,0.25)]"
+                                                : "bg-[rgba(255,71,87,0.12)] text-[var(--danger)] border-[rgba(255,71,87,0.25)]"
+                                        )}
+                                        title={t('credentialHint')}
+                                    >
+                                        <AlertCircle size={12} />
+                                        {credHealth[ch.key].status === 'expiring'
+                                            ? t('credentialExpiring', { days: credHealth[ch.key].days ?? 0 })
+                                            : t('credentialNeedsReauth')}
+                                    </div>
+                                )}
 
                                 {/* Multi-account count / plan limit */}
                                 {showCount && isConnected && (

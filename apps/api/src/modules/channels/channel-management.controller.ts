@@ -94,10 +94,39 @@ export class ChannelManagementController {
             }
         }
 
+        // Credential health. is_active only flips on an explicit disconnect, so a
+        // credential that expired or failed to refresh still rendered as
+        // "connected" with no warning until a customer message silently went
+        // unanswered. Surface it so the tenant can re-authorise BEFORE it breaks.
+        const credsByType = new Map<string, { rotationState: string; expiresAt: Date | null }>();
+        try {
+            const creds = await this.prisma.whatsappCredential.findMany({
+                where: { tenantId },
+                select: { credentialType: true, rotationState: true, expiresAt: true },
+            }) as Array<{ credentialType: string; rotationState: string; expiresAt: Date | null }>;
+            for (const c of creds) credsByType.set(c.credentialType, c);
+        } catch { /* best-effort: never block the overview on credential health */ }
+
+        const now = Date.now();
+        const credentialHealth = (channelType: string) => {
+            // whatsapp credentials are the ones tracked in whatsapp_credentials;
+            // other channels report 'unknown' rather than a false 'ok'.
+            const c = credsByType.get('system_user_token') || credsByType.get(channelType);
+            if (!c) return { status: 'unknown' as const, expiresAt: null, daysToExpiry: null };
+            if (c.rotationState === 'error') return { status: 'error' as const, expiresAt: c.expiresAt, daysToExpiry: null };
+            if (c.rotationState === 'revoked') return { status: 'revoked' as const, expiresAt: c.expiresAt, daysToExpiry: null };
+            if (!c.expiresAt) return { status: 'ok' as const, expiresAt: null, daysToExpiry: null };
+            const days = Math.floor((new Date(c.expiresAt).getTime() - now) / 86_400_000);
+            if (days < 0) return { status: 'expired' as const, expiresAt: c.expiresAt, daysToExpiry: days };
+            if (days <= 7) return { status: 'expiring' as const, expiresAt: c.expiresAt, daysToExpiry: days };
+            return { status: 'ok' as const, expiresAt: c.expiresAt, daysToExpiry: days };
+        };
+
         return {
             success: true,
             data: accounts.map((a: any) => {
                 const assigned = byBinding[`${a.channelType}:${a.accountId}`] || byType[a.channelType] || null;
+                const health = credentialHealth(a.channelType);
                 return {
                     id: a.id,
                     channelType: a.channelType,
@@ -107,6 +136,11 @@ export class ChannelManagementController {
                     metadata: a.metadata,
                     assignedAgent: assigned,
                     needsAssignment: !assigned,
+                    credentialStatus: health.status,
+                    credentialExpiresAt: health.expiresAt,
+                    credentialDaysToExpiry: health.daysToExpiry,
+                    // A channel can be 'connected' and still unable to send.
+                    needsReauth: health.status === 'error' || health.status === 'expired' || health.status === 'revoked',
                 };
             }),
         };

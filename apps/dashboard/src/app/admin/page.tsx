@@ -95,6 +95,7 @@ export default function AdminDashboard() {
     const [verticalLoading, setVerticalLoading] = useState(false);
     const [isLive, setIsLive] = useState(false);
     const [needsChannel, setNeedsChannel] = useState(false);
+    const [wizardSkipped, setWizardSkipped] = useState(false);
     const [platformStats, setPlatformStats] = useState({
         totalTenants: 0,
         totalUsers: 0,
@@ -109,6 +110,13 @@ export default function AdminDashboard() {
     useEffect(() => {
         async function checkSetupWizard() {
             if (!user?.tenantId || user?.role === "super_admin") return;
+            // El agente es la configuración del negocio entero: empujar a un
+            // tenant_agent al asistente le daba control sobre la persona que atiende a
+            // todos los clientes. Los avisos los ve también el supervisor, que sí puede
+            // conectar canales; el asistente guiado queda para el admin.
+            const canConfigureAgent = user?.role === "tenant_admin";
+            const canConnectChannels = canConfigureAgent || user?.role === "tenant_supervisor";
+            if (!canConnectChannels) return;
             // Loop kill switch — if we just came back from /admin/setup-wizard
             // and the flag is still unset (backend write failed for some
             // reason), do NOT redirect again. Stay on /admin so the user is
@@ -119,12 +127,21 @@ export default function AdminDashboard() {
 
             try {
                 const res = await api.getSetupStatus(user.tenantId);
-                if (res.success && !res.data?.setupWizardCompleted) {
+                if (!res.success) return;
+
+                if (!res.data?.setupWizardCompleted) {
+                    if (!canConfigureAgent) return;
                     sessionStorage.setItem(justBouncedKey, String(Date.now()));
                     window.location.href = "/admin/setup-wizard";
-                } else if (res.success && res.data?.setupWizardCompleted && !res.data?.hasAnyChannel) {
-                    setNeedsChannel(true);
+                    return;
                 }
+
+                // Apretó "Saltar": el asistente quedó marcado como completo para no
+                // reabrir el bucle de redirect, y hasta ahora eso lo borraba del sistema
+                // de guía — no existe ningún enlace al wizard en toda la app. Ofrecerle
+                // retomarlo en vez de dejarlo con un agente sin personalizar.
+                if (canConfigureAgent && res.data?.setupWizardSkipped) setWizardSkipped(true);
+                if (!res.data?.hasAnyChannel) setNeedsChannel(true);
             } catch { /* proceed to dashboard */ }
         }
         checkSetupWizard();
@@ -316,6 +333,22 @@ export default function AdminDashboard() {
                     </div>
                     <Link href="/admin/channels/whatsapp" className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:text-neutral-900 transition-colors">
                         {tSetup("connectBannerCta")} <ArrowUpRight size={14} />
+                    </Link>
+                </div>
+            )}
+            {/* Retomar el asistente guiado. Sin esto, "Saltar" era irreversible: no
+                existe ningún otro enlace al wizard en toda la aplicación. */}
+            {wizardSkipped && !needsChannel && (
+                <div className="mb-6 rounded-xl border border-indigo-300 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 p-4 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center shrink-0">
+                        <Sparkles size={18} className="text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">{tSetup("resumeBannerTitle")}</p>
+                        <p className="text-xs text-indigo-700 dark:text-indigo-400/80 mt-0.5">{tSetup("resumeBannerDesc")}</p>
+                    </div>
+                    <Link href="/admin/setup-wizard" className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+                        {tSetup("resumeBannerCta")} <ArrowUpRight size={14} />
                     </Link>
                 </div>
             )}

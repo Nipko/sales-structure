@@ -7,7 +7,7 @@ import {
     AlertCircle, Instagram, Facebook, Linkedin,
     Phone, Mail, Info,
 } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { TIMEZONE_GROUPS, TIMEZONE_VALUES, DEFAULT_TIMEZONE, normalizeTimezone } from "@parallext/shared";
@@ -386,6 +386,7 @@ const selectClasses = cn(inputClasses, "appearance-none cursor-pointer dark:bg-n
 
 export default function OnboardingPage() {
     const t = useTranslations('onboarding');
+    const locale = useLocale();
     const [step, setStep] = useState(0);
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -583,6 +584,9 @@ export default function OnboardingPage() {
                 ? [...goals.filter((g) => g !== "other"), `other:${goalOther}`]
                 : goals,
             referral: referral === "other" ? `other:${referralOther}` : referral,
+            // El idioma con el que está usando el dashboard es mejor señal que el huso
+            // horario para decidir en qué idioma se siembra el agente y el contenido.
+            locale,
             plan: planSlug,
             cardTokenId: planSlug !== "emprendedor" && planSlug !== "starter" ? cardTokenId : undefined,
         };

@@ -1800,11 +1800,14 @@ export const api = {
 // HTTP method helpers
 // ============================================
 
-async function apiGet<T = any>(endpoint: string): Promise<{ success: boolean; data?: T; error?: string }> {
+// `errorCode` transporta el código estable que lanza el backend
+// (`{ error: 'email_taken', message }`), para que la UI traduzca en vez de mostrar
+// el mensaje crudo en inglés. `error` sigue siendo el texto, como respaldo.
+async function apiGet<T = any>(endpoint: string): Promise<{ success: boolean; data?: T; error?: string; errorCode?: string }> {
     try {
         const res = await authFetch(endpoint);
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}` };
+        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };
@@ -1825,28 +1828,28 @@ async function apiPost<T = any>(endpoint: string, body: any): Promise<{ success:
     }
 }
 
-async function apiPut<T = any>(endpoint: string, body: any): Promise<{ success: boolean; data?: T; error?: string }> {
+async function apiPut<T = any>(endpoint: string, body: any): Promise<{ success: boolean; data?: T; error?: string; errorCode?: string }> {
     try {
         const res = await authFetch(endpoint, {
             method: "PUT",
             body: JSON.stringify(body),
         });
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}` };
+        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };
     }
 }
 
-async function apiPatch<T = any>(endpoint: string, body: any): Promise<{ success: boolean; data?: T; error?: string }> {
+async function apiPatch<T = any>(endpoint: string, body: any): Promise<{ success: boolean; data?: T; error?: string; errorCode?: string }> {
     try {
         const res = await authFetch(endpoint, {
             method: "PATCH",
             body: JSON.stringify(body),
         });
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}` };
+        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };

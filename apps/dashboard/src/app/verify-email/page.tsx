@@ -59,12 +59,14 @@ export default function VerifyEmailPage() {
         try {
             const result = await api.changePendingEmail(email);
             if (!result.success) {
-                const code = result.error || "";
+                const code = result.errorCode || "";
                 setError(
                     code === "email_taken" ? t('emailTakenError')
                         : code === "invalid_email" ? t('invalidEmailError')
                             : code === "email_send_failed" ? t('emailDeliveryFailed')
-                                : code || t('connectionError')
+                                // Sin código conocido cae al mensaje del backend, que ya
+                                // viene en español (p. ej. el de correos desechables).
+                                : result.error || t('connectionError')
                 );
                 setSavingEmail(false);
                 return;
@@ -106,7 +108,9 @@ export default function VerifyEmailPage() {
             try {
                 const result = await api.verifyEmail(code);
                 if (!result.success) {
-                    setError(result.error || t('wrongCode'));
+                    setError(result.errorCode === "invalid_verification_code"
+                        ? t('wrongCode')
+                        : result.error || t('wrongCode'));
                     setIsSubmitting(false);
                     return;
                 }
@@ -178,7 +182,7 @@ export default function VerifyEmailPage() {
             if (!result.success) {
                 // El backend ahora devuelve 503 email_send_failed cuando el correo no
                 // llegó a salir, en vez de responder success y dejar al usuario esperando.
-                if (result.error === "email_send_failed") {
+                if (result.errorCode === "email_send_failed" || result.error === "email_send_failed") {
                     setDeliveryFailed(true);
                     setError(t('emailDeliveryFailed'));
                 } else {

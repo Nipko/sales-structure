@@ -38,6 +38,7 @@ export default function SignupPage() {
         email: "", password: "", firstName: "", lastName: "",
     });
     const [error, setError] = useState("");
+    const [emailTaken, setEmailTaken] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const [googleReady, setGoogleReady] = useState(false);
@@ -125,7 +126,13 @@ export default function SignupPage() {
             const data = await res.json();
 
             if (!res.ok || !data.success) {
-                setError(data.message || t('accountCreationError'));
+                // El backend devuelve un código estable en `error` además del mensaje.
+                // Traducimos por código; el mensaje del backend queda de respaldo.
+                const code = data.error || "";
+                setEmailTaken(code === "email_taken");
+                setError(
+                    code === "email_taken" ? t('emailTakenError') : (data.message || t('accountCreationError'))
+                );
                 setIsSubmitting(false);
                 return;
             }
@@ -184,10 +191,22 @@ export default function SignupPage() {
                         {t('signupSubtitle')}
                     </p>
 
-                    {/* Error */}
+                    {/* Error. Si el correo ya tiene cuenta, el camino útil es iniciar
+                        sesión — ofrecerlo ahí mismo en vez de dejarlo en un callejón. */}
                     {error && (
-                        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
-                            <AlertCircle size={16} /> {error}
+                        <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
+                            <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                            <span>
+                                {error}
+                                {emailTaken && (
+                                    <>
+                                        {" "}
+                                        <a href="/login" className="underline font-medium hover:no-underline">
+                                            {t('goToLogin')}
+                                        </a>
+                                    </>
+                                )}
+                            </span>
                         </div>
                     )}
 

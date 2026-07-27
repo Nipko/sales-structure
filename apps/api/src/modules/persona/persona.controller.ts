@@ -317,6 +317,11 @@ export class PersonaController {
             success: true,
             data: {
                 setupWizardCompleted: settings.setupWizardCompleted || false,
+                // "Saltar" también marca completed (para no reabrir el bucle de
+                // redirect), así que sin este flag no había forma de distinguir a quien
+                // terminó el asistente de quien lo abandonó — y el segundo desaparecía
+                // del sistema de guía para siempre.
+                setupWizardSkipped: settings.setupWizardSkipped || false,
                 setupWizardTemplate: settings.setupWizardTemplate || null,
                 setupWizardChannels: settings.setupWizardChannels || [],
                 hasPersona,

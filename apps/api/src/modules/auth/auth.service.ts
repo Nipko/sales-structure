@@ -299,7 +299,13 @@ export class AuthService {
             where: { email: data.email },
         });
         if (existingUser) {
-            throw new ConflictException('Email already registered');
+            // Código estable + mensaje: el dashboard traduce por `error` y ofrece "ir a
+            // iniciar sesión". Antes le mostrábamos "Email already registered", en
+            // inglés y sin salida, a una PYME en su primer minuto de producto.
+            throw new ConflictException({
+                error: 'email_taken',
+                message: 'Ese correo ya tiene una cuenta.',
+            });
         }
 
         this.validatePasswordStrength(data.password);
@@ -884,11 +890,13 @@ export class AuthService {
     async changePendingEmail(userId: string, rawEmail: string) {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
-        if (user.emailVerified) throw new BadRequestException('email_already_verified');
+        if (user.emailVerified) {
+            throw new BadRequestException({ error: 'email_already_verified', message: 'Tu correo ya está verificado.' });
+        }
 
         const email = (rawEmail || '').trim().toLowerCase();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-            throw new BadRequestException('invalid_email');
+            throw new BadRequestException({ error: 'invalid_email', message: 'Ese correo no parece válido.' });
         }
         validateEmailDomain(email);
 
@@ -896,7 +904,7 @@ export class AuthService {
         // con el correo actual, así que rechazarlo sería castigar el uso más obvio.
         if (email !== user.email.trim().toLowerCase()) {
             const taken = await this.prisma.user.findUnique({ where: { email } });
-            if (taken) throw new ConflictException('email_taken');
+            if (taken) throw new ConflictException({ error: 'email_taken', message: 'Ese correo ya tiene una cuenta.' });
 
             await this.prisma.user.update({
                 where: { id: userId },
@@ -916,7 +924,10 @@ export class AuthService {
         if (!user.emailVerifyCode || !user.emailVerifyExpires ||
             user.emailVerifyExpires < new Date() ||
             !this.timingSafeEqual(user.emailVerifyCode, code)) {
-            throw new BadRequestException('Invalid or expired verification code');
+            throw new BadRequestException({
+                error: 'invalid_verification_code',
+                message: 'El código es incorrecto o ya venció.',
+            });
         }
 
         await this.prisma.user.update({
@@ -1497,6 +1508,49 @@ export class AuthService {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
 
+        // Idempotencia. La transacción comitea el tenant ANTES de los pasos 4-7 (schema,
+        // agente, business info, bootstrap vertical, billing), que van cada uno en su
+        // try/catch. Si el usuario reintentaba —doble clic, red cortada después del
+        // commit, retry del cliente— el slug ya existía y el alta moría en un 409 en
+        // inglés: su cuenta ya estaba creada pero él seguía atrapado en el formulario.
+        if (user.tenantId) {
+            this.logger.log(`[Onboarding] Reintento sobre un tenant ya creado (${user.tenantId}) — devuelvo sesión en vez de recrear`);
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: user.tenantId },
+                select: { name: true },
+            });
+
+            let verticalConfig: any = null;
+            try {
+                verticalConfig = await this.verticalsService.getVerticalConfig(user.tenantId);
+            } catch { /* no crítico */ }
+
+            const prevSession = await this.redis.getJson<SessionData>(`session:${user.id}`);
+            const existingSid = prevSession?.sid || await this.createSession(user.id, user.tenantId);
+            const { accessToken, refreshToken } = await this.generateTokens({
+                sub: user.id,
+                email: user.email,
+                role: user.role as UserRole,
+                tenantId: user.tenantId,
+            }, { sid: existingSid });
+
+            return {
+                accessToken,
+                refreshToken,
+                user: {
+                    id: user.id,
+                    email: user.email,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    role: user.role,
+                    tenantId: user.tenantId,
+                    tenantName: tenant?.name,
+                    onboardingCompleted: user.onboardingCompleted,
+                },
+                verticalConfig,
+            };
+        }
+
         // Accept nested format from onboarding wizard
         const company = data.company || {};
         const companyName = company.name || data.companyName;
@@ -1509,21 +1563,22 @@ export class AuthService {
         const chatReasons = data.goals || data.chatReasons;
         const referralSource = data.referral || data.referralSource;
 
-        // Generate slug from company name
-        const slug = companyName
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '');
-
-        // Check slug uniqueness
-        const existingTenant = await this.prisma.tenant.findUnique({
-            where: { slug },
-        });
-        if (existingTenant) {
-            throw new ConflictException('A company with a similar name already exists');
-        }
-
+        // Slug a partir del nombre. Los homónimos se desambiguan con sufijo en vez de
+        // rechazarse: "Ferretería El Tornillo" es un nombre plausible en dos ciudades
+        // distintas, y hasta ahora el segundo que se registraba recibía un 409 en
+        // inglés sin ninguna instrucción de qué hacer.
+        const slug = await this.findAvailableTenantSlug(companyName);
         const schemaName = `tenant_${slug.replace(/-/g, '_')}`;
+
+        // Idioma del tenant. Preferimos el locale REAL con el que el usuario está
+        // usando el dashboard; el huso horario es solo el respaldo. Antes esto era
+        // 'es-CO' fijo, así que un tenant brasileño arrancaba con agente, FAQs y
+        // etiquetas en español teniendo el portugués completo disponible.
+        const clientLocale = typeof data.locale === 'string' ? data.locale.slice(0, 2).toLowerCase() : '';
+        const tenantLangCode = ['es', 'en', 'pt', 'fr'].includes(clientLocale)
+            ? clientLocale
+            : this.inferLanguageFromTimezone(timezone);
+        const tenantLanguage = `${tenantLangCode}-${this.inferCountryFromTimezone(timezone)}`;
 
         // Atomic transaction: create tenant + link user
         const result = await this.prisma.$transaction(async (tx: any) => {
@@ -1534,8 +1589,12 @@ export class AuthService {
                     slug,
                     industry: industry || 'other',
                     schemaName,
-                    plan: 'starter',
-                    language: 'es-CO',
+                    // El plan real lo fija createTrialSubscription más abajo, en esta
+                    // misma request, a partir de lo que el usuario eligió. Sembrar
+                    // 'starter' acá solo servía para que hubiera una ventana en la que
+                    // el tenant decía un plan que nadie había pedido.
+                    plan: data.plan || data.planSlug || 'emprendedor',
+                    language: tenantLanguage,
                     settings: {
                         website,
                         socialLinks,
@@ -1627,7 +1686,7 @@ export class AuthService {
         // 6.5. Bootstrap vertical-specific defaults (pipeline stages, agent persona, FAQs, services)
         let verticalConfig: any = null;
         try {
-            const tenantLang = this.inferLanguageFromTimezone(timezone);
+            const tenantLang = tenantLangCode;
             const verticalIndustry = industry || 'otro';
             const verticalSubType = data.subType || company.subType || null;
             console.log(`[Onboarding] Starting vertical bootstrap: industry="${verticalIndustry}", subType="${verticalSubType}", lang="${tenantLang}", tenant="${result.tenant.id}"`);
@@ -1946,6 +2005,32 @@ export class AuthService {
         let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
         decrypted += decipher.final('utf8');
         return decrypted;
+    }
+
+    /**
+     * Slug único para el tenant. Normaliza acentos y ñ (sin esto "Peluquería Ñandú"
+     * perdía las letras acentuadas y colisionaba con nombres distintos), y desambigua
+     * homónimos con sufijo numérico en vez de rechazar el alta.
+     */
+    private async findAvailableTenantSlug(companyName: string | undefined): Promise<string> {
+        const base = (companyName || '')
+            .normalize('NFD')
+            .replace(/[̀-ͯ]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '')
+            .slice(0, 50) || 'empresa';
+
+        for (let i = 0; i < 50; i++) {
+            const candidate = i === 0 ? base : `${base}-${i + 1}`;
+            const taken = await this.prisma.tenant.findUnique({
+                where: { slug: candidate },
+                select: { id: true },
+            });
+            if (!taken) return candidate;
+        }
+        // 50 homónimos es inverosímil; si pasa, un sufijo temporal antes de rendirse.
+        return `${base}-${Date.now().toString(36)}`;
     }
 
     /**

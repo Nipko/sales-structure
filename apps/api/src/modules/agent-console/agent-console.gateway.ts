@@ -291,12 +291,12 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
         );
 
         // Notify assigned agent
-        this.server.to(`agent:${data.agentId}`).emit('inbox:assigned', {
+        this.server?.to(`agent:${data.agentId}`).emit('inbox:assigned', {
             conversationId: data.conversationId,
         });
 
         // Notify tenant room
-        this.server.to(`tenant:${meta.tenantId}`).emit('inbox:refresh');
+        this.server?.to(`tenant:${meta.tenantId}`).emit('inbox:refresh');
     }
 
     @SubscribeMessage('conversation:resolve')
@@ -324,7 +324,7 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
             meta.agentId,
         );
 
-        this.server.to(`tenant:${meta.tenantId}`).emit('inbox:refresh');
+        this.server?.to(`tenant:${meta.tenantId}`).emit('inbox:refresh');
         this.server
             .to(`conversation:${data.conversationId}`)
             .emit('conversation:resolved', { conversationId: data.conversationId });

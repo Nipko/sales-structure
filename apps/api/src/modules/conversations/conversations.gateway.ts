@@ -107,25 +107,38 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
     }
 
     // --- Emit Events ---
+    //
+    // Every emit below is optional-chained ON PURPOSE: these run inside the AI
+    // pipeline, which since the inbound queue executes in the WORKER container.
+    // The worker boots with NestFactory.createApplicationContext (no HTTP
+    // server), so @WebSocketServer() is never populated there and `this.server`
+    // is undefined. Dropping the `?.` makes the whole customer turn throw with
+    // "Cannot read properties of undefined (reading 'to')" — which is exactly
+    // how this was found in production, with replies silently failing.
+    //
+    // Consequence to be aware of: a turn processed by the worker cannot push
+    // real-time updates to the dashboard. The data is persisted correctly and
+    // shows on refresh/poll. Fixing it properly means a socket.io Redis adapter
+    // so any process can emit into the room.
 
     emitNewMessage(tenantId: string, message: any, conversationId: string) {
-        this.server.to(tenantId).emit('newMessage', { conversationId, message });
+        this.server?.to(tenantId).emit('newMessage', { conversationId, message });
     }
 
     emitConversationUpdated(tenantId: string, conversation: any) {
-        this.server.to(tenantId).emit('conversationUpdated', conversation);
+        this.server?.to(tenantId).emit('conversationUpdated', conversation);
     }
 
     emitAppointmentCreated(tenantId: string, appointment: any) {
-        this.server.to(tenantId).emit('appointmentCreated', appointment);
+        this.server?.to(tenantId).emit('appointmentCreated', appointment);
     }
 
     emitAppointmentUpdated(tenantId: string, appointment: any) {
-        this.server.to(tenantId).emit('appointmentUpdated', appointment);
+        this.server?.to(tenantId).emit('appointmentUpdated', appointment);
     }
 
     emitCalendarSynced(tenantId: string) {
-        this.server.to(tenantId).emit('calendarSynced', {});
+        this.server?.to(tenantId).emit('calendarSynced', {});
     }
 
     /** Relay appointment WebSocket events from EventEmitter (avoids circular DI) */
@@ -151,7 +164,7 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
         // role check only gated whether to emit, not who received it.
         for (const [socketId, meta] of this.connectedClients) {
             if (meta.role === 'super_admin' || meta.role === 'tenant_admin') {
-                this.server.to(socketId).emit('system:llm_alert', payload);
+                this.server?.to(socketId).emit('system:llm_alert', payload);
             }
         }
     }

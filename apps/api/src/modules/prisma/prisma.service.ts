@@ -351,6 +351,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 lowerQuery.includes('response_payload_json') ||
                 lowerQuery.includes('payload_json') ||
                 lowerQuery.includes('error_message') ||
+                lowerQuery.includes('results') ||
+                lowerQuery.includes('json') ||
                 // pgvector literals ('[0.1,0.2,...]') are ~20-25k chars; never truncate
                 // them or the `::vector` cast throws "invalid input syntax".
                 lowerQuery.includes('embedding') ||

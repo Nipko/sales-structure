@@ -118,6 +118,7 @@ function AIProvidersContent() {
                                 <Key size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                                 <Input
                                     type={isVisible ? "text" : "password"}
+                                    autoComplete="new-password"
                                     value={value}
                                     onChange={e => {
                                         setValues(prev => ({ ...prev, [provider.key]: e.target.value }));

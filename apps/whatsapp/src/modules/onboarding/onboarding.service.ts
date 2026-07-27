@@ -965,9 +965,16 @@ export class OnboardingService {
    */
   private async storeEncryptedCredential(tenantId: string, accessToken: string, expiresInSeconds?: number) {
     const encryptedValue = this.encryptToken(accessToken);
-    const expiresAt = expiresInSeconds
+
+    // expiresInSeconds === 0 means PERMANENT (a System User token). It must clear
+    // any previous expiry, not be ignored: the old code only assigned expiresAt
+    // when truthy, so upgrading a 60-day long-lived token to a permanent one left
+    // the stale date behind. The platform monitor then read that date and warned
+    // that a token which never expires was about to expire — a false alarm that
+    // sent operators chasing a re-authorisation nobody needed.
+    const expiresAt = expiresInSeconds && expiresInSeconds > 0
       ? new Date(Date.now() + expiresInSeconds * 1000)
-      : undefined;
+      : null;
 
     // Upsert — reemplaza si ya existe
     const existing = await this.prisma.whatsappCredential.findFirst({
@@ -977,10 +984,10 @@ export class OnboardingService {
     const data: any = {
       encryptedValue,
       rotationState: 'active',
+      // Always written, including null, so the stored expiry always reflects the
+      // token actually held.
+      expiresAt,
     };
-    if (expiresAt) {
-      data.expiresAt = expiresAt;
-    }
 
     if (existing) {
       await this.prisma.whatsappCredential.update({

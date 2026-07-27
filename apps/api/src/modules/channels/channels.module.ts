@@ -15,6 +15,7 @@ import { OutboundQueueService } from './outbound-queue.service';
 import { ChannelTokenService } from './channel-token.service';
 import { ChannelManagementController } from './channel-management.controller';
 import { InstagramTokenRefreshService } from './instagram-token-refresh.service';
+import { WhatsappTokenHealthService } from './whatsapp-token-health.service';
 import { WebhookTapService } from './webhook-tap.service';
 import { WebhookTapController } from './webhook-tap.controller';
 import { InboundQueueModule } from '../inbound/inbound-queue.module';
@@ -53,6 +54,7 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
         OutboundQueueService,
         ChannelTokenService,
         InstagramTokenRefreshService,
+        WhatsappTokenHealthService,
         WebhookTapService,
     ],
     exports: [ChannelGatewayService, WhatsAppAdapter, SmsAdapter, EmailAdapter, EmailChannelService, OutboundQueueService, ChannelTokenService, WebhookTapService],

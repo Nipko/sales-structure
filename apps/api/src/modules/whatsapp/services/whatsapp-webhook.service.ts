@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ConversationsService } from '../../conversations/conversations.service';
+import { InboundQueueService } from '../../inbound/inbound-queue.service';
 import { ComplianceService } from '../../analytics/compliance.service';
 import { WhatsappConnectionService } from './whatsapp-connection.service';
 import { WhatsAppAdapter } from '../../channels/whatsapp/whatsapp.adapter';
@@ -22,8 +22,7 @@ export class WhatsappWebhookService {
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
-    @Inject(forwardRef(() => ConversationsService))
-    private readonly conversationsService: ConversationsService,
+    private readonly inboundQueue: InboundQueueService,
     private readonly complianceService: ComplianceService,
     private readonly whatsappConnection: WhatsappConnectionService,
     private readonly whatsappAdapter: WhatsAppAdapter,
@@ -262,7 +261,11 @@ export class WhatsappWebhookService {
          };
 
          try {
-             await this.conversationsService.processIncomingMessage(normalizedMsg as any);
+             // Durable handoff, same as every other channel. This route (the API's
+             // OWN WhatsApp webhook, separate from the whatsapp microservice) was
+             // the last one still running the AI turn inline behind an early 200:
+             // an API restart killed it with nothing left to retry.
+             await this.inboundQueue.enqueue(normalizedMsg as any);
          } catch (error: any) {
              this.logger.error(`Error processing incoming message: ${error.message}`, error.stack);
              // Release the idempotency claim so Meta's retry re-delivers this message

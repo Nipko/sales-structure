@@ -8,6 +8,7 @@ import { WhatsappMessagingService } from './services/whatsapp-messaging.service'
 import { PrismaModule } from '../prisma/prisma.module';
 import { HttpModule } from '@nestjs/axios';
 import { ConversationsModule } from '../conversations/conversations.module';
+import { InboundQueueModule } from '../inbound/inbound-queue.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { TenantsModule } from '../tenants/tenants.module';
@@ -19,6 +20,7 @@ import { WhatsappCryptoService } from './services/whatsapp-crypto.service';
     HttpModule,
     TenantsModule,
     forwardRef(() => ConversationsModule),
+    InboundQueueModule,
     AnalyticsModule,
     forwardRef(() => ChannelsModule),
   ],

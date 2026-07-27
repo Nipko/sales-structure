@@ -15,7 +15,10 @@ import { BillingService } from '../billing/billing.service';
 import { VerticalsService } from '../verticals/verticals.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PlatformSmsService } from './platform-sms.service';
-import { JwtPayload, UserRole, TIMEZONE_COUNTRY, SPANISH_SPEAKING_COUNTRIES } from '@parallext/shared';
+// Solo TIPOS desde @parallext/shared: ese paquete expone TypeScript crudo, así que
+// un import de valor haría que el JS compilado lo require() y el arranque muera.
+import { JwtPayload, UserRole } from '@parallext/shared';
+import { TIMEZONE_COUNTRY, SPANISH_SPEAKING_COUNTRIES } from '../../common/utils/billing-country.util';
 import { validateEmailDomain } from '../../common/utils/email.util';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import {

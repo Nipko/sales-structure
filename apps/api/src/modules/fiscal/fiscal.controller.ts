@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Patch, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
-import { SUPPORTED_BILLING_COUNTRIES } from '@parallext/shared';
+import { SUPPORTED_BILLING_COUNTRIES } from '../../common/utils/billing-country.util';
 import type { Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -84,6 +84,10 @@ export class FiscalController {
             data: {
                 fiscalData,
                 billingCountry: tenant.billingCountry,
+                // La lista la manda el servidor para que el selector del dashboard y la
+                // validación del PATCH no puedan divergir (y para no duplicar el mapa
+                // de países en el front).
+                supportedCountries: SUPPORTED_BILLING_COUNTRIES,
                 required: gateEnabled && billingCountryRequiresFiscalData(tenant.billingCountry),
                 complete: isFiscalDataComplete(tenant.settings),
             },

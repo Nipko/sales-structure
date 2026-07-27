@@ -2,7 +2,6 @@
 
 import { useTranslations, useLocale } from "next-intl";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { SUPPORTED_BILLING_COUNTRIES } from "@parallext/shared";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -53,6 +52,9 @@ export default function FiscalPage() {
     const { activeTenantId } = useTenant();
 
     const [billingCountry, setBillingCountry] = useState("");
+    // La lista válida la manda el backend (misma fuente que valida el PATCH), así el
+    // selector no puede ofrecer un país que el servidor va a rechazar.
+    const [supportedCountries, setSupportedCountries] = useState<string[]>([]);
     const [savingCountry, setSavingCountry] = useState(false);
     const [savedCountry, setSavedCountry] = useState(false);
 
@@ -60,10 +62,10 @@ export default function FiscalPage() {
     const countryOptions = useMemo(() => {
         let display: Intl.DisplayNames | null = null;
         try { display = new Intl.DisplayNames([locale], { type: "region" }); } catch { /* sin soporte → código */ }
-        return SUPPORTED_BILLING_COUNTRIES
+        return supportedCountries
             .map((code) => ({ code, label: display?.of(code) || code }))
             .sort((a, b) => a.label.localeCompare(b.label, locale));
-    }, [locale]);
+    }, [locale, supportedCountries]);
 
     const [data, setData] = useState<FiscalData>({
         documentType: "6", documentId: "", dv: "", legalOrganizationId: "1",
@@ -90,7 +92,11 @@ export default function FiscalPage() {
         try {
             const [dRes, iRes] = await Promise.all([api.getFiscalData(tenantId), api.getFiscalInvoices(tenantId)]);
             if (dRes.success && (dRes.data as any)?.fiscalData) setData((prev) => ({ ...prev, ...(dRes.data as any).fiscalData }));
-            if (dRes.success) setBillingCountry(((dRes.data as any)?.billingCountry as string) || "");
+            if (dRes.success) {
+                setBillingCountry(((dRes.data as any)?.billingCountry as string) || "");
+                const list = (dRes.data as any)?.supportedCountries;
+                if (Array.isArray(list)) setSupportedCountries(list);
+            }
             if (iRes.success) setInvoices((iRes.data as FiscalInvoice[]) || []);
         } catch {
             setError(tc("connectionError"));
@@ -208,7 +214,12 @@ export default function FiscalPage() {
 
             {/* País de facturación. Decide si se exige NIT y si la factura DIAN aplica;
                 se infería del huso horario en el alta y no había forma de corregirlo. */}
-            <section className="space-y-3 rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <section className={cn(
+                "space-y-3 rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900",
+                // Sin lista del backend no hay nada que elegir: mejor no mostrar un
+                // desplegable vacío.
+                countryOptions.length === 0 && "hidden",
+            )}>
                 <div>
                     <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("billingCountry")}</h2>
                     <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t("billingCountryHint")}</p>

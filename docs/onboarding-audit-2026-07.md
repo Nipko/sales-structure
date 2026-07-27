@@ -127,6 +127,24 @@ LANDING (parallly-chat.cloud)
 
 **Fuera de tabla, anotado y sin verificar [sv]:** el ítem "Conectar un canal" del checklist lleva a páginas prohibidas para `tenant_agent` y rebota al inbox (`OnboardingChecklist.tsx:24-34` vs `roles.ts:124-149`); el checklist es `hidden lg:block` — invisible en móvil (`:180`); cualquier rol del tenant es empujado al setup-wizard y puede reconfigurar el agente del negocio (`admin/page.tsx:111`, `persona.controller.ts:14`); las FAQs sembradas por vertical nunca llegan a la IA porque ninguna plantilla enciende `tools.faqs` (`verticals.service.ts:279-300` vs `conversations.service.ts:1772`); las verticales con agenda arrancan sin `availability_slots` (`verticals.service.ts:20-137`); el contenido semilla que leen los clientes finales está **sin tildes** ("¿Cual es el horario de atencion?", `vertical-definitions.ts:66`); voseo y tuteo mezclados en pantallas consecutivas.
 
+### Hallazgo adyacente — el país de facturación no era corregible (RESUELTO, `4983284e`)
+
+Revisando la cohesión del circuito fiscal con el alta: **la capa fiscal en sí está bien cosida.** El gate, el banner, el modal, el formulario y el chequeo de completitud coinciden — `isFiscalDataComplete` está escrito explícitamente para espejar `setFiscalData` y no derivar por su cuenta — y el gate solo dispara en flujos que cobran (`billing.service.ts:143`), así que el trial gratuito del onboarding no se bloquea. Que el wizard no pida datos fiscales es correcto: todavía no hay nada que facturar.
+
+Lo que no estaba cosido era **la entrada**. Tres comportamientos dependen de `tenant.billingCountry`:
+
+| Si `billingCountry !== 'CO'` | Consecuencia |
+|---|---|
+| `fiscal-data.util.ts:22` | el gate nunca dispara |
+| `fiscal.controller.ts:86` | el banner nunca avisa |
+| `settings/billing/page.tsx:700` | la sección DIAN ni se renderiza |
+
+Y ese valor se escribía **una sola vez**, en el alta, inferido del huso horario (`inferCountryFromTimezone` → `createTrialSubscription` → `billing.service.ts:212`), sin ningún endpoint ni pantalla capaz de cambiarlo después. Un tenant colombiano cuyo huso no resolviera a CO quedaba invisible para todo el circuito fiscal y sin forma de arreglarlo — y tampoco aparecía en `scripts/fiscal-backfill-report.js`, que filtra por `billingCountry: 'CO'`. El punto ciego se componía.
+
+El arreglo del timezone (#9 de la tabla) agudizó el riesgo: al detectar el huso desde el navegador, un colombiano de viaje o con VPN pasa a registrarse en otro país, donde el default fijo `America/Bogota` antes lo dejaba siempre en CO. Resuelto con `PATCH /fiscal/:tenantId/billing-country` + selector en Ajustes → Datos fiscales (la página que se renderiza sin importar el país, a diferencia de la de billing).
+
+**Residuo pendiente:** `billingCountry` solo se escribe dentro de `createTrialSubscription`, que en el onboarding va envuelto en try/catch. Si esa llamada falla, el tenant queda con el país en `null` y nunca es gateado. Corregible a mano desde el selector nuevo, pero la escritura inicial sigue siendo frágil. Sobre los tenants ya existentes: el mapa viejo mandaba todo a `'CO'` por defecto, así que están sobre-incluidos y el backfill los listará de más — el lado seguro del error.
+
 ### Hallazgo fuera de alcance — bug de producción confirmado
 
 **Crear plantillas de WhatsApp desde la app está roto.** `whatsapp.controller.ts:363` y `:368` consultan `SELECT id, waba_id, access_token FROM whatsapp_channels WHERE is_active = true …`. Ninguna de esas tres columnas existe: el schema define `meta_waba_id`, `access_token_ref` y `channel_status` (`apps/api/prisma/tenant-schema.sql:631-655`), y la única migración posterior sobre esa tabla agrega `seeds_submitted`/`seeds_submitted_at` (`:1559-1560`). Todos los demás consumidores usan los nombres correctos (`channel-token.service.ts:58`, `whatsapp-connection.service.ts:184`, `offboarding.service.ts:236`, `whatsapp-webhook.service.ts:171`) — solo ese controller está mal. La query tira Postgres 42703. **[VD]**
@@ -147,7 +165,11 @@ El segundo eje es de **presupuesto de tiempo**: el producto asume que el onboard
 
 ## 6. Plan priorizado
 
-### Ahora (esta semana) — 8 arreglos, todos XS/S, ninguno toca arquitectura
+### Ahora (esta semana) — ✅ IMPLEMENTADO en `ba584bb8` (rama `fix/onboarding-semana-1`)
+
+Los 8 arreglos están hechos y verificados (`tsc` limpio en api y dashboard, `test:bootstrap` pasa). Se detallan abajo tal como se planificaron; las desviaciones respecto del plan original fueron dos, ambas por seguridad: el borrador se guarda **por usuario y caduca a los 7 días** (una clave global habría mostrado los datos de una empresa a la siguiente persona que se registrara en el mismo navegador), y guardar el mismo correo en `/verify-email` **reenvía el código** en vez de devolver `email_unchanged` (el campo viene precargado, rechazarlo castigaba el uso más obvio).
+
+
 
 1. **Matar el fusible de los 6 minutos.** Sacar `/verify-email` y `/onboarding` de `PUBLIC_PATHS` (`AuthContext.tsx:74`) o condicionar el ping y el refresh proactivo a `localStorage.getItem('accessToken')` en vez de `isAuthenticated && !isPublicPage` (`:150-151`, `:190-191`); como defensa en profundidad, refrescar el TTL de `session:{userId}` dentro de `validateUser` (`auth.service.ts:586`) cuando queden <2 min. → **mueve: tasa de finalización de `/onboarding`**.
 2. **Arreglar el checklist**: usar el `hasAnyChannel` que ya viene en la misma respuesta de `getSetupStatus` (`persona.controller.ts:297`) y, para Instagram, `channelsRes?.data?.some(c => c.channelType === 'instagram' && c.isActive)`. Archivo: `OnboardingChecklist.tsx:50-78`.

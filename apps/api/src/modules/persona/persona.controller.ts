@@ -67,10 +67,10 @@ export class PersonaController {
     }
 
     @Post(':tenantId/setup-wizard')
-    @ApiOperation({ summary: 'Apply a persona template from setup wizard and mark wizard as completed' })
+    @ApiOperation({ summary: 'Apply a persona template from the setup wizard; marks the wizard completed unless markCompleted=false' })
     async applyTemplate(
         @Param('tenantId') tenantId: string,
-        @Body() body: { templateId: string; customizations?: any; selectedChannels?: string[] },
+        @Body() body: { templateId: string; customizations?: any; selectedChannels?: string[]; markCompleted?: boolean },
         @Req() req: any,
     ) {
         // Look up the template across all three sources: legacy PERSONA_TEMPLATES
@@ -187,22 +187,39 @@ export class PersonaController {
             businessHours = { is247: !!body.customizations.is247, timezone: 'America/Bogota', schedule: {} };
         }
 
-        // Mark setup wizard as completed in tenant settings
+        // `markCompleted: false` guarda el agente SIN cerrar el wizard. Lo usa el paso
+        // "Personalizar" para persistir antes de que el usuario llegue a "Pruébalo":
+        // hasta ahora la personalización recién se escribía en handleFinish, así que el
+        // chat de prueba respondía con el agente viejo y el usuario concluía —con razón—
+        // que nada de lo que había escrito se había guardado.
+        const markCompleted = body.markCompleted !== false;
+        const currentSettings = (await this.prisma.tenant.findUnique({
+            where: { id: tenantId }, select: { settings: true },
+        }))?.settings as any || {};
+
         await this.prisma.tenant.update({
             where: { id: tenantId },
             data: {
                 settings: {
-                    ...(await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } }))?.settings as any || {},
-                    setupWizardCompleted: true,
-                    setupWizardTemplate: body.templateId,
-                    setupWizardChannels: body.selectedChannels || [],
-                    setupWizardCompletedAt: new Date().toISOString(),
+                    ...currentSettings,
+                    // Los horarios son configuración del tenant, no del wizard: se
+                    // guardan igual aunque todavía no se haya cerrado el asistente.
                     ...(businessHours ? { businessHours } : {}),
+                    ...(markCompleted ? {
+                        setupWizardCompleted: true,
+                        setupWizardTemplate: body.templateId,
+                        setupWizardChannels: body.selectedChannels || [],
+                        setupWizardCompletedAt: new Date().toISOString(),
+                    } : {}),
                 },
             },
         });
 
-        this.logger.log(`Setup wizard completed for tenant ${tenantId} with template ${body.templateId}`);
+        this.logger.log(
+            markCompleted
+                ? `Setup wizard completed for tenant ${tenantId} with template ${body.templateId}`
+                : `Setup wizard draft saved for tenant ${tenantId} with template ${body.templateId}`,
+        );
         return { success: true };
     }
 
@@ -247,6 +264,12 @@ export class PersonaController {
         let hasTemplates = false;
         let hasAnyChannel = false;
         let hasBusinessAbout = false;
+        // El alta ya derivó un agente a partir de industria + objetivos
+        // (createDefaultAgentFromGoals) y guardó con qué plantilla. Exponerlo permite
+        // que el setup-wizard lo CONFIRME en vez de volver a preguntar lo mismo y
+        // sobrescribir la respuesta que el usuario ya dio en /onboarding.
+        let defaultAgentTemplateId: string | null = null;
+        let defaultAgentName: string | null = null;
 
         // Readiness del agente: horarios de atención viven en tenant.settings.businessHours
         // (nivel tenant, no requiere query). 24/7 o ≥1 día con horario cuenta como configurado.
@@ -277,6 +300,14 @@ export class PersonaController {
                 hasTemplates = val(checks[5]) > 0;
                 hasAnyChannel = val(checks[6]) > 0;
                 hasBusinessAbout = val(checks[7]) > 0;
+
+                const agentRows = (await this.prisma.$queryRawUnsafe(
+                    `SELECT name, template_id FROM "${schema}".agent_personas
+                     WHERE is_default = true AND is_active = true
+                     ORDER BY created_at ASC LIMIT 1`,
+                ).catch(() => [])) as Array<{ name?: string; template_id?: string }>;
+                defaultAgentTemplateId = agentRows?.[0]?.template_id ?? null;
+                defaultAgentName = agentRows?.[0]?.name ?? null;
             } catch {
                 // If schema doesn't exist yet, all default to false
             }
@@ -297,6 +328,8 @@ export class PersonaController {
                 hasAnyChannel,
                 hasBusinessAbout,
                 hasBusinessHours,
+                defaultAgentTemplateId,
+                defaultAgentName,
             },
         };
     }

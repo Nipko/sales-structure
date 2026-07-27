@@ -153,7 +153,9 @@ export const api = {
     getPersonaTemplates: (tenantId?: string) =>
         apiGet(`/persona/templates${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`),
 
-    applySetupTemplate: (tenantId: string, data: { templateId: string; customizations?: any; selectedChannels?: string[] }) =>
+    // markCompleted:false guarda el agente sin cerrar el asistente (autoguardado del
+    // paso "Personalizar", para que el chat de prueba use el agente real).
+    applySetupTemplate: (tenantId: string, data: { templateId: string; customizations?: any; selectedChannels?: string[]; markCompleted?: boolean }) =>
         apiPost(`/persona/${tenantId}/setup-wizard`, data),
     skipSetupWizard: (tenantId: string) =>
         apiPost(`/persona/${tenantId}/setup-wizard/skip`, {}),

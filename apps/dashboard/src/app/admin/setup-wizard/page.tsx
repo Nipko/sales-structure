@@ -61,6 +61,9 @@ export default function SetupWizardPage() {
     });
     const [faqs, setFaqs] = useState<{ q: string; a: string }[]>([{ q: "", a: "" }]);
     const [channelConnected, setChannelConnected] = useState(false);
+    // Plantilla que el backend ya dedujo en el alta desde industria + objetivos.
+    const [recommendedTemplateId, setRecommendedTemplateId] = useState<string | null>(null);
+    const [savingDraft, setSavingDraft] = useState(false);
     const autoAdvancedRef = useRef(false);
 
     // Construye el objeto businessHours canónico (settings.businessHours) según el toggle.
@@ -78,16 +81,31 @@ export default function SetupWizardPage() {
 
     useEffect(() => {
         if (!tenantId) return;
-        api.getPersonaTemplates(tenantId).then(res => {
+        Promise.all([
+            api.getPersonaTemplates(tenantId),
+            api.getSetupStatus(tenantId).catch(() => null),
+        ]).then(([res, statusRes]) => {
             const tmpls = res.success ? (res.data || []) : [];
             setTemplates(tmpls);
+
+            // /onboarding ya preguntó industria y objetivos, y el backend derivó de ahí
+            // un agente completo guardando con qué plantilla. Preseleccionarla convierte
+            // el paso 0 de "elegí una plantilla" —volver a preguntar lo mismo con otro
+            // vocabulario, y sobrescribir la respuesta anterior— en "confirmá la que
+            // preparamos".
+            const status = (statusRes as any)?.data || {};
+            const derivedId: string | null = status.defaultAgentTemplateId || null;
+            const derivedName: string | null = status.defaultAgentName || null;
+            setRecommendedTemplateId(derivedId);
+
+            let restored = false;
             // Restaurar progreso guardado (persistencia ante refresh a mitad del wizard).
             try {
                 const raw = localStorage.getItem(`parallly:setupwizard:${tenantId}`);
                 if (raw) {
                     const s = JSON.parse(raw);
                     const tm = s.templateId ? tmpls.find((x: any) => x.id === s.templateId) : null;
-                    if (tm) setSelectedTemplate(tm);
+                    if (tm) { setSelectedTemplate(tm); restored = true; }
                     if (typeof s.agentName === "string") setAgentName(s.agentName);
                     if (typeof s.greeting === "string") setGreeting(s.greeting);
                     if (typeof s.tone === "string") setTone(s.tone);
@@ -100,8 +118,23 @@ export default function SetupWizardPage() {
                     if (typeof s.step === "number" && (s.step === 0 || tm)) setStep(Math.min(4, Math.max(0, s.step)));
                 }
             } catch { /* estado corrupto → empezar limpio */ }
+
+            // El borrador manda sobre la recomendación: si el usuario ya eligió algo a
+            // mano, no se lo pisamos.
+            if (!restored && derivedId) {
+                const rec = tmpls.find((x: any) => x.id === derivedId);
+                const cfg = rec?.config || rec?.config_json;
+                if (cfg?.persona) {
+                    setSelectedTemplate(rec);
+                    // El nombre real del agente gana sobre el de la plantilla: si el
+                    // tenant ya lo renombró, el wizard no debe revertirlo.
+                    setAgentName(derivedName || cfg.persona.name || "");
+                    setGreeting(cfg.persona.greeting || "");
+                    setTone(cfg.persona.personality?.tone || "amigable");
+                }
+            }
             setLoading(false);
-        });
+        }).catch(() => setLoading(false)); // nunca dejar el wizard en spinner infinito
     }, [tenantId]);
 
     // Persistir el progreso del wizard para sobrevivir a un refresh.
@@ -152,6 +185,30 @@ export default function SetupWizardPage() {
         setAgentName(cfg.persona.name || "");
         setGreeting(cfg.persona.greeting || "");
         setTone(cfg.persona.personality?.tone || "amigable");
+    };
+
+    /**
+     * Avanzar de paso. Al salir de "Personalizar" persiste el agente ANTES de que el
+     * usuario llegue a "Pruébalo": hasta ahora la personalización recién se escribía
+     * en handleFinish, así que el chat de prueba respondía con la plantilla vieja y la
+     * demo desmentía lo que el usuario acababa de escribir. Si el guardado falla no se
+     * bloquea el avance — handleFinish lo vuelve a intentar al cerrar.
+     */
+    const goNext = async () => {
+        if (step === 1 && tenantId && selectedTemplate) {
+            setSavingDraft(true);
+            try {
+                await api.applySetupTemplate(tenantId, {
+                    templateId: selectedTemplate.id,
+                    customizations: { agentName, greeting, tone, is247, businessHours: buildBusinessHours() },
+                    markCompleted: false,
+                });
+            } catch (e) {
+                console.warn("[setup-wizard] autosave del paso Personalizar falló:", e);
+            }
+            setSavingDraft(false);
+        }
+        setStep(Math.min(LAST_STEP, step + 1));
     };
 
     const handleFinish = async () => {
@@ -239,7 +296,10 @@ export default function SetupWizardPage() {
                         : "border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30"
                 }`}
             >
-                {isRecommended && idx === 0 && (
+                {/* "Recomendada" ahora señala la plantilla que el backend REALMENTE
+                    dedujo de las respuestas del alta, no la primera de la lista. Sin un
+                    agente derivado se cae al heurístico anterior. */}
+                {(recommendedTemplateId ? tmpl.id === recommendedTemplateId : (isRecommended && idx === 0)) && (
                     <span className="absolute -top-2.5 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500 text-white">
                         {t("templates.recommended")}
                     </span>
@@ -536,11 +596,13 @@ export default function SetupWizardPage() {
                             </button>
                         ) : (
                             <button
-                                onClick={() => setStep(step + 1)}
-                                disabled={step === 0 && !selectedTemplate}
+                                onClick={goNext}
+                                disabled={(step === 0 && !selectedTemplate) || savingDraft}
                                 className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-sm font-medium bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-40 transition-colors"
                             >
-                                {t("navigation.next")} <ChevronRight size={16} />
+                                {savingDraft
+                                    ? <><Loader2 size={16} className="animate-spin" /> {t("navigation.next")}</>
+                                    : <>{t("navigation.next")} <ChevronRight size={16} /></>}
                             </button>
                         )
                     ) : (

@@ -5,6 +5,7 @@ import { OutboundMessage } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { RedisService } from '../redis/redis.service';
 import { OUTBOUND_QUEUE, OutboundJobData, pendingJobsKey } from './outbound-queue.processor';
+import { sanitizeJobId } from '../../common/utils/provider-message-id.util';
 
 @Injectable()
 export class OutboundQueueService {
@@ -41,23 +42,34 @@ export class OutboundQueueService {
             }
         }
 
-        await this.outboundQueue.add(
-            'send',
-            { outbound },
-            {
-                priority,
-                attempts: 3,
-                backoff: { type: 'exponential', delay: 2000 },
-                ...(delayMs && delayMs > 0 ? { delay: delayMs } : {}),
-                // Deterministic jobId when the caller supplied one: BullMQ ignores
-                // an add whose jobId already exists, so re-playing a turn cannot
-                // queue the same reply twice. Retention (1h completed) comfortably
-                // covers any retry window.
-                ...(outbound.dedupeId ? { jobId: outbound.dedupeId } : {}),
-                removeOnComplete: { age: 3600 },
-                removeOnFail: { age: 86400 },
-            },
-        );
+        const opts: any = {
+            priority,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 2000 },
+            ...(delayMs && delayMs > 0 ? { delay: delayMs } : {}),
+            // Deterministic jobId when the caller supplied one: BullMQ ignores
+            // an add whose jobId already exists, so re-playing a turn cannot
+            // queue the same reply twice. Retention (1h completed) comfortably
+            // covers any retry window.
+            ...(outbound.dedupeId ? { jobId: sanitizeJobId(outbound.dedupeId) } : {}),
+            removeOnComplete: { age: 3600 },
+            removeOnFail: { age: 86400 },
+        };
+
+        try {
+            await this.outboundQueue.add('send', { outbound }, opts);
+        } catch (err: any) {
+            // Dedupe is an OPTIMISATION; delivery is the contract. A malformed
+            // jobId once made BullMQ throw here and the customer simply never
+            // got their reply. Never let that trade go the wrong way again:
+            // drop the id, log loudly, and still send.
+            if (!opts.jobId) throw err;
+            this.logger.error(
+                `Outbound enqueue rejected with jobId="${opts.jobId}" (${err?.message}) — retrying WITHOUT dedupe so the reply still reaches the customer`,
+            );
+            delete opts.jobId;
+            await this.outboundQueue.add('send', { outbound }, opts);
+        }
 
         this.logger.debug(
             `Enqueued outbound to ${outbound.to} via ${outbound.channelType} (priority=${priority})`,

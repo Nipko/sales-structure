@@ -51,5 +51,21 @@ export function outboundDedupeId(
 ): string | undefined {
     const pmid = providerMessageId(inbound);
     if (!pmid) return undefined;
-    return `${inbound.tenantId}:${pmid}:${purpose}:${index}`;
+    // MUST be sanitised: BullMQ rejects a jobId containing ':' (it builds its
+    // Redis keys with that separator) and throws "Custom Id cannot contain :".
+    // Since this id is passed as the jobId, an unsanitised value made the
+    // enqueue throw and the customer never received the reply.
+    return sanitizeJobId(`${inbound.tenantId}:${pmid}:${purpose}:${index}`);
+}
+
+/**
+ * Make an arbitrary string safe to use as a BullMQ jobId.
+ *
+ * BullMQ composes Redis keys as `{prefix}:{queue}:{jobId}`, so a ':' inside the
+ * id is rejected outright. Provider message ids routinely contain characters
+ * outside that set (wamid values are base64-ish, email Message-IDs carry '@'
+ * and '<>'), so every id built from them has to go through here.
+ */
+export function sanitizeJobId(raw: string): string {
+    return raw.replace(/[^A-Za-z0-9_.=-]/g, '-');
 }

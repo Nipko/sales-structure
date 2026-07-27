@@ -48,7 +48,9 @@ export class SnoozeService {
         }
 
         // Add delayed job to BullMQ
-        const jobId = `snooze:${conversationId}`;
+        // BullMQ rejects ':' in a jobId ('Custom Id cannot contain :'), so this
+        // must use a separator it accepts.
+        const jobId = `snooze-${conversationId}`;
         await this.snoozeQueue.add('unsnooze', {
             tenantId,
             conversationId,
@@ -74,7 +76,7 @@ export class SnoozeService {
         );
 
         // Remove pending BullMQ job if exists
-        const jobId = `snooze:${conversationId}`;
+        const jobId = `snooze-${conversationId}`;
         try {
             const job = await this.snoozeQueue.getJob(jobId);
             if (job) {

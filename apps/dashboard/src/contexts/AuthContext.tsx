@@ -70,8 +70,16 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
-// Pages that don't need session management
-const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/verify-email", "/setup-password", "/onboarding", "/book", "/kb"];
+// Pages that don't need session management (nobody is logged in on them).
+const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/book", "/kb"];
+
+// Authenticated pages that live outside /admin: the registration funnel. They used to sit
+// in PUBLIC_PATHS, which switched OFF the activity ping and the proactive token refresh —
+// and the server session lasts 6 minutes while these screens routinely take longer. The
+// result was being kicked to /login right after pressing "create my account". Session
+// keep-alive belongs ON here; the idle timer stays off (a timeout modal on top of a signup
+// form is noise, not safety).
+const ONBOARDING_PATHS = ["/verify-email", "/setup-password", "/onboarding"];
 
 // ============================================
 // Provider
@@ -91,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const pendingLoginRef = useRef<{ type: 'email'; email: string; password: string; rememberMe: boolean } | { type: 'google'; idToken: string; rememberMe: boolean } | null>(null);
 
     const isPublicPage = PUBLIC_PATHS.some((p) => pathname?.startsWith(p));
+    const isOnboardingPage = ONBOARDING_PATHS.some((p) => pathname?.startsWith(p));
     const isAuthenticated = !!user;
 
     // ── BroadcastChannel for logout sync ──
@@ -148,7 +157,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // ── Proactive token refresh ──
     useEffect(() => {
-        if (!isAuthenticated || isPublicPage) return;
+        if (isPublicPage) return;
+        // Gate on the stored token, not on `user`: signup navigates client-side, so on
+        // /verify-email and /onboarding the tokens are in localStorage while the context
+        // state has not rehydrated yet — `isAuthenticated` is false exactly where keeping
+        // the session alive matters most.
+        if (!localStorage.getItem("accessToken")) return;
 
         const scheduleRefresh = () => {
             if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
@@ -184,11 +198,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return () => {
             if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
         };
-    }, [isAuthenticated, isPublicPage]);
+    }, [isAuthenticated, isPublicPage, pathname]);
 
     // ── Activity ping — keeps server-side session alive ──
     useEffect(() => {
-        if (!isAuthenticated || isPublicPage) return;
+        if (isPublicPage) return;
+        if (!localStorage.getItem("accessToken")) return;
 
         const sendPing = async () => {
             const token = localStorage.getItem("accessToken");
@@ -210,7 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return () => {
             if (activityPingRef.current) clearInterval(activityPingRef.current);
         };
-    }, [isAuthenticated, isPublicPage]);
+    }, [isAuthenticated, isPublicPage, pathname]);
 
     // ── Idle timer ──
     const handleWarning = useCallback(() => {
@@ -227,7 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         warningBefore: WARNING_BEFORE_MS,
         onWarning: handleWarning,
         onTimeout: handleTimeout,
-        enabled: isAuthenticated && !isPublicPage,
+        enabled: isAuthenticated && !isPublicPage && !isOnboardingPage,
     });
 
     const handleStayLoggedIn = useCallback(async () => {

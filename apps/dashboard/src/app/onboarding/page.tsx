@@ -10,7 +10,7 @@ import {
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
-import { TIMEZONE_GROUPS } from "@parallext/shared";
+import { TIMEZONE_GROUPS, TIMEZONE_VALUES, DEFAULT_TIMEZONE, normalizeTimezone } from "@parallext/shared";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import MpCardForm from "@/components/billing/MpCardForm";
 
@@ -19,6 +19,23 @@ import MpCardForm from "@/components/billing/MpCardForm";
 // flujo: el usuario arranca con trial de plan "emprendedor" sin tarjeta y el upgrade
 // vive en Configuración → Billing. (El JSX de esos pasos queda inerte: step nunca llega.)
 const STEP_KEYS = ["step1", "step2", "step3"];
+
+// Borrador local. El wizard no hace ninguna llamada al servidor hasta el submit final,
+// así que cerrar la pestaña —o que el navegador del celular la descarte en segundo
+// plano— borraba todo lo tipeado y devolvía al usuario a un formulario en blanco.
+// Se guarda por usuario (un navegador compartido no debe mostrarle los datos de una
+// empresa a otra persona), caduca a los 7 días y se borra al completar el alta.
+const DRAFT_PREFIX = "parallly:onboarding:draft";
+const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function draftKeyForCurrentUser(): string {
+    try {
+        const raw = localStorage.getItem("user");
+        const id = raw ? JSON.parse(raw)?.id : null;
+        if (id) return `${DRAFT_PREFIX}:${id}`;
+    } catch { /* usuario ilegible → clave anónima */ }
+    return `${DRAFT_PREFIX}:anon`;
+}
 
 const PLAN_SLUGS = ["emprendedor", "starter", "pro", "enterprise"] as const;
 type PlanSlug = typeof PLAN_SLUGS[number];
@@ -392,7 +409,7 @@ export default function OnboardingPage() {
     const [industry, setIndustry] = useState("");
     const [subType, setSubType] = useState("");
     const [orgSize, setOrgSize] = useState("");
-    const [timezone, setTimezone] = useState("America/Bogota");
+    const [timezone, setTimezone] = useState(DEFAULT_TIMEZONE);
 
     // Step 2
     const [audiences, setAudiences] = useState<string[]>([]);
@@ -415,6 +432,83 @@ export default function OnboardingPage() {
         const token = localStorage.getItem("accessToken");
         if (!token) router.push("/login");
     }, [router]);
+
+    const [draftLoaded, setDraftLoaded] = useState(false);
+    const [draftKey, setDraftKey] = useState<string | null>(null);
+
+    // Restaurar borrador + detectar el huso del navegador. Ambas cosas son client-only:
+    // hacerlo en el initializer del useState rompería la hidratación, porque el servidor
+    // no conoce ni el localStorage ni la zona horaria del visitante.
+    useEffect(() => {
+        const key = draftKeyForCurrentUser();
+        setDraftKey(key);
+
+        let draft: any = null;
+        try {
+            const raw = localStorage.getItem(key);
+            const parsed = raw ? JSON.parse(raw) : null;
+            const fresh = parsed && typeof parsed.savedAt === "number"
+                && Date.now() - parsed.savedAt < DRAFT_MAX_AGE_MS;
+            if (fresh) draft = parsed;
+            else if (raw) localStorage.removeItem(key);
+        } catch { /* borrador corrupto → empezar limpio */ }
+
+        if (draft && typeof draft === "object") {
+            const str = (v: unknown) => (typeof v === "string" ? v : "");
+            const arr = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+            setCompanyName(str(draft.companyName));
+            setWebsite(str(draft.website));
+            setPhone(str(draft.phone));
+            setBusinessEmail(str(draft.businessEmail));
+            setAbout(str(draft.about));
+            setInstagram(str(draft.instagram));
+            setFacebook(str(draft.facebook));
+            setLinkedin(str(draft.linkedin));
+            setTiktok(str(draft.tiktok));
+            setIndustry(str(draft.industry));
+            setSubType(str(draft.subType));
+            setOrgSize(str(draft.orgSize));
+            setAudiences(arr(draft.audiences));
+            setAudienceOther(str(draft.audienceOther));
+            setGoals(arr(draft.goals));
+            setGoalOther(str(draft.goalOther));
+            if (TIMEZONE_VALUES.includes(str(draft.timezone))) setTimezone(draft.timezone);
+
+            // Solo devolverlo a un paso avanzado si el paso 1 sigue completo; si no,
+            // quedaría trabado en una pantalla que no puede validar.
+            const step1Complete = !!str(draft.companyName).trim() && !!str(draft.industry)
+                && !!str(draft.orgSize) && !!str(draft.about).trim();
+            if (typeof draft.step === "number" && step1Complete) {
+                setStep(Math.min(STEP_KEYS.length - 1, Math.max(0, draft.step)));
+            }
+        }
+
+        if (!draft?.timezone) {
+            try {
+                const detected = normalizeTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+                if (TIMEZONE_VALUES.includes(detected)) setTimezone(detected);
+            } catch { /* sin Intl → queda el default */ }
+        }
+
+        setDraftLoaded(true);
+    }, []);
+
+    // Guardar el borrador en cada cambio (después de restaurarlo, para no pisarlo con
+    // el estado vacío del primer render).
+    useEffect(() => {
+        if (!draftLoaded || !draftKey) return;
+        try {
+            localStorage.setItem(draftKey, JSON.stringify({
+                savedAt: Date.now(),
+                step, companyName, website, phone, businessEmail, about,
+                instagram, facebook, linkedin, tiktok,
+                industry, subType, orgSize, timezone,
+                audiences, audienceOther, goals, goalOther,
+            }));
+        } catch { /* storage lleno o no disponible → seguir sin persistir */ }
+    }, [draftLoaded, draftKey, step, companyName, website, phone, businessEmail, about,
+        instagram, facebook, linkedin, tiktok, industry, subType, orgSize, timezone,
+        audiences, audienceOther, goals, goalOther]);
 
     const toggleCheckbox = (
         list: string[],
@@ -509,6 +603,10 @@ export default function OnboardingPage() {
                 if (d.user) localStorage.setItem("user", JSON.stringify(d.user));
                 if (d.verticalConfig) localStorage.setItem("verticalConfig", JSON.stringify(d.verticalConfig));
             }
+
+            // El alta ya está hecha: el borrador no debe sobrevivir (si no, reaparecería
+            // relleno la próxima vez que alguien abra /onboarding en este navegador).
+            try { if (draftKey) localStorage.removeItem(draftKey); } catch { /* noop */ }
 
             // Puente cohesivo: en vez de caer al dashboard (que rebota al wizard con un
             // flash), mostramos una transición breve y vamos DIRECTO al setup-wizard.
@@ -734,7 +832,17 @@ export default function OnboardingPage() {
                                 </label>
                                 <select
                                     value={industry}
-                                    onChange={(e) => { setIndustry(e.target.value); setSubType(""); }}
+                                    // Audiencias y objetivos son listas por vertical: si no se
+                                    // limpian al cambiar de industria, el usuario avanza con
+                                    // selecciones de otro rubro que ya no ve en pantalla.
+                                    onChange={(e) => {
+                                        setIndustry(e.target.value);
+                                        setSubType("");
+                                        setAudiences([]);
+                                        setAudienceOther("");
+                                        setGoals([]);
+                                        setGoalOther("");
+                                    }}
                                     className={cn(selectClasses, "pr-8")}
                                     style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239898b0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
                                 >
@@ -1046,7 +1154,7 @@ export default function OnboardingPage() {
                                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                     {t('creating')}
                                 </>
-                            ) : step === 4 ? (
+                            ) : step === STEP_KEYS.length - 1 ? (
                                 t('createAccount')
                             ) : (
                                 <>

@@ -15,7 +15,7 @@ import { BillingService } from '../billing/billing.service';
 import { VerticalsService } from '../verticals/verticals.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PlatformSmsService } from './platform-sms.service';
-import { JwtPayload, UserRole } from '@parallext/shared';
+import { JwtPayload, UserRole, TIMEZONE_COUNTRY, SPANISH_SPEAKING_COUNTRIES } from '@parallext/shared';
 import { validateEmailDomain } from '../../common/utils/email.util';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import {
@@ -337,8 +337,12 @@ export class AuthService {
 
         const { accessToken, refreshToken } = await this.generateTokens(payload, { sid });
 
+        // A dead SMTP must not block the signup itself — but the client has to know,
+        // so it can show a "we couldn't send the code" notice instead of parking the
+        // user on a screen waiting for a mail that will never arrive.
+        let verificationEmailSent = false;
         try {
-            await this.sendVerificationEmail(user.id);
+            verificationEmailSent = (await this.sendVerificationEmail(user.id)).sent;
         } catch (error) {
             this.logger.error(`[Signup] Failed to send verification email: ${error}`);
         }
@@ -346,6 +350,7 @@ export class AuthService {
         return {
             accessToken,
             refreshToken,
+            verificationEmailSent,
             user: {
                 id: user.id,
                 email: user.email,
@@ -588,6 +593,11 @@ export class AuthService {
             if (!session || session.sid !== payload.sid) {
                 throw new UnauthorizedException('session_expired');
             }
+            // An authenticated request IS activity. Until now the only thing that
+            // renewed the 6-min session was the frontend ping, which is disabled on
+            // the registration screens — so somebody demonstrably filling in the
+            // onboarding form could have their session expire underneath them.
+            await this.redis.expire(`session:${user.id}`, SESSION_TTL);
         }
 
         return {
@@ -834,7 +844,14 @@ export class AuthService {
 
     // ── Email verification ────────────────────────────────────────
 
-    async sendVerificationEmail(userId: string) {
+    /**
+     * Generates the 6-digit code and attempts delivery. `sent` reports whether the
+     * mail actually left: `emailService.send()` swallows SMTP failures and returns
+     * false, so ignoring it meant a dead SMTP locked every email signup out of the
+     * product with nothing but a warn line in the logs. Callers decide what to do —
+     * signup degrades, the explicit resend fails loudly.
+     */
+    async sendVerificationEmail(userId: string): Promise<{ message: string; sent: boolean }> {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
 
@@ -846,13 +863,50 @@ export class AuthService {
             data: { emailVerifyCode: code, emailVerifyExpires: expires },
         });
 
-        await this.emailService.send({
+        const sent = await this.emailService.send({
             to: user.email,
             subject: 'Tu codigo de verificacion — Parallly',
             html: verificationEmail(user.firstName, code),
         });
 
-        return { message: 'Verification code sent' };
+        if (!sent) {
+            this.logger.error(`[Verification] Delivery failed for user ${userId} <${user.email}> — the code exists but nobody received it`);
+        }
+
+        return { message: sent ? 'Verification code sent' : 'Verification code generated but not delivered', sent };
+    }
+
+    /**
+     * Lets a user fix a mistyped address while still unverified. Without this a typo
+     * was a dead end: the code goes to an inbox they don't own and every future login
+     * lands back on the same locked screen.
+     */
+    async changePendingEmail(userId: string, rawEmail: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new NotFoundException('User not found');
+        if (user.emailVerified) throw new BadRequestException('email_already_verified');
+
+        const email = (rawEmail || '').trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+            throw new BadRequestException('invalid_email');
+        }
+        validateEmailDomain(email);
+
+        // Guardar la misma dirección = "reenviame el código". El campo viene precargado
+        // con el correo actual, así que rechazarlo sería castigar el uso más obvio.
+        if (email !== user.email.trim().toLowerCase()) {
+            const taken = await this.prisma.user.findUnique({ where: { email } });
+            if (taken) throw new ConflictException('email_taken');
+
+            await this.prisma.user.update({
+                where: { id: userId },
+                data: { email, emailVerifyCode: null, emailVerifyExpires: null },
+            });
+            this.logger.log(`[Verification] Pending email changed for user ${userId}`);
+        }
+
+        const { sent } = await this.sendVerificationEmail(userId);
+        return { email, verificationEmailSent: sent };
     }
 
     async verifyEmailCode(userId: string, code: string) {
@@ -1573,7 +1627,7 @@ export class AuthService {
         // 6.5. Bootstrap vertical-specific defaults (pipeline stages, agent persona, FAQs, services)
         let verticalConfig: any = null;
         try {
-            const tenantLang = (timezone?.includes('America') ? 'es' : 'en');
+            const tenantLang = this.inferLanguageFromTimezone(timezone);
             const verticalIndustry = industry || 'otro';
             const verticalSubType = data.subType || company.subType || null;
             console.log(`[Onboarding] Starting vertical bootstrap: industry="${verticalIndustry}", subType="${verticalSubType}", lang="${tenantLang}", tenant="${result.tenant.id}"`);
@@ -1894,19 +1948,27 @@ export class AuthService {
         return decrypted;
     }
 
+    /**
+     * Covers every zone the onboarding selector actually offers. The previous map had
+     * 9 entries for 20 LatAm options, so a tenant in Panamá or Guatemala was silently
+     * billed as Colombia.
+     */
     private inferCountryFromTimezone(tz: string | undefined): string {
         if (!tz) return 'CO';
-        const map: Record<string, string> = {
-            'America/Bogota': 'CO',
-            'America/Mexico_City': 'MX',
-            'America/Argentina/Buenos_Aires': 'AR',
-            'America/Santiago': 'CL',
-            'America/Lima': 'PE',
-            'America/Montevideo': 'UY',
-            'America/Sao_Paulo': 'BR',
-            'America/Guayaquil': 'EC',
-            'America/Caracas': 'VE',
-        };
-        return map[tz] || 'CO';
+        return TIMEZONE_COUNTRY[tz] || 'CO';
+    }
+
+    /**
+     * Tenant content language (agent persona, seeded FAQs, pipeline labels). This used
+     * to be `timezone.includes('America') ? 'es' : 'en'`, which handed a Brazilian
+     * tenant a Spanish agent even though the pt content exists — and gave every
+     * European tenant English.
+     */
+    private inferLanguageFromTimezone(tz: string | undefined): string {
+        const country = this.inferCountryFromTimezone(tz);
+        if (country === 'BR' || country === 'PT') return 'pt';
+        if (country === 'FR') return 'fr';
+        if (SPANISH_SPEAKING_COUNTRIES.has(country)) return 'es';
+        return 'en';
     }
 }

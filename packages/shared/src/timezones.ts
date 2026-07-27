@@ -137,6 +137,98 @@ export const TIMEZONE_VALUES: string[] = ALL_TIMEZONES.map((t) => t.value);
 export const DEFAULT_TIMEZONE = 'America/Bogota';
 
 /**
+ * Zone → ISO 3166-1 alpha-2 country. Used to infer the billing country and the tenant's
+ * content language at signup, where the timezone is the only geographic signal we have.
+ * Covers every zone in the curated list above — keep them in sync when adding a zone.
+ */
+export const TIMEZONE_COUNTRY: Record<string, string> = {
+    // Latin America
+    'America/Mexico_City': 'MX',
+    'America/Bogota': 'CO',
+    'America/Lima': 'PE',
+    'America/Guayaquil': 'EC',
+    'America/Panama': 'PA',
+    'America/Guatemala': 'GT',
+    'America/Costa_Rica': 'CR',
+    'America/El_Salvador': 'SV',
+    'America/Tegucigalpa': 'HN',
+    'America/Managua': 'NI',
+    'America/Caracas': 'VE',
+    'America/La_Paz': 'BO',
+    'America/Santiago': 'CL',
+    'America/Asuncion': 'PY',
+    'America/Santo_Domingo': 'DO',
+    'America/Puerto_Rico': 'PR',
+    'America/Havana': 'CU',
+    'America/Argentina/Buenos_Aires': 'AR',
+    'America/Montevideo': 'UY',
+    'America/Sao_Paulo': 'BR',
+    // North America
+    'America/New_York': 'US',
+    'America/Chicago': 'US',
+    'America/Denver': 'US',
+    'America/Phoenix': 'US',
+    'America/Los_Angeles': 'US',
+    'America/Anchorage': 'US',
+    'Pacific/Honolulu': 'US',
+    'America/Toronto': 'CA',
+    'America/Vancouver': 'CA',
+    // Europe
+    'Europe/London': 'GB',
+    'Europe/Lisbon': 'PT',
+    'Europe/Dublin': 'IE',
+    'Europe/Madrid': 'ES',
+    'Europe/Paris': 'FR',
+    'Europe/Berlin': 'DE',
+    'Europe/Rome': 'IT',
+    'Europe/Amsterdam': 'NL',
+    'Europe/Brussels': 'BE',
+    'Europe/Zurich': 'CH',
+    'Europe/Warsaw': 'PL',
+    'Europe/Athens': 'GR',
+    'Europe/Kyiv': 'UA',
+    'Europe/Istanbul': 'TR',
+    'Europe/Moscow': 'RU',
+    // Africa & Middle East
+    'Africa/Casablanca': 'MA',
+    'Africa/Lagos': 'NG',
+    'Africa/Cairo': 'EG',
+    'Africa/Johannesburg': 'ZA',
+    'Africa/Nairobi': 'KE',
+    'Asia/Jerusalem': 'IL',
+    'Asia/Riyadh': 'SA',
+    'Asia/Dubai': 'AE',
+    'Asia/Tehran': 'IR',
+    // Asia
+    'Asia/Karachi': 'PK',
+    'Asia/Kolkata': 'IN',
+    'Asia/Dhaka': 'BD',
+    'Asia/Bangkok': 'TH',
+    'Asia/Jakarta': 'ID',
+    'Asia/Singapore': 'SG',
+    'Asia/Kuala_Lumpur': 'MY',
+    'Asia/Manila': 'PH',
+    'Asia/Hong_Kong': 'HK',
+    'Asia/Shanghai': 'CN',
+    'Asia/Taipei': 'TW',
+    'Asia/Seoul': 'KR',
+    'Asia/Tokyo': 'JP',
+    // Oceania
+    'Australia/Perth': 'AU',
+    'Australia/Adelaide': 'AU',
+    'Australia/Brisbane': 'AU',
+    'Australia/Sydney': 'AU',
+    'Pacific/Auckland': 'NZ',
+    'Pacific/Fiji': 'FJ',
+};
+
+/** Countries whose tenants get Spanish content by default. */
+export const SPANISH_SPEAKING_COUNTRIES = new Set([
+    'MX', 'CO', 'PE', 'EC', 'PA', 'GT', 'CR', 'SV', 'HN', 'NI',
+    'VE', 'BO', 'CL', 'PY', 'DO', 'PR', 'CU', 'AR', 'UY', 'ES',
+]);
+
+/**
  * Normalize legacy/alias zones to the canonical curated value so saved settings still
  * match a `<select>` option. (e.g. the deprecated `America/Buenos_Aires` → the canonical
  * `America/Argentina/Buenos_Aires`.)

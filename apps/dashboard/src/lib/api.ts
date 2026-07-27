@@ -133,6 +133,10 @@ export const api = {
     verifyEmail: (code: string) =>
         apiPost("/auth/verify-email", { code }),
 
+    // Corregir un correo mal tipeado mientras la cuenta sigue sin verificar.
+    changePendingEmail: (email: string) =>
+        apiPatch<{ email: string; verificationEmailSent: boolean }>("/auth/pending-email", { email }),
+
     completeOnboarding: (data: any) =>
         apiPost("/auth/complete-onboarding", data),
 

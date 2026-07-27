@@ -2,19 +2,27 @@
 
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Mail } from "lucide-react";
+import { AlertCircle, AlertTriangle, Mail } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import AnimatedLogo from "@/components/AnimatedLogo";
 
 export default function VerifyEmailPage() {
     const t = useTranslations('auth');
+    const tc = useTranslations('common');
+    const { logout } = useAuth();
     const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""]);
     const [error, setError] = useState("");
+    const [notice, setNotice] = useState("");
+    const [deliveryFailed, setDeliveryFailed] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [cooldown, setCooldown] = useState(0);
     const [userEmail, setUserEmail] = useState("");
+    const [editingEmail, setEditingEmail] = useState(false);
+    const [newEmail, setNewEmail] = useState("");
+    const [savingEmail, setSavingEmail] = useState(false);
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const router = useRouter();
 
@@ -32,7 +40,57 @@ export default function VerifyEmailPage() {
                 setUserEmail(u.email || "");
             } catch { /* ignore */ }
         }
+        // El signup avisa si el correo no llegó a salir (SMTP caído). Sin esto el
+        // usuario se queda mirando una pantalla esperando un mail que nunca se envió.
+        try {
+            if (sessionStorage.getItem("verificationEmailFailed") === "1") {
+                setDeliveryFailed(true);
+                sessionStorage.removeItem("verificationEmailFailed");
+            }
+        } catch { /* sessionStorage no disponible */ }
     }, [router]);
+
+    const handleChangeEmail = async () => {
+        const email = newEmail.trim();
+        if (!email) return;
+        setError("");
+        setNotice("");
+        setSavingEmail(true);
+        try {
+            const result = await api.changePendingEmail(email);
+            if (!result.success) {
+                const code = result.error || "";
+                setError(
+                    code === "email_taken" ? t('emailTakenError')
+                        : code === "invalid_email" ? t('invalidEmailError')
+                            : code === "email_send_failed" ? t('emailDeliveryFailed')
+                                : code || t('connectionError')
+                );
+                setSavingEmail(false);
+                return;
+            }
+            const saved = result.data?.email || email;
+            setUserEmail(saved);
+            // Mantener el usuario en localStorage al día: el resto de la app lee de ahí.
+            try {
+                const savedUser = localStorage.getItem("user");
+                if (savedUser) {
+                    const u = JSON.parse(savedUser);
+                    u.email = saved;
+                    localStorage.setItem("user", JSON.stringify(u));
+                }
+            } catch { /* ignore */ }
+            setDeliveryFailed(result.data?.verificationEmailSent === false);
+            setNotice(t('emailChangedSuccess', { email: saved }));
+            setEditingEmail(false);
+            setNewEmail("");
+            setDigits(["", "", "", "", "", ""]);
+            setCooldown(60);
+        } catch {
+            setError(t('connectionError'));
+        }
+        setSavingEmail(false);
+    };
 
     // Cooldown timer
     useEffect(() => {
@@ -114,12 +172,21 @@ export default function VerifyEmailPage() {
     const handleResend = async () => {
         if (cooldown > 0) return;
         setError("");
+        setNotice("");
         try {
             const result = await api.sendVerification();
             if (!result.success) {
-                setError(result.error || t('resendCodeError'));
+                // El backend ahora devuelve 503 email_send_failed cuando el correo no
+                // llegó a salir, en vez de responder success y dejar al usuario esperando.
+                if (result.error === "email_send_failed") {
+                    setDeliveryFailed(true);
+                    setError(t('emailDeliveryFailed'));
+                } else {
+                    setError(result.error || t('resendCodeError'));
+                }
                 return;
             }
+            setDeliveryFailed(false);
             setCooldown(60);
         } catch {
             setError(t('connectionError'));
@@ -161,6 +228,19 @@ export default function VerifyEmailPage() {
                     {error && (
                         <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
                             <AlertCircle size={16} /> {error}
+                        </div>
+                    )}
+
+                    {/* El correo no llegó a salir: decirlo, en vez de dejarlo esperando */}
+                    {deliveryFailed && !error && (
+                        <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 text-[13px]">
+                            <AlertTriangle size={16} className="shrink-0 mt-0.5" /> {t('emailDeliveryFailed')}
+                        </div>
+                    )}
+
+                    {notice && (
+                        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[13px]">
+                            <Mail size={16} /> {notice}
                         </div>
                     )}
 
@@ -215,6 +295,65 @@ export default function VerifyEmailPage() {
                                 ? t('resendCodeCountdown', { seconds: cooldown })
                                 : t('resendCode')}
                         </button>
+                    </div>
+
+                    {/* Salidas. Un correo mal tipeado era un callejón sin salida: el código
+                        iba a una casilla ajena y cada login futuro volvía a esta pantalla. */}
+                    <div className="mt-6 pt-5 border-t border-neutral-200 dark:border-white/[0.08]">
+                        {editingEmail ? (
+                            <div>
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                                    {t('newEmailLabel')}
+                                </label>
+                                <input
+                                    type="email"
+                                    value={newEmail}
+                                    onChange={(e) => setNewEmail(e.target.value)}
+                                    placeholder={t('resetEmailPlaceholder')}
+                                    autoFocus
+                                    className="w-full py-2.5 px-3.5 rounded-xl border border-neutral-300 dark:border-white/10 bg-neutral-50 dark:bg-white/5 text-foreground text-sm outline-none transition-colors focus:border-indigo-500 dark:focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
+                                />
+                                <div className="flex items-center gap-2 mt-3">
+                                    <button
+                                        type="button"
+                                        onClick={handleChangeEmail}
+                                        disabled={!newEmail.trim() || savingEmail}
+                                        className={cn(
+                                            "flex-1 py-2.5 rounded-xl border-none text-white text-[13px] font-semibold transition-all",
+                                            !newEmail.trim() || savingEmail
+                                                ? "bg-indigo-400/50 dark:bg-indigo-600/30 cursor-not-allowed"
+                                                : "bg-gradient-to-r from-indigo-600 to-indigo-400 cursor-pointer hover:brightness-110"
+                                        )}
+                                    >
+                                        {savingEmail ? t('verifying') : t('saveNewEmail')}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setEditingEmail(false); setNewEmail(""); setError(""); }}
+                                        className="px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-white/10 bg-transparent text-[13px] font-medium text-foreground hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                                    >
+                                        {tc('cancel')}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-between gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => { setEditingEmail(true); setNewEmail(userEmail); }}
+                                    className="text-[12px] text-indigo-500 hover:text-indigo-400 bg-transparent border-none p-0 transition-colors cursor-pointer"
+                                >
+                                    {t('wrongEmailQuestion')}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => logout()}
+                                    className="text-[12px] text-muted-foreground hover:text-foreground bg-transparent border-none p-0 transition-colors cursor-pointer"
+                                >
+                                    {t('logout')}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 

@@ -135,6 +135,12 @@ export default function SignupPage() {
             localStorage.setItem("refreshToken", data.data.refreshToken);
             localStorage.setItem("user", JSON.stringify(data.data.user));
 
+            // El alta no falla si el SMTP está caído, pero el código no salió: avisarle
+            // a /verify-email para que lo diga en vez de dejarlo esperando el correo.
+            if (data.data.verificationEmailSent === false) {
+                try { sessionStorage.setItem("verificationEmailFailed", "1"); } catch { /* noop */ }
+            }
+
             // Email signup → verify email → onboarding wizard → admin
             router.push("/verify-email");
         } catch {

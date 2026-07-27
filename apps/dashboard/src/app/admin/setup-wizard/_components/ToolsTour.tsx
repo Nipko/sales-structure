@@ -92,7 +92,7 @@ const A_BY_VERTICAL: Record<string, Tool[]> = {
 
 const B_TRANSVERSAL: Tool[] = [
     { key: "crm", icon: Users, href: "/admin/contacts" },
-    { key: "analytics", icon: BarChart3, href: "/admin/analytics" },
+    { key: "analytics", icon: BarChart3, href: "/admin/analytics-v2" },
     { key: "broadcast", icon: Megaphone, href: "/admin/broadcast" },
     { key: "automation", icon: Workflow, href: "/admin/automation" },
     { key: "inbox", icon: Inbox, href: "/admin/inbox" },

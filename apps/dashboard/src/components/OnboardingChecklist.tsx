@@ -52,18 +52,23 @@ export default function OnboardingChecklist() {
         try {
             const [setupRes, channelsRes] = await Promise.all([
                 api.getSetupStatus(user.tenantId!),
-                api.fetch(`/channels/overview?tenantId=${user.tenantId}`).catch(() => ({ channels: [] })),
+                api.fetch(`/channels/overview?tenantId=${user.tenantId}`).catch(() => ({ data: [] })),
             ]);
 
-            const channels = channelsRes?.channels || channelsRes?.data?.channels || [];
-            const hasAnyChannel = channels.some((c: any) => c.is_active);
-            const hasInstagram = channels.some((c: any) => c.channel_type === "instagram" && c.is_active);
             const data = setupRes?.data || {};
+            // /channels/overview responde { success, data: [...] } con los campos camelCase
+            // de Prisma. Leerlo como `res.channels` + snake_case dejaba `hasAnyChannel` en
+            // false para siempre: el checklist nunca llegaba a 100% ni se dejaba descartar,
+            // por más canales que el tenant conectara.
+            const channels: any[] = Array.isArray(channelsRes?.data) ? channelsRes.data : [];
+            const hasInstagram = channels.some((c) => c.channelType === "instagram" && c.isActive);
 
             setCheckData({
                 setupCompleted: data.setupWizardCompleted || false,
                 hasPersona: data.hasPersona || data.setupWizardCompleted || false,
-                hasAnyChannel,
+                // setup-status ya cuenta channel_accounts activas server-side; el overview
+                // queda como respaldo si esa consulta falló.
+                hasAnyChannel: data.hasAnyChannel || channels.some((c) => c.isActive),
                 hasInstagram,
                 hasConversations: data.hasConversations || false,
                 hasKnowledge: data.hasKnowledge || false,

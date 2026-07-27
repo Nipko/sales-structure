@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Res, UseGuards, HttpCode, HttpStatus, Request, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Res, UseGuards, HttpCode, HttpStatus, Request, BadRequestException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -507,8 +507,22 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Send email verification code' })
     async sendVerification(@Request() req: any) {
-        await this.authService.sendVerificationEmail(req.user.id);
+        const { sent } = await this.authService.sendVerificationEmail(req.user.id);
+        // An explicit resend that silently didn't send is the worst outcome: the user
+        // waits for a mail that never left. Surface it (and let the Sentry filter see it).
+        if (!sent) throw new ServiceUnavailableException('email_send_failed');
         return { success: true };
+    }
+
+    @Patch('pending-email')
+    @UseGuards(AuthThrottleGuard, AuthGuard('jwt'))
+    @AuthThrottle(5, 900) // 5 changes per 15 minutes
+    @ApiBearerAuth()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Change the email of an unverified account and resend the code' })
+    async changePendingEmail(@Request() req: any, @Body() body: { email: string }) {
+        const result = await this.authService.changePendingEmail(req.user.id, body?.email);
+        return { success: true, data: result };
     }
 
     @Post('verify-email')

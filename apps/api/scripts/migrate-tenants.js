@@ -5,6 +5,55 @@ const path = require('path');
 
 const prisma = new PrismaClient();
 
+/**
+ * Divide la plantilla en statements RESPETANDO el dollar-quoting de Postgres.
+ *
+ * Antes esto era un `.split(';')` pelado, que partía el bloque `DO $$ ... $$;`
+ * de tenant-schema.sql en pedazos sueltos: cada deploy tiraba tres errores 42601
+ * ("unterminated dollar-quoted string" + "syntax error") por tenant, tragados por
+ * el `|| true` del workflow. El bloque afectado nunca llegaba a ejecutarse, y
+ * cualquier futuro `DO $$` para migrar tenants existentes habría corrido la misma
+ * suerte en silencio.
+ *
+ * Misma lógica que PrismaService.splitSqlStatements, que sí lo hacía bien.
+ */
+function splitSqlStatements(sql) {
+  const results = [];
+  let current = '';
+  let inDollarQuote = false;
+  let dollarTag = '';
+
+  for (const line of sql.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Apertura/cierre de bloques $$ o $tag$.
+    for (const dm of line.match(/\$[^$]*\$/g) || []) {
+      if (!inDollarQuote) {
+        inDollarQuote = true;
+        dollarTag = dm;
+      } else if (dm === dollarTag) {
+        inDollarQuote = false;
+        dollarTag = '';
+      }
+    }
+
+    current += line + '\n';
+
+    // Solo cortar en el ';' que está FUERA de un bloque dollar-quoted.
+    if (!inDollarQuote && trimmed.endsWith(';')) {
+      const stmt = current.trim();
+      if (stmt.length > 1) results.push(stmt);
+      current = '';
+    }
+  }
+
+  const remaining = current.trim();
+  if (remaining.length > 1) results.push(remaining);
+
+  return results;
+}
+
 async function migrate() {
   console.log('--- Started Tenant Schema Migration ---');
   try {
@@ -79,18 +128,15 @@ async function migrate() {
         }
 
         const sql = tpl.replace(/\{\{SCHEMA_NAME\}\}/g, t.schema_name);
-        
+
         // First, strip all SQL comments (-- comment) to avoid parser bugs
         const cleanSql = sql.replace(/--.*$/gm, '');
-        
-        const stmts = cleanSql
-          .split(';')
-          .map(s => s.trim())
-          .filter(s => s.length > 0);
-          
+
+        const stmts = splitSqlStatements(cleanSql);
+
         for (const stmt of stmts) {
           try {
-            await prisma.$executeRawUnsafe(stmt + ';');
+            await prisma.$executeRawUnsafe(stmt.endsWith(';') ? stmt : stmt + ';');
           } catch (e) {
             // Log ALL errors but continue — never let one table block the rest
             const shortMsg = (e.message || '').substring(0, 120);

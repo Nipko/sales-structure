@@ -1,7 +1,8 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { SUPPORTED_BILLING_COUNTRIES } from "@parallext/shared";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -46,9 +47,23 @@ const DOC_TYPES = ["6", "3", "5", "7"];
 export default function FiscalPage() {
     const t = useTranslations("settings.fiscalPage");
     const tc = useTranslations("common");
+    const locale = useLocale();
     const router = useRouter();
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
+
+    const [billingCountry, setBillingCountry] = useState("");
+    const [savingCountry, setSavingCountry] = useState(false);
+    const [savedCountry, setSavedCountry] = useState(false);
+
+    // Nombres de país en el idioma activo, sin agregar 75 claves × 4 idiomas.
+    const countryOptions = useMemo(() => {
+        let display: Intl.DisplayNames | null = null;
+        try { display = new Intl.DisplayNames([locale], { type: "region" }); } catch { /* sin soporte → código */ }
+        return SUPPORTED_BILLING_COUNTRIES
+            .map((code) => ({ code, label: display?.of(code) || code }))
+            .sort((a, b) => a.label.localeCompare(b.label, locale));
+    }, [locale]);
 
     const [data, setData] = useState<FiscalData>({
         documentType: "6", documentId: "", dv: "", legalOrganizationId: "1",
@@ -75,6 +90,7 @@ export default function FiscalPage() {
         try {
             const [dRes, iRes] = await Promise.all([api.getFiscalData(tenantId), api.getFiscalInvoices(tenantId)]);
             if (dRes.success && (dRes.data as any)?.fiscalData) setData((prev) => ({ ...prev, ...(dRes.data as any).fiscalData }));
+            if (dRes.success) setBillingCountry(((dRes.data as any)?.billingCountry as string) || "");
             if (iRes.success) setInvoices((iRes.data as FiscalInvoice[]) || []);
         } catch {
             setError(tc("connectionError"));
@@ -118,6 +134,26 @@ export default function FiscalPage() {
             else setError(res.error || tc("errorSaving"));
         } catch { setError(tc("connectionError")); }
         setSavingData(false);
+    };
+
+    const saveCountry = async (code: string) => {
+        if (!tenantId || !code || code === billingCountry) return;
+        const previous = billingCountry;
+        setBillingCountry(code);
+        setSavingCountry(true); setError("");
+        try {
+            const res = await api.updateBillingCountry(tenantId, code);
+            if (res.success) {
+                setSavedCountry(true); setTimeout(() => setSavedCountry(false), 3000);
+            } else {
+                setBillingCountry(previous);
+                setError(res.error || tc("errorSaving"));
+            }
+        } catch {
+            setBillingCountry(previous);
+            setError(tc("connectionError"));
+        }
+        setSavingCountry(false);
     };
 
     const retry = async (id: string) => {
@@ -169,6 +205,32 @@ export default function FiscalPage() {
                     <AlertCircle size={16} /> {error}
                 </div>
             )}
+
+            {/* País de facturación. Decide si se exige NIT y si la factura DIAN aplica;
+                se infería del huso horario en el alta y no había forma de corregirlo. */}
+            <section className="space-y-3 rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                <div>
+                    <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("billingCountry")}</h2>
+                    <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t("billingCountryHint")}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <select
+                        value={billingCountry}
+                        onChange={(e) => saveCountry(e.target.value)}
+                        disabled={savingCountry}
+                        className={cn(selectClasses, "max-w-xs")}
+                    >
+                        {!billingCountry && <option value="">—</option>}
+                        {countryOptions.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+                    </select>
+                    {savingCountry && <Loader2 size={16} className="animate-spin text-neutral-400" />}
+                    {savedCountry && (
+                        <span className="flex items-center gap-1.5 text-[13px] text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle size={14} /> {tc("saved")}
+                        </span>
+                    )}
+                </div>
+            </section>
 
             {/* Acquirer fiscal data */}
             <section className="space-y-5 rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">

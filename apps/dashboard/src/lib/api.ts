@@ -1157,6 +1157,10 @@ export const api = {
     getFiscalData: (tenantId: string) => apiGet(`/fiscal/${tenantId}/data`),
     updateFiscalData: (tenantId: string, data: Record<string, any>) =>
         apiPut(`/fiscal/${tenantId}/data`, data),
+    // El país de facturación decide si se exige NIT; hasta ahora se infería del huso
+    // horario en el alta y no había forma de corregirlo.
+    updateBillingCountry: (tenantId: string, billingCountry: string) =>
+        apiPatch<{ billingCountry: string; required: boolean }>(`/fiscal/${tenantId}/billing-country`, { billingCountry }),
     getFiscalInvoices: (tenantId: string) => apiGet(`/fiscal/${tenantId}/invoices`),
     retryTenantFiscalInvoice: (tenantId: string, id: string) => apiPost(`/fiscal/${tenantId}/invoices/${id}/retry`, {}),
     downloadFiscalInvoice: async (tenantId: string, id: string, kind: "pdf" | "xml" = "pdf", format?: "official" | "branded") => {

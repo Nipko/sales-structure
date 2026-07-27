@@ -222,6 +222,14 @@ export const TIMEZONE_COUNTRY: Record<string, string> = {
     'Pacific/Fiji': 'FJ',
 };
 
+/**
+ * Countries a tenant can be billed in. Derived from the zone map so the picker and
+ * the timezone inference can never disagree about what is a valid country.
+ */
+export const SUPPORTED_BILLING_COUNTRIES: string[] = Array.from(
+    new Set(Object.values(TIMEZONE_COUNTRY)),
+).sort();
+
 /** Countries whose tenants get Spanish content by default. */
 export const SPANISH_SPEAKING_COUNTRIES = new Set([
     'MX', 'CO', 'PE', 'EC', 'PA', 'GT', 'CR', 'SV', 'HN', 'NI',

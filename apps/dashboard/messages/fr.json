@@ -1473,6 +1473,8 @@
       "consumidorFinalLabel": "Émettre comme consommateur final",
       "consumidorFinalHint": "Activez si vous n'avez pas de NIT ou préférez ne pas en renseigner. Vos factures seront émises comme consommateur final (222222222222).",
       "consumidorFinalNotice": "Vos factures seront émises comme consommateur final. Cela limite leur utilisation pour la déduction fiscale. Vous pouvez renseigner votre NIT à tout moment en désactivant cette option.",
+      "billingCountry": "Pays de facturation",
+      "billingCountryHint": "Détermine si la facturation électronique DIAN s'applique et si nous demandons votre numéro fiscal avant de vous facturer. Si cela ne correspond pas à votre pays réel, corrigez-le ici.",
       "legalOrganization": "Type de personne",
       "personaJuridica": "Personne morale",
       "personaNatural": "Personne physique",

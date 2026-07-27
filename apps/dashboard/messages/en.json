@@ -1473,6 +1473,8 @@
       "consumidorFinalLabel": "Issue as final consumer",
       "consumidorFinalHint": "Turn on if you have no tax ID or prefer not to register one. Your invoices will be issued as final consumer (222222222222).",
       "consumidorFinalNotice": "Your invoices will be issued as final consumer. This limits their use for tax deduction. You can enter your tax ID anytime by turning this off.",
+      "billingCountry": "Billing country",
+      "billingCountryHint": "Determines whether DIAN e-invoicing applies and whether we ask for your tax ID before charging you. If it doesn't match your real country, fix it here.",
       "legalOrganization": "Entity type",
       "personaJuridica": "Legal entity",
       "personaNatural": "Individual",

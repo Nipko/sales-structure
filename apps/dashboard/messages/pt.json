@@ -1473,6 +1473,8 @@
       "consumidorFinalLabel": "Emitir como consumidor final",
       "consumidorFinalHint": "Ative se não tiver NIT ou não quiser registrá-lo. Suas notas serão emitidas como consumidor final (222222222222).",
       "consumidorFinalNotice": "Suas notas serão emitidas como consumidor final. Isso limita seu uso para dedução de impostos. Você pode inserir seu NIT a qualquer momento desativando esta opção.",
+      "billingCountry": "País de faturamento",
+      "billingCountryHint": "Define se a nota fiscal eletrônica DIAN se aplica e se pedimos seu CNPJ/NIT antes de cobrar. Se não corresponder ao seu país real, corrija aqui.",
       "legalOrganization": "Tipo de pessoa",
       "personaJuridica": "Pessoa jurídica",
       "personaNatural": "Pessoa física",

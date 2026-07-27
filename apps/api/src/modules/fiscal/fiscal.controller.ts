@@ -1,6 +1,7 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Patch, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { SUPPORTED_BILLING_COUNTRIES } from '@parallext/shared';
 import type { Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -153,6 +154,38 @@ export class FiscalController {
         const settings = { ...((tenant.settings as object) ?? {}), fiscalData };
         await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings: settings as any } });
         return { success: true, data: { fiscalData } };
+    }
+
+    /**
+     * Correct the billing country.
+     *
+     * Everything about the fiscal profile keys off `tenant.billingCountry`: whether
+     * the gate fires, whether the banner nags, whether the billing page even renders
+     * the DIAN section. Until now that value was only ever written once, at
+     * onboarding, inferred from the timezone the user picked in a dropdown — and
+     * nothing anywhere could change it. A Colombian tenant whose browser reported a
+     * foreign zone was silently never asked for a NIT, with no way to fix it.
+     */
+    @Patch(':tenantId/billing-country')
+    async setBillingCountry(@Param('tenantId') tenantId: string, @Body() body: { billingCountry?: string }) {
+        const code = (body?.billingCountry || '').trim().toUpperCase();
+        if (!SUPPORTED_BILLING_COUNTRIES.includes(code)) {
+            throw new BadRequestException({ error: 'invalid_country', message: 'País de facturación no soportado.' });
+        }
+
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+        if (!tenant) throw new NotFoundException({ error: 'tenant_not_found' });
+
+        await this.prisma.tenant.update({ where: { id: tenantId }, data: { billingCountry: code } });
+
+        const gateEnabled = (await this.config.getConfig()).fiscalGateEnabled;
+        return {
+            success: true,
+            data: {
+                billingCountry: code,
+                required: gateEnabled && billingCountryRequiresFiscalData(code),
+            },
+        };
     }
 
     @Get(':tenantId/invoices')

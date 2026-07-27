@@ -4,7 +4,7 @@ import { Queue } from 'bullmq';
 import { NormalizedMessage } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { INBOUND_QUEUE, InboundJobData } from './inbound-queue.constants';
-import { providerMessageId } from '../../common/utils/provider-message-id.util';
+import { providerMessageId, sanitizeJobId } from '../../common/utils/provider-message-id.util';
 
 /**
  * Producer for the inbound queue.
@@ -48,14 +48,18 @@ export class InboundQueueService {
                 // same job instead of queueing a second turn. Sanitised because
                 // BullMQ rejects ':' in a jobId (it builds Redis keys with it).
                 ...(pmid
-                    ? {
-                          jobId: `in-${msg.tenantId}-${msg.channelType}-${msg.channelAccountId}-${pmid}`
-                              .replace(/[^A-Za-z0-9_.=-]/g, '-'),
-                      }
+                    ? { jobId: sanitizeJobId(`in-${msg.tenantId}-${msg.channelType}-${msg.channelAccountId}-${pmid}`) }
                     : {}),
             },
         );
 
-        this.logger.debug(`[Inbound] Enqueued ${msg.channelType} message from ${msg.contactId} (tenant ${msg.tenantId})`);
+        // LOG, not debug: this is the handoff point between the API and the
+        // worker. At debug level (invisible in production) an operator reading
+        // API logs saw the webhook arrive and then nothing at all, with no way
+        // to tell "enqueued, worker's turn" from "silently dropped here".
+        this.logger.log(
+            `[Inbound] Enqueued ${msg.channelType} from ${msg.contactId} tenant=${msg.tenantId} ` +
+            `job=${pmid ? sanitizeJobId(`in-${msg.tenantId}-${msg.channelType}-${msg.channelAccountId}-${pmid}`) : 'no-dedupe'}`,
+        );
     }
 }

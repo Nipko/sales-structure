@@ -184,7 +184,16 @@ export class WhatsappWebhookService {
   private async processMessageEvent(phoneNumberId: string, value: any) {
      this.logger.log(`Processing message event for phone_number_id: ${phoneNumberId}`);
 
-     if (!value?.messages || value.messages.length === 0) return;
+     // Say WHY we stop. A status/read receipt carries no `messages`, and this
+     // early return used to be silent — indistinguishable in the logs from a
+     // customer message being dropped.
+     if (!value?.messages || value.messages.length === 0) {
+         this.logger.log(
+             `No messages in payload for ${phoneNumberId} ` +
+             `(statuses=${value?.statuses?.length ?? 0}) — nothing to process`,
+         );
+         return;
+     }
 
      // === Dynamic tenant resolution (per phone_number_id — same for the batch) ===
      const tenantId = await this.resolveTenantId(phoneNumberId);
@@ -204,7 +213,9 @@ export class WhatsappWebhookService {
          if (waMessageId) {
              const claimed = await this.redis.acquireLock(`idem:wa:${waMessageId}`, this.IDEMPOTENCY_TTL);
              if (!claimed) {
-                 this.logger.debug(`Duplicate webhook for message ${waMessageId}, skipping`);
+                 // WARN, not debug: a redelivery being skipped is exactly what an
+                 // operator needs to see when a customer says "it never answered".
+                 this.logger.warn(`Duplicate webhook for message ${waMessageId} — already claimed, skipping`);
                  continue;
              }
              // === Read receipt — checks azules (Blueprint Paso 6) === fire-and-forget

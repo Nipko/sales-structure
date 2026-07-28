@@ -7,6 +7,21 @@
 
 Disparador: la auditoría del onboarding (`docs/onboarding-audit-2026-07.md`) dejó tres sospechas fuera de tabla y sin verificar. Las tres resultaron ciertas, y el rastreo destapó dos roturas mayores que nadie sospechaba.
 
+## ✅ ESTADO: implementado en `95f758f3` (desplegado 2026-07-27)
+
+Los problemas #1 a #13 de la §5 están arreglados, más la higiene de §6. Lo que **NO** se hizo, con su porqué:
+
+| Pendiente | Por qué |
+|---|---|
+| Sembrar `tenant.settings.businessHours` | **Decisión de producto, deliberadamente sin hacer.** Los horarios del registry son inventados, y en el mismo commit se neutralizaron ~60 FAQs justamente por afirmar cosas que el negocio nunca confirmó. Bajarlos al prompt reintroduce el problema con más autoridad. Los `availability_slots` sí se sembraron porque son editables y visibles en Citas → Config, no una afirmación al cliente |
+| Reindexar `search_tsv` con `'spanish'` + unaccent | Es migración de datos, no una costura. El arreglo actual hace que ambas grafías matcheen, pero las que entran por la rama `translate()` vuelven con `ts_rank = 0` |
+| Slots sembrados por staff | Todos van al `user_id` del `tenant_admin`. Si el tenant agrega personal después, la detección de conflictos los trata como bloqueantes hasta que reconfigure |
+| Tildes en pt/fr | Quedaron sueltas algunas (p. ej. `reclamacao formal` en `handoffTriggers`) |
+
+**Sin verificar contra base real:** los targets de `ON CONFLICT` y el `NULLS NOT DISTINCT` se validaron leyendo el DDL. El deploy confirmó que los índices únicos aplicaron sin duplicados (0 errores nuevos respecto del deploy previo), pero la siembra en sí no se ejecutó. Modo de falla si algo no coincide: `42P10` tragado por el try/catch del seeder — siembra perdida en silencio. **Verificación pendiente: dar de alta un tenant de una vertical con agenda y buscar `Failed to seed` en los logs.**
+
+**Hallazgo colateral** (`ff6344d5`): verificando lo anterior apareció que `migrate-tenants.js` partía los bloques `DO $$` con un `.split(';')`, tirando 18 errores `42601` por deploy que el `|| true` del workflow tragaba — desde antes de esta auditoría.
+
 ---
 # ¿La adaptación por vertical funciona de verdad?
 

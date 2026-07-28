@@ -182,7 +182,15 @@ Los 8 arreglos están hechos y verificados (`tsc` limpio en api y dashboard, `te
 
 **Aparte del onboarding, mismo sprint:** corregir `whatsapp.controller.ts:363,368` a `meta_waba_id` / `access_token_ref` / `channel_status = 'connected'`.
 
-### Después (2-4 semanas) — fusionar los dos flujos
+### Después (2-4 semanas) — ✅ #9 a #13 y #15 IMPLEMENTADOS (`758f6ca2`, `ee674e00`)
+
+Queda pendiente **#14 (instrumentar el funnel + capturar UTMs)** y, del #15, las tildes del contenido semilla — que terminaron cerrándose aparte, en la auditoría de verticales (`docs/vertical-bootstrap-audit-2026-07.md`, commit `95f758f3`).
+
+Del #13 se implementó la mitad de UI: el banner "Retomar configuración" y el gate del bounce por rol. **Falta `@Roles('tenant_admin')` a nivel endpoint** en `persona.controller` — mientras el endpoint siga abierto a cualquier rol del tenant, el gate de UI es fachada.
+
+Del #9 se implementó el comportamiento (preselección de la plantilla derivada + badge "Recomendada" honesto), **no el copy**: el paso 0 sigue diciendo "elegí una plantilla" en vez de "preparamos a *Sofía*, confirmala".
+
+
 
 9. **Un solo camino canónico.** Preseleccionar en el paso 0 del setup-wizard la plantilla que el backend YA derivó (devolver `templateId` del agente `is_default` en `/persona/:tenantId/setup-status`) y degradarlo a "confirmá o ajustá". Es el 80% del beneficio del merge con el 20% del riesgo.
 10. **Autosave al salir del paso "Personalizar"** para que "Pruébalo" pruebe el agente real: separar `applySetupTemplate` de `markCompleted`, o aceptar `draftConfig` en `POST /agent-test/:tenantId/:agentId`.

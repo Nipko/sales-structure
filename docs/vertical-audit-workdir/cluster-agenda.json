@@ -1,0 +1,86 @@
+{
+ "_provenance": "Elaborado inline por el orquestador de la sesión principal tras 3 fallos 529 consecutivos del subagente dedicado. Base: lectura directa de esta misma sesión (vertical-definitions.ts y verticals.service.ts fueron editados enteros hoy; booking-engine, ai-tool-executor y las plantillas de persona leídos parcialmente) + verificación puntual por grep (tools de membresía/clínica/fitness/mascotas/fotografía confirmadas como case reales en ai-tool-executor) + los hallazgos ya guardados de eje-booking-capacidad y eje-medio-construido. Menor profundidad que los otros clústeres en pipeline y docs_estrategia; los puntajes de esos dos ejes son estimaciones conservadoras.",
+ "resumen": "El clúster de agenda tiene la paradoja más clara de la plataforma: las herramientas IA existen de verdad (get_my_membership y get_membership_plans con lógica real de membresías en ai-tool-executor:259-265 y :2234-2261; list_clinic_services y check_clinic_availability :162-165; register_pet :227; check_date_availability :334; list_photo_packages :330), pero el motor de reservas es una máquina de UN recurso con capacidad 1 para todo el negocio, así que el flujo central de estas cinco industrias funciona solo para el caso solo-profesional. Multi-staff está roto por chat (el engine descarta el staffId que la tool le devuelve — hallazgo del eje booking), las clases con cupo no existen (gimnasios), los servicios encadenados no existen (belleza), y staff-scheduling es una isla de 4 tablas con SQL roto que nadie consume. Salud y gimnasios tienen integraciones reales de solo-lectura (Cliniko/Mindbody) con el defecto compartido de sync manual: a la semana la IA ofrece horarios muertos. Tras 95f758f3 el alta quedó sana (slots sembrados, persona en shape correcto, FAQs encendidas y neutralizadas), así que el problema del clúster ya no es el bootstrap: es que el modelo de reservas no calza con cómo agendan estas industrias cuando tienen más de una silla, sala o profesor.",
+ "verticales": [
+  {
+   "key": "salud",
+   "nivel": "media",
+   "puntajes": { "persona": 3, "tools_ia": 2, "faqs": 2, "booking_fit": 2, "pipeline": 2, "terminologia_kpis": 3, "modulos": 1, "integraciones": 2, "procedures": 0, "onboarding": 3, "subtipos": 2, "docs_estrategia": 2 },
+   "que_tiene": "La vertical de agenda más completa. Plantilla rica con appointments encendido (persona.service.ts:1204) y persona del registry en 4 idiomas; FAQs semilla + extras dentales (seedDentalExtras en verticals.service.ts, políticas neutralizadas en 95f758f3); Cliniko real de solo-lectura con auth, test de conexión y gating por proveedor conectado (vertical-integrations.service.ts:227-324, :204-225); tools de clínica en el executor (ai-tool-executor.service.ts:162-165); terminología 'paciente' inyectada al prompt; sub-tipo dental cambia contenido de verdad (FAQs extra).",
+   "que_falta": [
+    "Multi-profesional por chat: una clínica con 2+ médicos reserva todo contra un solo calendario efectivo (el engine descarta el staffId; capacidad global 1) — el caso multi-consultorio no funciona",
+    "Re-sync automático de Cliniko: el sync es manual, la IA puede servir disponibilidad vencida",
+    "Cero plantillas SOP/procedures para salud pese a que el motor T2.12 existe",
+    "blocked_dates ignorado por chat: un paciente puede reservar el feriado que el tenant bloqueó"
+   ],
+   "confuso": ["staff-scheduling existe como módulo (tablas + endpoints) pero no lo consume nadie y getAvailableStaff tiene SQL roto — un tenant que lo descubra por API creería que multi-staff funciona"],
+   "quick_wins": ["Conectar el staffId que la tool ya devuelve al booking engine (el dato ya viaja y se tira)", "Cron de re-sync para Cliniko reutilizando el patrón de crons existente"]
+  },
+  {
+   "key": "veterinaria",
+   "nivel": "media",
+   "puntajes": { "persona": 3, "tools_ia": 2, "faqs": 2, "booking_fit": 2, "pipeline": 2, "terminologia_kpis": 3, "modulos": 1, "integraciones": 0, "procedures": 0, "onboarding": 3, "subtipos": 1, "docs_estrategia": 1 },
+   "que_tiene": "Persona vertical fuerte (tutor/paciente, triage de urgencias en las reglas — vertical-definitions.ts, revisada hoy); register_pet real en el executor (:227) con flag pets encendido por plantilla (persona.service.ts:2073); registro de mascotas por contacto (ai-tool-executor:1904); FAQs y objetivos de onboarding específicos ('Triage de emergencias', 'Recordatorios de vacunación' — onboarding/page.tsx:165-170); terminología y checklist verticales.",
+   "que_falta": [
+    "check_daycare_availability usa un heurístico fijo '<5 citas ese día' que no lee ninguna configuración del tenant (hallazgo del eje booking) — guardería con 20 cupos o con 2, da igual",
+    "Ninguna integración con PMS veterinarios (el equivalente a Cliniko no existe para vet)",
+    "Recordatorios de vacunación: la persona los promete pero no hay ningún mecanismo que los dispare (las FAQs y objetivos lo mencionan; no existe cron ni automation semilla)",
+    "Multi-veterinario: mismo límite estructural del clúster"
+   ],
+   "confuso": ["La frontera con pet_services no es evidente para el que se registra: peluquería canina con vacunación ¿es veterinaria o pet_services? El alta no ayuda a decidir y el contenido sembrado difiere bastante"],
+   "quick_wins": ["Hacer configurable el cupo del heurístico de guardería (un campo en settings)", "Sembrar una automation de recordatorio de vacunas usando el motor de automation existente — la promesa ya está en la persona"]
+  },
+  {
+   "key": "moda_belleza",
+   "nivel": "superficial",
+   "puntajes": { "persona": 2, "tools_ia": 1, "faqs": 2, "booking_fit": 1, "pipeline": 2, "terminologia_kpis": 2, "modulos": 0, "integraciones": 0, "procedures": 0, "onboarding": 3, "subtipos": 1, "docs_estrategia": 1 },
+   "que_tiene": "Plantilla con appointments encendido (persona.service.ts:1380), flag treatments registrado en el pipeline de conversación, FAQs y sub-tipos en el alta. El caso de una manicurista sola con agenda simple funciona correctamente post-95f758f3.",
+   "que_falta": [
+    "El salón real es multi-silla por definición y eso es exactamente lo que el motor no soporta: capacidad global 1 por chat — el segundo cliente del mismo horario recibe 'no hay disponibilidad' aunque haya 4 estilistas libres",
+    "Servicios encadenados (tinte+corte, duraciones variables) no existen: una reserva = un servicio de duración fija",
+    "Cero integraciones del sector (Booksy/Fresha/Treatwell son el estándar que el cliente final ya conoce)",
+    "tools_ia casi genéricas: fuera de treatments no hay nada específico de belleza"
+   ],
+   "confuso": ["El nombre del vertical mezcla moda (retail de ropa) con belleza (servicios de agenda): los sub-tipos revelan que son dos negocios distintos con flujos opuestos compartiendo persona y pipeline"],
+   "quick_wins": ["services.max_concurrent ya existe, es editable en UI y la ruta pública lo respeta (hallazgo del eje booking) — cablearlo a la ruta de chat le da al salón multi-silla una vida digna sin tocar la arquitectura"]
+  },
+  {
+   "key": "gimnasios",
+   "nivel": "media",
+   "puntajes": { "persona": 2, "tools_ia": 2, "faqs": 2, "booking_fit": 1, "pipeline": 2, "terminologia_kpis": 2, "modulos": 1, "integraciones": 2, "procedures": 0, "onboarding": 3, "subtipos": 1, "docs_estrategia": 1 },
+   "que_tiene": "Las tools de membresía son de las mejor cableadas de la plataforma: get_my_membership y get_membership_plans con lógica real de estado de membresía y upsell (ai-tool-executor.service.ts:259-265, :2234-2261, la plantilla instruye usarlas — persona.service.ts:2111). Mindbody de solo-lectura funciona (get_fitness_schedule :159; adapter con auth y test de conexión).",
+   "que_falta": [
+    "La reserva de CLASE con cupo no existe — y es el flujo central de un gimnasio: el motor solo sabe de slots 1:1 con capacidad 1. Hoy 'reservar' por chat en un gimnasio es una promesa rota (hallazgo del eje booking: el motor determinista además secuestra la palabra 'reservar' y anula los módulos verticales)",
+    "Mindbody trae solo 14 días de clases y getScheduleForAI no filtra clases pasadas ni mira synced_at: a la semana la IA ofrece horarios muertos (eje medio-construido, vertical-integrations.service.ts:271-277, :362-372)",
+    "Sin write-path: la IA muestra la clase pero no puede inscribir al cliente ni en nuestro sistema ni en Mindbody"
+   ],
+   "confuso": ["El tenant con Mindbody conectado ve que la IA 'sabe' las clases y asume que puede inscribir; la conversación muere justo en el momento de conversión"],
+   "quick_wins": ["Filtrar clases pasadas y exigir synced_at fresco en getScheduleForAI (arreglo XS ya identificado)", "Que la IA al menos derive a handoff con contexto ('quiere inscribirse a yoga del martes') en vez de cortar el flujo"]
+  },
+  {
+   "key": "fotografia",
+   "nivel": "superficial",
+   "puntajes": { "persona": 2, "tools_ia": 2, "faqs": 1, "booking_fit": 2, "pipeline": 2, "terminologia_kpis": 2, "modulos": 0, "integraciones": 0, "procedures": 0, "onboarding": 2, "subtipos": 1, "docs_estrategia": 1 },
+   "que_tiene": "check_date_availability existe de verdad y opera a nivel DÍA (ai-tool-executor.service.ts:334), que es el modelo correcto para sesiones largas; list_photo_packages real (:330, handler compartido con pet_services :2580); la plantilla instruye bien el flujo de fechas (revisada hoy: ya no afirma montos de anticipo sin confirmar). Para un fotógrafo solo, el flujo fecha→paquete funciona.",
+   "que_falta": [
+    "El check de día usa el mismo heurístico fijo '<5 citas' — un fotógrafo de bodas hace 1 evento por día, no 5: el umbral correcto es configurable y hoy no lo es",
+    "Anticipo/seña: el flujo de bodas vive de la seña para bloquear fecha y no hay ningún mecanismo de pago/reserva-con-anticipo",
+    "FAQs semilla genéricas: no hay extras de fotografía como sí tienen tours/dental/inmobiliaria",
+    "Sin galería/portfolio: la IA no puede mostrar trabajo previo, que es la primera pregunta real de este cliente"
+   ],
+   "confuso": ["list_photo_packages comparte handler con pet_services: funciona, pero cualquier evolución de uno arrastra al otro sin que sea obvio"],
+   "quick_wins": ["Umbral de citas/día configurable (mismo fix que veterinaria — un solo cambio sirve a ambas)", "Sembrar 3-4 FAQs de fotografía (entrega, derechos de uso, viáticos) siguiendo el patrón de seedToursExtras"]
+  }
+ ],
+ "hallazgos": [
+  { "titulo": "El clúster entero depende de multi-staff/capacidad y el motor es mono-recurso: belleza y gimnasios quedan con su flujo central roto, salud/veterinaria limitadas al caso solo-profesional", "severidad": "alta", "evidencia": "booking-engine.service.ts sin lógica de staff ni capacidad (grep 'staff|capacity' = 1 comentario); eje-booking-capacidad: 'el engine descarta el staffId que la tool ya le devuelve' y 'capacidad es 1 para todo el negocio; services.max_concurrent existe y la ruta pública lo respeta, la de chat no'", "impacto": "Cualquier negocio del clúster con más de un profesional/sala recibe 'no hay disponibilidad' con agenda libre — y estas industrias son multi-profesional en cuanto crecen", "arreglo": "Fase 1 (S): respetar max_concurrent en la ruta de chat. Fase 2 (M): usar el staffId que checkAvailability ya devuelve al crear la cita", "esfuerzo": "M" },
+  { "titulo": "Mindbody/Cliniko sirven datos vencidos: sync manual, ventana de 14 días y sin filtro de clases pasadas", "severidad": "media", "evidencia": "vertical-integrations.service.ts:271-277 (ventana 14 días), :362-372 (getScheduleForAI sin filtrar por fecha ni synced_at); eje-medio-construido lo confirma con el mismo rango", "impacto": "A la semana de conectar, la IA ofrece clases/horarios que ya pasaron — el tenant pierde confianza en la integración exactamente después de haberla configurado", "arreglo": "Filtrar rows pasadas + exigir synced_at < 48h en getScheduleForAI; cron de re-sync", "esfuerzo": "S" },
+  { "titulo": "El heurístico fijo '<5 citas/día' de check_date_availability no lee configuración: sobre-vende al fotógrafo de bodas y sub-vende a la guardería canina", "severidad": "media", "evidencia": "ai-tool-executor.service.ts:334 (case) + hallazgo del eje booking: 'heurístico fijo que no lee ninguna configuración'", "impacto": "Disponibilidad incorrecta afirmada por la IA en las dos verticales que usan el modelo por-día", "arreglo": "Campo settings.maxAppointmentsPerDay (default 5) leído por el handler — un solo cambio sirve a fotografía y veterinaria", "esfuerzo": "XS" }
+ ],
+ "medio_pensado": [
+  "staff-scheduling: 4 tablas + endpoints + availability check propio, cero consumidores, SQL roto en getAvailableStaff (columnas inexistentes en appointments) — duplica el modelo service_staff que sí se usa. Decidir: conectarlo al booking o borrarlo (el eje medio-construido ya lo marcó)",
+  "Recordatorios de vacunación (veterinaria): prometidos por la persona y los objetivos del alta, sin ningún mecanismo detrás — el motor de automation existe y podría sembrarse una regla",
+  "Procedures por vertical (T2.12): el motor SOP funciona y este clúster es el que más lo necesita (triage veterinario, protocolo de urgencias dental, anamnesis de primera visita) — cero plantillas escritas",
+  "Reserva de clase con cupo (gimnasios): las piezas existen desperdigadas (get_fitness_schedule, membresías con crédito, vi_items con las clases) pero nadie diseñó el flujo inscribirse-a-clase; hoy la conversación muere en el momento de conversión"
+ ]
+}

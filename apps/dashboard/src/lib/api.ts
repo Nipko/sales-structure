@@ -1727,6 +1727,32 @@ export const api = {
     removeListingZone: (tenantId: string, mappingId: string) =>
         apiDelete(`/listings/${tenantId}/zones/${mappingId}`),
 
+    // ─── Vehicle Inventory (automotriz) ───
+    listVehicles: (tenantId: string, params?: { status?: string; make?: string; category?: string; condition?: string; minPrice?: number; maxPrice?: number; limit?: number; offset?: number }) => {
+        const qs = new URLSearchParams();
+        Object.entries(params || {}).forEach(([k, v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); });
+        const q = qs.toString();
+        return apiGet(`/vehicles/${tenantId}${q ? `?${q}` : ''}`);
+    },
+    getVehicleStats: (tenantId: string) =>
+        apiGet(`/vehicles/${tenantId}/stats`),
+    getVehicle: (tenantId: string, vehicleId: string) =>
+        apiGet(`/vehicles/${tenantId}/${vehicleId}`),
+    createVehicle: (tenantId: string, data: any) =>
+        apiPost(`/vehicles/${tenantId}`, data),
+    updateVehicle: (tenantId: string, vehicleId: string, data: any) =>
+        apiPut(`/vehicles/${tenantId}/${vehicleId}`, data),
+    markVehicleSold: (tenantId: string, vehicleId: string, data: { soldPriceCents: number; buyerContactId?: string }) =>
+        apiPut(`/vehicles/${tenantId}/${vehicleId}/sold`, data),
+    listVehicleTestDrives: (tenantId: string, params?: { vehicleId?: string; status?: string; date?: string }) => {
+        const qs = new URLSearchParams();
+        Object.entries(params || {}).forEach(([k, v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); });
+        const q = qs.toString();
+        return apiGet(`/vehicles/${tenantId}/test-drives/list${q ? `?${q}` : ''}`);
+    },
+    scheduleVehicleTestDrive: (tenantId: string, data: { vehicleId: string; contactName: string; contactPhone?: string; scheduledDate: string; scheduledTime: string; notes?: string }) =>
+        apiPost(`/vehicles/${tenantId}/test-drives`, data),
+
     // ─── Financials (super_admin) ───
     getFinancialsOverview: () => apiGet("/financials/overview"),
     getMrrTrend: (months = 12) => apiGet(`/financials/mrr-trend?months=${months}`),

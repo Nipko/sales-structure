@@ -133,6 +133,7 @@
       "treatmentPlans": "Treatment plans",
       "pets": "Pets",
       "photoSessions": "Photo sessions",
+      "vehicles": "Vehicles",
       "platformUsage": "Tenant usage",
       "ops": "Operations",
       "incidents": "Incidents",
@@ -7565,6 +7566,102 @@
       "sold": "Sold",
       "rented": "Rented",
       "inactive": "Inactive"
+    }
+  },
+  "vehicles": {
+    "title": "Vehicles",
+    "subtitle": "Vehicle inventory and scheduled test drives",
+    "createVehicle": "Add vehicle",
+    "createFirst": "Add my first vehicle",
+    "emptyTitle": "No vehicles in your inventory yet",
+    "emptyDesc": "Add your first vehicle so the AI agent can show it to interested buyers.",
+    "errorLoading": "We couldn't load the inventory",
+    "retry": "Retry",
+    "tabInventory": "Inventory",
+    "tabTestDrives": "Test drives",
+    "filterAll": "All",
+    "filterAvailable": "Available",
+    "filterReserved": "Reserved",
+    "filterSold": "Sold",
+    "stats": {
+      "total": "Total",
+      "available": "Available",
+      "reserved": "Reserved",
+      "sold": "Sold"
+    },
+    "status": {
+      "label": "Status",
+      "available": "Available",
+      "reserved": "Reserved",
+      "sold": "Sold",
+      "maintenance": "In service"
+    },
+    "condition": {
+      "new": "New",
+      "used": "Used"
+    },
+    "category": {
+      "label": "Type",
+      "sedan": "Sedan",
+      "suv": "SUV",
+      "hatchback": "Hatchback",
+      "pickup": "Pickup",
+      "truck": "Truck",
+      "van": "Van",
+      "coupe": "Coupe",
+      "motorcycle": "Motorcycle"
+    },
+    "fuelType": {
+      "label": "Fuel",
+      "gasoline": "Gasoline",
+      "diesel": "Diesel",
+      "hybrid": "Hybrid",
+      "electric": "Electric",
+      "gas": "Gas"
+    },
+    "transmission": {
+      "label": "Transmission",
+      "automatic": "Automatic",
+      "manual": "Manual"
+    },
+    "make": "Make",
+    "makePlaceholder": "E.g. Toyota",
+    "model": "Model",
+    "modelPlaceholder": "E.g. Corolla Cross",
+    "year": "Year",
+    "price": "Price",
+    "currencyLabel": "Currency",
+    "mileageKm": "Mileage (km)",
+    "color": "Color",
+    "colorPlaceholder": "E.g. Pearl white",
+    "description": "Description",
+    "descriptionPlaceholder": "Equipment, condition, history, what makes it special...",
+    "makeModelRequired": "Make and model are required",
+    "editVehicle": "Edit vehicle",
+    "saveChanges": "Save changes",
+    "markSold": "Mark as sold",
+    "markSoldDesc": "You are about to mark the {vehicle} as sold. Confirm the final sale price.",
+    "soldPrice": "Sale price",
+    "confirmSold": "Confirm sale",
+    "toast": {
+      "created": "Vehicle added to inventory",
+      "updated": "Vehicle updated",
+      "sold": "Vehicle marked as sold"
+    },
+    "testDrives": {
+      "empty": "No test drives scheduled yet. The AI agent books them when a customer asks.",
+      "customer": "Customer",
+      "vehicle": "Vehicle",
+      "date": "Date",
+      "time": "Time",
+      "statusLabel": "Status",
+      "status": {
+        "scheduled": "Scheduled",
+        "confirmed": "Confirmed",
+        "completed": "Completed",
+        "cancelled": "Cancelled",
+        "no_show": "No show"
+      }
     }
   },
   "treatmentPlans": {

@@ -133,6 +133,7 @@
       "treatmentPlans": "Planos de tratamento",
       "pets": "Pets",
       "photoSessions": "Sessões fotográficas",
+      "vehicles": "Veículos",
       "platformUsage": "Uso por tenant",
       "ops": "Operações",
       "incidents": "Incidentes",
@@ -7565,6 +7566,102 @@
       "sold": "Vendido",
       "rented": "Alugado",
       "inactive": "Inativo"
+    }
+  },
+  "vehicles": {
+    "title": "Veículos",
+    "subtitle": "Inventário de veículos e test drives agendados",
+    "createVehicle": "Adicionar veículo",
+    "createFirst": "Adicionar meu primeiro veículo",
+    "emptyTitle": "Ainda não há veículos no inventário",
+    "emptyDesc": "Cadastre seu primeiro veículo para que o agente de IA possa mostrá-lo aos interessados.",
+    "errorLoading": "Não foi possível carregar o inventário",
+    "retry": "Tentar novamente",
+    "tabInventory": "Inventário",
+    "tabTestDrives": "Test drives",
+    "filterAll": "Todos",
+    "filterAvailable": "Disponíveis",
+    "filterReserved": "Reservados",
+    "filterSold": "Vendidos",
+    "stats": {
+      "total": "Total",
+      "available": "Disponíveis",
+      "reserved": "Reservados",
+      "sold": "Vendidos"
+    },
+    "status": {
+      "label": "Status",
+      "available": "Disponível",
+      "reserved": "Reservado",
+      "sold": "Vendido",
+      "maintenance": "Em manutenção"
+    },
+    "condition": {
+      "new": "Novo",
+      "used": "Usado"
+    },
+    "category": {
+      "label": "Tipo",
+      "sedan": "Sedã",
+      "suv": "SUV",
+      "hatchback": "Hatchback",
+      "pickup": "Picape",
+      "truck": "Caminhão",
+      "van": "Van",
+      "coupe": "Cupê",
+      "motorcycle": "Moto"
+    },
+    "fuelType": {
+      "label": "Combustível",
+      "gasoline": "Gasolina",
+      "diesel": "Diesel",
+      "hybrid": "Híbrido",
+      "electric": "Elétrico",
+      "gas": "Gás"
+    },
+    "transmission": {
+      "label": "Transmissão",
+      "automatic": "Automática",
+      "manual": "Manual"
+    },
+    "make": "Marca",
+    "makePlaceholder": "Ex: Toyota",
+    "model": "Modelo",
+    "modelPlaceholder": "Ex: Corolla Cross",
+    "year": "Ano",
+    "price": "Preço",
+    "currencyLabel": "Moeda",
+    "mileageKm": "Quilometragem (km)",
+    "color": "Cor",
+    "colorPlaceholder": "Ex: Branco pérola",
+    "description": "Descrição",
+    "descriptionPlaceholder": "Equipamentos, estado, histórico, o que o torna especial...",
+    "makeModelRequired": "Marca e modelo são obrigatórios",
+    "editVehicle": "Editar veículo",
+    "saveChanges": "Salvar alterações",
+    "markSold": "Marcar como vendido",
+    "markSoldDesc": "Você vai marcar o {vehicle} como vendido. Confirme o preço final de venda.",
+    "soldPrice": "Preço de venda",
+    "confirmSold": "Confirmar venda",
+    "toast": {
+      "created": "Veículo adicionado ao inventário",
+      "updated": "Veículo atualizado",
+      "sold": "Veículo marcado como vendido"
+    },
+    "testDrives": {
+      "empty": "Ainda não há test drives agendados. O agente de IA os agenda quando um cliente pede.",
+      "customer": "Cliente",
+      "vehicle": "Veículo",
+      "date": "Data",
+      "time": "Hora",
+      "statusLabel": "Status",
+      "status": {
+        "scheduled": "Agendado",
+        "confirmed": "Confirmado",
+        "completed": "Concluído",
+        "cancelled": "Cancelado",
+        "no_show": "Não compareceu"
+      }
     }
   },
   "treatmentPlans": {

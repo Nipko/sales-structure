@@ -60,6 +60,7 @@ import {
   ClipboardList,
   PawPrint,
   Camera,
+  Car,
   Tag,
   Layers,
   MessageSquare,
@@ -123,6 +124,7 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "properties", href: "/admin/properties", icon: Home, verticals: ["turismo"], capability: "canEditPipeline" },
       { labelKey: "tours", href: "/admin/tours", icon: Compass, verticals: ["turismo"], capability: "canEditPipeline" },
       { labelKey: "listings", href: "/admin/listings", icon: Building2, verticals: ["inmobiliaria"], capability: "canEditPipeline" },
+      { labelKey: "vehicles", href: "/admin/vehicles", icon: Car, verticals: ["automotriz"], capability: "canEditPipeline" },
       { labelKey: "menu", href: "/admin/menu", icon: UtensilsCrossed, verticals: ["restaurantes"], capability: "canEditPipeline" },
       // Operational — agents need access (taking orders, doing classes, dispatching, treating pets)
       { labelKey: "foodOrders", href: "/admin/food-orders", icon: ChefHat, verticals: ["restaurantes"], capability: "canHandleConversations" },

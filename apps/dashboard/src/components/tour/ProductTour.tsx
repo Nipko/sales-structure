@@ -23,6 +23,7 @@ export const TOUR_PENDING_KEY = "parallly:tour:pending";
 const VERTICAL_TOOL_LABELKEY: Record<string, string> = {
     turismo: "properties",
     inmobiliaria: "listings",
+    automotriz: "vehicles",
     restaurantes: "menu",
     gimnasios: "memberships",
     education: "courses",

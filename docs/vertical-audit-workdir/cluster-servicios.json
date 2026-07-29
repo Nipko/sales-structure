@@ -1,0 +1,250 @@
+{
+ "resumen": "El clúster de servicios profesionales confirma la sospecha a medias: finanzas, servicios_profesionales y technology son verticales \"de plantilla\" (persona + pipeline + terminología, cero herramientas IA propias y FAQs genéricas heredadas de createGenericVertical), pero education y seguros NO — ambas tienen módulo backend dedicado, 6 herramientas IA cada una, página de dashboard propia gateada por vertical y tablas de dominio en el tenant schema. El problema es que la más ambiciosa (education) está estructuralmente rota: su tabla `courses` colisiona con la tabla `courses` legacy del módulo catalog en tenant-schema.sql (línea 312 gana sobre la 2198 por CREATE TABLE IF NOT EXISTS) y solo se parcharon 2 de las 7 columnas faltantes, así que crear un curso desde /admin/courses falla y la herramienta get_course_schedule (bisagra del flujo de inscripción de Pablo) revienta por columnas inexistentes. Seguros es la vertical más sana del clúster: servicio completo de planes/cotizaciones/pólizas/reclamos que sí funciona, pero arranca con catálogo vacío (sin planes sembrados, calculate_quote no tiene qué cotizar), su etapa \"Cotizado\" está bloqueada por una regla offer_required que consulta commercial_offers×course_id (concepto legacy que una cotización de seguros jamás satisface), y check_policy_status/file_claim exponen datos de póliza con solo el número, sin la verificación de identidad que sus propias plantillas exigen. En las reguladas (finanzas/seguros) los guardrails están razonablemente cubiertos por el contrato L1 (prohíbe consejo de inversión, pedir datos bancarios y documentos de identidad) más forbiddenTopics verticales decentes, pero hay una contradicción de prompt sin resolver: las plantillas ordenan \"captura cédula/DNI/RFC\" mientras el L1 —que no se puede pisar— prohíbe pedir government IDs, y lo capturado se guarda en JSONB plano sin minimización. Finanzas tiene además una incoherencia de alta: el onboarding ofrece el objetivo \"Agendar asesorías\" y el bootstrap siembra servicio + disponibilidad, pero la plantilla default (tpl_finanzas_calificador) no trae la herramienta appointments, así que la agenda sembrada queda muerta. Servicios_profesionales y technology sí se distancian de \"otro\" en algo real (persona con reglas buenas, pipeline específico, booking funcional para consultas/demos, terminología), pero su distancia práctica se reduce a eso: sin tools, sin módulos, sin FAQs propias, y ni finanzas ni technology aparecen siquiera en vertical-strategy.md.",
+ "verticales": [
+  {
+   "key": "education",
+   "nivel": "media",
+   "puntajes": {
+    "persona": 2,
+    "tools_ia": 1,
+    "faqs": 2,
+    "booking_fit": 2,
+    "pipeline": 2,
+    "terminologia_kpis": 2,
+    "modulos": 2,
+    "integraciones": 0,
+    "procedures": 1,
+    "onboarding": 2,
+    "subtipos": 1,
+    "docs_estrategia": 1
+   },
+   "que_tiene": "Definición completa en vertical-definitions.ts:454-493 (Pablo, 4 idiomas, 6 etapas con transition_rules, 5 FAQs propias, 3 servicios sembrados, sidebar Estudiantes/Inscripciones, KPIs propios). Módulo backend real apps/api/src/modules/education/education.service.ts (cursos/cohortes con asiento atómico en enrollStudent:207-245, placement tests) + 6 herramientas IA en conversations/tools/education-tools.ts:11-78 (get_courses, get_course_schedule, enroll_student, get_placement_test_link, cancel_enrollment, list_my_enrollments), gateadas por config.tools.education.enabled (conversations.service.ts:1859-1861) y encendidas en el bootstrap (verticals.service.ts:112-114, enableEducationTool:1147-1170). Página dedicada apps/dashboard/src/app/admin/courses/page.tsx (525 líneas: cursos+cohortes+inscripciones) visible solo para education (AppSidebar.tsx:131). Plantilla tpl_educacion_inscripciones (persona.service.ts:1787-1814) con appointments on → el bootstrap restaura el agendador con 3 servicios + slots (verticals.service.ts:49-67). El modelo cohortes-con-cupos CALZA con cómo agenda educación (capacidad, no slots 1:1), y el booking engine cubre bien clases de prueba/tutorías 1:1.",
+   "que_falta": [
+    "CRÍTICO: la tabla courses de education (tenant-schema.sql:2198-2217) nunca se crea porque la tabla courses legacy del catálogo (tenant-schema.sql:312-329, con slug NOT NULL UNIQUE) ya existe y el CREATE TABLE IF NOT EXISTS la salta; solo subject y level se parchan por ALTER (2218-2219). Resultado: EducationService.createCourse (education.service.ts:48-68) inserta duration_weeks/certification/prerequisites/syllabus_url/image_url que NO existen → crear curso desde /admin/courses falla; upcomingCohorts (education.service.ts:156-182) selecciona c.duration_weeks y c.certification → la herramienta get_course_schedule (que la doc de enroll_student exige llamar ANTES de inscribir) devuelve error. El flujo estrella de la vertical está roto de punta a punta en un tenant recién creado",
+    "Sin cursos semilla: el bootstrap siembra servicios de citas pero cero filas en courses/course_cohorts → get_courses devuelve vacío el día 1 aunque la tool esté encendida",
+    "Sin integración LMS/aula (Moodle, Google Classroom, Zoom) — no existe nada, ni planeado en docs",
+    "Sin cobro/matrícula: enrollments tiene payment_status pero nada lo conecta a pagos",
+    "Sin SOPs ni escenarios de simulación curados para la vertical (simulation.service.ts:330-342 solo pasa la industria como hint de prompt al LLM)",
+    "Una sola plantilla vertical (la mayoría de verticales tiene 2): falta el perfil retención/soporte académico que el onboarding sí ofrece como objetivo"
+   ],
+   "confuso": [
+    "Existen DOS páginas de cursos con modelos distintos: /admin/courses (education) y /admin/catalog/courses (catalog legacy, API /catalog/courses) — la segunda no está en el sidebar pero sigue viva y escribe en la MISMA tabla con otro shape",
+    "KPI 'Matrículas Hoy' usa la key appointmentsToday (vertical-definitions.ts:488): cuenta citas (clases de prueba), no matrículas",
+    "Pablo ofrece inscribir pero no puede mostrar cohortes (get_course_schedule roto) → al cliente final le promete algo que la herramienta no entrega"
+   ],
+   "quick_wins": [
+    "Arreglar la colisión: completar los ALTER TABLE ADD COLUMN IF NOT EXISTS para duration_weeks/certification/prerequisites/syllabus_url/image_url en tenant-schema.sql (mismo patrón que subject/level) — 5 líneas que desbloquean toda la vertical",
+    "Sembrar 1-2 cursos + 1 cohorte demo en bootstrapVertical (como ya se hace con services) para que get_courses no salga vacío",
+    "Corregir el label del KPI o apuntarlo a un conteo real de enrollments"
+   ]
+  },
+  {
+   "key": "seguros",
+   "nivel": "media",
+   "puntajes": {
+    "persona": 2,
+    "tools_ia": 2,
+    "faqs": 2,
+    "booking_fit": 1,
+    "pipeline": 2,
+    "terminologia_kpis": 2,
+    "modulos": 2,
+    "integraciones": 0,
+    "procedures": 1,
+    "onboarding": 2,
+    "subtipos": 1,
+    "docs_estrategia": 1
+   },
+   "que_tiene": "La vertical más completa del clúster y la única cuyo stack funciona entero. Definición plena en vertical-definitions.ts:873-953 (Roberto, terminología asegurado/póliza/cotizaciones, 7 etapas, 5 FAQs propias prudentes, reglas del registry que citan las herramientas reales calculate_quote/file_claim/check_policy_status en 895-900). Módulo apps/api/src/modules/insurance/insurance.service.ts completo: planes CRUD, cotización con interpolación lineal por edad (calculatePremium:122-134), pólizas, reclamos (fileClaim:280-303). 6 herramientas IA en conversations/tools/insurance-tools.ts:13-99 gateadas por config.tools.insurance.enabled (conversations.service.ts:1862-1864) y encendidas en bootstrap (verticals.service.ts:118-120). Página /admin/insurance (460 líneas, planes/cotizaciones/pólizas/reclamos) gateada por vertical (AppSidebar.tsx:132). 2 plantillas (tpl_seguros_cotizador/postventa, persona.service.ts:2213-2278) con reglas de verificación de identidad y 'no confirmar cobertura'. bookingEnabled:false es honesto (seguros no agenda por slots). Guardrails regulados: forbiddenTopics del registry (no prometer aprobación de reclamos, no asesoría legal, no datos de otros clientes) + L1 hardcoded (prompt-assembler.service.ts:~85-99: prohíbe consejo de inversión, pedir datos bancarios y government IDs) — cobertura razonable.",
+   "que_falta": [
+    "Catálogo vacío al bootstrap: cero insurance_plans sembrados → calculate_quote no tiene qué cotizar y get_insurance_plans responde 'No insurance plans match' el día 1; no hay checklist post-alta que empuje al tenant a cargar planes",
+    "check_policy_status y file_claim operan con SOLO el número de póliza (ai-tool-executor.service.ts:2474, 2494-2499): cualquiera que conozca un número ve prima/fechas y puede radicar reclamos — la plantilla exige verificar cédula+póliza pero la herramienta no lo implementa",
+    "Etapa 'Cotizado' exige offer_required (vertical-definitions.ts:918) pero la regla consulta commercial_offers JOIN leads.course_id (pipeline.service.ts:888-903), un concepto del catálogo legacy que una insurance_quote jamás satisface → el tablero bloquea el avance a Cotizado",
+    "Sin integración con aseguradoras/carriers ni suscripción real — asumido y documentado, pero es el techo de la vertical",
+    "La cita con asesor está muerta: la plantilla trae appointments enabled (persona.service.ts:2244) pero bookingEnabled:false + services:[] hacen que el restore la deje apagada sin aviso al tenant",
+    "applicant_data de cotizaciones se guarda en JSONB plano, sin cifrado ni minimización, para una industria regulada"
+   ],
+   "confuso": [
+    "KPI 'Cotizaciones' usa la key leadsHot (vertical-definitions.ts:947): la tarjeta muestra leads calientes, no cotizaciones",
+    "Etapa 'Renovación' (probability 95, no terminal) viene DESPUÉS de la terminal 'Póliza emitida' (probability 100) — orden ilógico en el tablero",
+    "Las reglas del registry que citan las herramientas (calculate_quote, file_claim) nunca llegan al agente en español: la plantilla tpl_seguros_cotizador trae sus propias rules y patchDefaultAgent solo rellena huecos (verticals.service.ts:313); en pt/fr sí llegan porque la localización reconstruye desde el registry",
+    "El template postventa dice 'usa portal seguro' para datos sensibles, pero no existe ningún flujo de captura segura para el cliente final"
+   ],
+   "quick_wins": [
+    "Quitar (o re-implementar contra insurance_quotes) la regla offer_required de la etapa Cotizado en la definición — 1 línea que desbloquea el tablero",
+    "Sembrar 2-3 planes ejemplo por tipo en bootstrapVertical para que Roberto pueda cotizar desde el día 1",
+    "Exigir contact_id o un dato extra (cédula parcial) en check_policy_status/file_claim antes de responder"
+   ]
+  },
+  {
+   "key": "finanzas",
+   "nivel": "superficial",
+   "puntajes": {
+    "persona": 2,
+    "tools_ia": 0,
+    "faqs": 1,
+    "booking_fit": 1,
+    "pipeline": 2,
+    "terminologia_kpis": 2,
+    "modulos": 0,
+    "integraciones": 0,
+    "procedures": 1,
+    "onboarding": 2,
+    "subtipos": 1,
+    "docs_estrategia": 0
+   },
+   "que_tiene": "createGenericVertical con overrides decentes (vertical-definitions.ts:531-553): Roberto trustworthy/formal con reglas correctas para regulado ('nunca garantices rendimientos ni aprobación'), forbiddenTopics sólidos (no solicitar datos bancarios completos, no asesoría tributaria específica), pipeline de crédito bien pensado (Consulta→Pre-aprobación→Documentación→Evaluación→Aprobado/Rechazado, 540-547), sidebar 'Solicitudes' + oculta inventory/orders/catalog (548), 1 servicio 'Asesoría gratuita' (551). 2 plantillas buenas (persona.service.ts:1816-1881): calificador con monto/ingreso/plazo y renovaciones con verificación de identidad. Onboarding con 4 subtipos, 3 audiencias y 4 objetivos propios (onboarding/page.tsx:127-131, 236-241, 332-336). Guardrails L1 cubren lo esencial regulado. FAQs: hereda las 5 GENÉRICAS de createGenericVertical (vertical-definitions.ts:510-516) — no tiene propias.",
+   "que_falta": [
+    "Cero herramientas IA de industria: sin pre-calificación estructurada, sin simulador de cuota, sin captura de solicitud — el calificador opera solo con crm + knowledge (persona.service.ts:1848)",
+    "La agenda sembrada está muerta: bootstrap siembra servicio + availability_slots (bookingEnabled:true) pero tpl_finanzas_calificador no trae la herramienta appointments → sin marcador pendingPrerequisites nada la enciende (verticals.service.ts:1086) y el gate del booking engine (conversations.service.ts:~1627) queda en false; el objetivo de onboarding 'Agendar asesorías' es imposible out of the box",
+    "Sin pipeline de etapas con reglas: las 6 etapas se definen sin transitionRules (vertical-definitions.ts:540-547) → se siembran con '[]' y nada gobierna el avance",
+    "FAQs genéricas: '¿Tienen política de devolución?' sembrada en una financiera",
+    "No existe en vertical-strategy.md: ni tier, ni herramientas propuestas, ni posicionamiento — cero estrategia escrita",
+    "Sin módulos ni integraciones (core bancario, buró, pasarela) — nada, ni planeado"
+   ],
+   "confuso": [
+    "El subtipo 'seguros' dentro de finanzas (vertical-definitions.ts:533) duplica la vertical seguros completa sin rutear a ella: un broker que elige finanzas>seguros se queda sin las 6 herramientas de insurance",
+    "El onboarding promete 'Agendar asesorías' (onboarding/page.tsx:239) y el tenant ve servicios y horarios sembrados en Citas, pero el bot no puede agendar — incoherencia visible para el tenant y su cliente",
+    "Plantilla ordena 'Captura nombre completo, cédula/RFC' (persona.service.ts:1835) mientras el contrato L1 —imborrable— prohíbe pedir government IDs: el LLM recibe instrucciones contradictorias"
+   ],
+   "quick_wins": [
+    "Agregar tools.appointments {enabled:true, canBook:true} a tpl_finanzas_calificador (o respetar el goal 'appointments' aunque haya plantilla vertical) — la agenda ya está sembrada, solo falta encender la llave",
+    "Escribir 5 FAQs propias (productos, requisitos, tiempos de aprobación, tasas 'te las confirma un asesor') en el estilo prudente del registry",
+    "Si el subtipo es 'seguros', encender también tools.insurance en el bootstrap — el módulo ya existe"
+   ]
+  },
+  {
+   "key": "servicios_profesionales",
+   "nivel": "superficial",
+   "puntajes": {
+    "persona": 2,
+    "tools_ia": 0,
+    "faqs": 1,
+    "booking_fit": 2,
+    "pipeline": 2,
+    "terminologia_kpis": 2,
+    "modulos": 0,
+    "integraciones": 0,
+    "procedures": 1,
+    "onboarding": 2,
+    "subtipos": 1,
+    "docs_estrategia": 1
+   },
+   "que_tiene": "createGenericVertical con overrides (vertical-definitions.ts:555-578): Elena formal, reglas correctas ('nunca des asesoramiento legal o financiero directo'), terminología caso/casos, pipeline plausible (Consulta→Evaluación→Propuesta→En proceso→Completado/Declinado), sidebar 'Casos' + oculta inventory/orders/catalog, 2 servicios sembrados (Consulta inicial 30min $100k, Asesoría especializada 60min $200k). 2 plantillas muy buenas (persona.service.ts:1883-1948): consulta inicial con calificación de caso + captura de urgencia/plazo legal, y seguimiento con verificación de identidad y 'solo información que el profesional autorizó'. El booking 1:1 servicio→fecha→hora CALZA perfecto con cómo agenda un despacho, y aquí sí funciona entero: plantilla trae appointments on → bootstrap siembra 2 servicios + slots → restore la enciende (verticals.service.ts:49-67, 1075-1118). Es la distancia real vs 'otro': persona con reglas de despacho, pipeline de casos, terminología, y agendador operativo con servicios reales (OTRO sale con bookingEnabled:false y services:[], vertical-definitions.ts:1127+526).",
+   "que_falta": [
+    "Cero herramientas IA de industria: las propuestas en vertical-strategy.md:158-166 (qualify_case, request_documents, get_services_and_fees) nunca se construyeron",
+    "FAQs genéricas: '¿Tienen política de devolución?' y '¿Dónde están ubicados?' sembradas en un despacho jurídico/contable — faltan las obvias (honorarios, confidencialidad, primera consulta, documentos del caso)",
+    "Etapas sin transitionRules (vertical-definitions.ts:564-571) — el ciclo de casos no tiene gobernanza",
+    "Sin gestión de expediente/documentos del caso: el seguimiento promete 'dirige al portal seguro' pero no existe flujo de documentos",
+    "Sin per-staff booking por defecto: staff-scheduling existe como módulo transversal pero el bootstrap asigna todos los slots al tenant_admin (pendiente conocido)",
+    "Subtipos (abogados/contadores/arquitectos/consultores) no cambian nada — mismo agente, mismas FAQs, mismos servicios para un contador que para un arquitecto"
+   ],
+   "confuso": [
+    "El tenant ve 'Casos' en el sidebar pero el tablero es un kanban genérico sin reglas ni vínculo con citas o documentos",
+    "FAQ de devoluciones respondida por Elena a un cliente que pregunta por un pleito — fuera de tono para la industria"
+   ],
+   "quick_wins": [
+    "5 FAQs propias por subtipo dominante (honorarios/consulta inicial con costo, confidencialidad, qué llevar a la primera reunión) — el patrón seedToursExtras/seedDentalExtras ya existe en verticals.service.ts:562-787 para copiar",
+    "Diferenciar servicios sembrados por subtipo (contador: declaración de renta; abogado: consulta legal) — es un if en bootstrapVertical como el de dental",
+    "Agregar transitionRules mínimas (propuesta→offer o appointment_required en Consulta) coherentes con el motor"
+   ]
+  },
+  {
+   "key": "technology",
+   "nivel": "superficial",
+   "puntajes": {
+    "persona": 2,
+    "tools_ia": 0,
+    "faqs": 1,
+    "booking_fit": 2,
+    "pipeline": 2,
+    "terminologia_kpis": 1,
+    "modulos": 0,
+    "integraciones": 0,
+    "procedures": 1,
+    "onboarding": 2,
+    "subtipos": 1,
+    "docs_estrategia": 0
+   },
+   "que_tiene": "createGenericVertical con overrides (vertical-definitions.ts:600-623): Ana asesora tecnológica, terminología deal/pipeline/solución, pipeline B2B clásico de 7 etapas (Lead→Discovery→Demo→Propuesta→Negociación→Cerrado/Perdido — el mejor pipeline del clúster), oculta inventory/catalog, 1 servicio 'Demo personalizada' 45min. 2 plantillas notables (persona.service.ts:2016-2081): Diego SDR con BANT explícito y 'nunca des precios enterprise', y Soporte N1 con embudo de troubleshooting. El booking de demos 1:1 calza y funciona: plantilla con appointments on → 1 servicio + slots sembrados → restaurado. La distancia vs 'otro' es real pero angosta: pipeline B2B + plantillas BANT + demo agendable; todo lo demás es idéntico a 'otro'. El módulo crm-b2b (organizations/forecasting/deal-rotting, transversal T3.21) es especialmente relevante para esta vertical pero no está gateado ni promocionado hacia ella.",
+   "que_falta": [
+    "Cero herramientas IA de industria (ni lead-enrichment, ni calificación BANT estructurada como tool, ni handoff a calendario de AE)",
+    "FAQs genéricas: '¿Dónde están ubicados?' y 'política de devolución' para un SaaS — faltan pricing/trial/seguridad/integraciones",
+    "Sin labelOverrides de sidebar (vertical-definitions.ts:618: labelOverrides:{}) — el dashboard se ve 100% genérico salvo los items ocultos",
+    "KPIs genéricos (leadsToday/leadsHot) — nada de pipeline value, demos agendadas o velocity que un equipo B2B espera",
+    "No existe en vertical-strategy.md: sin tier, sin estrategia, sin pricing pensado",
+    "Sin integraciones (CRM externos existen como research en docs/external-crm-integration-research.md pero nada específico tech)"
+   ],
+   "confuso": [
+    "Triggers de handoff condicionales muertos: 'presupuesto >$50M' (registry, vertical-definitions.ts:608) y 'empresa > 100 empleados' (plantilla, persona.service.ts:2039) se evalúan por substring contra el texto del cliente (handoff.service.ts:107-109) — jamás dispararán",
+    "Terminología 'deal/pipeline' se inyecta al prompt pero el tenant ve 'CRM' y 'Pipeline' genéricos en el sidebar — la vertical se siente sin adaptar en la UI"
+   ],
+   "quick_wins": [
+    "5 FAQs SaaS propias (trial, planes, seguridad de datos, soporte, integraciones) en estilo prudente",
+    "labelOverrides mínimos (crm→'Cuentas', pipeline→'Deals') — son 3 líneas en la definición",
+    "Reescribir los triggers condicionales como keywords reales ('licitación', 'RFP', 'seguridad', 'SOC2') que sí matchean por substring"
+   ]
+  }
+ ],
+ "hallazgos": [
+  {
+   "titulo": "Colisión de la tabla courses: la vertical education está rota a nivel schema",
+   "severidad": "critica",
+   "evidencia": "tenant-schema.sql define courses DOS veces: línea 312 (catálogo legacy: slug NOT NULL UNIQUE, brochure_url, sin duration_weeks/certification/prerequisites/syllabus_url/image_url) y línea 2198 (shape education). CREATE TABLE IF NOT EXISTS hace que la primera gane y la segunda se salte en silencio; solo subject y level se parchan por ALTER (2218-2219). EducationService.createCourse (education.service.ts:48-68) y upcomingCohorts (156-182) usan las columnas inexistentes.",
+   "impacto": "En cualquier tenant education: crear un curso desde /admin/courses lanza error de columna inexistente, y la herramienta IA get_course_schedule (paso obligatorio antes de enroll_student según su propia descripción) falla → el diferenciador completo de la vertical (cursos→cohortes→inscripción) no funciona de punta a punta. Además /admin/catalog/courses (API catalog legacy) escribe en la misma tabla con otro contrato.",
+   "arreglo": "Completar los ALTER TABLE ADD COLUMN IF NOT EXISTS para duration_weeks, certification, prerequisites, syllabus_url e image_url (mismo patrón ya usado con subject/level), y decidir el destino del catálogo legacy (renombrar o retirar /admin/catalog/courses). Alternativa más limpia a futuro: renombrar la tabla education a edu_courses (expand-contract).",
+   "esfuerzo": "S"
+  },
+  {
+   "titulo": "offer_required es incompatible con las verticales que cotizan fuera del catálogo legacy",
+   "severidad": "alta",
+   "evidencia": "pipeline.service.ts:888-903: la regla consulta commercial_offers JOIN leads.course_id. La etapa 'Cotizado' de seguros (vertical-definitions.ts:918) y 'Cotización' de turismo/automotriz dependen de ella, pero las cotizaciones reales de seguros viven en insurance_quotes sin relación con course_id.",
+   "impacto": "El avance a 'Cotizado' queda bloqueado para siempre en tenants seguros (auto-advance y movimiento manual del tablero aplican las reglas): los leads se apilan en 'Calificado' aunque Roberto haya generado la cotización con calculate_quote.",
+   "arreglo": "Hacer que offer_required acepte fuentes alternativas por vertical (EXISTS en insurance_quotes para seguros) o quitar la regla de la definición de seguros hasta tenerlo.",
+   "esfuerzo": "S"
+  },
+  {
+   "titulo": "Contradicción de prompt en industrias reguladas: plantillas piden cédula/DNI/RFC, el contrato L1 lo prohíbe",
+   "severidad": "media",
+   "evidencia": "prompt-assembler.service.ts (bloque SAFETY GUARDRAILS, 'cannot be overridden'): 'Requesting full credit card numbers, bank details, or government IDs'. Las plantillas tpl_finanzas_calificador (persona.service.ts:1835) y tpl_seguros_cotizador (2233) ordenan 'Captura nombre completo, cédula/RFC…' / 'cédula/DNI'. Además applicant_data de insurance_quotes se persiste en JSONB plano.",
+   "impacto": "El LLM recibe instrucciones contradictorias: puede negarse a capturar el dato (rompiendo el flujo de pre-calificación) o capturarlo (violando el guardrail), con comportamiento inconsistente entre modelos del router. Los datos sensibles capturados quedan sin cifrar ni minimizar.",
+   "arreglo": "Decidir la política: o el L1 exceptúa identificadores de negocio cuando la vertical lo requiere (con máscara/última-4), o las plantillas dejan de pedir cédula y derivan la verificación al humano/portal. Documentarlo en security-specification.md.",
+   "esfuerzo": "M"
+  },
+  {
+   "titulo": "Los objetivos del onboarding son decorativos cuando existe plantilla vertical",
+   "severidad": "media",
+   "evidencia": "persona.service.ts:2686-2707: si getVerticalTemplates devuelve algo, se usa siempre la PRIMERA plantilla y la selección por goals se salta. Caso concreto: finanzas ofrece 'Agendar asesorías' (onboarding/page.tsx:239), el bootstrap siembra servicio + slots, pero tpl_finanzas_calificador no trae appointments → agenda sembrada muerta y objetivo imposible.",
+   "impacto": "Lo que el tenant declara querer en el alta no influye en el agente que recibe; en finanzas produce una promesa rota visible (asesorías no agendables) y datos sembrados huérfanos.",
+   "arreglo": "Tras elegir la plantilla vertical, aplicar los goals como modificadores (goals incluye 'appointments' → encender tools.appointments con el marcador pendingPrerequisites para que el restore decida).",
+   "esfuerzo": "S"
+  },
+  {
+   "titulo": "Tools verticales encendidas contra catálogos vacíos (education/seguros)",
+   "severidad": "media",
+   "evidencia": "bootstrapVertical enciende tools.education y tools.insurance (verticals.service.ts:112-120) pero no siembra ninguna fila en courses/course_cohorts ni insurance_plans (a diferencia de services/FAQs/slots que sí se siembran). get_insurance_plans responde 'No insurance plans match the criteria' (ai-tool-executor.service.ts:2421).",
+   "impacto": "El primer cliente final que pregunte por planes o cursos recibe un 'no hay nada' del bot recién configurado — la peor primera impresión posible para el tenant que acaba de elegir su vertical.",
+   "arreglo": "Sembrar 2-3 filas demo marcadas como ejemplo (o apagar la tool hasta que el catálogo tenga filas, con checklist post-onboarding 'carga tus planes/cursos' como ya hace la lógica de appointments con pendingPrerequisites).",
+   "esfuerzo": "S"
+  },
+  {
+   "titulo": "Triggers de handoff condicionales que nunca disparan",
+   "severidad": "baja",
+   "evidencia": "handoff.service.ts:107-109 evalúa text.includes(trigger.toLowerCase()). Triggers como 'presupuesto >$50M' (technology, vertical-definitions.ts:608), 'monto > USD 50000' (finanzas, persona.service.ts:1841), 'empresa > 100 empleados' (2039), 'empresa con +50 empleados' (seguros, 2237) son condiciones lógicas escritas como substring.",
+   "impacto": "Los casos de alto valor que el diseño quería escalar a humano jamás escalan por esa vía; falsa sensación de cobertura en las plantillas.",
+   "arreglo": "Reemplazar por keywords reales que aparecen en texto de cliente ('licitación', 'RFP', 'crédito empresarial') o implementar señales estructuradas (monto extraído por el intérprete de intención).",
+   "esfuerzo": "S"
+  }
+ ],
+ "medio_pensado": [
+  "Las herramientas propuestas en vertical-strategy.md nunca construidas: qualify_case/request_documents/get_services_and_fees para servicios_profesionales (vertical-strategy.md:158-166), get_pricing para education (:128-137), schedule_consultation para seguros (:148-157) — el doc las lista como si fueran el plan y quedaron a mitad de camino",
+  "finanzas y technology no existen en vertical-strategy.md (los 15 verticales tier 1-3 no las incluyen): tienen definición, plantillas y onboarding en código pero cero estrategia, pricing o posicionamiento escritos",
+  "La colisión de courses fue detectada a medias: alguien agregó ALTER TABLE ADD COLUMN IF NOT EXISTS para subject y level (tenant-schema.sql:2218-2219) — exactamente el fix correcto — pero se detuvo ahí y dejó 5 columnas sin parchar",
+  "El template de seguros postventa instruye 'usa portal seguro' para datos sensibles (persona.service.ts:1870, 2270) pero no existe ningún flujo de captura segura para el cliente final del tenant — la instrucción apunta a infraestructura no construida",
+  "Pipeline de seguros con 'Renovación' (no terminal, probability 95) DESPUÉS de la terminal 'Póliza emitida' (probability 100) (vertical-definitions.ts:920-921): el ciclo de renovación se pensó pero no se modeló (nada mueve una póliza emitida a renovación)",
+  "El subtipo finanzas>'seguros' (vertical-definitions.ts:533) coexiste con la vertical seguros completa sin ningún puente: señal de que seguros nació como subtipo y se promovió a vertical sin limpiar el origen",
+  "KPIs con labels remapeados sin cambiar la métrica: 'Cotizaciones' sobre leadsHot en seguros (vertical-definitions.ts:947) y 'Matrículas Hoy' sobre appointmentsToday en education (:488) — se pensó el label vertical, no el dato",
+  "Las FINANZAS/SP/TECHNOLOGY definen pipeline sin transitionRules (vertical-definitions.ts:540-547, 564-571, 609-617) mientras las verticales completas sí las traen — la gobernanza de etapas quedó a medias en las genéricas",
+  "Las reglas del registry de seguros que citan las herramientas reales (calculate_quote/file_claim, vertical-definitions.ts:895-900) solo llegan al agente en tenants no-es (vía localizeVerticalTemplates); en español la plantilla las pisa — dos fuentes de verdad para las reglas del mismo agente"
+ ]
+}

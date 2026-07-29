@@ -1,0 +1,191 @@
+{
+ "resumen": "El clúster servicios_hogar / pet_services / otro es el \"Tier 3\" del sistema de verticales y su estado real es intermedio: nada está roto tras el fix 95f758f3, pero la profundidad cae en escalones claros. servicios_hogar es la más sólida: tiene modelo de datos propio (service_requests con urgencia y despacho), 3 tools IA funcionales, board de despacho en el dashboard y hasta agregador en vertical-analytics; sus huecos son de última milla (nadie escucha el evento de emergencia, el KPI \"Emergencias\" muestra leads calientes, el técnico se asigna por texto libre). pet_services es más maquillaje que músculo: persona y FAQs buenas, pero sus 2 tools son un SELECT genérico y una heurística que ignora checkOut/petSize, el servicio sembrado \"Hotel — noche\" (1440 min) es matemáticamente imposible de agendar con el motor de slots, y el pipeline no tiene terminal negativo. \"otro\" es un fallback digno y honesto (agente genérico competente, 5 FAQs que no inventan políticas, pipeline estándar con reglas), pero es un callejón sin salida: lo que el usuario escribe en \"otro: …\" de objetivos/audiencia queda write-only en tenant.settings y no llega jamás al agente. Transversal al clúster: los sub-tipos del alta están hardcodeados en la página y drifteados del registry (falta alquiler_vacacional en turismo — confirmado vigente —, sobra multiservicio en hogar, pet_services renombra/agrega claves), el endpoint creado para evitar ese drift (GET /verticals/definitions/all) no tiene ningún consumidor, y los goals del onboarding ya no eligen plantilla porque las 18 industrias tienen templates verticales y la rama por goals quedó muerta. La frontera pet_services vs veterinaria es objetivamente confusa: la MISMA opción \"Peluquería canina / felina\" aparece como sub-tipo en ambas industrias y elegir una u otra cambia materialmente el agente (pets clínico con vacunas/triage vs agendador con servicios sembrados) sin ninguna guía en el alta.",
+ "verticales": [
+  {
+   "key": "servicios_hogar",
+   "nivel": "media",
+   "puntajes": {
+    "persona": 2,
+    "tools_ia": 2,
+    "faqs": 2,
+    "booking_fit": 2,
+    "pipeline": 3,
+    "terminologia_kpis": 2,
+    "modulos": 2,
+    "integraciones": 0,
+    "procedures": 1,
+    "onboarding": 2,
+    "subtipos": 1,
+    "docs_estrategia": 1
+   },
+   "que_tiene": "La vertical más completa del clúster. Definición rica en el registry con persona Diego y reglas operativas reales (urgencia, dirección, 'usa create_service_request', no inventar precios) — vertical-definitions.ts:627-708. Dos plantillas de persona propias (tpl_hogar_cotizador con requiredFields y tpl_hogar_seguimiento) — persona.service.ts:2282-2344. 3 tools IA reales con gating correcto (tools.homeServices encendido en bootstrap, verticals.service.ts:126-128; registro en pipeline conversations.service.ts:1865-1867 y en simulador agent-test.service.ts:160): create_service_request/check_request_status/cancel_service_request (tier3-tools.ts:10-61, handlers ai-tool-executor.service.ts:2520-2575 y 3107-3127 con check de ownership). Modelo de datos propio: tabla service_requests en el schema canónico con urgencia/dirección/técnico/estados de despacho (tenant-schema.sql:2376-2405) + módulo home-services (service+controller). Dashboard: board de despacho /admin/service-requests (278 líneas: orden por urgencia, filtros, avanzar estado, modal de asignación técnico/fecha/costo, auto-refresh 20s, resaltado de emergencias >30min) gateado por vertical en AppSidebar.tsx:133 y presente en ToolsTour. Pipeline Solicitud→Cotización→Agendado→En servicio→Completado→Cancelado con transitionRules coherentes (offer_required, appointment_required, name+phone) — vertical-definitions.ts:670-679: refleja el ciclo real de field services. 5 FAQs honestas post-fix (urgencias/cotización/garantía/cobertura/pagos) en 4 idiomas. vertical-analytics con agregador propio (requests30d, emergencias30d, completionRatePct) y métrica primaria — vertical-analytics.service.ts:469-491, 606-611, 639. Booking: bookingEnabled true pero services:[] → el agendador queda apagado deliberadamente (restoreAppointmentsTool con services=0) y el flujo pasa por service_requests, que ES el modelo correcto para dispatch (no slots).",
+   "que_falta": [
+    "Nadie escucha 'service_request.created': el evento se emite (ai-tool-executor.service.ts:2541) pero no existe ningún @OnEvent para él — una fuga de gas crea el request y ningún humano recibe notificación (ni email, ni push, ni inbox); la única escalación real es por keywords de handoff en el texto del cliente, y el board se entera por su refresh de 20s",
+    "El campo shouldHandoff:true que devuelve la tool en emergencias (ai-tool-executor.service.ts:2553) no lo consume ningún código — es solo una sugerencia al LLM",
+    "Asignación de técnico = input de texto libre (service-requests/page.tsx:255-256) sin conexión con el módulo staff-scheduling que ya existe en la misma carpeta verticals/ (staff_members, disponibilidad, conflictos)",
+    "Columna photos JSONB existe en la tabla (tenant-schema.sql:2398) pero no hay ni tool ni UI para adjuntar evidencia fotográfica — en este rubro la foto del problema es el 50% de la cotización",
+    "Sin tool de cotización (la plantilla Carlos dice 'cotiza con rangos' pero no hay ningún dato de precios que consultar; estimated_cost solo lo carga el operador a mano)",
+    "Integraciones del rubro: cero (no hay nada tipo Jobber/Housecall Pro, ni rutas/mapas); Toast/Mindbody/Cliniko no aplican",
+    "Sin plantillas SOP ni escenarios de simulación curados del rubro (procedures/simulation son genéricos; la simulación solo inyecta el string de la industria en el prompt — simulation.service.ts:330-342)"
+   ],
+   "confuso": [
+    "El KPI 'Emergencias' del dashboard (vertical-definitions.ts:702) mapea a la clave leadsHot, que getCommercialOverview computa como leads calientes por scoring — el tile dice Emergencias y muestra otra cosa; la cifra real vive en service_requests y nadie la consulta para ese tile (admin/page.tsx:74-84, 207-215)",
+    "Contradicción suave de personas: la plantilla Carlos (que gana en ES) dice 'Cotiza con rangos entre $X y $Y' mientras el registry Diego y los forbiddenTopics dicen 'NUNCA inventes precios sin evaluación en sitio' — el merge de patchDefaultAgent une ambos forbidden pero deja las rules de Carlos",
+    "verticalChecklist y verticalWelcome no tienen entrada para servicios_hogar en ningún idioma (solo 11 industrias + default en messages/*.json) — el tenant cae al checklist genérico"
+   ],
+   "quick_wins": [
+    "Listener de 'service_request.created' con urgency=emergencia → notificación al inbox/email del tenant (el patrón handoff.escalated ya existe, es replicar)",
+    "Corregir el tile Emergencias: computar COUNT de service_requests con urgency=emergencia del día en getCommercialOverview cuando industry=servicios_hogar, o renombrar el label",
+    "Agregar los sub-tipos fumigacion y jardineria al alta (ya existen en el registry y en el enum del tool)",
+    "Autocompletar del técnico desde staff_members si existen, conservando el texto libre como fallback"
+   ]
+  },
+  {
+   "key": "pet_services",
+   "nivel": "media",
+   "puntajes": {
+    "persona": 2,
+    "tools_ia": 1,
+    "faqs": 2,
+    "booking_fit": 1,
+    "pipeline": 2,
+    "terminologia_kpis": 2,
+    "modulos": 2,
+    "integraciones": 0,
+    "procedures": 1,
+    "onboarding": 2,
+    "subtipos": 1,
+    "docs_estrategia": 1
+   },
+   "que_tiene": "Buena cara, poco motor. Registry completo (vertical-definitions.ts:710-792) con terminología correcta (tutor/tutores/reservas), persona Toby y 5 FAQs honestas y útiles (vacunas, razas grandes, juguetes, duración, pickup) en 4 idiomas. Plantillas propias muy bien escritas en ES: tpl_pet_atencion (Luna, reglas de raza/tamaño/vacunas/socialización) y tpl_pet_tienda (pet shop con catalog+orders) — persona.service.ts:2347-2414. Es la única del clúster que arranca con el agendador FUNCIONANDO: siembra 3 servicios (baño+corte, guardería, hotel — vertical-definitions.ts:767-771) + availability_slots desde businessHours, así que restoreAppointmentsTool lo re-enciende (services>0, slots>0). Tools petServices gateadas correctamente (bootstrap verticals.service.ts:129-131; registro conversations.service.ts:1868-1870): list_pet_services y check_daycare_availability (tier3-tools.ts:65-88, handlers ai-tool-executor.service.ts:2585-2640). Sidebar con overrides (crm→Tutores, appointments→Reservas) y página /admin/pets compartida con veterinaria (AppSidebar.tsx:135; pets.service.ts con vacunas y last_visit) — útil aunque de sesgo clínico. KPIs del dashboard semánticamente correctos (Tutores Hoy=leadsToday, Reservas Hoy=appointmentsToday). Onboarding con 5 sub-tipos, goals y audiencias específicas buenas (dueños de perros/gatos/múltiples/criadores) — onboarding/page.tsx:151-157, 260-265, 352-357.",
+   "que_falta": [
+    "El servicio sembrado 'Hotel — noche' (1440 min, vertical-definitions.ts:770) es IMPOSIBLE de agendar: tanto el generador del executor (ai-tool-executor.service.ts:1025, `min + totalBlock <= slotEndMin`) como el de appointments.service.ts:760 exigen que el servicio quepa en la ventana diaria (08:00-18:00 = 600 min) — check_availability devuelve available:false para siempre y el bot entra en 'sugerí otra fecha' eterno (no escala porque SÍ hay availability_slots, así que no dispara appointments_not_configured)",
+    "No existe modelo de estadía multi-día: guardería/hotel con checkIn/checkOut no se puede reservar; check_daycare_availability acepta checkOut y petSize en su schema (tier3-tools.ts:77-84) pero el handler los IGNORA por completo y solo cuenta citas del día de entrada con una heurística hardcodeada taken<5 (ai-tool-executor.service.ts:2616-2640)",
+    "Capacidad simultánea: el camino IA de check_availability/create_appointment no usa max_concurrent (services.service.ts:22 lo soporta y el booking público sí lo pasa, public-booking.controller.ts:128) — con los slots sembrados a un solo usuario, la primera guardería de 480 min bloquea el día entero; una guardería real atiende N mascotas a la vez",
+    "Doble semántica de disponibilidad contradictoria: check_daycare_availability dice 'hay lugar' (heurística <5) y create_appointment luego rechaza por conflicto estricto — el bot puede afirmar disponibilidad que no puede reservar",
+    "Sin tool de registro/perfil de mascota: register_pet/get_vaccination_status son exclusivas de veterinaria (tools.pets solo se enciende para veterinaria, verticals.service.ts:94-96) — las reglas de Luna piden 'verifica vacunas' y el bot no tiene ninguna herramienta para hacerlo",
+    "Pipeline sin terminal negativo: Consulta→Reserva→Servicio→Completado→Recurrente (vertical-definitions.ts:751-758) no tiene cancelado/perdido — win/loss y funnel quedan cojos; además 'Cliente recurrente' (no-terminal, prob 95) está posicionado DESPUÉS del terminal Completado",
+    "vertical-analytics: sin agregador ni métrica primaria para pet_services (no está en INDUSTRY_AGGREGATORS ni en primaryMetricValue), y el check de activación usa la tabla pets (vertical-analytics.service.ts:128) que el bot de pet_services no puede poblar — tenants sanos aparecerán como no-activados",
+    "Integraciones del rubro: cero (Gingr/PetExec/etc. no existen)"
+   ],
+   "confuso": [
+    "Frontera con veterinaria objetivamente rota: la MISMA opción 'Peluquería canina / felina' es sub-tipo de veterinaria (peluqueria_canina) Y de pet_services (peluqueria) con label idéntico en es.json — un grooming no tiene forma de saber cuál elegir, y la elección cambia materialmente el agente (veterinaria: tools clínicas de vacunas/triage, plantilla de clínica, sin servicios sembrados de peluquería; pet_services: agendador operativo + petServices). La señal real es '¿hacés medicina o no?' y el alta no la pregunta",
+    "Sub-tipos del alta drifteados del registry: onboarding usa entrenamiento/tienda y funde hotel dentro de 'Guardería y hotel' mientras el registry define adiestramiento/hotel sin tienda (page.tsx:151-157 vs vertical-definitions.ts:712-718) — el subType guardado puede no existir en la fuente de verdad",
+    "El sub-tipo 'tienda' sugiere pet shop y EXISTE la plantilla perfecta (tpl_pet_tienda con catalog+orders), pero elegirlo no cambia nada: createDefaultAgentFromGoals siempre toma templates[0]=tpl_pet_atencion (persona.service.ts:2686-2692)",
+    "Nombre del agente inconsistente por idioma: en ES gana Luna (plantilla), en EN/PT/FR la localización reemplaza por Toby del registry con reglas mucho más pobres (localizeVerticalTemplates, persona.service.ts:2608-2656)",
+    "verticalChecklist/verticalWelcome sin entrada pet_services (cae a default)"
+   ],
+   "quick_wins": [
+    "Sembrar 'Hotel — noche' como servicio no agendable por slots (o durationType open) para cortar el bucle de no-disponibilidad del servicio estrella",
+    "Agregar etapa terminal 'Cancelado' (prob 0) al pipeline del registry",
+    "Mapear el sub-tipo 'tienda' → tpl_pet_tienda en createDefaultAgentFromGoals (una línea de lookup por subType)",
+    "Implementar el checkOut en check_daycare_availability iterando los días del rango con la misma heurística (el schema del tool ya lo promete)",
+    "Agregar agregador pet_services a vertical-analytics (reservas 30d por categoría de servicio) y cambiar su check de activación de 'pets' a 'appointments'"
+   ]
+  },
+  {
+   "key": "otro",
+   "nivel": "superficial",
+   "puntajes": {
+    "persona": 2,
+    "tools_ia": 1,
+    "faqs": 2,
+    "booking_fit": 1,
+    "pipeline": 2,
+    "terminologia_kpis": 2,
+    "modulos": 1,
+    "integraciones": 1,
+    "procedures": 1,
+    "onboarding": 1,
+    "subtipos": 0,
+    "docs_estrategia": 1
+   },
+   "que_tiene": "Un fallback digno, no un agente vacío — pero mínimo por diseño. OTRO = createGenericVertical('otro', {}) (vertical-definitions.ts:1127, fábrica en 496-529) y getVerticalDefinition resuelve cualquier slug desconocido acá (1154-1156). Recibe: pipeline genérico de 6 etapas CON transitionRules (phone/name/offer) y terminales positivo+negativo (502-509); 5 FAQs genéricas honestas post-fix que invitan a preguntar en vez de inventar políticas (510-516); tool de FAQs encendida en bootstrap como todas (verticals.service.ts:46); terminología neutra correcta (cliente/venta/servicio) que baja al prompt vía <vertical_context>; KPIs default razonables. Dos plantillas de persona propias y decentes: tpl_otro_ventas (captura nombre+teléfono, KB, escala al vendedor) y tpl_otro_soporte (persona.service.ts:2486-2550), con localización 4 idiomas vía el registry. templateMap SÍ tiene clave 'otro' (2571), así que el agente por defecto es la plantilla de ventas, no el genérico pelado. Deliberadamente excluido del verticalChecklist (OnboardingChecklist.tsx:166) y sin verticalGoals/Audiences (cae a las listas genéricas con campo libre 'otro:'). bookingEnabled:false → sin servicios ni slots sembrados; el gate de prerrequisitos deja appointments apagada limpiamente y el editor de agente (CapabilitiesSection) muestra las 13 tools verticales que puede encender a mano. Sobre el catchment: con 17 verticales + sub-tipos, los rubros PYME densos de LatAm están cubiertos; caen en 'otro' principalmente logística/mensajería, lavanderías, eventos/catering, ONGs/iglesias, agro, manufactura/mayoristas B2B y comercios que no se reconocen en los sub-tipos de retail (ferreterías, papelerías, ópticas) — estimación cualitativa: una minoría relevante de las altas (~10-20%), no un cajón residual masivo. Ferreterías/papelerías tienen hogar difuso ('Retail / Comercio' existe pero sus sub-tipos son moda/electrónica/hogar/marketplace); abogados SÍ tienen casa en servicios_profesionales.",
+   "que_falta": [
+    "Lo que el usuario escribe en los campos libres 'otro: …' de objetivos y audiencia es write-only: se guarda como settings.chatReasons/customerTypes (auth.service.ts:1601-1609) y NINGÚN otro código del API lo lee — no llega al prompt, ni a business-info, ni al agente. Es exactamente el tenant que más necesita describir su negocio y es el único dato descriptivo que da… a la nada",
+    "Los goals tampoco eligen plantilla: como 'otro' tiene templates verticales, la rama por goals está muerta (persona.service.ts:2694-2707) — un tenant 'otro' que marca 'soporte' recibe igual el Asistente de Ventas; tpl_otro_soporte es inalcanzable en el alta",
+    "Sin ningún paso de 'contame tu negocio' que aterrice en el prompt: no hay sub-tipos (correcto) pero tampoco el campo libre que sería su reemplazo natural",
+    "Un negocio 'otro' que agenda (la mayoría de los que caen acá: lavanderías, eventos, logística con visitas) arranca con agendador apagado y sin guía dedicada para encenderlo (debe descubrir servicios+horarios+toggle por su cuenta; el checklist genérico no lo lleva ahí)",
+    "Sin estrategia escrita: vertical-strategy.md solo lo menciona como fallback (línea 9); no hay plan de qué hacer con estos tenants (detectar industria por conversación, promoverlos a vertical, medir cuántos son)"
+   ],
+   "confuso": [
+    "Doble slug del fallback: tenants.industry defaultea a 'other' en inglés (auth.service.ts:1593) mientras el registry y bootstrapVertical usan 'otro' (auth.service.ts:1693) — si algún flujo no manda industry, el tenant queda con industry='other' y verticalConfig.industry='otro'; vertical-analytics y la distribución del super_admin agrupan por tenant.industry y muestran las dos claves como categorías distintas",
+    "La plantilla de ventas trae appointments enabled:true que el gate apaga en silencio en el alta — el tenant ve 'Asistente de Ventas' que promete agendar reuniones y el agendador está apagado sin ningún aviso en su primera visita al editor"
+   ],
+   "quick_wins": [
+    "Inyectar settings.chatReasons/customerTypes (incluidos los 'other:texto') en el bloque de negocio del prompt L3 — el dato ya está guardado, es solo leerlo",
+    "Reactivar la selección por goals DENTRO de las plantillas del vertical (support→tpl_otro_soporte) — hoy el array de templates de 'otro' tiene 2 entradas y siempre gana la primera",
+    "Añadir un campo '¿A qué se dedica tu negocio?' (texto libre corto) cuando industry=otro y persistirlo donde el prompt lo lea",
+    "Medir el catchment real: la distribución por industria ya existe en /admin y vertical-analytics — agregar drill-down de tenants 'otro'/'other' con su companyName para decidir la próxima vertical con datos"
+   ]
+  }
+ ],
+ "hallazgos": [
+  {
+   "titulo": "Drift estructural entre los sub-tipos del alta y el VERTICAL_REGISTRY, con el endpoint anti-drift muerto",
+   "severidad": "alta",
+   "evidencia": "onboarding/page.tsx:64-173 hardcodea SUB_TYPES; contra vertical-definitions.ts: turismo pierde alquiler_vacacional (registry:417) — confirmado VIGENTE, la puerta de entrada al módulo vacation-rental/channel-manager no es seleccionable en el alta; servicios_hogar pierde fumigacion+jardineria y agrega multiservicio (page.tsx:158-165 vs registry:630-636) — confirmado VIGENTE; pet_services renombra adiestramiento→entrenamiento, pierde hotel y agrega tienda (151-157 vs 712-718); fotografia solo coincide en 2 de 5 claves (166-172 vs 797-801). GET /verticals/definitions/all existe exactamente para servir estos sub-tipos (verticals.controller.ts:33-43) y no tiene NINGÚN consumidor en el dashboard (grep sin matches).",
+   "impacto": "Los subType guardados en tenant.settings pueden no existir en la fuente de verdad; cualquier lógica futura por sub-tipo (como la de tours/dental hoy) fallará silenciosamente para las claves del alta; y la vertical de turismo con más módulos construidos (alquiler vacacional) no puede declararse al registrarse.",
+   "arreglo": "Que la página de onboarding consuma GET /verticals/definitions/all (labels ya localizados en 4 idiomas en el registry) y borrar el SUB_TYPES hardcodeado; decidir si multiservicio/tienda/retrato se promueven al registry o se eliminan.",
+   "esfuerzo": "S"
+  },
+  {
+   "titulo": "Los goals del onboarding ya no influyen en el agente: rama muerta y segundas plantillas verticales inalcanzables",
+   "severidad": "media",
+   "evidencia": "persona.service.ts:2686-2707 — si la industria tiene plantillas verticales (las 18 las tienen desde que templateMap cubre todo el registry), se toma siempre templates[0] y la selección por goals (appointments/support/faq/lead_qualification) solo corre si !industry. Las variantes 2 de cada vertical (tpl_hogar_seguimiento, tpl_pet_tienda, tpl_otro_soporte…) nunca son elegidas en el alta.",
+   "impacto": "El paso de objetivos del onboarding es teatro para la configuración del agente: un tenant que marca 'soporte' recibe el vendedor; el trabajo invertido en escribir ~18 plantillas secundarias solo es accesible si el tenant navega la galería de plantillas por su cuenta.",
+   "arreglo": "Usar goals (y subType, ej. pet_services:tienda) para elegir ENTRE las variantes del array vertical en createDefaultAgentFromGoals — es un lookup, la data ya llega al método.",
+   "esfuerzo": "S"
+  },
+  {
+   "titulo": "Eventos verticales emitidos al vacío: emergencias de hogar sin notificación humana",
+   "severidad": "media",
+   "evidencia": "ai-tool-executor.service.ts:2541 emite 'service_request.created' (y :3225 'photo_session.requested'); grep de @OnEvent para ambos: cero listeners. El shouldHandoff:true del resultado de la tool (:2553) tampoco lo consume ningún código — los únicos shouldHandoff efectivos son los de HandoffService por keywords del mensaje entrante.",
+   "impacto": "Un 'fuga de gas, EMERGENCIA' crea el request correctamente y ningún humano es notificado de forma activa; la escalación depende de que el texto del cliente matchee los keywords sembrados, y el board de despacho solo se entera por su auto-refresh de 20s si alguien lo tiene abierto.",
+   "arreglo": "Listener de service_request.created con urgency=emergencia que dispare el mismo camino de notificación que handoff.escalated (WebSocket inbox + email; el patrón existe).",
+   "esfuerzo": "S"
+  },
+  {
+   "titulo": "KPIs verticales con labels que no corresponden a la métrica servida",
+   "severidad": "media",
+   "evidencia": "Los tiles del dashboard toman label del registry pero el valor de getCommercialOverview genérico (admin/page.tsx:74-84 y 207-215). servicios_hogar etiqueta leadsHot como 'Emergencias' (vertical-definitions.ts:702) pero el valor es leads calientes por scoring; mismo patrón en otras verticales ('Cotizaciones'→leadsHot).",
+   "impacto": "El dueño de un negocio de plomería lee 'Emergencias: 3' y son leads con score alto — números que mienten en la pantalla principal erosionan la confianza en todo el analytics.",
+   "arreglo": "En getCommercialOverview, computar la métrica real por industria cuando exista (COUNT de service_requests urgency=emergencia del día) o degradar los labels a los genéricos.",
+   "esfuerzo": "M"
+  },
+  {
+   "titulo": "verticalChecklist y verticalWelcome no cubren las 6 verticales nuevas",
+   "severidad": "baja",
+   "evidencia": "messages/{es,en,pt,fr}.json: ambos namespaces tienen solo salud, moda_belleza, inmobiliaria, restaurantes, automotriz, turismo, education, finanzas, servicios_profesionales, retail, technology + default — faltan veterinaria, gimnasios, seguros, servicios_hogar, pet_services, fotografia. El componente cae al texto genérico sin romper (OnboardingChecklist.tsx:166-168).",
+   "impacto": "Las verticales Tier 2/3 pierden el onboarding contextual que las Tier 1 sí tienen; incoherencia de calidad percibida entre industrias.",
+   "arreglo": "Escribir las 6 entradas × 2 namespaces × 4 idiomas (solo contenido i18n, cero código).",
+   "esfuerzo": "S"
+  },
+  {
+   "titulo": "Doble slug del fallback: 'other' (tenants.industry) vs 'otro' (registry/verticalConfig)",
+   "severidad": "baja",
+   "evidencia": "auth.service.ts:1593 `industry: industry || 'other'` para la fila del tenant vs :1693 `industry || 'otro'` para el bootstrap; templateMap y VERTICAL_REGISTRY solo conocen 'otro'; vertical-analytics.service.ts:61 y admin/page.tsx:160 agrupan por tenant.industry.",
+   "impacto": "Tenants sin industria quedan partidos en dos categorías en toda la analítica de plataforma, y un hipotético tenant con industry='other' no matchearía templateMap (caería a plantillas genéricas por goals, comportamiento distinto al de 'otro').",
+   "arreglo": "Unificar a 'otro' en el default de auth.service (+ UPDATE de backfill para filas existentes con 'other').",
+   "esfuerzo": "XS"
+  },
+  {
+   "titulo": "Peluquería canina duplicada entre veterinaria y pet_services sin desambiguación",
+   "severidad": "media",
+   "evidencia": "es.json onboarding.subTypes: peluqueria_canina (veterinaria) y peluqueria (pet_services) tienen el label idéntico 'Peluquería canina / felina'; elegir industria cambia tools (pets clínico vs petServices+agendador sembrado), plantilla y pipeline (verticals.service.ts:94-96 vs 129-131).",
+   "impacto": "El mismo negocio real llega a dos productos distintos según un volado; los que elijan veterinaria no tendrán servicios de grooming sembrados ni agendador operativo de entrada.",
+   "arreglo": "Micro-copy diferenciador en las dos opciones ('con servicios veterinarios' / 'solo estética y cuidado') o colapsar: si eligen peluqueria_canina en veterinaria, bootstrapear también los servicios/tools de pet_services.",
+   "esfuerzo": "S"
+  }
+ ],
+ "medio_pensado": [
+  "check_daycare_availability declara checkOut y petSize en su schema (tier3-tools.ts:77-84) pero el handler los ignora y usa una heurística fija taken<5 sobre appointments del día de entrada (ai-tool-executor.service.ts:2616-2640) — el contrato de la tool promete validar la estadía completa y no lo hace; además contradice la semántica estricta de create_appointment (puede afirmar disponibilidad que luego no puede reservar)",
+  "El board de service-requests asigna técnico por texto libre (service-requests/page.tsx:255) mientras el módulo staff-scheduling (staff_members + disponibilidad + conflictos, verticals/staff-scheduling.service.ts) existe en la misma carpeta y no está conectado — dos mitades de la misma feature sin cablear; la columna assigned_technician_id (uuid) de la tabla queda siempre NULL",
+  "La columna photos JSONB de service_requests (tenant-schema.sql:2398) no tiene ni tool IA ni UI — la evidencia fotográfica del problema, central en field services, quedó en el schema y nada más",
+  "vertical-analytics para pet_services: el check de activación usa la tabla pets (vertical-analytics.service.ts:128) que el bot de pet_services no puede poblar (register_pet es exclusiva de veterinaria), y no existe agregador ni primaryMetricValue para la industria — el drilldown del super_admin muestra tenants 'sin activar' que están operando bien",
+  "La localización de plantillas verticales para lang≠es (localizeVerticalTemplates, persona.service.ts:2608-2656, parte del fix 95f758f3) reemplaza deliberadamente las reglas ricas de la plantilla ES por el resumen del registry — un tenant EN/PT/FR de pet_services pierde las reglas de vacunas/socialización de Luna y recibe las 2 frases de Toby; funciona, pero la brecha de calidad ES vs resto quedó sin plan de cierre",
+  "settings.chatReasons y settings.customerTypes (goals/audiencias del alta, incluidos los textos libres 'other:…') se escriben en auth.service.ts:1601-1609 y no los lee ningún otro código del API — datos de onboarding write-only esperando un consumidor en el prompt",
+  "Pendientes ya conocidos y deliberados del fix 95f758f3 (no re-reportados como hallazgos): tenant.settings.businessHours sin sembrar, slaHours/itemOrder/bookingEnabled/pipelineNoun/deferred del registry sin destino en runtime, y availability_slots sembrados todos a nombre del tenant_admin — este clúster los sufre igual que el resto (los turnos de pet_services salen todos 'con' el dueño)",
+  "El pipeline de pet_services coloca 'Cliente recurrente' (no-terminal, probabilidad 95) después del terminal Completado y no tiene terminal negativo (vertical-definitions.ts:751-758) — diseño de embudo a medio pensar que rompe win/loss y confunde al auto-progress polarity-aware"
+ ]
+}

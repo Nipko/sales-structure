@@ -1,0 +1,265 @@
+{
+ "resumen": "El clúster de activos/inventario está partido en dos mitades. Turismo y restaurantes tienen profundidad real: turismo es la vertical más rica de la plataforma (tours con salidas y cupos en tours.service.ts, vacation-rental multi-noche con iCal bidireccional, Hostaway con sync real), y restaurantes tiene menú/pedidos/promociones completos con páginas propias. Inmobiliaria está en un punto medio sólido: inventario real_estate_listings con campos LatAm (estrato, administración, VIS), 3 tools IA encendidas por bootstrap y las mejores FAQs del clúster, pero cero integraciones con portales y el ruteo por zonas quedó muerto. Automotriz es la gran decepción: el backend vehicle-inventory existe completo (vehicles, test_drives, markSold), las VEHICLE_TOOLS funcionan, pero el flag tools.vehicles no se enciende en ningún bootstrap ni plantilla, no hay página de dashboard ni item de sidebar para cargar inventario — la vertical vende \"mostrar inventario de vehículos\" en el alta y el agente no puede hacerlo. Retail es deliberadamente \"thin vertical\": vive del núcleo horizontal (catalog/inventory/orders/ecommerce con Shopify/Woo) que sí funciona, pero sus FAQs son las genéricas, no tiene KPIs propios, ni aggregator de analytics, ni sección de estrategia. Alquiler_vacacional NO es vertical de primera clase: es un subtipo de turismo en el registry que además falta en el selector del alta, y las tools de properties no se encienden nunca automáticamente. El problema transversal más grave del clúster es el calce del booking: el motor 1:1 servicio→fecha→hora con conflicto por usuario asignado no modela capacidad (mesas de restaurante, habitaciones de hotel), y las reservas de tours no satisfacen la regla appointment_required del pipeline porque escriben en tour_bookings, no en appointments.",
+ "verticales": [
+  {
+   "key": "inmobiliaria",
+   "nivel": "media",
+   "puntajes": {
+    "persona": 3,
+    "tools_ia": 3,
+    "faqs": 3,
+    "booking_fit": 2,
+    "pipeline": 3,
+    "terminologia_kpis": 2,
+    "modulos": 2,
+    "integraciones": 0,
+    "procedures": 1,
+    "onboarding": 2,
+    "subtipos": 1,
+    "docs_estrategia": 2
+   },
+   "que_tiene": "Inventario real: tabla real_estate_listings con campos LatAm (estrato, administración/HOA, codeudor, VIS, financing_available) y búsqueda por zona/precio/habitaciones (apps/api/src/modules/listings/listings.service.ts:163-231). 3 tools IA (search_listings, get_listing_details, send_listing_image con foto real de la DB, ai-tool-executor.service.ts:217-221, 486-497, 1824-1880) encendidas automáticamente por el bootstrap (verticals.service.ts:87-90, 894-915). 3 plantillas de persona — tpl_inmobiliaria_listings es de las mejores de la plataforma, con reglas sobre VIS, codeudor y administración aparte (persona.service.ts:1535-1587). 10 FAQs (5 registry + 5 extra operativas, verticals.service.ts:793-888). Pipeline de 7 etapas con transition_rules reales (calificado exige name+phone+min_score 5; visita exige appointment — vertical-definitions.ts:215-224). Página /admin/listings con detalle, item de sidebar propio gateado a la vertical (AppSidebar.tsx:125). Aggregator en vertical-analytics (venta/arriendo, precios promedio — vertical-analytics.service.ts:412-437). Ruteo por zonas: tabla listing_zone_agents + CRUD + resolveAgentForZone (listings.service.ts:235-277).",
+   "que_falta": [
+    "Integraciones con portales (FincaRaiz, Metrocuadrado, Inmuebles24): 0 código, solo aparecen como pendiente en docs/vertical-strategy.md:340",
+    "El ruteo por zonas está muerto: resolveAgentForZone no tiene ningún llamador en el runtime (grep en apps/api/src solo lo encuentra en su definición) y la UI de listings no tiene gestión de zonas, aunque api.ts:1724-1726 ya expone los endpoints",
+    "La visita agendada no queda ligada al listing: create_appointment no acepta listingId, así que el asesor no sabe qué propiedad va a mostrar sin leer la conversación",
+    "Sin plantillas SOP ni escenarios de simulación curados para el ciclo inmobiliario (procedures/simulation son genéricos con tag vertical)",
+    "Sin calculadora de financiación ni pre-calificación estructurada (el registro solo lo pide en prosa en las rules)"
+   ],
+   "confuso": [
+    "El labelOverride sidebar.catalog → 'Propiedades' (vertical-definitions.ts:246) apunta a un item 'catalog' que no existe en AppSidebar — override muerto; el item real es 'listings'",
+    "Los subtipos venta/arriendo/comercial/construccion no cambian nada: bootstrapVertical no tiene rama por subtipo para inmobiliaria (las FAQs extra y el tool se siembran igual para todos)"
+   ],
+   "quick_wins": [
+    "Cablear resolveAgentForZone al alta de leads (o a handoff) — el backend ya está completo, falta un solo call site",
+    "Agregar UI de zonas en /admin/listings (los métodos api.getZones/setZone ya existen)",
+    "Pasar listingId como metadato del appointment al agendar visita desde el chat"
+   ]
+  },
+  {
+   "key": "automotriz",
+   "nivel": "superficial",
+   "puntajes": {
+    "persona": 2,
+    "tools_ia": 1,
+    "faqs": 2,
+    "booking_fit": 2,
+    "pipeline": 3,
+    "terminologia_kpis": 2,
+    "modulos": 1,
+    "integraciones": 0,
+    "procedures": 1,
+    "onboarding": 2,
+    "subtipos": 1,
+    "docs_estrategia": 2
+   },
+   "que_tiene": "Backend completo pero inalcanzable: vehicle-inventory.service.ts con tablas lazy vehicles/vehicle_inquiries/test_drives, CRUD, markSold, stats, scheduleTestDrive con detección de conflictos (verticals/vehicle-inventory.service.ts:10-298) y controller REST. VEHICLE_TOOLS reales y bien escritas (search_vehicles con presupuesto en moneda mayor correctamente convertido a centavos, get_vehicle_details, send_vehicle_image con foto de la DB — ai-tool-executor.service.ts:502-584, tools/vehicle-tools.ts). Registry con persona Marco 4 idiomas, 5 FAQs decentes (retoma, garantía, financiación — vertical-definitions.ts:336-405). Pipeline excelente para concesionario: Lead→Contactado→Test Drive→Cotización→Financiación→Entregado/Perdido con reglas (vertical-definitions.ts:361-370); el gate appointment_required de Test Drive SÍ funciona porque la prueba se agenda vía el servicio genérico 'Prueba de manejo' (30 min, sembrado por bootstrap). 2 plantillas de persona (ventas + servicio post-venta, persona.service.ts:1590-1647). KPI 'Test Drives Hoy'. El toggle 'vehicles' sí aparece en el editor de agente (CapabilitiesSection.tsx:37).",
+   "que_falta": [
+    "CRÍTICO: tools.vehicles no se enciende NUNCA — bootstrapVertical no tiene rama para automotriz (verticals.service.ts:73-134 cubre 10 industrias, automotriz no está) y ninguna de las 2 plantillas lo trae (persona.service.ts:1615, 1643 solo appointments). El objetivo del alta 'Mostrar inventario de vehículos' (onboarding/page.tsx:222) es una promesa que el agente no cumple por defecto",
+    "No existe página de dashboard ni item de sidebar para el inventario de vehículos: /admin no tiene carpeta vehicles y AppSidebar no tiene entrada (grep 'vehicle' en dashboard/src solo da CapabilitiesSection, _types y usePlanLimits) — aunque el tenant encienda el tool a mano, no tiene dónde cargar los autos",
+    "scheduleTestDrive y la tabla test_drives no están cableados al chat: no hay tool schedule_test_drive en el executor (la lista de cases no lo incluye); el test drive del chat va por appointments sin referencia al vehículo",
+    "Sin integraciones: ni DMS, ni portales de venta (TuCarro/MercadoLibre/Kavak), ni cotizador de financiación — vertical-strategy.md:72-84 promete get_financing_options y get_trade_in_estimate que no existen",
+    "Sin aggregator en vertical-analytics (INDUSTRY_AGGREGATORS no tiene 'automotriz' — vertical-analytics.service.ts:248-546) ni check de activación"
+   ],
+   "confuso": [
+    "searchVehiclesForAI en vehicle-inventory.service.ts:284 compara budgetMax (moneda mayor) contra price_cents SIN multiplicar por 100 — es lógica duplicada del executor (que sí convierte, ai-tool-executor.service.ts:511-512); hoy sin llamadores, pero es una trampa",
+    "El labelOverride sidebar.catalog → 'Vehículos' (vertical-definitions.ts:392) apunta a un item que no existe",
+    "Subtipos concesionario/taller/repuestos/alquiler son cosméticos: el taller recibe el mismo agente y pipeline de VENTAS (etapas Cotización→Financiación→Entregado no calzan con un ciclo de reparación)"
+   ],
+   "quick_wins": [
+    "Agregar 1 línea al bootstrap: if (industry === 'automotriz') await this.enableSimpleTool(schemaName, 'vehicles') — el resto de la cadena ya existe",
+    "Construir la página /admin/vehicles (el controller REST /vehicles/:tenantId ya está completo) + item de sidebar verticals:['automotriz']",
+    "Arreglar o borrar searchVehiclesForAI (bug de centavos en código muerto)",
+    "Agregar aggregator automotriz a vertical-analytics (stats ya existen en getInventoryStats)"
+   ]
+  },
+  {
+   "key": "turismo",
+   "nivel": "profunda",
+   "puntajes": {
+    "persona": 2,
+    "tools_ia": 3,
+    "faqs": 3,
+    "booking_fit": 3,
+    "pipeline": 2,
+    "terminologia_kpis": 2,
+    "modulos": 3,
+    "integraciones": 2,
+    "procedures": 1,
+    "onboarding": 2,
+    "subtipos": 2,
+    "docs_estrategia": 3
+   },
+   "que_tiene": "La vertical más profunda de la plataforma, con DOS silos de inventario reales. (1) Tours: tour_packages + tour_inventory con CUPOS por salida (asientos que se decrementan al reservar y se restauran al cancelar, descuento por niño, min_party_size, precio override por salida — tours.service.ts:191-295), 6 TOURS_TOOLS con partySize y fecha (tours-tools.ts), email de confirmación, página /admin/tours. (2) Vacation rental: properties con night_price/cleaning_fee/min_nights/check-in instructions (vacation-rental/properties.service.ts:32-57), disponibilidad que cruza ical_blocks externos + property_bookings directos (properties.service.ts:107-121), sync iCal bidireccional con Airbnb/Booking (ical-sync.service.ts, cron 30min, protección SSRF) y 8 VACATION_RENTAL_TOOLS. Además channel-manager con Hostaway real (OAuth + sync de listings/reservas a cm_*). Bootstrap por SUBTIPO real: tours/agencia_viajes encienden tools.tours + 5 FAQs operativas extra (traslado, descuento niños, idiomas del guía, punto de encuentro — verticals.service.ts:73-76, 562-657). 4 plantillas de persona (tpl_turismo_tours y tpl_turismo_agencia con reglas sobre search_packages y cupos — persona.service.ts:1707-1782). Aggregator turismo en vertical-analytics con GMV 30d (vertical-analytics.service.ts:439-467). Docs: la sección más trabajada de vertical-strategy.md (APIs OTA, tabla de competidores VR, prioridad Hostaway→Guesty).",
+   "que_falta": [
+    "alquiler_vacacional es una industria fantasma en el alta: el subtipo existe en el registry (vertical-definitions.ts:417) pero NO está en SUB_TYPES.turismo del onboarding (onboarding/page.tsx:98-102 solo agencia_viajes/hotel/tours) — un property manager no puede declararse como tal",
+    "tools.properties no se enciende NUNCA automáticamente: ningún subtipo lo activa (grep 'tools.properties' solo da el gate de conversations.service.ts:1835) — el tenant de alojamiento debe encontrar el toggle a mano en el editor de agente",
+    "El subtipo hotel no recibe nada propio: le siembran los 3 servicios de tours ('Tour día completo', 'Paquete fin de semana') como servicios agendables y FAQs de agencia ('¿Qué destinos manejan?'), y el modelo properties es por unidad completa — un hotel con N habitaciones idénticas no está modelado",
+    "La regla appointment_required de la etapa 'Reserva' (vertical-definitions.ts:424) nunca se satisface con reservas de tours: pipeline.service.ts:877-886 solo consulta la tabla appointments y create_tour_booking escribe en tour_bookings",
+    "Hostaway no tiene UI: channel-manager no aparece en ninguna página del dashboard (grep channelManager en dashboard/src solo da usePlanLimits) — la config es solo por API",
+    "Guesty/Lodgify: enum contemplado, adaptadores sin escribir"
+   ],
+   "confuso": [
+    "El default del alta ignora el subtipo al elegir plantilla: createDefaultAgentFromGoals toma verticalTemplates[0] = tpl_turismo_ventas (solo appointments, persona.service.ts:2686-2692) aunque el subtipo sea tours; el bootstrap luego enciende tools.tours, pero las rules de la persona activa no mencionan search_packages",
+    "El check de activación de vertical-analytics para turismo cuenta tour_packages pero etiqueta el faltante como 'properties' (vertical-analytics.service.ts:125) — un hotel con propiedades cargadas y cero tours aparece como no activado",
+    "Un tenant agencia_viajes ve igualmente el item 'Propiedades' del sidebar y uno de hotel ve 'Tours' (AppSidebar.tsx:123-124, gateados solo por vertical, no por subtipo)",
+    "En lang≠es localizeVerticalTemplates colapsa las 4 plantillas a 1 (persona.service.ts:2608-2656)"
+   ],
+   "quick_wins": [
+    "Agregar alquiler_vacacional a SUB_TYPES.turismo en onboarding/page.tsx (el registry ya lo tiene en 4 idiomas)",
+    "Encender tools.properties en el bootstrap para subtipos hotel/alquiler_vacacional (mismo patrón enableSimpleTool que ya existe)",
+    "Elegir tpl_turismo_tours como plantilla default cuando subType es tours/agencia_viajes (createDefaultAgentFromGoals ya recibe industry; falta pasar subType)",
+    "Hacer que la regla appointment_required también acepte tour_bookings/property_bookings vivas del contacto"
+   ]
+  },
+  {
+   "key": "restaurantes",
+   "nivel": "media",
+   "puntajes": {
+    "persona": 2,
+    "tools_ia": 3,
+    "faqs": 2,
+    "booking_fit": 1,
+    "pipeline": 2,
+    "terminologia_kpis": 2,
+    "modulos": 3,
+    "integraciones": 1,
+    "procedures": 1,
+    "onboarding": 2,
+    "subtipos": 1,
+    "docs_estrategia": 2
+   },
+   "que_tiene": "Dominio de menú y pedidos completo y bien diseñado: menu_categories + menu_items con alérgenos/tags/prep_time, food_orders con line items, modifiers, snapshots de precio (para que renombrar un plato no reescriba historia financiera) y pipeline de cocina received→preparing→ready→delivered, menu_promotions con vigencia y días aplicables (restaurants.service.ts:1-437). 6 RESTAURANTS_TOOLS encendidas automáticamente por bootstrap (verticals.service.ts:100-102): get_menu con filtro de alérgenos (gluten/lactosa/mariscos/maní) y tope de precio, get_promotions, place_order que exige deliveryAddress para delivery, estado y cancelación. Páginas /admin/menu y /admin/food-orders con items de sidebar propios (AppSidebar.tsx:126-128). Registry Luca cálido con reglas de alergias y escalado >8 personas, horario nocturno hasta medianoche con normalización 00:00→23:59 en el seed de disponibilidad (verticals.service.ts:506-508). Aggregator restaurantes en vertical-analytics. Adaptador Toast real (auth + menus/v2 → vi_items, vertical-integrations.service.ts:227-263) con UI en settings/integrations/vertical.",
+   "que_falta": [
+    "CRÍTICO booking_fit: reservar mesa = fecha+hora+PERSONAS y el motor es servicio→fecha→hora sin partySize (grep partySize en booking-engine.service.ts: 0 hits); la capacidad se simula con servicios 'Reserva mesa 2-4'/'grupo 5-8' (vertical-definitions.ts:306-308) y el conflicto es por usuario asignado (appointments.service.ts:624-641) ⇒ con los slots sembrados a un solo usuario, UNA reserva concurrente por franja para todo el restaurante — un restaurante de 20 mesas rechaza al segundo comensal de las 20:00",
+    "Toast es solo lectura de menú: no hay push de pedidos al POS (place_order escribe solo en food_orders) y el adaptador nunca se probó con credenciales reales (nota en docs)",
+    "El pipeline no cubre el ciclo de pedidos: las etapas Consulta→Reserva→Confirmada→Completada/No Show son de reservas; un dark_kitchen no tiene etapas de pedido/entrega ni transition_rules ligadas a food_orders",
+    "Sin gestión de mesas/turnos (floor plan, turnos de 90min por mesa) ni lista de espera"
+   ],
+   "confuso": [
+    "tpl_restaurante_delivery tiene tools: {} (persona.service.ts:1413) — la plantilla 'Pedidos y Delivery' creada desde el editor no puede llamar place_order ni get_menu; solo el agente default (que hereda el enable del bootstrap) puede",
+    "El registry esconde inventory/catalog/orders del sidebar (hiddenItems, vertical-definitions.ts:320) mientras AppSidebar:137-138 los declara visibles para restaurantes — gana el hiddenItems, pero son dos fuentes en conflicto",
+    "Los subtipos (dark_kitchen, cafetería) no cambian nada: todos reciben el default reservas-céntrico"
+   ],
+   "quick_wins": [
+    "Agregar tools.restaurants a tpl_restaurante_delivery (1 línea)",
+    "Para dark_kitchen: elegir la plantilla delivery como default y no sembrar los servicios de reserva de mesa",
+    "Documentar/soportar capacidad: N staff_members ficticios como 'mesas' vía staff-scheduling ya daría concurrencia real sin tocar el motor",
+    "Sembrar 2-3 FAQs de pedidos (tiempos de entrega, zonas, mínimo de pedido) para el subtipo delivery"
+   ]
+  },
+  {
+   "key": "retail",
+   "nivel": "superficial",
+   "puntajes": {
+    "persona": 2,
+    "tools_ia": 3,
+    "faqs": 1,
+    "booking_fit": 0,
+    "pipeline": 2,
+    "terminologia_kpis": 1,
+    "modulos": 2,
+    "integraciones": 2,
+    "procedures": 1,
+    "onboarding": 2,
+    "subtipos": 1,
+    "docs_estrategia": 1
+   },
+   "que_tiene": "Retail no agenda y la plataforma lo modela bien: bookingEnabled=false (createGenericVertical default, vertical-definitions.ts:526+580-598) — el 0 en booking_fit es N/A, no defecto. Vive del núcleo horizontal, que sí está cableado: tpl_retail_ventas enciende catalog+crm+offers+orders (persona.service.ts:1978) con reglas de disciplina reales ('USA search_products para mostrar productos REALES', 'Confirma stock con check_stock antes de prometer entrega' — persona.service.ts:1966-1973); el executor resuelve search_products/check_stock/send_product_image contra la tabla products (ai-tool-executor.service.ts:586-608) y los pedidos contra orders. Sidebar muestra inventory + orders para retail (AppSidebar.tsx:137-138) y /admin/inventory permite crear productos y ajustar stock (inventory/page.tsx: api.createInventoryProduct, api.adjustInventoryStock). Integración e-commerce real: módulo ecommerce con sync de productos Shopify Admin API + WooCommerce REST y carritos abandonados (opt-in por settings). Pipeline interesado→cotización→pedido→enviado→entregado/devolución razonable para venta con despacho. Onboarding con 4 subtipos, objetivos y audiencias retail-específicos (onboarding/page.tsx:139-144, 248-253, 342-346).",
+   "que_falta": [
+    "FAQs: recibe las 5 genéricas del fallback (horario, pagos, contacto, ubicación, devolución — vertical-definitions.ts:510-516); RETAIL no define faqs propias (talles/cambios, envíos y costos, seguimiento de pedido, garantías)",
+    "KPIs: no define dashboard propio → hereda el set genérico (leadsToday/leadsHot/mensajes/costo IA) sin pedidos del día ni GMV; tampoco hay aggregator retail en vertical-analytics (INDUSTRY_AGGREGATORS no lo incluye) ni check de activación por productos cargados",
+    "Pipeline sin transition_rules (las etapas de RETAIL no declaran ninguna, vertical-definitions.ts:589-596) y sin auto-progress conectado a orders: un pedido creado por el agente no mueve la tarjeta a 'Pedido'",
+    "Sin estrategia escrita: vertical-strategy.md no tiene sección retail (solo la fila de tools en la tabla, línea 204); sin posicionamiento ni pricing pensado para el segmento",
+    "Sin carrito conversacional nativo (el flujo compra termina en 'un asesor te confirma' salvo que conecten Shopify)"
+   ],
+   "confuso": [
+    "tpl_retail_postventa inventa la política 'confirma plazo (30 días)' para devoluciones (persona.service.ts:2000) — exactamente el tipo de política no confirmada que el commit 95f758f3 limpió de las FAQs semilla, pero sobrevive en la plantilla",
+    "El labelOverride sidebar.catalog → 'Productos' (vertical-definitions.ts:597) apunta al item 'catalog' que no existe en el sidebar; los productos se gestionan desde 'inventory'",
+    "Subtipos moda/electrónica/hogar/marketplace cosméticos: un marketplace y una boutique reciben exactamente lo mismo"
+   ],
+   "quick_wins": [
+    "Escribir 5 FAQs retail reales en el registry (envíos, cambios/devoluciones sin plazo inventado, seguimiento, medios de pago, garantía)",
+    "Definir dashboard.kpis retail (pedidos hoy, valor promedio, productos activos) — el shape ya existe en las otras verticales",
+    "Agregar transition_rule al pipeline: 'pedido' gated por existencia de order del contacto (nuevo tipo order_required, análogo a appointment_required)",
+    "Quitar el '30 días' de tpl_retail_postventa y reemplazar por 'confirma el plazo de la política del negocio'"
+   ]
+  }
+ ],
+ "hallazgos": [
+  {
+   "titulo": "Automotriz nace muerta: tools.vehicles nunca se enciende y no hay UI de inventario",
+   "severidad": "critica",
+   "evidencia": "bootstrapVertical no tiene rama para automotriz (apps/api/src/modules/verticals/verticals.service.ts:73-134); las 2 plantillas automotriz solo traen appointments (persona.service.ts:1615, 1643); grep 'vehicles' en persona.service.ts: 0 hits; no existe /admin/vehicles ni item de sidebar (grep 'vehicle' en apps/dashboard/src solo da CapabilitiesSection.tsx, _types.ts y usePlanLimits.ts). El objetivo del alta promete 'Mostrar inventario de vehículos' (onboarding/page.tsx:222).",
+   "impacto": "Todo tenant automotriz (Tier 1 en la estrategia, lead de $10K-50K USD según vertical-strategy.md:72-73) recibe un agente que no puede mostrar inventario, y aunque encienda el toggle a mano en el editor, no tiene ninguna pantalla donde cargar vehículos. La vertical es marketing sin producto.",
+   "arreglo": "1 línea en bootstrapVertical (enableSimpleTool 'vehicles') + página /admin/vehicles sobre el controller REST ya existente (/vehicles/:tenantId) + item de sidebar verticals:['automotriz'].",
+   "esfuerzo": "M"
+  },
+  {
+   "titulo": "El motor de booking no modela capacidad: restaurantes y hoteles no calzan",
+   "severidad": "alta",
+   "evidencia": "checkConflict es por usuario asignado con COUNT>0 = conflicto (appointments.service.ts:624-641); el booking engine no tiene concepto de partySize (grep en booking-engine.service.ts: 0 hits); los slots del bootstrap se siembran todos al tenant_admin (verticals.service.ts:474-489). Restaurantes simula mesas con servicios 'Reserva mesa 2-4'/'grupo 5-8' (vertical-definitions.ts:306-308).",
+   "impacto": "Un restaurante acepta UNA reserva concurrente por franja para todo el local; un hotel con N habitaciones idénticas no puede representarlas (properties es por unidad completa). El cliente final recibe 'no hay disponibilidad' con el local vacío — el mismo síntoma que el commit 95f758f3 arregló para los slots, pero por diseño del modelo.",
+   "arreglo": "Corto plazo: sembrar N staff_members como 'mesas/recursos' vía staff-scheduling para dar concurrencia. Mediano: agregar capacity a availability_slots o un recurso reservable con cupo (el patrón ya existe en tour_inventory.available_seats).",
+   "esfuerzo": "L"
+  },
+  {
+   "titulo": "Reservas verticales no satisfacen las transition_rules del pipeline",
+   "severidad": "media",
+   "evidencia": "appointment_required solo consulta la tabla appointments (pipeline.service.ts:877-886); create_tour_booking escribe en tour_bookings (tours.service.ts:296-316) y create_property_booking en property_bookings; las etapas 'Reserva' de turismo (vertical-definitions.ts:424) y de pet_services/fotografia declaran appointment_required.",
+   "impacto": "En turismo (y cualquier vertical con motor de reserva propio) el embudo no avanza automáticamente aunque el agente cierre reservas todo el día: las tarjetas se apilan en Consulta/Cotización y los KPIs de conversión mienten.",
+   "arreglo": "Extender el case appointment_required (o crear booking_required) para aceptar tour_bookings/property_bookings vivas del contacto.",
+   "esfuerzo": "S"
+  },
+  {
+   "titulo": "alquiler_vacacional es una industria fantasma: subtipo en el registry, ausente del alta, tools nunca auto-encendidas",
+   "severidad": "media",
+   "evidencia": "Subtipo definido en vertical-definitions.ts:417; SUB_TYPES.turismo del onboarding solo lista agencia_viajes/hotel/tours (onboarding/page.tsx:98-102); tools.properties no se activa en ningún bootstrap (único gate: conversations.service.ts:1835); Hostaway/channel-manager no tiene página en el dashboard (grep channelManager en dashboard/src: solo usePlanLimits.ts).",
+   "impacto": "El segmento con el stack más profundo de la plataforma (vacation-rental + iCal + Hostaway, la apuesta explícita de vertical-strategy.md:90-106) no se puede autodeclarar en el alta y arranca con sus 8 tools apagadas. Coincide con el hallazgo de la auditoría de onboarding jul-2026.",
+   "arreglo": "Agregar el subtipo al selector del alta + encender tools.properties para hotel/alquiler_vacacional en bootstrapVertical + página mínima de config del channel-manager.",
+   "esfuerzo": "M"
+  },
+  {
+   "titulo": "Subtipos cosméticos en 4 de las 5 verticales del clúster",
+   "severidad": "media",
+   "evidencia": "bootstrapVertical solo ramifica por subtipo en turismo (tours/agencia_viajes) y salud (dental) (verticals.service.ts:73-83); inmobiliaria/automotriz/restaurantes/retail siembran idéntico para todos sus subtipos; createDefaultAgentFromGoals toma verticalTemplates[0] sin mirar subType (persona.service.ts:2686-2692).",
+   "impacto": "Un taller mecánico recibe pipeline de ventas de concesionario, un dark_kitchen recibe agente de reservas de mesa, un marketplace recibe lo mismo que una boutique. El selector de subtipo del alta genera expectativa de personalización que no ocurre.",
+   "arreglo": "Pasar subType a createDefaultAgentFromGoals para elegir plantilla (delivery para dark_kitchen, servicio para taller) y ramificar seeds mínimos por subtipo en el bootstrap.",
+   "esfuerzo": "M"
+  },
+  {
+   "titulo": "vertical-analytics ciega para automotriz y retail; gap check de turismo mal etiquetado",
+   "severidad": "baja",
+   "evidencia": "INDUSTRY_AGGREGATORS cubre 10 industrias sin automotriz ni retail (vertical-analytics.service.ts:248-546); detectActivationGaps tampoco los chequea, y para turismo cuenta tour_packages pero reporta missing:'properties' (vertical-analytics.service.ts:119-130).",
+   "impacto": "Ops no puede detectar tenants automotriz/retail atascados en activación, y los hoteles con propiedades cargadas aparecen como no activados.",
+   "arreglo": "Agregar aggregators (getInventoryStats de vehicles ya existe; retail = COUNT products/orders) y separar el check de turismo por subtipo o por OR(tour_packages, properties).",
+   "esfuerzo": "S"
+  },
+  {
+   "titulo": "Overrides de sidebar 'catalog' muertos en las 3 verticales de inventario",
+   "severidad": "baja",
+   "evidencia": "labelOverrides.catalog definidos en inmobiliaria ('Propiedades', vertical-definitions.ts:246), automotriz ('Vehículos', :392) y retail ('Productos', :597), pero AppSidebar.tsx no tiene ningún item con labelKey 'catalog' (grep: solo un comentario en línea 122).",
+   "impacto": "Config muerta que confunde a quien mantiene el registry; el usuario nunca ve esos labels.",
+   "arreglo": "Borrar los overrides o re-apuntarlos al item real (listings/inventory).",
+   "esfuerzo": "XS"
+  },
+  {
+   "titulo": "industryGuidance se emite en el prompt pero nadie lo setea",
+   "severidad": "baja",
+   "evidencia": "prompt-assembler.service.ts:160 emite <guidance> si vc.industryGuidance existe, pero el único constructor de verticalContext (conversations.service.ts:1614-1619) solo llena los 4 nouns; grep industryGuidance en apps/api/src: 1 hit (el emisor).",
+   "impacto": "Canal ya cableado para meter guía por industria al LLM que está desaprovechado — sería la vía barata para dar contexto vertical más rico que 4 sustantivos.",
+   "arreglo": "Agregar un campo guidance por industria al registry y pasarlo en verticalContext.",
+   "esfuerzo": "S"
+  }
+ ],
+ "medio_pensado": [
+  "Ruteo por zonas inmobiliario: listing_zone_agents + CRUD + resolveAgentForZone completos en apps/api/src/modules/listings/listings.service.ts:235-277 y endpoints ya expuestos en dashboard api.ts:1724-1726, pero cero llamadores en runtime y cero UI — la promesa del docblock ('the conversation gets assigned automatically') no ocurre",
+  "Channel-manager Hostaway: OAuth + sync real de listings/reservas a cm_listings/cm_reservations/cm_availability (channel-manager.service.ts) pero sin ninguna página de dashboard para configurarlo, y la columna cm_listings.property_id (línea 63) sugiere un enlace con las properties del vacation-rental que nadie escribe ni lee — dos silos de alojamiento sin puente",
+  "test_drives de automotriz: tabla + scheduleTestDrive con detección de conflictos por vehículo (vehicle-inventory.service.ts:231-252) accesibles solo por REST; el chat agenda test drives por el motor genérico sin vehicleId, así que la tabla queda huérfana del flujo real",
+  "tpl_restaurante_delivery con tools: {} (persona.service.ts:1413): la plantilla de pedidos no puede tomar pedidos — solo el agente default hereda el enable del bootstrap",
+  "searchVehiclesForAI duplicada y con bug de unidades (budgetMax en moneda mayor vs price_cents sin *100, vehicle-inventory.service.ts:284) mientras el executor tiene la versión corregida (ai-tool-executor.service.ts:511-512) — código muerto esperando a que alguien lo llame",
+  "procedures (T2.12) y simulation (T2.13) son vertical-aware (columna vertical, línea de vertical en el prompt del generador de escenarios — simulation.service.ts:330-342) pero no hay ni una plantilla SOP ni un banco de escenarios curado por industria para el clúster",
+  "localizeVerticalTemplates colapsa las plantillas por industria a UNA sola cuando lang≠es (persona.service.ts:2608-2656) — decisión documentada como deliberada, pero deja a los tenants en pt/fr/en sin las variantes especializadas (tours, listings, delivery)",
+  "El pendiente deliberado del commit 95f758f3 sigue vigente y afecta a este clúster: slots de disponibilidad sembrados todos al tenant_admin (capacidad 1 — raíz del problema de mesas), y slaHours/itemOrder/pipelineNoun del registry sin destino en runtime"
+ ]
+}

@@ -205,7 +205,18 @@ Nuestros propios documentos ya ordenaron la demanda y nadie los usó para asigna
 
 ## 9. Qué no verificamos
 
-- **Nada pasó ronda adversarial.** Los 8 mapeos citan archivo:línea leídos, pero ningún hallazgo tuvo un verificador buscando mitigantes. La experiencia de la auditoría anterior (bootstrap vertical) muestra que ~1 de cada 3 hallazgos graves baja de severidad al verificarse — asumí ese descuento al redactar, pero no reemplaza la verificación. Los candidatos #1 a verificar antes de actuar: la colisión de `courses` (education), el `tools.vehicles` nunca encendido, y el bucle del "Hotel — noche".
+**Actualización (29-jul): verificación manual de los 6 hallazgos que sostienen el plan "Ahora".** Resultado: **6/6 confirmados, cero refutados — y dos se agravaron al verificarlos:**
+
+| Hallazgo | Veredicto | Detalle |
+|---|---|---|
+| Colisión tabla `courses` (education) | **CONFIRMADO Y PEOR** | Los 5 ALTERs no alcanzan: la tabla legacy que gana tiene `slug NOT NULL UNIQUE` (`tenant-schema.sql:316`) y `createCourse` inserta **sin** slug (`education.service.ts:52-56`) → el fix necesita además `ALTER COLUMN slug DROP NOT NULL` (o un default) |
+| `tools.vehicles` nunca encendido | **CONFIRMADO** | grep de vehicles en `verticals.service.ts` y de su enable en plantillas: vacío; sin página `/admin/vehicles` en el dashboard |
+| Bucle "Hotel — noche" (pet) | **CONFIRMADO** | Servicio de 1440 min sembrado (`vertical-definitions.ts:770`); el generador exige `min + totalBlock <= slotEndMin` (`ai-tool-executor.service.ts:1025`) → jamás cabe en una ventana diaria |
+| Saludo con clave i18n cruda | **CONFIRMADO** | `admin/page.tsx:362` llama `tVw(vt.industry…)` sin guard `.has()`; `verticalWelcome` tiene solo 11 industrias + default — faltan las 6 nuevas |
+| `offer_required` imposible (seguros) | **CONFIRMADO Y MÁS AMPLIO** | La regla consulta `commercial_offers JOIN leads.course_id` (`pipeline.service.ts:~894`) y la usan **4 etapas de 4 verticales distintas** (`vertical-definitions.ts:220, :366, :423, :918`) — el fix debe evaluar las cuatro, no solo la de seguros |
+| Agenda muerta de finanzas | **CONFIRMADO** | `tpl_finanzas_calificador` trae solo `{crm, knowledge}` (`persona.service.ts:1848`) con `bookingEnabled: true` sembrando servicio+slots que nada consume |
+
+- **El resto de los hallazgos no pasó ronda adversarial.** Los 8 mapeos citan archivo:línea leídos, pero fuera de los 6 de arriba ningún hallazgo tuvo un verificador buscando mitigantes. La experiencia de la auditoría anterior (bootstrap vertical) muestra que ~1 de cada 3 graves baja de severidad al verificarse.
 - **Nada se ejecutó contra base real** — ni un alta, ni una conversación, ni una reserva.
 - **cluster-agenda tiene menor profundidad declarada** (elaborado por el orquestador tras fallos de infraestructura; pipeline y docs_estrategia son estimaciones conservadoras).
 - **Datos de producción que cambiarían las prioridades:** distribución real de tenants por industria (decide si belleza-primero es correcto también para NUESTRA base y no solo para el mercado), % de tenants con >1 profesional (dimensiona la urgencia de capacidad F2), y el comportamiento real de next-intl ante clave faltante (el bug del saludo se infirió del código, no se vio en pantalla).

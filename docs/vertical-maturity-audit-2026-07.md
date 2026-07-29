@@ -162,7 +162,11 @@ Nuestros propios documentos ya ordenaron la demanda y nadie los usó para asigna
 
 ## 8. Plan priorizado
 
-### Ahora (2 semanas) — encender lo dormido y cortar los bucles visibles
+### Ahora (2 semanas) — ✅ IMPLEMENTADO 12/12 (`b9bd6332`, `5c2581db`, `60049164`, 29-jul)
+
+Desviaciones respecto de lo planificado, todas documentadas en los commits: el fix de education necesitó además `slug DROP NOT NULL` (verificación §9); `offer_required` se quitó de **6** verticales y se conservó en education, cuyo artefacto sí existe (el barrido final encontró 7 usos, no 4); la selección de plantilla por sub-tipo cubrió también pet-tienda y delivery/dark kitchen; y el ítem #11 se implementó con cache `bizgoals:{tenantId}` (600s) para no agregar una query por turno. Nota operativa: los tenants ya sembrados conservan la regla `offer_required` vieja en sus `pipeline_stages` — el re-sync del embudo o el editor de etapas la corrigen; no se hizo backfill porque aún no hay producción real.
+
+
 
 | # | Qué | Por qué | Dónde | Esf. |
 |---|---|---|---|---|

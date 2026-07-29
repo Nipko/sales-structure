@@ -648,6 +648,10 @@ export interface VerticalContext {
     transactionNoun?: string;
     serviceNoun?: string;
     industryGuidance?: string;
+    /** Onboarding answers: what the owner wants the agent to achieve (free text for "other:…"). */
+    businessGoals?: string[];
+    /** Onboarding answers: who the business serves. */
+    targetAudiences?: string[];
 }
 
 // ---- Test Agent Types ----

@@ -217,7 +217,7 @@ const INMOBILIARIA: VerticalDefinition = {
             { name: { es: 'Consulta', en: 'Inquiry', pt: 'Consulta', fr: 'Demande' }, slug: 'consulta', color: '#3498db', probability: 5, isTerminal: false, transitionRules: [] },
             { name: { es: 'Calificado', en: 'Qualified', pt: 'Qualificado', fr: 'Qualifié' }, slug: 'calificado', color: '#f39c12', probability: 15, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }, { type: 'min_score', value: 5 }] },
             { name: { es: 'Visita agendada', en: 'Viewing scheduled', pt: 'Visita agendada', fr: 'Visite programmée' }, slug: 'visita_agendada', color: '#e67e22', probability: 30, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
-            { name: { es: 'Propuesta enviada', en: 'Proposal sent', pt: 'Proposta enviada', fr: 'Proposition envoyée' }, slug: 'propuesta', color: '#9b59b6', probability: 50, isTerminal: false, transitionRules: [{ type: 'offer_required' }] },
+            { name: { es: 'Propuesta enviada', en: 'Proposal sent', pt: 'Proposta enviada', fr: 'Proposition envoyée' }, slug: 'propuesta', color: '#9b59b6', probability: 50, isTerminal: false, transitionRules: [] },
             { name: { es: 'Negociación', en: 'Negotiation', pt: 'Negociação', fr: 'Négociation' }, slug: 'negociacion', color: '#e74c3c', probability: 70, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
             { name: { es: 'Cerrado', en: 'Closed Won', pt: 'Fechado', fr: 'Conclu' }, slug: 'cerrado', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
             { name: { es: 'Perdido', en: 'Lost', pt: 'Perdido', fr: 'Perdu' }, slug: 'perdido', color: '#95a5a6', probability: 0, isTerminal: true, transitionRules: [] },
@@ -363,7 +363,7 @@ const AUTOMOTRIZ: VerticalDefinition = {
             { name: { es: 'Lead', en: 'Lead', pt: 'Lead', fr: 'Lead' }, slug: 'lead', color: '#3498db', probability: 5, isTerminal: false, transitionRules: [] },
             { name: { es: 'Contactado', en: 'Contacted', pt: 'Contatado', fr: 'Contacté' }, slug: 'contactado', color: '#f39c12', probability: 15, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
             { name: { es: 'Test Drive', en: 'Test Drive', pt: 'Test Drive', fr: 'Essai' }, slug: 'test_drive', color: '#e67e22', probability: 35, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
-            { name: { es: 'Cotización', en: 'Quote', pt: 'Cotação', fr: 'Devis' }, slug: 'cotizacion', color: '#9b59b6', probability: 50, isTerminal: false, transitionRules: [{ type: 'offer_required' }] },
+            { name: { es: 'Cotización', en: 'Quote', pt: 'Cotação', fr: 'Devis' }, slug: 'cotizacion', color: '#9b59b6', probability: 50, isTerminal: false, transitionRules: [] },
             { name: { es: 'Financiación', en: 'Financing', pt: 'Financiamento', fr: 'Financement' }, slug: 'financiacion', color: '#e74c3c', probability: 70, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
             { name: { es: 'Entregado', en: 'Delivered', pt: 'Entregue', fr: 'Livré' }, slug: 'entregado', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
             { name: { es: 'Perdido', en: 'Lost', pt: 'Perdido', fr: 'Perdu' }, slug: 'perdido', color: '#95a5a6', probability: 0, isTerminal: true, transitionRules: [] },
@@ -420,7 +420,7 @@ const TURISMO: VerticalDefinition = {
     agent: { name: { es: 'Maya', en: 'Maya', pt: 'Maya', fr: 'Maya' }, role: { es: 'Asesora de viajes', en: 'Travel advisor', pt: 'Consultora de viagens', fr: 'Conseillère de voyages' }, tone: 'enthusiastic', formality: 'casual', greeting: { es: '¡Hola! Soy Maya, tu asesora de viajes. ¿A dónde te gustaría ir?', en: 'Hi! I\'m Maya, your travel advisor. Where would you like to go?', pt: 'Olá! Sou Maya, sua consultora de viagens. Para onde gostaria de ir?', fr: 'Bonjour! Je suis Maya, votre conseillère de voyages. Où souhaitez-vous aller?' }, rules: { es: 'Inspira al viajero con destinos. Cotiza paquetes. Para grupos >10, escala.', en: 'Inspire the traveler with destinations. Quote packages. For groups >10, escalate.', pt: 'Inspire o viajante com destinos. Cote pacotes.', fr: 'Inspirez le voyageur. Cotez les forfaits.' }, forbiddenTopics: { es: 'Información migratoria oficial|Vacunas requeridas|Garantizar clima', en: 'Official immigration info|Required vaccines|Guarantee weather', pt: 'Informação migratória oficial|Vacinas requeridas', fr: 'Info migratoire officielle|Vaccins requis' }, handoffTriggers: { es: 'grupo >10|viaje corporativo|reclamacion de seguro|emergencia en destino', en: 'group >10|corporate travel|insurance claim|emergency at destination', pt: 'grupo >10|viagem corporativa|reclamacao de seguro', fr: 'groupe >10|voyage d\'affaires|reclamation assurance' } },
     pipeline: { stages: [
         { name: { es: 'Consulta', en: 'Inquiry', pt: 'Consulta', fr: 'Demande' }, slug: 'consulta', color: '#1abc9c', probability: 10, isTerminal: false, transitionRules: [] },
-        { name: { es: 'Cotización', en: 'Quote', pt: 'Cotação', fr: 'Devis' }, slug: 'cotizacion', color: '#3498db', probability: 30, isTerminal: false, transitionRules: [{ type: 'offer_required' }] },
+        { name: { es: 'Cotización', en: 'Quote', pt: 'Cotação', fr: 'Devis' }, slug: 'cotizacion', color: '#3498db', probability: 30, isTerminal: false, transitionRules: [] },
         { name: { es: 'Reserva', en: 'Booked', pt: 'Reservado', fr: 'Réservé' }, slug: 'reserva', color: '#f39c12', probability: 60, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
         { name: { es: 'Confirmado', en: 'Confirmed', pt: 'Confirmado', fr: 'Confirmé' }, slug: 'confirmado', color: '#2ecc71', probability: 90, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
         { name: { es: 'Completado', en: 'Traveled', pt: 'Viajou', fr: 'Voyage effectué' }, slug: 'completado', color: '#27ae60', probability: 100, isTerminal: true, transitionRules: [] },
@@ -670,7 +670,7 @@ const SERVICIOS_HOGAR: VerticalDefinition = {
     pipeline: {
         stages: [
             { name: { es: 'Solicitud', en: 'Request', pt: 'Solicitação', fr: 'Demande' }, slug: 'solicitud', color: '#3498db', probability: 10, isTerminal: false, transitionRules: [] },
-            { name: { es: 'Cotización', en: 'Quoted', pt: 'Cotada', fr: 'Devis' }, slug: 'cotizacion', color: '#f39c12', probability: 30, isTerminal: false, transitionRules: [{ type: 'offer_required' }] },
+            { name: { es: 'Cotización', en: 'Quoted', pt: 'Cotada', fr: 'Devis' }, slug: 'cotizacion', color: '#f39c12', probability: 30, isTerminal: false, transitionRules: [] },
             { name: { es: 'Agendado', en: 'Scheduled', pt: 'Agendado', fr: 'Programmé' }, slug: 'agendado', color: '#e67e22', probability: 60, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
             { name: { es: 'En servicio', en: 'On site', pt: 'Em serviço', fr: 'Sur place' }, slug: 'en_servicio', color: '#9b59b6', probability: 80, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
             { name: { es: 'Completado', en: 'Completed', pt: 'Concluído', fr: 'Terminé' }, slug: 'completado', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
@@ -839,7 +839,7 @@ const FOTOGRAFIA: VerticalDefinition = {
     pipeline: {
         stages: [
             { name: { es: 'Consulta', en: 'Inquiry', pt: 'Consulta', fr: 'Demande' }, slug: 'consulta', color: '#3498db', probability: 10, isTerminal: false, transitionRules: [] },
-            { name: { es: 'Cotización', en: 'Quote sent', pt: 'Cotação', fr: 'Devis envoyé' }, slug: 'cotizacion', color: '#f39c12', probability: 30, isTerminal: false, transitionRules: [{ type: 'offer_required' }] },
+            { name: { es: 'Cotización', en: 'Quote sent', pt: 'Cotação', fr: 'Devis envoyé' }, slug: 'cotizacion', color: '#f39c12', probability: 30, isTerminal: false, transitionRules: [] },
             { name: { es: 'Anticipo', en: 'Deposit paid', pt: 'Sinal pago', fr: 'Acompte versé' }, slug: 'anticipo', color: '#e67e22', probability: 70, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
             { name: { es: 'Sesión agendada', en: 'Shoot booked', pt: 'Sessão agendada', fr: 'Séance réservée' }, slug: 'agendada', color: '#9b59b6', probability: 90, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
             { name: { es: 'Entregada', en: 'Delivered', pt: 'Entregue', fr: 'Livré' }, slug: 'entregada', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
@@ -919,7 +919,7 @@ const SEGUROS: VerticalDefinition = {
         stages: [
             { name: { es: 'Lead', en: 'Lead', pt: 'Lead', fr: 'Lead' }, slug: 'lead', color: '#3498db', probability: 10, isTerminal: false, transitionRules: [] },
             { name: { es: 'Calificado', en: 'Qualified', pt: 'Qualificado', fr: 'Qualifié' }, slug: 'calificado', color: '#f39c12', probability: 25, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
-            { name: { es: 'Cotizado', en: 'Quoted', pt: 'Cotado', fr: 'Devis envoyé' }, slug: 'cotizado', color: '#e67e22', probability: 50, isTerminal: false, transitionRules: [{ type: 'offer_required' }] },
+            { name: { es: 'Cotizado', en: 'Quoted', pt: 'Cotado', fr: 'Devis envoyé' }, slug: 'cotizado', color: '#e67e22', probability: 50, isTerminal: false, transitionRules: [] },
             { name: { es: 'Propuesta enviada', en: 'Proposal sent', pt: 'Proposta enviada', fr: 'Proposition envoyée' }, slug: 'propuesta', color: '#9b59b6', probability: 70, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
             { name: { es: 'Póliza emitida', en: 'Policy issued', pt: 'Apólice emitida', fr: 'Police émise' }, slug: 'poliza_emitida', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
             { name: { es: 'Renovación', en: 'Renewal', pt: 'Renovação', fr: 'Renouvellement' }, slug: 'renovacion', color: '#27ae60', probability: 95, isTerminal: false, transitionRules: [] },

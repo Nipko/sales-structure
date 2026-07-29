@@ -158,6 +158,11 @@ export class PromptAssemblerService {
             if (vc.transactionNoun) lines.push(`    <transaction_noun>${vc.transactionNoun}</transaction_noun>`);
             if (vc.serviceNoun) lines.push(`    <service_noun>${vc.serviceNoun}</service_noun>`);
             if (vc.industryGuidance) lines.push(`    <guidance>${vc.industryGuidance}</guidance>`);
+            // Lo que el dueño respondió en el alta sobre qué quiere lograr y a
+            // quién atiende. Especialmente valioso para la industria "otro",
+            // cuya única descripción del negocio es esta.
+            if (vc.businessGoals?.length) lines.push(`    <business_goals>${vc.businessGoals.join(' | ')}</business_goals>`);
+            if (vc.targetAudiences?.length) lines.push(`    <target_audiences>${vc.targetAudiences.join(' | ')}</target_audiences>`);
             lines.push('  </vertical_context>');
         }
 

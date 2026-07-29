@@ -99,6 +99,9 @@ const SUB_TYPES: Record<string, Array<{key: string; label: string}>> = {
         { key: 'agencia_viajes', label: 'Agencia de viajes' },
         { key: 'hotel', label: 'Hotel / Hostal' },
         { key: 'tours', label: 'Tours y actividades' },
+        // Existía en el registry (4 idiomas) pero no acá: un property manager no
+        // podía declararse como tal — la "industria fantasma" de la auditoría.
+        { key: 'alquiler_vacacional', label: 'Alquiler vacacional' },
     ],
     restaurantes: [
         { key: 'casual_dining', label: 'Restaurante casual' },

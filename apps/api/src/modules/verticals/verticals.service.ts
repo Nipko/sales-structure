@@ -74,6 +74,13 @@ export class VerticalsService {
             await this.seedToursExtras(tenantId, schemaName, l);
             await this.enableToursTool(schemaName);
         }
+        if (industry === 'turismo' && (subType === 'hotel' || subType === 'alquiler_vacacional')) {
+            // El módulo vacation-rental (properties, disponibilidad por noches,
+            // iCal) existe completo, pero tools.properties no se encendía nunca:
+            // el tenant de alojamiento tenía que descubrir el toggle a mano en el
+            // editor de agente para que la IA pudiera cotizar estadías.
+            await this.enableSimpleTool(schemaName, 'properties');
+        }
 
         // 4c. Dental sub-type: dental-specific FAQs + activate treatments tool
         // so the AI can answer about ongoing orthodontic / multi-session plans.

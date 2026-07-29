@@ -1618,6 +1618,34 @@ export class ConversationsService {
                     serviceNoun: t.serviceNoun?.[lang] || t.serviceNoun?.es,
                 };
             }
+
+            // Objetivos y audiencia que el dueño declaró en el alta. Eran write-only:
+            // se guardaban en tenant.settings y ningún código los leía jamás — el
+            // tenant "otro", que es justo el que más necesita describir su negocio,
+            // le hablaba a la nada. Los "other:texto" libres son los más valiosos.
+            const goalsCacheKey = `bizgoals:${tenantId}`;
+            let bizGoals = await this.redis.getJson<{ goals: string[]; audiences: string[] }>(goalsCacheKey);
+            if (!bizGoals) {
+                const tenantRow = await this.prisma.tenant.findUnique({
+                    where: { id: tenantId },
+                    select: { settings: true },
+                });
+                const s = (tenantRow?.settings as any) || {};
+                const clean = (arr: any): string[] => (Array.isArray(arr) ? arr : [])
+                    .filter((x: any) => typeof x === 'string' && x.trim())
+                    .map((x: string) => x.startsWith('other:') ? x.slice(6).trim() : x)
+                    .filter(Boolean)
+                    .slice(0, 8);
+                bizGoals = { goals: clean(s.chatReasons), audiences: clean(s.customerTypes) };
+                await this.redis.setJson(goalsCacheKey, bizGoals, 600);
+            }
+            if (bizGoals.goals.length > 0 || bizGoals.audiences.length > 0) {
+                turnContext.verticalContext = {
+                    ...(turnContext.verticalContext || {}),
+                    businessGoals: bizGoals.goals.length ? bizGoals.goals : undefined,
+                    targetAudiences: bizGoals.audiences.length ? bizGoals.audiences : undefined,
+                };
+            }
         } catch (e: any) {
             this.logger.debug(`Vertical context lookup skipped: ${e.message}`);
         }

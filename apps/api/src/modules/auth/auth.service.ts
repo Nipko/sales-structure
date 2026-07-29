@@ -1661,6 +1661,7 @@ export class AuthService {
                 goals,
                 user.email || 'onboarding',
                 industry || undefined,
+                (data.subType || company.subType) || undefined,
             );
         } catch (error) {
             console.error(`[Onboarding] Failed to create default agent for "${result.tenant.schemaName}":`, error);

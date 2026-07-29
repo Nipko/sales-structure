@@ -2667,7 +2667,7 @@ export class PersonaService {
      * Create a default agent persona based on the user's selected onboarding goals.
      * Called once after tenant schema creation during onboarding.
      */
-    async createDefaultAgentFromGoals(tenantId: string, goals: string[], createdBy?: string, industry?: string): Promise<void> {
+    async createDefaultAgentFromGoals(tenantId: string, goals: string[], createdBy?: string, industry?: string, subType?: string): Promise<void> {
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
 
         // Check if agents already exist (idempotent)
@@ -2695,7 +2695,23 @@ export class PersonaService {
             const verticalTemplates = this.getVerticalTemplates(industry, tenantLang);
             if (verticalTemplates && verticalTemplates.length > 0) {
                 template = verticalTemplates[0];
-                this.logger.log(`Using vertical template "${template.id}" for industry "${industry}"`);
+                // El sub-tipo elige la plantilla correcta dentro de la vertical.
+                // Antes siempre ganaba [0]: un operador de tours recibía la persona
+                // genérica de ventas aunque el bootstrap le encendiera tools.tours —
+                // la persona activa ni mencionaba los tours que podía vender.
+                const bySubType: Record<string, string> = {
+                    tours: 'tpl_turismo_tours',
+                    agencia_viajes: 'tpl_turismo_agencia',
+                    tienda: 'tpl_pet_tienda',
+                    delivery: 'tpl_restaurante_delivery',
+                    dark_kitchen: 'tpl_restaurante_delivery',
+                };
+                const preferredId = subType ? bySubType[subType] : undefined;
+                if (preferredId) {
+                    const preferred = verticalTemplates.find((t: any) => t.id === preferredId);
+                    if (preferred) template = preferred;
+                }
+                this.logger.log(`Using vertical template "${template.id}" for industry "${industry}"${subType ? ` (subType: ${subType})` : ''}`);
             }
         }
 

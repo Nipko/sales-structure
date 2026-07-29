@@ -4,7 +4,7 @@
 
 | # | Vertical | Estado | Fecha | Notas |
 |---|----------|--------|-------|-------|
-| 1 | moda_belleza | pendiente | | Demanda #1 (88 pts) y la más corta de código — el dossier más valioso |
+| 1 | moda_belleza | completo | 2026-07-29 | INVERTIR (en belleza, no en moda): la apuesta #1 se sostiene — F1 capacidad + inactivity vivo + 3 lock-ins con bases ya en código; boutique migra a retail y la estética vive acá |
 | 2 | salud | pendiente | | Demanda #2-3 (dental 87, especialistas 86); decide también el sub-tipo estética |
 | 3 | inmobiliaria | pendiente | | Demanda #4 (84) |
 | 4 | gimnasios | pendiente | | Demanda #5 (78); cupos de clase = la pregunta |

@@ -2705,6 +2705,11 @@ export class PersonaService {
                     tienda: 'tpl_pet_tienda',
                     delivery: 'tpl_restaurante_delivery',
                     dark_kitchen: 'tpl_restaurante_delivery',
+                    // dental: el bootstrap enciende tools.treatments para este
+                    // sub-tipo, pero la única plantilla que instruye usarlas (y el
+                    // protocolo de urgencias + recall) es tpl_salud_dental — sin el
+                    // mapeo, la clínica dental recibía la persona genérica de salud.
+                    dental: 'tpl_salud_dental',
                 };
                 const preferredId = subType ? bySubType[subType] : undefined;
                 if (preferredId) {

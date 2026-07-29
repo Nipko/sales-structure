@@ -2215,8 +2215,21 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."courses" (
     "created_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
+-- La tabla legacy del catálogo (más arriba, línea ~312) gana por IF NOT EXISTS,
+-- así que TODO el shape de education debe llegar por ALTER. Con solo subject y
+-- level parchados, createCourse fallaba (insertaba 5 columnas inexistentes) y
+-- get_course_schedule reventaba — la vertical education entera estaba rota.
 ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "subject" VARCHAR(100);
 ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "level" VARCHAR(50);
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "duration_weeks" INTEGER;
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "certification" VARCHAR(255);
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "prerequisites" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "syllabus_url" VARCHAR(500);
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "image_url" VARCHAR(500);
+-- El slug NOT NULL de la tabla legacy rompería el INSERT de education (que no
+-- lo envía). Relajarlo es seguro: el catálogo legacy que lo usaba genera el
+-- slug en el servicio, no depende de la restricción.
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ALTER COLUMN "slug" DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS "idx_courses_subject" ON "{{SCHEMA_NAME}}"."courses" ("subject", "level") WHERE "is_active" = true;
 
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."course_cohorts" (

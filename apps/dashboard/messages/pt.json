@@ -6107,6 +6107,12 @@
     "servicios_profesionales": "Sua firma profissional está pronta, {name}",
     "retail": "Sua loja está pronta para receber compradores, {name}",
     "technology": "Sua plataforma SaaS está pronta, {name}",
+    "veterinaria": "Bem-vindo à sua clínica veterinária, {name}",
+    "gimnasios": "Bem-vindo à sua academia, {name}",
+    "seguros": "Bem-vindo à sua corretora de seguros, {name}",
+    "servicios_hogar": "Bem-vindo à sua central de serviços, {name}",
+    "pet_services": "Bem-vindo ao seu negócio pet, {name}",
+    "fotografia": "Bem-vindo ao seu estúdio, {name}",
     "default": "Bem-vindo, {name} · Visão geral da plataforma"
   },
   "help": {

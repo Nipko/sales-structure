@@ -6107,6 +6107,12 @@
     "servicios_profesionales": "Votre cabinet professionnel est prêt, {name}",
     "retail": "Votre boutique est prête à accueillir des acheteurs, {name}",
     "technology": "Votre plateforme SaaS est prête, {name}",
+    "veterinaria": "Bienvenue dans votre clinique vétérinaire, {name}",
+    "gimnasios": "Bienvenue dans votre salle de sport, {name}",
+    "seguros": "Bienvenue dans votre agence d’assurance, {name}",
+    "servicios_hogar": "Bienvenue dans votre centrale de services, {name}",
+    "pet_services": "Bienvenue dans votre entreprise animalière, {name}",
+    "fotografia": "Bienvenue dans votre studio, {name}",
     "default": "Bienvenue, {name} · Vue d'ensemble de la plateforme"
   },
   "help": {

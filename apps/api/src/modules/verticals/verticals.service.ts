@@ -132,6 +132,13 @@ export class VerticalsService {
         if (industry === 'fotografia') {
             await this.enableSimpleTool(schemaName, 'photography');
         }
+        if (industry === 'automotriz') {
+            // El módulo vehicle-inventory y las VEHICLE_TOOLS existen completos
+            // desde T3; esta era la única industria con módulo propio cuyo flag
+            // no encendía nadie — la vertical vendía "mostrar inventario" en el
+            // alta y el agente no podía hacerlo.
+            await this.enableSimpleTool(schemaName, 'vehicles');
+        }
 
         // 5. Save resolved config to tenant
         const resolvedConfig: TenantVerticalConfig = {
@@ -423,10 +430,15 @@ export class VerticalsService {
                 const description = svc.description[lang] || svc.description['es'];
                 await this.prisma.$queryRawUnsafe(
                     `INSERT INTO "${schemaName}"."services"
-                     (name, description, duration_minutes, price, currency, category, is_active, sort_order)
-                     VALUES ($1, $2, $3, $4, $5, $6, true, $7)
+                     (name, description, duration_minutes, price, currency, category, is_active, sort_order, duration_type)
+                     VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8)
                      ON CONFLICT (name) DO NOTHING`,
                     name, description, svc.durationMinutes, svc.price, svc.currency, svc.category, i,
+                    // 'open' = disponibilidad por DÍA (checkAvailabilityOpen), para
+                    // servicios que no caben en la ventana diaria de slots: un
+                    // "Hotel — noche" de 1440 min con slots de 08:00-18:00 daba
+                    // "no hay disponibilidad" para siempre, en bucle.
+                    svc.durationType || 'fixed',
                 );
             }
             this.logger.debug(`Seeded ${definition.services.length} services`);

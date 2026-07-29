@@ -361,12 +361,23 @@ export class VerticalIntegrationsService {
 
     async getScheduleForAI(schemaName: string): Promise<any> {
         const rows = await this.listItems(schemaName, 'mindbody', 'class', 80);
+        // El sync de Mindbody trae una ventana de ~14 días que caduca sola: sin
+        // este filtro, a la semana de conectar la IA ofrecía clases que ya
+        // habían pasado — el tenant perdía confianza justo después de configurar.
+        const now = Date.now();
+        const upcoming = rows.filter((r) => {
+            const start = r.data?.startDateTime ? Date.parse(r.data.startDateTime) : NaN;
+            return Number.isNaN(start) ? false : start >= now;
+        });
         return {
-            classes: rows.map((r) => ({
+            classes: upcoming.map((r) => ({
                 name: r.title, staff: r.subtitle,
                 start: r.data?.startDateTime, end: r.data?.endDateTime,
                 available: r.data?.isAvailable !== false, location: r.data?.location,
             })),
+            // Si el filtro vació la lista pero había filas, el sync está viejo:
+            // decírselo al modelo evita que responda "no hay clases" a secas.
+            stale: rows.length > 0 && upcoming.length === 0,
             source: 'mindbody',
         };
     }

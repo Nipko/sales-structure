@@ -767,7 +767,11 @@ const PET_SERVICES: VerticalDefinition = {
     services: [
         { name: { es: 'Baño + corte (perro pequeño)', en: 'Bath + cut (small dog)', pt: 'Banho + tosa (pequeno)', fr: 'Bain + coupe (petit)' }, description: { es: 'Baño completo + corte de raza', en: 'Full bath + breed cut', pt: 'Banho completo', fr: 'Bain complet' }, durationMinutes: 90, price: 60000, currency: 'COP', category: 'peluqueria' },
         { name: { es: 'Guardería diurna', en: 'Day care', pt: 'Creche diária', fr: 'Garderie journée' }, description: { es: 'Estancia 8-10h con socialización', en: '8-10h stay with socialization', pt: 'Permanência 8-10h', fr: 'Séjour 8-10h' }, durationMinutes: 480, price: 50000, currency: 'COP', category: 'guarderia' },
-        { name: { es: 'Hotel — noche', en: 'Hotel — overnight', pt: 'Hotel — diária', fr: 'Hôtel — nuit' }, description: { es: 'Pernocta con alimentación incluida', en: 'Overnight stay with food', pt: 'Pernoite com alimentação', fr: 'Nuit avec nourriture' }, durationMinutes: 1440, price: 80000, currency: 'COP', category: 'hotel' },
+        // durationType 'open': una pernocta de 1440 min jamás cabe en la ventana
+        // diaria de slots (08:00-18:00 = 600 min) — con slots fijos el generador
+        // devolvía "no hay disponibilidad" para siempre, en bucle, para el
+        // servicio estrella de la vertical.
+        { name: { es: 'Hotel — noche', en: 'Hotel — overnight', pt: 'Hotel — diária', fr: 'Hôtel — nuit' }, description: { es: 'Pernocta con alimentación incluida', en: 'Overnight stay with food', pt: 'Pernoite com alimentação', fr: 'Nuit avec nourriture' }, durationMinutes: 1440, price: 80000, currency: 'COP', category: 'hotel', durationType: 'open' },
     ],
     businessHours: {
         schedule: { mon: '08:00-18:00', tue: '08:00-18:00', wed: '08:00-18:00', thu: '08:00-18:00', fri: '08:00-18:00', sat: '08:00-16:00' },

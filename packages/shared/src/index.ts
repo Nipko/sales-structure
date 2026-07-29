@@ -725,6 +725,8 @@ export interface VerticalServiceDefinition {
     price: number;
     currency: string;
     category: string;
+    /** 'open' = day-level availability (multi-day stays, full-day sessions); default 'fixed' slots. */
+    durationType?: 'fixed' | 'open';
 }
 
 export interface VerticalAgentDefinition {

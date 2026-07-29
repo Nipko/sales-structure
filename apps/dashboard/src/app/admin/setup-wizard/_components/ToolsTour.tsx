@@ -52,7 +52,9 @@ const A_BY_VERTICAL: Record<string, Tool[]> = {
         { key: "orders", icon: ShoppingBag, href: "/admin/food-orders" },
     ],
     inmobiliaria: [
-        { key: "properties", icon: Home, href: "/admin/properties" },
+        // /admin/properties es el CRUD de alquiler vacacional (turismo); el
+        // inventario inmobiliario vive en /admin/listings.
+        { key: "properties", icon: Home, href: "/admin/listings" },
         { key: "appointments", icon: Calendar, href: "/admin/appointments" },
     ],
     automotriz: [

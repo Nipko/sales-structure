@@ -359,7 +359,9 @@ export default function AdminDashboard() {
                         {t('title')}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                        {tVw(vt.industry !== 'otro' ? vt.industry : 'default', { name: user?.firstName || "Admin" })}
+                        {/* .has(): sin el guard, las industrias sin clave propia mostraban
+                            la clave i18n cruda ("verticalWelcome.gimnasios") en el saludo. */}
+                        {tVw(vt.industry !== 'otro' && tVw.has(vt.industry) ? vt.industry : 'default', { name: user?.firstName || "Admin" })}
                     </p>
                 </div>
                 <DataSourceBadge isLive={isLive} />

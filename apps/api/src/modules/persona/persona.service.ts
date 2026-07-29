@@ -1410,7 +1410,10 @@ export class PersonaService {
                         handoffTriggers: ['pedido mayor a 10 unidades', 'queja de entrega', 'intoxicación'],
                         requiredFields: {},
                     },
-                    tools: {},
+                    // restaurants: la plantilla de "Pedidos y Delivery" no podía llamar
+                    // ni get_menu ni place_order — sin este flag solo el agente default
+                    // (que hereda el enable del bootstrap) podía tomar pedidos.
+                    tools: { restaurants: { enabled: true } },
                 },
             },
         ];
@@ -1845,7 +1848,12 @@ export class PersonaService {
                             email: { required: false },
                         },
                     },
-                    tools: { crm: { enabled: true }, knowledge: { enabled: true } },
+                    // appointments: el alta de finanzas ofrece el objetivo "Agendar
+                    // asesorías" y el bootstrap siembra servicio + disponibilidad
+                    // (bookingEnabled), pero esta plantilla —la default de la
+                    // vertical— no traía la herramienta: la agenda sembrada quedaba
+                    // muerta y la promesa del alta era imposible out of the box.
+                    tools: { crm: { enabled: true }, knowledge: { enabled: true }, appointments: { enabled: true, canBook: true, canCancel: true } },
                     rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
                 },
             },

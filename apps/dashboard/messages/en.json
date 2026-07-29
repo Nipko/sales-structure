@@ -6107,6 +6107,12 @@
     "servicios_profesionales": "Your professional firm is ready, {name}",
     "retail": "Your store is ready to receive shoppers, {name}",
     "technology": "Your SaaS platform is ready, {name}",
+    "veterinaria": "Welcome to your veterinary clinic, {name}",
+    "gimnasios": "Welcome to your gym, {name}",
+    "seguros": "Welcome to your insurance agency, {name}",
+    "servicios_hogar": "Welcome to your service dispatch, {name}",
+    "pet_services": "Welcome to your pet business, {name}",
+    "fotografia": "Welcome to your studio, {name}",
     "default": "Welcome, {name} · Platform overview"
   },
   "help": {

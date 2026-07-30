@@ -508,7 +508,7 @@ function createGenericVertical(industry: string, config: Partial<VerticalDefinit
             { name: { es: 'Nuevo', en: 'New', pt: 'Novo', fr: 'Nouveau' }, slug: 'nuevo', color: '#3498db', probability: 10, isTerminal: false, transitionRules: [] },
             { name: { es: 'Contactado', en: 'Contacted', pt: 'Contatado', fr: 'Contacté' }, slug: 'contactado', color: '#f39c12', probability: 25, isTerminal: false, transitionRules: [{ type: 'phone_required' }] },
             { name: { es: 'Calificado', en: 'Qualified', pt: 'Qualificado', fr: 'Qualifié' }, slug: 'calificado', color: '#e67e22', probability: 40, isTerminal: false, transitionRules: [{ type: 'name_required' }] },
-            { name: { es: 'Propuesta', en: 'Proposal', pt: 'Proposta', fr: 'Proposition' }, slug: 'propuesta', color: '#9b59b6', probability: 60, isTerminal: false, transitionRules: [{ type: 'offer_required' }] },
+            { name: { es: 'Propuesta', en: 'Proposal', pt: 'Proposta', fr: 'Proposition' }, slug: 'propuesta', color: '#9b59b6', probability: 60, isTerminal: false, transitionRules: [] },
             { name: { es: 'Cerrado ganado', en: 'Closed Won', pt: 'Fechado ganho', fr: 'Conclu gagné' }, slug: 'cerrado_ganado', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
             { name: { es: 'Cerrado perdido', en: 'Closed Lost', pt: 'Fechado perdido', fr: 'Conclu perdu' }, slug: 'cerrado_perdido', color: '#95a5a6', probability: 0, isTerminal: true, transitionRules: [] },
         ] },

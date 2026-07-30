@@ -356,7 +356,12 @@ const AUTOMOTRIZ: VerticalDefinition = {
         greeting: { es: 'Hola, soy Marco, asesor automotriz. ¿Buscas un vehículo nuevo, usado o necesitas servicio de taller?', en: 'Hello, I\'m Marco, your automotive advisor. Looking for a new car, used, or need service?', pt: 'Olá, sou Marco, consultor automotivo. Procura um veículo novo, usado ou precisa de serviço?', fr: 'Bonjour, je suis Marc, votre conseiller automobile. Cherchez-vous un véhicule neuf, d\'occasion ou un service?' },
         rules: { es: 'Califica al cliente (presupuesto, tipo de vehículo, financiación, retoma). Ofrece agendar prueba de manejo. Nunca garantices aprobación de crédito.', en: 'Qualify the customer (budget, vehicle type, financing, trade-in). Offer test drives. Never guarantee credit approval.', pt: 'Qualifique o cliente (orçamento, tipo de veículo, financiamento). Ofereça test drive.', fr: 'Qualifiez le client (budget, type de véhicule, financement). Proposez un essai routier.' },
         forbiddenTopics: { es: 'Garantizar aprobación de crédito|Precios de costo|Diagnóstico mecánico sin revisión|Garantías no autorizadas', en: 'Guarantee credit approval|Cost prices|Mechanical diagnosis without inspection|Unauthorized warranties', pt: 'Garantir aprovação de crédito|Preços de custo|Diagnóstico sem revisão', fr: 'Garantir approbation de crédit|Prix de revient|Diagnostic sans inspection' },
-        handoffTriggers: { es: 'prueba de manejo|financiacion aprobada|reclamo de garantia|accidente|negociacion final de precio', en: 'test drive|financing approved|warranty claim|accident|final price negotiation', pt: 'test drive|financiamento aprovado|reclamacao de garantia', fr: 'essai routier|financement approuve|reclamation garantie' },
+        // Sin "prueba de manejo" como trigger: el bootstrap siembra servicio +
+        // slots + FAQ para AUTOMATIZAR el test drive, y el matcheo por substring
+        // corre ANTES del booking engine — con la frase acá, la conversión
+        // central del rubro escalaba a humano siempre y la automatización
+        // sembrada jamás llegaba a ejecutarse.
+        handoffTriggers: { es: 'financiacion aprobada|reclamo de garantia|accidente|negociacion final de precio', en: 'financing approved|warranty claim|accident|final price negotiation', pt: 'financiamento aprovado|reclamacao de garantia', fr: 'financement approuve|reclamation garantie' },
     },
     pipeline: {
         stages: [

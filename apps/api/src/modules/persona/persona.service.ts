@@ -1612,7 +1612,9 @@ export class PersonaService {
                             'Nunca garantices aprobación de crédito',
                         ],
                         forbiddenTopics: ['Garantizar aprobación de crédito', 'Precios de costo', 'Diagnóstico mecánico sin revisión'],
-                        handoffTriggers: ['prueba de manejo', 'financiación', 'reclamo de garantía', 'negociación final'],
+                        // "prueba de manejo" NO escala: es la conversión que el agente
+                        // debe agendar solo (servicio sembrado por el bootstrap).
+                        handoffTriggers: ['financiación', 'reclamo de garantía', 'negociación final'],
                         requiredFields: {},
                     },
                     tools: { appointments: { enabled: true, canBook: true, canCancel: true } },

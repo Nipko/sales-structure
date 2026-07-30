@@ -48,7 +48,9 @@ export default function Lead360Page() {
     const { activeTenantId } = useTenant();
     const { verticalConfig } = useAuth();
     const showTreatmentPlans = verticalConfig?.industry === 'salud';
-    const showPets = verticalConfig?.industry === 'veterinaria';
+    // pet_services también: el sidebar ya le da el ítem Mascotas a ambas
+    // industrias; solo esta tarjeta del Lead 360° se había quedado vet-only.
+    const showPets = verticalConfig?.industry === 'veterinaria' || verticalConfig?.industry === 'pet_services';
     const t = useTranslations("contacts");
     const tc = useTranslations("common");
     const vt = useVerticalTerms();

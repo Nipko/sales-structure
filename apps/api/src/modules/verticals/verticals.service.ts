@@ -135,6 +135,12 @@ export class VerticalsService {
         }
         if (industry === 'pet_services') {
             await this.enableSimpleTool(schemaName, 'petServices');
+            // El módulo pets (register_pet, ficha por contacto) ya está pagado por
+            // veterinaria y era vet-only: la vertical de MASCOTAS no tenía el objeto
+            // mascota — /admin/pets quedaba vacío para siempre, la persona exigía
+            // "confirma vacunas al día" sin herramienta, y el check de activación
+            // (que lee pets) marcaba a todo tenant sano como no-activado.
+            await this.enableSimpleTool(schemaName, 'pets');
         }
         if (industry === 'fotografia') {
             await this.enableSimpleTool(schemaName, 'photography');

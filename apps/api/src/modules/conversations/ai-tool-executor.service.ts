@@ -1228,9 +1228,13 @@ export class AIToolExecutorService {
             args.serviceId = nameMatch[0].id;
         }
 
-        // Get service (including modality columns)
+        // Get service (including modality + duration-model columns). Sin
+        // duration_type en el SELECT, la rama 'open' de abajo era código muerto:
+        // una pernocta de 1440 min computaba endAt con hora >= 24 → timestamp
+        // inválido → tool_failed. El check de disponibilidad ya la aceptaba
+        // (b9bd6332), pero la reserva en sí seguía rota.
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, name, duration_minutes, price, currency, location_type, location_address, meeting_link FROM "${schema}".services WHERE id = $1::uuid`,
+            `SELECT id, name, duration_minutes, duration_type, duration_minutes_max, price, currency, location_type, location_address, meeting_link FROM "${schema}".services WHERE id = $1::uuid`,
             args.serviceId,
         );
         if (!svcRows.length) return { error: 'Service not found' };
@@ -1242,7 +1246,12 @@ export class AIToolExecutorService {
         const effectiveDuration = durType === 'open' ? 30
             : (durType === 'flexible' && svc.duration_minutes_max ? svc.duration_minutes_max : (svc.duration_minutes || 30));
         const endMinutes = parseInt(args.time.split(':')[0]) * 60 + parseInt(args.time.split(':')[1]) + effectiveDuration;
-        const endAt = `${args.date}T${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}:00`;
+        // endAt con desborde de medianoche: un servicio flexible largo (o una
+        // reserva cerca del cierre) cruza las 24h — formatear hora 25:30 rompe
+        // el cast ::timestamp. Aritmética sobre época UTC-naive para rolar fecha.
+        const endBase = new Date(`${args.date}T00:00:00Z`);
+        endBase.setUTCMinutes(endMinutes);
+        const endAt = `${endBase.getUTCFullYear()}-${String(endBase.getUTCMonth() + 1).padStart(2, '0')}-${String(endBase.getUTCDate()).padStart(2, '0')}T${String(endBase.getUTCHours()).padStart(2, '0')}:${String(endBase.getUTCMinutes()).padStart(2, '0')}:00`;
 
         // Double-booking guard: re-check availability and INSERT under a short
         // per-(staff,date) lock. check_availability runs earlier in the turn, but
@@ -3134,12 +3143,17 @@ export class AIToolExecutorService {
             if (!pet) return { error: 'Pet not found' };
             if (pet.contact_id !== contactId) return { error: 'You can only update your own pets' };
 
+            // Claves en camelCase: PetsService.update mapea camelCase→columna y
+            // descarta lo que no reconoce. Con snake_case acá, weight_kg /
+            // chronic_conditions / is_neutered se perdían EN SILENCIO mientras el
+            // tool respondía "updated successfully" — y el peso es dato
+            // dosis-crítico en veterinaria.
             const updateData: any = {};
             if (args.name !== undefined) updateData.name = args.name;
-            if (args.weightKg !== undefined) updateData.weight_kg = args.weightKg;
+            if (args.weightKg !== undefined) updateData.weightKg = args.weightKg;
             if (args.allergies !== undefined) updateData.allergies = args.allergies;
-            if (args.chronicConditions !== undefined) updateData.chronic_conditions = args.chronicConditions;
-            if (args.isNeutered !== undefined) updateData.is_neutered = args.isNeutered;
+            if (args.chronicConditions !== undefined) updateData.chronicConditions = args.chronicConditions;
+            if (args.isNeutered !== undefined) updateData.isNeutered = args.isNeutered;
             if (args.color !== undefined) updateData.color = args.color;
 
             if (Object.keys(updateData).length === 0) {

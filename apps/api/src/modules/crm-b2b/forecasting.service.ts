@@ -1,7 +1,15 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
-const OPEN = `o.stage NOT IN ('ganado', 'perdido', 'no_interesado')`;
+// "Abierto" = la etapa NO está marcada terminal en pipeline_stages, que es la
+// fuente de verdad por tenant y ya viene en el LEFT JOIN de cada query. El
+// listado literal solo cubría los 3 slugs del pipeline genérico: ninguna de las
+// 18 verticales cierra en 'ganado' (cierran en cerrado, cerrado_ganado,
+// entregado, poliza_emitida, alta…), así que TODO deal ganado seguía contando
+// en el pipeline abierto ponderado al 100% — forecast inflado para siempre.
+// Los 3 slugs quedan como respaldo por si una oportunidad apunta a una etapa
+// sin fila en pipeline_stages (el LEFT JOIN daría NULL → se trataría abierta).
+const OPEN = `COALESCE(ps.is_terminal, false) = false AND o.stage NOT IN ('ganado', 'perdido', 'no_interesado')`;
 const COMMITTED_THRESHOLD = 80; // stage probability ≥ this counts as "committed"
 
 /**
@@ -105,6 +113,7 @@ export class ForecastingService {
              FROM opportunities o
              JOIN leads l ON l.id = o.lead_id
              LEFT JOIN companies co ON co.id = l.company_id
+             LEFT JOIN pipeline_stages ps ON ps.slug = o.stage
              WHERE ${OPEN}
                AND o.updated_at < NOW() - ($1 || ' days')::interval
              ORDER BY o.updated_at ASC

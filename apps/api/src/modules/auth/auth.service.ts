@@ -1559,7 +1559,17 @@ export class AuthService {
         const companyName = company.name || data.companyName;
         const website = company.website || data.website;
         const socialLinks = company.socialMedia || data.socialLinks;
-        const industry = company.industry || data.industry;
+        const rawIndustry = company.industry || data.industry;
+        const rawSubType = data.subType || company.subType;
+        // El sub-tipo "seguros" dentro de finanzas es la vertical `seguros` completa:
+        // un broker que se declaraba así recibía persona y pipeline de CRÉDITO, sin
+        // las 6 INSURANCE_TOOLS (el bootstrap solo enciende el flag para la industria
+        // seguros) y sin /admin/insurance (ítem de sidebar gateado a verticals:
+        // ["seguros"]) — o sea, sin catálogo que poblar. Encender solo la tool no
+        // alcanzaba; se normaliza la industria en el único punto donde se resuelve.
+        // Lo respalda el mercado: el top-10 propio no lista finanzas pero sí
+        // "Insurance Brokers" #9 con WTP 9/10.
+        const industry = (rawIndustry === 'finanzas' && rawSubType === 'seguros') ? 'seguros' : rawIndustry;
         const companySize = company.orgSize || data.companySize;
         const timezone = company.timezone || data.timezone || 'America/Bogota';
         const customerTypes = data.audiences || data.customerTypes;

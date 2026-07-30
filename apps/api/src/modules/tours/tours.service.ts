@@ -293,27 +293,51 @@ export class ToursService {
         const childPrice = unitPrice * (1 - (pkg.child_discount_pct || 0) / 100);
         const totalPrice = unitPrice * adults + childPrice * children;
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO tour_bookings (
-                package_id, inventory_id, contact_id, conversation_id,
-                guest_name, guest_email, guest_phone,
-                departure_date, departure_time, party_size, adults, children,
-                unit_price, total_price, currency, language, special_requests
-             ) VALUES (
-                $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-                $5, $6, $7,
-                $8::date, $9, $10, $11, $12,
-                $13, $14, $15, $16, $17
-             ) RETURNING *`,
-            [
-                data.packageId, inventoryId, data.contactId || null, data.conversationId || null,
-                data.guestName || null, data.guestEmail || null, data.guestPhone || null,
-                data.departureDate, data.departureTime || null,
-                data.partySize, adults, children,
-                unitPrice, totalPrice, pkg.currency || 'COP',
-            ],
-        );
+        // El INSERT declara 17 placeholders: language y special_requests INCLUIDOS.
+        // Desde 1ebe7fec el array traía solo 15 valores → bind error en TODA reserva,
+        // y como el cupo ya se había decrementado arriba sin transacción, cada intento
+        // fallido quemaba asientos. Si el INSERT falla, se compensa el decremento
+        // (PgBouncer en transaction mode + statements separados: no hay BEGIN/COMMIT
+        // posible acá, la compensación es el camino).
+        let rows: any[];
+        try {
+            rows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `INSERT INTO tour_bookings (
+                    package_id, inventory_id, contact_id, conversation_id,
+                    guest_name, guest_email, guest_phone,
+                    departure_date, departure_time, party_size, adults, children,
+                    unit_price, total_price, currency, language, special_requests
+                 ) VALUES (
+                    $1::uuid, $2::uuid, $3::uuid, $4::uuid,
+                    $5, $6, $7,
+                    $8::date, $9, $10, $11, $12,
+                    $13, $14, $15, $16, $17
+                 ) RETURNING *`,
+                [
+                    data.packageId, inventoryId, data.contactId || null, data.conversationId || null,
+                    data.guestName || null, data.guestEmail || null, data.guestPhone || null,
+                    data.departureDate, data.departureTime || null,
+                    data.partySize, adults, children,
+                    unitPrice, totalPrice, pkg.currency || 'COP',
+                    data.language || 'es', data.specialRequests || null,
+                ],
+            );
+        } catch (insertError) {
+            if (inventoryId) {
+                try {
+                    await this.prisma.executeInTenantSchema(
+                        schemaName,
+                        `UPDATE tour_inventory SET available_seats = available_seats + $1, updated_at = NOW()
+                         WHERE id = $2::uuid`,
+                        [data.partySize, inventoryId],
+                    );
+                } catch (restoreError: any) {
+                    this.logger.error(`No se pudo restaurar el cupo tras el INSERT fallido (inventory ${inventoryId}): ${restoreError?.message}`);
+                }
+            }
+            throw insertError;
+        }
 
         // Try to send confirmation email (fire-and-forget)
         try {

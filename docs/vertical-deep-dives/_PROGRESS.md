@@ -7,7 +7,7 @@
 | 1 | moda_belleza | completo | 2026-07-29 | INVERTIR (en belleza, no en moda): la apuesta #1 se sostiene — F1 capacidad + inactivity vivo + 3 lock-ins con bases ya en código; boutique migra a retail y la estética vive acá |
 | 2 | salud | completo | 2026-07-29 | INVERTIR en dos velocidades: especialistas solistas funcionan HOY; dental (el que paga) exige F2 staff + recall vivo; Cliniko es el PMS equivocado (LatAm paga Dentalink); estética no-médica cede a belleza, salud retiene dermatología |
 | 3 | inmobiliaria | completo | 2026-07-29 | INVERTIR con cirugía en el ciclo de la visita: la top-4 de demanda más barata de ganar (inventario+tools ya reales); el gap es visita sin listing + conflicto invertido + ruteo muerto + import de portales (importar, no publicar) |
-| 4 | gimnasios | pendiente | | Demanda #5 (78); cupos de clase = la pregunta |
+| 4 | gimnasios | completo | 2026-07-29 | INVERTIR en despertar, no en construir: la reserva de clase con cupo YA existe entera (módulo gyms de mayo, corrige a la auditoría) pero es inalcanzable — nadie puede crear miembros (0 UI) y el motor de citas secuestra "quiero reservar"; nada que portar de tour_inventory, falta recurrencia semanal + waitlist + inactivity |
 | 5 | turismo | pendiente | | La más rica; alimenta la decisión GTM Hostaway |
 | 6 | restaurantes | pendiente | | Demanda #6 (77); mesas/partySize |
 | 7 | veterinaria | pendiente | | |

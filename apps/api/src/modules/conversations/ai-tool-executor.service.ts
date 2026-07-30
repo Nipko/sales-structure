@@ -3003,7 +3003,7 @@ export class AIToolExecutorService {
     private async cancelEnrollment(schema: string, contactId: string, enrollmentId: string, reason?: string): Promise<any> {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, contact_id, status FROM "${schema}".enrollments WHERE id = $1::uuid`,
+                `SELECT id, contact_id, status, cohort_id FROM "${schema}".enrollments WHERE id = $1::uuid`,
                 enrollmentId,
             );
             if (!rows.length) return { error: 'Enrollment not found' };
@@ -3018,6 +3018,22 @@ export class AIToolExecutorService {
                 status: 'cancelled',
                 cancellationReason: reason || 'Cancelled by student',
             });
+
+            // Devolver el asiento: enrollStudent decrementa available_seats y marca
+            // 'full' al llegar a 0, pero la cancelación nunca lo restauraba — el
+            // mensaje decía "the seat has been released" y el cupo se perdía para
+            // siempre (cohortes fantasma llenas). Espejo exacto del decremento,
+            // incluida la vuelta de 'full' a 'open'. El guard de status de arriba
+            // impide restaurar dos veces (una cancelada no es cancelable de nuevo).
+            if (rows[0].cohort_id) {
+                await this.prisma.$queryRawUnsafe(
+                    `UPDATE "${schema}".course_cohorts
+                     SET available_seats = available_seats + 1,
+                         status = CASE WHEN status = 'full' THEN 'open' ELSE status END
+                     WHERE id = $1::uuid`,
+                    rows[0].cohort_id,
+                );
+            }
 
             return { success: true, message: 'Enrollment cancelled successfully. The seat has been released.' };
         } catch (e: any) {

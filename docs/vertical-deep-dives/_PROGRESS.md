@@ -9,7 +9,7 @@
 | 3 | inmobiliaria | completo | 2026-07-29 | INVERTIR con cirugía en el ciclo de la visita: la top-4 de demanda más barata de ganar (inventario+tools ya reales); el gap es visita sin listing + conflicto invertido + ruteo muerto + import de portales (importar, no publicar) |
 | 4 | gimnasios | completo | 2026-07-29 | INVERTIR en despertar, no en construir: la reserva de clase con cupo YA existe entera (módulo gyms de mayo, corrige a la auditoría) pero es inalcanzable — nadie puede crear miembros (0 UI) y el motor de citas secuestra "quiero reservar"; nada que portar de tour_inventory, falta recurrencia semanal + waitlist + inactivity |
 | 5 | turismo | completo | 2026-07-29 | INVERTIR en reparar y monetizar lo hundido: create_tour_booking está ROTO desde may-27 (INSERT 17 placeholders/15 params, quema cupos por intento) y el trial (maxProperties=0) bloquea el día 1; el GTM Hostaway NO necesita el puente cm_→properties (properties+iCal ya alcanzan) — faltan ~3-5 semanas (fix + pre-arrival + review + UI Hostaway), no los 2-3 meses del research |
-| 6 | restaurantes | pendiente | | Demanda #6 (77); mesas/partySize |
+| 6 | restaurantes | completo | 2026-07-29 | INVERTIR en el pedido, no en la mesa: partySize es el hueco del caso secundario (LatAm = pedidos WhatsApp); lo que corta la venta es el circuito del pedido — food_order.created sin listeners (nadie se entera), promociones enteras sin UI (patrón gimnasios) y checklist que manda el menú a la KB dejando place_order sin catálogo; SQL de restaurants.service.ts limpio (sin el patrón tours) |
 | 7 | veterinaria | pendiente | | |
 | 8 | automotriz | pendiente | | Recién encendida (b9bd6332 + 60049164) |
 | 9 | education | pendiente | | Recién desbloqueada (schema) |

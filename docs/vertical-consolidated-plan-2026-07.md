@@ -230,18 +230,25 @@ Esta sección vale tanto como el backlog: sin ella, alguien retoma en tres meses
 
 ## 6. Secuencia sugerida
 
-### Ola 1 — dos semanas: destrabar lo que ya está construido
+### Ola 1 — dos semanas: destrabar lo que ya está construido ✅ COMPLETA (jul 2026)
 
 Horizontales XS/S de máxima palanca, más los P0 sueltos que no dependen de nada.
 
-- **H-1** F1 capacidad por servicio en la ruta de chat + campo en la UI de servicios (+4 JSON i18n).
-- **H-5** Yield vertical del motor de citas.
-- **H-4** Consumir `shouldHandoff` post-tool + depurar y **backfillear** los triggers por substring.
-- **H-7** El sub-tipo con consecuencias: mapa `bySubType` completo + `subType` al L3 (la rama de seed se reparte entre las olas).
-- **H-11** `enableSimpleTool` sobre cualquier agente, no solo el default (XS).
-- **H-14** `blocked_dates` en el `checkAvailability` del executor.
-- **H-17** Encender los gates de inventario con límite por cantidad (🔒D4, XS una vez decidido).
-- **P0 sueltos:** alta de miembros de gimnasio; listener de pedidos de restaurante; modal de emisión de póliza y `cancel_quote` revivida en seguros; escritura de inscripciones en education; `isUpToDate` honesto en vet; gate por contacto en `check_policy_status`/`file_claim`.
+- ✅ **H-1** F1 capacidad por servicio en la ruta de chat + campo en la UI de servicios (+4 JSON i18n).
+- ✅ **H-5** Yield vertical del motor de citas.
+- ✅ **H-4** Consumir `shouldHandoff` post-tool + depurar y **backfillear** los triggers por substring.
+- ✅ **H-7** El sub-tipo con consecuencias: mapa `bySubType` completo + `subType` al L3 (la rama de seed se reparte entre las olas).
+- ✅ **H-11** `enableSimpleTool` sobre cualquier agente, no solo el default (XS).
+- ✅ **H-14** `blocked_dates` en el `checkAvailability` del executor.
+- ✅ **H-15** `appointment_required` sobre las 5 tablas reales + `order_required` nuevo (se adelantó de Ola 2 porque cayó en el mismo archivo que H-14).
+- ✅ **H-17** Gates de inventario por cantidad (D4 aplicado según su recomendación). **Mueve la matriz de planes** — ver nota en el commit `9c56fbe5`.
+- ✅ **P0 sueltos:** alta de miembros de gimnasio; listener de pedidos de restaurante; modal de emisión de póliza y `cancel_quote` revivida en seguros; escritura de inscripciones en education; `isUpToDate` honesto en vet; gate por contacto en `check_policy_status`/`file_claim`.
+
+**Hallazgos nuevos, encontrados al ejecutar** (no estaban en el análisis original):
+
+- La fuga de `check_policy_status` tenía **gemela en veterinaria**: `get_vaccination_status` devolvía la historia clínica de cualquier mascota con solo pasar su id. Gateada igual. → *El gate por propiedad es un patrón sistémico, no dos casos: cualquier tool que reciba un id de objeto y no lo cruce contra el `contactId` de la conversación es la misma fuga. Auditar el resto en Ola 2.*
+- `cancel_enrollment` escribía un status (`'cancelled'`) fuera del vocabulario de su tabla y perdía el motivo en silencio (`cancellationReason` no está en el mapa de `updateEnrollment`). Misma clase que el `pending`/`sent` de `cancel_quote`: **desalineación de vocabulario entre quien escribe y quien valida**.
+- `getPlanLimit` devuelve `0` para una clave ausente, y el seed de planes es create-only. Toda feature-key nueva **exige migración de backfill** o bloquea a los tenants existentes.
 
 **Criterio de listo:** un salón con 4 sillas, una clínica con 3 consultorios y un restaurante con 10 mesas reciben más de una reserva por franja. Un gym puede dar de alta un miembro y sus 6 tools responden. Un pedido de restaurante llega a alguien. "¿Ofrecen financiación?" no escala a humano. Un tenant trial de turismo o automotriz puede cargar su primer objeto.
 

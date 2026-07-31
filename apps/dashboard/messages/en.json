@@ -8023,7 +8023,11 @@
         "listings": "No listings",
         "treatment_plans": "No treatment plans",
         "services": "No services configured",
-        "photo_sessions": "No sessions recorded"
+        "photo_sessions": "No sessions recorded",
+        "tour_packages": "No tour packages",
+        "vehicles": "No vehicles in inventory",
+        "products": "No products in catalog",
+        "pets": "No pets registered"
       }
     },
     "drilldown": {

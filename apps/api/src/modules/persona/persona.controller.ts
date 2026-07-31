@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PERSONA_TEMPLATES } from './templates';
 import * as yaml from 'js-yaml';
+import { getVerticalCatalog } from '../../common/utils/vertical-catalog.util';
 
 @ApiTags('persona')
 @Controller('persona')
@@ -328,21 +329,13 @@ export class PersonaController {
                 // Tabla del catálogo por industria. Las verticales sin objeto
                 // propio (salud, belleza…) no tienen catálogo aparte: para ellas
                 // el paso sigue siendo la KB y esto queda en null.
-                const CATALOG_TABLE: Record<string, string> = {
-                    restaurantes: 'menu_items',
-                    inmobiliaria: 'real_estate_listings',
-                    automotriz: 'vehicles',
-                    education: 'courses',
-                    gimnasios: 'membership_plans',
-                    turismo: 'tour_packages',
-                    seguros: 'insurance_plans',
-                    retail: 'products',
-                };
-                const industry = (settings.verticalConfig?.industry || settings.industry || '').toLowerCase();
-                const catalogTable = CATALOG_TABLE[industry];
-                if (catalogTable) {
+                // Una sola definicion, compartida con el detector de activacion
+                // del super admin. Ver vertical-catalog.util.ts.
+                const catalog = getVerticalCatalog(settings.verticalConfig?.industry || settings.industry);
+                if (catalog) {
+                    const filter = catalog.activeFilter ? `WHERE ${catalog.activeFilter}` : '';
                     const rows = (await this.prisma.$queryRawUnsafe(
-                        `SELECT COUNT(*)::int AS c FROM "${schema}".${catalogTable} LIMIT 1`,
+                        `SELECT COUNT(*)::int AS c FROM "${schema}".${catalog.table} ${filter} LIMIT 1`,
                     ).catch(() => [{ c: 0 }])) as any[];
                     hasVerticalCatalog = Number(rows?.[0]?.c || 0) > 0;
                 }

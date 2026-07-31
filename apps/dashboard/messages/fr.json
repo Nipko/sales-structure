@@ -8023,7 +8023,11 @@
         "listings": "Pas d'annonces",
         "treatment_plans": "Pas de traitements",
         "services": "Pas de services configurés",
-        "photo_sessions": "Aucune séance enregistrée"
+        "photo_sessions": "Aucune séance enregistrée",
+        "tour_packages": "Aucun forfait de tour",
+        "vehicles": "Aucun véhicule en stock",
+        "products": "Aucun produit au catalogue",
+        "pets": "Aucun animal enregistré"
       }
     },
     "drilldown": {

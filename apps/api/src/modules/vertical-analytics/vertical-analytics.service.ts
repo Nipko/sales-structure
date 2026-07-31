@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { getVerticalCatalog } from '../../common/utils/vertical-catalog.util';
 
 /**
  * Cross-tenant analytics aggregator for super_admin. Iterates per-tenant
@@ -115,22 +116,14 @@ export class VerticalAnalyticsService {
         missing: string;
     }>> {
         const gaps: any[] = [];
-        // missing key matches i18n keys on the dashboard (gaps.missingKeys.*)
-        const checks: Record<string, { table: string; missing: string; activeFilter?: string }> = {
-            restaurantes: { table: 'menu_items', missing: 'menu_items', activeFilter: 'is_active = true' },
-            gimnasios: { table: 'membership_plans', missing: 'membership_plans', activeFilter: 'is_active = true' },
-            education: { table: 'courses', missing: 'courses', activeFilter: 'is_active = true' },
-            seguros: { table: 'insurance_plans', missing: 'insurance_plans', activeFilter: 'is_active = true' },
-            inmobiliaria: { table: 'real_estate_listings', missing: 'listings', activeFilter: 'is_active = true' },
-            turismo: { table: 'tour_packages', missing: 'properties', activeFilter: 'is_active = true' },
-            servicios_hogar: { table: 'services', missing: 'services', activeFilter: 'is_active = true' },
-            veterinaria: { table: 'pets', missing: 'pets', activeFilter: 'is_active = true' },
-            pet_services: { table: 'pets', missing: 'pets', activeFilter: 'is_active = true' },
-            fotografia: { table: 'photo_sessions', missing: 'photo_sessions' },
-        };
-
+        // Una sola definicion del catalogo por vertical, compartida con el
+        // checklist del tenant (persona.controller). Estaban duplicadas y ya
+        // habian divergido: aca turismo contaba tour_packages y reportaba
+        // missing:'properties', asi que el super admin leia que al tenant le
+        // faltaban propiedades mirando tours. Ademas faltaban automotriz,
+        // retail y otro — verticales cuyo negocio ES el catalogo.
         for (const t of tenants) {
-            const check = checks[t.industry];
+            const check = getVerticalCatalog(t.industry);
             if (!check || !t.schemaName) continue;
             try {
                 const filter = check.activeFilter ? `WHERE ${check.activeFilter}` : '';
@@ -144,7 +137,7 @@ export class VerticalAnalyticsService {
                         industry: t.industry,
                         tenantId: t.id,
                         tenantName: t.name,
-                        missing: check.missing,
+                        missing: check.missingKey,
                     });
                 }
             } catch {

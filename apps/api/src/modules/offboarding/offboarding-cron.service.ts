@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { OffboardingService } from './offboarding.service';
 import { BillingEventType } from '../billing/types/billing-event.enum';
+import { CronLockService } from '../redis/cron-lock.service';
 
 @Injectable()
 export class OffboardingCronService {
@@ -16,6 +17,7 @@ export class OffboardingCronService {
         private redis: RedisService,
         private offboardingService: OffboardingService,
         private eventEmitter: EventEmitter2,
+        private readonly cronLock: CronLockService,
     ) {}
 
     /**
@@ -91,7 +93,14 @@ export class OffboardingCronService {
      * Runs at 3 AM daily — enforces grace period for past_due and
      * cancels tenants whose billing period has ended.
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('0 3 * * *')
+    async graceEnforcerCron() {
+        await this.cronLock.runExclusive('offboarding-cron.graceEnforcer', 3600, () => this.graceEnforcer());
+    }
+
     async graceEnforcer(): Promise<void> {
         this.logger.log('Running grace period enforcer...');
 
@@ -202,7 +211,14 @@ export class OffboardingCronService {
     /**
      * Runs at 4 AM daily — drops schemas of tenants inactive for 90+ days.
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('0 4 * * *')
+    async archiveCleanerCron() {
+        await this.cronLock.runExclusive('offboarding-cron.archiveCleaner', 3600, () => this.archiveCleaner());
+    }
+
     async archiveCleaner(): Promise<void> {
         this.logger.log('Running archive cleaner...');
 

@@ -4,6 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import OpenAI from 'openai';
+import { CronLockService } from '../redis/cron-lock.service';
 
 const STATUSES = ['open', 'under_review', 'planned', 'in_progress', 'shipped', 'declined'] as const;
 type Status = (typeof STATUSES)[number];
@@ -46,6 +47,7 @@ export class FeatureRequestsService {
         private readonly prisma: PrismaService,
         private readonly config: ConfigService,
         private readonly email: EmailService,
+        private readonly cronLock: CronLockService,
     ) {
         this.openai = new OpenAI({
             apiKey: this.config.get<string>('OPENAI_API_KEY') || '',
@@ -457,7 +459,14 @@ export class FeatureRequestsService {
      * No LLM calls per message — only embeddings (cheap). Capped at 50 messages
      * per tenant per night to bound cost.
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron(CronExpression.EVERY_DAY_AT_4AM)
+    async extractConversationalSignalsCron() {
+        await this.cronLock.runExclusive('feature-requests.extractConversationalSignals', 3600, () => this.extractConversationalSignals());
+    }
+
     async extractConversationalSignals() {
         this.logger.log('Extracting implicit feature signals from conversations…');
         const tenants = (await this.prisma.$queryRawUnsafe(

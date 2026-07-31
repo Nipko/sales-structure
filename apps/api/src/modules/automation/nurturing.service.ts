@@ -11,6 +11,7 @@ import { ChannelTokenService } from '../channels/channel-token.service';
 import { ComplianceService } from '../analytics/compliance.service';
 import { OutboundMessage } from '@parallext/shared';
 import { nurtureMsg, LANG_NAME } from './nurturing-i18n';
+import { CronLockService } from '../redis/cron-lock.service';
 
 export const NURTURING_QUEUE = 'nurturing';
 
@@ -51,6 +52,7 @@ export class NurturingService {
         private readonly outboundQueue: OutboundQueueService,
         private readonly channelToken: ChannelTokenService,
         private readonly compliance: ComplianceService,
+        private readonly cronLock: CronLockService,
     ) {}
 
     // ─── Public API ──────────────────────────────────────────────────
@@ -327,7 +329,14 @@ export class NurturingService {
      * stale follow-up, this references WHAT the customer was booking (service/date)
      * for a far more compelling nudge — the highest-ROI "sales agent" behavior.
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('30 */2 * * *')
+    async checkAbandonedBookingsAllTenantsCron() {
+        await this.cronLock.runExclusive('nurturing.checkAbandonedBookingsAllTenants', 3600, () => this.checkAbandonedBookingsAllTenants());
+    }
+
     async checkAbandonedBookingsAllTenants(): Promise<void> {
         this.logger.log('[Cron] Checking abandoned bookings across all tenants...');
         try {

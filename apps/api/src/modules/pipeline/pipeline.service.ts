@@ -4,6 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { CronLockService } from '../redis/cron-lock.service';
 
 // ============================================
 // Types
@@ -131,6 +132,7 @@ export class PipelineService {
         private redis: RedisService,
         private eventEmitter: EventEmitter2,
         private throttle: TenantThrottleService,
+        private readonly cronLock: CronLockService,
     ) {}
 
     // ============================================
@@ -1114,7 +1116,14 @@ export class PipelineService {
     // ============================================
 
     /** Check SLA violations every 5 minutes across all tenants */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('*/5 * * * *')
+    async checkAllTenantSLAsCron() {
+        await this.cronLock.runExclusive('pipeline.checkAllTenantSLAs', 120, () => this.checkAllTenantSLAs());
+    }
+
     async checkAllTenantSLAs(): Promise<void> {
         try {
             const tenants = await this.prisma.$queryRaw<any[]>`

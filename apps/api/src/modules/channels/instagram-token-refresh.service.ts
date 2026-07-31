@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { ChannelTokenService } from './channel-token.service';
+import { CronLockService } from '../redis/cron-lock.service';
 
 /**
  * Instagram long-lived tokens expire after 60 days.
@@ -25,10 +26,18 @@ export class InstagramTokenRefreshService {
         private prisma: PrismaService,
         private cryptoService: WhatsappCryptoService,
         private channelToken: ChannelTokenService,
+        private readonly cronLock: CronLockService,
     ) {}
 
     /** Daily at 6AM — refresh IG tokens expiring within 30 days */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('0 6 * * *')
+    async refreshExpiringSoonTokensCron() {
+        await this.cronLock.runExclusive('instagram-token-refresh.refreshExpiringSoonTokens', 3600, () => this.refreshExpiringSoonTokens());
+    }
+
     async refreshExpiringSoonTokens() {
         const now = Date.now();
         const thresholdMs = 30 * 24 * 60 * 60 * 1000; // 30 days

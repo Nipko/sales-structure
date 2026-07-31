@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { EmailService } from '../email/email.service';
 import { DashboardAnalyticsService } from './dashboard-analytics.service';
+import { CronLockService } from '../redis/cron-lock.service';
 
 interface AlertRule {
     id: string;
@@ -29,6 +30,7 @@ export class AlertsService {
         private redis: RedisService,
         private email: EmailService,
         private dashboardAnalytics: DashboardAnalyticsService,
+        private readonly cronLock: CronLockService,
     ) { }
 
     private async ensureAlertTables(schemaName: string): Promise<void> {
@@ -163,7 +165,14 @@ export class AlertsService {
     /**
      * Check all active alert rules every 15 minutes.
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('*/15 * * * *')
+    async evaluateAlertsCron() {
+        await this.cronLock.runExclusive('alerts.evaluateAlerts', 300, () => this.evaluateAlerts());
+    }
+
     async evaluateAlerts(): Promise<void> {
         const tenants = await this.prisma.tenant.findMany({
             where: { isActive: true },

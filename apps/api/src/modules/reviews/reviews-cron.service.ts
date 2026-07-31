@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReviewsService } from './reviews.service';
+import { CronLockService } from '../redis/cron-lock.service';
 
 /**
  * Reviews cron (T3.23): every 6h, sync GBP reviews for connected tenants and
@@ -11,9 +12,20 @@ import { ReviewsService } from './reviews.service';
 export class ReviewsCronService {
     private readonly logger = new Logger(ReviewsCronService.name);
 
-    constructor(private readonly prisma: PrismaService, private readonly reviews: ReviewsService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly reviews: ReviewsService,
+        private readonly cronLock: CronLockService,
+    ) {}
 
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('30 */6 * * *')
+    async syncAllCron() {
+        await this.cronLock.runExclusive('reviews-cron.syncAll', 3600, () => this.syncAll());
+    }
+
     async syncAll(): Promise<void> {
         let tenants: any[] = [];
         try {

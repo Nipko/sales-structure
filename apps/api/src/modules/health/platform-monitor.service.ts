@@ -16,6 +16,7 @@ import { SentryStatsService } from './sentry-stats.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import * as os from 'os';
 import * as fs from 'fs';
+import { CronLockService } from '../redis/cron-lock.service';
 
 interface AlertState {
     lastAlertedAt: number;
@@ -48,6 +49,7 @@ export class PlatformMonitorService implements OnModuleInit {
         @InjectQueue('automation-jobs') private automationQueue: Queue,
         @InjectQueue('nurturing') private nurturingQueue: Queue,
         @InjectQueue('inbound-messages') private inboundQueue: Queue,
+        private readonly cronLock: CronLockService,
     ) { }
 
     async onModuleInit() {
@@ -68,7 +70,14 @@ export class PlatformMonitorService implements OnModuleInit {
 
     // ── System checks — every 10 minutes ──
 
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('*/10 * * * *')
+    async checkSystemCron() {
+        await this.cronLock.runExclusive('platform-monitor.checkSystem', 240, () => this.checkSystem());
+    }
+
     async checkSystem() {
         await this.checkDisk();
         await this.checkMemory();
@@ -83,7 +92,14 @@ export class PlatformMonitorService implements OnModuleInit {
 
     // ── Queue depth — every 5 minutes ──
 
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('2,7,12,17,22,27,32,37,42,47,52,57 * * * *')
+    async checkQueuesCron() {
+        await this.cronLock.runExclusive('platform-monitor.checkQueues', 120, () => this.checkQueues());
+    }
+
     async checkQueues() {
         const cfg = await this.alertConfig.get();
         const queues = [
@@ -458,7 +474,14 @@ export class PlatformMonitorService implements OnModuleInit {
 
     // ── SLA breaches across tenants — every 10 min (offset from checkSystem) ──
 
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('8,18,28,38,48,58 * * * *')
+    async checkSlaBreachesCron() {
+        await this.cronLock.runExclusive('platform-monitor.checkSlaBreaches', 240, () => this.checkSlaBreaches());
+    }
+
     async checkSlaBreaches() {
         try {
             const cfg = await this.alertConfig.get();
@@ -540,7 +563,14 @@ export class PlatformMonitorService implements OnModuleInit {
 
     // ── Storage snapshots + early-warning alerts — daily 3:15 AM ──
 
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('15 3 * * *')
+    async checkStorageCron() {
+        await this.cronLock.runExclusive('platform-monitor.checkStorage', 3600, () => this.checkStorage());
+    }
+
     async checkStorage() {
         const cfg = await this.alertConfig.get();
         try {
@@ -593,7 +623,14 @@ export class PlatformMonitorService implements OnModuleInit {
 
     // ── Risk signals — daily 7:30 AM (payments, tokens, AI budget, backups) ──
 
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('30 7 * * *')
+    async checkRiskSignalsCron() {
+        await this.cronLock.runExclusive('platform-monitor.checkRiskSignals', 3600, () => this.checkRiskSignals());
+    }
+
     async checkRiskSignals() {
         await this.checkPaymentFailures();
         await this.checkWebhookFailures();
@@ -749,7 +786,14 @@ export class PlatformMonitorService implements OnModuleInit {
 
     // ── Channel token health — hourly (detail + remediation in the body) ──
 
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('0 * * * *')
+    async checkChannelTokensCron() {
+        await this.cronLock.runExclusive('platform-monitor.checkChannelTokens', 1800, () => this.checkChannelTokens());
+    }
+
     async checkChannelTokens() {
         try {
             // Refresh-failed credentials — list which tenant + channel so it's actionable.

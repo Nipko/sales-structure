@@ -5,6 +5,7 @@ import { WhatsappMessagingService } from '../whatsapp/services/whatsapp-messagin
 import { WhatsappTemplateService } from '../whatsapp/services/whatsapp-template.service';
 import { AppointmentsService } from './appointments.service';
 import { normalizeMetaLanguage } from '../whatsapp/seed-templates.config';
+import { CronLockService } from '../redis/cron-lock.service';
 
 @Injectable()
 export class AppointmentRemindersService {
@@ -15,13 +16,21 @@ export class AppointmentRemindersService {
         private whatsappMessaging: WhatsappMessagingService,
         private whatsappTemplates: WhatsappTemplateService,
         private appointmentsService: AppointmentsService,
+        private readonly cronLock: CronLockService,
     ) {}
 
     /**
      * Every 15 minutes: find appointments needing 24h reminders.
      * Sends approved WhatsApp template (works outside 24h window).
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('*/15 * * * *')
+    async send24hRemindersCron() {
+        await this.cronLock.runExclusive('appointment-reminders.send24hReminders', 300, () => this.send24hReminders());
+    }
+
     async send24hReminders() {
         this.logger.debug('Checking for 24h appointment reminders...');
         try {
@@ -44,7 +53,14 @@ export class AppointmentRemindersService {
      * Every 15 minutes: find appointments needing 2h reminders.
      * Industry standard: 2h before gives customer time to prepare but not reschedule frivolously.
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('3,18,33,48 * * * *')
+    async send2hRemindersCron() {
+        await this.cronLock.runExclusive('appointment-reminders.send2hReminders', 300, () => this.send2hReminders());
+    }
+
     async send2hReminders() {
         this.logger.debug('Checking for 2h appointment reminders...');
         try {
@@ -66,7 +82,14 @@ export class AppointmentRemindersService {
     /**
      * Every 30 minutes: send attendance check template for appointments that ended 30+ min ago.
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('5,35 * * * *')
+    async sendAttendanceChecksCron() {
+        await this.cronLock.runExclusive('appointment-reminders.sendAttendanceChecks', 600, () => this.sendAttendanceChecks());
+    }
+
     async sendAttendanceChecks() {
         this.logger.debug('Checking for attendance confirmations...');
         try {

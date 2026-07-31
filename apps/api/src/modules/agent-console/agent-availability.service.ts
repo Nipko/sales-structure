@@ -4,6 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { agentAvailI18n } from './agent-availability-i18n';
+import { CronLockService } from '../redis/cron-lock.service';
 
 type AvailabilityStatus = 'online' | 'busy' | 'offline';
 
@@ -15,6 +16,7 @@ export class AgentAvailabilityService {
         private prisma: PrismaService,
         private eventEmitter: EventEmitter2,
         private emailService: EmailService,
+        private readonly cronLock: CronLockService,
     ) {}
 
     async updateStatus(userId: string, status: AvailabilityStatus): Promise<void> {
@@ -109,7 +111,14 @@ export class AgentAvailabilityService {
      * Every 2 minutes: escalate conversations waiting >5 min without agent response.
      * Notifies supervisor via email + WebSocket event.
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('*/2 * * * *')
+    async escalateStaleHandoffsCron() {
+        await this.cronLock.runExclusive('agent-availability.escalateStaleHandoffs', 90, () => this.escalateStaleHandoffs(), { prefer: 'api' });
+    }
+
     async escalateStaleHandoffs(): Promise<void> {
         try {
             const tenants = await this.prisma.tenant.findMany({

@@ -1,18 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { CronLockService } from '../redis/cron-lock.service';
 
 @Injectable()
 export class MetricsAggregationService {
     private readonly logger = new Logger(MetricsAggregationService.name);
 
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private readonly cronLock: CronLockService,
+    ) { }
 
     /**
      * Nightly cron: aggregate yesterday's metrics into daily_metrics table.
      * Runs at 2:00 AM daily.
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('0 2 * * *')
+    async aggregateYesterdayCron() {
+        await this.cronLock.runExclusive('metrics-aggregation.aggregateYesterday', 3600, () => this.aggregateYesterday());
+    }
+
     async aggregateYesterday(): Promise<void> {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);

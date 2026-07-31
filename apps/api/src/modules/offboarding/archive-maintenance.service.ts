@@ -7,6 +7,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
+import { CronLockService } from '../redis/cron-lock.service';
 
 @Injectable()
 export class ArchiveMaintenanceService {
@@ -18,6 +19,7 @@ export class ArchiveMaintenanceService {
         private readonly redis: RedisService,
         private readonly configService: ConfigService,
         private readonly throttle: TenantThrottleService,
+        private readonly cronLock: CronLockService,
     ) {
         this.storagePath = this.configService.get<string>('MEDIA_STORAGE_PATH', '/data/media');
     }
@@ -25,7 +27,14 @@ export class ArchiveMaintenanceService {
     /**
      * Daily maintenance job running at 3:30 AM to archive old resolved/archived messages
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('30 3 * * *')
+    async handleDailyArchivingCron() {
+        await this.cronLock.runExclusive('archive-maintenance.handleDailyArchiving', 3600, () => this.handleDailyArchiving());
+    }
+
     async handleDailyArchiving(): Promise<void> {
         this.logger.log('Starting daily chat history archiving process...');
         try {

@@ -7,6 +7,7 @@ import { PaymentProviderFactory } from '../payment-provider.factory';
 import { SubscriptionStatus } from '../types/subscription-status.enum';
 import { BillingEventType } from '../types/billing-event.enum';
 import { PaymentProviderName } from '../types/provider-types';
+import { CronLockService } from '../../redis/cron-lock.service';
 
 /**
  * Billing reconciliation.
@@ -38,13 +39,21 @@ export class BillingReconciliationProcessor {
         private readonly billingService: BillingService,
         private readonly providerFactory: PaymentProviderFactory,
         private readonly eventEmitter: EventEmitter2,
+        private readonly cronLock: CronLockService,
     ) {}
 
     /**
      * Every hour at minute 0.
      * Repair subscriptions stuck in past_due by asking the provider directly.
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron(CronExpression.EVERY_HOUR)
+    async reconcilePastDueCron() {
+        await this.cronLock.runExclusive('reconciliation.reconcilePastDue', 1800, () => this.reconcilePastDue());
+    }
+
     async reconcilePastDue(): Promise<{ scanned: number; repaired: number; errors: number }> {
         const pastDue = await this.prisma.billingSubscription.findMany({
             where: { status: SubscriptionStatus.PAST_DUE },
@@ -84,7 +93,14 @@ export class BillingReconciliationProcessor {
      * Full sweep — detect drift between DB state and provider state for every
      * non-terminal subscription.
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('0 3 * * *')
+    async fullReconciliationCron() {
+        await this.cronLock.runExclusive('reconciliation.fullReconciliation', 3600, () => this.fullReconciliation());
+    }
+
     async fullReconciliation(): Promise<{ scanned: number; drift: number; repaired: number; errors: number }> {
         const active = await this.prisma.billingSubscription.findMany({
             where: {
@@ -187,7 +203,14 @@ export class BillingReconciliationProcessor {
      * date has passed. Tenants who downgrade keep their higher tier
      * features until period end, then this cron flips planId.
      */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('30 2 * * *')
+    async applyPendingDowngradesCron() {
+        await this.cronLock.runExclusive('reconciliation.applyPendingDowngrades', 3600, () => this.applyPendingDowngrades());
+    }
+
     async applyPendingDowngrades() {
         try {
             const result = await this.billingService.applyPendingPlanChanges();

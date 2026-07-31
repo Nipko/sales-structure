@@ -5,6 +5,7 @@ import { RedisService } from '../redis/redis.service';
 import { EmailService } from '../email/email.service';
 import { DashboardAnalyticsService } from './dashboard-analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { CronLockService } from '../redis/cron-lock.service';
 
 @Injectable()
 export class ScheduledReportsService {
@@ -17,6 +18,7 @@ export class ScheduledReportsService {
         private email: EmailService,
         private dashboardAnalytics: DashboardAnalyticsService,
         private throttle: TenantThrottleService,
+        private readonly cronLock: CronLockService,
     ) { }
 
     private async ensureTable(schemaName: string): Promise<void> {
@@ -86,7 +88,14 @@ export class ScheduledReportsService {
 
     // ── Weekly Report Cron (Monday 8 AM) ─────────────────────────
 
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('0 8 * * 1')
+    async sendWeeklyReportsCron() {
+        await this.cronLock.runExclusive('scheduled-reports.sendWeeklyReports', 3600, () => this.sendWeeklyReports());
+    }
+
     async sendWeeklyReports(): Promise<void> {
         this.logger.log('Starting weekly report delivery');
         await this.sendReportsForFrequency('weekly');
@@ -94,7 +103,14 @@ export class ScheduledReportsService {
 
     // ── Monthly Report Cron (1st of month 8 AM) ──────────────────
 
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('0 8 1 * *')
+    async sendMonthlyReportsCron() {
+        await this.cronLock.runExclusive('scheduled-reports.sendMonthlyReports', 3600, () => this.sendMonthlyReports());
+    }
+
     async sendMonthlyReports(): Promise<void> {
         this.logger.log('Starting monthly report delivery');
         await this.sendReportsForFrequency('monthly');

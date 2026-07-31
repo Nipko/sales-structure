@@ -6,6 +6,7 @@ import { ChannelTokenService } from '../channels/channel-token.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import type { OutboundMessage } from '@parallext/shared';
 import { recallDefaultMessage, recallNameFallback, normaliseRecallLang } from './recall-i18n';
+import { CronLockService } from '../redis/cron-lock.service';
 
 /**
  * Recall Service — daily cron that re-engages contacts whose last appointment
@@ -32,10 +33,18 @@ export class RecallService {
         private readonly outboundQueue: OutboundQueueService,
         private readonly channelTokenService: ChannelTokenService,
         private readonly throttle: TenantThrottleService,
+        private readonly cronLock: CronLockService,
     ) {}
 
     /** Daily at 9am — local server time. */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('0 9 * * *')
+    async processRecallsCron() {
+        await this.cronLock.runExclusive('recall.processRecalls', 3600, () => this.processRecalls());
+    }
+
     async processRecalls(): Promise<void> {
         this.logger.log('[Cron] Processing recall messages...');
 

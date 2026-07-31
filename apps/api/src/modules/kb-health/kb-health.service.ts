@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { CronLockService } from '../redis/cron-lock.service';
 
 /**
  * KB auto-healing (T2.14) — Maven-style.
@@ -27,6 +28,7 @@ export class KbHealthService {
         private prisma: PrismaService,
         private redis: RedisService,
         private llmRouter: LLMRouterService,
+        private readonly cronLock: CronLockService,
     ) {}
 
     async ensureTables(schemaName: string): Promise<void> {
@@ -234,7 +236,14 @@ Si no hay contradicción factual real, devuelve {"contradicts": false, "detail":
     }
 
     /** Weekly scan across all active tenants (Sundays 05:00 UTC, after recrawl @04:00). */
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('0 5 * * 0')
+    async weeklyScanCron() {
+        await this.cronLock.runExclusive('kb-health.weeklyScan', 3600, () => this.weeklyScan());
+    }
+
     async weeklyScan(): Promise<void> {
         let tenants: any[];
         try {

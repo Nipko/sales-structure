@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { KnowledgeService } from './knowledge.service';
+import { CronLockService } from '../redis/cron-lock.service';
 
 @Injectable()
 export class KnowledgeRecrawlService {
@@ -10,9 +11,17 @@ export class KnowledgeRecrawlService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly knowledgeService: KnowledgeService,
+        private readonly cronLock: CronLockService,
     ) {}
 
+    // Corre en UNA sola instancia: la API y el worker cargan el mismo
+    // AppModule con ScheduleModule, asi que sin esto el cuerpo se
+    // ejecuta dos veces. Ver CronLockService.
     @Cron('0 4 * * 0')
+    async handleWeeklyRecrawlCron() {
+        await this.cronLock.runExclusive('knowledge-recrawl.handleWeeklyRecrawl', 3600, () => this.handleWeeklyRecrawl());
+    }
+
     async handleWeeklyRecrawl() {
         this.logger.log('[KB Recrawl] Starting weekly URL recrawl…');
 

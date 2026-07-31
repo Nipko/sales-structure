@@ -66,6 +66,14 @@ export default function MembershipsPage() {
     const [search, setSearch] = useState("");
     const [showPlanForm, setShowPlanForm] = useState<Plan | "new" | null>(null);
     const [showFreeze, setShowFreeze] = useState<Member | null>(null);
+    // Alta de miembro. Sin esto el módulo entero era inalcanzable: book_class y
+    // get_my_membership respondían "no es miembro" al 100% de los clientes
+    // porque no existía ninguna forma de crear el primero.
+    const [showNewMember, setShowNewMember] = useState(false);
+    const [contacts, setContacts] = useState<any[]>([]);
+    const [newMember, setNewMember] = useState<{ contactId: string; planId: string; memberNumber: string }>({ contactId: "", planId: "", memberNumber: "" });
+    const [savingMember, setSavingMember] = useState(false);
+    const [memberError, setMemberError] = useState("");
 
     async function load() {
         if (!activeTenantId) return;
@@ -88,6 +96,33 @@ export default function MembershipsPage() {
         if (!activeTenantId) return;
         if (!confirm(t("deletePlanConfirm"))) return;
         await api.deleteMembershipPlan(activeTenantId, id);
+        load();
+    }
+
+    async function openNewMember() {
+        setMemberError("");
+        setNewMember({ contactId: "", planId: "", memberNumber: "" });
+        setShowNewMember(true);
+        if (!activeTenantId || contacts.length) return;
+        const res = await api.getOrderContacts(activeTenantId).catch(() => null);
+        if (res?.success && Array.isArray(res.data)) setContacts(res.data);
+    }
+
+    async function handleCreateMember() {
+        if (!activeTenantId || !newMember.contactId) return;
+        setSavingMember(true);
+        setMemberError("");
+        const res = await api.createGymMember(activeTenantId, {
+            contactId: newMember.contactId,
+            planId: newMember.planId || undefined,
+            memberNumber: newMember.memberNumber || undefined,
+        }).catch(() => ({ success: false, error: tc("connectionError") } as any));
+        setSavingMember(false);
+        if (!res?.success) {
+            setMemberError((res as any)?.error || tc("errorSaving"));
+            return;
+        }
+        setShowNewMember(false);
         load();
     }
 
@@ -209,15 +244,23 @@ export default function MembershipsPage() {
 
             {tab === "members" && (
                 <>
-                    <div className="relative max-w-sm">
-                        <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                        <input
-                            type="text"
-                            placeholder={t("searchMembers")}
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            className="w-full bg-card border border-border rounded-lg pl-9 pr-3 py-2 text-sm"
-                        />
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <div className="relative max-w-sm flex-1 min-w-[200px]">
+                            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            <input
+                                type="text"
+                                placeholder={t("searchMembers")}
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                className="w-full bg-card border border-border rounded-lg pl-9 pr-3 py-2 text-sm"
+                            />
+                        </div>
+                        <button
+                            onClick={openNewMember}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors cursor-pointer"
+                        >
+                            <Plus className="h-4 w-4" /> {t("newMember")}
+                        </button>
                     </div>
                     <div className="bg-card border border-border rounded-xl overflow-hidden">
                         <table className="w-full text-sm">
@@ -317,6 +360,84 @@ export default function MembershipsPage() {
                     onClose={() => setShowFreeze(null)}
                     onFrozen={() => { setShowFreeze(null); load(); }}
                 />
+            )}
+
+            {showNewMember && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !savingMember && setShowNewMember(false)}>
+                    <div className="w-full max-w-md rounded-xl bg-card border border-border p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-semibold">{t("newMember")}</h3>
+                            <button onClick={() => setShowNewMember(false)} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        {memberError && (
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
+                                <AlertTriangle className="h-4 w-4 shrink-0" /> {memberError}
+                            </div>
+                        )}
+
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("memberName")}</label>
+                                <select
+                                    value={newMember.contactId}
+                                    onChange={e => setNewMember({ ...newMember, contactId: e.target.value })}
+                                    className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm cursor-pointer"
+                                >
+                                    <option value="">{tc("select")}</option>
+                                    {contacts.map((c: any) => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name || c.phone || c.id}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("plan")}</label>
+                                <select
+                                    value={newMember.planId}
+                                    onChange={e => setNewMember({ ...newMember, planId: e.target.value })}
+                                    className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm cursor-pointer"
+                                >
+                                    {/* Sin plan es válido: el backend crea el miembro y el
+                                        dueño le asigna plan después. */}
+                                    <option value="">{t("noPlanYet")}</option>
+                                    {plans.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("memberNumber")}</label>
+                                <input
+                                    type="text"
+                                    value={newMember.memberNumber}
+                                    onChange={e => setNewMember({ ...newMember, memberNumber: e.target.value })}
+                                    placeholder={t("memberNumberOptional")}
+                                    className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 mt-5">
+                            <button onClick={() => setShowNewMember(false)} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground cursor-pointer">
+                                {tc("cancel")}
+                            </button>
+                            <button
+                                onClick={handleCreateMember}
+                                disabled={!newMember.contactId || savingMember}
+                                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white transition-colors cursor-pointer"
+                            >
+                                {savingMember ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                {tc("save")}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

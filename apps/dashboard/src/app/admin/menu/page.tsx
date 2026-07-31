@@ -63,6 +63,7 @@ export default function MenuPage() {
 
     const [showItemForm, setShowItemForm] = useState<MenuItem | "new" | null>(null);
     const [showCategoryForm, setShowCategoryForm] = useState(false);
+    const [showPromotions, setShowPromotions] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState("");
     const [toast, setToast] = useState<string | null>(null);
     const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
@@ -149,12 +150,22 @@ export default function MenuPage() {
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
                 </div>
-                <button
-                    onClick={() => setShowItemForm("new")}
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition"
-                >
-                    <Plus className="h-4 w-4" /> {t("addItem")}
-                </button>
+                <div className="flex items-center gap-2">
+                    {/* Promociones: los 3 endpoints existían sin llamador, así que
+                        get_promotions respondía siempre vacío. */}
+                    <button
+                        onClick={() => setShowPromotions(true)}
+                        className="inline-flex items-center gap-2 px-3 py-2 border border-border hover:bg-muted rounded-lg text-sm font-medium transition"
+                    >
+                        <Tag className="h-4 w-4" /> {t("promotions")}
+                    </button>
+                    <button
+                        onClick={() => setShowItemForm("new")}
+                        className="inline-flex items-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition"
+                    >
+                        <Plus className="h-4 w-4" /> {t("addItem")}
+                    </button>
+                </div>
             </div>
 
             <HelpPanel
@@ -337,6 +348,8 @@ export default function MenuPage() {
                     )}
                 </div>
             </div>
+
+            {showPromotions && <PromotionsModal onClose={() => setShowPromotions(false)} />}
 
             {showItemForm && (
                 <ItemFormModal
@@ -534,6 +547,167 @@ function ItemFormModal({
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         {tc("save")}
                     </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+/**
+ * Promociones del menú.
+ *
+ * Los tres endpoints (list / create / delete) estaban expuestos y tenían cero
+ * llamadores, así que `get_promotions` —la tool que el bootstrap le enciende a
+ * todo restaurante— respondía SIEMPRE vacío. "Enviar ofertas" es uno de los
+ * objetivos que el dueño marca en el alta, y era el único que no tenía dónde
+ * cargarse.
+ */
+function PromotionsModal({ onClose }: { onClose: () => void }) {
+    const t = useTranslations("menu");
+    const tc = useTranslations("common");
+    const { activeTenantId } = useTenant();
+
+    const [promos, setPromos] = useState<any[]>([]);
+    const [form, setForm] = useState({
+        title: "", description: "", discountType: "percent",
+        discountValue: 10, validTo: "", applicableHours: "",
+    });
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    async function load() {
+        if (!activeTenantId) return;
+        // activeOnly=false: el dueño tiene que poder ver y limpiar las vencidas,
+        // no solo las que están corriendo.
+        const res = await api.listMenuPromotions(activeTenantId, false).catch(() => null);
+        if (res?.success && Array.isArray(res.data)) setPromos(res.data);
+    }
+
+    useEffect(() => { load(); }, [activeTenantId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    async function handleAdd() {
+        if (!activeTenantId) return;
+        if (!form.title.trim() || !Number(form.discountValue)) {
+            setError(t("promoMissingFields"));
+            return;
+        }
+        setBusy(true);
+        setError("");
+        const res = await api.createMenuPromotion(activeTenantId, {
+            title: form.title.trim(),
+            description: form.description.trim() || undefined,
+            discountType: form.discountType,
+            discountValue: Number(form.discountValue),
+            validTo: form.validTo || undefined,
+            applicableHours: form.applicableHours.trim() || undefined,
+        }).catch(() => ({ success: false } as any));
+        setBusy(false);
+        if (!res?.success) {
+            setError(tc("errorSaving"));
+            return;
+        }
+        setForm({ title: "", description: "", discountType: "percent", discountValue: 10, validTo: "", applicableHours: "" });
+        load();
+    }
+
+    async function handleDelete(id: string) {
+        if (!activeTenantId) return;
+        await api.deleteMenuPromotion(activeTenantId, id).catch(() => null);
+        load();
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+            <div className="w-full max-w-lg rounded-xl bg-card border border-border p-6 shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-1">
+                    <h3 className="font-semibold flex items-center gap-2">
+                        <Tag className="h-4 w-4 text-orange-500" />
+                        {t("promotions")}
+                    </h3>
+                    <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+                <p className="text-xs text-muted-foreground mb-4">{t("promotionsHint")}</p>
+
+                {error && (
+                    <div className="px-3 py-2 rounded-lg mb-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
+                        {error}
+                    </div>
+                )}
+
+                <div className="space-y-2 mb-4">
+                    <input
+                        value={form.title}
+                        onChange={e => setForm({ ...form, title: e.target.value })}
+                        placeholder={t("promoTitlePlaceholder")}
+                        className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                    />
+                    <div className="grid grid-cols-3 gap-2">
+                        <select
+                            value={form.discountType}
+                            onChange={e => setForm({ ...form, discountType: e.target.value })}
+                            className="h-10 rounded-lg border border-border bg-background px-2.5 text-sm cursor-pointer"
+                        >
+                            <option value="percent">{t("promoPercent")}</option>
+                            <option value="flat">{t("promoFlat")}</option>
+                        </select>
+                        <input
+                            type="number" min={1}
+                            value={form.discountValue}
+                            onChange={e => setForm({ ...form, discountValue: Number(e.target.value) })}
+                            className="h-10 rounded-lg border border-border bg-background px-2.5 text-sm font-mono"
+                        />
+                        <input
+                            type="date"
+                            value={form.validTo}
+                            onChange={e => setForm({ ...form, validTo: e.target.value })}
+                            title={t("promoValidTo")}
+                            className="h-10 rounded-lg border border-border bg-background px-2.5 text-sm"
+                        />
+                    </div>
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                        <input
+                            value={form.applicableHours}
+                            onChange={e => setForm({ ...form, applicableHours: e.target.value })}
+                            placeholder={t("promoHoursPlaceholder")}
+                            className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                        />
+                        <button
+                            onClick={handleAdd}
+                            disabled={busy}
+                            className="h-10 px-4 rounded-lg bg-orange-600 hover:bg-orange-700 disabled:opacity-40 text-white text-sm font-semibold cursor-pointer"
+                        >
+                            <Plus size={16} />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="border border-border rounded-lg divide-y divide-border">
+                    {promos.length === 0 ? (
+                        <p className="text-center py-6 text-sm text-muted-foreground">{t("noPromotions")}</p>
+                    ) : promos.map((p: any) => {
+                        const expired = p.valid_to && new Date(p.valid_to) < new Date();
+                        return (
+                            <div key={p.id} className={cn("flex items-center justify-between px-3 py-2 text-sm", expired && "opacity-50")}>
+                                <div className="min-w-0">
+                                    <div className="font-medium truncate">{p.title}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                        {p.discount_type === "percent" ? `${Number(p.discount_value)}%` : Number(p.discount_value).toLocaleString()}
+                                        {p.applicable_hours ? ` · ${p.applicable_hours}` : ""}
+                                        {p.valid_to ? ` · ${new Date(p.valid_to).toLocaleDateString()}` : ""}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handleDelete(p.id)}
+                                    className="p-1 rounded text-muted-foreground hover:text-red-600 hover:bg-red-500/10 cursor-pointer shrink-0"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         </div>

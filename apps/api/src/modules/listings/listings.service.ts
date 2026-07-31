@@ -245,9 +245,14 @@ export class ListingsService {
         }
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
+            // El target del ON CONFLICT tiene que ser EXACTAMENTE la expresión
+            // del índice único. Era `(neighborhood, city)` sobre un índice donde
+            // `city` es NULLABLE, y en Postgres los NULL son distintos entre sí:
+            // reasignar el asesor de un barrio sin ciudad creaba una fila nueva
+            // cada vez, y resolveAgentForZone devolvía cualquiera de ellas.
             `INSERT INTO listing_zone_agents (neighborhood, city, agent_id)
              VALUES ($1, $2, $3::uuid)
-             ON CONFLICT (neighborhood, city)
+             ON CONFLICT (neighborhood, COALESCE(city, ''))
              DO UPDATE SET agent_id = EXCLUDED.agent_id
              RETURNING *`,
             [neighborhood, city || null, agentId],

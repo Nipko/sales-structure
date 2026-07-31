@@ -138,7 +138,13 @@ const MODA_BELLEZA: VerticalDefinition = {
         greeting: { es: '¡Hola! Soy Luna, tu asistente de belleza. ¿Te gustaría agendar una cita o conocer nuestros servicios?', en: 'Hi! I\'m Luna, your beauty assistant. Would you like to book an appointment or learn about our services?', pt: 'Olá! Sou Luna, sua assistente de beleza. Gostaria de agendar ou conhecer nossos serviços?', fr: 'Bonjour! Je suis Luna, votre assistante beauté. Souhaitez-vous prendre rendez-vous?' },
         rules: { es: 'Sugiere servicios complementarios de forma natural. Ofrece promociones vigentes.', en: 'Suggest complementary services naturally. Offer current promotions.', pt: 'Sugira serviços complementares naturalmente. Ofereça promoções vigentes.', fr: 'Suggérez des services complémentaires naturellement. Proposez les promotions en cours.' },
         forbiddenTopics: { es: 'Diagnóstico dermatológico|Garantizar resultados estéticos|Productos no autorizados', en: 'Dermatological diagnosis|Guarantee aesthetic results|Unauthorized products', pt: 'Diagnóstico dermatológico|Garantir resultados estéticos|Produtos não autorizados', fr: 'Diagnostic dermatologique|Garantir résultats esthétiques|Produits non autorisés' },
-        handoffTriggers: { es: 'reaccion adversa|queja de servicio|evento nupcial|grupo grande', en: 'adverse reaction|service complaint|bridal event|large group', pt: 'reacao adversa|reclamacao|evento nupcial|grupo grande', fr: 'reaction indesirable|plainte|evenement nuptial|grand groupe' },
+        // Los triggers se evaluan por SUBSTRING sobre lo que escribe el cliente,
+        // asi que tienen que ser palabras que la gente escribe de verdad. Nadie
+        // dice "evento nupcial" ni "grupo grande" por WhatsApp: dice "es para mi
+        // boda", "somos 6", "vamos 4 amigas". Se cambian por las reales — que
+        // ademas son las conversaciones de MAYOR ticket del rubro y las que mas
+        // conviene que atienda una persona.
+        handoffTriggers: { es: 'reaccion adversa|alergia|queja|reclamo|boda|novia|matrimonio|quince|somos varias|somos 4|somos 5|somos 6', en: 'adverse reaction|allergy|complaint|wedding|bride|bridal|we are 4|we are 5|we are 6|group of', pt: 'reacao adversa|alergia|reclamacao|casamento|noiva|somos 4|somos 5|somos 6', fr: 'reaction indesirable|allergie|plainte|mariage|mariee|nous sommes 4|nous sommes 5|nous sommes 6' },
     },
     pipeline: {
         stages: [

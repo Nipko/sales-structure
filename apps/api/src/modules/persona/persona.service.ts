@@ -1450,7 +1450,12 @@ export class PersonaService {
             {
                 id: 'tpl_belleza_productos',
                 name: 'Luna - Asesora de Productos',
-                description: 'Recomienda productos de belleza, procesa pedidos y gestiona membresías',
+                // Decía "procesa pedidos y gestiona membresías" con `tools: {}`:
+                // no podía hacer ninguna de las dos. La descripción es lo que el
+                // dueño lee para elegir plantilla, así que prometía justo lo que
+                // no iba a recibir. Ahora dice lo que la plantilla hace de verdad
+                // con las herramientas que tiene.
+                description: 'Recomienda productos, muestra el catálogo con precios y responde dudas de uso',
                 icon: 'shopping-bag',
                 is_builtin: true,
                 config_json: {
@@ -1464,6 +1469,7 @@ export class PersonaService {
                     behavior: {
                         rules: [
                             'Recomienda productos basándote en las necesidades del cliente',
+                            'Usa el catálogo para dar nombre, precio y disponibilidad reales: nunca inventes un producto ni su precio',
                             'Ofrece combos y descuentos',
                             'Pregunta por tipo de piel/cabello',
                         ],
@@ -1471,7 +1477,10 @@ export class PersonaService {
                         handoffTriggers: ['reacción alérgica', 'devolución', 'queja de producto'],
                         requiredFields: {},
                     },
-                    tools: {},
+                    // Sin esto la plantilla no tenía NINGUNA herramienta: hablaba
+                    // de productos que no podía consultar, así que solo podía
+                    // inventarlos o mandar a todo el mundo a un humano.
+                    tools: { catalog: { enabled: true } },
                     rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
                 },
             },

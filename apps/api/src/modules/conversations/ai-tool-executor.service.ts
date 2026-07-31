@@ -1359,16 +1359,21 @@ export class AIToolExecutorService {
         // without this there is a TOCTOU window where two concurrent customers
         // (or the deterministic booking engine racing the LLM tool path) can both
         // book the same slot. Both paths funnel through this INSERT.
-        const assignedTo = args.staffId || null;
+        // El objeto de la cita se resuelve ANTES del lock, no dentro: de él sale
+        // el asesor sugerido, y el lock y el chequeo de conflicto se toman POR
+        // profesional. Resolverlo después habría dejado a la visita inmobiliaria
+        // compitiendo por el lock global mientras se le asignaba un asesor
+        // concreto — el bloqueo entre visitas a propiedades distintas que este
+        // cambio viene justamente a levantar.
+        const subject = await this.resolveAppointmentSubject(schema, args);
+        const assignedTo = args.staffId || subject.suggestedStaffId || null;
         const lockKey = await this.acquireSlotLock(schema, assignedTo, args.date);
         let rows: any[];
-        let subject: { metadata: Record<string, string>; labels: string[] } = { metadata: {}, labels: [] };
         try {
             if (await this.findAppointmentConflict(schema, startAt, endAt, assignedTo, undefined, args.serviceId)) {
                 this.logger.warn(`[Tool] Double-booking prevented: ${args.date} ${args.time} (staff=${assignedTo || 'any'})`);
                 return { error: 'That time slot was just taken. Offer the customer another available time (call check_availability again).' };
             }
-            subject = await this.resolveAppointmentSubject(schema, args);
             rows = await this.prisma.$queryRawUnsafe(
                 `INSERT INTO "${schema}".appointments
                  (contact_id, service_id, service_name, assigned_to, start_at, end_at, status, customer_name, customer_phone, customer_email, notes, metadata)
@@ -1740,7 +1745,7 @@ export class AIToolExecutorService {
     private async resolveAppointmentSubject(
         schema: string,
         args: any,
-    ): Promise<{ metadata: Record<string, string>; labels: string[] }> {
+    ): Promise<{ metadata: Record<string, string>; labels: string[]; suggestedStaffId?: string }> {
         const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         // La etiqueta se resuelve en el mismo viaje que la validación: es lo que
         // después ve el asesor en su calendario, y un id crudo no le sirve.
@@ -1765,7 +1770,31 @@ export class AIToolExecutorService {
                 this.logger.warn(`[Tool] create_appointment: ${c.key}=${c.value} no existe en ${c.table}; se descarta`);
             }
         }
-        return { metadata, labels };
+
+        // Quién muestra el inmueble: dueño del listing → asesor de la zona → nadie.
+        //
+        // Sin esto TODA visita nacía con assigned_to NULL, y eso en inmobiliaria
+        // no es solo un dato faltante: es lo que hacía que dos visitas a
+        // propiedades DISTINTAS en el mismo horario se bloquearan entre sí, como
+        // si la agencia entera fuera un único consultorio. Es la condición para
+        // que H-1 y H-2 sirvan de algo en este rubro.
+        //
+        // `listing_zone_agents` y `resolveAgentForZone` estaban construidos
+        // enteros —con endpoints y todo— y tenían CERO llamadores: el ruteo por
+        // zonas existía y no ruteaba nada.
+        let suggestedStaffId: string | undefined;
+        if (metadata.listingId) {
+            const listing = await this.listingsService.getById(schema, metadata.listingId).catch(() => null);
+            if (listing?.assigned_agent_id) {
+                suggestedStaffId = listing.assigned_agent_id;
+            } else if (listing?.neighborhood) {
+                suggestedStaffId = (await this.listingsService
+                    .resolveAgentForZone(schema, listing.neighborhood, listing.city)
+                    .catch(() => null)) || undefined;
+            }
+        }
+
+        return { metadata, labels, suggestedStaffId };
     }
 
     private async getCheckInInstructions(schema: string, contactId: string, propertyId: string): Promise<any> {

@@ -1926,7 +1926,15 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."listing_zone_agents" (
     "agent_id" UUID NOT NULL,
     "created_at" TIMESTAMP DEFAULT NOW()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_zone_agents_unique" ON "{{SCHEMA_NAME}}"."listing_zone_agents" ("neighborhood", "city");
+-- El índice original era ("neighborhood", "city") a secas, y `city` es NULLABLE:
+-- en Postgres los NULL son DISTINTOS entre sí dentro de un índice único, así que
+-- dos filas con el mismo barrio y ciudad NULL entraban las dos y el ON CONFLICT
+-- del upsert de zonas no disparaba nunca. Se indexa sobre COALESCE para que "sin
+-- ciudad" sea un valor comparable y el upsert funcione.
+-- Nombre nuevo a propósito: `CREATE ... IF NOT EXISTS` con el nombre viejo no
+-- habría cambiado nada en los tenants ya creados.
+DROP INDEX IF EXISTS "{{SCHEMA_NAME}}"."idx_zone_agents_unique";
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_zone_agents_unique_v2" ON "{{SCHEMA_NAME}}"."listing_zone_agents" ("neighborhood", COALESCE("city", ''));
 
 -- =====================================================================
 -- Pets (veterinaria vertical)

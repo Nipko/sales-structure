@@ -2135,6 +2135,11 @@ export class ConversationsService {
                 }
             }
 
+            // Escalada pedida por una tool de intake durante el turno (ver runTool).
+            // Vive FUERA del loop: la tool puede correr en la iteración 1 y el texto
+            // final producirse en la 2.
+            let postToolHandoff: string | null = null;
+
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 const hasTools = tools.length > 0;
 
@@ -2215,6 +2220,19 @@ export class ConversationsService {
                         if (result && result._mediaToSend?.url) {
                             mediaToSend.push({ url: result._mediaToSend.url, caption: result._mediaToSend.caption });
                             delete result._mediaToSend;
+                        }
+
+                        // CAPTURAR-Y-ESCALAR: varias tools de intake (file_claim,
+                        // create_service_request, triage veterinario) devuelven
+                        // shouldHandoff:true y hasta ahora NADIE lo leía. El caso que
+                        // esto resuelve: el cliente dice "tuve un siniestro" o "hay una
+                        // fuga de gas" y la escalada por keyword lo mandaba a la cola
+                        // ANTES de que la tool capturara póliza, dirección y datos —
+                        // el humano recibía la conversación sin el intake que la propia
+                        // vertical construyó para eso. Ahora la tool corre primero y la
+                        // escalada ocurre después, con los datos ya registrados.
+                        if (result && result.shouldHandoff === true) {
+                            postToolHandoff = postToolHandoff || `intake:${tc.function.name}`;
                         }
                         return result;
                     };
@@ -2316,9 +2334,30 @@ export class ConversationsService {
                 [conversation.id],
             );
 
+            // CAPTURAR-Y-ESCALAR (2/2): la tool de intake ya corrió y registró los
+            // datos; recién ahora se pasa a un humano, con el caso creado. El orden
+            // importa — al revés (keyword antes de la IA) el humano recibía la
+            // conversación sin el siniestro/solicitud registrado.
+            if (postToolHandoff) {
+                try {
+                    this.logger.warn(`[Pipeline] HANDOFF post-intake (${postToolHandoff}) para conversación ${conversation.id}`);
+                    this.analyticsService.trackEvent({
+                        tenantId, eventType: 'handoff_triggered',
+                        conversationId: conversation.id, contactId: conversation.contact_id || undefined,
+                        data: { reason: postToolHandoff, afterIntake: true },
+                    }).catch(() => {});
+                    await this.handoffService.executeHandoff(tenantId, conversation.id, msg, postToolHandoff);
+                } catch (e: any) {
+                    // Nunca romper el turno por la escalada: el cliente ya recibió su
+                    // respuesta y el intake quedó guardado.
+                    this.logger.error(`[Pipeline] No se pudo escalar tras el intake: ${e?.message}`);
+                }
+            }
+
             turnTrace.add('decision', 'final_response', {
                 finalResponseLength: finalResponse?.length || 0,
                 mediaCount: mediaToSend.length,
+                postToolHandoff: postToolHandoff || undefined,
             });
             // Persist the step-by-step trace, fire-and-forget — tracing never breaks the turn.
             try { this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }

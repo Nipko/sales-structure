@@ -665,11 +665,17 @@ const SERVICIOS_HOGAR: VerticalDefinition = {
             pt: 'Cotações finais sem avaliação',
             fr: 'Devis fermes sans visite',
         },
+        // Solo lo que debe escalar SIN intake previo: peligro en curso para la
+        // persona. 'emergencia', 'fuga de gas', 'inundación' y 'cortocircuito' se
+        // sacaron a propósito — son exactamente lo que create_service_request
+        // captura con dirección y descripción, y esa tool ya pide la escalada al
+        // terminar (shouldHandoff). Con las palabras acá, el turno se iba a la cola
+        // ANTES del intake y el técnico recibía una conversación sin dirección.
         handoffTriggers: {
-            es: 'emergencia|fuga de gas|inundación|cortocircuito|electrocucion|peligro|queja formal',
-            en: 'emergency|gas leak|flood|short circuit|danger|formal complaint',
-            pt: 'emergência|vazamento de gás|inundação',
-            fr: 'urgence|fuite de gaz|inondation',
+            es: 'electrocucion|electrocución|peligro inminente|queja formal',
+            en: 'electrocution|imminent danger|formal complaint',
+            pt: 'eletrocussão|perigo iminente|reclamação formal',
+            fr: 'électrocution|danger imminent|plainte formelle',
         },
     },
     pipeline: {
@@ -746,11 +752,14 @@ const PET_SERVICES: VerticalDefinition = {
             pt: 'Diagnósticos|Aceitação sem vacinas',
             fr: 'Diagnostics|Acceptation sans vaccins',
         },
+        // 'enfermedad' se quitó: rompía la reserva a mitad de camino por una palabra
+        // que el propio bot inducía al preguntar por el estado de la mascota. La
+        // lesión y la emergencia sí escalan sin intake.
         handoffTriggers: {
-            es: 'lesión|herida|enfermedad|emergencia|queja',
-            en: 'injury|wound|illness|emergency|complaint',
-            pt: 'lesão|emergência',
-            fr: 'blessure|urgence',
+            es: 'lesión|herida|emergencia|queja',
+            en: 'injury|wound|emergency|complaint',
+            pt: 'lesão|ferida|emergência|reclamação',
+            fr: 'blessure|plaie|urgence|plainte',
         },
     },
     pipeline: {
@@ -913,11 +922,16 @@ const SEGUROS: VerticalDefinition = {
             pt: 'Aconselhamento jurídico|Detalhes de outros clientes|Promessa de aprovação',
             fr: 'Conseils juridiques|Détails d\'autres clients|Promesses d\'approbation',
         },
+        // 'reclamo' y 'siniestro' se sacaron: son la entrada de file_claim, que
+        // captura póliza, tipo de incidente y fecha y pide la escalada al terminar.
+        // Escalar antes dejaba al asesor con el momento de la verdad del rubro sin
+        // un solo dato registrado. Fraude, disputa y denuncia sí van directo: ahí
+        // no hay intake que valga.
         handoffTriggers: {
-            es: 'reclamo|siniestro|cancelación|fraude|disputa|emergencia médica|denuncia',
-            en: 'claim|incident|cancellation|fraud|dispute|emergency|formal complaint',
-            pt: 'sinistro|cancelamento|fraude|disputa|emergência|reclamação',
-            fr: 'sinistre|annulation|fraude|litige|urgence|plainte',
+            es: 'cancelación|fraude|disputa|emergencia médica|denuncia',
+            en: 'cancellation|fraud|dispute|medical emergency|formal complaint',
+            pt: 'cancelamento|fraude|disputa|emergência médica|denúncia',
+            fr: 'annulation|fraude|litige|urgence médicale|plainte',
         },
     },
     pipeline: {

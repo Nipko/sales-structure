@@ -182,6 +182,7 @@ export default function AppointmentsPage() {
     color: "#6c5ce7",
     category: "",
     maxConcurrent: 1,
+    rebookAfterDays: null as number | null,
     requiredFields: [] as string[],
     locationType: "in_person",
     locationAddress: "",
@@ -281,6 +282,7 @@ export default function AppointmentsPage() {
           active: s.isActive ?? s.active ?? true,
           category: s.category || null,
           maxConcurrent: s.maxConcurrent || 1,
+          rebookAfterDays: s.rebookAfterDays ?? null,
           requiredFields: s.requiredFields || [],
         }));
         setServices(mapped);
@@ -683,7 +685,7 @@ export default function AppointmentsPage() {
 
   const openCreateServiceModal = () => {
     setEditingService(null);
-    setServiceForm({ name: "", duration: 30, durationMax: null, durationType: "fixed", buffer: 0, price: 0, color: "#6c5ce7", category: "", maxConcurrent: 1, requiredFields: [], locationType: "in_person", locationAddress: "", meetingLink: "" });
+    setServiceForm({ name: "", duration: 30, durationMax: null, durationType: "fixed", buffer: 0, price: 0, color: "#6c5ce7", category: "", maxConcurrent: 1, rebookAfterDays: null, requiredFields: [], locationType: "in_person", locationAddress: "", meetingLink: "" });
     setShowServiceModal(true);
   };
 
@@ -699,6 +701,7 @@ export default function AppointmentsPage() {
       color: svc.color,
       category: svc.category || "",
       maxConcurrent: svc.maxConcurrent || 1,
+      rebookAfterDays: (svc as any).rebookAfterDays ?? null,
       requiredFields: svc.requiredFields || [],
       locationType: (svc as any).locationType || (svc as any).location_type || "in_person",
       locationAddress: (svc as any).locationAddress || (svc as any).location_address || "",

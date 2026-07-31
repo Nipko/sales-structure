@@ -167,18 +167,34 @@ export const TEMPORAL_FLAVORS: TemporalFlavor[] = [
     },
     {
         // Rebooking / recall: atendido hace tiempo y sin próxima cita. Sirve al
-        // salón (4-6 semanas) y a la clínica dental (6 meses) con la MISMA
-        // consulta; lo único que cambia es la ventana, que es configuración.
+        // salón y a la clínica dental con la MISMA consulta.
+        //
+        // La cadencia sale del SERVICIO (`services.rebook_after_days`), no de un
+        // promedio: una keratina son ~90 días, unas raíces ~28, una limpieza
+        // dental ~180. Un único número para todo el catálogo le escribe temprano
+        // a la mitad de los clientes y tarde a la otra mitad, que es la forma
+        // más rápida de que el dueño apague la automatización entera.
+        //
+        // `windowDays` queda como default para los servicios que no lo declaran.
+        // Se eligió que NULL caiga al genérico y no que apague el servicio: la
+        // regla ya es opt-in a nivel tenant (si no existe, nada de esto corre), y
+        // exigir además configurar cada servicio uno por uno dejaría la función
+        // encendida y sin efecto — el mismo "existe pero es inalcanzable" que
+        // este plan viene desarmando.
         trigger: 'rebooking.due',
         table: 'appointments',
         windowDays: 45,
         cooldownDays: 45,
         sql: `SELECT a.contact_id, a.id AS entity_id, 'appointment' AS entity_type,
-                     a.service_name AS label, a.start_at::date AS due_date, NULL AS detail
+                     a.service_name AS label, a.start_at::date AS due_date,
+                     s.rebook_after_days::text AS detail
               FROM appointments a
+              LEFT JOIN services s ON s.id = a.service_id
               WHERE a.status = 'completed'
                 AND a.contact_id IS NOT NULL
-                AND a.start_at::date = (CURRENT_DATE - ($1 || ' days')::interval)::date
+                AND a.start_at::date = (
+                    CURRENT_DATE - (COALESCE(s.rebook_after_days, $1::int) || ' days')::interval
+                )::date
                 AND NOT EXISTS (
                     SELECT 1 FROM appointments f
                     WHERE f.contact_id = a.contact_id

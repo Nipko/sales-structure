@@ -1283,6 +1283,12 @@ ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "meeting_link"
 ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "location_address" TEXT;
 ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "duration_type" VARCHAR(20) DEFAULT 'fixed';
 ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "duration_minutes_max" INTEGER;
+-- Cada cuántos días conviene volver por ESTE servicio. NULL = no aplica (una
+-- consulta puntual no se re-agenda sola). Es lo que convierte el recordatorio de
+-- re-reserva en algo del negocio y no en un promedio inventado: una keratina son
+-- ~90 días, unas raíces ~28, una limpieza dental ~180. El evaluador temporal
+-- (`rebooking.due`) lo lee por servicio y cae a su ventana genérica si está NULL.
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "rebook_after_days" INTEGER;
 
 -- ---- Service Staff Assignment (many-to-many) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."service_staff" (

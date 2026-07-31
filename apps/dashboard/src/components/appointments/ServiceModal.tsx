@@ -15,6 +15,8 @@ interface ServiceForm {
   color: string;
   category: string;
   maxConcurrent: number;
+  /** Días hasta la re-reserva sugerida. null = usa el default del evaluador. */
+  rebookAfterDays: number | null;
   requiredFields: string[];
   locationType: string;
   locationAddress: string;
@@ -326,6 +328,21 @@ export default function ServiceModal({
                 onChange={(e) => onChange({ ...form, maxConcurrent: Math.max(1, Number(e.target.value)) })}
                 className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
+                {t('rebookAfterDays')}
+              </label>
+              <input
+                type="number" min={0} max={730}
+                value={form.rebookAfterDays ?? ''}
+                placeholder={t('rebookAfterDaysPlaceholder')}
+                // Vacío se manda como null, no como 0: 0 haría que el recordatorio
+                // de re-reserva salga el mismo día de la cita.
+                onChange={(e) => onChange({ ...form, rebookAfterDays: e.target.value === '' ? null : Math.max(0, Number(e.target.value)) })}
+                className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+              <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">{t('rebookAfterDaysHint')}</p>
             </div>
           </div>
 

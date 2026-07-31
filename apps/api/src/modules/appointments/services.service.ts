@@ -20,6 +20,8 @@ export interface BookableService {
     sortOrder: number;
     category: string | null;
     maxConcurrent: number;
+    /** Cada cuantos dias conviene volver por este servicio. null = usa el default. */
+    rebookAfterDays: number | null;
     requiredFields: string[];
 }
 
@@ -57,13 +59,13 @@ export class ServicesService {
         const durationMax = durationType === 'flexible' ? (data.durationMinutesMax || null) : null;
         try {
             await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, created_at, updated_at)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, NOW(), NOW())`,
+                `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, rebook_after_days, created_at, updated_at)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, NOW(), NOW())`,
                 [id, data.name, data.description || null, duration,
                  buffer, data.price || 0, data.currency || 'COP', data.color || '#6c5ce7',
                  data.category || null, data.maxConcurrent || 1,
                  JSON.stringify(data.requiredFields || []),
-                 durationType, durationMax],
+                 durationType, durationMax, data.rebookAfterDays ?? null],
             );
         } catch (e: any) {
             // uidx_services_name (tenant-schema.sql): el motor de reservas lista los
@@ -100,7 +102,10 @@ export class ServicesService {
         if (data.maxConcurrent !== undefined) { sets.push(`max_concurrent = $${idx++}`); params.push(data.maxConcurrent); }
         if (data.requiredFields !== undefined) { sets.push(`required_fields = $${idx++}::jsonb`); params.push(JSON.stringify(data.requiredFields)); }
         if (data.durationType !== undefined) { sets.push(`duration_type = $${idx++}`); params.push(data.durationType); }
-        if (data.durationMinutesMax !== undefined) { sets.push(`duration_minutes_max = $${idx++}`); params.push(data.durationMinutesMax || null); }
+        if (data.durationMinutesMax !== undefined) { sets.push(`duration_minutes_max = ${idx++}`); params.push(data.durationMinutesMax || null); }
+        // 0 o vacio = "no aplica" y se guarda NULL, no 0: un 0 haria que el
+        // evaluador temporal reclame la re-reserva el mismo dia de la cita.
+        if (data.rebookAfterDays !== undefined) { sets.push(`rebook_after_days = $${idx++}`); params.push(Number(data.rebookAfterDays) > 0 ? Number(data.rebookAfterDays) : null); }
         sets.push(`updated_at = NOW()`);
 
         params.push(serviceId);
@@ -186,6 +191,7 @@ export class ServicesService {
             sortOrder: row.sort_order,
             category: row.category || null,
             maxConcurrent: row.max_concurrent || 1,
+            rebookAfterDays: row.rebook_after_days ?? null,
             requiredFields: row.required_fields || [],
         };
     }

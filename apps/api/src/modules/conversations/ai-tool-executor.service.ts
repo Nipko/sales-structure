@@ -1525,7 +1525,7 @@ export class AIToolExecutorService {
     private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string): Promise<any> {
         // Verify ownership — only cancel if it belongs to this contact
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, contact_id, service_name, start_at FROM "${schema}".appointments WHERE id = $1::uuid`,
+            `SELECT id, contact_id, service_id, service_name, start_at FROM "${schema}".appointments WHERE id = $1::uuid`,
             appointmentId,
         );
 
@@ -1538,7 +1538,40 @@ export class AIToolExecutorService {
             appointmentId,
         );
 
-        return { success: true, message: 'Appointment cancelled' };
+        // Recuperar la franja en el mismo turno.
+        //
+        // El cliente que cancela ya está en la conversación, ya eligió su
+        // servicio y sigue queriendo el servicio: casi siempre lo que cambió es
+        // el día. Cerrar con "listo, cancelada" lo devuelve a la calle y deja el
+        // hueco sin llenar. Ofrecer tres horarios ahí mismo es el momento de
+        // mayor probabilidad de re-reserva que tiene el negocio, y no cuesta una
+        // conversación nueva.
+        //
+        // Se ofrece a partir del día SIGUIENTE a la cita cancelada: quien
+        // cancela el turno de mañana rara vez quiere el de mañana.
+        let alternatives: any[] = [];
+        if (rows[0].service_id) {
+            const from = new Date(rows[0].start_at);
+            from.setDate(from.getDate() + 1);
+            for (let i = 0; i < 5 && alternatives.length < 3; i++) {
+                const probe = new Date(from);
+                probe.setDate(probe.getDate() + i);
+                const date = probe.toISOString().slice(0, 10);
+                const avail = await this.checkAvailability(schema, date, rows[0].service_id)
+                    .catch(() => null);
+                for (const s of (avail?.slots || []).slice(0, 3 - alternatives.length)) {
+                    alternatives.push({ date, time: s.time, staffName: s.staffName });
+                }
+            }
+        }
+
+        return {
+            success: true,
+            message: alternatives.length
+                ? 'Appointment cancelled. Offer these alternative slots in the same reply — the customer already wanted this service, so re-booking now is far more likely than in a new conversation. Do NOT book any of them without explicit confirmation.'
+                : 'Appointment cancelled.',
+            alternatives,
+        };
     }
 
     private async listCustomerAppointments(schema: string, contactId: string): Promise<any> {

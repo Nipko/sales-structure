@@ -48,7 +48,7 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'cancel_appointment',
-        description: 'Cancel an appointment by ID.',
+        description: 'Cancel an appointment by ID. Returns up to 3 alternative slots for the same service in "alternatives" — offer them in the same reply so the customer can rebook right away, but never book one without explicit confirmation.',
         parameters: {
             type: 'object',
             properties: {

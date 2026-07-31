@@ -2610,10 +2610,24 @@ export class PersonaService {
      * ~40 plantillas a mano es inviable; VERTICAL_REGISTRY, en cambio, ya tiene la
      * persona de cada industria en es/en/pt/fr.
      *
-     * Se conserva TODO lo estructural de la plantilla española (id, icono, `tools`,
-     * `rag`, `requiredFields`) y se reemplaza solo lo textual. Se devuelve UNA plantilla
-     * por industria porque el registro define una sola persona: clonarla en las 2-4
-     * variantes daría tarjetas indistinguibles con las mismas reglas.
+     * Se conserva TODO lo estructural de cada plantilla (id, icono, `tools`, `rag`,
+     * `requiredFields`) y se reemplaza solo lo textual.
+     *
+     * Antes se devolvía UNA sola plantilla —la `[0]`— con el argumento de que el
+     * registro define una única persona y clonarla daría tarjetas indistinguibles.
+     * El argumento era sobre la galería, pero el precio lo pagaba el ALTA: la
+     * selección por sub-tipo busca la plantilla por id (`tpl_turismo_tours`,
+     * `tpl_salud_dental`…) dentro de este mismo array, y contra un array de un
+     * elemento esa búsqueda falla siempre. Fuera de español, un operador de tours
+     * en Brasil recibía la persona genérica de ventas Y sus herramientas: la
+     * plantilla `[0]` aporta `tools`, así que se perdía la capacidad, no solo el
+     * texto. Todo el mapa de sub-tipos existía únicamente para tenants en español.
+     *
+     * Ahora se localizan las N. Comparten el texto de la persona (el registro
+     * tiene una sola por industria), pero cada una conserva sus herramientas, que
+     * es la diferencia que de verdad importa. Para que la galería no muestre
+     * tarjetas idénticas, a partir de la segunda se agrega un discriminador
+     * tomado del propio id — la misma palabra que el dueño eligió como sub-tipo.
      */
     private localizeVerticalTemplates(templates: any[], industry: string, lang: string): any[] {
         const key = industry.toLowerCase();
@@ -2634,35 +2648,47 @@ export class PersonaService {
             fr: 'Je vous mets en relation avec un membre de l\'équipe pour mieux vous aider.',
         };
 
-        const base = templates[0];
-        const config = JSON.parse(JSON.stringify(base.config_json || {}));
-        config.persona = {
-            ...(config.persona || {}),
-            name: pick(agentDef.name),
-            role: pick(agentDef.role),
-            greeting: pick(agentDef.greeting),
-            fallbackMessage: fallbackByLang[lang] || fallbackByLang['es'],
-            personality: {
-                ...(config.persona?.personality || {}),
-                tone: agentDef.tone,
-                formality: agentDef.formality,
-            },
-        };
-        config.behavior = {
-            ...(config.behavior || {}),
-            rules: this.splitRuleSentences(pick(agentDef.rules)),
-            forbiddenTopics: pick(agentDef.forbiddenTopics).split('|').map(s => s.trim()).filter(Boolean),
-            handoffTriggers: pick(agentDef.handoffTriggers).split('|').map(s => s.trim()).filter(Boolean),
-        };
+        const personaName = pick(agentDef.name);
+        const rules = this.splitRuleSentences(pick(agentDef.rules));
+        const forbiddenTopics = pick(agentDef.forbiddenTopics).split('|').map(s => s.trim()).filter(Boolean);
+        const handoffTriggers = pick(agentDef.handoffTriggers).split('|').map(s => s.trim()).filter(Boolean);
 
-        return [{
-            ...base,
-            // El nombre de la tarjeta es también el que se guarda en agent_personas.name:
-            // usar el del registro evita el desfase "la lista dice X, el bot dice Y".
-            name: pick(agentDef.name),
-            description: pick(agentDef.role),
-            config_json: config,
-        }];
+        return templates.map((base, index) => {
+            const config = JSON.parse(JSON.stringify(base.config_json || {}));
+            config.persona = {
+                ...(config.persona || {}),
+                name: personaName,
+                role: pick(agentDef.role),
+                greeting: pick(agentDef.greeting),
+                fallbackMessage: fallbackByLang[lang] || fallbackByLang['es'],
+                personality: {
+                    ...(config.persona?.personality || {}),
+                    tone: agentDef.tone,
+                    formality: agentDef.formality,
+                },
+            };
+            config.behavior = {
+                ...(config.behavior || {}),
+                rules,
+                forbiddenTopics,
+                handoffTriggers,
+            };
+
+            // Discriminador para la galería: la última palabra del id
+            // (`tpl_turismo_tours` → "tours"), que es justamente el término que
+            // el dueño ya eligió como sub-tipo en el alta. La primera tarjeta va
+            // limpia: es la que se usa cuando no hay sub-tipo.
+            const suffix = index === 0 ? '' : ` · ${String(base.id || '').split('_').pop()}`;
+
+            return {
+                ...base,
+                // El nombre de la tarjeta es también el que se guarda en agent_personas.name:
+                // usar el del registro evita el desfase "la lista dice X, el bot dice Y".
+                name: `${personaName}${suffix}`,
+                description: pick(agentDef.role),
+                config_json: config,
+            };
+        });
     }
 
     /**

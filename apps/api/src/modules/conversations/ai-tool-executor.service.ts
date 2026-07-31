@@ -228,7 +228,7 @@ export class AIToolExecutorService {
                     return this.registerPet(schemaName, contactId, args);
 
                 case 'get_vaccination_status':
-                    return this.getVaccinationStatus(schemaName, args.petId);
+                    return this.getVaccinationStatus(schemaName, contactId, args.petId);
 
                 case 'triage_pet_emergency':
                     return this.triagePetEmergency({ symptoms: args.symptoms || '' });
@@ -2047,10 +2047,16 @@ export class AIToolExecutorService {
         }
     }
 
-    private async getVaccinationStatus(schemaName: string, petId: string): Promise<any> {
+    private async getVaccinationStatus(schemaName: string, contactId: string, petId: string): Promise<any> {
         try {
             const pet = await this.petsService.getById(schemaName, petId);
-            if (!pet) return { error: 'Pet not found' };
+            // La historia clinica de una mascota es de su tutor. pets.contact_id
+            // es NOT NULL, asi que aqui no hay caso ambiguo: o es tuya o no.
+            // Mismo mensaje para "no existe" y "no es tuya" para no dejar un
+            // oraculo de ids.
+            if (!pet || pet.contact_id !== contactId) {
+                return { error: 'No pet with that id belongs to this customer.' };
+            }
             const vaccinations = await this.petsService.listVaccinations(schemaName, petId);
             const lastByVaccine: Record<string, any> = {};
             for (const v of vaccinations) {
@@ -2062,8 +2068,14 @@ export class AIToolExecutorService {
             const today = new Date();
             const upcoming: any[] = [];
             const overdue: any[] = [];
+            const withoutSchedule: any[] = [];
             for (const v of Object.values(lastByVaccine) as any[]) {
-                if (!v.next_due_at) continue;
+                if (!v.next_due_at) {
+                    // Aplicada pero sin proxima fecha: no prueba nada sobre si esta
+                    // al dia. Antes se descartaba en silencio.
+                    withoutSchedule.push({ vaccineName: v.vaccine_name, lastApplied: v.applied_at });
+                    continue;
+                }
                 const due = new Date(v.next_due_at);
                 if (due < today) {
                     overdue.push({ vaccineName: v.vaccine_name, dueDate: v.next_due_at, lastApplied: v.applied_at });
@@ -2071,12 +2083,35 @@ export class AIToolExecutorService {
                     upcoming.push({ vaccineName: v.vaccine_name, dueDate: v.next_due_at, lastApplied: v.applied_at });
                 }
             }
+
+            // "Al dia" solo se afirma con evidencia.
+            //
+            // Antes era `overdue.length === 0`, y eso decia que SI a la mascota
+            // que no tiene ni un solo registro de vacuna — justo la que mas
+            // necesita venir. Es una afirmacion sanitaria hecha sobre la nada, y
+            // salia por WhatsApp firmada por la clinica.
+            //
+            // Tampoco alcanza con tener vacunas cargadas: si ninguna tiene
+            // proxima fecha, no hay con que comparar contra hoy.
+            const hasEvidence = upcoming.length > 0 || overdue.length > 0;
+            const status: 'up_to_date' | 'overdue' | 'unknown' =
+                overdue.length > 0 ? 'overdue' : hasEvidence ? 'up_to_date' : 'unknown';
+
             return {
                 petName: pet.name,
                 totalVaccinations: vaccinations.length,
                 upcoming: upcoming.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()),
                 overdue,
-                isUpToDate: overdue.length === 0,
+                withoutSchedule,
+                status,
+                isUpToDate: status === 'up_to_date',
+                // El LLM necesita que se le diga explicitamente que NO puede
+                // rellenar el hueco: ante la duda, invita a la consulta.
+                guidance: status === 'unknown'
+                    ? (vaccinations.length === 0
+                        ? 'There are NO vaccination records for this pet in the clinic system. Do NOT say the pet is up to date or overdue — say the clinic has no records on file and invite the owner to bring the vaccination card or book a check-up.'
+                        : 'There are vaccination records but none has a next-due date, so it is IMPOSSIBLE to know whether the pet is up to date. Do NOT guess — offer to book a check-up so the vet can review the schedule.')
+                    : undefined,
             };
         } catch (e: any) {
             return { error: e.message };

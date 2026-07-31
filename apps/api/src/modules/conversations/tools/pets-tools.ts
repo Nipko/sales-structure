@@ -44,7 +44,7 @@ export const PETS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'get_vaccination_status',
-        description: 'Get the vaccination calendar for a specific pet — last applied dates, next due dates and any overdue vaccinations. Use when the tutor asks "is my pet up to date?", "when is the next rabies shot?", or before recommending vaccination services.',
+        description: 'Get the vaccination calendar for a specific pet — last applied dates, next due dates and any overdue vaccinations. Use when the tutor asks "is my pet up to date?", "when is the next rabies shot?", or before recommending vaccination services. Read the returned "status" field: "up_to_date", "overdue", or "unknown". "unknown" means the clinic has no evidence either way — NEVER state that the pet is up to date in that case; follow the "guidance" field and invite the tutor to a check-up.',
         parameters: {
             type: 'object',
             properties: {

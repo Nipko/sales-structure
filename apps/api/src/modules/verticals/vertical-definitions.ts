@@ -401,7 +401,7 @@ const AUTOMOTRIZ: VerticalDefinition = {
     dashboard: {
         kpis: [
             { key: 'leadsToday', label: { es: 'Leads Hoy', en: 'Leads Today', pt: 'Leads Hoje', fr: 'Leads Aujourd\'hui' }, icon: 'UserPlus', color: '#3498db' },
-            { key: 'appointmentsToday', label: { es: 'Test Drives Hoy', en: 'Test Drives Today', pt: 'Test Drives Hoje', fr: 'Essais Aujourd\'hui' }, icon: 'Car', color: '#e67e22' },
+            { key: 'testDrivesToday', label: { es: 'Test Drives Hoy', en: 'Test Drives Today', pt: 'Test Drives Hoje', fr: 'Essais Aujourd\'hui' }, icon: 'Car', color: '#e67e22' },
             { key: 'leadsHot', label: { es: 'Leads Calientes', en: 'Hot Leads', pt: 'Leads Quentes', fr: 'Leads Chauds' }, icon: 'Flame', color: '#e74c3c' },
             { key: 'messagesProcessed', label: { es: 'Mensajes', en: 'Messages', pt: 'Mensagens', fr: 'Messages' }, icon: 'MessageSquare', color: '#9b59b6' },
         ],
@@ -447,7 +447,7 @@ const TURISMO: VerticalDefinition = {
     sidebar: { labelOverrides: { crm: { es: 'Viajeros', en: 'Travelers', pt: 'Viajantes', fr: 'Voyageurs' }, pipeline: { es: 'Reservas', en: 'Bookings', pt: 'Reservas', fr: 'Réservations' }, appointments: { es: 'Itinerarios', en: 'Itineraries', pt: 'Itinerários', fr: 'Itinéraires' } }, hiddenItems: [] },
     dashboard: { kpis: [
         { key: 'leadsToday', label: { es: 'Consultas Hoy', en: 'Inquiries Today', pt: 'Consultas Hoje', fr: 'Demandes Aujourd\'hui' }, icon: 'Plane', color: '#1abc9c' },
-        { key: 'appointmentsToday', label: { es: 'Reservas Confirmadas', en: 'Confirmed Bookings', pt: 'Reservas Confirmadas', fr: 'Réservations Confirmées' }, icon: 'Calendar', color: '#3498db' },
+        { key: 'tourBookingsToday', label: { es: 'Reservas Hoy', en: 'Bookings Today', pt: 'Reservas Hoje', fr: 'Réservations Aujourd\'hui' }, icon: 'Calendar', color: '#3498db' },
         { key: 'messagesProcessed', label: { es: 'Mensajes', en: 'Messages', pt: 'Mensagens', fr: 'Messages' }, icon: 'MessageSquare', color: '#9b59b6' },
         { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#e67e22' },
     ] },
@@ -490,7 +490,7 @@ const EDUCATION: VerticalDefinition = {
     sidebar: { labelOverrides: { crm: { es: 'Estudiantes', en: 'Students', pt: 'Estudantes', fr: 'Étudiants' }, pipeline: { es: 'Inscripciones', en: 'Enrollments', pt: 'Inscrições', fr: 'Inscriptions' } }, hiddenItems: [] },
     dashboard: { kpis: [
         { key: 'leadsToday', label: { es: 'Interesados Hoy', en: 'Inquiries Today', pt: 'Interessados Hoje', fr: 'Intéressés Aujourd\'hui' }, icon: 'UserPlus', color: '#3498db' },
-        { key: 'appointmentsToday', label: { es: 'Matrículas Hoy', en: 'Enrollments Today', pt: 'Matrículas Hoje', fr: 'Inscriptions Aujourd\'hui' }, icon: 'GraduationCap', color: '#2ecc71' },
+        { key: 'enrollmentsToday', label: { es: 'Matrículas Hoy', en: 'Enrollments Today', pt: 'Matrículas Hoje', fr: 'Inscriptions Aujourd\'hui' }, icon: 'GraduationCap', color: '#2ecc71' },
         { key: 'messagesProcessed', label: { es: 'Mensajes', en: 'Messages', pt: 'Mensagens', fr: 'Messages' }, icon: 'MessageSquare', color: '#9b59b6' },
         { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#e67e22' },
     ] },
@@ -1053,7 +1053,7 @@ const GIMNASIOS: VerticalDefinition = {
     dashboard: {
         kpis: [
             { key: 'leadsToday', label: { es: 'Interesados Hoy', en: 'Prospects Today', pt: 'Interessados Hoje', fr: 'Prospects Aujourd\'hui' }, icon: 'UserPlus', color: '#3498db' },
-            { key: 'appointmentsToday', label: { es: 'Reservas Clases', en: 'Class Bookings', pt: 'Reservas Aulas', fr: 'Réservations Cours' }, icon: 'Dumbbell', color: '#2ecc71' },
+            { key: 'classBookingsToday', label: { es: 'Reservas Clases', en: 'Class Bookings', pt: 'Reservas Aulas', fr: 'Réservations Cours' }, icon: 'Dumbbell', color: '#2ecc71' },
             { key: 'messagesProcessed', label: { es: 'Mensajes', en: 'Messages', pt: 'Mensagens', fr: 'Messages' }, icon: 'MessageSquare', color: '#9b59b6' },
             { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#e67e22' },
         ],

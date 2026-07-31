@@ -246,6 +246,13 @@ export class AnalyticsService {
         appointmentsToday: number;
         noShowsWeek: number;
         conversionRate: number;
+        // Contadores propios de cada vertical. El KPI del home elige cuál mirar
+        // por su `key` (vertical-definitions.ts); antes todas las verticales
+        // apuntaban a `appointmentsToday` y le cambiaban la etiqueta.
+        tourBookingsToday: number;
+        classBookingsToday: number;
+        enrollmentsToday: number;
+        testDrivesToday: number;
     }> {
         const today = new Date().toISOString().split('T')[0];
         const schemaName = await this.getSchemaName(tenantId);
@@ -261,6 +268,10 @@ export class AnalyticsService {
                 appointmentsToday: 0,
                 noShowsWeek: 0,
                 conversionRate: 0,
+                tourBookingsToday: 0,
+                classBookingsToday: 0,
+                enrollmentsToday: 0,
+                testDrivesToday: 0,
             };
         }
 
@@ -361,6 +372,41 @@ export class AnalyticsService {
             // appointments table may not exist
         }
 
+        // Contadores del objeto REAL de cada vertical.
+        //
+        // Turismo mostraba "Reservas Confirmadas", gimnasios "Reservas Clases",
+        // education "Matrículas Hoy" y automotriz "Test Drives Hoy" — y las
+        // cuatro etiquetas colgaban del MISMO número: filas de `appointments`,
+        // una tabla que esas verticales no usan para eso. El dueño de un gym con
+        // 30 reservas de clase leía "Reservas Clases: 0" y concluía que el bot no
+        // funcionaba. El agregador del super admin ya calculaba lo correcto; el
+        // panel del tenant no.
+        //
+        // Cada consulta cae a 0 por su cuenta: las tablas verticales son lazy y
+        // que no exista significa "no aplica", no "falló".
+        const countToday = async (sql: string): Promise<number> => {
+            try {
+                const rows = await this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(schemaName, sql);
+                return parseInt(rows[0]?.cnt ?? '0');
+            } catch {
+                return 0;
+            }
+        };
+
+        const [tourBookingsToday, classBookingsToday, enrollmentsToday, testDrivesToday] = await Promise.all([
+            countToday(`SELECT COUNT(*)::int as cnt FROM tour_bookings
+                        WHERE created_at::date = CURRENT_DATE AND status <> 'cancelled'`),
+            countToday(`SELECT COUNT(*)::int as cnt FROM class_bookings
+                        WHERE booked_at::date = CURRENT_DATE AND status <> 'cancelled'`),
+            countToday(`SELECT COUNT(*)::int as cnt FROM enrollments
+                        WHERE enrolled_at::date = CURRENT_DATE AND status <> 'dropped'`),
+            // Los test drives son citas con vehículo (H-6): la tabla `test_drives`
+            // no tiene escritor alcanzable desde el producto.
+            countToday(`SELECT COUNT(*)::int as cnt FROM appointments
+                        WHERE start_at::date = CURRENT_DATE AND status <> 'cancelled'
+                          AND metadata->>'vehicleId' IS NOT NULL`),
+        ]);
+
         try {
             const convRows = await this.prisma.executeInTenantSchema<Array<{ won: string; total: string }>>(
                 schemaName,
@@ -388,6 +434,10 @@ export class AnalyticsService {
             appointmentsToday,
             noShowsWeek,
             conversionRate,
+            tourBookingsToday,
+            classBookingsToday,
+            enrollmentsToday,
+            testDrivesToday,
         };
     }
 

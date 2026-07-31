@@ -262,7 +262,20 @@ Horizontales XS/S de máxima palanca, más los P0 sueltos que no dependen de nad
 - ✅ **H-10** Atomicidad de cupos en gym, tours y education.
 - ✅ **H-15** `appointment_required` / `order_required` (adelantado a Ola 1).
 - ✅ **H-12** Merge de rules (D6 aplicado) y ✅ **H-13** localización de plantillas verticales.
-- ⬜ **Verticales:** belleza (partición del catálogo 🔒D5 + treatments + rebooking), salud (dental completo), inmobiliaria (visita ligada al listing + `assigned_to` + zonas), gimnasios (recurrencia de clases + reactivación).
+- ✅ **Verticales:** belleza (sub-tipo `boutique` sin agenda + `treatments` en spa/estética + `tools.catalog` en la plantilla de productos + rebooking por servicio), salud (dental + recall por servicio + recuperación de cancelaciones), inmobiliaria (visita ligada al listing + `assigned_to` en cascada + panel de zonas), gimnasios (alta de miembros + clases con recurrencia + lista de espera + planes sembrados).
+
+### Barrido adicional sobre el backlog vertical (§4), jul 2026
+
+Fuera de las cuatro verticales de la ola, se cerraron los ítems de **alta severidad y esfuerzo XS/S** del resto:
+
+- **`otro`** — `inventory`/`orders` abiertos al fallback + `tools.catalog`. Es el ítem que más negocios reales destraba: la ferretería, la papelería y la imprenta no tenían dónde cargar un producto.
+- **Plantillas que ordenaban mentir** — se quitó "cotiza con rangos ($X a $Y)" de servicios_hogar (no hay tabla de tarifas: toda cifra era inventada *por instrucción*), la promesa del "portal seguro" inexistente (×2), y la captura de cédula/DNI/RFC de **seis** plantillas que contradecían el contrato L1.
+- **`handoffTriggers` muertos por construcción** — technology (incluida una comparación numérica como palabra clave) y servicios_profesionales.
+- **pet_services** — "Guardería diurna" a `durationType: 'open'`: 480 min fijos tapaban la agenda entera del día.
+- **fotografía** — listener de `photo_session.requested` (1 emisor, 0 oyentes).
+- **restaurantes** — panel de promociones (3 endpoints sin llamador; `get_promotions` respondía vacío siempre).
+- **servicios_hogar** — `list_my_requests`: "¿ya viene el técnico?" exigía un UUID que el cliente nunca vio.
+- **Genérica** — recuperación de cancelaciones (3 horarios alternativos en el mismo turno) para todas las verticales de agenda.
 
 **Hallazgos nuevos de esta ola:**
 
@@ -274,7 +287,15 @@ Horizontales XS/S de máxima palanca, más los P0 sueltos que no dependen de nad
 
 **Criterio de listo:** una clínica ofrece "10:00 con la Dra. X" y persiste quién atiende. Un tutor recibe el recordatorio de vacuna sin que nadie lo dispare a mano. Una agencia sabe qué propiedad se muestra en cada visita y quién la muestra. Un dueño que sigue el checklist termina con su catálogo cargado en la tabla que las tools leen, no en un PDF de la KB. Ningún KPI del home cuenta citas haciéndose pasar por otra cosa.
 
-### Ola 3 — lo que depende de decisiones
+### Ola 3 — lo que depende de decisiones *(pendiente)*
+
+**Lo que queda del backlog vertical y por qué.** Todo lo que sobrevive a la ejecución de jul 2026 cae en tres cajones, ninguno de ellos "se nos pasó":
+
+1. **Bloqueado por una decisión del dueño** — cobro al cliente final (D3), partición belleza/moda (D5), integraciones (D10), turismo (D12), retail (D13), research (D11).
+2. **Esfuerzo M/L con dependencia real** — import masivo (H-19), galería por contacto (H-23), carrusel (H-24), webhooks de e-commerce, checkout conversacional, notificación proactiva de estado de pedido, zonas de entrega con tarifa.
+3. **Higiene de bajo impacto** — `labelOverrides` de technology, textos por sub-tipo en turismo, moneda heredada del ítem en restaurantes, y la fusión de `/admin/catalog/courses`.
+
+
 
 - **H-22** Cobro conversacional (🔒D3): arrancar por el spike de credenciales por-tenant; después seña de belleza/salud, matrícula de education, anticipo de tours, pedido pago de restaurantes.
 - **H-19** Import masivo como componente compartido (5 verticales).

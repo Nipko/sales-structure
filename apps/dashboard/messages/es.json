@@ -8442,6 +8442,27 @@
     "seats": "Cupos",
     "status": "Estado",
     "student": "Estudiante",
+    "actions": "Acciones",
+    "addEnrollment": "Inscribir alumno",
+    "editEnrollment": "Editar inscripción",
+    "cohort": "Grupo",
+    "noOpenCohorts": "No hay grupos con cupo disponible. Crea uno desde la pestaña Cohortes.",
+    "enrollMissingFields": "Elegí un grupo y escribí el nombre del alumno",
+    "amountPaid": "Monto pagado",
+    "amountPaidHint": "Dejar vacío para no tocar",
+    "enrollStatus": {
+        "enrolled": "Inscrito",
+        "active": "Cursando",
+        "completed": "Completado",
+        "dropped": "Dado de baja",
+        "refunded": "Reembolsado"
+    },
+    "payStatus": {
+        "pending": "Pendiente",
+        "partial": "Parcial",
+        "paid": "Pagado",
+        "refunded": "Reembolsado"
+    },
     "payment": "Pago",
     "progress": "Avance",
     "enrolledAt": "Inscrito",

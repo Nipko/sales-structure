@@ -8442,6 +8442,27 @@
     "seats": "Seats",
     "status": "Status",
     "student": "Student",
+    "actions": "Actions",
+    "addEnrollment": "Enroll student",
+    "editEnrollment": "Edit enrollment",
+    "cohort": "Cohort",
+    "noOpenCohorts": "No cohorts with available seats. Create one from the Cohorts tab.",
+    "enrollMissingFields": "Pick a cohort and enter the student name",
+    "amountPaid": "Amount paid",
+    "amountPaidHint": "Leave blank to keep",
+    "enrollStatus": {
+        "enrolled": "Enrolled",
+        "active": "In progress",
+        "completed": "Completed",
+        "dropped": "Dropped",
+        "refunded": "Refunded"
+    },
+    "payStatus": {
+        "pending": "Pending",
+        "partial": "Partial",
+        "paid": "Paid",
+        "refunded": "Refunded"
+    },
     "payment": "Payment",
     "progress": "Progress",
     "enrolledAt": "Enrolled",

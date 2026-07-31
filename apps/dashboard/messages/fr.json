@@ -8442,6 +8442,27 @@
     "seats": "Places",
     "status": "Statut",
     "student": "Étudiant",
+    "actions": "Actions",
+    "addEnrollment": "Inscrire un élève",
+    "editEnrollment": "Modifier l'inscription",
+    "cohort": "Groupe",
+    "noOpenCohorts": "Aucun groupe avec des places disponibles. Créez-en un depuis l’onglet Groupes.",
+    "enrollMissingFields": "Choisissez un groupe et saisissez le nom de l'élève",
+    "amountPaid": "Montant payé",
+    "amountPaidHint": "Laisser vide pour conserver",
+    "enrollStatus": {
+        "enrolled": "Inscrit",
+        "active": "En cours",
+        "completed": "Terminé",
+        "dropped": "Abandonné",
+        "refunded": "Remboursé"
+    },
+    "payStatus": {
+        "pending": "En attente",
+        "partial": "Partiel",
+        "paid": "Payé",
+        "refunded": "Remboursé"
+    },
     "payment": "Paiement",
     "progress": "Progrès",
     "enrolledAt": "Inscrit",

@@ -90,6 +90,10 @@ export default function CoursesPage() {
     const [loading, setLoading] = useState(true);
     const [showCourseForm, setShowCourseForm] = useState<Course | "new" | null>(null);
     const [showCohortForm, setShowCohortForm] = useState<Course | null>(null);
+    // La pestaña de inscripciones era de solo lectura: el alumno se inscribia por
+    // chat con payment_status='pending' y el dueño no tenia con que registrar el
+    // pago, ni dar de baja, ni inscribir a quien llamo por telefono.
+    const [showEnrollForm, setShowEnrollForm] = useState<Enrollment | "new" | null>(null);
     const [toast, setToast] = useState<string | null>(null);
     const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
@@ -145,6 +149,11 @@ export default function CoursesPage() {
                 {tab === "courses" && (
                     <button onClick={() => setShowCourseForm("new")} className="inline-flex items-center gap-2 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-medium">
                         <Plus className="h-4 w-4" /> {t("addCourse")}
+                    </button>
+                )}
+                {tab === "enrollments" && (
+                    <button onClick={() => setShowEnrollForm("new")} className="inline-flex items-center gap-2 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-medium">
+                        <Plus className="h-4 w-4" /> {t("addEnrollment")}
                     </button>
                 )}
             </div>
@@ -300,11 +309,12 @@ export default function CoursesPage() {
                                 <th className="px-4 py-2 font-semibold">{t("payment")}</th>
                                 <th className="px-4 py-2 font-semibold text-right">{t("progress")}</th>
                                 <th className="px-4 py-2 font-semibold">{t("enrolledAt")}</th>
+                                <th className="px-4 py-2 font-semibold text-right">{t("actions")}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
                             {enrollments.length === 0 ? (
-                                <tr><td colSpan={6} className="text-center py-8 text-muted-foreground text-sm">{t("noEnrollments")}</td></tr>
+                                <tr><td colSpan={7} className="text-center py-8 text-muted-foreground text-sm">{t("noEnrollments")}</td></tr>
                             ) : enrollments.map(e => (
                                 <tr key={e.id} className="hover:bg-muted/20">
                                     <td className="px-4 py-2">
@@ -336,6 +346,15 @@ export default function CoursesPage() {
                                     <td className="px-4 py-2 text-xs text-muted-foreground font-mono">
                                         {new Date(e.enrolled_at).toLocaleDateString()}
                                     </td>
+                                    <td className="px-4 py-2 text-right">
+                                        <button
+                                            onClick={() => setShowEnrollForm(e)}
+                                            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                                            title={tc("edit")}
+                                        >
+                                            <Edit2 className="h-3.5 w-3.5" />
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -345,6 +364,16 @@ export default function CoursesPage() {
 
             {showCourseForm && (
                 <CourseFormModal course={showCourseForm === "new" ? null : showCourseForm} onClose={() => setShowCourseForm(null)} onSaved={() => { setShowCourseForm(null); showToast(tc("saved")); load(); }} onError={() => showToast(tc("errorSaving"))} />
+            )}
+
+            {showEnrollForm && (
+                <EnrollmentFormModal
+                    enrollment={showEnrollForm === "new" ? null : showEnrollForm}
+                    cohorts={cohorts}
+                    onClose={() => setShowEnrollForm(null)}
+                    onSaved={() => { setShowEnrollForm(null); showToast(tc("saved")); load(); }}
+                    onError={() => showToast(tc("errorSaving"))}
+                />
             )}
 
             {showCohortForm && (
@@ -515,6 +544,231 @@ function CohortFormModal({ course, onClose, onSaved, onError }: { course: Course
                 <div className="flex justify-end gap-2 p-4 border-t border-border">
                     <button onClick={onClose} className="px-3 py-1.5 bg-muted/30 hover:bg-muted text-foreground border border-border rounded-lg text-sm transition-colors">{tc("cancel")}</button>
                     <button onClick={handleSubmit} disabled={busy} className="inline-flex items-center gap-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
+                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        {tc("save")}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Alta y edición de inscripciones. Cierra el circuito que el chat abría a
+ * medias: enroll_student deja la inscripción en payment_status='pending' y le
+ * dice al alumno "pago pendiente para confirmar el cupo", pero el cupo YA se
+ * descontó de la cohorte. Sin una forma de registrar ese pago o de dar de baja,
+ * las cohortes se llenaban de fantasmas y ningún alumno nuevo podía entrar.
+ *
+ * createEnrollment y updateEnrollment existían en el backend y en el cliente
+ * HTTP desde el principio; no los llamaba nadie.
+ */
+function EnrollmentFormModal({ enrollment, cohorts, onClose, onSaved, onError }: {
+    enrollment: Enrollment | null;
+    cohorts: Cohort[];
+    onClose: () => void;
+    onSaved: () => void;
+    onError: () => void;
+}) {
+    const t = useTranslations("courses");
+    const tc = useTranslations("common");
+    const { activeTenantId } = useTenant();
+    const isEdit = !!enrollment;
+
+    const [form, setForm] = useState({
+        cohortId: enrollment?.cohort_id || "",
+        studentName: enrollment?.student_name || "",
+        studentEmail: enrollment?.student_email || "",
+        studentPhone: enrollment?.student_phone || "",
+        status: enrollment?.status || "enrolled",
+        paymentStatus: enrollment?.payment_status || "pending",
+        amountPaid: "",
+        completionPercent: String(enrollment?.completion_percent ?? 0),
+    });
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    // Al inscribir solo tienen sentido las cohortes con cupo; al editar hay que
+    // seguir mostrando la cohorte actual aunque ya esté llena.
+    const selectableCohorts = isEdit
+        ? cohorts
+        : cohorts.filter(c => c.status === "open" && c.available_seats > 0);
+
+    async function handleSave() {
+        if (!activeTenantId) return;
+        if (!isEdit && (!form.cohortId || !form.studentName.trim())) {
+            setError(t("enrollMissingFields"));
+            return;
+        }
+        setBusy(true);
+        setError("");
+        try {
+            if (isEdit) {
+                const res = await api.updateEnrollment(activeTenantId, enrollment!.id, {
+                    status: form.status,
+                    paymentStatus: form.paymentStatus,
+                    completionPercent: Number(form.completionPercent) || 0,
+                    // amount_paid solo viaja si el dueño escribió algo: mandar 0 por
+                    // omisión borraría lo ya registrado.
+                    ...(form.amountPaid !== "" ? { amountPaid: Number(form.amountPaid) } : {}),
+                });
+                if (!res?.success) throw new Error();
+            } else {
+                const res = await api.createEnrollment(activeTenantId, {
+                    cohortId: form.cohortId,
+                    studentName: form.studentName.trim(),
+                    studentEmail: form.studentEmail.trim() || undefined,
+                    studentPhone: form.studentPhone.trim() || undefined,
+                });
+                if (!res?.success) throw new Error();
+            }
+            onSaved();
+        } catch {
+            setBusy(false);
+            onError();
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+            <div className="w-full max-w-md rounded-xl bg-card border border-border p-6 shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold flex items-center gap-2">
+                        <Users className="h-4 w-4 text-violet-500" />
+                        {isEdit ? t("editEnrollment") : t("addEnrollment")}
+                    </h3>
+                    <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+
+                {error && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
+                        <AlertTriangle className="h-4 w-4 shrink-0" /> {error}
+                    </div>
+                )}
+
+                <div className="space-y-3">
+                    {!isEdit ? (
+                        <>
+                            <div>
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("cohort")}</label>
+                                <select
+                                    value={form.cohortId}
+                                    onChange={e => setForm({ ...form, cohortId: e.target.value })}
+                                    className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm cursor-pointer"
+                                >
+                                    <option value="">{tc("select")}</option>
+                                    {selectableCohorts.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.course_name} · {c.cohort_code || new Date(c.starts_at).toLocaleDateString()} ({c.available_seats})
+                                        </option>
+                                    ))}
+                                </select>
+                                {selectableCohorts.length === 0 && (
+                                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">{t("noOpenCohorts")}</p>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("student")}</label>
+                                <input
+                                    value={form.studentName}
+                                    onChange={e => setForm({ ...form, studentName: e.target.value })}
+                                    className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{tc("email")}</label>
+                                    <input
+                                        type="email"
+                                        value={form.studentEmail}
+                                        onChange={e => setForm({ ...form, studentEmail: e.target.value })}
+                                        className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{tc("phone")}</label>
+                                    <input
+                                        value={form.studentPhone}
+                                        onChange={e => setForm({ ...form, studentPhone: e.target.value })}
+                                        className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                                    />
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
+                                {enrollment!.student_name} · {enrollment!.course_name}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("status")}</label>
+                                    <select
+                                        value={form.status}
+                                        onChange={e => setForm({ ...form, status: e.target.value })}
+                                        className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm cursor-pointer"
+                                    >
+                                        {/* Vocabulario exacto de la tabla. */}
+                                        {["enrolled", "active", "completed", "dropped", "refunded"].map(s => (
+                                            <option key={s} value={s}>{t(`enrollStatus.${s}`)}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("payment")}</label>
+                                    <select
+                                        value={form.paymentStatus}
+                                        onChange={e => setForm({ ...form, paymentStatus: e.target.value })}
+                                        className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm cursor-pointer"
+                                    >
+                                        {["pending", "partial", "paid", "refunded"].map(s => (
+                                            <option key={s} value={s}>{t(`payStatus.${s}`)}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("amountPaid")}</label>
+                                    <input
+                                        type="number"
+                                        value={form.amountPaid}
+                                        onChange={e => setForm({ ...form, amountPaid: e.target.value })}
+                                        placeholder={t("amountPaidHint")}
+                                        className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm font-mono"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("progress")}</label>
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        max={100}
+                                        value={form.completionPercent}
+                                        onChange={e => setForm({ ...form, completionPercent: e.target.value })}
+                                        className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm font-mono"
+                                    />
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                <div className="flex justify-end gap-2 mt-5">
+                    <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground cursor-pointer">
+                        {tc("cancel")}
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        disabled={busy}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white transition-colors cursor-pointer"
+                    >
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         {tc("save")}
                     </button>

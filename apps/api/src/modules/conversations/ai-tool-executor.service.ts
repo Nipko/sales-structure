@@ -3152,7 +3152,7 @@ export class AIToolExecutorService {
     private async cancelEnrollment(schema: string, contactId: string, enrollmentId: string, reason?: string): Promise<any> {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, contact_id, status, cohort_id FROM "${schema}".enrollments WHERE id = $1::uuid`,
+                `SELECT id, contact_id, status, cohort_id, notes FROM "${schema}".enrollments WHERE id = $1::uuid`,
                 enrollmentId,
             );
             if (!rows.length) return { error: 'Enrollment not found' };
@@ -3163,9 +3163,21 @@ export class AIToolExecutorService {
                 return { error: `Cannot cancel an enrollment in "${rows[0].status}" status.` };
             }
 
+            // 'dropped', no 'cancelled': el vocabulario de la tabla es
+            // enrolled|active|completed|dropped|refunded. 'cancelled' se escribia
+            // igual (status esta mapeado) pero quedaba fuera de la paleta del
+            // panel y como balde desconocido en las analiticas por vertical.
+            //
+            // Y el motivo va a `notes`: updateEnrollment mapea seis campos y
+            // cancellationReason no es uno de ellos — se descartaba en silencio,
+            // asi que la razon que daba el alumno se perdia siempre. No hay
+            // columna cancellation_reason en la tabla; notes es su lugar.
             await this.educationService.updateEnrollment(schema, enrollmentId, {
-                status: 'cancelled',
-                cancellationReason: reason || 'Cancelled by student',
+                status: 'dropped',
+                // Se ANEXA: updateEnrollment pisa la columna, y las notas del
+                // profesor sobre el alumno no pueden desaparecer porque este
+                // cancele.
+                notes: `${rows[0].notes ? `${rows[0].notes}\n` : ''}[Cancelled by student]${reason ? ` ${reason}` : ''}`,
             });
 
             // Devolver el asiento: enrollStudent decrementa available_seats y marca

@@ -8442,6 +8442,27 @@
     "seats": "Vagas",
     "status": "Status",
     "student": "Aluno",
+    "actions": "Ações",
+    "addEnrollment": "Inscrever aluno",
+    "editEnrollment": "Editar inscrição",
+    "cohort": "Turma",
+    "noOpenCohorts": "Não há turmas com vagas. Crie uma na aba Turmas.",
+    "enrollMissingFields": "Escolha uma turma e informe o nome do aluno",
+    "amountPaid": "Valor pago",
+    "amountPaidHint": "Deixe em branco para manter",
+    "enrollStatus": {
+        "enrolled": "Inscrito",
+        "active": "Cursando",
+        "completed": "Concluído",
+        "dropped": "Desistiu",
+        "refunded": "Reembolsado"
+    },
+    "payStatus": {
+        "pending": "Pendente",
+        "partial": "Parcial",
+        "paid": "Pago",
+        "refunded": "Reembolsado"
+    },
     "payment": "Pagamento",
     "progress": "Progresso",
     "enrolledAt": "Matriculado",

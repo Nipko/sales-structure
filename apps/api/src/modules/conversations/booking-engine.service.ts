@@ -189,8 +189,16 @@ export interface BookingState {
     serviceId?: string;
     serviceName?: string;
     date?: string;
-    slots?: Array<{ time: string; endTime: string }>;
+    // `staffId`/`staffName` viajan por slot desde check_availability, que ya los
+    // resuelve (ai-tool-executor: userIds -> nombres). El motor los descartaba al
+    // quedarse solo con time/endTime, y create_appointment terminaba escribiendo
+    // assigned_to = NULL en TODA reserva hecha por la ruta determinista — que es
+    // la que usan justamente las verticales de agenda pura.
+    slots?: Array<{ time: string; endTime: string; staffId?: string; staffName?: string }>;
     time?: string;
+    /** Profesional del slot elegido. Se persiste como `appointments.assigned_to`. */
+    staffId?: string;
+    staffName?: string;
     customerName?: string;
     customerEmail?: string;
     customerPhone?: string;
@@ -500,7 +508,14 @@ export class BookingEngineService {
                 }
             }
             if (slotIdx >= 0 && slotIdx < state.slots.length) {
-                intent.timeMentioned = state.slots[slotIdx].time;
+                const chosen = state.slots[slotIdx];
+                intent.timeMentioned = chosen.time;
+                // Al elegir por número se sabe EXACTAMENTE qué slot es. Buscarlo
+                // después por hora tomaría el primero con esa hora, que con dos
+                // profesionales libres a la misma hora no tiene por qué ser el
+                // que el cliente vio en esa posición de la lista.
+                state.staffId = chosen.staffId;
+                state.staffName = chosen.staffName;
             }
         }
 
@@ -514,6 +529,8 @@ export class BookingEngineService {
                 state.date = undefined;
                 state.slots = undefined;
                 state.time = undefined;
+                state.staffId = undefined;
+                state.staffName = undefined;
                 state.step = state.services.length ? 'show_services' : 'idle';
             }
         }
@@ -547,6 +564,8 @@ export class BookingEngineService {
                 state.date = undefined;
                 state.slots = undefined;
                 state.time = undefined;
+                state.staffId = undefined;
+                state.staffName = undefined;
                 state.step = 'ask_date';
 
                 // Friendly past-date feedback, localized (deterministic layer).
@@ -563,6 +582,8 @@ export class BookingEngineService {
                 if (state.date && state.date !== intent.dateMentioned) {
                     state.slots = undefined;
                     state.time = undefined;
+                    state.staffId = undefined;
+                    state.staffName = undefined;
                 }
                 state.date = intent.dateMentioned;
             }
@@ -575,12 +596,20 @@ export class BookingEngineService {
                 return h * 60 + m;
             };
             const requestedMin = toMinutes(intent.timeMentioned);
+            // El profesional se toma del MISMO slot que la hora: elegir la franja
+            // es elegir con quién, y separarlos era lo que hacía que la reserva
+            // llegara sin dueño.
+            const takeSlot = (s: { time: string; staffId?: string; staffName?: string }) => {
+                state.time = s.time;
+                state.staffId = s.staffId;
+                state.staffName = s.staffName;
+            };
             const exactSlot = state.slots.find(s => s.time === intent.timeMentioned);
             if (exactSlot) {
-                state.time = exactSlot.time;
+                takeSlot(exactSlot);
             } else {
                 // Find closest slot within ±30 minutes
-                let closest: { time: string; endTime: string } | undefined;
+                let closest: { time: string; endTime: string; staffId?: string; staffName?: string } | undefined;
                 let closestDiff = Infinity;
                 for (const s of state.slots) {
                     const diff = Math.abs(toMinutes(s.time) - requestedMin);
@@ -591,7 +620,7 @@ export class BookingEngineService {
                 }
                 if (closest) {
                     this.logger.log(`[Decide] Closest slot to ${intent.timeMentioned} is ${closest.time} (diff=${closestDiff}min)`);
-                    state.time = closest.time;
+                    takeSlot(closest);
                 } else {
                     // Time mentioned but NOT within range of available slots — flag it
                     requestedUnavailableTime = intent.timeMentioned;
@@ -653,7 +682,7 @@ export class BookingEngineService {
                 const newSvc = state.services?.find(s => norm(s.name).includes(norm(intent.serviceMentioned!)));
                 if (newSvc) {
                     state.serviceId = newSvc.id; state.serviceName = newSvc.name;
-                    state.date = undefined; state.slots = undefined; state.time = undefined;
+                    state.date = undefined; state.slots = undefined; state.time = undefined; state.staffId = undefined; state.staffName = undefined;
                     state.step = 'ask_date';
                     this.logger.log(`[Decide] Changed service to: ${newSvc.name}`);
                     return { handled: true, state, text: msg(L, 'switchedService', { service: newSvc.name }) };
@@ -788,7 +817,15 @@ export class BookingEngineService {
         if (result?.available && result.slots?.length) {
             state.slots = result.slots.slice(0, 6);
             state.step = 'show_slots';
-            const slotList = (state.slots ?? []).map(s => `${s.time} - ${s.endTime}`).join(', ');
+            // El nombre del profesional se muestra solo cuando hay MÁS DE UNO en
+            // la tanda: en un local de una sola persona repetirlo en cada franja
+            // es ruido, y en una clínica con tres doctoras es justo el dato con
+            // el que el paciente elige.
+            const staffNames = new Set((state.slots ?? []).map(s => s.staffName).filter(Boolean));
+            const showStaff = staffNames.size > 1;
+            const slotList = (state.slots ?? [])
+                .map(s => `${s.time} - ${s.endTime}${showStaff && s.staffName ? ` (${s.staffName})` : ''}`)
+                .join(', ');
             return {
                 handled: true, state,
                 text: msg(lang, 'slotsAvailable', { service: state.serviceName || '', date: state.date || '', slots: slotList }),
@@ -820,15 +857,19 @@ export class BookingEngineService {
         }
         // All info collected → confirmation. Localized labels so the summary doesn't
         // mix English ("on"/"at"/"Name") into an otherwise translated prompt.
-        const SL: Record<string, { on: string; at: string; name: string; email: string }> = {
-            es: { on: 'el', at: 'a las', name: 'Nombre', email: 'Email' },
-            en: { on: 'on', at: 'at', name: 'Name', email: 'Email' },
-            pt: { on: 'em', at: 'às', name: 'Nome', email: 'Email' },
-            fr: { on: 'le', at: 'à', name: 'Nom', email: 'Email' },
+        const SL: Record<string, { on: string; at: string; name: string; email: string; with: string }> = {
+            es: { on: 'el', at: 'a las', name: 'Nombre', email: 'Email', with: 'Con' },
+            en: { on: 'on', at: 'at', name: 'Name', email: 'Email', with: 'With' },
+            pt: { on: 'em', at: 'às', name: 'Nome', email: 'Email', with: 'Com' },
+            fr: { on: 'le', at: 'à', name: 'Nom', email: 'Email', with: 'Avec' },
         };
         const sl = SL[(lang || 'es').slice(0, 2)] || SL.es;
         state.step = 'confirm';
-        const summary = `${state.serviceName} ${sl.on} ${state.date} ${sl.at} ${state.time}\n${sl.name}: ${state.customerName}\n${sl.email}: ${state.customerEmail}`;
+        // El profesional entra en el resumen que el cliente confirma: si va a ver
+        // a la Dra. X y no a la Dra. Y, ese es el momento de decirlo — y de que
+        // el cliente pueda corregirlo antes de que la cita exista.
+        const withStaff = state.staffName ? `\n${sl.with}: ${state.staffName}` : '';
+        const summary = `${state.serviceName} ${sl.on} ${state.date} ${sl.at} ${state.time}${withStaff}\n${sl.name}: ${state.customerName}\n${sl.email}: ${state.customerEmail}`;
         return {
             handled: true, state,
             text: msg(lang, 'confirmPrompt', { summary }),
@@ -872,6 +913,9 @@ export class BookingEngineService {
 
         const result = await this.toolExecutor.execute(schema, tenantId, contactId, 'create_appointment', {
             serviceId: state.serviceId, date: state.date, time: state.time,
+            // Quién atiende. La tool ya lo aceptaba y lo escribía en assigned_to;
+            // era el motor el que no se lo pasaba nunca.
+            staffId: state.staffId,
             customerName: state.customerName, customerEmail: state.customerEmail, customerPhone: state.customerPhone,
         });
         if (result?.success) {

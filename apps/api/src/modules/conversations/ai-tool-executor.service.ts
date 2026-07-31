@@ -2264,10 +2264,20 @@ export class AIToolExecutorService {
                 notes: args.notes,
             });
 
+            // El payload viaja completo a proposito: un pedido es time-critical y
+            // el oyente no deberia tener que volver a consultar la BD para poder
+            // avisarle al dueño que hay comida por preparar.
             this.eventEmitter.emit('food_order.created', {
                 orderId: order.id,
                 tenantSchemaName: schemaName,
+                schemaName,
                 contactId,
+                customerName: args.customerName,
+                orderType: order.order_type,
+                total: Number(order.total || 0),
+                currency: order.currency,
+                itemsCount: resolvedItems.length,
+                tableNumber: args.tableNumber,
             });
 
             return {
@@ -3011,7 +3021,13 @@ export class AIToolExecutorService {
                 );
             }
 
-            this.eventEmitter.emit('food_order.cancelled', { orderId, tenantSchemaName: schema, contactId });
+            this.eventEmitter.emit('food_order.cancelled', {
+                orderId,
+                tenantSchemaName: schema,
+                schemaName: schema,
+                contactId,
+                reason,
+            });
 
             return { success: true, message: 'Order cancelled successfully' };
         } catch (e: any) {

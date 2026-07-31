@@ -13,6 +13,31 @@ export class PushListenerService {
         private readonly prisma: PrismaService,
     ) {}
 
+    /**
+     * Los eventos de las verticales viajan con el NOMBRE DEL SCHEMA (es lo unico
+     * que tiene a mano el executor de herramientas), no con el tenantId. Push
+     * necesita el id para resolver destinatarios.
+     */
+    private async resolveTenantId(schemaName?: string): Promise<string | undefined> {
+        if (!schemaName) return undefined;
+        try {
+            const tenant = await this.prisma.tenant.findFirst({
+                where: { schemaName },
+                select: { id: true },
+            });
+            return tenant?.id || undefined;
+        } catch (err: any) {
+            this.logger.warn(`Failed to resolve tenantId from schema ${schemaName}: ${err.message}`);
+            return undefined;
+        }
+    }
+
+    /** Push al dueño y a los supervisores: nadie tiene asignado un pedido todavia. */
+    private async notifyOwners(tenantId: string, payload: { title: string; body: string; url: string; tag: string }) {
+        await this.pushService.sendToTenantRole(tenantId, 'tenant_admin', payload).catch(() => {});
+        await this.pushService.sendToTenantRole(tenantId, 'tenant_supervisor', payload).catch(() => {});
+    }
+
     /** Resolve tenant language (2-char, fallback 'es'). */
     private async getTenantLanguage(tenantId: string): Promise<string> {
         try {
@@ -147,5 +172,86 @@ export class PushListenerService {
             url: '/admin/appointments',
             tag: 'appointment-new',
         }).catch(() => {});
+    }
+
+    /**
+     * Pedido de restaurante cerrado por el agente en el chat.
+     *
+     * Hasta ahora este evento no lo escuchaba NADIE: el bot tomaba el pedido, lo
+     * escribia en food_orders y el dueño solo se enteraba si tenia el tablero
+     * abierto (refresca cada 15s). Un pedido de comida es lo mas urgente que
+     * produce la plataforma — 20 minutos sin verlo es el pedido perdido.
+     *
+     * Cada pedido lleva su propio `tag` a proposito: dos pedidos simultaneos no
+     * deben colapsar en una sola notificacion como si fueran actualizaciones del
+     * mismo hecho.
+     */
+    @OnEvent('food_order.created')
+    async onFoodOrder(event: {
+        orderId: string;
+        tenantSchemaName?: string;
+        schemaName?: string;
+        customerName?: string;
+        orderType?: string;
+        total?: number;
+        currency?: string;
+        tableNumber?: string;
+    }) {
+        const tenantId = await this.resolveTenantId(event.schemaName || event.tenantSchemaName);
+        if (!tenantId) return;
+
+        const lang = await this.getTenantLanguage(tenantId);
+        const t = pushI18n(lang);
+
+        const typeLabel = event.orderType === 'pickup' ? t.orderTypePickup
+            : event.orderType === 'dine_in' ? `${t.orderTypeDineIn}${event.tableNumber ? ` ${event.tableNumber}` : ''}`
+                : t.orderTypeDelivery;
+        const total = `${Number(event.total || 0).toLocaleString()} ${event.currency || ''}`.trim();
+
+        await this.notifyOwners(tenantId, {
+            title: t.newOrderTitle,
+            body: t.newOrderBody(event.customerName || t.contactFallback, typeLabel, total),
+            url: '/admin/food-orders',
+            tag: `food-order-${event.orderId}`,
+        });
+    }
+
+    /**
+     * Cancelacion desde el chat. Importa tanto como el alta: la cocina puede
+     * estar preparando el plato en ese mismo momento.
+     */
+    @OnEvent('food_order.cancelled')
+    async onFoodOrderCancelled(event: {
+        orderId: string;
+        tenantSchemaName?: string;
+        schemaName?: string;
+    }) {
+        const schema = event.schemaName || event.tenantSchemaName;
+        const tenantId = await this.resolveTenantId(schema);
+        if (!tenantId || !schema) return;
+
+        const lang = await this.getTenantLanguage(tenantId);
+        const t = pushI18n(lang);
+
+        // El evento de cancelacion no lleva el nombre (el cliente cancela citando
+        // solo el id del pedido); se lee del pedido ya guardado.
+        let customerName = t.contactFallback;
+        try {
+            const rows = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `SELECT customer_name FROM food_orders WHERE id = $1::uuid`,
+                [event.orderId],
+            );
+            if (rows[0]?.customer_name) customerName = rows[0].customer_name;
+        } catch {
+            // Un nombre que no se pudo leer no debe silenciar la alerta.
+        }
+
+        await this.notifyOwners(tenantId, {
+            title: t.orderCancelledTitle,
+            body: t.orderCancelledBody(customerName),
+            url: '/admin/food-orders',
+            tag: `food-order-cancel-${event.orderId}`,
+        });
     }
 }

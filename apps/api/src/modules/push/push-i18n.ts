@@ -65,6 +65,19 @@ interface PushStrings {
 
     /** onAppointment — title for new appointment */
     newAppointmentTitle: string;
+
+    /** onFoodOrder — title for a new food order placed from the chat */
+    newOrderTitle: string;
+    /** onFoodOrder — body: "{customerName} · {orderType} · {total}" */
+    newOrderBody: (customerName: string, orderType: string, total: string) => string;
+    /** onFoodOrder — order type labels shown in the body */
+    orderTypeDelivery: string;
+    orderTypePickup: string;
+    orderTypeDineIn: string;
+    /** onFoodOrderCancelled — title when the customer cancels from the chat */
+    orderCancelledTitle: string;
+    /** onFoodOrderCancelled — body: "{customerName} cancelled the order" */
+    orderCancelledBody: (customerName: string) => string;
 }
 
 const PUSH_STRINGS: Record<SupportedLang, PushStrings> = {
@@ -76,6 +89,13 @@ const PUSH_STRINGS: Record<SupportedLang, PushStrings> = {
         slaEscalationTitle:    'Escalación SLA',
         slaEscalationBody:     (name) => `${name} sin respuesta por más de 5 minutos`,
         newAppointmentTitle:   'Nueva cita agendada',
+        newOrderTitle:         '🍽️ Pedido nuevo',
+        newOrderBody:          (name, type, total) => `${name} · ${type} · ${total}`,
+        orderTypeDelivery:     'Domicilio',
+        orderTypePickup:       'Para recoger',
+        orderTypeDineIn:       'En mesa',
+        orderCancelledTitle:   'Pedido cancelado',
+        orderCancelledBody:    (name) => `${name} canceló su pedido`,
     },
     en: {
         handoffTitle:          'Escalated conversation',
@@ -85,6 +105,13 @@ const PUSH_STRINGS: Record<SupportedLang, PushStrings> = {
         slaEscalationTitle:    'SLA escalation',
         slaEscalationBody:     (name) => `${name} has been waiting for more than 5 minutes`,
         newAppointmentTitle:   'New appointment booked',
+        newOrderTitle:         '🍽️ New order',
+        newOrderBody:          (name, type, total) => `${name} · ${type} · ${total}`,
+        orderTypeDelivery:     'Delivery',
+        orderTypePickup:       'Pickup',
+        orderTypeDineIn:       'Dine-in',
+        orderCancelledTitle:   'Order cancelled',
+        orderCancelledBody:    (name) => `${name} cancelled their order`,
     },
     pt: {
         handoffTitle:          'Conversa escalada',
@@ -94,6 +121,13 @@ const PUSH_STRINGS: Record<SupportedLang, PushStrings> = {
         slaEscalationTitle:    'Escalação SLA',
         slaEscalationBody:     (name) => `${name} sem resposta há mais de 5 minutos`,
         newAppointmentTitle:   'Nova consulta agendada',
+        newOrderTitle:         '🍽️ Novo pedido',
+        newOrderBody:          (name, type, total) => `${name} · ${type} · ${total}`,
+        orderTypeDelivery:     'Entrega',
+        orderTypePickup:       'Para retirar',
+        orderTypeDineIn:       'Na mesa',
+        orderCancelledTitle:   'Pedido cancelado',
+        orderCancelledBody:    (name) => `${name} cancelou o pedido`,
     },
     fr: {
         handoffTitle:          'Conversation transférée',
@@ -103,6 +137,13 @@ const PUSH_STRINGS: Record<SupportedLang, PushStrings> = {
         slaEscalationTitle:    'Escalade SLA',
         slaEscalationBody:     (name) => `${name} sans réponse depuis plus de 5 minutes`,
         newAppointmentTitle:   'Nouveau rendez-vous planifié',
+        newOrderTitle:         '🍽️ Nouvelle commande',
+        newOrderBody:          (name, type, total) => `${name} · ${type} · ${total}`,
+        orderTypeDelivery:     'Livraison',
+        orderTypePickup:       'À emporter',
+        orderTypeDineIn:       'Sur place',
+        orderCancelledTitle:   'Commande annulée',
+        orderCancelledBody:    (name) => `${name} a annulé sa commande`,
     },
 };
 

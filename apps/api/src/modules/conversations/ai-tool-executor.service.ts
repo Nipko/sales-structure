@@ -176,7 +176,7 @@ export class AIToolExecutorService {
                     return this.getPropertyDetails(schemaName, args.propertyId);
 
                 case 'get_check_in_instructions':
-                    return this.getCheckInInstructions(schemaName, args.propertyId);
+                    return this.getCheckInInstructions(schemaName, contactId, args.propertyId);
 
                 case 'create_property_booking':
                     return this.createPropertyBooking(schemaName, contactId, args as any, conversationId);
@@ -317,7 +317,7 @@ export class AIToolExecutorService {
                     return this.createServiceRequestTool(schemaName, contactId, conversationId, args);
 
                 case 'check_request_status':
-                    return this.checkServiceRequestStatusTool(schemaName, args);
+                    return this.checkServiceRequestStatusTool(schemaName, contactId, args);
 
                 case 'cancel_service_request':
                     return this.cancelServiceRequest(schemaName, contactId, args.requestId, args.reason);
@@ -1699,10 +1699,38 @@ export class AIToolExecutorService {
     /**
      * Check-in instructions: door code, WiFi, parking, house rules.
      */
-    private async getCheckInInstructions(schema: string, propertyId: string): Promise<any> {
+    /**
+     * Instrucciones de acceso — SOLO para quien tiene la reserva.
+     *
+     * Esto devuelve `check_in_instructions` (en la practica: donde esta la
+     * llave, el codigo de la caja fuerte) y la direccion exacta. Antes bastaba
+     * con nombrar un propertyId, y los ids son triviales de obtener:
+     * list_properties devuelve el catalogo entero. Cualquiera podia navegar las
+     * unidades y pedir el codigo de puerta de una casa que en ese momento esta
+     * ocupada por otro huesped. No es una fuga de datos, es seguridad fisica.
+     *
+     * Se exige una reserva viva del propio contacto sobre esa propiedad. La
+     * ventana llega hasta el check-out: el huesped necesita el codigo durante
+     * toda su estadia, no solo el dia que llega.
+     */
+    private async getCheckInInstructions(schema: string, contactId: string, propertyId: string): Promise<any> {
         try {
             const p = await this.propertiesService.getById(schema, propertyId);
             if (!p) return { error: 'Property not found' };
+
+            const booking: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT 1 FROM "${schema}".property_bookings
+                 WHERE property_id = $1::uuid AND contact_id = $2::uuid
+                   AND status NOT IN ('cancelled', 'rejected')
+                   AND check_out >= CURRENT_DATE
+                 LIMIT 1`,
+                propertyId, contactId,
+            );
+            if (!booking.length) {
+                return {
+                    error: 'This customer has no active booking for that property. Do NOT share the address or access instructions. Offer to check their reservation or connect them with a human agent.',
+                };
+            }
 
             return {
                 propertyName: p.name,
@@ -2744,10 +2772,15 @@ export class AIToolExecutorService {
         }
     }
 
-    private async checkServiceRequestStatusTool(schemaName: string, args: any): Promise<any> {
+    private async checkServiceRequestStatusTool(schemaName: string, contactId: string, args: any): Promise<any> {
         try {
             const request = await this.homeServicesService.getRequestById(schemaName, args.requestId);
-            if (!request) return { error: 'Service request not found' };
+            // cancel_service_request ya cruzaba contra el contacto; consultar el
+            // estado no lo hacia, y devuelve a que hora va un tecnico a que
+            // domicilio. Mismo mensaje para "no existe" y "no es tuya".
+            if (!request || request.contact_id !== contactId) {
+                return { error: 'No service request with that id belongs to this customer.' };
+            }
             return {
                 requestId: request.id,
                 status: request.status,

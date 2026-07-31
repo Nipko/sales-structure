@@ -78,6 +78,9 @@ interface PushStrings {
     orderCancelledTitle: string;
     /** onFoodOrderCancelled — body: "{customerName} cancelled the order" */
     orderCancelledBody: (customerName: string) => string;
+
+    /** onPhotoSessionRequested — title when a new photo quote comes in from the chat */
+    newPhotoRequestTitle: string;
 }
 
 const PUSH_STRINGS: Record<SupportedLang, PushStrings> = {
@@ -96,6 +99,7 @@ const PUSH_STRINGS: Record<SupportedLang, PushStrings> = {
         orderTypeDineIn:       'En mesa',
         orderCancelledTitle:   'Pedido cancelado',
         orderCancelledBody:    (name) => `${name} canceló su pedido`,
+        newPhotoRequestTitle:  '📸 Nueva solicitud de sesión',
     },
     en: {
         handoffTitle:          'Escalated conversation',
@@ -112,6 +116,7 @@ const PUSH_STRINGS: Record<SupportedLang, PushStrings> = {
         orderTypeDineIn:       'Dine-in',
         orderCancelledTitle:   'Order cancelled',
         orderCancelledBody:    (name) => `${name} cancelled their order`,
+        newPhotoRequestTitle:  '📸 New session request',
     },
     pt: {
         handoffTitle:          'Conversa escalada',
@@ -128,6 +133,7 @@ const PUSH_STRINGS: Record<SupportedLang, PushStrings> = {
         orderTypeDineIn:       'Na mesa',
         orderCancelledTitle:   'Pedido cancelado',
         orderCancelledBody:    (name) => `${name} cancelou o pedido`,
+        newPhotoRequestTitle:  '📸 Nova solicitação de sessão',
     },
     fr: {
         handoffTitle:          'Conversation transférée',
@@ -144,6 +150,7 @@ const PUSH_STRINGS: Record<SupportedLang, PushStrings> = {
         orderTypeDineIn:       'Sur place',
         orderCancelledTitle:   'Commande annulée',
         orderCancelledBody:    (name) => `${name} a annulé sa commande`,
+        newPhotoRequestTitle:  '📸 Nouvelle demande de séance',
     },
 };
 

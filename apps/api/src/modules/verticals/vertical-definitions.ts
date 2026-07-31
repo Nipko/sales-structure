@@ -786,7 +786,13 @@ const PET_SERVICES: VerticalDefinition = {
     ],
     services: [
         { name: { es: 'Baño + corte (perro pequeño)', en: 'Bath + cut (small dog)', pt: 'Banho + tosa (pequeno)', fr: 'Bain + coupe (petit)' }, description: { es: 'Baño completo + corte de raza', en: 'Full bath + breed cut', pt: 'Banho completo', fr: 'Bain complet' }, durationMinutes: 90, price: 60000, currency: 'COP', category: 'peluqueria' },
-        { name: { es: 'Guardería diurna', en: 'Day care', pt: 'Creche diária', fr: 'Garderie journée' }, description: { es: 'Estancia 8-10h con socialización', en: '8-10h stay with socialization', pt: 'Permanência 8-10h', fr: 'Séjour 8-10h' }, durationMinutes: 480, price: 50000, currency: 'COP', category: 'guarderia' },
+        // Igual que el hotel: 480 minutos FIJOS convertían la guardería en un
+        // bloque de 8 horas que tapaba la agenda entera del día. Con el motor
+        // buscando un hueco de 480 min consecutivos, el negocio se quedaba sin
+        // poder ofrecer NADA hasta las 16:00 — baños y peluquería incluidos.
+        // Una guardería no ocupa una franja: ocupa el día, que es justo lo que
+        // significa 'open'.
+        { name: { es: 'Guardería diurna', en: 'Day care', pt: 'Creche diária', fr: 'Garderie journée' }, description: { es: 'Estancia 8-10h con socialización', en: '8-10h stay with socialization', pt: 'Permanência 8-10h', fr: 'Séjour 8-10h' }, durationMinutes: 480, price: 50000, currency: 'COP', category: 'guarderia', durationType: 'open' },
         // durationType 'open': una pernocta de 1440 min jamás cabe en la ventana
         // diaria de slots (08:00-18:00 = 600 min) — con slots fijos el generador
         // devolvía "no hay disponibilidad" para siempre, en bucle, para el

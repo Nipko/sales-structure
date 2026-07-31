@@ -217,6 +217,42 @@ export class PushListenerService {
     }
 
     /**
+     * Pedido de cotización de una sesión de fotos.
+     *
+     * `photo_session.requested` tenía un solo emisor y CERO oyentes: el
+     * fotógrafo no se enteraba de una cotización nueva salvo que abriera la
+     * página. En un rubro donde el estudio es una o dos personas que están
+     * fotografiando —no mirando un panel— eso es la cotización perdida, y el
+     * mensaje que el bot le manda al cliente ("el equipo te envía una propuesta
+     * en las próximas horas") queda dependiendo de que alguien mire.
+     */
+    @OnEvent('photo_session.requested')
+    async onPhotoSessionRequested(event: {
+        sessionId?: string;
+        tenantSchemaName?: string;
+        schemaName?: string;
+        customerName?: string;
+        packageName?: string;
+        sessionType?: string;
+        date?: string;
+    }) {
+        const tenantId = await this.resolveTenantId(event.schemaName || event.tenantSchemaName);
+        if (!tenantId) return;
+
+        const lang = await this.getTenantLanguage(tenantId);
+        const t = pushI18n(lang);
+
+        const what = event.packageName || event.sessionType || '';
+        const when = event.date ? ` · ${event.date}` : '';
+        await this.notifyOwners(tenantId, {
+            title: t.newPhotoRequestTitle,
+            body: `${event.customerName || t.contactFallback}${what ? ` · ${what}` : ''}${when}`,
+            url: '/admin/photo-sessions',
+            tag: `photo-session-${event.sessionId || 'new'}`,
+        });
+    }
+
+    /**
      * Cancelacion desde el chat. Importa tanto como el alta: la cocina puede
      * estar preparando el plato en ese mismo momento.
      */

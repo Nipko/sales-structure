@@ -648,6 +648,9 @@ export interface VerticalContext {
     transactionNoun?: string;
     serviceNoun?: string;
     industryGuidance?: string;
+    /** Industry + sub-type declared at signup (e.g. salud / dental). */
+    industry?: string;
+    subType?: string;
     /** Onboarding answers: what the owner wants the agent to achieve (free text for "other:…"). */
     businessGoals?: string[];
     /** Onboarding answers: who the business serves. */

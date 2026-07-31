@@ -1608,10 +1608,25 @@ export class ConversationsService {
                     await this.redis.setJson(cacheKey, verticalConfig, 600);
                 }
             }
+            // Industria y sub-tipo al prompt. El dueño elige con cuidado entre 4-6
+            // sub-tipos en el alta y en la mayoría de las verticales no cambiaba
+            // NADA. Bajarlos acá hace que muchos no necesiten rama de bootstrap: el
+            // modelo ya sabe que atiende una clínica dental y no un consultorio
+            // genérico, un hotel y no una agencia de tours.
+            if (verticalConfig?.industry || verticalConfig?.subType) {
+                turnContext.verticalContext = {
+                    ...(turnContext.verticalContext || {}),
+                    industry: verticalConfig.industry || undefined,
+                    subType: verticalConfig.subType || undefined,
+                };
+            }
             if (verticalConfig?.terminology) {
                 const lang = userLanguage || 'es';
                 const t = verticalConfig.terminology;
                 turnContext.verticalContext = {
+                    // spread: industry/subType se setean arriba y este bloque los
+                    // pisaría al reasignar el objeto entero.
+                    ...(turnContext.verticalContext || {}),
                     customerNoun: t.customerNoun?.[lang] || t.customerNoun?.es,
                     customerNounPlural: t.customerNounPlural?.[lang] || t.customerNounPlural?.es,
                     transactionNoun: t.transactionNoun?.[lang] || t.transactionNoun?.es,

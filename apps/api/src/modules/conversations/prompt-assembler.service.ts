@@ -153,6 +153,8 @@ export class PromptAssemblerService {
         if (turn.verticalContext) {
             lines.push('  <vertical_context>');
             const vc = turn.verticalContext;
+            if (vc.industry) lines.push(`    <industry>${vc.industry}</industry>`);
+            if (vc.subType) lines.push(`    <business_type>${vc.subType}</business_type>`);
             if (vc.customerNoun) lines.push(`    <customer_noun>${vc.customerNoun}</customer_noun>`);
             if (vc.customerNounPlural) lines.push(`    <customer_noun_plural>${vc.customerNounPlural}</customer_noun_plural>`);
             if (vc.transactionNoun) lines.push(`    <transaction_noun>${vc.transactionNoun}</transaction_noun>`);

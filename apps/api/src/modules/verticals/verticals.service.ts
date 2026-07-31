@@ -1060,22 +1060,31 @@ export class VerticalsService {
      */
     private async enableSimpleTool(schemaName: string, toolKey: string): Promise<void> {
         try {
+            // TODOS los agentes activos, no solo el default. Con multi-canal (un
+            // agente por conexión) el segundo agente nacía mudo: el tenant conectaba
+            // Instagram, le asignaba un agente y ese agente no tenía las tools de su
+            // propia industria. La capacidad es del NEGOCIO, no de un agente.
             const agents = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+                `SELECT id, config_json FROM agent_personas WHERE is_active = true`,
             );
-            const agent = agents?.[0];
-            if (!agent) return;
-            const config = agent.config_json || {};
-            const tools = { ...(config.tools || {}) };
-            tools[toolKey] = { ...(tools[toolKey] || {}), enabled: true };
-            const newConfig = { ...config, tools };
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
-                [JSON.stringify(newConfig), agent.id],
-            );
-            this.logger.debug(`Enabled ${toolKey} tool on default agent`);
+            if (!agents?.length) return;
+
+            for (const agent of agents) {
+                const config = agent.config_json || {};
+                const tools = { ...(config.tools || {}) };
+                // Si el dueño ya la apagó a propósito en ESTE agente, se respeta:
+                // solo se enciende lo que no tiene decisión previa explícita.
+                if (tools[toolKey] && tools[toolKey].enabled === false) continue;
+                tools[toolKey] = { ...(tools[toolKey] || {}), enabled: true };
+                const newConfig = { ...config, tools };
+                await this.prisma.executeInTenantSchema(
+                    schemaName,
+                    `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                    [JSON.stringify(newConfig), agent.id],
+                );
+            }
+            this.logger.debug(`Enabled ${toolKey} tool on ${agents.length} active agent(s)`);
         } catch (error: any) {
             this.logger.warn(`Failed to enable ${toolKey} tool: ${error.message}`);
         }

@@ -2701,17 +2701,56 @@ export class PersonaService {
                 // Antes siempre ganaba [0]: un operador de tours recibía la persona
                 // genérica de ventas aunque el bootstrap le encendiera tools.tours —
                 // la persona activa ni mencionaba los tours que podía vender.
+                // El sub-tipo elige la plantilla dentro de la vertical. Sin este mapa
+                // el default es `templates[0]`, y por eso las plantillas RICAS eran
+                // literalmente inalcanzables desde el alta: la clínica dental recibía
+                // la recepción genérica, el gimnasio de clases recibía al vendedor de
+                // membresías, y la inmobiliaria recibía al vendedor en vez de la
+                // persona con la disciplina de "no inventes propiedades".
+                // Regla: solo se mapea cuando existe una plantilla MEJOR que la [0]
+                // para ese sub-tipo; si no, el default sigue siendo correcto.
                 const bySubType: Record<string, string> = {
+                    // turismo
                     tours: 'tpl_turismo_tours',
                     agencia_viajes: 'tpl_turismo_agencia',
+                    // pet_services / restaurantes
                     tienda: 'tpl_pet_tienda',
                     delivery: 'tpl_restaurante_delivery',
                     dark_kitchen: 'tpl_restaurante_delivery',
-                    // dental: el bootstrap enciende tools.treatments para este
-                    // sub-tipo, pero la única plantilla que instruye usarlas (y el
-                    // protocolo de urgencias + recall) es tpl_salud_dental — sin el
-                    // mapeo, la clínica dental recibía la persona genérica de salud.
+                    comida_rapida: 'tpl_restaurante_delivery',
+                    casual_dining: 'tpl_restaurante_reservas',
+                    // salud: el bootstrap enciende tools.treatments para dental, y la
+                    // única plantilla que instruye usarlas (más el protocolo de
+                    // urgencias y el recall) es tpl_salud_dental.
                     dental: 'tpl_salud_dental',
+                    // inmobiliaria: listings trae la regla "no inventes propiedades"
+                    // y el uso de search_listings; ventas (la [0]) no las menciona.
+                    venta: 'tpl_inmobiliaria_listings',
+                    arriendo: 'tpl_inmobiliaria_listings',
+                    comercial: 'tpl_inmobiliaria_listings',
+                    // gimnasios: el de clases usa las tools de membresía y reserva.
+                    crossfit: 'tpl_gimnasio_clases',
+                    yoga_pilates: 'tpl_gimnasio_clases',
+                    cycling: 'tpl_gimnasio_clases',
+                    martial_arts: 'tpl_gimnasio_clases',
+                    // automotriz: el taller es AGENDA de servicio, no inventario.
+                    taller: 'tpl_automotriz_servicio',
+                    // education
+                    idiomas: 'tpl_educacion_inscripciones',
+                    universitaria: 'tpl_educacion_inscripciones',
+                    online: 'tpl_educacion_inscripciones',
+                    capacitacion: 'tpl_educacion_inscripciones',
+                    // seguros: el broker cotiza; la aseguradora directa también.
+                    broker: 'tpl_seguros_cotizador',
+                    aseguradora: 'tpl_seguros_cotizador',
+                    // moda_belleza: la boutique es RETAIL de ropa, no agenda —
+                    // mientras siga en esta vertical, al menos recibe la persona de
+                    // productos en vez de la agendadora de peluquería.
+                    boutique: 'tpl_belleza_productos',
+                    // fotografía
+                    bodas: 'tpl_foto_reservas',
+                    // servicios_profesionales
+                    abogados: 'tpl_legal_consulta',
                 };
                 const preferredId = subType ? bySubType[subType] : undefined;
                 if (preferredId) {

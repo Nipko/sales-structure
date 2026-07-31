@@ -6,6 +6,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { PropertiesService } from './properties.service';
 import { IcalSyncService } from './ical-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -119,9 +120,12 @@ export class VacationRentalController {
         return { success: true, data };
     }
 
+    // Same reasoning as the sync endpoint: this now reaches imported blocks
+    // too, so it can free a date an OTA still holds.
     @Delete(':tenantId/blocks/:blockId')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Delete a manual calendar block' })
+    @ApiOperation({ summary: 'Delete a calendar block (manual or imported)' })
     async deleteBlock(
         @Param('tenantId') tenantId: string,
         @Param('blockId') blockId: string,
@@ -290,15 +294,26 @@ export class VacationRentalController {
         return { success: true };
     }
 
+    // Freeing dates is the expensive direction (it can produce a double
+    // booking), and a sync — `force` especially — can free them in bulk.
+    // RolesGuard waves through any handler with no @Roles metadata, so without
+    // this the lowest role in the tenant could clear a whole calendar.
     @Post(':tenantId/feeds/:feedId/sync')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Manually trigger iCal feed sync' })
     async syncFeed(
         @Param('tenantId') tenantId: string,
         @Param('feedId') feedId: string,
+        // `force=true` skips the empty-calendar grace period. The owner has
+        // already checked the OTA and knows the dates are free — this is the
+        // escape hatch for a feed that emptied out and left blocks stranded.
+        @Query('force') force?: string,
     ) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const result = await this.icalSyncService.syncFeed(schemaName, feedId);
+        const result = await this.icalSyncService.syncFeed(schemaName, feedId, {
+            force: force === 'true',
+        });
         return { success: true, data: result };
     }
 }

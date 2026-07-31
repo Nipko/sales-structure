@@ -5814,7 +5814,7 @@
     "blockNote": "Note (optional)",
     "blockNotePlaceholder": "E.g. maintenance, personal use, owner stay...",
     "blockHowTo": "To block multiple days: click the start day, then the end day.",
-    "unblockConfirm": "Unblock {date}? Only manual blocks can be removed.",
+    "unblockConfirm": "Free up {date}? The date becomes available again.",
     "photoMaxSizeNote": "max {maxMb}MB each",
     "photoLimitReached": "Maximum {max} photos per property",
     "photoLimitWillExceed": "Only uploaded the first photos up to the {max} limit. {dropped} files were skipped.",
@@ -5926,7 +5926,13 @@
       "CLP": "CLP — Chilean Peso",
       "PEN": "PEN — Peruvian Sol",
       "EUR": "EUR — Euro"
-    }
+    },
+    "unblockImportedWarning": "This block came from {source}. If the reservation is still live there, the next sync will re-create it — check {source} first.",
+    "feedForceCleanup": "I checked the OTA: free them now",
+    "syncResult": "{imported} imported · {deleted} freed",
+    "feedHoldWarning": "{source} asked to free nearly every block on this calendar at once. That can be real or a broken export, so it is held for ~90 min as a safeguard. If you already checked on {source} that the dates are free, free them now.",
+    "confirmForceCleanup": "This immediately frees every block this calendar stopped reporting, with no undo. If any reservation is still live on the OTA, that date is exposed to a double booking. Did you verify on the OTA that they are free?",
+    "syncResultHeld": "Calendar came back nearly empty: {pending} block(s) held as a safeguard, released automatically in ~{minutes} min."
   },
   "verticalEmptyStates": {
     "salud": {
@@ -7561,9 +7567,7 @@
     "stratum": "Stratum",
     "yearBuilt": "Year built",
     "address": "Address",
-    "neighborhood": "Neighborhood",
     "neighborhoodPlaceholder": "E.g. Chapinero",
-    "city": "City",
     "description": "Description",
     "descriptionPlaceholder": "Features, views, neighborhood, what makes it special...",
     "externalUrl": "External URL (Zillow, Idealista, etc.)",
@@ -8461,17 +8465,17 @@
     "amountPaid": "Amount paid",
     "amountPaidHint": "Leave blank to keep",
     "enrollStatus": {
-        "enrolled": "Enrolled",
-        "active": "In progress",
-        "completed": "Completed",
-        "dropped": "Dropped",
-        "refunded": "Refunded"
+      "enrolled": "Enrolled",
+      "active": "In progress",
+      "completed": "Completed",
+      "dropped": "Dropped",
+      "refunded": "Refunded"
     },
     "payStatus": {
-        "pending": "Pending",
-        "partial": "Partial",
-        "paid": "Paid",
-        "refunded": "Refunded"
+      "pending": "Pending",
+      "partial": "Partial",
+      "paid": "Paid",
+      "refunded": "Refunded"
     },
     "payment": "Payment",
     "progress": "Progress",

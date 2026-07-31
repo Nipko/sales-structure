@@ -1424,7 +1424,7 @@ export const api = {
     addPropertyFeed: (tenantId: string, propertyId: string, data: any) => apiPost(`/vacation-rental/${tenantId}/properties/${propertyId}/feeds`, data),
     updatePropertyFeed: (tenantId: string, feedId: string, data: any) => apiPut(`/vacation-rental/${tenantId}/feeds/${feedId}`, data),
     deletePropertyFeed: (tenantId: string, feedId: string) => apiDelete(`/vacation-rental/${tenantId}/feeds/${feedId}`),
-    syncPropertyFeed: (tenantId: string, feedId: string) => apiPost(`/vacation-rental/${tenantId}/feeds/${feedId}/sync`, {}),
+    syncPropertyFeed: (tenantId: string, feedId: string, force = false) => apiPost(`/vacation-rental/${tenantId}/feeds/${feedId}/sync${force ? '?force=true' : ''}`, {}),
     createPropertyBlock: (tenantId: string, propertyId: string, data: { checkIn: string, checkOut: string, summary?: string }) => apiPost(`/vacation-rental/${tenantId}/properties/${propertyId}/blocks`, data),
     deletePropertyBlock: (tenantId: string, blockId: string) => apiDelete(`/vacation-rental/${tenantId}/blocks/${blockId}`),
 

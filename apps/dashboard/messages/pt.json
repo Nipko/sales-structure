@@ -5814,7 +5814,7 @@
     "blockNote": "Detalhe (opcional)",
     "blockNotePlaceholder": "Ex: manutenção, uso pessoal, proprietário...",
     "blockHowTo": "Para bloquear vários dias: clique no dia inicial, depois no dia final.",
-    "unblockConfirm": "Desbloquear {date}? Apenas bloqueios manuais podem ser removidos.",
+    "unblockConfirm": "Liberar {date}? A data volta a ficar disponível.",
     "photoMaxSizeNote": "máx {maxMb}MB cada",
     "photoLimitReached": "Máximo {max} fotos por imóvel",
     "photoLimitWillExceed": "Apenas as primeiras fotos foram enviadas até o limite de {max}. {dropped} arquivos foram ignorados.",
@@ -5926,7 +5926,13 @@
       "CLP": "CLP — Peso chileno",
       "PEN": "PEN — Sol peruano",
       "EUR": "EUR — Euro"
-    }
+    },
+    "unblockImportedWarning": "Este bloqueio veio de {source}. Se a reserva ainda estiver ativa lá, a próxima sincronização vai recriá-lo — verifique primeiro no {source}.",
+    "feedForceCleanup": "Verifiquei na OTA: liberar agora",
+    "syncResult": "{imported} importados · {deleted} liberados",
+    "feedHoldWarning": "{source} pediu para liberar de uma vez quase todos os bloqueios deste calendário. Pode ser real ou uma falha na exportação, então fica retido por ~90 min por segurança. Se você já verificou no {source} que as datas estão livres, libere agora.",
+    "confirmForceCleanup": "Isto libera imediatamente todos os bloqueios que este calendário deixou de reportar, sem desfazer. Se alguma reserva ainda estiver ativa na OTA, a data fica exposta a reserva dupla. Você verificou na OTA que estão livres?",
+    "syncResultHeld": "Calendário quase vazio: {pending} bloqueio(s) retidos por segurança, liberados sozinhos em ~{minutes} min."
   },
   "verticalEmptyStates": {
     "salud": {
@@ -7561,9 +7567,7 @@
     "stratum": "Estrato",
     "yearBuilt": "Ano de construção",
     "address": "Endereço",
-    "neighborhood": "Bairro",
     "neighborhoodPlaceholder": "Ex: Pinheiros",
-    "city": "Cidade",
     "description": "Descrição",
     "descriptionPlaceholder": "Características, vista, vizinhança, o que torna especial...",
     "externalUrl": "URL externa (ZAP, VivaReal, etc.)",
@@ -8461,17 +8465,17 @@
     "amountPaid": "Valor pago",
     "amountPaidHint": "Deixe em branco para manter",
     "enrollStatus": {
-        "enrolled": "Inscrito",
-        "active": "Cursando",
-        "completed": "Concluído",
-        "dropped": "Desistiu",
-        "refunded": "Reembolsado"
+      "enrolled": "Inscrito",
+      "active": "Cursando",
+      "completed": "Concluído",
+      "dropped": "Desistiu",
+      "refunded": "Reembolsado"
     },
     "payStatus": {
-        "pending": "Pendente",
-        "partial": "Parcial",
-        "paid": "Pago",
-        "refunded": "Reembolsado"
+      "pending": "Pendente",
+      "partial": "Parcial",
+      "paid": "Pago",
+      "refunded": "Reembolsado"
     },
     "payment": "Pagamento",
     "progress": "Progresso",

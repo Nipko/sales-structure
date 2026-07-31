@@ -5814,7 +5814,7 @@
     "blockNote": "Detalle (opcional)",
     "blockNotePlaceholder": "Ej: Mantenimiento, uso personal, propietario...",
     "blockHowTo": "Para bloquear varios días: clic en el día inicial, luego clic en el día final.",
-    "unblockConfirm": "¿Desbloquear el {date}? Solo se pueden desbloquear los bloqueos manuales.",
+    "unblockConfirm": "¿Liberar el {date}? La fecha vuelve a quedar disponible.",
     "photoMaxSizeNote": "máx {maxMb}MB c/u",
     "photoLimitReached": "Máximo {max} fotos por propiedad",
     "photoLimitWillExceed": "Solo se subieron las primeras fotos hasta el límite de {max}. {dropped} archivos no se incluyeron.",
@@ -5926,7 +5926,13 @@
       "CLP": "CLP — Peso chileno",
       "PEN": "PEN — Sol peruano",
       "EUR": "EUR — Euro"
-    }
+    },
+    "unblockImportedWarning": "Este bloqueo vino de {source}. Si la reserva sigue viva allá, la próxima sincronización lo vuelve a crear — verificá primero en {source}.",
+    "feedForceCleanup": "Verifiqué en la OTA: liberar ahora",
+    "syncResult": "{imported} importados · {deleted} liberados",
+    "feedHoldWarning": "{source} pidió liberar de golpe casi todos los bloqueos de este calendario. Puede ser real o una falla de su exportación, así que se retiene ~90 min por seguridad. Si ya verificaste en {source} que las fechas están libres, liberalas ahora.",
+    "confirmForceCleanup": "Esto libera de inmediato todos los bloqueos que este calendario dejó de reportar, sin deshacer. Si alguna reserva sigue viva en la OTA, la fecha queda expuesta a doble venta. ¿Verificaste en la OTA que están libres?",
+    "syncResultHeld": "Calendario casi vacío: {pending} bloqueo(s) retenidos por seguridad, se liberan solos en ~{minutes} min."
   },
   "verticalEmptyStates": {
     "salud": {
@@ -7561,9 +7567,7 @@
     "stratum": "Estrato",
     "yearBuilt": "Año construcción",
     "address": "Dirección",
-    "neighborhood": "Barrio",
     "neighborhoodPlaceholder": "Ej: Chapinero",
-    "city": "Ciudad",
     "description": "Descripción",
     "descriptionPlaceholder": "Características, vista, vecindario, qué la hace especial...",
     "externalUrl": "URL externa (Finca Raíz, Metrocuadrado, etc.)",
@@ -8461,17 +8465,17 @@
     "amountPaid": "Monto pagado",
     "amountPaidHint": "Dejar vacío para no tocar",
     "enrollStatus": {
-        "enrolled": "Inscrito",
-        "active": "Cursando",
-        "completed": "Completado",
-        "dropped": "Dado de baja",
-        "refunded": "Reembolsado"
+      "enrolled": "Inscrito",
+      "active": "Cursando",
+      "completed": "Completado",
+      "dropped": "Dado de baja",
+      "refunded": "Reembolsado"
     },
     "payStatus": {
-        "pending": "Pendiente",
-        "partial": "Parcial",
-        "paid": "Pagado",
-        "refunded": "Reembolsado"
+      "pending": "Pendiente",
+      "partial": "Parcial",
+      "paid": "Pagado",
+      "refunded": "Reembolsado"
     },
     "payment": "Pago",
     "progress": "Avance",

@@ -215,12 +215,19 @@ export class PropertiesService {
     }
 
     /**
-     * Delete a manual calendar block.
+     * Delete a calendar block (manual or imported).
+     *
+     * Imported blocks are legitimately removable — an OTA that stops exporting
+     * an event can leave a block stranded — but the next sync re-creates it if
+     * the feed still carries the UID, so the UI has to say so.
      */
     async deleteBlock(schemaName: string, blockId: string): Promise<void> {
         await this.prisma.executeInTenantSchema(
             schemaName,
-            `UPDATE ical_blocks SET is_deleted = true, updated_at = NOW() WHERE id = $1::uuid`,
+            // No `updated_at` here: ical_blocks never had that column, so the
+            // old query raised 42703 and the 500 was swallowed by the dashboard
+            // — unblocking silently did nothing for every block, ever.
+            `UPDATE ical_blocks SET is_deleted = true WHERE id = $1::uuid`,
             [blockId],
         );
     }

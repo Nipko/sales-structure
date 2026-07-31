@@ -5814,7 +5814,7 @@
     "blockNote": "Détail (optionnel)",
     "blockNotePlaceholder": "Ex: maintenance, usage personnel, propriétaire...",
     "blockHowTo": "Pour bloquer plusieurs jours : cliquez sur le jour de début, puis sur le jour de fin.",
-    "unblockConfirm": "Débloquer le {date} ? Seuls les blocages manuels peuvent être retirés.",
+    "unblockConfirm": "Libérer le {date} ? La date redevient disponible.",
     "photoMaxSizeNote": "max {maxMb} Mo chacune",
     "photoLimitReached": "Maximum {max} photos par propriété",
     "photoLimitWillExceed": "Seules les premières photos ont été téléchargées jusqu'à la limite de {max}. {dropped} fichiers ignorés.",
@@ -5926,7 +5926,13 @@
       "CLP": "CLP — Peso chilien",
       "PEN": "PEN — Sol péruvien",
       "EUR": "EUR — Euro"
-    }
+    },
+    "unblockImportedWarning": "Ce blocage vient de {source}. Si la réservation y est toujours active, la prochaine synchronisation le recréera — vérifiez d’abord sur {source}.",
+    "feedForceCleanup": "J’ai vérifié sur l’OTA : libérer maintenant",
+    "syncResult": "{imported} importés · {deleted} libérés",
+    "feedHoldWarning": "{source} a demandé de libérer d’un coup presque tous les blocages de ce calendrier. Cela peut être réel ou un export cassé, donc c’est retenu ~90 min par sécurité. Si vous avez déjà vérifié sur {source} que les dates sont libres, libérez-les maintenant.",
+    "confirmForceCleanup": "Ceci libère immédiatement tous les blocages que ce calendrier a cessé de signaler, sans annulation possible. Si une réservation est encore active sur l’OTA, la date est exposée à une double réservation. Avez-vous vérifié sur l’OTA qu’elles sont libres ?",
+    "syncResultHeld": "Calendrier presque vide : {pending} blocage(s) retenus par sécurité, libérés automatiquement dans ~{minutes} min."
   },
   "verticalEmptyStates": {
     "salud": {
@@ -7561,9 +7567,7 @@
     "stratum": "Strate",
     "yearBuilt": "Année de construction",
     "address": "Adresse",
-    "neighborhood": "Quartier",
     "neighborhoodPlaceholder": "Ex: Marais",
-    "city": "Ville",
     "description": "Description",
     "descriptionPlaceholder": "Caractéristiques, vue, quartier, ce qui la rend spéciale...",
     "externalUrl": "URL externe (SeLoger, LeBonCoin, etc.)",
@@ -8461,17 +8465,17 @@
     "amountPaid": "Montant payé",
     "amountPaidHint": "Laisser vide pour conserver",
     "enrollStatus": {
-        "enrolled": "Inscrit",
-        "active": "En cours",
-        "completed": "Terminé",
-        "dropped": "Abandonné",
-        "refunded": "Remboursé"
+      "enrolled": "Inscrit",
+      "active": "En cours",
+      "completed": "Terminé",
+      "dropped": "Abandonné",
+      "refunded": "Remboursé"
     },
     "payStatus": {
-        "pending": "En attente",
-        "partial": "Partiel",
-        "paid": "Payé",
-        "refunded": "Remboursé"
+      "pending": "En attente",
+      "partial": "Partiel",
+      "paid": "Payé",
+      "refunded": "Remboursé"
     },
     "payment": "Paiement",
     "progress": "Progrès",

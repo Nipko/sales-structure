@@ -86,6 +86,12 @@ interface Feed {
   events_imported: number;
   last_sync_status: string | null;
   last_sync_error: string | null;
+  /**
+   * Set only while a mass-removal is being held pending confirmation. NULL is
+   * the normal state — including for a feed that legitimately has no bookings,
+   * which is why the warning keys on this and not on events_imported === 0.
+   */
+  sweep_hold_since?: string | null;
 }
 
 const FEED_SOURCES = ["Airbnb", "Booking", "Vrbo", "Otro"];
@@ -827,7 +833,8 @@ function CalendarTab({
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [blockNote, setBlockNote] = useState("");
   const [blockSaving, setBlockSaving] = useState(false);
-  const [unblockTarget, setUnblockTarget] = useState<{ blockId: string; date: string } | null>(null);
+  const [unblockTarget, setUnblockTarget] = useState<{ blockId: string; date: string; source: string | null } | null>(null);
+  const [unblockError, setUnblockError] = useState<string | null>(null);
   const [hoverDate, setHoverDate] = useState<string | null>(null);
 
   useEffect(() => {
@@ -866,8 +873,11 @@ function CalendarTab({
   function handleDayClick(cell: any) {
     if (cell.status === "past" || cell.status === "booked") return;
 
-    if (cell.status === "blocked" && cell.source === "Manual" && cell.blockId) {
-      setUnblockTarget({ blockId: cell.blockId, date: cell.date });
+    // Imported blocks are unblockable too — an OTA that stops exporting an
+    // event leaves the block stranded and the owner needs a way out. The modal
+    // warns that the next sync re-creates it if the feed still carries it.
+    if (cell.status === "blocked" && cell.blockId) {
+      setUnblockTarget({ blockId: cell.blockId, date: cell.date, source: cell.source || null });
       return;
     }
     if (cell.status === "blocked") return;
@@ -917,7 +927,14 @@ function CalendarTab({
 
   async function handleConfirmUnblock() {
     if (!unblockTarget) return;
-    await api.deletePropertyBlock(tenantId, unblockTarget.blockId);
+    setUnblockError(null);
+    const res = await api.deletePropertyBlock(tenantId, unblockTarget.blockId);
+    // apiDelete wraps backend failures as {success:false} with HTTP 200, so a
+    // blind redirect here is how this silently did nothing for months.
+    if (!res.success) {
+      setUnblockError(res.error || tcCommon("errorSaving"));
+      return;
+    }
     setUnblockTarget(null);
     loadCalendar();
   }
@@ -1027,7 +1044,7 @@ function CalendarTab({
               }
               else if (c.status === "blocked") {
                 bg = "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400";
-                cursor = c.source === 'Manual' ? "cursor-pointer hover:ring-2 hover:ring-amber-500 hover:ring-offset-1" : "cursor-not-allowed opacity-80";
+                cursor = c.blockId ? "cursor-pointer hover:ring-2 hover:ring-amber-500 hover:ring-offset-1" : "cursor-not-allowed opacity-80";
               }
               else if (c.status === "past") {
                 bg = "bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500";
@@ -1138,12 +1155,20 @@ function CalendarTab({
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white dark:bg-neutral-900 rounded-xl p-5 w-full max-w-xs shadow-xl">
             <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-2">{t("unblockDate")}</h4>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-2">
               {t("unblockConfirm", { date: unblockTarget.date })}
             </p>
+            {unblockTarget.source && unblockTarget.source !== "Manual" && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
+                {t("unblockImportedWarning", { source: unblockTarget.source })}
+              </p>
+            )}
+            {unblockError && (
+              <p className="text-xs text-red-600 dark:text-red-400 mb-3 break-words">{unblockError}</p>
+            )}
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setUnblockTarget(null)}
+                onClick={() => { setUnblockTarget(null); setUnblockError(null); }}
                 className="px-3 py-1.5 rounded-lg text-sm text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               >
                 {tcCommon("cancel")}
@@ -1272,7 +1297,12 @@ function FeedsTab({
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [syncing, setSyncing] = useState<string | null>(null);
+  // Keyed by feedId: two feeds can be in flight at once, and a slow one
+  // finishing must not clear the other's spinner or overwrite its result.
+  const [inflight, setInflight] = useState<Set<string>>(new Set());
+  const [syncResults, setSyncResults] = useState<
+    Record<string, { imported?: number; deleted?: number; empty?: boolean; pendingSweep?: number; holdMinutesLeft?: number; skipped?: boolean; error?: string }>
+  >({});
   const [copied, setCopied] = useState(false);
   const [form, setForm] = useState({ name: "", source: "Airbnb", import_url: "" });
   const [editingFeedId, setEditingFeedId] = useState<string | null>(null);
@@ -1333,11 +1363,29 @@ function FeedsTab({
     setShowForm(true);
   }
 
-  async function handleSync(feedId: string) {
-    setSyncing(feedId);
-    await api.syncPropertyFeed(tenantId, feedId);
+  async function handleSync(feedId: string, force = false) {
+    // The force path frees every block the feed is not currently reporting, in
+    // one shot and with no undo. Never on a single click.
+    if (force && !confirm(t("confirmForceCleanup"))) return;
+
+    setInflight((s) => new Set(s).add(feedId));
+    setSyncResults((r) => {
+      const { [feedId]: _drop, ...rest } = r;
+      return rest;
+    });
+    const res = await api.syncPropertyFeed(tenantId, feedId, force);
+    // Reporting the outcome is the whole point: a sync that imports 0 and
+    // deletes 0 used to look identical to one that worked.
+    setSyncResults((r) => ({
+      ...r,
+      [feedId]: res.success ? (res.data || {}) : { error: res.error || tc("errorSaving") },
+    }));
     await loadFeeds();
-    setSyncing(null);
+    setInflight((s) => {
+      const next = new Set(s);
+      next.delete(feedId);
+      return next;
+    });
   }
 
   function copyExportUrl() {
@@ -1508,6 +1556,43 @@ function FeedsTab({
                       {f.last_sync_error}
                     </p>
                   )}
+
+                  {/* Keyed on sweep_hold_since, NOT on events_imported === 0:
+                      a brand-new property whose calendar legitimately has no
+                      bookings syncs successfully with 0 events forever, and
+                      must not sit under a permanent alarm offering to wipe it. */}
+                  {f.sweep_hold_since && (
+                    <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-2.5 py-2">
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                        {t("feedHoldWarning", { source: f.source })}
+                      </p>
+                      <button
+                        onClick={() => handleSync(f.id, true)}
+                        disabled={inflight.has(f.id)}
+                        className="mt-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-400 underline underline-offset-2 hover:no-underline disabled:opacity-50"
+                      >
+                        {t("feedForceCleanup")}
+                      </button>
+                    </div>
+                  )}
+
+                  {syncResults[f.id] && (
+                    <p className={`mt-1.5 text-[11px] break-words ${syncResults[f.id].error ? "text-red-600 dark:text-red-400" : "text-neutral-500 dark:text-neutral-400"}`}>
+                      {syncResults[f.id].error
+                        ? syncResults[f.id].error
+                        : (syncResults[f.id].pendingSweep ?? 0) > 0
+                          // "0 importados · 0 liberados" would be byte-identical
+                          // to the old silent no-op. Say what is being held.
+                          ? t("syncResultHeld", {
+                              pending: syncResults[f.id].pendingSweep ?? 0,
+                              minutes: syncResults[f.id].holdMinutesLeft ?? 0,
+                            })
+                          : t("syncResult", {
+                              imported: syncResults[f.id].imported ?? 0,
+                              deleted: syncResults[f.id].deleted ?? 0,
+                            })}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -1526,10 +1611,10 @@ function FeedsTab({
                   </button>
                   <button
                     onClick={() => handleSync(f.id)}
-                    disabled={syncing === f.id}
+                    disabled={inflight.has(f.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 transition-colors ml-2"
                   >
-                    <RefreshCw size={14} className={syncing === f.id ? "animate-spin" : ""} />
+                    <RefreshCw size={14} className={inflight.has(f.id) ? "animate-spin" : ""} />
                     {t("syncNow")}
                   </button>
                 </div>

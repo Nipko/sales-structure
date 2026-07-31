@@ -1,20 +1,134 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import * as ical from 'node-ical';
 import ICalGenerator, { ICalCalendarMethod, ICalEventStatus } from 'ical-generator';
 import axios from 'axios';
+
+export interface IcalSyncResult {
+    imported: number;
+    deleted: number;
+    /** The feed answered with a well-formed calendar that carries zero events. */
+    empty: boolean;
+    /**
+     * Blocks this sync WOULD have freed but held back, because losing that many
+     * at once looks more like a broken export than a wave of cancellations.
+     * 0 when nothing is on hold.
+     */
+    pendingSweep: number;
+    /** Minutes left on the hold before the sweep goes through on its own. */
+    holdMinutesLeft: number;
+    /** Another run already had this feed locked; nothing was done. */
+    skipped: boolean;
+}
+
+const EMPTY_RESULT: IcalSyncResult = {
+    imported: 0, deleted: 0, empty: false, pendingSweep: 0, holdMinutesLeft: 0, skipped: false,
+};
 
 @Injectable()
 export class IcalSyncService {
     private readonly logger = new Logger(IcalSyncService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    /**
+     * How long a suspicious mass-removal has to keep saying the same thing
+     * before we act on it.
+     *
+     * An OTA that genuinely emptied its calendar and one whose export broke
+     * answer identically in a single poll, so a poll count is no evidence at
+     * all — the manual sync button would let three clicks in ten seconds
+     * "confirm" it. Wall-clock is the only thing that can't be rushed.
+     *
+     * Freeing a date that is still booked causes a double booking; holding a
+     * stale block another hour just annoys the owner. The tie breaks toward
+     * holding, and `force` exists for when the owner has checked the OTA.
+     */
+    private static readonly SWEEP_HOLD_MINUTES = 90;
 
     /**
-     * Sync a single iCal feed — fetch URL, parse events, upsert blocks
+     * A sweep is "suspicious" when it would remove at least this many blocks
+     * AND more than half of everything the feed currently holds. An ordinary
+     * cancellation (one or two nights out of many) never trips it and lands
+     * immediately; a feed that drops to zero — or to near-zero — does.
      */
-    async syncFeed(schemaName: string, feedId: string): Promise<{imported: number, deleted: number}> {
+    private static readonly BULK_SWEEP_MIN = 2;
+
+    /** Schemas whose late-added columns we've already reconciled this process. */
+    private readonly ensuredSchemas = new Set<string>();
+
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly redis: RedisService,
+    ) {}
+
+    /**
+     * `feed_id` and `sweep_hold_since` landed after the tables shipped. The
+     * deploy re-applies tenant-schema.sql per tenant but swallows failures
+     * (`|| true`), so one tenant can silently miss them and every later sync
+     * would 42703. Reconcile lazily instead of trusting that pass.
+     *
+     * Returns false when the schema is still missing them, so the caller can
+     * bail BEFORE writing — a half-applied schema that fails only at step 5
+     * would leave the tombstones committed and the feed marked 'error'.
+     */
+    private async ensureColumns(schemaName: string): Promise<boolean> {
+        if (this.ensuredSchemas.has(schemaName)) return true;
+        try {
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `ALTER TABLE ical_blocks ADD COLUMN IF NOT EXISTS feed_id UUID`,
+            );
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `ALTER TABLE ical_feeds ADD COLUMN IF NOT EXISTS sweep_hold_since TIMESTAMP`,
+            );
+            this.ensuredSchemas.add(schemaName);
+            return true;
+        } catch (e: any) {
+            this.logger.error(`ensureColumns failed on ${schemaName}, skipping sync: ${e.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Sync a single iCal feed — fetch URL, parse events, upsert blocks,
+     * tombstone whatever the feed no longer carries.
+     *
+     * `force` skips the empty-streak grace so the dashboard can offer a
+     * one-click cleanup when the owner has already confirmed on the OTA that
+     * the dates are free.
+     */
+    async syncFeed(
+        schemaName: string,
+        feedId: string,
+        opts: { force?: boolean } = {},
+    ): Promise<IcalSyncResult> {
+        if (!(await this.ensureColumns(schemaName))) return { ...EMPTY_RESULT, skipped: true };
+
+        // One run per feed at a time. The cron fires in both the api and the
+        // worker container, and the dashboard button can land on top of either;
+        // two runs interleaving between "read the feed" and "tombstone what it
+        // omits" is exactly how a stale snapshot frees a live booking.
+        const feedLock = `lock:ical-feed:${feedId}`;
+        const lockToken = await this.redis.acquireLockToken(feedLock, 120);
+        if (!lockToken) {
+            this.logger.debug(`Feed ${feedId} is already syncing; skipping`);
+            return { ...EMPTY_RESULT, skipped: true };
+        }
+
+        try {
+            return await this.runSync(schemaName, feedId, opts);
+        } finally {
+            await this.redis.releaseLockToken(feedLock, lockToken);
+        }
+    }
+
+    private async runSync(
+        schemaName: string,
+        feedId: string,
+        opts: { force?: boolean },
+    ): Promise<IcalSyncResult> {
         // 1. Load feed config
         const feeds = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -24,7 +138,7 @@ export class IcalSyncService {
         const feed = feeds?.[0];
         if (!feed || !feed.import_url) {
             this.logger.warn(`Feed ${feedId} not found or no import URL`);
-            return { imported: 0, deleted: 0 };
+            return { ...EMPTY_RESULT };
         }
 
         try {
@@ -37,17 +151,17 @@ export class IcalSyncService {
                 const parsed = new URL(url);
                 if (!['http:', 'https:'].includes(parsed.protocol)) {
                     this.logger.warn(`Feed ${feedId}: blocked non-HTTP URL: ${parsed.protocol}`);
-                    return { imported: 0, deleted: 0 };
+                    return { ...EMPTY_RESULT };
                 }
                 const hostname = parsed.hostname.toLowerCase();
                 const blocked = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|::1|fd|fe80)/;
                 if (blocked.test(hostname)) {
                     this.logger.warn(`Feed ${feedId}: blocked private/reserved IP: ${hostname}`);
-                    return { imported: 0, deleted: 0 };
+                    return { ...EMPTY_RESULT };
                 }
             } catch {
                 this.logger.warn(`Feed ${feedId}: invalid URL: ${url.substring(0, 80)}`);
-                return { imported: 0, deleted: 0 };
+                return { ...EMPTY_RESULT };
             }
 
             this.logger.log(`Fetching feed ${feedId} from ${url.substring(0, 50)}...`);
@@ -60,15 +174,35 @@ export class IcalSyncService {
                     'Cache-Control': 'no-cache, no-store, must-revalidate'
                 },
                 timeout: 20000,
-                responseType: 'text'
+                responseType: 'text',
+                // Default axios only rejects >=300, but a proxy/login wall can
+                // answer 2xx with HTML. The VCALENDAR check below is the real
+                // gate; this just stops redirect bodies from getting that far.
+                validateStatus: (s) => s >= 200 && s < 300,
             });
-            
-            this.logger.log(`Feed ${feedId} response status: ${response.status}, length: ${response.data?.length || 0}`);
-            if (response.data && response.data.length > 0) {
-                this.logger.debug(`Feed ${feedId} preview: ${response.data.substring(0, 200).replace(/\n/g, ' ')}`);
-            }
 
-            const events = await ical.async.parseICS(response.data);
+            this.logger.log(`Feed ${feedId} response status: ${response.status}, length: ${response.data?.length || 0}`);
+
+            // A body that isn't a complete calendar must be an ERROR, never
+            // "zero events" — otherwise it reads as "the OTA cancelled
+            // everything" and the sweep below frees dates that are still booked.
+            //
+            // END:VCALENDAR is the load-bearing half: BEGIN alone still accepts
+            // a TRUNCATED response (proxy flushing a partial object, a short
+            // gzip decode), and node-ical happily parses a body that stops
+            // mid-VEVENT and returns only the events it got. That yields a
+            // plausible-looking SUBSET, which is far more dangerous than
+            // garbage — garbage is obvious, a subset looks like cancellations.
+            const body = String(response.data ?? '');
+            if (!/BEGIN:VCALENDAR/i.test(body) || !/END:VCALENDAR/i.test(body)) {
+                throw new Error(
+                    `Response is not a complete iCalendar feed (${body.length} bytes): ` +
+                    body.substring(0, 120).replace(/\s+/g, ' '),
+                );
+            }
+            this.logger.debug(`Feed ${feedId} preview: ${body.substring(0, 200).replace(/\n/g, ' ')}`);
+
+            const events = await ical.async.parseICS(body);
             const now = new Date();
             let imported = 0;
             const seenUids = new Set<string>();
@@ -102,46 +236,128 @@ export class IcalSyncService {
                 // 3. UPSERT into ical_blocks
                 await this.prisma.executeInTenantSchema(
                     schemaName,
-                    `INSERT INTO ical_blocks (property_id, external_uid, source, check_in, check_out, summary, last_seen_at, is_deleted)
-                     VALUES ($1::uuid, $2, $3, $4::date, $5::date, $6, NOW(), false)
+                    `INSERT INTO ical_blocks (property_id, external_uid, source, check_in, check_out, summary, last_seen_at, is_deleted, feed_id)
+                     VALUES ($1::uuid, $2, $3, $4::date, $5::date, $6, NOW(), false, $7::uuid)
                      ON CONFLICT (property_id, external_uid) DO UPDATE SET
                        check_in = EXCLUDED.check_in,
                        check_out = EXCLUDED.check_out,
                        summary = EXCLUDED.summary,
                        last_seen_at = NOW(),
-                       is_deleted = false`,
-                    [feed.property_id, uid, feed.source, checkIn, checkOut, vevent.summary || 'Blocked'],
+                       is_deleted = false,
+                       feed_id = EXCLUDED.feed_id`,
+                    [feed.property_id, uid, feed.source, checkIn, checkOut, vevent.summary || 'Blocked', feedId],
                 );
                 imported++;
             }
 
-            // 4. Mark blocks NOT seen in this sync as deleted (cancellations)
+            // 4. Tombstone whatever this feed no longer carries.
+            //
+            // Scoped to THIS feed, not to `source`. `source` is a free-text
+            // label and the UI even offers a shared "Otro" bucket, so scoping
+            // by it let two feeds on one property wipe each other's blocks.
+            // The `feed_id IS NULL` arm only covers rows written before the
+            // column existed, and only when no OTHER active feed could claim
+            // them — the same ambiguity test the backfill in tenant-schema.sql
+            // uses, so the two never disagree about who owns a row. Those rows
+            // adopt a feed_id the next time their own feed re-exports them.
+            //
+            // `source <> 'Manual'` is hoisted over BOTH arms: createBlock
+            // writes that literal, and addFeed takes `source` as free text, so
+            // a feed named "Manual" must not be able to reach hand-made blocks
+            // through either arm.
+            const scope = `source <> 'Manual' AND (
+                    feed_id = $2::uuid
+                 OR (feed_id IS NULL AND source = $3 AND NOT EXISTS (
+                        SELECT 1 FROM ical_feeds f2
+                         WHERE f2.property_id = ical_blocks.property_id
+                           AND f2.source = ical_blocks.source
+                           AND f2.is_active = true
+                           AND f2.id <> $2::uuid))
+            )`;
+
+            const uids = Array.from(seenUids);
+            const isEmpty = seenUids.size === 0;
+
+            // How much this sweep would remove, against how much the feed
+            // holds. The ratio — not the emptiness — is what separates a wave
+            // of cancellations from an export that broke. The hold clock is
+            // read from the DB so app/DB clock skew can't shorten it.
+            const stats = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT COUNT(*)::int AS live,
+                        COUNT(*) FILTER (WHERE NOT (external_uid = ANY($4::text[])))::int AS stale
+                   FROM ical_blocks
+                  WHERE property_id = $1::uuid AND ${scope} AND is_deleted = false`,
+                [feed.property_id, feedId, feed.source, uids],
+            );
+            const live = stats?.[0]?.live ?? 0;
+            const stale = stats?.[0]?.stale ?? 0;
+
+            // The hold clock is read from the DB, never from Date.now(): the
+            // whole point is that it can't be shortened, and app/DB skew would
+            // do exactly that. COALESCE so a hold that hasn't started yet
+            // reports the FULL window remaining rather than 0.
+            const holdRows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT sweep_hold_since IS NOT NULL
+                        AND sweep_hold_since < NOW() - ($2::int * INTERVAL '1 minute') AS elapsed,
+                        GREATEST(0, CEIL(EXTRACT(EPOCH FROM (
+                            COALESCE(sweep_hold_since, NOW()) + ($2::int * INTERVAL '1 minute') - NOW()
+                        )) / 60))::int AS minutes_left
+                   FROM ical_feeds WHERE id = $1::uuid`,
+                [feedId, IcalSyncService.SWEEP_HOLD_MINUTES],
+            );
+            const holdElapsed = holdRows?.[0]?.elapsed === true;
+            const holdMinutesLeft = holdRows?.[0]?.minutes_left ?? IcalSyncService.SWEEP_HOLD_MINUTES;
+
+            const bulk = stale >= IcalSyncService.BULK_SWEEP_MIN && stale * 2 > live;
+            const sweep = !bulk || opts.force === true || holdElapsed;
+            const holding = bulk && !sweep;
+
             let deleted = 0;
-            if (seenUids.size > 0) {
+            if (sweep && stale > 0) {
                 const result = await this.prisma.executeInTenantSchema<any[]>(
                     schemaName,
                     `UPDATE ical_blocks SET is_deleted = true
                      WHERE property_id = $1::uuid
-                       AND source = $2
+                       AND ${scope}
                        AND is_deleted = false
-                       AND last_seen_at < NOW() - INTERVAL '2 hours'
+                       AND NOT (external_uid = ANY($4::text[]))
                      RETURNING id`,
-                    [feed.property_id, feed.source],
+                    [feed.property_id, feedId, feed.source, uids],
                 );
                 deleted = result?.length || 0;
+            } else if (holding) {
+                this.logger.warn(
+                    `Feed ${feedId} (${feed.source}) would free ${stale}/${live} block(s) in one pass ` +
+                    `— holding for up to ${IcalSyncService.SWEEP_HOLD_MINUTES}min before trusting it`,
+                );
             }
 
-            // 5. Update feed status
+            // 5. Update feed status. `sweep_hold_since` starts the clock on the
+            // first suspicious pass and is computed with NOW() rather than a JS
+            // Date so repeated polls can't keep resetting it forward.
             await this.prisma.executeInTenantSchema(
                 schemaName,
                 `UPDATE ical_feeds SET last_sync_at = NOW(), last_sync_status = 'success',
-                 last_sync_error = NULL, events_imported = $1, updated_at = NOW()
-                 WHERE id = $2::uuid`,
-                [imported, feedId],
+                   last_sync_error = NULL, events_imported = $1, updated_at = NOW(),
+                   sweep_hold_since = CASE WHEN $2::boolean THEN COALESCE(sweep_hold_since, NOW()) ELSE NULL END
+                 WHERE id = $3::uuid`,
+                [imported, holding, feedId],
             );
 
-            this.logger.log(`Synced feed ${feedId} (${feed.source}): ${imported} imported, ${deleted} deleted`);
-            return { imported, deleted };
+            this.logger.log(
+                `Synced feed ${feedId} (${feed.source}): ${imported} imported, ${deleted} deleted` +
+                (holding ? `, ${stale} held` : ''),
+            );
+            return {
+                imported,
+                deleted,
+                empty: isEmpty,
+                pendingSweep: holding ? stale : 0,
+                holdMinutesLeft: holding ? holdMinutesLeft : 0,
+                skipped: false,
+            };
         } catch (error: any) {
             // Update feed with error
             await this.prisma.executeInTenantSchema(
@@ -155,7 +371,10 @@ export class IcalSyncService {
             if (error.response) {
                 this.logger.error(`Feed sync failed ${feedId} with response: ${error.response.status} - ${typeof error.response.data === 'string' ? error.response.data.substring(0, 200) : JSON.stringify(error.response.data).substring(0, 200)}`);
             }
-            return { imported: 0, deleted: 0 };
+            // Deliberately NOT touching sweep_hold_since: a failed fetch says
+            // nothing either way about what the calendar holds, so it must
+            // neither start the hold clock nor reset one already running.
+            return { ...EMPTY_RESULT };
         }
     }
 
@@ -164,6 +383,23 @@ export class IcalSyncService {
      */
     @Cron('*/30 * * * *')
     async syncAllFeeds(): Promise<void> {
+        // API and worker load the SAME AppModule with ScheduleModule, so every
+        // @Cron fires in both containers.
+        //
+        // The TTL deliberately EXCEEDS the 30-min cadence: the loop is serial
+        // across every tenant and every feed, and each fetch can burn the full
+        // 20s timeout, so a slow run can outlive a sub-cadence TTL — at which
+        // point the next tick starts a second full pass over the same feeds,
+        // which is precisely what the lock exists to prevent. The token API
+        // lets us release in `finally` so an early finish doesn't idle the
+        // next tick, while a crashed holder still expires on its own.
+        const lockKey = 'lock:ical-sync-all';
+        const lockToken = await this.redis.acquireLockToken(lockKey, 55 * 60);
+        if (!lockToken) {
+            this.logger.debug('[Cron] another instance is already syncing iCal feeds');
+            return;
+        }
+
         this.logger.log('[Cron] Syncing all iCal feeds...');
         try {
             const tenants = await this.prisma.$queryRaw<any[]>`
@@ -188,6 +424,8 @@ export class IcalSyncService {
             this.logger.log(`[Cron] iCal sync complete: ${totalSynced} feeds processed`);
         } catch (e: any) {
             this.logger.error(`[Cron] iCal sync failed: ${e.message}`);
+        } finally {
+            await this.redis.releaseLockToken(lockKey, lockToken);
         }
     }
 

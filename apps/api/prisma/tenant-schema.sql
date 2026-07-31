@@ -3056,3 +3056,46 @@ USING "{{SCHEMA_NAME}}"."faqs" b
 WHERE a."question" = b."question"
   AND (COALESCE(a."created_at", 'epoch'::timestamp), a."id") > (COALESCE(b."created_at", 'epoch'::timestamp), b."id");
 CREATE UNIQUE INDEX IF NOT EXISTS "uidx_faqs_question" ON "{{SCHEMA_NAME}}"."faqs" ("question");
+
+-- =====================================================================
+-- iCal sync hardening (jul 2026)
+-- =====================================================================
+-- ADD COLUMN, never inside the CREATE TABLE above: `CREATE TABLE IF NOT
+-- EXISTS` is a no-op on schemas that already have the table, so putting
+-- these there would only fix brand-new tenants. The deploy re-applies this
+-- file per tenant, which is what carries them to existing ones.
+
+-- Cancellations used to be scoped by `source`, a free-text label. Two feeds
+-- sharing a source on one property made each sync tombstone the other's
+-- blocks. feed_id is the real owner.
+ALTER TABLE "{{SCHEMA_NAME}}"."ical_blocks" ADD COLUMN IF NOT EXISTS "feed_id" UUID;
+
+-- When a feed first asks to free most of what it holds, the clock starts here
+-- instead of the sweep running. A poll count would be no protection at all
+-- (three clicks of "sync" would satisfy it); wall-clock cannot be rushed.
+-- NULL means nothing is on hold. See SWEEP_HOLD_MINUTES in ical-sync.service.ts.
+ALTER TABLE "{{SCHEMA_NAME}}"."ical_feeds" ADD COLUMN IF NOT EXISTS "sweep_hold_since" TIMESTAMP;
+
+CREATE INDEX IF NOT EXISTS "idx_ical_blocks_feed" ON "{{SCHEMA_NAME}}"."ical_blocks" ("feed_id") WHERE "is_deleted" = false;
+
+-- Best-effort backfill by (property_id, source) — the pairing the old sweep
+-- already assumed. Deliberately skips rows whose source is claimed by more
+-- than one active feed: attributing those by guess would let one feed sweep
+-- the other's blocks. They stay NULL and are handled by the equally-cautious
+-- `feed_id IS NULL` arm in ical-sync.service.ts, then adopt a feed_id the next
+-- time their own feed re-exports them. 'Manual' blocks are never attributed to
+-- a feed — a feed may legally be named "Manual", and hand-made blocks must
+-- stay unreachable from any sync.
+UPDATE "{{SCHEMA_NAME}}"."ical_blocks" b
+   SET "feed_id" = f."id"
+  FROM "{{SCHEMA_NAME}}"."ical_feeds" f
+ WHERE b."feed_id" IS NULL
+   AND b."source" <> 'Manual'
+   AND b."property_id" = f."property_id"
+   AND b."source" = f."source"
+   AND f."is_active" = true
+   AND NOT EXISTS (
+     SELECT 1 FROM "{{SCHEMA_NAME}}"."ical_feeds" f2
+      WHERE f2."property_id" = f."property_id" AND f2."source" = f."source"
+        AND f2."is_active" = true AND f2."id" <> f."id"
+   );

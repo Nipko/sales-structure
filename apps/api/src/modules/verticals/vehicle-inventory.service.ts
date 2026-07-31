@@ -1,11 +1,15 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 
 @Injectable()
 export class VehicleInventoryService {
     private readonly logger = new Logger(VehicleInventoryService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly throttle: TenantThrottleService,
+    ) {}
 
     async ensureTables(schemaName: string): Promise<void> {
         const exists: any[] = await this.prisma.$queryRawUnsafe(
@@ -138,7 +142,7 @@ export class VehicleInventoryService {
         return rows[0];
     }
 
-    async createVehicle(schemaName: string, data: {
+    async createVehicle(tenantId: string, schemaName: string, data: {
         make: string; model: string; year: number; trimLevel?: string;
         vin?: string; licensePlate?: string; color?: string;
         fuelType?: string; transmission?: string; mileageKm?: number;
@@ -147,6 +151,18 @@ export class VehicleInventoryService {
         description?: string; location?: string; isFeatured?: boolean;
     }): Promise<any> {
         await this.ensureTables(schemaName);
+
+        // El gate del plan ahora es por CANTIDAD, no por bandera. Antes
+        // vehicleInventory=false apagaba el controller entero en emprendedor y
+        // starter: el trial recibia un 403 crudo al cargar su primer auto y la
+        // vertical nacia muerta. Mismo patron que tours/propiedades.
+        // Solo cuentan los vehiculos vivos: uno vendido y archivado no debe
+        // seguir ocupando cupo.
+        const used: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".vehicles WHERE status <> 'sold'`,
+        );
+        await this.throttle.enforcePlanLimit(tenantId, 'maxVehicles', used?.[0]?.cnt || 0, 'vehículos');
+
         const rows: any[] = await this.prisma.$queryRawUnsafe(`
             INSERT INTO "${schemaName}".vehicles (
                 make, model, year, trim_level, vin, license_plate, color,

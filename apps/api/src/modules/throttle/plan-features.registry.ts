@@ -45,6 +45,7 @@ export const PLAN_FEATURE_REGISTRY: PlanFeatureDef[] = [
     { key: 'maxCalendars', type: 'number', category: 'resource' },
     { key: 'maxContacts', type: 'number', category: 'resource' },
     { key: 'maxProperties', type: 'number', category: 'resource' },
+    { key: 'maxVehicles', type: 'number', category: 'resource' },
     { key: 'automationRules', type: 'number', category: 'resource' },
     { key: 'maxDripSequences', type: 'number', category: 'resource' },
     { key: 'broadcastCampaigns', type: 'number', category: 'resource' },
@@ -125,7 +126,7 @@ export const RATE_LIMIT_OVERRIDE_KEYS = [...RATE_LIMIT_KEYS] as string[];
 
 export const FEATURE_OVERRIDE_KEYS: string[] = [
     'maxAgents', 'maxAiMessages', // top-level BillingPlan columns merged into features
-    'maxCalendars', 'maxContacts', 'maxProperties', 'appointmentsServices',
+    'maxCalendars', 'maxContacts', 'maxProperties', 'maxVehicles', 'appointmentsServices',
     'customAttributes', 'emailTemplates', 'pipelineStages', 'maxPipelines', 'segments',
     'mediaStorageMb', 'automationRules', 'maxDripSequences', 'broadcastCampaigns',
     'outboundWebhooks', 'maxWebhookSubscriptions', 'externalCrm', 'widgetTriggers',

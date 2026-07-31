@@ -59,8 +59,12 @@ export class VehicleInventoryController {
     @Post(':tenantId')
     @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Add a vehicle to inventory' })
-    async createVehicle(@CurrentTenant() schema: string, @Body() body: any) {
-        const vehicle = await this.vehicleService.createVehicle(schema, body);
+    async createVehicle(
+        @Param('tenantId') tenantId: string,
+        @CurrentTenant() schema: string,
+        @Body() body: any,
+    ) {
+        const vehicle = await this.vehicleService.createVehicle(tenantId, schema, body);
         return { success: true, data: vehicle };
     }
 

@@ -5,6 +5,7 @@ import { AutomationService } from './automation.service';
 import { ActionExecutorService } from './action-executor.service';
 import { AutomationListenerService, AUTOMATION_JOBS_QUEUE } from './automation-listener.service';
 import { AutomationJobsProcessor } from './automation-jobs.processor';
+import { TemporalEvaluatorService } from './temporal-evaluator.service';
 import { AutomationController } from './automation.controller';
 import { AutomationTemplatesService } from './templates/automation-templates.service';
 import { AutomationTemplatesController } from './templates/automation-templates.controller';
@@ -41,6 +42,7 @@ import { CrmModule } from '../crm/crm.module';
         ActionExecutorService,
         AutomationListenerService,
         AutomationJobsProcessor,
+        TemporalEvaluatorService,
         AutomationTemplatesService,
         NurturingService,
         NurturingQueueProcessor,

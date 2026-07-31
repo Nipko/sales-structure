@@ -71,58 +71,15 @@ export class AutomationListenerService {
 
             // 5. Evaluar y programar cada regla
             for (const rule of activeRules) {
-                const conditionsMatch = this.evaluateConditions(rule.conditions_json, event);
-                if (!conditionsMatch) {
-                    this.logger.debug(`[AutomationListener] Regla '${rule.name}' no cumple condiciones. Omitiendo.`);
-                    continue;
-                }
-
-                // Parsear acciones
-                let actions: any[] = [];
-                if (typeof rule.actions_json === 'string') {
-                    try { actions = JSON.parse(rule.actions_json); } catch { actions = []; }
-                } else if (Array.isArray(rule.actions_json)) {
-                    actions = rule.actions_json;
-                }
-
-                // Crear registro de ejecucion (audit trail)
-                const execution = await this.prisma.executeInTenantSchema<any[]>(
+                await this.dispatchRule({
+                    tenantId: event.tenantId,
                     schemaName,
-                    `INSERT INTO automation_executions (rule_id, entity_type, entity_id, status)
-                     VALUES ($1, 'lead', $2, 'queued') RETURNING *`,
-                    [rule.id, event.leadId],
-                );
-                const executionId = execution?.[0]?.id;
-
-                // Programar cada accion como un job con delay en BullMQ
-                for (const action of actions) {
-                    const delayMs = (action.delay_seconds || 0) * 1000;
-
-                    await this.automationQueue.add(
-                        action.type,
-                        {
-                            tenantId: event.tenantId,
-                            schemaName,
-                            executionId,
-                            ruleId: rule.id,
-                            ruleName: rule.name,
-                            action,
-                            event,
-                        },
-                        {
-                            priority,
-                            delay: delayMs,
-                            attempts: 3,
-                            backoff: { type: 'exponential', delay: 5000 },
-                            removeOnComplete: { age: 3600 * 24 },
-                            removeOnFail: { age: 3600 * 24 * 7 },
-                        },
-                    );
-
-                    this.logger.log(
-                        `[AutomationListener] Job '${action.type}' programado (priority=${priority}, delay=${delayMs}ms) para regla '${rule.name}' tenant=${event.tenantId}`,
-                    );
-                }
+                    rule,
+                    entityType: 'lead',
+                    entityId: event.leadId,
+                    payload: event,
+                    priority,
+                });
             }
         } catch (error: any) {
             this.logger.error(
@@ -133,11 +90,86 @@ export class AutomationListenerService {
     }
 
     /**
+     * Evalúa las condiciones de UNA regla y encola sus acciones.
+     *
+     * Estaba escrito dentro del handler de `lead.captured`, que era el único
+     * disparador que existía. Se extrae tal cual —mismas condiciones, mismo
+     * audit trail, mismos reintentos— para que el evaluador temporal (H-3)
+     * dispare reglas por el paso del tiempo sin duplicar esta lógica ni
+     * divergir de ella con el tiempo.
+     *
+     * `entityType`/`entityId` dejan de estar hardcodeados en 'lead': lo que
+     * dispara una regla puede ser una vacuna, una póliza o una estadía.
+     */
+    async dispatchRule(params: {
+        tenantId: string;
+        schemaName: string;
+        rule: any;
+        entityType: string;
+        entityId: string;
+        payload: any;
+        priority: number;
+    }): Promise<void> {
+        const { tenantId, schemaName, rule, entityType, entityId, payload, priority } = params;
+
+        if (!this.evaluateConditions(rule.conditions_json, payload)) {
+            this.logger.debug(`[AutomationListener] Regla '${rule.name}' no cumple condiciones. Omitiendo.`);
+            return;
+        }
+
+        let actions: any[] = [];
+        if (typeof rule.actions_json === 'string') {
+            try { actions = JSON.parse(rule.actions_json); } catch { actions = []; }
+        } else if (Array.isArray(rule.actions_json)) {
+            actions = rule.actions_json;
+        }
+
+        // Crear registro de ejecucion (audit trail)
+        const execution = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `INSERT INTO automation_executions (rule_id, entity_type, entity_id, status)
+             VALUES ($1, $2, $3, 'queued') RETURNING *`,
+            [rule.id, entityType, entityId],
+        );
+        const executionId = execution?.[0]?.id;
+
+        // Programar cada accion como un job con delay en BullMQ
+        for (const action of actions) {
+            const delayMs = (action.delay_seconds || 0) * 1000;
+
+            await this.automationQueue.add(
+                action.type,
+                {
+                    tenantId,
+                    schemaName,
+                    executionId,
+                    ruleId: rule.id,
+                    ruleName: rule.name,
+                    action,
+                    event: payload,
+                },
+                {
+                    priority,
+                    delay: delayMs,
+                    attempts: 3,
+                    backoff: { type: 'exponential', delay: 5000 },
+                    removeOnComplete: { age: 3600 * 24 },
+                    removeOnFail: { age: 3600 * 24 * 7 },
+                },
+            );
+
+            this.logger.log(
+                `[AutomationListener] Job '${action.type}' programado (priority=${priority}, delay=${delayMs}ms) para regla '${rule.name}' tenant=${tenantId}`,
+            );
+        }
+    }
+
+    /**
      * Evaluador de condiciones con soporte para formato estructurado y legacy.
      * Formato nuevo: [{ field, operator, value }] con operadores avanzados.
      * Formato legacy: { key: value } con igualdad simple.
      */
-    private evaluateConditions(conditions: any, event: LeadCapturedEvent): boolean {
+    private evaluateConditions(conditions: any, event: LeadCapturedEvent | Record<string, any>): boolean {
         if (!conditions) return true;
 
         // New structured format: [{ field, operator, value }]

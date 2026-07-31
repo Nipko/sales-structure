@@ -398,19 +398,43 @@ export class GymsService {
             throw new BadRequestException(`Insufficient credits — has ${credits}, needs ${required}`);
         }
 
-        // Insert booking + decrement spots + decrement credits in best-effort sequence
-        const bookingRows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO class_bookings (class_id, member_id, contact_id, credits_used)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4) RETURNING *`,
-            [classId, memberId, member.contact_id, required],
-        );
-        await this.prisma.executeInTenantSchema(
+        // Se toma el cupo PRIMERO y de forma atomica.
+        //
+        // Antes el orden era: chequear spots > 0 (arriba) -> INSERT -> UPDATE
+        // guardado, y el resultado del UPDATE se descartaba. Dos socios que
+        // reservaban el ultimo cupo a la vez pasaban los dos el chequeo, los dos
+        // insertaban, y el segundo UPDATE no afectaba ninguna fila en silencio:
+        // dos reservas para un solo lugar, sin que nadie se entere hasta que
+        // llegan a la clase. PgBouncer corre en transaction mode, asi que no hay
+        // BEGIN/COMMIT entre sentencias — la unica atomicidad disponible es un
+        // solo UPDATE guardado, y hay que MIRAR si tomo fila.
+        const claimed = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `UPDATE fitness_classes SET available_spots = available_spots - 1
-             WHERE id = $1::uuid AND available_spots > 0`,
+             WHERE id = $1::uuid AND available_spots > 0 RETURNING id`,
             [classId],
         );
+        if (!claimed.length) throw new BadRequestException('Class is full');
+
+        let bookingRows: any[];
+        try {
+            bookingRows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `INSERT INTO class_bookings (class_id, member_id, contact_id, credits_used)
+                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4) RETURNING *`,
+                [classId, memberId, member.contact_id, required],
+            );
+        } catch (e) {
+            // Compensacion: el cupo ya esta tomado y la reserva no existe. Sin
+            // esto un INSERT fallido dejaria el lugar perdido para siempre.
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE fitness_classes SET available_spots = available_spots + 1 WHERE id = $1::uuid`,
+                [classId],
+            ).catch(() => {});
+            throw e;
+        }
+
         if (credits !== null) {
             await this.prisma.executeInTenantSchema(
                 schemaName,

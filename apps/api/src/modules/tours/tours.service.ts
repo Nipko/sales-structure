@@ -275,14 +275,35 @@ export class ToursService {
                     requested: data.partySize,
                 });
             }
-            // Decrement seats — this is racy without a row-level lock; for V1 the
-            // burst rate is too low to matter, but FOR UPDATE is the upgrade path.
-            await this.prisma.executeInTenantSchema(
+            // El decremento SI es atomico (un solo UPDATE guardado), pero antes
+            // se descartaba su resultado: si entre el SELECT de arriba y este
+            // UPDATE otra reserva se llevaba los asientos, el guard
+            // `available_seats >= $1` no afectaba ninguna fila EN SILENCIO y la
+            // salida seguia hasta insertar la reserva igual. Dos grupos salian
+            // vendidos sobre el mismo cupo. Ahora se mira si tomo fila: es la
+            // unica atomicidad disponible con PgBouncer en transaction mode, y
+            // hace innecesario el FOR UPDATE que anotaba el TODO.
+            const claimed = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `UPDATE tour_inventory SET available_seats = available_seats - $1, updated_at = NOW()
-                 WHERE id = $2::uuid AND available_seats >= $1`,
+                 WHERE id = $2::uuid AND available_seats >= $1
+                 RETURNING id`,
                 [data.partySize, inv.id],
             );
+            if (!claimed.length) {
+                // Se los llevaron mientras conversabamos. Se relee el cupo real
+                // para que el mensaje al cliente no mienta.
+                const fresh = await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT available_seats FROM tour_inventory WHERE id = $1::uuid`,
+                    [inv.id],
+                ).catch(() => [] as any[]);
+                throw new BadRequestException({
+                    error: 'not_enough_seats',
+                    seatsLeft: fresh?.[0]?.available_seats ?? 0,
+                    requested: data.partySize,
+                });
+            }
             inventoryId = inv.id;
         }
 

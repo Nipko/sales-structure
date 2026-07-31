@@ -56,6 +56,7 @@ export default function ListingsPage() {
     const [listings, setListings] = useState<Listing[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
+    const [showZones, setShowZones] = useState(false);
     const [filter, setFilter] = useState<"all" | "sale" | "rent">("all");
 
     useEffect(() => {
@@ -87,12 +88,22 @@ export default function ListingsPage() {
                 subtitle={t("subtitle")}
                 icon={Building2}
                 action={
-                    <button
-                        onClick={() => setShowCreate(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
-                    >
-                        <Plus size={16} /> {t("createListing")}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {/* Zonas: sin esta puerta, listing_zone_agents y
+                            resolveAgentForZone quedaban construidos y sin usar. */}
+                        <button
+                            onClick={() => setShowZones(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
+                        >
+                            <MapPin size={16} /> {t("zonesTitle")}
+                        </button>
+                        <button
+                            onClick={() => setShowCreate(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
+                        >
+                            <Plus size={16} /> {t("createListing")}
+                        </button>
+                    </div>
                 }
             />
 
@@ -201,6 +212,8 @@ export default function ListingsPage() {
                     tc={tc}
                 />
             )}
+
+            {showZones && <ZonesModal onClose={() => setShowZones(false)} />}
         </div>
     );
 }
@@ -344,6 +357,159 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
                     >
                         {saving ? tc("saving") : t("createListing")}
                     </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Ruteo por zonas: qué asesor atiende cada barrio.
+ *
+ * `listing_zone_agents`, `resolveAgentForZone` y sus tres endpoints estaban
+ * construidos ENTEROS y tenían cero llamadores — el ruteo por zonas existía y
+ * no ruteaba nada, porque no había forma de cargar un solo mapeo. Con esto la
+ * cascada de asignación de la visita (dueño del listing → zona → nadie) tiene
+ * de dónde leer.
+ */
+function ZonesModal({ onClose }: { onClose: () => void }) {
+    const { activeTenantId } = useTenant();
+    const t = useTranslations("listings");
+    const tc = useTranslations("common");
+
+    const [zones, setZones] = useState<any[]>([]);
+    const [users, setUsers] = useState<any[]>([]);
+    const [form, setForm] = useState({ neighborhood: "", city: "", agentId: "" });
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    async function load() {
+        if (!activeTenantId) return;
+        const [z, u] = await Promise.all([
+            api.listListingZones(activeTenantId).catch(() => null),
+            api.getUsers().catch(() => null),
+        ]);
+        if (z?.success && Array.isArray(z.data)) setZones(z.data);
+        // Solo los que pueden atender una visita: el super_admin no es asesor.
+        if (u?.success && Array.isArray(u.data)) {
+            setUsers(u.data.filter((x: any) => x.role !== "super_admin" && x.isActive !== false));
+        }
+    }
+
+    useEffect(() => { load(); }, [activeTenantId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    async function handleAdd() {
+        if (!activeTenantId) return;
+        if (!form.neighborhood.trim() || !form.agentId) {
+            setError(t("zoneMissingFields"));
+            return;
+        }
+        setBusy(true);
+        setError("");
+        const res = await api.setListingZone(activeTenantId, {
+            neighborhood: form.neighborhood.trim(),
+            city: form.city.trim() || undefined,
+            agentId: form.agentId,
+        }).catch(() => ({ success: false } as any));
+        setBusy(false);
+        if (!res?.success) {
+            setError(tc("errorSaving"));
+            return;
+        }
+        setForm({ neighborhood: "", city: "", agentId: "" });
+        load();
+    }
+
+    async function handleRemove(id: string) {
+        if (!activeTenantId) return;
+        await api.removeListingZone(activeTenantId, id).catch(() => null);
+        load();
+    }
+
+    const agentName = (id: string) => {
+        const u = users.find((x: any) => x.id === id);
+        return u?.name || u?.email || id.slice(0, 8);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+            <div className="w-full max-w-lg rounded-xl bg-card border border-border p-6 shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-1">
+                    <h3 className="font-semibold flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-indigo-600" />
+                        {t("zonesTitle")}
+                    </h3>
+                    <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+                <p className="text-xs text-muted-foreground mb-4">{t("zonesHint")}</p>
+
+                {error && (
+                    <div className="px-3 py-2 rounded-lg mb-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
+                        {error}
+                    </div>
+                )}
+
+                <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end mb-4">
+                    <div>
+                        <label className="block text-[11px] text-muted-foreground mb-1 font-medium">{t("neighborhood")}</label>
+                        <input
+                            value={form.neighborhood}
+                            onChange={e => setForm({ ...form, neighborhood: e.target.value })}
+                            className="w-full h-9 rounded-lg border border-border bg-background px-2.5 text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[11px] text-muted-foreground mb-1 font-medium">{t("city")}</label>
+                        <input
+                            value={form.city}
+                            onChange={e => setForm({ ...form, city: e.target.value })}
+                            className="w-full h-9 rounded-lg border border-border bg-background px-2.5 text-sm"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[11px] text-muted-foreground mb-1 font-medium">{t("agent")}</label>
+                        <select
+                            value={form.agentId}
+                            onChange={e => setForm({ ...form, agentId: e.target.value })}
+                            className="w-full h-9 rounded-lg border border-border bg-background px-2.5 text-sm cursor-pointer"
+                        >
+                            <option value="">{tc("select")}</option>
+                            {users.map((u: any) => (
+                                <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <button
+                        onClick={handleAdd}
+                        disabled={busy}
+                        className="h-9 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-sm font-semibold cursor-pointer"
+                    >
+                        <Plus size={16} />
+                    </button>
+                </div>
+
+                <div className="border border-border rounded-lg divide-y divide-border">
+                    {zones.length === 0 ? (
+                        <p className="text-center py-6 text-sm text-muted-foreground">{t("noZones")}</p>
+                    ) : zones.map((z: any) => (
+                        <div key={z.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                            <div>
+                                <span className="font-medium">{z.neighborhood}</span>
+                                {z.city && <span className="text-muted-foreground"> · {z.city}</span>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">{agentName(z.agent_id)}</span>
+                                <button
+                                    onClick={() => handleRemove(z.id)}
+                                    className="p-1 rounded text-muted-foreground hover:text-red-600 hover:bg-red-500/10 cursor-pointer"
+                                >
+                                    <X size={14} />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
         </div>

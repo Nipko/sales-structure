@@ -659,10 +659,36 @@ jobs:
               || { echo "::error::Prisma migrate deploy FAILED — aborting deploy (containers were NOT recreated)"; exit 1; }
 
             echo "===> Running tenant schema migration (idempotent)..."
-            # Kept tolerant (|| true): one problematic tenant schema must not block
-            # the whole platform deploy. Per-tenant failures are logged by the script.
-            $DC \
-              run --rm api npm run migrate:tenants || true
+            # Sigue siendo tolerante: un tenant problemático no puede bloquear el
+            # deploy de toda la plataforma. Pero ANTES el `|| true` se tragaba
+            # también el exit 1 FATAL del script (no puede conectar a la DB, no
+            # puede leer tenant-schema.sql), y encima el script cantaba [OK] por
+            # tenant aunque le hubieran fallado todas las sentencias. Resultado:
+            # una migración sistemáticamente rota salía en un deploy VERDE, que
+            # es exactamente donde nadie mira.
+            #
+            # Ahora se captura la salida y se anota el run. El deploy sigue sin
+            # fallar; lo que cambia es que deja de ser invisible.
+            set +e
+            MIGRATE_OUT="$($DC run --rm api npm run migrate:tenants 2>&1)"
+            MIGRATE_RC=$?
+            set -e
+            echo "$MIGRATE_OUT"
+
+            SUMMARY="$(echo "$MIGRATE_OUT" | grep -o 'MIGRATE_TENANTS_SUMMARY .*' | tail -1)"
+            if [ "$MIGRATE_RC" -ne 0 ]; then
+              echo "::error::Tenant migration exited $MIGRATE_RC (fallo FATAL, no per-tenant). El deploy sigue, pero los schemas de tenant NO se migraron. $SUMMARY"
+            elif [ -z "$SUMMARY" ]; then
+              echo "::warning::Tenant migration no emitio resumen — revisar el log del paso."
+            else
+              SKIPPED="$(echo "$SUMMARY" | sed -n 's/.*skipped=\([0-9]*\).*/\1/p')"
+              WARNINGS="$(echo "$SUMMARY" | sed -n 's/.*warnings=\([0-9]*\).*/\1/p')"
+              if [ "${SKIPPED:-0}" -gt 0 ] || [ "${WARNINGS:-0}" -gt 0 ]; then
+                echo "::warning::Tenant migration con problemas — $SUMMARY (tenants salteados y/o sentencias fallidas; revisar el log)"
+              else
+                echo "Tenant migration limpia — $SUMMARY"
+              fi
+            fi
 
             echo "===> Seeding billing_plans (idempotent upsert)..."
             # No "|| true": the seed is create-only; a failure here means a real DB

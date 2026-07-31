@@ -73,6 +73,10 @@ async function migrate() {
     let successCount = 0;
     let skipCount = 0;
     let cleanedCount = 0;
+    // Statements que fallaron por algo que NO es "ya existe". Sin contarlos, un
+    // tenant cuyas 40 sentencias fallaron igual se reportaba [OK] y sumaba a
+    // successCount: el resumen decia "todo bien" con el schema a medio migrar.
+    let warnCount = 0;
 
     for (const t of tenants) {
       console.log(`Migrating tenant schema: ${t.schema_name}`);
@@ -144,6 +148,7 @@ async function migrate() {
               // Silently skip existing objects
             } else {
               console.log(`  [WARN] Non-fatal error: ${shortMsg}`);
+              warnCount++;
             }
           }
         }
@@ -156,7 +161,13 @@ async function migrate() {
       }
     }
 
-    console.log(`Results: ${successCount} OK, ${skipCount} skipped, ${cleanedCount} orphans cleaned`);
+    console.log(`Results: ${successCount} OK, ${skipCount} skipped, ${cleanedCount} orphans cleaned, ${warnCount} statement warnings`);
+    // Linea legible por maquina para que el workflow pueda anotar el deploy sin
+    // parsear prosa. El deploy NO falla por esto a proposito (ver el comentario
+    // del `|| true` en deploy.yml): un tenant roto no puede bloquear a los
+    // demas. Pero tiene que VERSE — hasta ahora un fallo sistematico quedaba
+    // enterrado en un log de deploy verde, que es donde nadie mira.
+    console.log(`MIGRATE_TENANTS_SUMMARY ok=${successCount} skipped=${skipCount} warnings=${warnCount}`);
   } catch (error) {
     console.error('Fatal error during tenant migration:', error);
     process.exit(1);

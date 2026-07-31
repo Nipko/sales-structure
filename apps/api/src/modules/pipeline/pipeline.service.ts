@@ -877,12 +877,48 @@ export class PipelineService {
                 case 'appointment_required': {
                     // Any live appointment on the contact satisfies the gate (a freshly
                     // booked appointment is 'pending'/'confirmed', not 'scheduled').
-                    const appointments = await this.prisma.executeInTenantSchema<any[]>(
-                        schema,
-                        `SELECT 1 FROM appointments WHERE contact_id = $1::uuid AND status NOT IN ('cancelled', 'no_show') LIMIT 1`,
-                        [ctx.contactId],
-                    );
-                    if (!appointments || appointments.length === 0) throw new BadRequestException('TRANSITION_RULE_FAILED:appointment_required');
+                    //
+                    // Las verticales profundas NO reservan en `appointments`: turismo
+                    // escribe `tour_bookings`, alojamiento `property_bookings`,
+                    // gimnasios `class_bookings` y education `enrollments`. Con la
+                    // consulta mirando una sola tabla, el embudo no avanzaba aunque el
+                    // bot cerrara reservas reales todo el día — justamente en las
+                    // verticales que mejor convierten. Cualquier reserva viva cuenta.
+                    const reservaSql = [
+                        `SELECT 1 FROM appointments WHERE contact_id = $1::uuid AND status NOT IN ('cancelled','no_show') LIMIT 1`,
+                        `SELECT 1 FROM tour_bookings WHERE contact_id = $1::uuid AND status NOT IN ('cancelled','no_show') LIMIT 1`,
+                        `SELECT 1 FROM property_bookings WHERE contact_id = $1::uuid AND status NOT IN ('cancelled','no_show') LIMIT 1`,
+                        `SELECT 1 FROM class_bookings WHERE contact_id = $1::uuid AND status NOT IN ('cancelled','no_show') LIMIT 1`,
+                        `SELECT 1 FROM enrollments WHERE contact_id = $1::uuid AND status NOT IN ('cancelled','dropped') LIMIT 1`,
+                    ];
+                    let tieneReserva = false;
+                    for (const sql of reservaSql) {
+                        // Las tablas verticales son lazy: si el tenant no tiene la
+                        // vertical, la tabla no existe y la consulta falla — eso NO es
+                        // un fallo de la regla, es una tabla que no aplica.
+                        const rows = await this.prisma.executeInTenantSchema<any[]>(schema, sql, [ctx.contactId])
+                            .catch(() => [] as any[]);
+                        if (rows?.length) { tieneReserva = true; break; }
+                    }
+                    if (!tieneReserva) throw new BadRequestException('TRANSITION_RULE_FAILED:appointment_required');
+                    break;
+                }
+                case 'order_required': {
+                    // Equivalente para las verticales que cierran con un PEDIDO y no
+                    // con una cita: retail (`orders`) y restaurantes (`food_orders`).
+                    // Sin esto, "Pedido"/"Enviado" eran etapas inalcanzables incluso a
+                    // mano en las dos verticales de comercio.
+                    const pedidoSql = [
+                        `SELECT 1 FROM orders WHERE contact_id = $1::uuid AND status NOT IN ('cancelled') LIMIT 1`,
+                        `SELECT 1 FROM food_orders WHERE contact_id = $1::uuid AND status NOT IN ('cancelled') LIMIT 1`,
+                    ];
+                    let tienePedido = false;
+                    for (const sql of pedidoSql) {
+                        const rows = await this.prisma.executeInTenantSchema<any[]>(schema, sql, [ctx.contactId])
+                            .catch(() => [] as any[]);
+                        if (rows?.length) { tienePedido = true; break; }
+                    }
+                    if (!tienePedido) throw new BadRequestException('TRANSITION_RULE_FAILED:order_required');
                     break;
                 }
                 case 'offer_required': {

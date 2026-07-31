@@ -988,6 +988,24 @@ export class AIToolExecutorService {
             return this.buildNoSlotsResult(schema);
         }
 
+        // blocked_dates: feriados y vacaciones que el dueño bloqueó en el panel. La
+        // ruta del dashboard los respeta (appointments.service.ts:598) y la de chat
+        // no, así que el bot vendía turnos el 25 de diciembre. user_id NULL = el
+        // negocio entero cerrado ese día.
+        const blockedRows: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT user_id FROM "${schema}".blocked_dates WHERE blocked_date = $1::date`,
+            date,
+        ).catch(() => []);
+        if (blockedRows.length) {
+            const closedForAll = blockedRows.some(b => !b.user_id);
+            if (closedForAll) return this.buildNoSlotsResult(schema);
+            const blockedUserIds = new Set(blockedRows.map(b => b.user_id));
+            const open = slots.filter((s: any) => !s.user_id || !blockedUserIds.has(s.user_id));
+            if (!open.length) return this.buildNoSlotsResult(schema);
+            slots.length = 0;
+            slots.push(...open);
+        }
+
         // Get existing appointments for that date. service_id entra al SELECT para
         // poder contar la ocupación POR SERVICIO (la capacidad es del servicio, no
         // del negocio: 4 sillas de corte no son 4 salas de depilación).
@@ -1160,6 +1178,21 @@ export class AIToolExecutorService {
             // the misconfiguration, otherwise the booking engine loops "no availability"
             // forever and never escalates.
             return this.buildNoSlotsResult(schema);
+        }
+
+        // blocked_dates también acá: una pernocta o una sesión de día completo no
+        // debería ofrecerse un feriado que el dueño cerró.
+        const blockedOpen: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT user_id FROM "${schema}".blocked_dates WHERE blocked_date = $1::date`,
+            date,
+        ).catch(() => []);
+        if (blockedOpen.length) {
+            if (blockedOpen.some(b => !b.user_id)) return this.buildNoSlotsResult(schema);
+            const blockedIds = new Set(blockedOpen.map(b => b.user_id));
+            const open = slots.filter((s: any) => !s.user_id || !blockedIds.has(s.user_id));
+            if (!open.length) return this.buildNoSlotsResult(schema);
+            slots.length = 0;
+            slots.push(...open);
         }
 
         // For open services, return the availability windows as "slots" (no specific times)

@@ -319,6 +319,9 @@ export class AIToolExecutorService {
                 case 'check_request_status':
                     return this.checkServiceRequestStatusTool(schemaName, contactId, args);
 
+                case 'list_my_requests':
+                    return this.listMyServiceRequestsTool(schemaName, contactId, args?.onlyOpen !== false);
+
                 case 'cancel_service_request':
                     return this.cancelServiceRequest(schemaName, contactId, args.requestId, args.reason);
 
@@ -2898,6 +2901,43 @@ export class AIToolExecutorService {
             };
         } catch (e: any) {
             return { error: e.message };
+        }
+    }
+
+    /**
+     * Las solicitudes DEL CLIENTE, sin pedirle un id que no tiene.
+     *
+     * `check_request_status` exige el UUID de la solicitud, y ese id sólo
+     * existe dentro del turno en que se creó: el cliente nunca lo vio. Así que
+     * la pregunta más frecuente del rubro después de pedir el servicio —"¿ya
+     * viene el técnico?"— no tenía forma de responderse, y terminaba en un
+     * humano o en un "no encuentro tu solicitud".
+     */
+    private async listMyServiceRequestsTool(schema: string, contactId: string, onlyOpen: boolean): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, service_type, urgency, status, address,
+                        assigned_technician_name, scheduled_at, created_at
+                 FROM "${schema}".service_requests
+                 WHERE contact_id = $1::uuid
+                   ${onlyOpen ? `AND status NOT IN ('completed', 'cancelled')` : ''}
+                 ORDER BY created_at DESC LIMIT 10`,
+                contactId,
+            );
+            return {
+                requests: rows.map(r => ({
+                    requestId: r.id,
+                    serviceType: r.service_type,
+                    urgency: r.urgency,
+                    status: r.status,
+                    address: r.address,
+                    technicianName: r.assigned_technician_name,
+                    scheduledAt: r.scheduled_at,
+                    createdAt: r.created_at,
+                })),
+            };
+        } catch (e: any) {
+            return { requests: [], error: e.message };
         }
     }
 

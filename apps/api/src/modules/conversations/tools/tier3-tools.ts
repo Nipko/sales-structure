@@ -37,13 +37,26 @@ export const HOME_SERVICES_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'check_request_status',
-        description: 'Look up the status of a previously created service request. Returns current stage (pending/scheduled/dispatched/in_progress/completed) plus assigned technician name + scheduled time when available.',
+        description: 'Look up the status of a previously created service request. Returns current stage (pending/scheduled/dispatched/in_progress/completed) plus assigned technician name + scheduled time when available. Requires the request UUID — if the customer does not give you one (they almost never have it), call list_my_requests instead.',
         parameters: {
             type: 'object',
             properties: {
                 requestId: { type: 'string', description: 'Request UUID returned by create_service_request' },
             },
             required: ['requestId'],
+        },
+    },
+    {
+        // "¿Ya viene el técnico?" es el segundo mensaje del rubro, y hasta ahora
+        // la única forma de responderlo exigía un UUID que el cliente nunca vio:
+        // el id sólo existe dentro del turno en que se creó la solicitud.
+        name: 'list_my_requests',
+        description: 'List this customer\'s own service requests, newest first, with status, technician and scheduled time. Use this whenever the customer asks about "my request", "is the technician coming?", "what happened with my repair" — they will not have a request ID.',
+        parameters: {
+            type: 'object',
+            properties: {
+                onlyOpen: { type: 'boolean', description: 'Default true — only requests that are not completed or cancelled' },
+            },
         },
     },
     {

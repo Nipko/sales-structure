@@ -324,30 +324,55 @@ export class GymsService {
         room?: string;
         level?: string;
         creditsRequired?: number;
+        /**
+         * Repetir semanalmente. Una grilla de gimnasio es la MISMA clase todas
+         * las semanas: sin esto el dueño tenía que cargar "Spinning, martes
+         * 19:00" una vez por semana, para siempre, por cada clase de la grilla.
+         * Es la fatiga de carga que mata la adopción del módulo entero.
+         */
+        repeatWeeks?: number;
     }): Promise<any> {
         if (!data.name || !data.scheduledAt || !data.maxCapacity) {
             throw new BadRequestException('name, scheduledAt and maxCapacity are required');
         }
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO fitness_classes (
-                name, description, class_type, instructor_name,
-                scheduled_at, duration_minutes, max_capacity, available_spots,
-                room, level, credits_required
-             ) VALUES (
-                $1, $2, $3, $4, $5::timestamp, $6, $7, $7, $8, $9, $10
-             ) RETURNING *`,
-            [
-                data.name, data.description || null, data.classType || null,
-                data.instructorName || null,
-                data.scheduledAt,
-                data.durationMinutes || 60,
-                data.maxCapacity,
-                data.room || null, data.level || null,
-                data.creditsRequired ?? 1,
-            ],
-        );
-        return rows[0];
+        // Tope de 52: un año. Más que eso es una grilla que el dueño va a querer
+        // cambiar antes de que llegue, y son filas que después hay que cancelar
+        // una por una.
+        const weeks = Math.min(Math.max(Math.floor(Number(data.repeatWeeks) || 1), 1), 52);
+
+        const created: any[] = [];
+        for (let i = 0; i < weeks; i++) {
+            // La fecha se corre en UTC sobre la cadena recibida. Sumar 7 días con
+            // setDate() sobre la hora LOCAL del servidor movería la hora de la
+            // clase al cruzar un cambio de horario de verano.
+            const at = new Date(`${data.scheduledAt.replace(' ', 'T')}${data.scheduledAt.length <= 16 ? ':00' : ''}Z`);
+            at.setUTCDate(at.getUTCDate() + i * 7);
+            const scheduledAt = at.toISOString().slice(0, 19);
+
+            const rows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `INSERT INTO fitness_classes (
+                    name, description, class_type, instructor_name,
+                    scheduled_at, duration_minutes, max_capacity, available_spots,
+                    room, level, credits_required
+                 ) VALUES (
+                    $1, $2, $3, $4, $5::timestamp, $6, $7, $7, $8, $9, $10
+                 ) RETURNING *`,
+                [
+                    data.name, data.description || null, data.classType || null,
+                    data.instructorName || null,
+                    scheduledAt,
+                    data.durationMinutes || 60,
+                    data.maxCapacity,
+                    data.room || null, data.level || null,
+                    data.creditsRequired ?? 1,
+                ],
+            );
+            created.push(rows[0]);
+        }
+        // Se devuelve la primera para no romper a quien esperaba una sola clase,
+        // con el total al lado para que la UI pueda decir "se crearon 8".
+        return { ...created[0], createdCount: created.length };
     }
 
     async cancelClass(schemaName: string, id: string, reason?: string): Promise<any> {

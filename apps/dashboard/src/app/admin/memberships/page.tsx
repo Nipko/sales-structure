@@ -15,7 +15,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
     Dumbbell, Users, Plus, Trash2, Edit2, X, Loader2, Save, Pause, Play,
-    AlertTriangle, CheckCircle, Calendar, Search, Snowflake,
+    AlertTriangle, CheckCircle, Calendar, CalendarDays, Search, Snowflake, Repeat,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 
@@ -51,7 +51,7 @@ interface Member {
     status: string;
 }
 
-type TabId = "plans" | "members";
+type TabId = "plans" | "members" | "classes";
 
 export default function MembershipsPage() {
     const t = useTranslations("memberships");
@@ -66,6 +66,12 @@ export default function MembershipsPage() {
     const [search, setSearch] = useState("");
     const [showPlanForm, setShowPlanForm] = useState<Plan | "new" | null>(null);
     const [showFreeze, setShowFreeze] = useState<Member | null>(null);
+    // Clases. `createGymClass` existía en el cliente HTTP con 0 llamadores: el
+    // dueño no podía crear NI UNA clase, así que get_class_schedule devolvía
+    // vacío y book_class no tenía nada que reservar. Mismo patrón que el alta de
+    // miembros.
+    const [classes, setClasses] = useState<any[]>([]);
+    const [showClassForm, setShowClassForm] = useState(false);
     // Alta de miembro. Sin esto el módulo entero era inalcanzable: book_class y
     // get_my_membership respondían "no es miembro" al 100% de los clientes
     // porque no existía ninguna forma de crear el primero.
@@ -79,12 +85,14 @@ export default function MembershipsPage() {
         if (!activeTenantId) return;
         setLoading(true);
         try {
-            const [plansRes, membersRes] = await Promise.all([
+            const [plansRes, membersRes, classesRes] = await Promise.all([
                 api.listMembershipPlans(activeTenantId),
                 api.listGymMembers(activeTenantId, { search }),
+                api.listFitnessClasses(activeTenantId, { from: new Date().toISOString().slice(0, 10) }).catch(() => null),
             ]);
             if (plansRes.success) setPlans(plansRes.data || []);
             if (membersRes.success) setMembers(membersRes.data || []);
+            if (classesRes?.success) setClasses(classesRes.data || []);
         } finally {
             setLoading(false);
         }
@@ -126,6 +134,15 @@ export default function MembershipsPage() {
         load();
     }
 
+    async function handleCancelClass(klass: any) {
+        if (!activeTenantId) return;
+        // Cancelar una clase deja sin lugar a quienes ya reservaron, así que se
+        // confirma diciendo cuántos son.
+        if (!confirm(t("cancelClassConfirm", { booked: klass.max_capacity - klass.available_spots }))) return;
+        await api.cancelFitnessClass(activeTenantId, klass.id, "").catch(() => null);
+        load();
+    }
+
     async function handleUnfreeze(member: Member) {
         if (!activeTenantId) return;
         await api.unfreezeGymMember(activeTenantId, member.id);
@@ -150,6 +167,14 @@ export default function MembershipsPage() {
                         <Plus className="h-4 w-4" /> {t("addPlan")}
                     </button>
                 )}
+                {tab === "classes" && (
+                    <button
+                        onClick={() => setShowClassForm(true)}
+                        className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium"
+                    >
+                        <Plus className="h-4 w-4" /> {t("addClass")}
+                    </button>
+                )}
             </div>
 
             <HelpPanel
@@ -163,6 +188,7 @@ export default function MembershipsPage() {
                 {([
                     { id: "plans" as const, label: t("plansTab"), icon: Dumbbell, count: plans.length },
                     { id: "members" as const, label: t("membersTab"), icon: Users, count: members.length },
+                    { id: "classes" as const, label: t("classesTab"), icon: CalendarDays, count: classes.length },
                 ]).map(tabDef => {
                     const Icon = tabDef.icon;
                     return (
@@ -346,6 +372,58 @@ export default function MembershipsPage() {
                 </>
             )}
 
+
+            {tab === "classes" && (
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <table className="w-full text-sm">
+                        <thead className="bg-muted/30">
+                            <tr className="text-left">
+                                <th className="px-4 py-2 font-semibold">{t("className")}</th>
+                                <th className="px-4 py-2 font-semibold">{t("classWhen")}</th>
+                                <th className="px-4 py-2 font-semibold">{t("instructor")}</th>
+                                <th className="px-4 py-2 font-semibold text-right">{t("spots")}</th>
+                                <th className="px-4 py-2 font-semibold text-right">{t("actions")}</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                            {classes.length === 0 ? (
+                                <tr><td colSpan={5} className="text-center py-8 text-muted-foreground text-sm">{t("noClasses")}</td></tr>
+                            ) : classes.map((c: any) => (
+                                <tr key={c.id} className={cn("hover:bg-muted/20", c.is_cancelled && "opacity-50")}>
+                                    <td className="px-4 py-2">
+                                        <div className="font-medium">{c.name}</div>
+                                        {c.class_type && <div className="text-xs text-muted-foreground">{c.class_type}</div>}
+                                    </td>
+                                    <td className="px-4 py-2 text-xs font-mono text-muted-foreground">
+                                        {new Date(c.scheduled_at).toLocaleString()}
+                                    </td>
+                                    <td className="px-4 py-2 text-xs">{c.instructor_name || "—"}</td>
+                                    <td className="px-4 py-2 text-right font-mono text-xs">
+                                        {/* Cupos libres sobre capacidad: es el dato con el que el
+                                            dueño decide abrir otra clase. */}
+                                        <span className={cn(c.available_spots === 0 && "text-amber-600 font-semibold")}>
+                                            {c.available_spots}
+                                        </span>
+                                        <span className="text-muted-foreground">/{c.max_capacity}</span>
+                                    </td>
+                                    <td className="px-4 py-2 text-right">
+                                        {!c.is_cancelled && (
+                                            <button
+                                                onClick={() => handleCancelClass(c)}
+                                                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-600 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                                title={tc("cancel")}
+                                            >
+                                                <X className="h-3.5 w-3.5" />
+                                            </button>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
             {showPlanForm && (
                 <PlanFormModal
                     plan={showPlanForm === "new" ? null : showPlanForm}
@@ -359,6 +437,13 @@ export default function MembershipsPage() {
                     member={showFreeze}
                     onClose={() => setShowFreeze(null)}
                     onFrozen={() => { setShowFreeze(null); load(); }}
+                />
+            )}
+
+            {showClassForm && (
+                <ClassFormModal
+                    onClose={() => setShowClassForm(false)}
+                    onSaved={() => { setShowClassForm(false); setTab("classes"); load(); }}
                 />
             )}
 
@@ -592,6 +677,189 @@ function FreezeModal({
                     <button onClick={handleFreeze} disabled={busy || days < 1} className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Snowflake className="h-4 w-4" />}
                         {t("freezeNow")}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+/**
+ * Alta de clase con repetición semanal.
+ *
+ * Una grilla de gimnasio es la MISMA clase todas las semanas. Cargar
+ * "Spinning, martes 19:00" una vez por semana y para siempre, por cada clase
+ * de la grilla, es la fatiga de carga que mata la adopción del módulo antes de
+ * que llegue a servir para algo. Con "repetir N semanas" el dueño arma su
+ * grilla una vez por trimestre.
+ */
+function ClassFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (count: number) => void }) {
+    const t = useTranslations("memberships");
+    const tc = useTranslations("common");
+    const { activeTenantId } = useTenant();
+
+    const [form, setForm] = useState({
+        name: "",
+        classType: "",
+        instructorName: "",
+        date: "",
+        time: "",
+        durationMinutes: 60,
+        maxCapacity: 20,
+        room: "",
+        creditsRequired: 1,
+        repeatWeeks: 8,
+    });
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    async function handleSave() {
+        if (!activeTenantId) return;
+        if (!form.name.trim() || !form.date || !form.time || !form.maxCapacity) {
+            setError(t("classMissingFields"));
+            return;
+        }
+        setBusy(true);
+        setError("");
+        const res = await api.createFitnessClass(activeTenantId, {
+            name: form.name.trim(),
+            classType: form.classType.trim() || undefined,
+            instructorName: form.instructorName.trim() || undefined,
+            scheduledAt: `${form.date}T${form.time}:00`,
+            durationMinutes: Number(form.durationMinutes) || 60,
+            maxCapacity: Number(form.maxCapacity),
+            room: form.room.trim() || undefined,
+            creditsRequired: Number(form.creditsRequired) || 1,
+            repeatWeeks: Number(form.repeatWeeks) || 1,
+        }).catch(() => ({ success: false, error: tc("connectionError") } as any));
+
+        setBusy(false);
+        if (!res?.success) {
+            setError((res as any)?.error || tc("errorSaving"));
+            return;
+        }
+        onSaved(res.data?.createdCount || 1);
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+            <div className="w-full max-w-md rounded-xl bg-card border border-border p-6 shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold flex items-center gap-2">
+                        <CalendarDays className="h-4 w-4 text-emerald-500" />
+                        {t("addClass")}
+                    </h3>
+                    <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+
+                {error && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
+                        <AlertTriangle className="h-4 w-4 shrink-0" /> {error}
+                    </div>
+                )}
+
+                <div className="space-y-3">
+                    <div>
+                        <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("className")}</label>
+                        <input
+                            value={form.name}
+                            onChange={e => setForm({ ...form, name: e.target.value })}
+                            placeholder={t("classNamePlaceholder")}
+                            className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("classDate")}</label>
+                            <input
+                                type="date"
+                                value={form.date}
+                                onChange={e => setForm({ ...form, date: e.target.value })}
+                                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("classTime")}</label>
+                            <input
+                                type="time"
+                                value={form.time}
+                                onChange={e => setForm({ ...form, time: e.target.value })}
+                                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("durationMinutes")}</label>
+                            <input
+                                type="number" min={5} max={480}
+                                value={form.durationMinutes}
+                                onChange={e => setForm({ ...form, durationMinutes: Number(e.target.value) })}
+                                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm font-mono"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("maxCapacity")}</label>
+                            <input
+                                type="number" min={1} max={500}
+                                value={form.maxCapacity}
+                                onChange={e => setForm({ ...form, maxCapacity: Number(e.target.value) })}
+                                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm font-mono"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("instructor")}</label>
+                            <input
+                                value={form.instructorName}
+                                onChange={e => setForm({ ...form, instructorName: e.target.value })}
+                                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("creditsRequired")}</label>
+                            <input
+                                type="number" min={0} max={20}
+                                value={form.creditsRequired}
+                                onChange={e => setForm({ ...form, creditsRequired: Number(e.target.value) })}
+                                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm font-mono"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                        <label className="flex items-center gap-2 text-[13px] font-medium mb-1.5">
+                            <Repeat className="h-3.5 w-3.5 text-emerald-500" />
+                            {t("repeatWeeks")}
+                        </label>
+                        <input
+                            type="number" min={1} max={52}
+                            value={form.repeatWeeks}
+                            onChange={e => setForm({ ...form, repeatWeeks: Math.min(52, Math.max(1, Number(e.target.value))) })}
+                            className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm font-mono"
+                        />
+                        <p className="text-[11px] text-muted-foreground mt-1">{t("repeatWeeksHint")}</p>
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-2 mt-5">
+                    <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground cursor-pointer">
+                        {tc("cancel")}
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        disabled={busy}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white transition-colors cursor-pointer"
+                    >
+                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        {tc("save")}
                     </button>
                 </div>
             </div>

@@ -37,6 +37,11 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
                 customerPhone: { type: 'string', description: 'Phone number' },
                 customerEmail: { type: 'string', description: 'Email for calendar invite' },
                 notes: { type: 'string', description: 'Notes' },
+                // Objeto de negocio sobre el que trata la cita. Solo aplica en
+                // las verticales que lo tienen; en el resto se omite.
+                listingId: { type: 'string', description: 'Real-estate listing UUID this visit is about — from search_listings / get_listing_details. Only for real-estate tenants.' },
+                petId: { type: 'string', description: 'Pet UUID this appointment is for — from list_pets_for_contact. Only for veterinary tenants.' },
+                vehicleId: { type: 'string', description: 'Vehicle UUID this test drive / service is about — from the vehicle search tools. Only for automotive tenants.' },
             },
             required: ['serviceId', 'date', 'time', 'customerName', 'customerEmail'],
         },

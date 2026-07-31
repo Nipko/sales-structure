@@ -1362,20 +1362,23 @@ export class AIToolExecutorService {
         const assignedTo = args.staffId || null;
         const lockKey = await this.acquireSlotLock(schema, assignedTo, args.date);
         let rows: any[];
+        let subject: { metadata: Record<string, string>; labels: string[] } = { metadata: {}, labels: [] };
         try {
             if (await this.findAppointmentConflict(schema, startAt, endAt, assignedTo, undefined, args.serviceId)) {
                 this.logger.warn(`[Tool] Double-booking prevented: ${args.date} ${args.time} (staff=${assignedTo || 'any'})`);
                 return { error: 'That time slot was just taken. Offer the customer another available time (call check_availability again).' };
             }
+            subject = await this.resolveAppointmentSubject(schema, args);
             rows = await this.prisma.$queryRawUnsafe(
                 `INSERT INTO "${schema}".appointments
-                 (contact_id, service_id, service_name, assigned_to, start_at, end_at, status, customer_name, customer_phone, customer_email, notes)
-                 VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5::timestamp, $6::timestamp, 'confirmed', $7, $8, $9, $10)
+                 (contact_id, service_id, service_name, assigned_to, start_at, end_at, status, customer_name, customer_phone, customer_email, notes, metadata)
+                 VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5::timestamp, $6::timestamp, 'confirmed', $7, $8, $9, $10, $11::jsonb)
                  RETURNING id, service_name, start_at, end_at, status`,
                 contactId, args.serviceId, svc.name,
                 assignedTo,
                 startAt, endAt,
                 args.customerName, args.customerPhone || null, args.customerEmail || null, args.notes || null,
+                JSON.stringify(subject.metadata),
             );
         } finally {
             if (lockKey) await this.redis.releaseLock(lockKey);
@@ -1393,6 +1396,10 @@ export class AIToolExecutorService {
         const priceStr = svc.price ? `${Number(svc.price).toLocaleString()} ${svc.currency || 'COP'}` : 'N/A';
         descriptionParts.push(`Service: ${svc.name} (${priceStr})`);
         descriptionParts.push(`Duration: ${svc.duration_minutes} min`);
+        // El objeto de la cita, arriba de todo el contexto: es lo primero que
+        // necesita saber quien abre el evento en su calendario. Un asesor que va
+        // a mostrar un inmueble necesita CUAL, no el uuid.
+        for (const label of subject.labels) descriptionParts.push(label);
 
         // Add conversation context if available
         if (conversationId) {
@@ -1713,6 +1720,54 @@ export class AIToolExecutorService {
      * ventana llega hasta el check-out: el huesped necesita el codigo durante
      * toda su estadia, no solo el dia que llega.
      */
+    /**
+     * De qué objeto de negocio trata la cita: el inmueble que se visita, la
+     * mascota que se atiende, el auto que se prueba.
+     *
+     * `appointments.metadata` existe desde siempre y la ruta del dashboard la
+     * escribe; la ruta de CHAT —la que genera casi todas las citas— la omitía.
+     * Sin esto, una inmobiliaria con 40 propiedades sabe que el martes a las 4
+     * hay una visita y no cuál inmueble se muestra; una veterinaria no sabe qué
+     * mascota viene; y un test drive no dice de qué auto. Es el dato que
+     * después permite bloquear "esa propiedad a esa hora" y reportar
+     * propiedad → visitas → negocio.
+     *
+     * El id se VALIDA contra su tabla antes de guardarse. Viene de un LLM: un
+     * UUID alucinado que entra sin chequear no rompe nada visible hoy y
+     * envenena en silencio todo el reporting de mañana. Si la tabla no existe
+     * (las verticales son lazy) el id es necesariamente espurio y se descarta.
+     */
+    private async resolveAppointmentSubject(
+        schema: string,
+        args: any,
+    ): Promise<{ metadata: Record<string, string>; labels: string[] }> {
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        // La etiqueta se resuelve en el mismo viaje que la validación: es lo que
+        // después ve el asesor en su calendario, y un id crudo no le sirve.
+        const candidates: Array<{ key: string; table: string; label: string; select: string; value: any }> = [
+            { key: 'listingId', table: 'real_estate_listings', label: 'Inmueble', select: 'name', value: args.listingId },
+            { key: 'petId', table: 'pets', label: 'Mascota', select: `name || ' (' || COALESCE(species, '') || ')'`, value: args.petId },
+            { key: 'vehicleId', table: 'vehicles', label: 'Vehículo', select: `make || ' ' || model || ' ' || year::text`, value: args.vehicleId },
+        ];
+
+        const metadata: Record<string, string> = {};
+        const labels: string[] = [];
+        for (const c of candidates) {
+            if (typeof c.value !== 'string' || !UUID_RE.test(c.value)) continue;
+            const found: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT ${c.select} AS label FROM "${schema}".${c.table} WHERE id = $1::uuid LIMIT 1`,
+                c.value,
+            ).catch(() => [] as any[]);
+            if (found.length) {
+                metadata[c.key] = c.value;
+                if (found[0].label) labels.push(`${c.label}: ${found[0].label}`);
+            } else {
+                this.logger.warn(`[Tool] create_appointment: ${c.key}=${c.value} no existe en ${c.table}; se descarta`);
+            }
+        }
+        return { metadata, labels };
+    }
+
     private async getCheckInInstructions(schema: string, contactId: string, propertyId: string): Promise<any> {
         try {
             const p = await this.propertiesService.getById(schema, propertyId);

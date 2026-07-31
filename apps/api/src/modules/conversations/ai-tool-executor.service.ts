@@ -940,12 +940,17 @@ export class AIToolExecutorService {
             this.logger.log(`[Tool] Resolved service name "${serviceId}" → UUID ${resolvedServiceId}`);
         }
 
-        // Get service duration
+        // Get service duration + capacity. max_concurrent modela cuántas reservas
+        // simultáneas admite el servicio (4 sillas de peluquería, 3 consultorios,
+        // 10 mesas): la ruta pública ya lo respeta y la de chat lo ignoraba, así
+        // que un salón con 4 estilistas rechazaba al segundo cliente de las 15:00.
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT duration_minutes, buffer_minutes, duration_type, duration_minutes_max FROM "${schema}".services WHERE id = $1::uuid`,
+            `SELECT duration_minutes, buffer_minutes, duration_type, duration_minutes_max, max_concurrent FROM "${schema}".services WHERE id = $1::uuid`,
             resolvedServiceId,
         );
         if (!svcRows.length) return { error: 'Service not found' };
+
+        const maxConcurrent = Math.max(1, Number(svcRows[0].max_concurrent) || 1);
 
         const durationType = svcRows[0].duration_type || 'fixed';
 
@@ -983,11 +988,13 @@ export class AIToolExecutorService {
             return this.buildNoSlotsResult(schema);
         }
 
-        // Get existing appointments for that date
+        // Get existing appointments for that date. service_id entra al SELECT para
+        // poder contar la ocupación POR SERVICIO (la capacidad es del servicio, no
+        // del negocio: 4 sillas de corte no son 4 salas de depilación).
         const existing: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT assigned_to, 
-                    to_char(start_at, 'HH24:MI') as start_time, 
-                    to_char(end_at, 'HH24:MI') as end_time 
+            `SELECT assigned_to, service_id,
+                    to_char(start_at, 'HH24:MI') as start_time,
+                    to_char(end_at, 'HH24:MI') as end_time
              FROM "${schema}".appointments
              WHERE DATE(start_at) = $1::date AND status NOT IN ('cancelled')`,
             date,
@@ -1035,15 +1042,30 @@ export class AIToolExecutorService {
                 // blocks 09:30-09:35, not just 09:30-09:30.
                 const slotBlockEndMinOfDay = min + totalBlock;
 
-                const hasConflict = existing.some(apt => {
-                    if (slot.user_id && apt.assigned_to && slot.user_id !== apt.assigned_to) return false;
+                // Solapamiento en minutos del día, reutilizado por las dos reglas.
+                const overlaps = (apt: any) => {
                     const [asH, asM] = apt.start_time.split(':').map(Number);
                     const [aeH, aeM] = apt.end_time.split(':').map(Number);
-                    const aptStartMin = asH * 60 + asM;
-                    const aptEndMin = aeH * 60 + aeM;
-                    // Overlap: proposed slot block overlaps existing appointment
-                    return slotStartMinOfDay < aptEndMin && slotBlockEndMinOfDay > aptStartMin;
+                    return slotStartMinOfDay < (aeH * 60 + aeM) && slotBlockEndMinOfDay > (asH * 60 + asM);
+                };
+
+                // Regla 1 — conflicto de PERSONA: una cita ya asignada a este staff
+                // bloquea su ventana. Con `assigned_to` NULL no se puede atribuir a
+                // nadie, así que solo cuenta para la capacidad (regla 2).
+                const hasConflict = existing.some(apt => {
+                    if (!apt.assigned_to) return false;
+                    if (slot.user_id && slot.user_id !== apt.assigned_to) return false;
+                    return overlaps(apt);
                 });
+
+                // Regla 2 — CAPACIDAD del servicio: cuántas reservas simultáneas
+                // admite. Antes cualquier cita sin staff (todas las del chat, que
+                // nacen con assigned_to NULL) bloqueaba la franja para el negocio
+                // entero; ahora bloquea recién al llegar a max_concurrent.
+                const concurrentSameService = existing.filter(apt =>
+                    apt.service_id === resolvedServiceId && overlaps(apt),
+                ).length;
+                if (concurrentSameService >= maxConcurrent) continue;
 
                 // Check conflicts with external calendar (Google/Microsoft) busy times.
                 const calendarConflict = googleBusy.some(busy => {
@@ -1177,21 +1199,67 @@ export class AIToolExecutorService {
     private async findAppointmentConflict(
         schema: string, startAt: string, endAt: string,
         assignedTo: string | null, excludeId?: string,
+        serviceId?: string | null,
     ): Promise<boolean> {
-        const params: any[] = [endAt, startAt, assignedTo || null];
-        let excludeSql = '';
-        if (excludeId) { excludeSql = ' AND id != $4::uuid'; params.push(excludeId); }
-        const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id FROM "${schema}".appointments
+        // Debe usar la MISMA regla que checkAvailability o el turno se rompe a
+        // mitad: la tool ofrece un horario y el create lo rechaza.
+        // (1) Conflicto de persona: solo cuando la cita existente TIENE staff.
+        if (assignedTo) {
+            const params: any[] = [endAt, startAt, assignedTo];
+            let excludeSql = '';
+            if (excludeId) { excludeSql = ' AND id != $4::uuid'; params.push(excludeId); }
+            const staffRows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id FROM "${schema}".appointments
+                 WHERE status NOT IN ('cancelled')
+                   AND start_at < $1::timestamp
+                   AND end_at > $2::timestamp
+                   AND assigned_to = $3::uuid
+                   ${excludeSql}
+                 LIMIT 1`,
+                ...params,
+            );
+            if (staffRows.length > 0) return true;
+        }
+
+        // (2) Capacidad del servicio: bloquea recién al alcanzar max_concurrent.
+        // Sin serviceId no hay capacidad que consultar → se cae al comportamiento
+        // conservador de antes (cualquier solapamiento bloquea).
+        if (!serviceId) {
+            const params: any[] = [endAt, startAt, assignedTo || null];
+            let excludeSql = '';
+            if (excludeId) { excludeSql = ' AND id != $4::uuid'; params.push(excludeId); }
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id FROM "${schema}".appointments
+                 WHERE status NOT IN ('cancelled')
+                   AND start_at < $1::timestamp
+                   AND end_at > $2::timestamp
+                   AND ($3::uuid IS NULL OR assigned_to IS NULL OR assigned_to = $3::uuid)
+                   ${excludeSql}
+                 LIMIT 1`,
+                ...params,
+            );
+            return rows.length > 0;
+        }
+
+        const capRows: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT COALESCE(max_concurrent, 1) AS cap FROM "${schema}".services WHERE id = $1::uuid`,
+            serviceId,
+        );
+        const cap = Math.max(1, Number(capRows?.[0]?.cap) || 1);
+
+        const countParams: any[] = [endAt, startAt, serviceId];
+        let excludeCount = '';
+        if (excludeId) { excludeCount = ' AND id != $4::uuid'; countParams.push(excludeId); }
+        const busy: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT COUNT(*)::int AS n FROM "${schema}".appointments
              WHERE status NOT IN ('cancelled')
                AND start_at < $1::timestamp
                AND end_at > $2::timestamp
-               AND ($3::uuid IS NULL OR assigned_to IS NULL OR assigned_to = $3::uuid)
-               ${excludeSql}
-             LIMIT 1`,
-            ...params,
+               AND service_id = $3::uuid
+               ${excludeCount}`,
+            ...countParams,
         );
-        return rows.length > 0;
+        return Number(busy?.[0]?.n || 0) >= cap;
     }
 
     /**
@@ -1262,7 +1330,7 @@ export class AIToolExecutorService {
         const lockKey = await this.acquireSlotLock(schema, assignedTo, args.date);
         let rows: any[];
         try {
-            if (await this.findAppointmentConflict(schema, startAt, endAt, assignedTo)) {
+            if (await this.findAppointmentConflict(schema, startAt, endAt, assignedTo, undefined, args.serviceId)) {
                 this.logger.warn(`[Tool] Double-booking prevented: ${args.date} ${args.time} (staff=${assignedTo || 'any'})`);
                 return { error: 'That time slot was just taken. Offer the customer another available time (call check_availability again).' };
             }
@@ -2688,7 +2756,7 @@ export class AIToolExecutorService {
         const assignedTo = apt.assigned_to || null;
         const lockKey = await this.acquireSlotLock(schema, assignedTo, newDate);
         try {
-            if (await this.findAppointmentConflict(schema, newStartAt, newEndAt, assignedTo, appointmentId)) {
+            if (await this.findAppointmentConflict(schema, newStartAt, newEndAt, assignedTo, appointmentId, apt.service_id)) {
                 this.logger.warn(`[Tool] Reschedule conflict prevented: ${newDate} ${newTime} (staff=${assignedTo || 'any'})`);
                 return { error: 'That new time slot is already taken. Offer the customer another available time (call check_availability).' };
             }

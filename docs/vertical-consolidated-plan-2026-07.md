@@ -252,17 +252,25 @@ Horizontales XS/S de máxima palanca, más los P0 sueltos que no dependen de nad
 
 **Criterio de listo:** un salón con 4 sillas, una clínica con 3 consultorios y un restaurante con 10 mesas reciben más de una reserva por franja. Un gym puede dar de alta un miembro y sus 6 tools responden. Un pedido de restaurante llega a alguien. "¿Ofrecen financiación?" no escala a humano. Un tenant trial de turismo o automotriz puede cargar su primer objeto.
 
-### Ola 2 — un mes: el motor temporal y las cuatro verticales INVERTIR
+### Ola 2 — los horizontales ✅ COMPLETOS (jul 2026); quedan las cuatro verticales
 
-- **H-3** Evaluador temporal transversal (🔒D2) con dos sabores encendidos: vacunas (vet) y recall dental. Los otros seis sabores son configuración, no código nuevo.
-- **H-2** F2: `staffId`/`assigned_to` persistido, con oferta de slots por profesional en el chat.
-- **H-6** Objeto de negocio ligado a la cita (listing / pet / vehículo) — un solo diseño, tres verticales.
-- **H-8** Checklist de onboarding por vertical con href y check propios.
-- **H-9** KPIs del home contra las tablas reales.
-- **H-10** Atomicidad de cupos en gym, tours y education.
-- **H-15** `booking_required` / `order_required` en las transition rules.
-- **H-12** Merge de rules (🔒D6) y **H-13** localización de plantillas verticales.
-- **Verticales:** belleza (partición del catálogo 🔒D5 + treatments + rebooking), salud (dental completo), inmobiliaria (visita ligada al listing + `assigned_to` + zonas), gimnasios (recurrencia de clases + reactivación).
+- ✅ **H-3** Evaluador temporal transversal (D2 aplicado). Se implementaron **nueve** sabores, no dos: la lógica de buscar/deduplicar/respetar-opt-out/disparar es idéntica para todos, así que se declararon como datos (`temporal-flavors.ts`) y sale gratis el resto. Incluye `inactivity`, que enciende las tres plantillas que `seed-templates.ts` ya sembraba y **nadie evaluaba**.
+- ✅ **H-2** F2: `staffId`/`assigned_to` persistido + nombre del profesional en las franjas y en el resumen de confirmación.
+- ✅ **H-6** Objeto de negocio ligado a la cita (listing / pet / vehículo), con la etiqueta legible en el evento de calendario.
+- ✅ **H-8** Checklist con href y check propios por vertical.
+- ✅ **H-9** KPIs del home contra las tablas reales.
+- ✅ **H-10** Atomicidad de cupos en gym, tours y education.
+- ✅ **H-15** `appointment_required` / `order_required` (adelantado a Ola 1).
+- ✅ **H-12** Merge de rules (D6 aplicado) y ✅ **H-13** localización de plantillas verticales.
+- ⬜ **Verticales:** belleza (partición del catálogo 🔒D5 + treatments + rebooking), salud (dental completo), inmobiliaria (visita ligada al listing + `assigned_to` + zonas), gimnasios (recurrencia de clases + reactivación).
+
+**Hallazgos nuevos de esta ola:**
+
+- **La fuga de acceso físico.** El barrido del gate de propiedad (ver Ola 1) encontró que `get_check_in_instructions` entregaba el código de la puerta y la dirección exacta de cualquier alojamiento a quien nombrara su `propertyId` — y `list_properties` devuelve el catálogo entero de ids. No era una fuga de datos: era seguridad física de una casa que en ese momento podía estar ocupada por otro huésped.
+- **El KPI no estaba aproximado, estaba vacío.** Las cuatro etiquetas re-etiquetadas colgaban de `appointments`, una tabla que esas verticales no usan para eso. Un gym con 30 reservas leía "Reservas Clases: 0" en la primera pantalla del panel.
+- **El checklist certificaba lo incorrecto.** Peor que no guiar: el tilde verde sobre el PDF en la KB le quita al dueño el motivo para seguir buscando por qué su menú no funciona.
+- **`H-2` iba a introducir su propio bug.** Al agregar `staffId` al estado había que limpiarlo en los cuatro sitios donde se resetean las franjas; sin eso la profesional de la fecha vieja se filtraba a la cita nueva.
+- **Todo `@Cron` corre dos veces** (API y worker cargan el mismo `AppModule` con `ScheduleModule`). Es inocuo para los crons idempotentes que ya existían; para uno que le escribe a clientes finales hizo falta un lock explícito. **Vale auditar los ~46 crons con este criterio.**
 
 **Criterio de listo:** una clínica ofrece "10:00 con la Dra. X" y persiste quién atiende. Un tutor recibe el recordatorio de vacuna sin que nadie lo dispare a mano. Una agencia sabe qué propiedad se muestra en cada visita y quién la muestra. Un dueño que sigue el checklist termina con su catálogo cargado en la tabla que las tools leen, no en un PDF de la KB. Ningún KPI del home cuenta citas haciéndose pasar por otra cosa.
 

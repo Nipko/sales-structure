@@ -414,7 +414,33 @@ export class GymsService {
              WHERE id = $1::uuid AND available_spots > 0 RETURNING id`,
             [classId],
         );
-        if (!claimed.length) throw new BadRequestException('Class is full');
+
+        // Clase llena → lista de espera, no puerta cerrada.
+        //
+        // El estado 'waitlist' y su índice único están en el schema desde
+        // siempre y no los escribía nadie: la respuesta era "Class is full" y
+        // ahí terminaba la conversación. El costo real no es la molestia del
+        // socio: es que cuando alguien cancela, ese lugar queda VACÍO — el
+        // gimnasio pierde el cupo que ya tenía vendido.
+        //
+        // La reserva en espera NO consume créditos ni ocupa lugar. Los dos se
+        // cobran recién al promoverla (ver promoteFromWaitlist).
+        if (!claimed.length) {
+            const waitRows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `INSERT INTO class_bookings (class_id, member_id, contact_id, credits_used, status)
+                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'waitlist') RETURNING *`,
+                [classId, memberId, member.contact_id, required],
+            );
+            const [pos] = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT COUNT(*)::int AS n FROM class_bookings
+                 WHERE class_id = $1::uuid AND status = 'waitlist'
+                   AND booked_at <= (SELECT booked_at FROM class_bookings WHERE id = $2::uuid)`,
+                [classId, waitRows[0].id],
+            );
+            return { ...waitRows[0], waitlisted: true, waitlistPosition: Number(pos?.n || 1) };
+        }
 
         let bookingRows: any[];
         try {
@@ -447,14 +473,29 @@ export class GymsService {
     }
 
     async cancelBooking(schemaName: string, bookingId: string): Promise<void> {
+        // El RETURNING de un UPDATE devuelve la fila YA modificada, así que
+        // `status` diría siempre 'cancelled'. El auto-join contra la misma tabla
+        // ve el snapshot ANTERIOR, que es lo único que distingue una reserva
+        // confirmada (ocupaba lugar y créditos) de una en espera (no ocupaba
+        // ninguno de los dos).
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `UPDATE class_bookings SET status = 'cancelled', cancelled_at = NOW()
-             WHERE id = $1::uuid AND status IN ('confirmed', 'waitlist') RETURNING *`,
+            `UPDATE class_bookings b SET status = 'cancelled', cancelled_at = NOW()
+             FROM class_bookings old
+             WHERE b.id = $1::uuid AND old.id = b.id
+               AND b.status IN ('confirmed', 'waitlist')
+             RETURNING b.class_id, b.member_id, b.credits_used, old.status AS previous_status`,
             [bookingId],
         );
         const b = rows[0];
         if (!b) return;
+
+        // Cancelar una ESPERA no devuelve nada: nunca tomó lugar ni consumió
+        // créditos. Sin este guard, inflaba available_spots por encima del cupo
+        // real de la sala y le regalaba créditos al socio — un bug que estaba
+        // dormido sólo porque hasta ahora no existían filas en espera.
+        if (b.previous_status === 'waitlist') return;
+
         // Restore credits + spot
         await this.prisma.executeInTenantSchema(
             schemaName,
@@ -467,6 +508,83 @@ export class GymsService {
              WHERE id = $2::uuid AND class_credits_remaining IS NOT NULL`,
             [b.credits_used || 1, b.member_id],
         );
+
+        // El lugar liberado se le pasa a quien esté esperando.
+        await this.promoteFromWaitlist(schemaName, b.class_id);
+    }
+
+    /**
+     * Promueve la espera más antigua de una clase al lugar que acaba de quedar
+     * libre.
+     *
+     * Es lo que le da sentido a la lista: sin esto, un cupo cancelado queda
+     * vacío aunque haya gente esperando, que es exactamente lo que pasaba antes
+     * (con la diferencia de que antes nadie podía siquiera anotarse).
+     *
+     * Reclama el lugar con el MISMO UPDATE guardado que `bookClass`: si entre la
+     * cancelación y esto entró alguien por la puerta, no hay lugar que promover
+     * y la espera sigue esperando. Y si el socio se quedó sin créditos mientras
+     * tanto, se lo saltea en vez de dejarlo con saldo negativo — el siguiente
+     * cancelado lo vuelve a intentar.
+     */
+    private async promoteFromWaitlist(schemaName: string, classId: string): Promise<void> {
+        try {
+            const [next] = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT b.id, b.member_id, b.credits_used, m.class_credits_remaining
+                 FROM class_bookings b
+                 JOIN members m ON m.id = b.member_id
+                 WHERE b.class_id = $1::uuid AND b.status = 'waitlist' AND m.status = 'active'
+                 ORDER BY b.booked_at ASC LIMIT 1`,
+                [classId],
+            );
+            if (!next) return;
+
+            const required = next.credits_used || 1;
+            if (next.class_credits_remaining !== null && next.class_credits_remaining < required) {
+                this.logger.debug(`[Waitlist] member ${next.member_id} sin créditos suficientes — no se promueve`);
+                return;
+            }
+
+            const claimed = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `UPDATE fitness_classes SET available_spots = available_spots - 1
+                 WHERE id = $1::uuid AND available_spots > 0 RETURNING id`,
+                [classId],
+            );
+            if (!claimed.length) return;
+
+            const promoted = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `UPDATE class_bookings SET status = 'confirmed'
+                 WHERE id = $1::uuid AND status = 'waitlist' RETURNING *`,
+                [next.id],
+            );
+            if (!promoted.length) {
+                // Se canceló su propia espera mientras tanto: devolver el lugar.
+                await this.prisma.executeInTenantSchema(
+                    schemaName,
+                    `UPDATE fitness_classes SET available_spots = available_spots + 1 WHERE id = $1::uuid`,
+                    [classId],
+                ).catch(() => {});
+                return;
+            }
+
+            if (next.class_credits_remaining !== null) {
+                await this.prisma.executeInTenantSchema(
+                    schemaName,
+                    `UPDATE members SET class_credits_remaining = GREATEST(class_credits_remaining - $1, 0)
+                     WHERE id = $2::uuid`,
+                    [required, next.member_id],
+                );
+            }
+
+            this.logger.log(`[Waitlist] Reserva ${next.id} promovida a confirmada en la clase ${classId}`);
+        } catch (error: any) {
+            // Una promoción fallida deja el lugar libre para el próximo que
+            // reserve: es una oportunidad perdida, no un dato corrupto.
+            this.logger.warn(`[Waitlist] No se pudo promover en la clase ${classId}: ${error.message}`);
+        }
     }
 
     /** AI tool — list upcoming classes available for booking. */

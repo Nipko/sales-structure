@@ -41,7 +41,7 @@ export const GYMS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'book_class',
-        description: 'Reserve a spot in a fitness class for the current member. Decrements available_spots and class_credits_remaining. Use only after the customer has confirmed which class + time, and you have already called get_my_membership to verify they have an active membership.',
+        description: 'Reserve a spot in a fitness class for the current member. Decrements available_spots and class_credits_remaining. Use only after the customer has confirmed which class + time, and you have already called get_my_membership to verify they have an active membership. If the class is full this does NOT fail: it puts the member on the waitlist and returns waitlisted=true with their position — read the returned "message" and never tell them the spot is confirmed in that case.',
         parameters: {
             type: 'object',
             properties: {

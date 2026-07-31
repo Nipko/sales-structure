@@ -2531,6 +2531,18 @@ export class AIToolExecutorService {
                 return { error: 'You can only book classes for your own membership.' };
             }
             const booking = await this.gymsService.bookClass(schemaName, args.classId, member.id);
+            // Clase llena: el socio queda EN ESPERA, no rechazado. El mensaje
+            // tiene que decir las dos cosas que le importan — que todavía no
+            // tiene lugar, y que no hay que hacer nada más si alguien cancela.
+            if (booking.waitlisted) {
+                return {
+                    bookingId: booking.id,
+                    status: booking.status,
+                    waitlistPosition: booking.waitlistPosition,
+                    creditsUsed: 0,
+                    message: `The class is full. The member is now on the waitlist at position ${booking.waitlistPosition}. Tell them clearly they do NOT have a spot yet, that no credits were used, and that they will get it automatically if someone cancels — they do not need to do anything else.`,
+                };
+            }
             return {
                 bookingId: booking.id,
                 status: booking.status,

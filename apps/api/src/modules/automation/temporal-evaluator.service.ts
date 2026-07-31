@@ -137,10 +137,27 @@ export class TemporalEvaluatorService {
         if (!rows.length) return 0;
 
         const optedOut = await this.loadOptedOutContacts(schemaName, rows.map(r => r.contact_id));
+        // Teléfono, nombre y lead de cada contacto.
+        //
+        // `send_template` lee `event.phone` y `add_tag`/`assign_agent`/
+        // `update_stage` leen `event.leadId`: sin estos campos el disparo llegaba
+        // hasta la cola y ahí moría con "El evento no contiene numero de
+        // telefono". Todo el motor temporal habría corrido sin entregar un solo
+        // mensaje. Se resuelve de una sola vez por sabor, no una consulta por fila.
+        const reach = await this.loadContactReach(schemaName, rows.map(r => r.contact_id));
 
         let fired = 0;
+        let unreachable = 0;
         for (const row of rows) {
             if (optedOut.has(row.contact_id)) continue;
+
+            const contact = reach.get(row.contact_id);
+            if (!contact?.phone) {
+                // Sin teléfono no hay a dónde mandar. Se cuenta y se sigue: es
+                // un dato faltante del contacto, no un fallo del evaluador.
+                unreachable++;
+                continue;
+            }
 
             for (const rule of rules) {
                 if (await this.firedRecently(schemaName, rule.id, row.entity_type, row.entity_id, flavor.cooldownDays)) {
@@ -159,6 +176,10 @@ export class TemporalEvaluatorService {
                         schemaName,
                         trigger: flavor.trigger,
                         contactId: row.contact_id,
+                        // Lo que necesitan las acciones para poder actuar.
+                        phone: contact.phone,
+                        name: contact.name ?? null,
+                        leadId: contact.leadId ?? null,
                         entityId: row.entity_id,
                         entityType: row.entity_type,
                         label: row.label ?? null,
@@ -171,10 +192,45 @@ export class TemporalEvaluatorService {
             }
         }
 
-        if (fired) {
-            this.logger.log(`[Temporal] ${flavor.trigger}: ${fired} disparos en ${schemaName}`);
+        if (fired || unreachable) {
+            this.logger.log(
+                `[Temporal] ${flavor.trigger}: ${fired} disparos en ${schemaName}` +
+                (unreachable ? ` (${unreachable} contactos sin teléfono, omitidos)` : ''),
+            );
         }
         return fired;
+    }
+
+    /**
+     * Teléfono, nombre y lead de cada contacto, en una sola consulta.
+     *
+     * El lead se toma como el más reciente y no archivado: `add_tag`,
+     * `assign_agent` y `update_stage` actúan sobre el lead, y un contacto puede
+     * tener varios a lo largo del tiempo. El vigente es el último.
+     */
+    private async loadContactReach(
+        schemaName: string,
+        contactIds: string[],
+    ): Promise<Map<string, { phone: string | null; name: string | null; leadId: string | null }>> {
+        const ids = [...new Set(contactIds.filter(Boolean))];
+        const out = new Map<string, { phone: string | null; name: string | null; leadId: string | null }>();
+        if (!ids.length) return out;
+
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT DISTINCT ON (c.id)
+                    c.id AS contact_id, c.phone, c.name, l.id AS lead_id
+             FROM contacts c
+             LEFT JOIN leads l ON l.contact_id = c.id AND l.archived_at IS NULL
+             WHERE c.id = ANY($1::uuid[])
+             ORDER BY c.id, l.created_at DESC NULLS LAST`,
+            [ids],
+        ).catch(() => [] as any[]);
+
+        for (const r of rows) {
+            out.set(r.contact_id, { phone: r.phone ?? null, name: r.name ?? null, leadId: r.lead_id ?? null });
+        }
+        return out;
     }
 
     /**

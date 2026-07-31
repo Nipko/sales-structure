@@ -2,7 +2,6 @@ import { Module, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { HttpModule } from '@nestjs/axios';
 import { AutomationService } from './automation.service';
-import { ActionExecutorService } from './action-executor.service';
 import { AutomationListenerService, AUTOMATION_JOBS_QUEUE } from './automation-listener.service';
 import { AutomationJobsProcessor } from './automation-jobs.processor';
 import { TemporalEvaluatorService } from './temporal-evaluator.service';
@@ -39,7 +38,6 @@ import { CrmModule } from '../crm/crm.module';
     controllers: [AutomationController, AutomationTemplatesController, DripSequenceController],
     providers: [
         AutomationService,
-        ActionExecutorService,
         AutomationListenerService,
         AutomationJobsProcessor,
         TemporalEvaluatorService,

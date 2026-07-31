@@ -1708,6 +1708,17 @@ export class ConversationsService {
                 } catch {}
                 await this.persistBookingState(schemaName, conversation.id, bookingState);
                 // Skip engine entirely — fall through to LLM
+            } else if (this.shouldYieldToVerticalTools(config, userText, bookingState)) {
+                // ═══ YIELD VERTICAL ═══
+                // El motor determinista captura "reservar/agendar/turno" por regex y
+                // cierra el turno con tools=[]: la vertical pierde sus herramientas
+                // justo en el momento de conversión. Un gimnasio no podía inscribir a
+                // una clase, un hotel no podía cotizar una habitación y una
+                // inmobiliaria agendaba la visita sin saber de qué propiedad se venía
+                // hablando (en modo directivo solo viajan los últimos 4 mensajes).
+                // Acá el motor cede el turno a la IA CON sus tools.
+                this.logger.log(`[Pipeline] YIELD vertical: el agente tiene tools propias de reserva/inventario y el texto menciona un objeto de la vertical`);
+                await this.persistBookingState(schemaName, conversation.id, bookingState);
             } else {
                 // ═══ PHASE 2: DECIDE — deterministic booking engine ═══
                 const engineResult = await this.bookingEngine.process(
@@ -2587,6 +2598,55 @@ export class ConversationsService {
     }
 
     /** Persist booking state to BOTH Redis (fast, reliable) and PostgreSQL (durable). */
+    /**
+     * ¿El motor determinista debe CEDER el turno a la IA con sus tools?
+     *
+     * El motor gana en la agenda pura (salud, belleza, veterinaria, fotografía):
+     * servicio → fecha → hora, sin que el modelo decida el flujo. Pero su regex
+     * de intención (`agendar|cita|reservar|turno|…`) también captura "quiero
+     * reservar una clase de yoga", "reservar una habitación" o "agendar visita al
+     * apartamento de Chapinero" — casos donde la reserva NO es una cita contra
+     * `services`, sino una tool vertical con su propio inventario y capacidad.
+     *
+     * Regla, deliberadamente conservadora (el default NO se invierte): solo cede
+     * si el agente tiene encendida una tool vertical de reserva/inventario Y el
+     * texto nombra un objeto de esa vertical. Ante la duda, entra el motor.
+     */
+    private shouldYieldToVerticalTools(config: any, userText: string, bookingState: any): boolean {
+        // A mitad de un flujo de reserva el motor manda: cederlo dejaría al
+        // cliente colgado entre dos conductores.
+        const step = bookingState?.step;
+        if (step && step !== 'idle' && step !== 'booked') return false;
+
+        const tools = (config?.tools ?? {}) as Record<string, any>;
+        const on = (k: string) => tools?.[k]?.enabled === true;
+
+        // Objetos por vertical: la tool encendida sola no alcanza (una peluquería
+        // canina con `pets` no debe perder el motor por decir "turno").
+        const VERTICAL_OBJECTS: Array<{ tool: string; re: RegExp }> = [
+            { tool: 'gyms', re: /\b(clase|clases|entrenamiento|spinning|yoga|crossfit|funcional|pilates|zumba|cupo)\b/i },
+            { tool: 'tours', re: /\b(tour|tours|excursi[óo]n|salida|paseo|city ?tour)\b/i },
+            { tool: 'properties', re: /\b(habitaci[óo]n|habitaciones|noche|noches|alojamiento|hosped|cabaña|apartamento completo)\b/i },
+            { tool: 'realEstate', re: /\b(propiedad|propiedades|inmueble|apartamento|apto|casa|local|lote|visita)\b/i },
+            { tool: 'restaurants', re: /\b(mesa|mesas|comensal|comensales|personas|pedido|domicilio|delivery|carta|men[úu])\b/i },
+            { tool: 'education', re: /\b(curso|cursos|clase|inscripci[óo]n|matr[íi]cula|cohorte|nivel|examen)\b/i },
+            { tool: 'vehicles', re: /\b(auto|carro|veh[íi]culo|camioneta|moto|prueba de manejo|test drive)\b/i },
+        ];
+
+        const mentionsVerticalObject = VERTICAL_OBJECTS.some(v => on(v.tool) && v.re.test(userText));
+        if (!mentionsVerticalObject) return false;
+
+        // Si el texto además nombra un servicio sembrado, el motor sigue siendo el
+        // camino correcto (p. ej. una vet con `pets` que pide "baño y corte").
+        const services: any[] = Array.isArray(bookingState?.services) ? bookingState.services : [];
+        const lower = userText.toLowerCase();
+        const matchesSeededService = services.some((s: any) => {
+            const name = String(s?.name || '').toLowerCase().trim();
+            return name.length > 3 && lower.includes(name);
+        });
+        return !matchesSeededService;
+    }
+
     private async persistBookingState(schemaName: string, conversationId: string, state: any): Promise<void> {
         // Redis first — always succeeds, survives PG failures
         const redisKey = `booking:${conversationId}`;

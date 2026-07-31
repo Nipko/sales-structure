@@ -270,6 +270,16 @@ export class PersonaController {
         let hasTemplates = false;
         let hasAnyChannel = false;
         let hasBusinessAbout = false;
+        // El catálogo REAL de la vertical, que no es la base de conocimiento.
+        //
+        // El checklist relabelaba el paso "base de conocimiento" por industria
+        // ("Carga tu menú", "Carga tu portafolio de propiedades", "Carga tus
+        // cursos") pero los tres apuntaban al mismo lugar y se daban por hechos
+        // con el mismo flag. El dueño de un restaurante leía "Carga tu menú",
+        // subía el PDF a la KB, se ponía el tilde verde... y `place_order`
+        // seguía sin funcionar, porque lee filas de `menu_items`. El checklist
+        // enseñaba lo incorrecto y después lo certificaba como hecho.
+        let hasVerticalCatalog: boolean | null = null;
         // El alta ya derivó un agente a partir de industria + objetivos
         // (createDefaultAgentFromGoals) y guardó con qué plantilla. Exponerlo permite
         // que el setup-wizard lo CONFIRME en vez de volver a preguntar lo mismo y
@@ -314,6 +324,28 @@ export class PersonaController {
                 ).catch(() => [])) as Array<{ name?: string; template_id?: string }>;
                 defaultAgentTemplateId = agentRows?.[0]?.template_id ?? null;
                 defaultAgentName = agentRows?.[0]?.name ?? null;
+
+                // Tabla del catálogo por industria. Las verticales sin objeto
+                // propio (salud, belleza…) no tienen catálogo aparte: para ellas
+                // el paso sigue siendo la KB y esto queda en null.
+                const CATALOG_TABLE: Record<string, string> = {
+                    restaurantes: 'menu_items',
+                    inmobiliaria: 'real_estate_listings',
+                    automotriz: 'vehicles',
+                    education: 'courses',
+                    gimnasios: 'membership_plans',
+                    turismo: 'tour_packages',
+                    seguros: 'insurance_plans',
+                    retail: 'products',
+                };
+                const industry = (settings.verticalConfig?.industry || settings.industry || '').toLowerCase();
+                const catalogTable = CATALOG_TABLE[industry];
+                if (catalogTable) {
+                    const rows = (await this.prisma.$queryRawUnsafe(
+                        `SELECT COUNT(*)::int AS c FROM "${schema}".${catalogTable} LIMIT 1`,
+                    ).catch(() => [{ c: 0 }])) as any[];
+                    hasVerticalCatalog = Number(rows?.[0]?.c || 0) > 0;
+                }
             } catch {
                 // If schema doesn't exist yet, all default to false
             }
@@ -339,6 +371,9 @@ export class PersonaController {
                 hasAnyChannel,
                 hasBusinessAbout,
                 hasBusinessHours,
+                // null = esta vertical no tiene catálogo propio y el paso sigue
+                // siendo la base de conocimiento.
+                hasVerticalCatalog,
                 defaultAgentTemplateId,
                 defaultAgentName,
             },

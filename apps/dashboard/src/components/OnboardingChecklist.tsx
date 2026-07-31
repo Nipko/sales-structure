@@ -27,17 +27,46 @@ const ITEMS: ChecklistItem[] = [
     { key: "connectChannel", level: 1, href: "/admin/channels/whatsapp", actionKey: "connect", timeMin: 3, check: (d) => d.hasAnyChannel },
     { key: "sendTestMessage", level: 2, href: "/admin/inbox", actionKey: "try", timeMin: 1, check: (d) => d.hasConversations },
     { key: "addKnowledgeBase", level: 2, href: "/admin/knowledge", actionKey: "configure", timeMin: 5, check: (d) => d.hasKnowledge },
+    // OJO: `addKnowledgeBase` se reescribe abajo (CATALOG_STEP) en las verticales
+    // que tienen catálogo propio. Ver el comentario de ese mapa.
     { key: "inviteTeam", level: 3, href: "/admin/users", actionKey: "invite", timeMin: 2, check: (d) => d.hasTeam },
     { key: "connectInstagram", level: 3, href: "/admin/channels/instagram", actionKey: "connect", timeMin: 3, check: (d) => d.hasInstagram },
     { key: "createAutomation", level: 3, href: "/admin/automation", actionKey: "create", timeMin: 5, check: (d) => d.hasAutomation },
     { key: "customizeTemplates", level: 3, href: "/admin/settings/email-templates", actionKey: "edit", timeMin: 3, check: (d) => d.hasTemplates },
 ];
 
+/**
+ * A dónde manda de verdad el paso del catálogo, por industria.
+ *
+ * El texto del paso ya se relabelaba por vertical ("Carga tu menú", "Carga tu
+ * portafolio de propiedades", "Carga tus cursos"), pero los tres llevaban a
+ * `/admin/knowledge` y se daban por cumplidos con el mismo flag `hasKnowledge`.
+ * El dueño de un restaurante leía "Carga tu menú", subía el PDF a la base de
+ * conocimiento, se ganaba el tilde verde... y `place_order` seguía sin
+ * funcionar, porque lee filas de `menu_items`. El checklist enseñaba lo
+ * incorrecto y después lo certificaba como hecho — que es peor que no decir
+ * nada, porque el dueño se queda sin motivo para seguir buscando.
+ *
+ * Las verticales sin catálogo propio (salud, belleza, veterinaria…) no están en
+ * este mapa: para ellas el paso sigue siendo la base de conocimiento, y ahí sí
+ * la etiqueta y el destino coinciden.
+ */
+const CATALOG_STEP: Record<string, string> = {
+    restaurantes: "/admin/menu",
+    inmobiliaria: "/admin/listings",
+    automotriz: "/admin/vehicles",
+    education: "/admin/courses",
+    gimnasios: "/admin/memberships",
+    turismo: "/admin/tours",
+    seguros: "/admin/insurance",
+    retail: "/admin/inventory",
+};
+
 export default function OnboardingChecklist() {
     const t = useTranslations("checklist");
     const tChecklist = useTranslations("verticalChecklist");
     const vt = useVerticalTerms();
-    const { user } = useAuth();
+    const { user, verticalConfig } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
     const [collapsed, setCollapsed] = useState(false);
@@ -72,6 +101,9 @@ export default function OnboardingChecklist() {
                 hasInstagram,
                 hasConversations: data.hasConversations || false,
                 hasKnowledge: data.hasKnowledge || false,
+                // null cuando la vertical no tiene catálogo propio; el paso
+                // sigue siendo la KB en ese caso.
+                hasVerticalCatalog: data.hasVerticalCatalog ?? null,
                 hasTeam: data.hasTeam || false,
                 hasAutomation: data.hasAutomation || false,
                 hasTemplates: data.hasTemplates || false,
@@ -113,8 +145,17 @@ export default function OnboardingChecklist() {
 
     if (!loaded || !user?.tenantId) return null;
 
-    const completedCount = ITEMS.filter(item => item.check(checkData)).length;
-    const totalCount = ITEMS.length;
+    // El paso del catálogo apunta a la tabla que las herramientas leen de verdad,
+    // no a la base de conocimiento. Ver CATALOG_STEP.
+    const catalogHref = CATALOG_STEP[verticalConfig?.industry || ""];
+    const items: ChecklistItem[] = catalogHref
+        ? ITEMS.map(item => item.key === "addKnowledgeBase"
+            ? { ...item, href: catalogHref, check: (d: any) => d.hasVerticalCatalog === true }
+            : item)
+        : ITEMS;
+
+    const completedCount = items.filter(item => item.check(checkData)).length;
+    const totalCount = items.length;
     const percentage = Math.round((completedCount / totalCount) * 100);
     const allDone = completedCount === totalCount;
 
@@ -148,9 +189,9 @@ export default function OnboardingChecklist() {
         setMinimized(true);
     };
 
-    const l1Items = ITEMS.filter(i => i.level === 1);
-    const l2Items = ITEMS.filter(i => i.level === 2);
-    const l3Items = ITEMS.filter(i => i.level === 3);
+    const l1Items = items.filter(i => i.level === 1);
+    const l2Items = items.filter(i => i.level === 2);
+    const l3Items = items.filter(i => i.level === 3);
     const l3Done = l3Items.filter(i => i.check(checkData)).length;
 
     const renderItem = (item: ChecklistItem, accent: "indigo" | "neutral") => {

@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PersonaService } from './persona.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -14,6 +15,17 @@ import { getVerticalCatalog } from '../../common/utils/vertical-catalog.util';
 @Controller('persona')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 @ApiBearerAuth()
+/**
+ * OJO con los roles: RolesGuard PERMITE por defecto cuando la ruta no
+ * declara @Roles (roles.guard.ts: `if (!requiredRoles) return true`). Todo
+ * endpoint que MUTE el agente lleva @Roles('tenant_admin') explicito.
+ *
+ * El agente no es un recurso mas: es la configuracion del negocio entero —
+ * su persona, sus reglas, sus temas prohibidos y sus herramientas— y atiende
+ * a TODOS los clientes. Un tenant_agent (un asesor de soporte) no deberia
+ * poder reescribirla. El dashboard ya lo trataba como solo-admin
+ * (canConfigureAgent === tenant_admin); la API no lo verificaba.
+ */
 export class PersonaController {
     private readonly logger = new Logger(PersonaController.name);
 
@@ -68,6 +80,7 @@ export class PersonaController {
     }
 
     @Post(':tenantId/setup-wizard')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Apply a persona template from the setup wizard; marks the wizard completed unless markCompleted=false' })
     async applyTemplate(
         @Param('tenantId') tenantId: string,
@@ -231,6 +244,7 @@ export class PersonaController {
     }
 
     @Post(':tenantId/setup-wizard/skip')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Mark the setup wizard as skipped without applying a template — prevents redirect loop' })
     async skipSetupWizard(@Param('tenantId') tenantId: string) {
         const existing = await this.prisma.tenant.findUnique({
@@ -397,6 +411,7 @@ export class PersonaController {
     }
 
     @Put(':tenantId')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Save persona config (JSON → converts to YAML internally)' })
     async save(
         @Param('tenantId') tenantId: string,
@@ -433,6 +448,7 @@ export class PersonaController {
     }
 
     @Delete(':tenantId/agent-templates/:templateId')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Delete a user-created agent template' })
     async deleteTemplate(@Param('tenantId') tenantId: string, @Param('templateId') templateId: string) {
         await this.personaService.deleteTemplate(tenantId, templateId);
@@ -448,6 +464,7 @@ export class PersonaController {
     }
 
     @Post(':tenantId/agents')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Create a new agent persona' })
     async createAgent(@Param('tenantId') tenantId: string, @Body() body: any, @Req() req: any) {
         if (body.configJson?.editorMode === 'prompt' && body.configJson?.customPrompt) {
@@ -468,6 +485,7 @@ export class PersonaController {
     }
 
     @Put(':tenantId/agents/:agentId')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Update an existing agent persona' })
     async updateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any) {
         if (body.configJson?.editorMode === 'prompt' && body.configJson?.customPrompt) {
@@ -479,6 +497,7 @@ export class PersonaController {
     }
 
     @Delete(':tenantId/agents/:agentId')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Soft-delete an agent persona (set inactive)' })
     async deleteAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string) {
         await this.personaService.deleteAgent(tenantId, agentId);
@@ -486,6 +505,7 @@ export class PersonaController {
     }
 
     @Post(':tenantId/agents/:agentId/duplicate')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Duplicate an agent persona' })
     async duplicateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Req() req: any) {
         const agent = await this.personaService.duplicateAgent(tenantId, agentId, req.user?.email);
@@ -493,6 +513,7 @@ export class PersonaController {
     }
 
     @Post(':tenantId/agents/:agentId/save-template')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Save an agent config as a reusable template' })
     async saveAsTemplate(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any, @Req() req: any) {
         const enabled = await this.throttleService.isFeatureEnabled(tenantId, 'customTemplates');

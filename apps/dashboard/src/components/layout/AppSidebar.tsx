@@ -136,8 +136,16 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "treatmentPlans", href: "/admin/treatment-plans", icon: ClipboardList, verticals: ["veterinaria", "salud"], capability: "canEditPipeline" },
       { labelKey: "pets", href: "/admin/pets", icon: PawPrint, verticals: ["veterinaria", "pet_services"], capability: "canHandleConversations" },
       { labelKey: "photoSessions", href: "/admin/photo-sessions", icon: Camera, verticals: ["fotografia"], capability: "canEditPipeline" },
-      { labelKey: "inventory", href: "/admin/inventory", icon: Package, verticals: ["retail", "restaurantes"], capability: "canEditPipeline" },
-      { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart, verticals: ["retail", "restaurantes"], capability: "canHandleConversations" },
+      // Inventario y Pedidos son el catálogo y la venta GENÉRICOS: la única
+      // pareja de páginas que sirve a un negocio que vende cosas y no encaja en
+      // ninguna vertical con módulo propio. Estaban allow-listeadas a retail y
+      // restaurantes, así que la ferretería, la papelería, la imprenta o el
+      // taller de bicicletas —que se dan de alta como "otro"— no tenían dónde
+      // cargar un solo producto: el agente sólo podía hablar de lo que hubiera
+      // en la base de conocimiento. Se suma `otro`, que es el cajón donde cae
+      // todo lo que el catálogo de 18 verticales no nombra.
+      { labelKey: "inventory", href: "/admin/inventory", icon: Package, verticals: ["retail", "restaurantes", "otro"], capability: "canEditPipeline" },
+      { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart, verticals: ["retail", "restaurantes", "otro"], capability: "canHandleConversations" },
     ],
   },
   {

@@ -210,6 +210,14 @@ export class VerticalsService {
         if (industry === 'fotografia') {
             await this.enableSimpleTool(schemaName, 'photography');
         }
+        // Retail y `otro` venden cosas: sin el catálogo encendido el agente sólo
+        // puede hablar de lo que haya en la base de conocimiento. `otro` es el
+        // cajón donde caen la ferretería, la papelería, la imprenta y el taller
+        // de bicicletas — negocios reales que el catálogo de 18 verticales no
+        // nombra y que igual necesitan mostrar productos y precios.
+        if (industry === 'retail' || industry === 'otro') {
+            await this.enableSimpleTool(schemaName, 'catalog');
+        }
         if (industry === 'automotriz') {
             // El módulo vehicle-inventory y las VEHICLE_TOOLS existen completos
             // desde T3; esta era la única industria con módulo propio cuyo flag

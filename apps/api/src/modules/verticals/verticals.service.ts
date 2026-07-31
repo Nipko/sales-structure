@@ -284,11 +284,14 @@ export class VerticalsService {
      *    producto, requiredFields, fallbackMessage); el registry es un resumen.
      *  - Este método también corre en cualquier re-seed sobre un tenant vivo,
      *    donde pisar borraría lo que el dueño del negocio editó a mano.
-     * Excepción deliberada: `forbiddenTopics` y `handoffTriggers` se UNEN en
-     * vez de rellenarse. Son restricciones aditivas —prohibir de más nunca
-     * hace que el bot afirme algo falso, y escalar de más termina en un
-     * humano—, así que los límites propios de la industria entran igual
-     * aunque la plantilla ya traiga su propia lista.
+     * Excepción deliberada: `forbiddenTopics`, `handoffTriggers` y `rules` se
+     * UNEN en vez de rellenarse. Los dos primeros son restricciones aditivas
+     * —prohibir de más nunca hace que el bot afirme algo falso, y escalar de
+     * más termina en un humano—, así que los límites propios de la industria
+     * entran igual aunque la plantilla ya traiga su propia lista. `rules` se
+     * suma por otro motivo: son las que le explican al agente cuándo usar las
+     * herramientas de su industria, y sin ellas las tools quedan cargadas pero
+     * des-instruidas.
      */
     private async patchDefaultAgent(
         schemaName: string,
@@ -330,7 +333,23 @@ export class VerticalsService {
                 ...existingBehavior,
                 // `rules` viene como un párrafo en el registry y el lector espera
                 // un array: mismo criterio de corte que los otros dos campos.
-                rules: existingRules.length > 0 ? existingRules : this.splitDefinitionRules(pick(agentDef.rules)),
+                //
+                // Se UNEN, no se rellenan. Antes, una plantilla que ya traía sus
+                // propias reglas dejaba fuera las del registry — y las del
+                // registry son justamente las que instruyen las herramientas de
+                // la industria (las 6 de gimnasios, las de seguros, las de
+                // education). El agente quedaba con las tools cargadas y sin
+                // nadie que le explicara cuándo usarlas: sólo la descripción del
+                // JSON de cada tool. Afectaba a las 18 verticales.
+                //
+                // Orden deliberado: primero las de la industria, después las que
+                // ya estaban. Lo específico del tenant —sea de la plantilla o
+                // editado a mano por el dueño— conserva la última palabra, que
+                // es la que más pesa cuando el prompt se ensambla.
+                rules: this.mergeStringList(
+                    this.splitDefinitionRules(pick(agentDef.rules)),
+                    existingRules,
+                ),
                 forbiddenTopics: this.mergeStringList(
                     existingBehavior.forbiddenTopics,
                     this.splitDefinitionList(pick(agentDef.forbiddenTopics)),

@@ -37,8 +37,10 @@ interface Plan {
 
 interface Quote {
     id: string;
+    plan_id?: string;
     plan_name?: string;
     insurance_type?: string;
+    contact_id?: string;
     applicant_name?: string;
     applicant_age?: number;
     monthly_premium?: number;
@@ -92,6 +94,9 @@ export default function InsurancePage() {
     const [claims, setClaims] = useState<Claim[]>([]);
     const [loading, setLoading] = useState(true);
     const [showPlanForm, setShowPlanForm] = useState<Plan | "new" | null>(null);
+    // Emision. Sin esto la tabla de polizas no podia dejar de estar vacia nunca,
+    // y con ella vacia check_policy_status y file_claim no tenian a que responder.
+    const [emitting, setEmitting] = useState<Quote | "blank" | null>(null);
 
     async function load() {
         if (!activeTenantId) return;
@@ -131,6 +136,13 @@ export default function InsurancePage() {
                 {tab === "plans" && (
                     <button onClick={() => setShowPlanForm("new")} className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">
                         <Plus className="h-4 w-4" /> {t("addPlan")}
+                    </button>
+                )}
+                {tab === "policies" && (
+                    // Venta cerrada por fuera del chat (llamada, oficina): tambien
+                    // tiene que poder entrar al sistema.
+                    <button onClick={() => setEmitting("blank")} className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">
+                        <Plus className="h-4 w-4" /> {t("newPolicy")}
                     </button>
                 )}
             </div>
@@ -236,11 +248,12 @@ export default function InsurancePage() {
                                 <th className="px-4 py-2 font-semibold text-right">{t("monthlyPremium")}</th>
                                 <th className="px-4 py-2 font-semibold">{t("validUntil")}</th>
                                 <th className="px-4 py-2 font-semibold">{t("status")}</th>
+                                <th className="px-4 py-2 font-semibold text-right">{t("actions")}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
                             {quotes.length === 0 ? (
-                                <tr><td colSpan={5} className="text-center py-8 text-muted-foreground text-sm">{t("noQuotes")}</td></tr>
+                                <tr><td colSpan={6} className="text-center py-8 text-muted-foreground text-sm">{t("noQuotes")}</td></tr>
                             ) : quotes.map(q => (
                                 <tr key={q.id} className="hover:bg-muted/20">
                                     <td className="px-4 py-2">
@@ -263,6 +276,18 @@ export default function InsurancePage() {
                                         )}>
                                             {q.status}
                                         </span>
+                                    </td>
+                                    <td className="px-4 py-2 text-right">
+                                        {/* Una cotizacion ya aceptada no se vuelve a emitir:
+                                            eso duplicaria la poliza. */}
+                                        {q.status !== "accepted" && (
+                                            <button
+                                                onClick={() => setEmitting(q)}
+                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
+                                            >
+                                                <FileText className="h-3.5 w-3.5" /> {t("issuePolicy")}
+                                            </button>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
@@ -356,6 +381,208 @@ export default function InsurancePage() {
             {showPlanForm && (
                 <PlanFormModal plan={showPlanForm === "new" ? null : showPlanForm} onClose={() => setShowPlanForm(null)} onSaved={() => { setShowPlanForm(null); load(); }} />
             )}
+
+            {emitting && (
+                <IssuePolicyModal
+                    quote={emitting === "blank" ? null : emitting}
+                    onClose={() => setEmitting(null)}
+                    onSaved={() => { setEmitting(null); setTab("policies"); load(); }}
+                />
+            )}
+        </div>
+    );
+}
+
+/**
+ * Emision de poliza. Es el puente que faltaba entre "el bot cotizo" y "el
+ * cliente tiene poliza": sin el, la pestaña de cotizaciones era un callejon sin
+ * salida y la de polizas no podia dejar de estar vacia.
+ *
+ * El contacto es OBLIGATORIO. No es rigor administrativo: el gate de propiedad
+ * de check_policy_status y file_claim se apoya en policies.contact_id, asi que
+ * una poliza sin contacto es una poliza que su propio dueño no puede consultar
+ * por WhatsApp.
+ */
+function IssuePolicyModal({ quote, onClose, onSaved }: { quote: Quote | null; onClose: () => void; onSaved: () => void }) {
+    const t = useTranslations("insurance");
+    const tc = useTranslations("common");
+    const { activeTenantId } = useTenant();
+
+    const today = new Date().toISOString().slice(0, 10);
+    const [contacts, setContacts] = useState<any[]>([]);
+    const [form, setForm] = useState({
+        policyNumber: "",
+        contactId: quote?.contact_id || "",
+        policyholderName: quote?.applicant_name || "",
+        monthlyPremium: quote?.monthly_premium ? String(quote.monthly_premium) : "",
+        currency: quote?.currency || "COP",
+        startsAt: today,
+        endsAt: "",
+    });
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        if (!activeTenantId) return;
+        api.getOrderContacts(activeTenantId)
+            .then(r => { if (r?.success && Array.isArray(r.data)) setContacts(r.data); })
+            .catch(() => {});
+    }, [activeTenantId]);
+
+    async function handleSave() {
+        if (!activeTenantId) return;
+        const premium = Number(form.monthlyPremium);
+        if (!form.policyNumber.trim() || !form.policyholderName.trim() || !premium || !form.contactId) {
+            setError(t("issueMissingFields"));
+            return;
+        }
+        setBusy(true);
+        setError("");
+        const res = await api.createInsurancePolicy(activeTenantId, {
+            policyNumber: form.policyNumber.trim(),
+            contactId: form.contactId,
+            planId: quote?.plan_id || undefined,
+            quoteId: quote?.id || undefined,
+            policyholderName: form.policyholderName.trim(),
+            monthlyPremium: premium,
+            currency: form.currency,
+            startsAt: form.startsAt,
+            endsAt: form.endsAt || undefined,
+        }).catch(() => ({ success: false, error: tc("connectionError") } as any));
+
+        if (!res?.success) {
+            setBusy(false);
+            setError((res as any)?.error || tc("errorSaving"));
+            return;
+        }
+
+        // La cotizacion pasa a "accepted" en una segunda llamada. Si falla, la
+        // poliza YA existe y eso es lo que importa: el peor caso es una
+        // cotizacion que sigue ofreciendo emitir, no una venta perdida. Por eso
+        // no se revierte nada ni se le muestra un error al usuario.
+        if (quote) {
+            await api.updateInsuranceQuoteStatus(activeTenantId, quote.id, "accepted").catch(() => {});
+        }
+        setBusy(false);
+        onSaved();
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+            <div className="w-full max-w-md rounded-xl bg-card border border-border p-6 shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-blue-600" />
+                        {t("issuePolicy")}
+                    </h3>
+                    <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+
+                {quote && (
+                    <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2 mb-4">
+                        {quote.plan_name} · {quote.applicant_name}
+                    </div>
+                )}
+
+                {error && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
+                        <AlertTriangle className="h-4 w-4 shrink-0" /> {error}
+                    </div>
+                )}
+
+                <div className="space-y-3">
+                    <div>
+                        <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("policyNumber")}</label>
+                        <input
+                            value={form.policyNumber}
+                            onChange={e => setForm({ ...form, policyNumber: e.target.value })}
+                            placeholder={t("policyNumberHint")}
+                            className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm font-mono"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("linkedContact")}</label>
+                        <select
+                            value={form.contactId}
+                            onChange={e => setForm({ ...form, contactId: e.target.value })}
+                            className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm cursor-pointer"
+                        >
+                            <option value="">{tc("select")}</option>
+                            {contacts.map((c: any) => (
+                                <option key={c.id} value={c.id}>{c.name || c.phone || c.id}</option>
+                            ))}
+                        </select>
+                        <p className="text-[11px] text-muted-foreground mt-1">{t("linkedContactHint")}</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("policyholder")}</label>
+                        <input
+                            value={form.policyholderName}
+                            onChange={e => setForm({ ...form, policyholderName: e.target.value })}
+                            className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("monthlyPremium")}</label>
+                            <input
+                                type="number"
+                                value={form.monthlyPremium}
+                                onChange={e => setForm({ ...form, monthlyPremium: e.target.value })}
+                                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm font-mono"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("currency")}</label>
+                            <input
+                                value={form.currency}
+                                onChange={e => setForm({ ...form, currency: e.target.value })}
+                                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("startsAt")}</label>
+                            <input
+                                type="date"
+                                value={form.startsAt}
+                                onChange={e => setForm({ ...form, startsAt: e.target.value })}
+                                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("endsAtOptional")}</label>
+                            <input
+                                type="date"
+                                value={form.endsAt}
+                                onChange={e => setForm({ ...form, endsAt: e.target.value })}
+                                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-2 mt-5">
+                    <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground cursor-pointer">
+                        {tc("cancel")}
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        disabled={busy}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white transition-colors cursor-pointer"
+                    >
+                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                        {t("issuePolicy")}
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

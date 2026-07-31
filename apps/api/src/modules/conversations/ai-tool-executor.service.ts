@@ -301,10 +301,10 @@ export class AIToolExecutorService {
                     return this.calculateInsuranceQuoteTool(schemaName, contactId, args);
 
                 case 'check_policy_status':
-                    return this.checkPolicyStatusTool(schemaName, args);
+                    return this.checkPolicyStatusTool(schemaName, contactId, args);
 
                 case 'file_claim':
-                    return this.fileInsuranceClaimTool(schemaName, args);
+                    return this.fileInsuranceClaimTool(schemaName, contactId, args);
 
                 case 'list_my_claims':
                     return this.listMyClaimsTool(schemaName, contactId, args.policyNumber);
@@ -2589,10 +2589,35 @@ export class AIToolExecutorService {
         }
     }
 
-    private async checkPolicyStatusTool(schemaName: string, args: any): Promise<any> {
+    /**
+     * Una poliza solo se le muestra a SU dueño.
+     *
+     * Antes bastaba con escribir un numero de poliza en el chat para recibir el
+     * nombre completo del titular, su prima y sus fechas de pago. Los numeros de
+     * poliza son correlativos en casi toda aseguradora: cualquiera podia
+     * enumerarlos desde WhatsApp y cosechar datos personales de terceros.
+     *
+     * El mensaje de rechazo es IDENTICO para "no existe" y para "no es tuya" a
+     * proposito: distinguirlos convierte la herramienta en un oraculo que
+     * confirma que numeros de poliza son validos.
+     *
+     * Consecuencia asumida: una poliza cargada a mano sin contacto vinculado no
+     * se puede consultar por chat. Por eso la emision desde el panel EXIGE
+     * elegir el contacto — vincularlo es el camino normal, no el excepcional.
+     */
+    private ownsPolicy(policy: any, contactId: string): boolean {
+        return !!policy?.contact_id && policy.contact_id === contactId;
+    }
+
+    private async checkPolicyStatusTool(schemaName: string, contactId: string, args: any): Promise<any> {
         try {
             const policy = await this.insuranceService.getPolicyByNumber(schemaName, args.policyNumber);
-            if (!policy) return { error: 'Policy not found with that number' };
+            if (!policy || !this.ownsPolicy(policy, contactId)) {
+                return {
+                    error: 'No policy with that number is linked to this customer. Do not reveal whether the number exists. Ask the customer to confirm the number, and offer to connect them with a human agent to verify their identity.',
+                    shouldHandoff: false,
+                };
+            }
             return {
                 policyId: policy.id,
                 policyNumber: policy.policy_number,
@@ -2609,10 +2634,17 @@ export class AIToolExecutorService {
         }
     }
 
-    private async fileInsuranceClaimTool(schemaName: string, args: any): Promise<any> {
+    private async fileInsuranceClaimTool(schemaName: string, contactId: string, args: any): Promise<any> {
         try {
             const policy = await this.insuranceService.getPolicyByNumber(schemaName, args.policyNumber);
-            if (!policy) return { error: 'Policy not found' };
+            // Mismo gate que la consulta, y aqui pesa mas: radicar un siniestro
+            // contra la poliza de otro es fraude, no una fuga de datos.
+            if (!policy || !this.ownsPolicy(policy, contactId)) {
+                return {
+                    error: 'No policy with that number is linked to this customer. Do not reveal whether the number exists. Offer to connect them with a human agent to verify their identity.',
+                    shouldHandoff: false,
+                };
+            }
             if (policy.status !== 'active') {
                 return { error: `Policy is in "${policy.status}" status. Cannot file a claim.` };
             }
@@ -3233,12 +3265,27 @@ export class AIToolExecutorService {
             );
             if (!rows.length) return { error: 'Quote not found' };
             if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own quotes' };
-            if (rows[0].status !== 'pending') {
-                return { error: `Cannot cancel a quote in "${rows[0].status}" status.` };
+
+            // Esta herramienta nunca funciono: pedia status 'pending' y createQuote
+            // siempre escribe 'sent', asi que el 100% de las cancelaciones moria
+            // en este if. Y si alguna hubiera pasado, el UPDATE tampoco habria
+            // entrado: escribia 'cancelled', un valor que updateQuoteStatus
+            // rechaza y que no existe en el vocabulario de la tabla
+            // (draft | sent | accepted | rejected | expired).
+            //
+            // Se alinea al vocabulario real en vez de inventar un sexto estado:
+            // un cliente que desiste es exactamente 'rejected', y ese valor si lo
+            // entienden el panel y las analiticas por vertical (que agrupan por
+            // status y habrian mostrado un balde desconocido).
+            const cancellable = ['draft', 'sent'];
+            if (!cancellable.includes(rows[0].status)) {
+                // Una cotizacion 'accepted' ya se volvio poliza: eso se cancela
+                // hablando con un humano, no borrando la cotizacion.
+                return { error: `Cannot cancel a quote in "${rows[0].status}" status. Only quotes that are still open can be withdrawn.` };
             }
 
-            await this.insuranceService.updateQuoteStatus(schema, quoteId, 'cancelled');
-            return { success: true, message: 'Quote cancelled successfully' };
+            await this.insuranceService.updateQuoteStatus(schema, quoteId, 'rejected');
+            return { success: true, message: 'Quote withdrawn successfully' };
         } catch (e: any) {
             return { error: e.message };
         }

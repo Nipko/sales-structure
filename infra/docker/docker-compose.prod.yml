@@ -152,6 +152,10 @@ services:
       DIRECT_DATABASE_URL: postgresql://parallext:${DB_PASSWORD:-parallext_secret}@postgres:5432/parallext_engine
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # Explícito, igual que en la API. El default del código es la misma ruta,
+      # pero dejarlo implícito fue justamente lo que hizo invisible que el
+      # worker estuviera escribiendo a un /data/media que no era un volumen.
+      MEDIA_STORAGE_PATH: /data/media
       INBOUND_CONCURRENCY: "4"
     env_file:
       - ../../.env
@@ -160,6 +164,13 @@ services:
       # Same fiscal volume as the API — the worker writes DIAN invoices here on
       # payment.succeeded; the API reads them back to serve/re-download.
       - fiscal_data:/data/invoices
+      # MISMO volumen de media que la API, y no por simetría: el worker corre
+      # `handleDailyArchiving`, que comprime las conversaciones viejas a
+      # {convId}.json.gz y DESPUÉS borra los mensajes de Postgres. Sin este
+      # montaje escribía el .gz en la capa efímera del contenedor y el borrado
+      # se hacía igual: el archivo desaparecía en el siguiente deploy con las
+      # filas ya borradas. Pérdida de datos irrecuperable.
+      - media_data:/data/media
     depends_on:
       pgbouncer:
         condition: service_healthy

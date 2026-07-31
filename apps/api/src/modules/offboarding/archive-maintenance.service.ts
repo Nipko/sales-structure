@@ -32,7 +32,13 @@ export class ArchiveMaintenanceService {
     // ejecuta dos veces. Ver CronLockService.
     @Cron('30 3 * * *')
     async handleDailyArchivingCron() {
-        await this.cronLock.runExclusive('archive-maintenance.handleDailyArchiving', 3600, () => this.handleDailyArchiving());
+        // prefer:'api' es defensa en profundidad, no redundancia. Este cron
+        // escribe el .gz del archivo y DESPUÉS borra los mensajes de Postgres:
+        // si corre donde el volumen de media no está montado, el archivo se va
+        // con el contenedor y el borrado ya se hizo. El montaje del worker
+        // (docker-compose.prod.yml) es el arreglo de fondo; esto sostiene el
+        // invariante aunque alguien vuelva a tocar los volúmenes.
+        await this.cronLock.runExclusive('archive-maintenance.handleDailyArchiving', 3600, () => this.handleDailyArchiving(), { prefer: 'api' });
     }
 
     async handleDailyArchiving(): Promise<void> {

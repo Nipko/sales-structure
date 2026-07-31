@@ -1034,7 +1034,11 @@ const GIMNASIOS: VerticalDefinition = {
         { question: { es: '¿Cuál es el horario?', en: 'What are your hours?', pt: 'Qual o horário?', fr: 'Quels sont vos horaires?' }, answer: { es: 'Dime qué día quieres venir y te confirmo el horario de esa jornada.', en: 'Tell me which day you want to come and I will confirm the hours for that day.', pt: 'Me diga qual dia quer vir e confirmo o horário daquele dia.', fr: 'Dites-moi quel jour vous souhaitez venir et je vous confirme les horaires.' }, category: 'horarios' },
     ],
     services: [
-        { name: { es: 'Plan Mensual', en: 'Monthly plan', pt: 'Plano mensal', fr: 'Forfait mensuel' }, description: { es: 'Acceso ilimitado al gym + 8 clases grupales/mes', en: 'Unlimited gym + 8 group classes/month', pt: 'Acesso ilimitado + 8 aulas/mês', fr: 'Accès illimité + 8 cours/mois' }, durationMinutes: 30, price: 150000, currency: 'COP', category: 'plan' },
+        // "Plan Mensual" NO va acá. `services` son cosas AGENDABLES, y sembrarlo
+        // como servicio lo volvía reservable como una cita de 30 minutos: el
+        // cliente podía "agendar" su membresía para el martes a las 4. Una
+        // membresía es un `membership_plan` (tabla propia, duración en días,
+        // créditos), que es lo que lee get_membership_plans.
         { name: { es: 'Trial 1 día', en: '1-day trial', pt: 'Trial 1 dia', fr: 'Essai 1 jour' }, description: { es: 'Prueba el gym por un día sin compromiso', en: 'Try the gym for one day, no commitment', pt: 'Experimente por um dia', fr: 'Essai sans engagement' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'trial' },
         { name: { es: 'Personal Training (sesión)', en: 'Personal training (session)', pt: 'Personal training (sessão)', fr: 'Coaching personnel (séance)' }, description: { es: 'Sesión individual con entrenador certificado', en: 'One-on-one session with certified trainer', pt: 'Sessão individual', fr: 'Séance individuelle' }, durationMinutes: 60, price: 80000, currency: 'COP', category: 'personal_training' },
     ],

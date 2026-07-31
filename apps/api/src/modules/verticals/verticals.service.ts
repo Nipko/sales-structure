@@ -6,6 +6,53 @@ import { getVerticalDefinition } from './vertical-definitions';
 import { PERSONA_CACHE_CHANNELS } from '../../common/utils/persona-cache.util';
 import { TenantVerticalConfig, VerticalDefinition } from '@parallext/shared';
 
+/**
+ * Los sub-tipos que cambian lo que el bootstrap siembra.
+ *
+ * El dueño elegía con cuidado entre cuatro sub-tipos y en la mayoría de las
+ * verticales no cambiaba absolutamente nada: `seedServices` y `seedAvailability`
+ * corrían para toda industria con `bookingEnabled` sin mirar el sub-tipo. Por
+ * eso el hotel recibía "Tour día completo" como servicio agendable de 4 horas,
+ * la dark kitchen recibía "Reserva mesa 2-4", la boutique recibía "Corte y
+ * estilo", y la farmacia una agendadora de consultas médicas. Todo eso el dueño
+ * lo tenía que borrar a mano el día 1, si es que entendía por qué estaba ahí.
+ *
+ * Sólo entran acá los sub-tipos que REALMENTE ramifican. Regla de cierre del
+ * plan: si después de esto un sub-tipo sigue sin cambiar nada, se saca del
+ * selector del alta en vez de fingir que significa algo.
+ */
+interface SubtypeBootstrap {
+    /** El sub-tipo no agenda: ni servicios ni horarios semanales. */
+    skipAgenda?: boolean;
+    /** Atiende 24×7 (guardia, urgencias): los horarios semanales no aplican. */
+    roundTheClock?: boolean;
+    /** Herramientas extra que su industria no enciende por defecto. */
+    extraTools?: string[];
+}
+
+const SUBTYPE_BOOTSTRAP: Record<string, SubtypeBootstrap> = {
+    // moda_belleza — la boutique es RETAIL de ropa: catálogo, no sillón.
+    boutique: { skipAgenda: true, extraTools: ['catalog'] },
+    // salud — la farmacia despacha, no agenda consultas.
+    farmacia: { skipAgenda: true, extraTools: ['catalog'] },
+    // salud — urgencias 24h: la grilla semanal de 9 a 18 es exactamente al revés
+    // de lo que el negocio necesita.
+    hospital_24h: { roundTheClock: true },
+    // restaurantes — sin salón no hay mesa que reservar.
+    dark_kitchen: { skipAgenda: true },
+    delivery: { skipAgenda: true },
+    // turismo — el alojamiento reserva NOCHES contra `properties`, no franjas de
+    // 4 horas contra `services`. Su tool ya se enciende más abajo.
+    hotel: { skipAgenda: true },
+    alquiler_vacacional: { skipAgenda: true },
+    // moda_belleza / salud — paquetes de sesiones (6 depilaciones, 10 masajes,
+    // una serie de keratinas). El módulo de treatments estaba pagado y era
+    // exclusivo de dental.
+    spa: { extraTools: ['treatments'] },
+    estetica: { extraTools: ['treatments'] },
+    psicologia: { extraTools: ['treatments'] },
+};
+
 @Injectable()
 export class VerticalsService {
     private readonly logger = new Logger(VerticalsService.name);
@@ -46,15 +93,32 @@ export class VerticalsService {
         await this.enableSimpleTool(schemaName, 'faqs');
 
         // 4. Seed services (if booking-enabled)
-        if (definition.bookingEnabled && definition.services.length > 0) {
+        //
+        // El sub-tipo manda sobre la vertical. `bookingEnabled` es una propiedad
+        // de la INDUSTRIA, y hay sub-tipos dentro de una industria de agenda que
+        // no agendan nada: una boutique no da turnos de peluquería, una dark
+        // kitchen no reserva mesas, un hotel no vende "Tour día completo" como
+        // cita de 4 horas, una farmacia no agenda consultas médicas. Sembrarles
+        // servicios y horarios los dejaba con un agendador ofreciendo cosas que
+        // el negocio no hace — y el dueño teniendo que borrarlas una por una.
+        const bootstrapMode = SUBTYPE_BOOTSTRAP[subType || ''];
+        const seedsAgenda = definition.bookingEnabled && !bootstrapMode?.skipAgenda;
+
+        if (seedsAgenda && definition.services.length > 0) {
             await this.seedServices(schemaName, definition, l);
         }
 
         // 4a. Seed la disponibilidad semanal. Va junto con los servicios porque
         // el agendador necesita las dos cosas: con servicios pero sin slots el
         // bot ofrece turnos y después responde "no hay disponibilidad" siempre.
-        if (definition.bookingEnabled) {
-            await this.seedAvailability(tenantId, schemaName, definition);
+        if (seedsAgenda) {
+            await this.seedAvailability(tenantId, schemaName, definition, bootstrapMode?.roundTheClock);
+        }
+
+        // Herramientas que el sub-tipo necesita y su industria no enciende por
+        // defecto (una boutique vende catálogo; un spa arma paquetes de sesiones).
+        for (const tool of bootstrapMode?.extraTools || []) {
+            await this.enableSimpleTool(schemaName, tool);
         }
 
         // 4a-bis. Con la agenda ya sembrada, devolver la herramienta de citas al estado
@@ -72,7 +136,7 @@ export class VerticalsService {
         // flag is turned on so the AI can use search_packages out of the box.
         if (industry === 'turismo' && (subType === 'tours' || subType === 'agencia_viajes')) {
             await this.seedToursExtras(tenantId, schemaName, l);
-            await this.enableToursTool(schemaName);
+            await this.enableSimpleTool(schemaName, 'tours');
         }
         if (industry === 'turismo' && (subType === 'hotel' || subType === 'alquiler_vacacional')) {
             // El módulo vacation-rental (properties, disponibilidad por noches,
@@ -86,44 +150,45 @@ export class VerticalsService {
         // so the AI can answer about ongoing orthodontic / multi-session plans.
         if (industry === 'salud' && subType === 'dental') {
             await this.seedDentalExtras(tenantId, schemaName, l);
-            await this.enableTreatmentsTool(schemaName);
+            await this.enableSimpleTool(schemaName, 'treatments');
         }
 
         // 4d. Inmobiliaria: real-estate-specific FAQs + activate the listings
         // tool so the AI can show actual catalog entries via search_listings.
         if (industry === 'inmobiliaria') {
             await this.seedInmobiliariaExtras(tenantId, schemaName, l);
-            await this.enableRealEstateTool(schemaName);
+            await this.enableSimpleTool(schemaName, 'realEstate');
         }
 
         // 4e. Veterinaria: turn on the pets tool so the AI can register
         // pets, look up vaccination calendars, and triage emergencies.
         if (industry === 'veterinaria') {
-            await this.enablePetsTool(schemaName);
+            await this.enableSimpleTool(schemaName, 'pets');
         }
 
         // 4f. Restaurantes: enable the restaurants tool so Luca can
         // look up the menu, list active promotions, and place orders.
         if (industry === 'restaurantes') {
-            await this.enableRestaurantsTool(schemaName);
+            await this.enableSimpleTool(schemaName, 'restaurants');
         }
 
         // 4g. Gimnasios: enable the gyms tool so Alex can show plans,
         // class schedule, and let members book / freeze.
         if (industry === 'gimnasios') {
-            await this.enableGymsTool(schemaName);
+            await this.enableSimpleTool(schemaName, 'gyms');
+            await this.seedMembershipPlans(schemaName, l);
         }
 
         // 4h. Education: enable the education tool so Pablo can list
         // courses, show open cohorts, send placement tests and enroll.
         if (industry === 'education') {
-            await this.enableEducationTool(schemaName);
+            await this.enableSimpleTool(schemaName, 'education');
         }
 
         // 4i. Seguros: enable the insurance tool so Roberto can show
         // plans, calculate quotes, look up policies and file claims.
         if (industry === 'seguros') {
-            await this.enableInsuranceTool(schemaName);
+            await this.enableSimpleTool(schemaName, 'insurance');
         }
 
         // 4j. Tier 3 verticals — light bootstrap: each just flips the
@@ -494,9 +559,14 @@ export class VerticalsService {
         tenantId: string,
         schemaName: string,
         definition: VerticalDefinition,
+        roundTheClock = false,
     ): Promise<void> {
         try {
-            const schedule = definition.businessHours?.schedule || {};
+            // Guardia 24h: la grilla semanal de la industria (9 a 18, sábado
+            // medio día) es exactamente al revés de lo que necesita una urgencia.
+            const schedule = roundTheClock
+                ? { monday: '00:00-23:59', tuesday: '00:00-23:59', wednesday: '00:00-23:59', thursday: '00:00-23:59', friday: '00:00-23:59', saturday: '00:00-23:59', sunday: '00:00-23:59' }
+                : (definition.businessHours?.schedule || {});
             const days: Array<[string, unknown]> = Object.entries(schedule);
             if (days.length === 0) return;
 
@@ -697,35 +767,6 @@ export class VerticalsService {
             this.logger.debug(`Seeded ${faqs.length} tours-specific FAQs`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed tours FAQs: ${error.message}`);
-        }
-    }
-
-    /**
-     * Turn on config.tools.tours.enabled for the default agent so the
-     * AI can call search_packages / create_tour_booking out of the box.
-     */
-    private async enableToursTool(schemaName: string): Promise<void> {
-        try {
-            const agents = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
-            );
-            const agent = agents?.[0];
-            if (!agent) return;
-
-            const config = agent.config_json || {};
-            const tools = { ...(config.tools || {}) };
-            tools.tours = { ...(tools.tours || {}), enabled: true };
-            const newConfig = { ...config, tools };
-
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
-                [JSON.stringify(newConfig), agent.id],
-            );
-            this.logger.debug('Enabled tours tool on default agent');
-        } catch (error: any) {
-            this.logger.warn(`Failed to enable tours tool: ${error.message}`);
         }
     }
 
@@ -932,146 +973,6 @@ export class VerticalsService {
     }
 
     /**
-     * Turn on config.tools.realEstate.enabled so the inmobiliaria AI can
-     * call search_listings and show real catalog entries.
-     */
-    private async enableRealEstateTool(schemaName: string): Promise<void> {
-        try {
-            const agents = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
-            );
-            const agent = agents?.[0];
-            if (!agent) return;
-            const config = agent.config_json || {};
-            const tools = { ...(config.tools || {}) };
-            tools.realEstate = { ...(tools.realEstate || {}), enabled: true };
-            const newConfig = { ...config, tools };
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
-                [JSON.stringify(newConfig), agent.id],
-            );
-            this.logger.debug('Enabled realEstate tool on default agent');
-        } catch (error: any) {
-            this.logger.warn(`Failed to enable realEstate tool: ${error.message}`);
-        }
-    }
-
-    /**
-     * Turn on config.tools.treatments.enabled so the dental AI can read
-     * the patient's active treatment plan and upcoming sessions.
-     */
-    private async enableTreatmentsTool(schemaName: string): Promise<void> {
-        try {
-            const agents = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
-            );
-            const agent = agents?.[0];
-            if (!agent) return;
-
-            const config = agent.config_json || {};
-            const tools = { ...(config.tools || {}) };
-            tools.treatments = { ...(tools.treatments || {}), enabled: true };
-            const newConfig = { ...config, tools };
-
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
-                [JSON.stringify(newConfig), agent.id],
-            );
-            this.logger.debug('Enabled treatments tool on default agent');
-        } catch (error: any) {
-            this.logger.warn(`Failed to enable treatments tool: ${error.message}`);
-        }
-    }
-
-    /**
-     * Turn on config.tools.pets.enabled so the veterinaria AI can manage
-     * the tutor's pets, look up vaccination calendars, and triage emergencies.
-     */
-    private async enablePetsTool(schemaName: string): Promise<void> {
-        try {
-            const agents = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
-            );
-            const agent = agents?.[0];
-            if (!agent) return;
-
-            const config = agent.config_json || {};
-            const tools = { ...(config.tools || {}) };
-            tools.pets = { ...(tools.pets || {}), enabled: true };
-            const newConfig = { ...config, tools };
-
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
-                [JSON.stringify(newConfig), agent.id],
-            );
-            this.logger.debug('Enabled pets tool on default agent');
-        } catch (error: any) {
-            this.logger.warn(`Failed to enable pets tool: ${error.message}`);
-        }
-    }
-
-    /**
-     * Turn on config.tools.restaurants.enabled so Luca can use get_menu,
-     * get_promotions, and place_order on restaurant tenants.
-     */
-    private async enableRestaurantsTool(schemaName: string): Promise<void> {
-        try {
-            const agents = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
-            );
-            const agent = agents?.[0];
-            if (!agent) return;
-
-            const config = agent.config_json || {};
-            const tools = { ...(config.tools || {}) };
-            tools.restaurants = { ...(tools.restaurants || {}), enabled: true };
-            const newConfig = { ...config, tools };
-
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
-                [JSON.stringify(newConfig), agent.id],
-            );
-            this.logger.debug('Enabled restaurants tool on default agent');
-        } catch (error: any) {
-            this.logger.warn(`Failed to enable restaurants tool: ${error.message}`);
-        }
-    }
-
-    /** Enable gyms tool on default agent for industry='gimnasios'. */
-    private async enableGymsTool(schemaName: string): Promise<void> {
-        try {
-            const agents = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
-            );
-            const agent = agents?.[0];
-            if (!agent) return;
-
-            const config = agent.config_json || {};
-            const tools = { ...(config.tools || {}) };
-            tools.gyms = { ...(tools.gyms || {}), enabled: true };
-            const newConfig = { ...config, tools };
-
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
-                [JSON.stringify(newConfig), agent.id],
-            );
-            this.logger.debug('Enabled gyms tool on default agent');
-        } catch (error: any) {
-            this.logger.warn(`Failed to enable gyms tool: ${error.message}`);
-        }
-    }
-
-    /**
      * Generic tool-enabler for Tier 3 verticals. Each just flips a
      * config.tools.* flag on the default agent — no domain-specific
      * extras needed since these verticals reuse the existing services
@@ -1127,98 +1028,137 @@ export class VerticalsService {
      */
     private async restoreAppointmentsTool(schemaName: string): Promise<void> {
         try {
+            // TODOS los agentes activos, por lo mismo que enableSimpleTool: con un
+            // agente por conexión, el segundo nacía sin agendador porque este
+            // método solo miraba al default. Poder agendar es del NEGOCIO.
             const agents = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+                `SELECT id, config_json FROM agent_personas WHERE is_active = true`,
             );
-            const agent = agents?.[0];
-            if (!agent) return;
+            if (!agents?.length) return;
 
-            const config = agent.config_json || {};
-            const appointments = config.tools?.appointments;
-            if (!appointments || appointments.pendingPrerequisites !== true) return;
+            // Los contadores son del tenant, no del agente: se leen una sola vez.
+            let counted: { services: number; slots: number } | null = null;
 
-            // Mismos dos contadores que exige `assertAppointmentsPrerequisites`.
-            const [counts] = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT
-                    (SELECT COUNT(*)::int FROM services WHERE is_active = true) AS services,
-                    (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true) AS slots`,
-            );
-            const services = Number(counts?.services || 0);
-            const slots = Number(counts?.slots || 0);
+            for (const agent of agents) {
+                const config = agent.config_json || {};
+                const appointments = config.tools?.appointments;
+                if (!appointments || appointments.pendingPrerequisites !== true) continue;
 
-            const restored = { ...appointments, enabled: services > 0 && slots > 0 };
-            delete restored.pendingPrerequisites;
+                if (!counted) {
+                    // Mismos dos contadores que exige `assertAppointmentsPrerequisites`.
+                    const [counts] = await this.prisma.executeInTenantSchema<any[]>(
+                        schemaName,
+                        `SELECT
+                            (SELECT COUNT(*)::int FROM services WHERE is_active = true) AS services,
+                            (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true) AS slots`,
+                    );
+                    counted = { services: Number(counts?.services || 0), slots: Number(counts?.slots || 0) };
+                }
 
-            const newConfig = { ...config, tools: { ...config.tools, appointments: restored } };
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
-                [JSON.stringify(newConfig), agent.id],
-            );
+                const restored = { ...appointments, enabled: counted.services > 0 && counted.slots > 0 };
+                delete restored.pendingPrerequisites;
 
-            if (restored.enabled) {
-                this.logger.debug(`Re-enabled appointments tool (services=${services}, slots=${slots})`);
-            } else {
-                this.logger.warn(
-                    `Appointments tool left OFF after vertical bootstrap (services=${services}, slots=${slots}) — the tenant must finish setting up the agenda`,
+                const newConfig = { ...config, tools: { ...config.tools, appointments: restored } };
+                await this.prisma.executeInTenantSchema(
+                    schemaName,
+                    `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                    [JSON.stringify(newConfig), agent.id],
                 );
+
+                if (restored.enabled) {
+                    this.logger.debug(`Re-enabled appointments tool on agent ${agent.id} (services=${counted.services}, slots=${counted.slots})`);
+                } else {
+                    this.logger.warn(
+                        `Appointments tool left OFF after vertical bootstrap on agent ${agent.id} (services=${counted.services}, slots=${counted.slots}) — the tenant must finish setting up the agenda`,
+                    );
+                }
             }
         } catch (error: any) {
             this.logger.warn(`Failed to restore appointments tool: ${error.message}`);
         }
     }
 
-    /** Enable insurance tool on default agent for industry='seguros'. */
-    private async enableInsuranceTool(schemaName: string): Promise<void> {
+    /**
+     * Siembra los planes de membresía del gimnasio.
+     *
+     * `get_membership_plans` es la primera tool que usa cualquier interesado
+     * ("¿cuánto sale?") y devolvía una lista vacía en todo tenant nuevo: la
+     * tabla `membership_plans` no la escribía el bootstrap y el dueño tenía que
+     * descubrir /admin/memberships por su cuenta antes de que el bot pudiera
+     * responder el precio. La conversación más frecuente del rubro moría en la
+     * primera pregunta.
+     *
+     * Tres planes porque es el patrón real del rubro (mensual / trimestral /
+     * anual con descuento) y porque un solo plan no deja al agente comparar,
+     * que es donde vende. Los precios son un punto de partida COP editable, no
+     * una recomendación: lo importante es que el dueño encuentre filas hechas y
+     * las ajuste, en vez de una tabla vacía.
+     */
+    private async seedMembershipPlans(schemaName: string, lang: string): Promise<void> {
         try {
-            const agents = await this.prisma.executeInTenantSchema<any[]>(
+            const existing = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+                `SELECT COUNT(*)::int AS cnt FROM membership_plans`,
             );
-            const agent = agents?.[0];
-            if (!agent) return;
+            if (Number(existing?.[0]?.cnt || 0) > 0) {
+                this.logger.debug('Membership plans already seeded — skipping');
+                return;
+            }
 
-            const config = agent.config_json || {};
-            const tools = { ...(config.tools || {}) };
-            tools.insurance = { ...(tools.insurance || {}), enabled: true };
-            const newConfig = { ...config, tools };
+            const L = (loc: Record<string, string>) => loc[lang] || loc.es;
+            const PLANS = [
+                {
+                    name: { es: 'Mensual', en: 'Monthly', pt: 'Mensal', fr: 'Mensuel' },
+                    description: {
+                        es: 'Acceso ilimitado al gimnasio + 8 clases grupales al mes',
+                        en: 'Unlimited gym access + 8 group classes per month',
+                        pt: 'Acesso ilimitado + 8 aulas em grupo por mês',
+                        fr: 'Accès illimité + 8 cours collectifs par mois',
+                    },
+                    durationDays: 30, price: 150000, credits: 8, pt: 0, guests: 1, freeze: 0, order: 1,
+                },
+                {
+                    name: { es: 'Trimestral', en: 'Quarterly', pt: 'Trimestral', fr: 'Trimestriel' },
+                    description: {
+                        es: 'Tres meses con clases ilimitadas y 15 días de congelamiento',
+                        en: 'Three months with unlimited classes and 15 freeze days',
+                        pt: 'Três meses com aulas ilimitadas e 15 dias de congelamento',
+                        fr: 'Trois mois avec cours illimités et 15 jours de gel',
+                    },
+                    // class_credits_per_period NULL = ilimitado (así lo lee bookClass).
+                    durationDays: 90, price: 390000, credits: null, pt: 1, guests: 3, freeze: 15, order: 2,
+                },
+                {
+                    name: { es: 'Anual', en: 'Annual', pt: 'Anual', fr: 'Annuel' },
+                    description: {
+                        es: 'Un año con clases ilimitadas, 4 sesiones de entrenamiento personal y 30 días de congelamiento',
+                        en: 'One year with unlimited classes, 4 personal training sessions and 30 freeze days',
+                        pt: 'Um ano com aulas ilimitadas, 4 sessões de personal e 30 dias de congelamento',
+                        fr: 'Un an avec cours illimités, 4 séances de coaching et 30 jours de gel',
+                    },
+                    durationDays: 365, price: 1320000, credits: null, pt: 4, guests: 10, freeze: 30, order: 3,
+                },
+            ];
 
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
-                [JSON.stringify(newConfig), agent.id],
-            );
-            this.logger.debug('Enabled insurance tool on default agent');
+            for (const p of PLANS) {
+                await this.prisma.executeInTenantSchema(
+                    schemaName,
+                    `INSERT INTO membership_plans
+                        (name, description, duration_days, price, currency,
+                         class_credits_per_period, personal_training_credits,
+                         guest_passes, freeze_allowance_days, sort_order)
+                     VALUES ($1, $2, $3, $4, 'COP', $5, $6, $7, $8, $9)`,
+                    [L(p.name), L(p.description), p.durationDays, p.price,
+                        p.credits, p.pt, p.guests, p.freeze, p.order],
+                );
+            }
+            this.logger.debug(`Seeded ${PLANS.length} membership plans`);
         } catch (error: any) {
-            this.logger.warn(`Failed to enable insurance tool: ${error.message}`);
+            // Un gimnasio sin planes sembrados sigue siendo utilizable; no puede
+            // tumbar el alta entera.
+            this.logger.warn(`Failed to seed membership plans: ${error.message}`);
         }
     }
 
-    /** Enable education tool on default agent for industry='education'. */
-    private async enableEducationTool(schemaName: string): Promise<void> {
-        try {
-            const agents = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
-            );
-            const agent = agents?.[0];
-            if (!agent) return;
-
-            const config = agent.config_json || {};
-            const tools = { ...(config.tools || {}) };
-            tools.education = { ...(tools.education || {}), enabled: true };
-            const newConfig = { ...config, tools };
-
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
-                [JSON.stringify(newConfig), agent.id],
-            );
-            this.logger.debug('Enabled education tool on default agent');
-        } catch (error: any) {
-            this.logger.warn(`Failed to enable education tool: ${error.message}`);
-        }
-    }
 }

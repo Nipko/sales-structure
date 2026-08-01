@@ -8400,6 +8400,8 @@
     "issue": "Reported issue",
     "preferred": "Preferred date",
     "technician": "Assigned technician",
+    "unassigned": "Unassigned",
+    "staffHint": "Add your team under Appointments → Staff to pick from a list instead of typing the name.",
     "scheduledAt": "Scheduled at",
     "estimatedCost": "Estimated cost"
   },

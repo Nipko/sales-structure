@@ -8400,6 +8400,8 @@
     "issue": "Problema",
     "preferred": "Data preferida",
     "technician": "Técnico",
+    "unassigned": "Sem atribuir",
+    "staffHint": "Adicione sua equipe em Agendamentos → Equipe para escolher de uma lista em vez de digitar.",
     "scheduledAt": "Agendado para",
     "estimatedCost": "Custo estimado"
   },

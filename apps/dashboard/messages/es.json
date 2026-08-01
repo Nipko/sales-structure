@@ -8400,6 +8400,8 @@
     "issue": "Problema reportado",
     "preferred": "Fecha preferida",
     "technician": "Técnico asignado",
+    "unassigned": "Sin asignar",
+    "staffHint": "Agrega a tu equipo en Citas → Personal para elegirlo de una lista en vez de escribirlo.",
     "scheduledAt": "Fecha programada",
     "estimatedCost": "Costo estimado"
   },

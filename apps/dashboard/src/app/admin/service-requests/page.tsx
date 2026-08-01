@@ -33,6 +33,7 @@ interface ServiceRequest {
     estimated_cost?: number;
     currency?: string;
     assigned_technician_name?: string;
+    assigned_technician_id?: string;
     scheduled_at?: string;
     completed_at?: string;
     status: string;
@@ -196,9 +197,26 @@ function RequestDetailModal({ request, onClose, onUpdated }: { request: ServiceR
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
     const [tech, setTech] = useState(request.assigned_technician_name || "");
+    const [techId, setTechId] = useState(request.assigned_technician_id || "");
+    // El directorio de personal ya existe (staff_members, el mismo que usa la
+    // agenda). Este modal, en cambio, pedía el técnico como texto libre y sólo
+    // guardaba el nombre: la columna assigned_technician_id existía y no la
+    // escribía nadie. Consecuencia práctica: dos filas con "Juan" no eran el
+    // mismo Juan para nadie, no había forma de ver la carga de un técnico ni de
+    // filtrar sus visitas, y un error de tipeo creaba un técnico fantasma.
+    const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
     const [scheduledAt, setScheduledAt] = useState(request.scheduled_at?.slice(0, 16) || "");
     const [estimatedCost, setEstimatedCost] = useState(request.estimated_cost?.toString() || "");
     const [busy, setBusy] = useState(false);
+
+    useEffect(() => {
+        if (!activeTenantId) return;
+        api.listStaff(activeTenantId)
+            .then(res => setStaff((res?.data as any[])?.map(s => ({ id: s.id, name: s.name })) || []))
+            // Si el directorio está vacío o falla, el campo cae a texto libre:
+            // vale más poder despachar al técnico que bloquear la operación.
+            .catch(() => setStaff([]));
+    }, [activeTenantId]);
 
     async function handleSave() {
         if (!activeTenantId) return;
@@ -206,6 +224,7 @@ function RequestDetailModal({ request, onClose, onUpdated }: { request: ServiceR
         try {
             await api.updateServiceRequest(activeTenantId, request.id, {
                 assignedTechnicianName: tech || undefined,
+                assignedTechnicianId: techId || undefined,
                 scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
                 estimatedCost: estimatedCost ? parseFloat(estimatedCost) : undefined,
             });
@@ -253,7 +272,31 @@ function RequestDetailModal({ request, onClose, onUpdated }: { request: ServiceR
                     <div className="border-t border-border pt-3 space-y-3">
                         <div>
                             <label className="block text-xs font-medium mb-1">{t("technician")}</label>
-                            <input type="text" value={tech} onChange={e => setTech(e.target.value)} className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm" />
+                            {staff.length > 0 ? (
+                                <select
+                                    value={techId}
+                                    onChange={e => {
+                                        const id = e.target.value;
+                                        setTechId(id);
+                                        setTech(staff.find(s => s.id === id)?.name || "");
+                                    }}
+                                    className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm cursor-pointer"
+                                >
+                                    <option value="">{t("unassigned")}</option>
+                                    {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    {/* Un técnico cargado a mano antes de que existiera el
+                                        directorio no está en la lista, y sin esta opción el
+                                        select lo borraría al guardar cualquier otro campo. */}
+                                    {tech && !staff.some(s => s.id === techId) && (
+                                        <option value="">{tech}</option>
+                                    )}
+                                </select>
+                            ) : (
+                                <>
+                                    <input type="text" value={tech} onChange={e => setTech(e.target.value)} className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm" />
+                                    <p className="text-[11px] text-muted-foreground mt-1">{t("staffHint")}</p>
+                                </>
+                            )}
                         </div>
                         <div>
                             <label className="block text-xs font-medium mb-1">{t("scheduledAt")}</label>

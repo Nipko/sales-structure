@@ -779,6 +779,11 @@ export const api = {
     deleteService: (tenantId: string, serviceId: string) =>
         apiDelete(`/appointments/${tenantId}/services/${serviceId}`),
 
+    // --- Staff directory (staff_members) ---
+    // El mismo directorio que usa la agenda; lo consume también el despacho de
+    // servicios a domicilio para asignar el técnico por id en vez de por texto.
+    listStaff: (tenantId: string) => apiGet(`/staff/${tenantId}`),
+
     // --- Service-Staff Assignment ---
     getServiceStaff: (tenantId: string, serviceId: string) =>
         apiGet(`/appointments/${tenantId}/services/${serviceId}/staff`),

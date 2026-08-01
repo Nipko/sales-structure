@@ -8400,6 +8400,8 @@
     "issue": "Problème",
     "preferred": "Date préférée",
     "technician": "Technicien",
+    "unassigned": "Non assigné",
+    "staffHint": "Ajoutez votre équipe dans Rendez-vous → Personnel pour choisir dans une liste au lieu de saisir le nom.",
     "scheduledAt": "Programmé pour",
     "estimatedCost": "Coût estimé"
   },

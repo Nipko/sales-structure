@@ -558,6 +558,21 @@ const FINANZAS = createGenericVertical('finanzas', {
     ] },
     sidebar: { labelOverrides: { crm: { es: 'Clientes', en: 'Clients', pt: 'Clientes', fr: 'Clients' }, pipeline: { es: 'Solicitudes', en: 'Applications', pt: 'Solicitações', fr: 'Demandes' } }, hiddenItems: ['inventory', 'orders', 'catalog'] },
     bookingEnabled: true,
+    // Los KPIs genéricos ("Leads Hoy", "Leads Calientes") usan contadores que
+    // existen y funcionan, pero con la etiqueta de otro negocio: acá no entran
+    // leads, entran solicitudes, y lo que el dueño mira es cuántas están para
+    // decidir y qué proporción se aprueba.
+    //
+    // Las cuatro claves son las que `getCommercialOverview` YA calcula:
+    // leadsReadyToClose es por score (>=9), no por slug de etapa, y
+    // conversionRate sale de opportunities a 30 días. Ninguna depende del
+    // vocabulario del embudo, así que ninguna nace en cero para siempre.
+    dashboard: { kpis: [
+        { key: 'leadsToday', label: { es: 'Solicitudes Hoy', en: 'Applications Today', pt: 'Solicitações Hoje', fr: 'Demandes Aujourd\'hui' }, icon: 'UserPlus', color: '#3498db' },
+        { key: 'leadsReadyToClose', label: { es: 'Listas para decidir', en: 'Ready to Decide', pt: 'Prontas para decidir', fr: 'Prêtes à décider' }, icon: 'Flame', color: '#e67e22' },
+        { key: 'conversionRate', label: { es: 'Tasa de aprobación', en: 'Approval Rate', pt: 'Taxa de aprovação', fr: 'Taux d\'approbation' }, icon: 'TrendingUp', color: '#2ecc71' },
+        { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#9b59b6' },
+    ] },
     // Sin FAQs propias este rubro heredaba las genéricas, y una de ellas era
     // "¿Tienen política de devolución?": un crédito no se devuelve. Peor, las
     // cinco preguntas que de verdad llegan —requisitos, plazos, documentos,
@@ -604,6 +619,14 @@ const SERVICIOS_PROFESIONALES = createGenericVertical('servicios_profesionales',
     ] },
     sidebar: { labelOverrides: { crm: { es: 'Clientes', en: 'Clients', pt: 'Clientes', fr: 'Clients' }, pipeline: { es: 'Casos', en: 'Cases', pt: 'Casos', fr: 'Dossiers' } }, hiddenItems: ['inventory', 'orders', 'catalog'] },
     bookingEnabled: true,
+    // Un despacho no cuenta "leads calientes": cuenta consultas que entraron,
+    // reuniones agendadas y qué proporción de casos termina tomándose.
+    dashboard: { kpis: [
+        { key: 'leadsToday', label: { es: 'Consultas Hoy', en: 'Inquiries Today', pt: 'Consultas Hoje', fr: 'Demandes Aujourd\'hui' }, icon: 'UserPlus', color: '#3498db' },
+        { key: 'appointmentsToday', label: { es: 'Reuniones Hoy', en: 'Meetings Today', pt: 'Reuniões Hoje', fr: 'Rendez-vous Aujourd\'hui' }, icon: 'Calendar', color: '#f39c12' },
+        { key: 'conversionRate', label: { es: 'Casos tomados', en: 'Cases Taken', pt: 'Casos aceitos', fr: 'Dossiers acceptés' }, icon: 'TrendingUp', color: '#2ecc71' },
+        { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#9b59b6' },
+    ] },
     // La pregunta que abre casi toda conversación de un despacho es "¿cuánto
     // cobran?", y sin FAQs propias el agente respondía con las genéricas
     // (horario, medios de pago, devoluciones). Se siembran las cinco reales.
@@ -682,6 +705,15 @@ const TECHNOLOGY = createGenericVertical('technology', {
         hiddenItems: [],
     },
     bookingEnabled: true,
+    // El KPI de un pipeline B2B es la demo: es la etapa donde el deal se gana o
+    // se enfría, y `appointmentsToday` la cuenta porque la demo se agenda como
+    // servicio ("Demo personalizada", 45 min).
+    dashboard: { kpis: [
+        { key: 'leadsToday', label: { es: 'Leads Hoy', en: 'Leads Today', pt: 'Leads Hoje', fr: 'Leads Aujourd\'hui' }, icon: 'UserPlus', color: '#3498db' },
+        { key: 'appointmentsToday', label: { es: 'Demos Hoy', en: 'Demos Today', pt: 'Demos Hoje', fr: 'Démos Aujourd\'hui' }, icon: 'Calendar', color: '#f39c12' },
+        { key: 'conversionRate', label: { es: 'Tasa de cierre', en: 'Close Rate', pt: 'Taxa de fechamento', fr: 'Taux de conclusion' }, icon: 'TrendingUp', color: '#2ecc71' },
+        { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#9b59b6' },
+    ] },
     // Las genéricas que heredaba (horario, medios de pago, ubicación,
     // devoluciones) son de un local a la calle; en B2B nadie pregunta eso. Lo
     // que sí preguntan —precio, demo, integraciones, tiempo de implementación,

@@ -79,7 +79,11 @@ export default function AdminDashboard() {
             icon: ICON_MAP[kpi.icon] || Activity,
             color: `text-[${kpi.color}]`,
             bgIcon: `bg-[${kpi.color}]/10`,
-            suffix: kpi.key.toLowerCase().includes("cost") || kpi.key.toLowerCase().includes("revenue") ? "$" : "",
+            // Una tasa sin el % se lee como un conteo: "23 casos ganados" en vez
+            // de "23% de cierre". Es el mismo número diciendo otra cosa.
+            suffix: kpi.key.toLowerCase().includes("cost") || kpi.key.toLowerCase().includes("revenue")
+                ? "$"
+                : kpi.key.toLowerCase().includes("rate") ? "%" : "",
         }))
         : defaultStatConfig;
     const APPOINTMENT_INDUSTRIES = ['salud', 'moda_belleza', 'restaurantes'];
@@ -537,7 +541,9 @@ export default function AdminDashboard() {
                         ? "—"
                         : stat.suffix === "$"
                             ? `$${Number(rawValue).toFixed(2)}`
-                            : Number(rawValue).toLocaleString();
+                            : stat.suffix === "%"
+                                ? `${Math.round(Number(rawValue))}%`
+                                : Number(rawValue).toLocaleString();
                     return (
                         <Card key={stat.key} className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                             <CardContent className="pt-0">

@@ -243,6 +243,30 @@ const templates = [
             { key: 'language', label: { es: 'Idioma', en: 'Language', pt: 'Idioma', fr: 'Langue' }, type: 'string', default: 'es' },
         ],
     },
+    // ─── Post-visita (transversal a toda vertical de agenda) ────────
+    {
+        name: { es: 'Pedir reseña despues de la visita', en: 'Ask for a review after the visit', pt: 'Pedir avaliacao apos a visita', fr: 'Demander un avis apres la visite' },
+        description: {
+            es: 'Cuando una cita se marca como completada, agradece y pide una reseña. Es el momento de mayor disposicion del cliente.',
+            en: 'When an appointment is marked completed, thank the customer and ask for a review — the moment they are most willing.',
+            pt: 'Quando um agendamento e concluido, agradece e pede uma avaliacao — o momento de maior disposicao.',
+            fr: 'Quand un rendez-vous est marque termine, remercie et demande un avis — le moment le plus favorable.',
+        },
+        category: 'engagement',
+        // Sin industria: sirve a salud, belleza, veterinaria, inmobiliaria y
+        // automotriz por igual. El disparador es la cita, no el rubro.
+        industry: null,
+        icon: '⭐',
+        triggerConfig: { trigger_type: 'appointment.completed', conditions: [] },
+        actionsConfig: [
+            { type: 'send_template', config: { template_name: '{{review_template}}', language: '{{language}}' }, delay: 7200 },
+            { type: 'add_tag', config: { tag: 'reseña-solicitada' }, delay: 7200 },
+        ],
+        variables: [
+            { key: 'review_template', label: { es: 'Plantilla de reseña', en: 'Review template', pt: 'Modelo de avaliacao', fr: 'Modele d\'avis' }, type: 'string', default: 'review_request' },
+            { key: 'language', label: { es: 'Idioma', en: 'Language', pt: 'Idioma', fr: 'Langue' }, type: 'string', default: 'es' },
+        ],
+    },
     // ─── Industry: Health ────────────────────────────────────────────
     {
         name: { es: 'Recordatorio de control', en: 'Check-up Reminder', pt: 'Lembrete de controle', fr: 'Rappel de controle' },

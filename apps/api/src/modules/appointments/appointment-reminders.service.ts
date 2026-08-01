@@ -6,6 +6,7 @@ import { WhatsappTemplateService } from '../whatsapp/services/whatsapp-template.
 import { AppointmentsService } from './appointments.service';
 import { normalizeMetaLanguage } from '../whatsapp/seed-templates.config';
 import { CronLockService } from '../redis/cron-lock.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class AppointmentRemindersService {
@@ -17,6 +18,7 @@ export class AppointmentRemindersService {
         private whatsappTemplates: WhatsappTemplateService,
         private appointmentsService: AppointmentsService,
         private readonly cronLock: CronLockService,
+        private readonly eventEmitter: EventEmitter2,
     ) {}
 
     /**
@@ -313,6 +315,21 @@ export class AppointmentRemindersService {
         if (count > 0) {
             this.logger.log(`[AutoComplete] Marked ${count} appointment(s) as completed for tenant ${tenantId}`);
             const contactIds = completed.map(c => c.contact_id).filter(Boolean);
+
+            // `appointment.completed` — el momento post-visita.
+            //
+            // El cron ya marcaba las citas como completadas y no avisaba a
+            // nadie, asi que la ventana en la que un cliente esta mas dispuesto
+            // a dejar una reseña o a volver a agendar pasaba sin que el negocio
+            // pudiera engancharse. Con esto el motor de automatizaciones tiene
+            // un disparador para la vertical de agenda entera.
+            //
+            // Va con telefono y lead porque es lo que necesitan las acciones
+            // (send_template lee event.phone; add_tag/assign_agent/update_stage
+            // leen event.leadId). Se resuelve de una sola vez para toda la tanda.
+            await this.emitAppointmentsCompleted(tenantId, schemaName, completed).catch((e: any) =>
+                this.logger.warn(`[AutoComplete] No se pudo emitir appointment.completed: ${e.message}`),
+            );
             if (contactIds.length > 0) {
                 try {
                     await this.prisma.executeInTenantSchema(schemaName,
@@ -324,6 +341,50 @@ export class AppointmentRemindersService {
                     this.logger.warn(`[AutoComplete] Failed to update last_appointment_at for ${tenantId}: ${e.message}`);
                 }
             }
+        }
+    }
+
+    /**
+     * Emite un `appointment.completed` por cita recién completada, con todo lo
+     * que las acciones de automatización necesitan para poder actuar.
+     */
+    private async emitAppointmentsCompleted(
+        tenantId: string,
+        schemaName: string,
+        completed: Array<{ id: string; contact_id?: string; service_name?: string }>,
+    ): Promise<void> {
+        const ids = [...new Set(completed.map(c => c.contact_id).filter(Boolean))] as string[];
+        if (!ids.length) return;
+
+        // El lead vigente es el más reciente no archivado: un contacto puede
+        // tener varios a lo largo del tiempo.
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT DISTINCT ON (c.id) c.id AS contact_id, c.phone, c.name, l.id AS lead_id
+             FROM contacts c
+             LEFT JOIN leads l ON l.contact_id = c.id AND l.archived_at IS NULL
+             WHERE c.id = ANY($1::uuid[])
+             ORDER BY c.id, l.created_at DESC NULLS LAST`,
+            [ids],
+        ).catch(() => [] as any[]);
+
+        const reach = new Map(rows.map(r => [r.contact_id, r]));
+
+        for (const appt of completed) {
+            const c = appt.contact_id ? reach.get(appt.contact_id) : null;
+            // Sin teléfono no hay a quién escribirle; las acciones fallarían en
+            // la cola y ensuciarían el registro de ejecuciones con reintentos.
+            if (!c?.phone) continue;
+            this.eventEmitter.emit('appointment.completed', {
+                tenantId,
+                schemaName,
+                appointmentId: appt.id,
+                serviceName: appt.service_name ?? null,
+                contactId: appt.contact_id,
+                phone: c.phone,
+                name: c.name ?? null,
+                leadId: c.lead_id ?? null,
+            });
         }
     }
 

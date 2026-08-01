@@ -90,6 +90,74 @@ export class AutomationListenerService {
     }
 
     /**
+     * Cita completada — la ventana post-visita.
+     *
+     * El cron de auto-completado ya marcaba las citas y no avisaba a nadie, así
+     * que el momento en que un cliente está más dispuesto a dejar una reseña o
+     * a volver a agendar pasaba sin que el negocio pudiera engancharse. Es el
+     * disparador que le faltaba a toda la vertical de agenda (salud, belleza,
+     * veterinaria, inmobiliaria, automotriz).
+     *
+     * No duplica a `rebooking.due` del evaluador temporal: aquel corre semanas
+     * o meses después (la re-reserva); éste es el mismo día.
+     */
+    @OnEvent('appointment.completed')
+    async handleAppointmentCompleted(event: {
+        tenantId: string;
+        schemaName: string;
+        appointmentId: string;
+        phone?: string;
+        leadId?: string | null;
+    }) {
+        await this.runRulesForTrigger(
+            'appointment.completed',
+            event.tenantId,
+            event.schemaName,
+            'appointment',
+            event.appointmentId,
+            event,
+        );
+    }
+
+    /**
+     * Corre las reglas activas de un trigger sobre una entidad.
+     *
+     * Es el mismo camino que `lead.captured` —mismas condiciones, mismo audit
+     * trail, misma cola con reintentos— extraído para que agregar un disparador
+     * de dominio nuevo sea declarar un `@OnEvent` y llamar acá, en vez de
+     * reimplementar la evaluación y que las dos versiones diverjan.
+     */
+    async runRulesForTrigger(
+        triggerType: string,
+        tenantId: string,
+        schemaName: string,
+        entityType: string,
+        entityId: string,
+        payload: any,
+    ): Promise<void> {
+        try {
+            const rules = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT * FROM automation_rules WHERE trigger_type = $1 AND active = true`,
+                [triggerType],
+            );
+            if (!rules?.length) return;
+
+            if (await this.throttle.isLimited(tenantId, 'automation')) {
+                this.logger.warn(`[AutomationListener] Tenant ${tenantId} rate limited — se omiten ${rules.length} reglas de ${triggerType}`);
+                return;
+            }
+            const priority = await this.throttle.getPriority(tenantId);
+
+            for (const rule of rules) {
+                await this.dispatchRule({ tenantId, schemaName, rule, entityType, entityId, payload, priority });
+            }
+        } catch (error: any) {
+            this.logger.error(`[AutomationListener] Error procesando ${triggerType}: ${error.message}`);
+        }
+    }
+
+    /**
      * Evalúa las condiciones de UNA regla y encola sus acciones.
      *
      * Estaba escrito dentro del handler de `lead.captured`, que era el único
@@ -135,7 +203,14 @@ export class AutomationListenerService {
 
         // Programar cada accion como un job con delay en BullMQ
         for (const action of actions) {
-            const delayMs = (action.delay_seconds || 0) * 1000;
+            // `delay` y `delay_seconds` son el MISMO campo con dos nombres. Las
+            // plantillas sembradas escriben `delay` (seed-templates.ts) y esto
+            // leia solo `delay_seconds`, asi que las 10 acciones sembradas con
+            // retardo real —hasta 3 dias— se disparaban al instante: el
+            // seguimiento "3 dias despues de la visita" llegaba pegado al
+            // mensaje anterior. Se aceptan los dos nombres.
+            const delaySeconds = Number(action.delay_seconds ?? action.delay ?? 0);
+            const delayMs = (Number.isFinite(delaySeconds) && delaySeconds > 0 ? delaySeconds : 0) * 1000;
 
             await this.automationQueue.add(
                 action.type,

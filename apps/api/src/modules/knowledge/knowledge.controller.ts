@@ -25,6 +25,7 @@ export class KnowledgeController {
     // ─── Document RAG Endpoints ──────────────────────────────────────────────
 
     @Post('documents')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'Upload / ingest a document (text or binary PDF/DOCX) into the knowledge base' })
     async uploadDocument(
@@ -50,6 +51,7 @@ export class KnowledgeController {
     }
 
     @Put('documents/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'Update a document content (re-chunks and re-embeds)' })
     async updateDocument(
@@ -78,6 +80,7 @@ export class KnowledgeController {
     }
 
     @Put('documents/:id/meta')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'Update document metadata (category, public, auto-recrawl) without re-embedding' })
     async updateDocumentMeta(
@@ -97,6 +100,7 @@ export class KnowledgeController {
     }
 
     @Delete('documents/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({ summary: 'Delete a document and all its embeddings' })
@@ -106,6 +110,7 @@ export class KnowledgeController {
     }
 
     @Post('documents/bulk')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'Bulk import multiple documents at once' })
     async bulkUpload(
@@ -138,6 +143,7 @@ export class KnowledgeController {
     }
 
     @Post('suggestions/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @ApiOperation({ summary: 'AI-generated article suggestions based on unanswered queries' })
     async getSuggestions(
@@ -162,6 +168,7 @@ export class KnowledgeController {
     }
 
     @Post('documents/:id/restore')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'Restore a document to a previous version' })
     async restoreVersion(
@@ -213,6 +220,7 @@ export class KnowledgeController {
     // ─── URL Crawling ────────────────────────────────────────────────────────
 
     @Post('documents/crawl')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'Import a webpage into the knowledge base by URL (plan-gated)' })
     async crawlUrl(
@@ -225,6 +233,7 @@ export class KnowledgeController {
     }
 
     @Post('documents/:id/recrawl')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'Re-crawl a URL document to refresh content' })
     async recrawlUrl(@Req() req: any, @Param('id') id: string) {
@@ -255,6 +264,7 @@ export class KnowledgeController {
     }
 
     @Post('analytics/:tenantId/resolve/:queryId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Mark an unanswered query as resolved' })
@@ -288,6 +298,7 @@ export class KnowledgeController {
     }
 
     @Put(':tenantId/feedback/:id/false-positive')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @ApiOperation({ summary: 'Mark a KB feedback entry as false positive' })
     async markFalsePositive(
@@ -346,6 +357,7 @@ export class KnowledgeController {
     }
 
     @Post('resources/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @ApiOperation({ summary: 'Create a knowledge resource' })
     async createResource(
@@ -359,6 +371,7 @@ export class KnowledgeController {
     }
 
     @Delete('resources/:tenantId/:resourceId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({ summary: 'Delete a knowledge resource' })

@@ -6,7 +6,7 @@ import { UpgradeBanner, UpgradeModal } from "@/components/ui/upgrade-banner";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
-import { useAuth } from "@/contexts/AuthContext";
+import { useRole } from "@/hooks/useRole";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -61,7 +61,11 @@ export default function KnowledgePage() {
     const t = useTranslations("knowledge");
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
-    const { user } = useAuth();
+    // La KB la LEEN los tres roles (canViewKnowledge) — el agente la consulta
+    // mientras atiende. Editarla es de admin/supervisor. Hasta ahora la página
+    // mostraba subir/editar/borrar/crawlear a todo el mundo, así que el agente
+    // veía botones que ahora el backend rechaza con 403.
+    const { canEditKnowledge } = useRole();
     const { activeTenantId } = useTenant();
     const { canCreate, getLimit } = usePlanLimits();
 
@@ -542,7 +546,7 @@ export default function KnowledgePage() {
                 title={t("title")}
                 subtitle={t("subtitle")}
                 icon={BookOpen}
-                action={tab === "library" ? (
+                action={tab === "library" && canEditKnowledge ? (
                     <div className="flex items-center gap-2">
                         <button
                             onClick={() => setShowBulkModal(true)}
@@ -704,6 +708,7 @@ export default function KnowledgePage() {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
+                                {canEditKnowledge && (
                                 <button
                                     onClick={() => handleTogglePublic(doc)}
                                     className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-semibold text-xs cursor-pointer",
@@ -712,7 +717,8 @@ export default function KnowledgePage() {
                                 >
                                     <GlobeLock size={13} />
                                 </button>
-                                {doc.source_type === "url" && (
+                                )}
+                                {canEditKnowledge && doc.source_type === "url" && (
                                     <button
                                         onClick={() => handleRecrawl(doc.id)}
                                         disabled={recrawlingId === doc.id}
@@ -725,12 +731,14 @@ export default function KnowledgePage() {
                                 <button onClick={() => handleViewVersions(doc)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-foreground font-semibold text-xs cursor-pointer" title={t("versions.title")}>
                                     <History size={13} />
                                 </button>
+                                {canEditKnowledge && (<>
                                 <button onClick={() => handleEdit(doc)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-foreground font-semibold text-xs cursor-pointer">
                                     <Edit3 size={13} />
                                 </button>
                                 <button onClick={() => handleDeleteDoc(doc.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-danger font-semibold text-xs cursor-pointer hover:bg-danger/10">
                                     <Trash2 size={13} />
                                 </button>
+                                </>)}
                             </div>
                         </div>
                     ))}
@@ -757,9 +765,11 @@ export default function KnowledgePage() {
                                 <span className="text-xs font-semibold px-2.5 py-1 rounded-lg" style={{ color: statusColors[r.status] || undefined, background: `${statusColors[r.status] || "#95a5a6"}22` }}>
                                     {t(`status.${r.status}`)}
                                 </span>
+                                {canEditKnowledge && (
                                 <button onClick={() => handleDeleteResource(r.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-danger font-semibold text-xs cursor-pointer hover:bg-danger/10">
                                     <Trash2 size={13} />
                                 </button>
+                                )}
                             </div>
                         </div>
                     ))}
@@ -960,7 +970,7 @@ export default function KnowledgePage() {
                                                         {t("analytics.occurrences")}: {q.occurrences} • {t("analytics.lastSeen")}: {new Date(q.last_seen_at).toLocaleDateString()}
                                                     </div>
                                                 </div>
-                                                {!q.resolved ? (
+                                                {!q.resolved && canEditKnowledge ? (
                                                     <div className="flex items-center gap-1.5">
                                                         <button onClick={() => handleCreateFromQuery(q.query)} className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-primary/30 bg-primary/10 text-xs font-semibold cursor-pointer text-primary hover:bg-primary/20" title={tc("create")}>
                                                             <PlusCircle size={12} />
@@ -987,14 +997,14 @@ export default function KnowledgePage() {
                                     <h3 className="text-sm font-semibold m-0 flex items-center gap-2">
                                         <Sparkles size={16} className="text-amber-500" /> {t("suggestions.title")}
                                     </h3>
-                                    <button
+                                    {canEditKnowledge && (<button
                                         onClick={handleGenerateSuggestions}
                                         disabled={suggestionsLoading}
                                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-500 text-xs font-semibold cursor-pointer hover:bg-amber-500/20 disabled:opacity-50"
                                     >
                                         {suggestionsLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
                                         {suggestionsLoading ? t("suggestions.generating") : t("suggestions.generate")}
-                                    </button>
+                                    </button>)}
                                 </div>
 
                                 {suggestions.length > 0 ? (
@@ -1025,12 +1035,12 @@ export default function KnowledgePage() {
                                                             </ul>
                                                         )}
                                                     </div>
-                                                    <button
+                                                    {canEditKnowledge && (<button
                                                         onClick={() => handleCreateFromQuery(s.title)}
                                                         className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-xs font-semibold cursor-pointer text-primary hover:bg-primary/20 shrink-0"
                                                     >
                                                         <PlusCircle size={12} /> {tc("create")}
-                                                    </button>
+                                                    </button>)}
                                                 </div>
                                             </div>
                                         ))}
@@ -1578,12 +1588,12 @@ export default function KnowledgePage() {
                                                 <div className="text-[11px] text-muted-foreground mt-0.5 italic">{v.change_summary}</div>
                                             )}
                                         </div>
-                                        <button
+                                        {canEditKnowledge && (<button
                                             onClick={() => handleRestoreVersion(v.id)}
                                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-500 text-xs font-semibold cursor-pointer hover:bg-amber-500/20 shrink-0"
                                         >
                                             <RotateCcw size={12} /> {t("versions.restore")}
-                                        </button>
+                                        </button>)}
                                     </div>
                                 ))}
                             </div>

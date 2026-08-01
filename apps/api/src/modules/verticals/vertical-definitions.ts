@@ -638,7 +638,17 @@ const TECHNOLOGY = createGenericVertical('technology', {
         { name: { es: 'Cerrado', en: 'Closed Won', pt: 'Fechado', fr: 'Conclu' }, slug: 'cerrado', color: '#2ecc71', probability: 100, isTerminal: true },
         { name: { es: 'Perdido', en: 'Lost', pt: 'Perdido', fr: 'Perdu' }, slug: 'perdido', color: '#95a5a6', probability: 0, isTerminal: true },
     ] },
-    sidebar: { labelOverrides: {}, hiddenItems: ['inventory', 'catalog'] },
+    // hiddenItems no hacía nada: el sidebar filtra 'inventory' por allow-list de
+    // verticales (retail/restaurantes/otro) y technology no está en ella, así que
+    // ya estaba oculto. Se deja vacío en vez de fingir que configura algo, y se
+    // nombran las etapas en el lenguaje del rubro.
+    sidebar: {
+        labelOverrides: {
+            contacts: { es: 'Cuentas', en: 'Accounts', pt: 'Contas', fr: 'Comptes' },
+            pipeline: { es: 'Pipeline', en: 'Pipeline', pt: 'Pipeline', fr: 'Pipeline' },
+        },
+        hiddenItems: [],
+    },
     bookingEnabled: true,
     services: [
         { name: { es: 'Demo personalizada', en: 'Custom demo', pt: 'Demo personalizada', fr: 'Démo personnalisée' }, description: { es: 'Demostración de la solución', en: 'Solution demonstration', pt: 'Demonstração da solução', fr: 'Démonstration de la solution' }, durationMinutes: 45, price: 0, currency: 'COP', category: 'demos' },
@@ -675,7 +685,7 @@ const SERVICIOS_HOGAR: VerticalDefinition = {
             es: 'SIEMPRE captura urgencia (emergencia / alta / normal / flexible) — si es emergencia escala inmediatamente. Pide dirección completa, ciudad, descripción del problema, fecha preferida. Usa create_service_request para registrar. NUNCA inventes precios sin que el técnico evalúe en sitio — di "el técnico te dará la cotización al revisar".',
             en: 'Always capture urgency. Emergencies escalate immediately. Get full address, city, issue description, preferred date. Use create_service_request. Never invent prices without on-site assessment.',
             pt: 'Sempre capture urgência. Emergências escalam.',
-            fr: 'Toujours capturer l\'urgence. Urgences escaladent.',
+            fr: 'TOUJOURS capturer l\'urgence (urgence / élevée / normale / flexible) — en cas d\'urgence, escaladez immédiatement. Demandez l\'adresse complète, la ville, la description du problème et la date souhaitée. Utilisez create_service_request pour enregistrer. N\'inventez JAMAIS de prix sans évaluation sur place — dites que le technicien donnera le devis après avoir vérifié.',
         },
         forbiddenTopics: {
             es: 'Cotizaciones definitivas sin evaluación en sitio|Promesas sobre tiempos de respuesta sin confirmación',
@@ -787,6 +797,11 @@ const PET_SERVICES: VerticalDefinition = {
             { name: { es: 'Servicio', en: 'In progress', pt: 'Em serviço', fr: 'En cours' }, slug: 'servicio', color: '#e67e22', probability: 80, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
             { name: { es: 'Completado', en: 'Completed', pt: 'Concluído', fr: 'Terminé' }, slug: 'completado', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
             { name: { es: 'Cliente recurrente', en: 'Repeat client', pt: 'Cliente recorrente', fr: 'Client fidèle' }, slug: 'recurrente', color: '#27ae60', probability: 95, isTerminal: false, transitionRules: [] },
+            // Sin una terminal de PÉRDIDA, el embudo no tiene dónde poner al que
+            // no vuelve: todo queda vivo para siempre, el win/loss no puede
+            // calcularse y la fuga del negocio no existe como concepto.
+            // servicios_hogar ya la tiene; ésta faltaba.
+            { name: { es: 'Cancelado', en: 'Cancelled', pt: 'Cancelado', fr: 'Annulé' }, slug: 'cancelado', color: '#e74c3c', probability: 0, isTerminal: true, transitionRules: [] },
         ],
     },
     faqs: [

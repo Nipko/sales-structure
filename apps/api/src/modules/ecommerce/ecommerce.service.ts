@@ -12,8 +12,12 @@ export interface EcommerceConfig {
     accessToken?: string;
     webhookSecret?: string;
     syncProducts: boolean;
-    syncOrders: boolean;
-    cartAbandonmentEnabled: boolean;
+    // syncOrders y cartAbandonmentEnabled NO estan: eran flags fantasma.
+    // Se persistian en la config del tenant y NINGUN codigo los leia — o sea
+    // que el producto guardaba la promesa de sincronizar pedidos y de
+    // recuperar carritos abandonados, y no corria ni una ni otra.
+    // handleCartAbandonment existe (linea ~251) y tiene cero llamadores; el
+    // dia que se conecte de verdad, el flag vuelve.
 }
 
 @Injectable()
@@ -52,8 +56,6 @@ export class EcommerceService {
             accessToken: config.accessToken ?? current.accessToken,
             webhookSecret: config.webhookSecret ?? current.webhookSecret ?? crypto.randomBytes(32).toString('hex'),
             syncProducts: config.syncProducts ?? current.syncProducts ?? true,
-            syncOrders: config.syncOrders ?? current.syncOrders ?? true,
-            cartAbandonmentEnabled: config.cartAbandonmentEnabled ?? current.cartAbandonmentEnabled ?? false,
         };
 
         await this.prisma.tenant.update({

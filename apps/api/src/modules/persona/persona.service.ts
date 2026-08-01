@@ -2339,11 +2339,21 @@ export class PersonaService {
                             // era inventada — y estaba inventada POR INSTRUCCION EXPLICITA de la
                             // plantilla, que es lo peor que puede hacer un guardrail.
                             'NUNCA des precios ni rangos de precio: no los tienes. Explica que el tecnico cotiza en sitio tras ver el problema, y ofrece agendar la visita',
-                            'Confirma: tipo de servicio, dirección, fecha/hora y rango de precio antes de agendar',
+                            // Sin "rango de precio": la regla de arriba lo prohibe
+                            // explicitamente y esta se lo volvia a pedir en la
+                            // misma lista. Dos ordenes opuestas en el mismo prompt
+                            // las resuelve el modelo, no nosotros.
+                            'Confirma: tipo de servicio, dirección y fecha/hora antes de agendar',
                             'Si el cliente describe un problema que puede ser peligroso (gas, cables expuestos), indica que no manipule nada y espere al técnico',
                         ],
                         forbiddenTopics: ['Diagnósticos técnicos sin visita', 'Precios exactos sin evaluación', 'Trabajos fuera de la cobertura'],
-                        handoffTriggers: ['emergencia de gas', 'riesgo eléctrico grave', 'queja sobre trabajo previo', 'reclamo de garantía', 'presupuesto > USD 500'],
+                        // Se evaluan por SUBSTRING: 'presupuesto > USD 500' es una
+                        // comparacion numerica, inescribible por un cliente, y las
+                        // otras cuatro son frases de catalogo interno. Ademas
+                        // 'emergencia de gas' escalaba ANTES de registrar la
+                        // solicitud con la direccion (el patron que H-4 corrigio en
+                        // el registry y que aca habia sobrevivido).
+                        handoffTriggers: ['no funciona hace dias', 'me inunde', 'se prendio fuego', 'huele a gas', 'me quede sin luz', 'ya vinieron y sigue igual', 'quiero reclamar', 'garantia'],
                         requiredFields: {
                             name: { required: true },
                             phone: { required: true },

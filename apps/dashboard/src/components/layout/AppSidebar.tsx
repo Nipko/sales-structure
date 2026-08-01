@@ -146,6 +146,11 @@ const tenantSections: NavSectionDef[] = [
       // todo lo que el catálogo de 18 verticales no nombra.
       { labelKey: "inventory", href: "/admin/inventory", icon: Package, verticals: ["retail", "restaurantes", "otro"], capability: "canEditPipeline" },
       { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart, verticals: ["retail", "restaurantes", "otro"], capability: "canHandleConversations" },
+      // Ofertas no tenía NINGUNA entrada en el sidebar: la página existe y
+      // funciona, y la IA puede listar ofertas (tools.offers), pero el dueño no
+      // tenía por dónde llegar a cargarlas. Sin vertical: cualquier negocio hace
+      // promociones.
+      { labelKey: "offers", href: "/admin/catalog/offers", icon: Tag, capability: "canEditPipeline" },
     ],
   },
   {

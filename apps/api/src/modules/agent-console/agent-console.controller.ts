@@ -207,6 +207,7 @@ export class AgentConsoleController {
     }
 
     @Post('canned/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createCannedResponse(
         @Param('tenantId') tenantId: string,
         @Body() body: { shortcode: string; title: string; content: string; category?: string },
@@ -216,6 +217,7 @@ export class AgentConsoleController {
     }
 
     @Put('canned/:tenantId/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updateCannedResponse(
         @Param('tenantId') tenantId: string,
         @Param('id') id: string,
@@ -281,12 +283,14 @@ export class AgentConsoleController {
     }
 
     @Post('macros/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createMacro(@Param('tenantId') tenantId: string, @Body() body: any) {
         const data = await this.macrosService.createMacro(tenantId, body);
         return { success: true, data };
     }
 
     @Put('macros/:tenantId/:macroId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updateMacro(
         @Param('tenantId') tenantId: string,
         @Param('macroId') macroId: string,

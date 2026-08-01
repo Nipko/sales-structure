@@ -198,6 +198,32 @@
       "route": "POST :tenantId/invoices/:id/retry",
       "file": "src/modules/fiscal/fiscal.controller.ts",
       "motivo": "REFUTADO: la pagina que llama a este endpoint HOY la puede abrir cualquier rol del tenant, incluido tenant_agent, y el boton de reintento se renderiza sin ningun gate.\n\nEvidencia:\n1) Acceso a la pagina. C:/Users/USER/Desktop/Sales_Structure/apps/dashboard/src/lib/roles.ts:194 es la regla catch-all `{ prefix: \"/admin/settings\", roles: [SUPER_ADMIN, TENANT_ADMIN, TENANT_SUPERVISOR, TENANT_AGENT] }` y el comentario de roles.ts:191-193 dice explicitamente que \"fiscal\" cae ahi. No existe regla mas larga para \"/admin/settings/fiscal\", asi que `canAccessPath` (roles.ts:201-230) devuelve true para tenant_supervisor y tenant_agent. La regla super_admin de roles.ts:102 es \"/admin/fiscal\" (cross-tenant), NO \"/admin/settings/fiscal\".\n\n2) La pagina no se auto-gatea. En C:/Users/USER/Desktop/Sales_Structure/apps/dashboard/src/app/admin/settings/fiscal/page.tsx no hay ni una aparicion de `canManageBilling`, `useRole`, `isAdmin`, `getCapabilities` ni redirect (grep sin resultados). El handler `retry` (page.tsx:165-184) y su boton se renderizan para quien sea que abra la URL.\n\n3) El producto mismo manda a esos roles a esa pagina. C:/Users/USER/Desktop/Sales_Structure/apps/dashboard/src/components/FiscalBanner.tsx no tiene gate de rol (solo apaga el banner para super_admin en modo plataforma, FiscalBanner.tsx:24-27) y se monta en el layout autenticado para todos: C:/Users/USER/Desktop/Sales_Structure/apps/dashboard/src/app/admin/layout.tsx:119. Su CTA apunta a \"/admin/settings/fiscal\" (FiscalBanner.tsx:59-64). Lo mismo FiscalGateModal.tsx:30. Es decir, un tenant_supervisor o tenant_agent ve el banner ambar de DIAN y con un click aterriza en la pagina con la tabla de facturas y su boton \"reintentar\" activo.\n\nLo que cita la propuesta (_settings-config.ts:64, `visible: (r) => r.canManageBilling`) solo esconde la TARJETA del hub de Configuracion; no bloquea la ruta ni el banner. Ese es exactamente el patron \"existente-pero-alcanzable\": la intencion del producto es admin-only, pero el acceso real hoy es de los 4 roles.\n\nConsecuencia de poner @Roles('tenant_admin') hoy: un supervisor (tipico rol del administrativo/contable en un tenant chico) que llega por el banner y reintenta una factura DIAN fallida recibe 403 con error generico — se rompe a alguien que hoy trabaja bien.\n\nTampoco encontre otros llamadores que salven la propuesta: el unico caller es apps/dashboard/src/lib/api.ts:1167 usado en page.tsx:168; la app movil no lo toca (grep de \"fiscal\" en apps/mobile: 0 resultados); no hay widget, portal publico ni webhook involucrado; y no es una accion del usuario sobre si mismo.\n\nRecomendacion: OMITIR el guard por ahora. Primero cerrar el hueco de UI (regla propia en roles.ts para \"/admin/settings/fiscal\" limitada a tenant_admin + gate `canManageBilling` dentro de la pagina + gatear el CTA de FiscalBanner); recien despues aplicar @Roles('tenant_admin'), que es el destino correcto por capability. Si hubiera que poner algo YA, el conjunto mas permisivo defendible seria ('tenant_admin','tenant_supervisor'), pero seguiria dejando afuera al tenant_agent que hoy puede abrir la pagina."
+    },
+    {
+      "file": "src/modules/media/media.controller.ts",
+      "line": 85,
+      "method": "updateMeta",
+      "route": "PUT media/update/:tenantId/:fileId",
+      "roles": [
+        "tenant_admin",
+        "tenant_supervisor"
+      ],
+      "capability": "canManageSettings",
+      "wasCorrected": false,
+      "motivo": "roles.ts:156 le da /admin/settings/media a los cuatro roles, tenant_agent incluido, y no existe una capability que separe ver de editar. Restringir seria inventar una regla que la spec no tiene."
+    },
+    {
+      "file": "src/modules/media/media.controller.ts",
+      "line": 99,
+      "method": "delete",
+      "route": "DELETE media/delete/:tenantId/:fileId",
+      "roles": [
+        "tenant_admin",
+        "tenant_supervisor"
+      ],
+      "capability": "canManageSettings",
+      "wasCorrected": false,
+      "motivo": "roles.ts:156 le da /admin/settings/media a los cuatro roles, tenant_agent incluido, y no existe una capability que separe ver de editar. Restringir seria inventar una regla que la spec no tiene."
     }
   ],
   "pendientesDeVerificar": [
@@ -307,269 +333,6 @@
         "tenant_supervisor"
       ],
       "capability": "canEditPipeline",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/identity/identity.controller.ts",
-      "line": 27,
-      "method": "approveMerge",
-      "route": "POST identity/:tenantId/suggestions/:suggestionId/approve",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canEditPipeline",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/identity/identity.controller.ts",
-      "line": 39,
-      "method": "rejectMerge",
-      "route": "POST identity/:tenantId/suggestions/:suggestionId/reject",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canEditPipeline",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/identity/identity.controller.ts",
-      "line": 61,
-      "method": "manualMerge",
-      "route": "POST identity/:tenantId/manual-merge",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canEditPipeline",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 200,
-      "method": "createCannedResponse",
-      "route": "POST canned/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 209,
-      "method": "updateCannedResponse",
-      "route": "PUT canned/:tenantId/:id",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 271,
-      "method": "createMacro",
-      "route": "POST macros/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 277,
-      "method": "updateMacro",
-      "route": "PUT macros/:tenantId/:macroId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/conversations/conversations.controller.ts",
-      "line": 30,
-      "method": "savePrechatForm",
-      "route": "POST prechat-form/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 35,
-      "method": "createService",
-      "route": "POST :tenantId/services",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 46,
-      "method": "updateService",
-      "route": "PUT :tenantId/services/:serviceId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 57,
-      "method": "deleteService",
-      "route": "DELETE :tenantId/services/:serviceId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 76,
-      "method": "assignStaff",
-      "route": "POST :tenantId/services/:serviceId/staff",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 87,
-      "method": "removeStaff",
-      "route": "DELETE :tenantId/services/:serviceId/staff/:userId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 241,
-      "method": "saveAvailability",
-      "route": "POST :tenantId/availability",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 264,
-      "method": "blockDate",
-      "route": "POST :tenantId/blocked-dates",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 275,
-      "method": "unblockDate",
-      "route": "DELETE :tenantId/blocked-dates/:dateId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 344,
-      "method": "updatePublicBookingConfig",
-      "route": "POST :tenantId/public-booking-config",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 363,
-      "method": "updateReminderSettings",
-      "route": "POST :tenantId/reminder-settings",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 380,
-      "method": "updateBookingFlowsConfig",
-      "route": "POST :tenantId/booking-flows-config",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/media/media.controller.ts",
-      "line": 49,
-      "method": "uploadLogo",
-      "route": "POST media/logo/:tenantId",
-      "roles": [
-        "tenant_admin"
-      ],
-      "capability": "canManageBilling",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/media/media.controller.ts",
-      "line": 85,
-      "method": "updateMeta",
-      "route": "PUT media/update/:tenantId/:fileId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/media/media.controller.ts",
-      "line": 99,
-      "method": "delete",
-      "route": "DELETE media/delete/:tenantId/:fileId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor"
-      ],
-      "capability": "canManageSettings",
       "wasCorrected": false
     },
     {

@@ -49,6 +49,7 @@ export class MediaController {
     }
 
     @Post('logo/:tenantId')
+    @Roles('tenant_admin')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @ApiBearerAuth()
     @ApiConsumes('multipart/form-data')

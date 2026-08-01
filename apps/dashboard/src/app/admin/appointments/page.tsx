@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useTenant } from "@/contexts/TenantContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
@@ -101,7 +101,12 @@ export default function AppointmentsPage() {
   const locale = useLocale();
   const dateLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : "es-MX";
   const { activeTenantId } = useTenant();
-  const { user } = useAuth();
+  // roles.ts:162 le da esta página a los cuatro roles porque el agente agenda
+  // por el cliente desde el calendario. Pero el catálogo de servicios y la
+  // configuración (disponibilidad, bloqueos, recordatorios) son ajustes del
+  // negocio: el backend ahora los exige admin/supervisor, así que las pestañas
+  // que los editan no pueden seguir a la vista de todos.
+  const { canManageSettings } = useRole();
 
   // ---- Data state ----
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -883,8 +888,10 @@ export default function AppointmentsPage() {
   const tabs = [
     { id: "calendar" as const, label: t("calendar"), icon: CalendarDays },
     { id: "agenda" as const, label: t("agenda"), icon: List },
-    { id: "services" as const, label: t("servicesSection.title"), icon: Tag },
-    { id: "config" as const, label: t("configSection.title"), icon: Settings },
+    ...(canManageSettings ? [
+      { id: "services" as const, label: t("servicesSection.title"), icon: Tag },
+      { id: "config" as const, label: t("configSection.title"), icon: Settings },
+    ] : []),
     { id: "analytics" as const, label: t("analyticsTab"), icon: BarChart3 },
   ];
 

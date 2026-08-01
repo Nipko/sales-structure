@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { IdentityService } from './identity.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @ApiTags('identity')
@@ -25,6 +26,7 @@ export class IdentityController {
     }
 
     @Post(':tenantId/suggestions/:suggestionId/approve')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Approve a merge suggestion' })
     async approveMerge(
         @Param('tenantId') tenantId: string,
@@ -37,6 +39,7 @@ export class IdentityController {
     }
 
     @Post(':tenantId/suggestions/:suggestionId/reject')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Reject a merge suggestion' })
     async rejectMerge(
         @Param('tenantId') tenantId: string,
@@ -59,6 +62,7 @@ export class IdentityController {
     }
 
     @Post(':tenantId/manual-merge')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Manually merge two contacts into one unified profile' })
     async manualMerge(
         @Param('tenantId') tenantId: string,

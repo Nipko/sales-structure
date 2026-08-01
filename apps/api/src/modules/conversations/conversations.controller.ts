@@ -5,6 +5,7 @@ import { ConversationsService } from './conversations.service';
 import { PreChatService } from './pre-chat.service';
 import { NormalizedMessage } from '@parallext/shared';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 
@@ -28,6 +29,7 @@ export class ConversationsController {
     }
 
     @Post('prechat-form/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Save pre-chat form configuration' })
     async savePrechatForm(
         @Param('tenantId') tenantId: string,

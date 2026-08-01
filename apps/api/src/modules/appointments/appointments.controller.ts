@@ -34,6 +34,7 @@ export class AppointmentsController {
     }
 
     @Post(':tenantId/services')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createService(@Param('tenantId') tenantId: string, @Body() body: any, @CurrentUser() user: any) {
         // Plan gate — count active services and reject if the tier limit is reached.
         const existing = await this.servicesService.list(user.schemaName);
@@ -45,6 +46,7 @@ export class AppointmentsController {
     }
 
     @Put(':tenantId/services/:serviceId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updateService(
         @Param('tenantId') tenantId: string,
         @Param('serviceId') serviceId: string,
@@ -56,6 +58,7 @@ export class AppointmentsController {
     }
 
     @Delete(':tenantId/services/:serviceId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     async deleteService(@Param('tenantId') tenantId: string, @Param('serviceId') serviceId: string, @CurrentUser() user: any) {
         await this.servicesService.delete(user.schemaName, serviceId, tenantId);
@@ -75,6 +78,7 @@ export class AppointmentsController {
     }
 
     @Post(':tenantId/services/:serviceId/staff')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Assign staff to a service' })
     async assignStaff(
         @Param('serviceId') serviceId: string,
@@ -86,6 +90,7 @@ export class AppointmentsController {
     }
 
     @Delete(':tenantId/services/:serviceId/staff/:userId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Remove staff from a service' })
     async removeStaff(
@@ -240,6 +245,7 @@ export class AppointmentsController {
     }
 
     @Post(':tenantId/availability')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Save availability slots for a user' })
     async saveAvailability(
         @Param('tenantId') tenantId: string,
@@ -263,6 +269,7 @@ export class AppointmentsController {
     }
 
     @Post(':tenantId/blocked-dates')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Block a date' })
     async blockDate(
         @Param('tenantId') tenantId: string,
@@ -274,6 +281,7 @@ export class AppointmentsController {
     }
 
     @Delete(':tenantId/blocked-dates/:dateId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Unblock a date' })
     async unblockDate(
@@ -345,6 +353,7 @@ export class AppointmentsController {
     }
 
     @Post(':tenantId/public-booking-config')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update public booking toggle and customization' })
     async updatePublicBookingConfig(
         @Param('tenantId') tenantId: string,
@@ -364,6 +373,7 @@ export class AppointmentsController {
     }
 
     @Post(':tenantId/reminder-settings')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update appointment reminder settings' })
     async updateReminderSettings(
         @Param('tenantId') tenantId: string,
@@ -381,6 +391,7 @@ export class AppointmentsController {
     }
 
     @Post(':tenantId/booking-flows-config')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update WhatsApp Flows (booking) settings' })
     async updateBookingFlowsConfig(
         @Param('tenantId') tenantId: string,

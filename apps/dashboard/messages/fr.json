@@ -3268,6 +3268,8 @@
       "vt_petServices_desc": "Lister les services de toilettage, garderie et promenades, vérifier la disponibilité",
       "vt_photography_title": "Photographie",
       "vt_photography_desc": "Afficher les forfaits photo, vérifier les dates disponibles et demander un devis",
+      "vt_professionalServices_title": "Suivi des dossiers",
+      "vt_professionalServices_desc": "Consulter l’étape du dossier du client sans lui demander une référence qu’il n’a pas",
       "vt_vehicles_title": "Véhicules",
       "vt_vehicles_desc": "Rechercher dans l'inventaire de véhicules, voir les détails et envoyer des photos",
       "skillsetTitle": "Compétences de l'agent",

@@ -210,6 +210,13 @@ export class VerticalsService {
         if (industry === 'fotografia') {
             await this.enableSimpleTool(schemaName, 'photography');
         }
+        // El "caso" de un despacho es la oportunidad del embudo, que ya viene
+        // con su vocabulario traducido. Sin este flag get_case_status queda
+        // escrita y nunca registrada — el patrón exacto que la auditoría
+        // encontró repetido: construido, sembrado, y apagado.
+        if (industry === 'servicios_profesionales') {
+            await this.enableSimpleTool(schemaName, 'professionalServices');
+        }
         // Retail y `otro` venden cosas: sin el catálogo encendido el agente sólo
         // puede hablar de lo que haya en la base de conocimiento. `otro` es el
         // cajón donde caen la ferretería, la papelería, la imprenta y el taller

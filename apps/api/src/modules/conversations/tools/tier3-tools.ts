@@ -172,3 +172,17 @@ export const PHOTOGRAPHY_TOOLS: ToolDefinition[] = [
         },
     },
 ];
+
+// ── Servicios profesionales (abogados / contadores / arquitectos) ──
+
+export const PROFESSIONAL_SERVICES_TOOLS: ToolDefinition[] = [
+    {
+        // Deliberadamente sin parámetros. El "caso" es la oportunidad del
+        // embudo y su UUID solo existe puertas adentro: pedirle un id al
+        // cliente garantiza que la tool nunca se use. Se resuelve por el
+        // contacto de la conversación, igual que list_my_requests.
+        name: 'get_case_status',
+        description: 'Look up the status of this customer\'s own case(s) with the firm. Use when they ask "¿cómo va mi caso?", "¿hay novedades?", "¿en qué quedó lo mío?", "¿avanzó el trámite?". Takes no parameters — it resolves the cases from the contact you are already talking to. Returns a short readable reference, the current stage and when it last moved. If there are no cases, take their details and escalate to the professional in charge instead of guessing. NEVER state fees, outcomes or legal/tax opinions from this data.',
+        parameters: { type: 'object', properties: {} },
+    },
+];

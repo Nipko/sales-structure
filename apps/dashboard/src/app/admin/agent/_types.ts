@@ -63,6 +63,7 @@ export interface PersonaConfig {
     homeServices?: { enabled: boolean; emailConfirmations?: boolean };
     petServices?: { enabled: boolean; emailConfirmations?: boolean };
     photography?: { enabled: boolean; emailConfirmations?: boolean };
+    professionalServices?: { enabled: boolean };
     vehicles?: { enabled: boolean };
   };
   skillset?: "sales" | "support" | "both";

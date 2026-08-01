@@ -3268,6 +3268,8 @@
       "vt_petServices_desc": "Listar serviços de banho e tosa, creche e passeios, verificar disponibilidade",
       "vt_photography_title": "Fotografia",
       "vt_photography_desc": "Mostrar pacotes fotográficos, verificar datas disponíveis e solicitar orçamento",
+      "vt_professionalServices_title": "Casos do escritório",
+      "vt_professionalServices_desc": "Consultar em que etapa está o caso do cliente sem pedir um número que ele não tem",
       "vt_vehicles_title": "Veículos",
       "vt_vehicles_desc": "Pesquisar no inventário de veículos, ver detalhes e enviar fotos do carro",
       "skillsetTitle": "Habilidades do agente",

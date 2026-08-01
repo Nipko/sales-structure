@@ -352,6 +352,9 @@ export class AIToolExecutorService {
                 case 'cancel_photo_session':
                     return this.cancelPhotoSession(schemaName, contactId, args.sessionId, args.reason);
 
+                case 'get_case_status':
+                    return this.getCaseStatusTool(schemaName, contactId);
+
                 default:
                     return { error: `Unknown tool: ${toolName}` };
             }
@@ -3015,6 +3018,75 @@ export class AIToolExecutorService {
             };
         } catch (e: any) {
             return { requests: [], error: e.message };
+        }
+    }
+
+    // ── Servicios profesionales — estado del caso ───────────────
+
+    /**
+     * "¿Cómo va mi caso?" para un despacho (abogados, contadores, arquitectos,
+     * consultores).
+     *
+     * El caso de esta vertical no es una tabla propia: es la oportunidad del
+     * embudo, cuyo vocabulario ya está traducido (`transactionNoun: 'caso'`,
+     * etapas Consulta → Evaluación → Propuesta → En proceso → Completado). Lo
+     * que faltaba era una forma de que el cliente lo consultara.
+     *
+     * Igual que en servicios a domicilio, NO se le pide un id: el UUID de la
+     * oportunidad solo existe puertas adentro y el cliente nunca lo vio. Se
+     * resuelve por contacto → leads → opportunities, que es la misma cadena que
+     * usa el tablero.
+     *
+     * Devuelve el NOMBRE de la etapa configurada por el tenant, no el slug: el
+     * cliente tiene que leer "En proceso", no "en_proceso". Y nunca devuelve el
+     * valor estimado ni las notas internas — es información del despacho, no del
+     * cliente, y por este canal no se distingue quién está del otro lado más
+     * allá del número.
+     */
+    private async getCaseStatusTool(schema: string, contactId: string): Promise<any> {
+        try {
+            const rows: any[] = await this.prisma.executeInTenantSchema(
+                schema,
+                `SELECT o.id,
+                        o.stage,
+                        o.created_at,
+                        o.updated_at,
+                        o.won_at,
+                        o.lost_at,
+                        ps.name        AS stage_name,
+                        ps.is_terminal AS stage_is_terminal
+                   FROM opportunities o
+                   JOIN leads l ON l.id = o.lead_id
+                   LEFT JOIN pipeline_stages ps ON ps.slug = o.stage
+                  WHERE l.contact_id = $1::uuid
+                  ORDER BY o.updated_at DESC
+                  LIMIT 5`,
+                [contactId],
+            );
+
+            if (!rows?.length) {
+                // No inventar: que el agente ofrezca escalarlo a la persona a
+                // cargo, que es lo que la FAQ del rubro ya promete.
+                return {
+                    cases: [],
+                    message: 'No hay casos registrados a nombre de este contacto. Ofrece tomar los datos y avisar al profesional a cargo.',
+                };
+            }
+
+            return {
+                cases: rows.map(r => ({
+                    // Un identificador que el cliente PUEDA leer y repetir por
+                    // teléfono. El UUID completo no sirve para eso.
+                    reference: String(r.id).slice(0, 8).toUpperCase(),
+                    stage: r.stage_name || r.stage,
+                    isClosed: r.stage_is_terminal === true || !!r.won_at || !!r.lost_at,
+                    openedAt: r.created_at,
+                    lastUpdate: r.updated_at,
+                })),
+            };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] get_case_status failed: ${e.message}`);
+            return { cases: [], error: 'No se pudo consultar el estado del caso.' };
         }
     }
 

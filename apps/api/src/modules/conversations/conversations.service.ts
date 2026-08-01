@@ -41,7 +41,7 @@ import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
 import { GYMS_TOOLS } from './tools/gyms-tools';
 import { EDUCATION_TOOLS } from './tools/education-tools';
 import { INSURANCE_TOOLS } from './tools/insurance-tools';
-import { HOME_SERVICES_TOOLS, PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS } from './tools/tier3-tools';
+import { HOME_SERVICES_TOOLS, PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS, PROFESSIONAL_SERVICES_TOOLS } from './tools/tier3-tools';
 import { BookingEngineService, type BookingState } from './booking-engine.service';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
@@ -1924,6 +1924,9 @@ export class ConversationsService {
         }
         if (cfgTools?.photography?.enabled === true) {
             tools = [...tools, ...PHOTOGRAPHY_TOOLS];
+        }
+        if (cfgTools?.professionalServices?.enabled === true) {
+            tools = [...tools, ...PROFESSIONAL_SERVICES_TOOLS];
         }
 
         // When the booking/procedure engine produced a directive, the LLM must

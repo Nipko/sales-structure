@@ -293,6 +293,9 @@ export interface ToolsConfig {
         enabled: boolean;
         emailConfirmations?: boolean;
     };
+    professionalServices?: {
+        enabled: boolean;
+    };
 }
 
 // ---- Tool Types ----

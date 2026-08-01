@@ -8,7 +8,7 @@ import {
   Scale, BookOpen, Sliders, Tag, Package, UserCircle,
   Home, Compass, HeartPulse, Building2, Stethoscope,
   UtensilsCrossed, Dumbbell, GraduationCap, ShieldCheck,
-  Wrench, Scissors, Camera, Car, Star, Sparkles, Store, Headset, Handshake,
+  Wrench, Scissors, Camera, Car, Star, Sparkles, Store, Headset, Handshake, Briefcase,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { PersonaConfig } from "../_types";
@@ -34,6 +34,7 @@ const VERTICAL_TOOLS: { key: ToolKey; industries: string[]; icon: any }[] = [
   { key: "homeServices", industries: ["servicios_hogar"],                    icon: Wrench },
   { key: "petServices",  industries: ["pet_services", "servicios_mascotas"], icon: Scissors },
   { key: "photography",  industries: ["fotografia"],                         icon: Camera },
+  { key: "professionalServices", industries: ["servicios_profesionales"],    icon: Briefcase },
   { key: "vehicles",     industries: ["automotriz"],                         icon: Car },
 ];
 
@@ -323,6 +324,9 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
             photography: "photography_session_confirmation",
             appointments: "appointment_confirmation_email",
             // Fallbacks if any key doesn't have one
+            // professionalServices solo CONSULTA el estado del caso: no crea
+            // nada que confirmar por correo.
+            professionalServices: "",
             catalog: "",
             faqs: "",
             policies: "",

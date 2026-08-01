@@ -323,3 +323,37 @@ Fuera de las cuatro verticales de la ola, se cerraron los ítems de **alta sever
 
 **Lo que sí está verificado:** todo lo que se excluyó por estar ya implementado (bootstrap canónico, merge de tools, `availability_slots`, `tools.vehicles`, tabla `courses`, `duration_type 'open'`, forecast con `is_terminal`, etc.) fue confirmado como desplegado o commiteado antes de escribir este plan.
 
+
+---
+
+## 8. Cierre de ejecución — jul 2026
+
+Auditoría de brecha sobre **todas** las fuentes (los 24 horizontales, el backlog de las 18 verticales, la auditoría de onboarding, la de madurez y los cabos sueltos), con cada ítem verificado contra el código y cada "pendiente" sometido a un refutador. **240 ítems auditados.**
+
+### Lo que se cerró además de las Olas 1 y 2
+
+- **H-16** detector de activación: estaba definido **dos veces** y ya había divergido (turismo contaba `tour_packages` y reportaba `missing:'properties'`); faltaban automotriz, retail y `otro`. Una sola definición en `common/utils/vertical-catalog.util.ts`.
+- **H-20** `appointment.completed` + `runRulesForTrigger` genérico + plantilla post-visita sembrada.
+- **`transitionRules`** en finanzas, servicios profesionales y technology (9 etapas): los tres embudos movían tarjetas sin ninguna evidencia.
+- **Seguridad**: los 9 endpoints que mutan el agente estaban abiertos a cualquier usuario del tenant (`RolesGuard` permite por defecto sin `@Roles`).
+- **Disponibilidad**: guardería y fotografía compartían un handler que ignoraba el rango, la capacidad real y `blocked_dates`.
+- **Circuitos sin puerta**: entrega de fotografía, conexión de tienda e-commerce, ítem de Ofertas en el sidebar.
+- **Higiene**: flags fantasma de e-commerce, regla que contradecía su propio fix, `handoffTriggers` muertos, reglas pt/fr enanas, etapa terminal de pérdida en pet_services, `hiddenItems` no-op.
+
+### Hallazgos fuera del plan, encontrados al ejecutar
+
+1. **28 de 48 crons producían efectos duplicados en producción.** La API y el worker cargan el mismo `AppModule` con `ScheduleModule`, así que todo `@Cron` corría dos veces. Cero de los 28 pudo refutarse. Resuelto con `CronLockService` (falla abierto, no libera al terminar, y permite fijar qué proceso gana cuando el resultado tiene que llegar a un gateway WebSocket).
+2. **El worker archivaba conversaciones a almacenamiento efímero y después borraba de Postgres.**
+3. **9 de 29 acciones de automatización sembradas no existían** en el motor y se registraban como `success`; y había un **segundo motor muerto** que las implementaba con otro vocabulario, lo que hacía invisible el problema.
+4. **Cuatro desajustes de vocabulario de la misma familia**: `pending`/`sent` en cotizaciones, `cancelled`/`dropped` en inscripciones, `change_stage`/`update_stage` en acciones, `delay`/`delay_seconds` en retardos. Dos partes del sistema nombrando distinto la misma cosa y fallando en silencio.
+5. **Una migración de tenants sistemáticamente rota salía en deploy verde.**
+
+### Lo que queda, y por qué
+
+| Motivo | Ítems |
+|---|---|
+| **Bloqueado por decisión del dueño** | D3 cobro al cliente final (H-22, checkout), D5 partición belleza/moda (sub-tipo `estetica`), D10 integraciones (H-18, Hostaway), D13 apuesta retail (carrito abandonado, webhooks), política de verificación de email |
+| **Esfuerzo M/L con dependencia real** | H-19 import masivo, H-21 identidad con OTP, H-23 galería por contacto, H-24 carrusel, `get_case_status` legible, producto financiero + simulador de cuota, KPIs B2B propios |
+| **Contenido, no ingeniería** | FAQs propias de finanzas / servicios profesionales / technology, servicios por sub-tipo, `send_portfolio`, directorio de técnicos |
+
+**Pendiente transversal anotado, no ejecutado:** 276 rutas mutantes en 43 controllers no declaran `@Roles`. No son 276 bugs —muchas deben estar abiertas al agente— pero arreglarlas exige decidir la audiencia ruta por ruta, con el mapa de capabilities del dashboard (`roles.ts`) como especificación a portar al backend.

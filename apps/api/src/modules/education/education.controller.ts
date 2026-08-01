@@ -5,6 +5,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { EducationService } from './education.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -48,6 +49,7 @@ export class EducationController {
     }
 
     @Put(':tenantId/courses/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updateCourse(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.updateCourse(schemaName, id, body);

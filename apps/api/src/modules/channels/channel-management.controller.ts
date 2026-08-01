@@ -10,6 +10,7 @@ import { TelegramAdapter } from './telegram/telegram.adapter';
 import { SmsAdapter } from './sms/sms.adapter';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @ApiTags('channel-management')
@@ -221,6 +222,7 @@ export class ChannelManagementController {
     }
 
     @Post('telegram/connect')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Connect a Telegram bot — validates token, sets webhook, stores credentials' })
     async connectTelegram(
         @Body() body: { botToken: string; displayName?: string },
@@ -342,6 +344,7 @@ export class ChannelManagementController {
     }
 
     @Post('telegram/test')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Send a test message through the connected Telegram bot' })
     async testTelegram(
         @Body() body: { chatId: string },
@@ -366,6 +369,7 @@ export class ChannelManagementController {
     }
 
     @Delete('telegram/disconnect')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Disconnect Telegram bot — removes webhook from Telegram and deactivates channel' })
     async disconnectTelegram(@Req() req: any) {
         const tenantId = req.user?.tenantId;
@@ -1022,6 +1026,7 @@ export class ChannelManagementController {
     // ==========================================
 
     @Post('sms/connect')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Connect Twilio SMS — validates credentials, stores encrypted' })
     async connectSms(
         @Body() body: { accountSid: string; authToken: string; phoneNumber: string; displayName?: string },
@@ -1214,6 +1219,7 @@ export class ChannelManagementController {
     }
 
     @Post('sms/test')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Send a test SMS' })
     async testSms(
         @Body() body: { to: string },

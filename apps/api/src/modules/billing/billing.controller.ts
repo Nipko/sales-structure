@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -297,6 +298,7 @@ export class BillingController {
      * token from the provider's client-side SDK.
      */
     @Post(':tenantId/subscription/payment-method')
+    @Roles('tenant_admin')
     @UseGuards(AuthGuard('jwt'))
     async updatePaymentMethod(@Param('tenantId') tenantId: string, @Body() body: UpdatePaymentMethodDto) {
         const sub = await this.billingService.getActiveSubscription(tenantId);
@@ -333,6 +335,7 @@ export class BillingController {
 
     /** Cancel a previously scheduled downgrade (user changed mind). */
     @Post(':tenantId/subscription/cancel-pending-downgrade')
+    @Roles('tenant_admin')
     @UseGuards(AuthGuard('jwt'))
     async cancelPendingDowngrade(@Param('tenantId') tenantId: string) {
         await this.billingService.cancelPendingDowngrade(tenantId);

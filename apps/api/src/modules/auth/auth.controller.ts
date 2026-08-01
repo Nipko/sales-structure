@@ -264,6 +264,7 @@ export class AuthController {
     }
 
     @Post('tenant/timezone')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @UseGuards(AuthGuard('jwt'))
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Update tenant timezone' })

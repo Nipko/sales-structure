@@ -5,6 +5,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { GymsService } from './gyms.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -28,6 +29,7 @@ export class GymsController {
     }
 
     @Post(':tenantId/plans')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createPlan(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.createPlan(schemaName, body);
@@ -42,6 +44,7 @@ export class GymsController {
     }
 
     @Delete(':tenantId/plans/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     async deletePlan(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
@@ -80,6 +83,7 @@ export class GymsController {
     }
 
     @Post(':tenantId/members/:id/freeze')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async freezeMember(
         @Param('tenantId') tenantId: string,
         @Param('id') id: string,
@@ -98,6 +102,7 @@ export class GymsController {
     }
 
     @Post(':tenantId/members/:id/check-in')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async checkIn(
         @Param('tenantId') tenantId: string,
         @Param('id') id: string,
@@ -125,6 +130,7 @@ export class GymsController {
     }
 
     @Post(':tenantId/classes')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createClass(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.createClass(schemaName, body);

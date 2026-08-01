@@ -8169,7 +8169,16 @@
       "title": "No sessions booked yet",
       "hint": "Sessions are booked from a customer's profile or by the AI agent during conversation"
     },
-    "noGallery": "Not delivered"
+    "noGallery": "Not delivered",
+    "actions": {
+      "start": "Start",
+      "deliver": "Deliver"
+    },
+    "cancelConfirm": "Cancel this session?",
+    "galleryUrl": "Gallery link",
+    "galleryPassword": "Password (optional)",
+    "deliveredCount": "Photos delivered",
+    "deliverMissingUrl": "Paste the gallery link"
   },
   "webhookTap": {
     "title": "Webhook live tail",

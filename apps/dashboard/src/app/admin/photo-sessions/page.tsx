@@ -59,6 +59,7 @@ export default function PhotoSessionsPage() {
     const [tab, setTab] = useState<StatusTab>("all");
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(true);
+    const [delivering, setDelivering] = useState<SessionRow | null>(null);
 
     const load = useCallback(async () => {
         if (!activeTenantId) return;
@@ -75,6 +76,28 @@ export default function PhotoSessionsPage() {
     }, [activeTenantId, tab, search]);
 
     useEffect(() => { load(); }, [load]);
+
+    async function handleStatus(s: SessionRow, status: string) {
+        if (!activeTenantId) return;
+        if (status === "cancelled" && !confirm(t("cancelConfirm"))) return;
+        await api.updatePhotoSession(activeTenantId, s.id, { status }).catch(() => null);
+        load();
+    }
+
+    async function handleDeliver(galleryUrl: string, galleryPassword: string, deliveredCount: number) {
+        if (!activeTenantId || !delivering) return;
+        // El endpoint de entrega recibe la galería; el conteo entregado va por
+        // update porque `deliver` no lo toca.
+        if (deliveredCount > 0) {
+            await api.updatePhotoSession(activeTenantId, delivering.id, { deliveredCount }).catch(() => null);
+        }
+        await api.deliverPhotoSession(activeTenantId, delivering.id, {
+            galleryUrl: galleryUrl.trim(),
+            galleryPassword: galleryPassword.trim() || undefined,
+        }).catch(() => null);
+        setDelivering(null);
+        load();
+    }
 
     const totalAll = (counts.scheduled || 0) + (counts.in_progress || 0) + (counts.delivered || 0) + (counts.cancelled || 0);
 
@@ -221,12 +244,146 @@ export default function PhotoSessionsPage() {
                                         <span className="text-xs text-neutral-400 italic">{t("noGallery")}</span>
                                     )}
                                 </div>
+
+                                {/* Acciones. La página era 100% de lectura: el
+                                    estudio veía "0 / ? fotos" y "sin galería" sin
+                                    ninguna forma de avanzar la sesión, así que el
+                                    estado quedaba congelado en lo que había
+                                    escrito el bot. update/deliver existían en el
+                                    cliente HTTP con cero llamadores. */}
+                                {s.status !== "cancelled" && s.status !== "delivered" && (
+                                    <div className="mt-3 flex items-center justify-end gap-2">
+                                        {s.status === "scheduled" && (
+                                            <button
+                                                onClick={() => handleStatus(s, "in_progress")}
+                                                className="px-2.5 py-1 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors cursor-pointer"
+                                            >
+                                                {t("actions.start")}
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => setDelivering(s)}
+                                            className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors cursor-pointer"
+                                        >
+                                            {t("actions.deliver")}
+                                        </button>
+                                        <button
+                                            onClick={() => handleStatus(s, "cancelled")}
+                                            className="px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-red-600 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                        >
+                                            {tc("cancel")}
+                                        </button>
+                                    </div>
+                                )}
                                 </div>
                             </motion.div>
                         );
                     })}
                 </div>
             )}
+
+            {delivering && (
+                <DeliverModal
+                    session={delivering}
+                    onClose={() => setDelivering(null)}
+                    onDeliver={handleDeliver}
+                    t={t}
+                    tc={tc}
+                />
+            )}
+        </div>
+    );
+}
+
+
+/**
+ * Entrega de la sesión: la URL de la galería y cuántas fotos se entregaron.
+ *
+ * Es el cierre del circuito que la página mostraba y no dejaba operar. La
+ * contraseña es opcional porque muchos estudios entregan con link público.
+ */
+function DeliverModal({ session, onClose, onDeliver, t, tc }: {
+    session: { package_name: string | null; client_name: string | null; contact_name: string | null; deliverable_count: number | null };
+    onClose: () => void;
+    onDeliver: (galleryUrl: string, galleryPassword: string, deliveredCount: number) => Promise<void>;
+    t: (k: string) => string;
+    tc: (k: string) => string;
+}) {
+    const [galleryUrl, setGalleryUrl] = useState("");
+    const [galleryPassword, setGalleryPassword] = useState("");
+    const [deliveredCount, setDeliveredCount] = useState<number>(session.deliverable_count || 0);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    async function submit() {
+        if (!galleryUrl.trim()) {
+            setError(t("deliverMissingUrl"));
+            return;
+        }
+        setBusy(true);
+        setError("");
+        await onDeliver(galleryUrl, galleryPassword, Number(deliveredCount) || 0);
+        setBusy(false);
+    }
+
+    const who = session.client_name || session.contact_name || "";
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+            <div className="w-full max-w-md rounded-xl bg-card border border-border p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+                <h3 className="font-semibold mb-1">{t("actions.deliver")}</h3>
+                <p className="text-xs text-muted-foreground mb-4">{who}{session.package_name ? ` · ${session.package_name}` : ""}</p>
+
+                {error && (
+                    <div className="px-3 py-2 rounded-lg mb-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
+                        {error}
+                    </div>
+                )}
+
+                <div className="space-y-3">
+                    <div>
+                        <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("galleryUrl")}</label>
+                        <input
+                            value={galleryUrl}
+                            onChange={e => setGalleryUrl(e.target.value)}
+                            placeholder="https://..."
+                            className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("galleryPassword")}</label>
+                            <input
+                                value={galleryPassword}
+                                onChange={e => setGalleryPassword(e.target.value)}
+                                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("deliveredCount")}</label>
+                            <input
+                                type="number" min={0}
+                                value={deliveredCount}
+                                onChange={e => setDeliveredCount(Number(e.target.value))}
+                                className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm font-mono"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-2 mt-5">
+                    <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground cursor-pointer">
+                        {tc("cancel")}
+                    </button>
+                    <button
+                        onClick={submit}
+                        disabled={busy}
+                        className="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white transition-colors cursor-pointer"
+                    >
+                        {tc("save")}
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

@@ -8169,7 +8169,16 @@
       "title": "Sem sessões agendadas",
       "hint": "As sessões são agendadas pela ficha do cliente ou pelo agente IA durante a conversa"
     },
-    "noGallery": "Não entregue"
+    "noGallery": "Não entregue",
+    "actions": {
+      "start": "Começar",
+      "deliver": "Entregar"
+    },
+    "cancelConfirm": "Cancelar esta sessão?",
+    "galleryUrl": "Link da galeria",
+    "galleryPassword": "Senha (opcional)",
+    "deliveredCount": "Fotos entregues",
+    "deliverMissingUrl": "Cole o link da galeria"
   },
   "webhookTap": {
     "title": "Webhook live tail",

@@ -8169,7 +8169,16 @@
       "title": "Aucune séance réservée",
       "hint": "Les séances sont réservées depuis la fiche client ou par l'agent IA pendant la conversation"
     },
-    "noGallery": "Non livrée"
+    "noGallery": "Non livrée",
+    "actions": {
+      "start": "Démarrer",
+      "deliver": "Livrer"
+    },
+    "cancelConfirm": "Annuler cette séance ?",
+    "galleryUrl": "Lien de la galerie",
+    "galleryPassword": "Mot de passe (facultatif)",
+    "deliveredCount": "Photos livrées",
+    "deliverMissingUrl": "Collez le lien de la galerie"
   },
   "webhookTap": {
     "title": "Live tail des webhooks",

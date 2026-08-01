@@ -1,6 +1,7 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { VerticalsService } from './verticals.service';
 import { VERTICAL_REGISTRY, getVerticalDefinition } from './vertical-definitions';
@@ -28,6 +29,26 @@ export class VerticalsController {
         }
         const definition = getVerticalDefinition(config.industry);
         return { success: true, data: definition.pipeline?.stages || [] };
+    }
+
+    /**
+     * Trae al tenant el contenido de su vertical que se escribió DESPUÉS de que
+     * lo crearon. El bootstrap corre una sola vez, así que cada FAQ o servicio
+     * que se agrega al catálogo se lo pierden todos los que ya están adentro.
+     *
+     * Solo agrega: los inserts son ON CONFLICT DO NOTHING y no toca embudo,
+     * persona ni disponibilidad, que son los seeds que sí pisarían lo que el
+     * tenant configuró a mano.
+     */
+    @Post(':tenantId/reseed-content')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Re-seed vertical FAQs and services (additive only)' })
+    async reseedContent(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { lang?: string },
+    ) {
+        const data = await this.verticalsService.reseedVerticalContent(tenantId, body?.lang || 'es');
+        return { success: true, data };
     }
 
     @Get('definitions/all')

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -259,6 +259,54 @@ export class VerticalsService {
      * Get the vertical config for a tenant (dashboard consumption).
      * Cached in Redis for 10 minutes.
      */
+    /**
+     * Re-siembra SOLO el contenido de la vertical (FAQs y servicios) para un
+     * tenant que ya existe.
+     *
+     * El bootstrap corre una única vez, al crear el tenant, así que cada FAQ o
+     * servicio que se agrega después a `vertical-definitions.ts` no le llega a
+     * nadie de los que ya están adentro: el contenido nuevo solo beneficia a
+     * los tenants futuros. Esto lo destraba sin pedirle al dueño que copie y
+     * pegue nada.
+     *
+     * Deliberadamente NO toca etapas del embudo, persona del agente,
+     * disponibilidad ni flags de herramienta. Esos seeds son de reemplazo y
+     * volver a correrlos pisaría lo que el tenant configuró a mano — que es
+     * exactamente el bug que el setup wizard tenía y ya se arregló. FAQs y
+     * servicios, en cambio, insertan con ON CONFLICT DO NOTHING: solo pueden
+     * AGREGAR lo que falta, nunca sobrescribir ni borrar.
+     */
+    async reseedVerticalContent(
+        tenantId: string,
+        lang = 'es',
+    ): Promise<{ industry: string; faqs: number; services: number }> {
+        const config = await this.getVerticalConfig(tenantId);
+        const industry = config?.industry;
+        if (!industry) {
+            throw new BadRequestException('El tenant no tiene una industria configurada.');
+        }
+
+        const definition = getVerticalDefinition(industry);
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+
+        await this.seedFaqs(schemaName, definition, lang);
+
+        // El mismo criterio del bootstrap: un sub-tipo que no agenda no recibe
+        // servicios, o le volveríamos a llenar la agenda de cosas que no hace.
+        const bootstrapMode = SUBTYPE_BOOTSTRAP[config?.subType || ''];
+        const seedsAgenda = definition.bookingEnabled && !bootstrapMode?.skipAgenda;
+        if (seedsAgenda && definition.services.length > 0) {
+            await this.seedServices(schemaName, definition, lang);
+        }
+
+        this.logger.log(`Reseeded vertical content for tenant ${tenantId} (${industry})`);
+        return {
+            industry,
+            faqs: definition.faqs.length,
+            services: seedsAgenda ? definition.services.length : 0,
+        };
+    }
+
     async getVerticalConfig(tenantId: string): Promise<TenantVerticalConfig | null> {
         const cacheKey = `vertical:${tenantId}`;
 

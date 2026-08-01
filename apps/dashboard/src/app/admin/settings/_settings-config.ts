@@ -16,7 +16,7 @@ import {
     Database, Zap, MessageSquare, Mail, Image as ImageIcon, Brain,
     SlidersHorizontal, Settings, Info, Scale, RotateCcw, Phone,
     BellRing, GitBranch, BarChart2, Plug, CalendarCheck, Webhook, MessageCircle,
-    RefreshCw, Sparkles, Key, Slack, Plug2, Star, Receipt,
+    RefreshCw, Sparkles, Key, Slack, Plug2, Star, Receipt, ShoppingBag,
 } from "lucide-react";
 
 export type Role = {
@@ -102,6 +102,9 @@ export const SETTINGS_SECTIONS: SettingSection[] = [
             { key: "verticalIntegrations", href: "/admin/settings/integrations/vertical", icon: Plug, iconColor: "text-orange-500", iconBg: "bg-orange-500/10" },
             { key: "mcp", href: "/admin/settings/integrations/mcp", icon: Plug2, iconColor: "text-cyan-500", iconBg: "bg-cyan-500/10" },
             { key: "reviews", href: "/admin/settings/integrations/reviews", icon: Star, iconColor: "text-yellow-500", iconBg: "bg-yellow-500/10" },
+            // Faltaba: el editor de agente ya dejaba encender las tools de
+            // e-commerce y no había dónde conectar la tienda.
+            { key: "ecommerce", href: "/admin/settings/integrations/ecommerce", icon: ShoppingBag, iconColor: "text-pink-500", iconBg: "bg-pink-500/10" },
             { key: "apiKeys", href: "/admin/settings/api-keys", icon: Key, iconColor: "text-amber-500", iconBg: "bg-amber-500/10" },
             { key: "alerts", href: "/admin/settings/alerts", icon: BellRing, iconColor: "text-rose-500", iconBg: "bg-rose-500/10" },
         ],

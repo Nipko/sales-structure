@@ -1113,6 +1113,10 @@
       "reviews": {
         "label": "Reseñas",
         "description": "Google Business + respuestas con IA"
+      },
+      "ecommerce": {
+        "label": "Tienda online",
+        "description": "Shopify o WooCommerce para el catálogo del agente"
       }
     },
     "account": "Mi Cuenta",
@@ -10113,5 +10117,23 @@
       "title": "Herramientas de tu rubro",
       "content": "Acá gestionás {tool}: lo específico de tu negocio que tu agente usa para responder y vender."
     }
+  },
+  "ecommerceIntegration": {
+    "title": "Tienda online",
+    "subtitle": "Conectá Shopify o WooCommerce para que el agente pueda mostrar tus productos",
+    "provider": "Plataforma",
+    "shopUrl": "URL de la tienda",
+    "accessToken": "Access token",
+    "accessTokenHint": "Se genera en tu app privada de Shopify (Admin API). Empieza con shpat_",
+    "apiKey": "Consumer key",
+    "apiSecret": "Consumer secret",
+    "syncProducts": "Sincronizar productos automáticamente",
+    "syncNow": "Sincronizar ahora",
+    "syncDone": "{count} productos sincronizados",
+    "syncFailed": "No se pudo sincronizar. Revisá la URL y las credenciales.",
+    "missingShopUrl": "Escribí la URL de tu tienda",
+    "neverSynced": "Todavía no sincronizaste",
+    "productsSynced": "{count} productos disponibles para el agente",
+    "footnote": "Sin productos sincronizados el agente no puede mostrar catálogo, aunque la herramienta esté encendida en el editor de agente."
   }
 }

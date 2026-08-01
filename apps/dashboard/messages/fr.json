@@ -1113,6 +1113,10 @@
       "reviews": {
         "label": "Avis",
         "description": "Google Business + réponses IA"
+      },
+      "ecommerce": {
+        "label": "Boutique en ligne",
+        "description": "Shopify ou WooCommerce pour le catalogue de l’assistant"
       }
     },
     "account": "Mon Compte",
@@ -10113,5 +10117,23 @@
       "title": "Outils de votre secteur",
       "content": "Ici, vous gérez {tool} : les données propres à votre activité que votre agent utilise pour répondre et vendre."
     }
+  },
+  "ecommerceIntegration": {
+    "title": "Boutique en ligne",
+    "subtitle": "Connectez Shopify ou WooCommerce pour que l’assistant montre vos produits",
+    "provider": "Plateforme",
+    "shopUrl": "URL de la boutique",
+    "accessToken": "Access token",
+    "accessTokenHint": "Généré dans votre app privée Shopify (Admin API). Commence par shpat_",
+    "apiKey": "Consumer key",
+    "apiSecret": "Consumer secret",
+    "syncProducts": "Synchroniser les produits automatiquement",
+    "syncNow": "Synchroniser",
+    "syncDone": "{count} produits synchronisés",
+    "syncFailed": "Échec de la synchronisation. Vérifiez l’URL et les identifiants.",
+    "missingShopUrl": "Saisissez l’URL de votre boutique",
+    "neverSynced": "Jamais synchronisé",
+    "productsSynced": "{count} produits disponibles pour l’assistant",
+    "footnote": "Sans produits synchronisés, l’assistant ne peut pas montrer de catalogue, même si l’outil est activé dans l’éditeur d’agent."
   }
 }

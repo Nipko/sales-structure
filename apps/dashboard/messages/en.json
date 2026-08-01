@@ -1113,6 +1113,10 @@
       "reviews": {
         "label": "Reviews",
         "description": "Google Business + AI replies"
+      },
+      "ecommerce": {
+        "label": "Online store",
+        "description": "Shopify or WooCommerce for the assistant catalog"
       }
     },
     "account": "My Account",
@@ -10113,5 +10117,23 @@
       "title": "Tools for your industry",
       "content": "Here you manage {tool}: the industry-specific data your agent uses to answer and sell."
     }
+  },
+  "ecommerceIntegration": {
+    "title": "Online store",
+    "subtitle": "Connect Shopify or WooCommerce so the assistant can show your products",
+    "provider": "Platform",
+    "shopUrl": "Store URL",
+    "accessToken": "Access token",
+    "accessTokenHint": "Generated in your Shopify private app (Admin API). Starts with shpat_",
+    "apiKey": "Consumer key",
+    "apiSecret": "Consumer secret",
+    "syncProducts": "Sync products automatically",
+    "syncNow": "Sync now",
+    "syncDone": "{count} products synced",
+    "syncFailed": "Sync failed. Check the URL and credentials.",
+    "missingShopUrl": "Enter your store URL",
+    "neverSynced": "Never synced",
+    "productsSynced": "{count} products available to the assistant",
+    "footnote": "With no products synced the assistant cannot show a catalog, even if the tool is enabled in the agent editor."
   }
 }

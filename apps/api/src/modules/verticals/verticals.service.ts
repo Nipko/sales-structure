@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { getVerticalDefinition } from './vertical-definitions';
 import { PERSONA_CACHE_CHANNELS } from '../../common/utils/persona-cache.util';
-import { TenantVerticalConfig, VerticalDefinition } from '@parallext/shared';
+import { TenantVerticalConfig, VerticalDefinition, VerticalServiceDefinition } from '@parallext/shared';
 
 /**
  * Los sub-tipos que cambian lo que el bootstrap siembra.
@@ -28,6 +28,16 @@ interface SubtypeBootstrap {
     roundTheClock?: boolean;
     /** Herramientas extra que su industria no enciende por defecto. */
     extraTools?: string[];
+    /**
+     * Servicios propios del sub-tipo, que REEMPLAZAN a los de la industria.
+     *
+     * Los servicios de la vertical son el mínimo común denominador y para
+     * algunos sub-tipos eso es directamente otro negocio: un arquitecto no
+     * vende "consulta inicial de 30 minutos", vende una visita a obra y un
+     * anteproyecto; un contador vende la declaración de renta. Sembrarles el
+     * genérico obliga al dueño a borrar y reescribir todo el día 1.
+     */
+    services?: VerticalServiceDefinition[];
 }
 
 const SUBTYPE_BOOTSTRAP: Record<string, SubtypeBootstrap> = {
@@ -51,6 +61,48 @@ const SUBTYPE_BOOTSTRAP: Record<string, SubtypeBootstrap> = {
     spa: { extraTools: ['treatments'] },
     estetica: { extraTools: ['treatments'] },
     psicologia: { extraTools: ['treatments'] },
+
+    // servicios_profesionales — los cuatro sub-tipos venden cosas distintas y
+    // la vertical sembraba "Consulta inicial" + "Asesoría especializada" para
+    // todos. Los precios son el orden de magnitud del mercado colombiano y el
+    // dueño los ajusta; lo que importa es que el NOMBRE del servicio sea el que
+    // usa el rubro, porque es lo que el agente le ofrece al cliente.
+    contadores: {
+        services: [
+            { name: { es: 'Declaración de renta', en: 'Income tax return', pt: 'Declaração de renda', fr: 'Déclaration de revenus' }, description: { es: 'Preparación y presentación de la declaración anual', en: 'Preparation and filing of the annual return', pt: 'Preparação e envio da declaração anual', fr: 'Préparation et dépôt de la déclaration annuelle' }, durationMinutes: 60, price: 250000, currency: 'COP', category: 'tributario' },
+            { name: { es: 'Asesoría contable mensual', en: 'Monthly accounting service', pt: 'Assessoria contábil mensal', fr: 'Suivi comptable mensuel' }, description: { es: 'Contabilidad y obligaciones del mes', en: 'Monthly bookkeeping and filings', pt: 'Contabilidade e obrigações do mês', fr: 'Comptabilité et obligations du mois' }, durationMinutes: 60, price: 400000, currency: 'COP', category: 'contable' },
+            { name: { es: 'Primera reunión', en: 'First meeting', pt: 'Primeira reunião', fr: 'Premier rendez-vous' }, description: { es: 'Diagnóstico inicial sin compromiso', en: 'Initial assessment, no obligation', pt: 'Diagnóstico inicial sem compromisso', fr: 'Diagnostic initial sans engagement' }, durationMinutes: 30, price: 0, currency: 'COP', category: 'consulta' },
+        ],
+    },
+    arquitectos: {
+        services: [
+            { name: { es: 'Visita a obra', en: 'Site visit', pt: 'Visita à obra', fr: 'Visite de chantier' }, description: { es: 'Relevamiento en el lugar', en: 'On-site survey', pt: 'Levantamento no local', fr: 'Relevé sur place' }, durationMinutes: 90, price: 200000, currency: 'COP', category: 'relevamiento' },
+            { name: { es: 'Anteproyecto', en: 'Preliminary design', pt: 'Anteprojeto', fr: 'Avant-projet' }, description: { es: 'Propuesta inicial de diseño', en: 'Initial design proposal', pt: 'Proposta inicial de projeto', fr: 'Proposition de conception initiale' }, durationMinutes: 60, price: 500000, currency: 'COP', category: 'diseno' },
+            { name: { es: 'Primera reunión', en: 'First meeting', pt: 'Primeira reunião', fr: 'Premier rendez-vous' }, description: { es: 'Conversación inicial sobre el proyecto', en: 'Initial conversation about the project', pt: 'Conversa inicial sobre o projeto', fr: 'Premier échange sur le projet' }, durationMinutes: 45, price: 0, currency: 'COP', category: 'consulta' },
+        ],
+    },
+    consultores: {
+        services: [
+            { name: { es: 'Diagnóstico inicial', en: 'Initial assessment', pt: 'Diagnóstico inicial', fr: 'Diagnostic initial' }, description: { es: 'Relevamiento de la situación actual', en: 'Review of the current situation', pt: 'Levantamento da situação atual', fr: 'Analyse de la situation actuelle' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'consulta' },
+            { name: { es: 'Sesión de consultoría', en: 'Consulting session', pt: 'Sessão de consultoria', fr: 'Séance de conseil' }, description: { es: 'Trabajo sobre un tema puntual', en: 'Work on a specific topic', pt: 'Trabalho sobre um tema específico', fr: 'Travail sur un sujet précis' }, durationMinutes: 90, price: 350000, currency: 'COP', category: 'consultoria' },
+        ],
+    },
+    // 'abogados' NO entra: "consulta inicial" y "asesoría especializada" son
+    // exactamente como se vende un despacho jurídico. Ramificarlo sería
+    // ruido — la misma regla que hace que un sub-tipo sin efecto salga del
+    // selector en vez de fingir que significa algo.
+
+    // technology — desarrollo y consultoría no "demuestran" nada: relevan.
+    desarrollo: {
+        services: [
+            { name: { es: 'Reunión de relevamiento', en: 'Requirements meeting', pt: 'Reunião de levantamento', fr: 'Réunion de cadrage' }, description: { es: 'Entender qué hay que construir', en: 'Understand what needs to be built', pt: 'Entender o que precisa ser construído', fr: 'Comprendre ce qui doit être construit' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'discovery' },
+        ],
+    },
+    consultoria_ti: {
+        services: [
+            { name: { es: 'Diagnóstico de infraestructura', en: 'Infrastructure assessment', pt: 'Diagnóstico de infraestrutura', fr: 'Audit d\'infrastructure' }, description: { es: 'Revisión del estado actual', en: 'Review of the current setup', pt: 'Revisão do estado atual', fr: 'Revue de l\'existant' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'discovery' },
+        ],
+    },
 };
 
 @Injectable()
@@ -104,8 +156,14 @@ export class VerticalsService {
         const bootstrapMode = SUBTYPE_BOOTSTRAP[subType || ''];
         const seedsAgenda = definition.bookingEnabled && !bootstrapMode?.skipAgenda;
 
-        if (seedsAgenda && definition.services.length > 0) {
-            await this.seedServices(schemaName, definition, l);
+        // Si el sub-tipo trae los suyos, mandan: son los de su rubro, no el
+        // mínimo común denominador de la industria.
+        const servicesToSeed = bootstrapMode?.services?.length
+            ? bootstrapMode.services
+            : definition.services;
+
+        if (seedsAgenda && servicesToSeed.length > 0) {
+            await this.seedServices(schemaName, { ...definition, services: servicesToSeed }, l);
         }
 
         // 4a. Seed la disponibilidad semanal. Va junto con los servicios porque
@@ -302,15 +360,18 @@ export class VerticalsService {
         // servicios, o le volveríamos a llenar la agenda de cosas que no hace.
         const bootstrapMode = SUBTYPE_BOOTSTRAP[config?.subType || ''];
         const seedsAgenda = definition.bookingEnabled && !bootstrapMode?.skipAgenda;
-        if (seedsAgenda && definition.services.length > 0) {
-            await this.seedServices(schemaName, definition, lang);
+        const servicesToSeed = bootstrapMode?.services?.length
+            ? bootstrapMode.services
+            : definition.services;
+        if (seedsAgenda && servicesToSeed.length > 0) {
+            await this.seedServices(schemaName, { ...definition, services: servicesToSeed }, lang);
         }
 
         this.logger.log(`Reseeded vertical content for tenant ${tenantId} (${industry})`);
         return {
             industry,
             faqs: definition.faqs.length,
-            services: seedsAgenda ? definition.services.length : 0,
+            services: seedsAgenda ? servicesToSeed.length : 0,
         };
     }
 

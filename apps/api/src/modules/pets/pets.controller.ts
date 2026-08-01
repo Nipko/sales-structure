@@ -5,6 +5,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PetsService } from './pets.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -48,6 +49,7 @@ export class PetsController {
     }
 
     @Post(':tenantId/pets')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Create a new pet' })
     async create(
         @Param('tenantId') tenantId: string,
@@ -72,6 +74,7 @@ export class PetsController {
     }
 
     @Put(':tenantId/pets/:petId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Update pet' })
     async update(
         @Param('tenantId') tenantId: string,
@@ -84,6 +87,7 @@ export class PetsController {
     }
 
     @Delete(':tenantId/pets/:petId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Soft-delete pet' })
     async delete(
@@ -98,6 +102,7 @@ export class PetsController {
     // ── Vaccinations ─────────────────────────────────────────────
 
     @Post(':tenantId/pets/:petId/vaccinations')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Record a vaccination' })
     async addVaccination(
         @Param('tenantId') tenantId: string,
@@ -110,6 +115,7 @@ export class PetsController {
     }
 
     @Delete(':tenantId/vaccinations/:vaccinationId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Delete a vaccination record' })
     async deleteVaccination(

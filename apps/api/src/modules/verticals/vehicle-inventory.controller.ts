@@ -85,6 +85,7 @@ export class VehicleInventoryController {
     }
 
     @Post(':tenantId/test-drives')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Schedule a test drive' })
     async scheduleTestDrive(@CurrentTenant() schema: string, @Body() body: any) {
         const td = await this.vehicleService.scheduleTestDrive(schema, body);

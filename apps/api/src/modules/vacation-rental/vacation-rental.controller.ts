@@ -149,6 +149,7 @@ export class VacationRentalController {
     }
 
     @Post(':tenantId/properties/:propertyId/bookings')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Create a direct booking' })
     async createBooking(
         @Param('tenantId') tenantId: string,

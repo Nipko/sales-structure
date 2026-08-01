@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/co
 import { AuthGuard } from '@nestjs/passport';
 import { AgentAnalyticsService } from './agent-analytics.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('agent-analytics')
@@ -37,6 +38,7 @@ export class AgentAnalyticsController {
     }
 
     @Post('csat/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async submitCSAT(
         @Param('tenantId') tenantId: string,
         @Body() body: {

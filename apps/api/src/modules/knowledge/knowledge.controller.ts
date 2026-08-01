@@ -5,6 +5,7 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { KnowledgeService } from './knowledge.service';
@@ -175,6 +176,7 @@ export class KnowledgeController {
     }
 
     @Post('search/advanced')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'Advanced filtered search across the knowledge base' })
     async advancedSearch(
@@ -196,6 +198,7 @@ export class KnowledgeController {
     }
 
     @Post('search')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'Search the knowledge base (vector similarity)' })
     async searchKnowledge(
@@ -266,6 +269,7 @@ export class KnowledgeController {
     // ─── KB Feedback & Gap Analysis ─────────────────────────────────────────
 
     @Post(':tenantId/feedback')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @ApiOperation({ summary: 'Submit KB feedback (thumbs up/down on AI response)' })
     async submitFeedback(

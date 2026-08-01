@@ -4,6 +4,7 @@ import { AuthGuard } from '@nestjs/passport';
 
 import { InventoryService } from './inventory.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('inventory')
@@ -29,6 +30,7 @@ export class InventoryController {
     }
 
     @Post('products/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createProduct(
         @Param('tenantId') tenantId: string,
         @Body() body: {
@@ -42,6 +44,7 @@ export class InventoryController {
     }
 
     @Put('products/:tenantId/:productId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async updateProduct(
         @Param('tenantId') tenantId: string,
         @Param('productId') productId: string,
@@ -54,6 +57,7 @@ export class InventoryController {
     // ---- Stock Adjustments ----
 
     @Post('products/:tenantId/:productId/stock')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async adjustStock(
         @Param('tenantId') tenantId: string,
         @Param('productId') productId: string,
@@ -66,6 +70,7 @@ export class InventoryController {
     // ---- Categories ----
 
     @Post('categories/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createCategory(
         @Param('tenantId') tenantId: string,
         @Body() body: { name: string; color: string },

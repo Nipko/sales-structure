@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { HandoffService } from './handoff.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 
@@ -16,6 +17,7 @@ export class HandoffController {
     constructor(private handoffService: HandoffService) { }
 
     @Post(':conversationId/complete')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Mark a handoff as complete and return to AI' })
     async completeHandoff(
         @CurrentTenant() tenantId: string,
@@ -26,6 +28,7 @@ export class HandoffController {
     }
 
     @Post(':conversationId/status')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Check if a conversation is in handoff' })
     async checkHandoffStatus(
         @CurrentTenant() tenantId: string,

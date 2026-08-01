@@ -3,6 +3,7 @@ import { ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { OrdersService } from './orders.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('orders')
@@ -24,6 +25,7 @@ export class OrdersController {
     }
 
     @Post(':tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createOrder(
         @Param('tenantId') tenantId: string,
         @Body() body: any
@@ -33,6 +35,7 @@ export class OrdersController {
     }
 
     @Put(':tenantId/:orderId/status')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async updateOrderStatus(
         @Param('tenantId') tenantId: string,
         @Param('orderId') orderId: string,

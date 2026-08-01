@@ -5,6 +5,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { ToursService } from './tours.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -148,6 +149,7 @@ export class ToursController {
     }
 
     @Post(':tenantId/bookings')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Create a tour booking' })
     async createBooking(
         @Param('tenantId') tenantId: string,

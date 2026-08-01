@@ -11,6 +11,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { CopilotService, CopilotChatRequest } from './copilot.service';
@@ -27,6 +28,7 @@ export class CopilotController {
     // ─── Platform Copilot Chat (existing) ───────────────────────────────────
 
     @Post('chat')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Platform copilot chat (general assistant)' })
     async chat(
         @Body() body: CopilotChatRequest,
@@ -76,6 +78,7 @@ export class CopilotController {
     }
 
     @Post(':conversationId/rewrite')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Rewrite an agent draft reply in a given tone' })
     async rewriteReply(
         @CurrentTenant() tenantId: string,
@@ -92,6 +95,7 @@ export class CopilotController {
     }
 
     @Post(':conversationId/ask')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Agent asks Copilot a question about the conversation' })
     async askCopilot(
         @CurrentTenant() tenantId: string,

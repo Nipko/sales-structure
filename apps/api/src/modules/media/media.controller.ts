@@ -9,6 +9,7 @@ import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { MediaService } from './media.service';
@@ -27,6 +28,7 @@ export class MediaController {
     // ── Protected routes ─────────────────────────────────────────
 
     @Post('upload/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @ApiBearerAuth()
     @ApiConsumes('multipart/form-data')

@@ -74,6 +74,7 @@ export class ChannelManagerController {
     }
 
     @Post('reservations')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Create a reservation' })
     async createReservation(@CurrentTenant() schema: string, @Body() body: any) {
         const reservation = await this.cm.createReservation(schema, body);

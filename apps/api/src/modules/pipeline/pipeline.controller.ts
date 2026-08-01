@@ -4,6 +4,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { PipelineService } from './pipeline.service';
 import { AutomationService } from './automation.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('pipeline')
@@ -87,6 +88,7 @@ export class PipelineController {
     }
 
     @Post('deals/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createDeal(
         @Param('tenantId') tenantId: string,
         @Body() body: {
@@ -99,6 +101,7 @@ export class PipelineController {
     }
 
     @Put('deals/:tenantId/:dealId/move')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async moveDeal(
         @Param('tenantId') tenantId: string,
         @Param('dealId') dealId: string,
@@ -109,6 +112,7 @@ export class PipelineController {
     }
 
     @Put('deals/:tenantId/:dealId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async updateDeal(
         @Param('tenantId') tenantId: string,
         @Param('dealId') dealId: string,

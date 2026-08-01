@@ -138,6 +138,7 @@ export class GymsController {
     }
 
     @Post(':tenantId/classes/:id/cancel')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async cancelClass(
         @Param('tenantId') tenantId: string,
         @Param('id') id: string,
@@ -149,6 +150,7 @@ export class GymsController {
     }
 
     @Post(':tenantId/classes/:classId/book')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async bookClass(
         @Param('tenantId') tenantId: string,
         @Param('classId') classId: string,
@@ -160,6 +162,7 @@ export class GymsController {
     }
 
     @Delete(':tenantId/bookings/:bookingId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @HttpCode(HttpStatus.OK)
     async cancelBooking(@Param('tenantId') tenantId: string, @Param('bookingId') bookingId: string) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);

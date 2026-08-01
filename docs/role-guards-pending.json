@@ -203,162 +203,6 @@
   "pendientesDeVerificar": [
     {
       "file": "src/modules/crm/crm.controller.ts",
-      "line": 51,
-      "method": "moveOpportunity",
-      "route": "PUT crm/kanban/:tenantId/:opportunityId/move",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 111,
-      "method": "createLead",
-      "route": "POST crm/leads/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 130,
-      "method": "updateLead",
-      "route": "PUT crm/leads/:tenantId/:leadId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 146,
-      "method": "bulkUpdateLeads",
-      "route": "POST crm/leads/:tenantId/bulk-update",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 155,
-      "method": "archiveLead",
-      "route": "DELETE crm/leads/:tenantId/:leadId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 164,
-      "method": "restoreLead",
-      "route": "PUT crm/leads/:tenantId/:leadId/restore",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 184,
-      "method": "rescoreLead",
-      "route": "POST crm/leads/:tenantId/:leadId/rescore",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 204,
-      "method": "createNote",
-      "route": "POST crm/notes/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 232,
-      "method": "createTask",
-      "route": "POST crm/tasks/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 250,
-      "method": "updateTaskStatus",
-      "route": "PUT crm/tasks/:tenantId/:taskId/status",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 291,
-      "method": "createOpportunity",
-      "route": "POST crm/opportunities/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 300,
-      "method": "updateOpportunity",
-      "route": "PUT crm/opportunities/:tenantId/:opportunityId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
       "line": 359,
       "method": "createCustomAttribute",
       "route": "POST crm/custom-attributes/:tenantId",
@@ -379,71 +223,6 @@
         "tenant_supervisor"
       ],
       "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 391,
-      "method": "setCustomAttributeValues",
-      "route": "POST crm/custom-attribute-values/:tenantId/:entityType/:entityId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 410,
-      "method": "createSegment",
-      "route": "POST crm/segments/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 420,
-      "method": "updateSegment",
-      "route": "PUT crm/segments/:tenantId/:segmentId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 445,
-      "method": "importCSV",
-      "route": "POST crm/import/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/crm/crm.controller.ts",
-      "line": 490,
-      "method": "requestApproval",
-      "route": "PUT crm/opportunities/:tenantId/:opportunityId/request-approval",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
       "wasCorrected": false
     },
     {
@@ -568,110 +347,6 @@
     },
     {
       "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 43,
-      "method": "reopenConversation",
-      "route": "POST conversation/:tenantId/:conversationId/reopen",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 78,
-      "method": "sendMessage",
-      "route": "POST conversation/:tenantId/:conversationId/message",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 97,
-      "method": "assignConversation",
-      "route": "PUT conversation/:tenantId/:conversationId/assign",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 107,
-      "method": "resolveConversation",
-      "route": "PUT conversation/:tenantId/:conversationId/resolve",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 117,
-      "method": "returnToAI",
-      "route": "PUT conversation/:tenantId/:conversationId/return-to-ai",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 126,
-      "method": "addNote",
-      "route": "POST conversation/:tenantId/:conversationId/note",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 148,
-      "method": "translateText",
-      "route": "POST translate/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 160,
-      "method": "scanBusinessCard",
-      "route": "POST scan-card/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
       "line": 200,
       "method": "createCannedResponse",
       "route": "POST canned/:tenantId",
@@ -692,45 +367,6 @@
         "tenant_supervisor"
       ],
       "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 221,
-      "method": "updateAgentStatus",
-      "route": "PUT status/:userId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 244,
-      "method": "snoozeConversation",
-      "route": "PUT conversation/:tenantId/:conversationId/snooze",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 254,
-      "method": "unsnoozeConversation",
-      "route": "PUT conversation/:tenantId/:conversationId/unsnooze",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
       "wasCorrected": false
     },
     {
@@ -758,84 +394,6 @@
       "wasCorrected": false
     },
     {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 287,
-      "method": "executeMacro",
-      "route": "POST macros/:tenantId/:macroId/execute",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 299,
-      "method": "archiveConversation",
-      "route": "PUT conversation/:tenantId/:conversationId/archive",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 309,
-      "method": "deleteConversation",
-      "route": "DELETE conversation/:tenantId/:conversationId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 318,
-      "method": "deleteMessage",
-      "route": "DELETE conversation/:tenantId/:conversationId/message/:messageId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 328,
-      "method": "bulkArchive",
-      "route": "POST conversations/:tenantId/bulk-archive",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/agent-console/agent-console.controller.ts",
-      "line": 337,
-      "method": "bulkDelete",
-      "route": "POST conversations/:tenantId/bulk-delete",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
       "file": "src/modules/conversations/conversations.controller.ts",
       "line": 30,
       "method": "savePrechatForm",
@@ -845,71 +403,6 @@
         "tenant_supervisor"
       ],
       "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/handoff/handoff.controller.ts",
-      "line": 18,
-      "method": "completeHandoff",
-      "route": "POST :conversationId/complete",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/handoff/handoff.controller.ts",
-      "line": 28,
-      "method": "checkHandoffStatus",
-      "route": "POST :conversationId/status",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/copilot/copilot.controller.ts",
-      "line": 29,
-      "method": "chat",
-      "route": "POST chat",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/copilot/copilot.controller.ts",
-      "line": 78,
-      "method": "rewriteReply",
-      "route": "POST :conversationId/rewrite",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/copilot/copilot.controller.ts",
-      "line": 94,
-      "method": "askCopilot",
-      "route": "POST :conversationId/ask",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
       "wasCorrected": false
     },
     {
@@ -1010,32 +503,6 @@
     },
     {
       "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 301,
-      "method": "createRecurring",
-      "route": "POST :tenantId/recurring",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 323,
-      "method": "cancelRecurringSeries",
-      "route": "PUT :tenantId/recurring/:groupId/cancel",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
       "line": 344,
       "method": "updatePublicBookingConfig",
       "route": "POST :tenantId/public-booking-config",
@@ -1068,123 +535,6 @@
         "tenant_supervisor"
       ],
       "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 406,
-      "method": "create",
-      "route": "POST :tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 417,
-      "method": "update",
-      "route": "PUT :tenantId/:appointmentId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/appointments/appointments.controller.ts",
-      "line": 429,
-      "method": "cancel",
-      "route": "PUT :tenantId/:appointmentId/cancel",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/treatment-plans/treatment-plans.controller.ts",
-      "line": 48,
-      "method": "createPlan",
-      "route": "POST :tenantId/plans",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/treatment-plans/treatment-plans.controller.ts",
-      "line": 72,
-      "method": "updatePlan",
-      "route": "PUT :tenantId/plans/:planId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/treatment-plans/treatment-plans.controller.ts",
-      "line": 84,
-      "method": "deletePlan",
-      "route": "DELETE :tenantId/plans/:planId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/treatment-plans/treatment-plans.controller.ts",
-      "line": 96,
-      "method": "addSession",
-      "route": "POST :tenantId/plans/:planId/sessions",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/treatment-plans/treatment-plans.controller.ts",
-      "line": 108,
-      "method": "completeSession",
-      "route": "PUT :tenantId/sessions/:sessionId/complete",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/treatment-plans/treatment-plans.controller.ts",
-      "line": 119,
-      "method": "cancelSession",
-      "route": "PUT :tenantId/sessions/:sessionId/cancel",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
       "wasCorrected": false
     },
     {
@@ -1273,32 +623,6 @@
     },
     {
       "file": "src/modules/knowledge/knowledge.controller.ts",
-      "line": 177,
-      "method": "advancedSearch",
-      "route": "POST knowledge/search/advanced",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canViewKnowledge",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/knowledge/knowledge.controller.ts",
-      "line": 198,
-      "method": "searchKnowledge",
-      "route": "POST knowledge/search",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canViewKnowledge",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/knowledge/knowledge.controller.ts",
       "line": 212,
       "method": "crawlUrl",
       "route": "POST knowledge/documents/crawl",
@@ -1331,19 +655,6 @@
         "tenant_supervisor"
       ],
       "capability": "canSeeGlobalAnalytics",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/knowledge/knowledge.controller.ts",
-      "line": 268,
-      "method": "submitFeedback",
-      "route": "POST knowledge/:tenantId/feedback",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
       "wasCorrected": false
     },
     {
@@ -1428,19 +739,6 @@
         "tenant_supervisor"
       ],
       "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/media/media.controller.ts",
-      "line": 29,
-      "method": "upload",
-      "route": "POST media/upload/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
       "wasCorrected": false
     },
     {
@@ -1555,19 +853,6 @@
         "tenant_admin"
       ],
       "capability": "canManageChannels",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/channel-manager/channel-manager.controller.ts",
-      "line": 76,
-      "method": "createReservation",
-      "route": "POST channel-manager/reservations",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts / canHandleConversations (registro operativo sobre el cliente final)",
       "wasCorrected": false
     },
     {
@@ -1695,45 +980,6 @@
       "wasCorrected": false
     },
     {
-      "file": "src/modules/gyms/gyms.controller.ts",
-      "line": 134,
-      "method": "cancelClass",
-      "route": "POST :tenantId/classes/:id/cancel",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/gyms/gyms.controller.ts",
-      "line": 145,
-      "method": "bookClass",
-      "route": "POST :tenantId/classes/:classId/book",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/gyms/gyms.controller.ts",
-      "line": 156,
-      "method": "cancelBooking",
-      "route": "DELETE :tenantId/bookings/:bookingId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
       "file": "src/modules/restaurants/restaurants.controller.ts",
       "line": 34,
       "method": "createCategory",
@@ -1791,32 +1037,6 @@
         "tenant_supervisor"
       ],
       "capability": "canEditPipeline",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/restaurants/restaurants.controller.ts",
-      "line": 139,
-      "method": "createOrder",
-      "route": "POST :tenantId/orders",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/restaurants/restaurants.controller.ts",
-      "line": 146,
-      "method": "updateOrderStatus",
-      "route": "PUT :tenantId/orders/:id/status",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
       "wasCorrected": false
     },
     {
@@ -1941,19 +1161,6 @@
     },
     {
       "file": "src/modules/insurance/insurance.controller.ts",
-      "line": 60,
-      "method": "createQuote",
-      "route": "POST :tenantId/quotes",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/insurance/insurance.controller.ts",
       "line": 67,
       "method": "updateQuoteStatus",
       "route": "PUT :tenantId/quotes/:id/status",
@@ -1974,19 +1181,6 @@
         "tenant_supervisor"
       ],
       "capability": "canEditPipeline",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/insurance/insurance.controller.ts",
-      "line": 105,
-      "method": "fileClaim",
-      "route": "POST :tenantId/claims",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
       "wasCorrected": false
     },
     {
@@ -2051,19 +1245,6 @@
     },
     {
       "file": "src/modules/tours/tours.controller.ts",
-      "line": 150,
-      "method": "createBooking",
-      "route": "POST :tenantId/bookings",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/tours/tours.controller.ts",
       "line": 164,
       "method": "cancelBooking",
       "route": "PUT :tenantId/bookings/:bookingId/cancel",
@@ -2120,19 +1301,6 @@
         "tenant_supervisor"
       ],
       "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/vacation-rental/vacation-rental.controller.ts",
-      "line": 151,
-      "method": "createBooking",
-      "route": "POST :tenantId/properties/:propertyId/bookings",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
       "wasCorrected": false
     },
     {
@@ -2244,71 +1412,6 @@
       "wasCorrected": false
     },
     {
-      "file": "src/modules/pets/pets.controller.ts",
-      "line": 50,
-      "method": "create",
-      "route": "POST :tenantId/pets",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/pets/pets.controller.ts",
-      "line": 74,
-      "method": "update",
-      "route": "PUT :tenantId/pets/:petId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/pets/pets.controller.ts",
-      "line": 86,
-      "method": "delete",
-      "route": "DELETE :tenantId/pets/:petId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/pets/pets.controller.ts",
-      "line": 100,
-      "method": "addVaccination",
-      "route": "POST :tenantId/pets/:petId/vaccinations",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/pets/pets.controller.ts",
-      "line": 112,
-      "method": "deleteVaccination",
-      "route": "DELETE :tenantId/vaccinations/:vaccinationId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
       "file": "src/modules/photography/photography.controller.ts",
       "line": 50,
       "method": "create",
@@ -2345,45 +1448,6 @@
       "wasCorrected": false
     },
     {
-      "file": "src/modules/home-services/home-services.controller.ts",
-      "line": 41,
-      "method": "create",
-      "route": "POST :tenantId/requests",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/home-services/home-services.controller.ts",
-      "line": 48,
-      "method": "update",
-      "route": "PUT :tenantId/requests/:id",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/verticals/vehicle-inventory.controller.ts",
-      "line": 87,
-      "method": "scheduleTestDrive",
-      "route": "POST :tenantId/test-drives",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
       "file": "src/modules/pipeline/pipeline.controller.ts",
       "line": 33,
       "method": "setAutoProgress",
@@ -2417,45 +1481,6 @@
         "tenant_supervisor"
       ],
       "capability": "canEditPipeline",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/pipeline/pipeline.controller.ts",
-      "line": 89,
-      "method": "createDeal",
-      "route": "POST pipeline/deals/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/pipeline/pipeline.controller.ts",
-      "line": 101,
-      "method": "moveDeal",
-      "route": "PUT pipeline/deals/:tenantId/:dealId/move",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/pipeline/pipeline.controller.ts",
-      "line": 111,
-      "method": "updateDeal",
-      "route": "PUT pipeline/deals/:tenantId/:dealId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canManageContacts",
       "wasCorrected": false
     },
     {
@@ -2738,84 +1763,6 @@
       "wasCorrected": false
     },
     {
-      "file": "src/modules/inventory/inventory.controller.ts",
-      "line": 31,
-      "method": "createProduct",
-      "route": "POST inventory/products/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canEditPipeline",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/inventory/inventory.controller.ts",
-      "line": 44,
-      "method": "updateProduct",
-      "route": "PUT inventory/products/:tenantId/:productId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canEditPipeline",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/inventory/inventory.controller.ts",
-      "line": 56,
-      "method": "adjustStock",
-      "route": "POST inventory/products/:tenantId/:productId/stock",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canEditPipeline",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/inventory/inventory.controller.ts",
-      "line": 68,
-      "method": "createCategory",
-      "route": "POST inventory/categories/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canEditPipeline",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/orders/orders.controller.ts",
-      "line": 26,
-      "method": "createOrder",
-      "route": "POST orders/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/orders/orders.controller.ts",
-      "line": 35,
-      "method": "updateOrderStatus",
-      "route": "PUT orders/:tenantId/:orderId/status",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canHandleConversations",
-      "wasCorrected": false
-    },
-    {
       "file": "src/modules/analytics/analytics.controller.ts",
       "line": 105,
       "method": "registerOptOut",
@@ -2825,19 +1772,6 @@
         "tenant_supervisor"
       ],
       "capability": "canManageSettings",
-      "wasCorrected": false
-    },
-    {
-      "file": "src/modules/analytics/agent-analytics.controller.ts",
-      "line": 39,
-      "method": "submitCSAT",
-      "route": "POST agent-analytics/csat/:tenantId",
-      "roles": [
-        "tenant_admin",
-        "tenant_supervisor",
-        "tenant_agent"
-      ],
-      "capability": "canSeeOwnPerformance",
       "wasCorrected": false
     },
     {

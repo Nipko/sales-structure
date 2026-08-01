@@ -4,6 +4,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { AppointmentsService } from './appointments.service';
@@ -299,6 +300,7 @@ export class AppointmentsController {
     // ── Recurring Appointments ────────────────────────────────
 
     @Post(':tenantId/recurring')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Create a recurring appointment series' })
     async createRecurring(
         @Param('tenantId') tenantId: string,
@@ -321,6 +323,7 @@ export class AppointmentsController {
     }
 
     @Put(':tenantId/recurring/:groupId/cancel')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Cancel all future instances of a recurring series' })
     async cancelRecurringSeries(
         @Param('tenantId') tenantId: string,
@@ -404,6 +407,7 @@ export class AppointmentsController {
     }
 
     @Post(':tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Create an appointment' })
     async create(
         @Param('tenantId') tenantId: string,
@@ -415,6 +419,7 @@ export class AppointmentsController {
     }
 
     @Put(':tenantId/:appointmentId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Update an appointment' })
     async update(
         @Param('tenantId') tenantId: string,
@@ -427,6 +432,7 @@ export class AppointmentsController {
     }
 
     @Put(':tenantId/:appointmentId/cancel')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Cancel an appointment' })
     async cancel(
         @Param('tenantId') tenantId: string,

@@ -16,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('crm')
@@ -49,6 +50,7 @@ export class CrmController {
     }
 
     @Put('kanban/:tenantId/:opportunityId/move')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async moveOpportunity(
         @Param('tenantId') tenantId: string,
         @Param('opportunityId') opportunityId: string,
@@ -109,6 +111,7 @@ export class CrmController {
     }
 
     @Post('leads/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createLead(
         @Param('tenantId') tenantId: string,
         @Body() body: Record<string, any>,
@@ -128,6 +131,7 @@ export class CrmController {
     }
 
     @Put('leads/:tenantId/:leadId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async updateLead(
         @Param('tenantId') tenantId: string,
         @Param('leadId') leadId: string,
@@ -144,6 +148,7 @@ export class CrmController {
     }
 
     @Post('leads/:tenantId/bulk-update')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async bulkUpdateLeads(
         @Param('tenantId') tenantId: string,
         @Body() body: { leadIds: string[]; action: string; payload: any },
@@ -153,6 +158,7 @@ export class CrmController {
     }
 
     @Delete('leads/:tenantId/:leadId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async archiveLead(
         @Param('tenantId') tenantId: string,
         @Param('leadId') leadId: string,
@@ -162,6 +168,7 @@ export class CrmController {
     }
 
     @Put('leads/:tenantId/:leadId/restore')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async restoreLead(
         @Param('tenantId') tenantId: string,
         @Param('leadId') leadId: string,
@@ -182,6 +189,7 @@ export class CrmController {
     }
 
     @Post('leads/:tenantId/:leadId/rescore')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async rescoreLead(
         @Param('tenantId') tenantId: string,
         @Param('leadId') leadId: string,
@@ -202,6 +210,7 @@ export class CrmController {
     }
 
     @Post('notes/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createNote(
         @Param('tenantId') tenantId: string,
         @Body() body: {
@@ -230,6 +239,7 @@ export class CrmController {
     }
 
     @Post('tasks/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createTask(
         @Param('tenantId') tenantId: string,
         @Body() body: {
@@ -248,6 +258,7 @@ export class CrmController {
     }
 
     @Put('tasks/:tenantId/:taskId/status')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async updateTaskStatus(
         @Param('tenantId') tenantId: string,
         @Param('taskId') taskId: string,
@@ -289,6 +300,7 @@ export class CrmController {
     }
 
     @Post('opportunities/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createOpportunity(
         @Param('tenantId') tenantId: string,
         @Body() body: Record<string, any>,
@@ -298,6 +310,7 @@ export class CrmController {
     }
 
     @Put('opportunities/:tenantId/:opportunityId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async updateOpportunity(
         @Param('tenantId') tenantId: string,
         @Param('opportunityId') opportunityId: string,
@@ -389,6 +402,7 @@ export class CrmController {
     }
 
     @Post('custom-attribute-values/:tenantId/:entityType/:entityId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async setCustomAttributeValues(
         @Param('tenantId') tenantId: string,
         @Param('entityType') entityType: string,
@@ -408,6 +422,7 @@ export class CrmController {
     }
 
     @Post('segments/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createSegment(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schema = await this.getSchema(tenantId);
         const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
@@ -418,6 +433,7 @@ export class CrmController {
     }
 
     @Put('segments/:tenantId/:segmentId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async updateSegment(
         @Param('tenantId') tenantId: string,
         @Param('segmentId') segmentId: string,
@@ -443,6 +459,7 @@ export class CrmController {
     // ---- Import / Export ----
 
     @Post('import/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async importCSV(
         @Param('tenantId') tenantId: string,
         @Body() body: { csvContent: string; options?: { skipDuplicates?: boolean } },
@@ -488,6 +505,7 @@ export class CrmController {
     // ---- Deal Approval ----
 
     @Put('opportunities/:tenantId/:opportunityId/request-approval')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async requestApproval(
         @Param('tenantId') tenantId: string,
         @Param('opportunityId') opportunityId: string,

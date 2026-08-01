@@ -5,6 +5,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { TreatmentPlansService } from './treatment-plans.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -46,6 +47,7 @@ export class TreatmentPlansController {
     }
 
     @Post(':tenantId/plans')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Create a treatment plan' })
     async createPlan(
         @Param('tenantId') tenantId: string,
@@ -70,6 +72,7 @@ export class TreatmentPlansController {
     }
 
     @Put(':tenantId/plans/:planId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Update a treatment plan' })
     async updatePlan(
         @Param('tenantId') tenantId: string,
@@ -82,6 +85,7 @@ export class TreatmentPlansController {
     }
 
     @Delete(':tenantId/plans/:planId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Cancel a treatment plan' })
     async deletePlan(
@@ -94,6 +98,7 @@ export class TreatmentPlansController {
     }
 
     @Post(':tenantId/plans/:planId/sessions')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Add a session to a plan' })
     async addSession(
         @Param('tenantId') tenantId: string,
@@ -106,6 +111,7 @@ export class TreatmentPlansController {
     }
 
     @Put(':tenantId/sessions/:sessionId/complete')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Mark a session as completed' })
     async completeSession(
         @Param('tenantId') tenantId: string,
@@ -117,6 +123,7 @@ export class TreatmentPlansController {
     }
 
     @Put(':tenantId/sessions/:sessionId/cancel')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Cancel a session' })
     async cancelSession(

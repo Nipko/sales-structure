@@ -139,6 +139,7 @@ export class RestaurantsController {
     }
 
     @Post(':tenantId/orders')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createOrder(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.createOrder(schemaName, body);
@@ -146,6 +147,7 @@ export class RestaurantsController {
     }
 
     @Put(':tenantId/orders/:id/status')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     @ApiOperation({ summary: 'Transition order status (received → preparing → ready → delivered)' })
     async updateOrderStatus(
         @Param('tenantId') tenantId: string,

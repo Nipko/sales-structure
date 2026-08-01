@@ -5,6 +5,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { HomeServicesService } from './home-services.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -39,6 +40,7 @@ export class HomeServicesController {
     }
 
     @Post(':tenantId/requests')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async create(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.createRequest(schemaName, body);
@@ -46,6 +48,7 @@ export class HomeServicesController {
     }
 
     @Put(':tenantId/requests/:id')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async update(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.updateRequest(schemaName, id, body);

@@ -7,6 +7,7 @@ import { MacrosService } from './macros.service';
 import { SnoozeService } from './snooze.service';
 import { ArchiveMaintenanceService } from '../offboarding/archive-maintenance.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('agent-console')
@@ -41,6 +42,7 @@ export class AgentConsoleController {
     }
 
     @Post('conversation/:tenantId/:conversationId/reopen')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async reopenConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
@@ -76,6 +78,7 @@ export class AgentConsoleController {
     }
 
     @Post('conversation/:tenantId/:conversationId/message')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async sendMessage(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
@@ -95,6 +98,7 @@ export class AgentConsoleController {
     }
 
     @Put('conversation/:tenantId/:conversationId/assign')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async assignConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
@@ -105,6 +109,7 @@ export class AgentConsoleController {
     }
 
     @Put('conversation/:tenantId/:conversationId/resolve')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async resolveConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
@@ -115,6 +120,7 @@ export class AgentConsoleController {
     }
 
     @Put('conversation/:tenantId/:conversationId/return-to-ai')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async returnToAI(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
@@ -124,6 +130,7 @@ export class AgentConsoleController {
     }
 
     @Post('conversation/:tenantId/:conversationId/note')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async addNote(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
@@ -146,6 +153,7 @@ export class AgentConsoleController {
 
     /** Translate any text to the target language using the LLM router. */
     @Post('translate/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async translateText(
         @Param('tenantId') tenantId: string,
         @Body() body: { text: string; targetLanguage?: string },
@@ -158,6 +166,7 @@ export class AgentConsoleController {
 
     /** Scan a business card image (base64) and extract contact fields. */
     @Post('scan-card/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async scanBusinessCard(
         @Param('tenantId') tenantId: string,
         @Body() body: { imageBase64: string; mimeType?: string },
@@ -219,6 +228,7 @@ export class AgentConsoleController {
     // ---- Agent Availability ----
 
     @Put('status/:userId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async updateAgentStatus(
         @Param('userId') userId: string,
         @Body() body: { status: string },
@@ -242,6 +252,7 @@ export class AgentConsoleController {
     // ---- Snooze ----
 
     @Put('conversation/:tenantId/:conversationId/snooze')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async snoozeConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
@@ -252,6 +263,7 @@ export class AgentConsoleController {
     }
 
     @Put('conversation/:tenantId/:conversationId/unsnooze')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async unsnoozeConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
@@ -285,6 +297,7 @@ export class AgentConsoleController {
     }
 
     @Post('macros/:tenantId/:macroId/execute')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async executeMacro(
         @Param('tenantId') tenantId: string,
         @Param('macroId') macroId: string,
@@ -297,6 +310,7 @@ export class AgentConsoleController {
     // ---- Archive & Delete ----
 
     @Put('conversation/:tenantId/:conversationId/archive')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async archiveConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
@@ -307,6 +321,7 @@ export class AgentConsoleController {
     }
 
     @Delete('conversation/:tenantId/:conversationId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async deleteConversation(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
@@ -316,6 +331,7 @@ export class AgentConsoleController {
     }
 
     @Delete('conversation/:tenantId/:conversationId/message/:messageId')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async deleteMessage(
         @Param('tenantId') tenantId: string,
         @Param('conversationId') conversationId: string,
@@ -326,6 +342,7 @@ export class AgentConsoleController {
     }
 
     @Post('conversations/:tenantId/bulk-archive')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async bulkArchive(
         @Param('tenantId') tenantId: string,
         @Body() body: { conversationIds: string[] },
@@ -335,6 +352,7 @@ export class AgentConsoleController {
     }
 
     @Post('conversations/:tenantId/bulk-delete')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async bulkDelete(
         @Param('tenantId') tenantId: string,
         @Body() body: { conversationIds: string[] },

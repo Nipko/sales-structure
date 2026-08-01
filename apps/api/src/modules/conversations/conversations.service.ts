@@ -2232,8 +2232,17 @@ export class ConversationsService {
                         // and strip the marker so it never reaches the LLM. mediaToSend
                         // is only mutated AFTER the awaited result resolves — one push
                         // per tool, no interleaved access, so it's safe under Promise.all.
-                        if (result && result._mediaToSend?.url) {
-                            mediaToSend.push({ url: result._mediaToSend.url, caption: result._mediaToSend.caption });
+                        //
+                        // Acepta una imagen o varias: send_portfolio manda un
+                        // conjunto (un portafolio de una sola foto no es un
+                        // portafolio) y las tools de producto/inmueble mandan una.
+                        if (result?._mediaToSend) {
+                            const items = Array.isArray(result._mediaToSend)
+                                ? result._mediaToSend
+                                : [result._mediaToSend];
+                            for (const m of items) {
+                                if (m?.url) mediaToSend.push({ url: m.url, caption: m.caption });
+                            }
                             delete result._mediaToSend;
                         }
 

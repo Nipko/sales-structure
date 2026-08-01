@@ -109,6 +109,23 @@ export const PHOTOGRAPHY_TOOLS: ToolDefinition[] = [
         parameters: { type: 'object', properties: {} },
     },
     {
+        // "¿Me muestras trabajos anteriores?" es la pregunta que cierra la venta
+        // en este rubro, y sin esta tool el agente solo podía describir las fotos
+        // con palabras. Las imágenes salen del banco de medios del tenant, así
+        // que el modelo no elige qué mandar: solo pide que se mande.
+        name: 'send_portfolio',
+        description: 'Send the studio\'s portfolio photos to the customer. Use whenever they ask to see previous work, examples, "fotos de trabajos anteriores", "¿tienen ejemplos?" or want to judge the style before booking. Sends real images from the studio\'s media library — do NOT describe or invent image links yourself, just call this. Optionally pass a category to narrow it (boda, familiar, producto, corporativo); if that category has no photos it falls back to the general portfolio.',
+        parameters: {
+            type: 'object',
+            properties: {
+                category: {
+                    type: 'string',
+                    description: 'Optional shoot type to filter by, e.g. boda / familiar / producto / corporativo / retrato',
+                },
+            },
+        },
+    },
+    {
         name: 'check_date_availability',
         description: 'Check whether a specific date is open for a shoot. Returns available time windows. CRITICAL for wedding photographers — prevents double booking.',
         parameters: {

@@ -20,6 +20,7 @@ import { EcommerceService } from '../ecommerce/ecommerce.service';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { McpClientService } from '../mcp/mcp-client.service';
 import type { PolicyType } from '@parallext/shared';
+import { absoluteMediaUrl } from '../../common/utils/media-url.util';
 
 /**
  * Executes AI tool calls against the appropriate services.
@@ -114,6 +115,9 @@ export class AIToolExecutorService {
 
                 case 'send_listing_image':
                     return this.sendListingImage(schemaName, args.listingId);
+
+                case 'send_portfolio':
+                    return this.sendPortfolioTool(schemaName, tenantId, args);
 
                 case 'search_vehicles':
                     return this.searchVehicles(schemaName, args);
@@ -488,6 +492,74 @@ export class AIToolExecutorService {
         } catch (e: any) {
             this.logger.warn(`[Tool] send_property_image failed: ${e.message}`);
             return { error: 'No se pudo enviar la imagen de la propiedad.' };
+        }
+    }
+
+    /**
+     * Manda el portafolio del estudio: las fotos que el dueño subió al banco de
+     * medios y etiquetó como portafolio.
+     *
+     * "¿Tienen fotos de trabajos anteriores?" es la pregunta que decide la venta
+     * en fotografía, y hasta acá el agente solo podía describirlas con palabras.
+     * Las URLs salen de la base, nunca del LLM, igual que en las otras tools de
+     * imagen: el modelo no puede hacernos enviar un link arbitrario.
+     *
+     * Se aceptan varias etiquetas porque el dueño no sabe cuál usamos: si busca
+     * por categoría ("bodas") y no hay nada, cae al portafolio general en vez de
+     * responder que no tiene fotos teniéndolas.
+     */
+    private async sendPortfolioTool(
+        schema: string,
+        tenantId: string,
+        args: any,
+    ): Promise<any> {
+        const MAX = 4; // más que esto es spam en WhatsApp, no un portafolio
+        const wanted = String(args?.category || '').trim().toLowerCase();
+        const tags = wanted
+            ? [wanted, 'portafolio', 'portfolio']
+            : ['portafolio', 'portfolio'];
+
+        try {
+            for (const tag of tags) {
+                const rows: any[] = await this.prisma.executeInTenantSchema(
+                    schema,
+                    `SELECT file_name, label, description
+                       FROM media_files
+                      WHERE $1 = ANY(tags)
+                        AND mime_type LIKE 'image/%'
+                      ORDER BY created_at DESC
+                      LIMIT ${MAX}`,
+                    [tag],
+                );
+                if (!rows?.length) continue;
+
+                const media = rows
+                    .map(r => ({
+                        url: absoluteMediaUrl(`/api/v1/media/file/${tenantId}/${r.file_name}`),
+                        caption: r.label || r.description || undefined,
+                    }))
+                    .filter(m => !!m.url);
+
+                if (!media.length) continue;
+                return {
+                    success: true,
+                    count: media.length,
+                    matchedTag: tag,
+                    // El LLM ve el conteo pero no las URLs: no tiene por qué
+                    // repetirlas en el texto, las manda el pipeline.
+                    _mediaToSend: media,
+                };
+            }
+
+            // Decir "no tengo portafolio cargado" es peor que ofrecer la salida
+            // real: alguien del equipo sí puede mandarlo.
+            return {
+                error: 'no_portfolio',
+                message: 'Todavía no hay fotos cargadas como portafolio. Ofrece coordinar con el equipo para enviarlas.',
+            };
+        } catch (e: any) {
+            this.logger.warn(`[Tool] send_portfolio failed: ${e.message}`);
+            return { error: 'No se pudo enviar el portafolio en este momento.' };
         }
     }
 

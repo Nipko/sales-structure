@@ -7,6 +7,7 @@ import { ChannelTokenService } from '../channels/channel-token.service';
 import { WhatsappConnectionService } from '../whatsapp/services/whatsapp-connection.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
+import { absoluteMediaUrl } from '../../common/utils/media-url.util';
 
 export interface InboxConversation {
     id: string;
@@ -436,14 +437,7 @@ export class AgentConsoleService {
      * document links. Prepend the public API origin for the outbound send.
      */
     private absoluteMediaUrl(url?: string): string | undefined {
-        if (!url) return url;
-        if (/^https?:\/\//i.test(url)) return url; // already absolute
-        const origin = (
-            process.env.API_PUBLIC_URL ||
-            process.env.NEXT_PUBLIC_API_URL ||
-            'https://api.parallly-chat.cloud/api/v1'
-        ).replace(/\/api\/v1\/?$/, '');
-        return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
+        return absoluteMediaUrl(url);
     }
 
     /**

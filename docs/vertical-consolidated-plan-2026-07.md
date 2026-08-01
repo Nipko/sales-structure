@@ -353,7 +353,22 @@ Auditoría de brecha sobre **todas** las fuentes (los 24 horizontales, el backlo
 | Motivo | Ítems |
 |---|---|
 | **Bloqueado por decisión del dueño** | D3 cobro al cliente final (H-22, checkout), D5 partición belleza/moda (sub-tipo `estetica`), D10 integraciones (H-18, Hostaway), D13 apuesta retail (carrito abandonado, webhooks), política de verificación de email |
-| **Esfuerzo M/L con dependencia real** | H-19 import masivo, H-21 identidad con OTP, H-23 galería por contacto, H-24 carrusel, `get_case_status` legible, producto financiero + simulador de cuota, KPIs B2B propios |
-| **Contenido, no ingeniería** | FAQs propias de finanzas / servicios profesionales / technology, servicios por sub-tipo, `send_portfolio`, directorio de técnicos |
+| **Esfuerzo M/L con dependencia real** | H-19 import masivo, H-21 identidad con OTP, H-23 galería por contacto, H-24 carrusel, producto financiero + simulador de cuota, KPIs B2B propios |
 
-**Pendiente transversal anotado, no ejecutado:** 276 rutas mutantes en 43 controllers no declaran `@Roles`. No son 276 bugs —muchas deben estar abiertas al agente— pero arreglarlas exige decidir la audiencia ruta por ruta, con el mapa de capabilities del dashboard (`roles.ts`) como especificación a portar al backend.
+### Segunda pasada — lo que se cerró después (jul 2026)
+
+**Guardas de rol: 276 → 0.** Se auditaron las 249 rutas mutantes candidatas y quedaron todas resueltas: 237 con `@Roles` aplicado (82 permisivas, cuyo riesgo es estructuralmente nulo porque un guard de tres roles no puede bloquear a nadie; 155 verificadas contra `roles.ts` y contra el llamador real del dashboard) y 12 **bajadas a propósito** por sobre-restringir. El registro completo, con el motivo de cada baja, queda en `docs/role-guards-pending.json`.
+
+Tres hallazgos de esa auditoría valen más que el conteo:
+
+- **Canales se ensanchó en vez de cerrarse.** El sidebar los gatea por `canManageChannels` (solo admin), pero `/admin/page.tsx` deja entrar al supervisor por el checklist de onboarding y las páginas no se auto-gatean. Admin-only habría roto a usuarios que hoy funcionan.
+- **Verbo mutante ≠ escritura.** `POST /knowledge/search` y `POST /knowledge/:t/feedback` son lecturas que el agente hace desde el inbox; cerrarlas habría roto la operación diaria. Quedaron abiertas.
+- **La UI iba por detrás del backend.** Tres páginas (KB, agenda, banco de medios) traían un `const { user } = useAuth()` declarado y sin usar: mostraban los controles de edición a todos. Se gatearon KB y agenda; en medios se bajó la restricción porque `roles.ts` le da esa página a los cuatro roles y no existe capability que separe ver de editar — restringir habría sido inventar una regla que la spec no tiene.
+
+**Contenido, ya no pendiente:**
+
+- **FAQs propias** de finanzas (6), servicios profesionales (5) y technology (6). Las tres se construyen con `createGenericVertical` y heredaban las genéricas, que para una financiera son incorrectas ("¿tienen política de devolución?" sobre un crédito). Las respuestas respetan las reglas del agente en lugar de contradecirlas: una FAQ sembrada entra por RAG como hecho del negocio y pesa más que el prompt.
+- **`POST verticals/:tenantId/reseed-content`**: el bootstrap corre una sola vez, así que todo contenido agregado después solo llegaba a tenants futuros. Re-siembra únicamente FAQs y servicios, que insertan con `ON CONFLICT DO NOTHING` y por lo tanto solo pueden agregar. No toca embudo, persona ni disponibilidad, cuyos seeds son de reemplazo.
+- **`send_portfolio`** (fotografía): la pregunta que cierra la venta del rubro es "¿tienen fotos de trabajos anteriores?" y el agente solo podía describirlas. Sale del banco de medios por etiqueta, tope de 4, con caída de categoría al portafolio general. El marcador `_mediaToSend` ahora acepta lista.
+- **Directorio de técnicos**: `assigned_technician_id` existía y no lo escribía nadie — el despacho pedía el nombre como texto libre. Ahora se elige de `staff_members`, con caída a texto libre si el directorio está vacío.
+- **`get_case_status`** salió del bucket bloqueado: la dependencia era "hace falta un id legible", y se disuelve igual que en servicios a domicilio — la tool no recibe parámetros y resuelve por el contacto. Devuelve el nombre de la etapa (no el slug) y una referencia corta que el cliente puede repetir por teléfono.

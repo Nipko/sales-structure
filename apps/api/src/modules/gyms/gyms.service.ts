@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizePhoneE164 } from '../../common/utils/phone.util';
 
 /**
  * Gyms / Fitness vertical service.
@@ -167,6 +168,80 @@ export class GymsService {
             [contactId],
         );
         return rows[0] || null;
+    }
+
+    /**
+     * Alta de socio desde una fila de planilla.
+     *
+     * `createMember` exige `contactId` y `planId`, que son UUIDs internos: el
+     * padrón de un gimnasio trae nombre, teléfono y "Mensual". Sin esta capa el
+     * import masivo existiría y sería inusable — el dueño no tiene forma de
+     * conocer esos ids, así que las 200 filas fallarían todas.
+     *
+     * Resuelve el contacto por teléfono normalizado (y lo crea si no está) y el
+     * plan por nombre. Después delega en `createMember`, que sigue siendo el
+     * único lugar donde se calcula el período y se siembran los créditos.
+     */
+    async createMemberFromRow(schemaName: string, row: {
+        name?: string;
+        phone?: string;
+        email?: string;
+        planName?: string;
+        memberNumber?: string;
+        joinedAt?: string;
+    }): Promise<any> {
+        const phone = String(row.phone || '').trim();
+        if (!phone) throw new BadRequestException('El teléfono es obligatorio para identificar al socio.');
+
+        const normalized = normalizePhoneE164(phone) || phone;
+
+        // Buscar por teléfono normalizado: es el único dato que un padrón trae
+        // siempre y el que después usa el canal para reconocerlo.
+        const existing = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id FROM contacts WHERE phone_normalized = $1 LIMIT 1`,
+            [normalized],
+        );
+
+        let contactId: string = existing?.[0]?.id;
+        if (!contactId) {
+            // `external_id` es NOT NULL y tiene índice único con channel_type.
+            // Se usa el teléfono normalizado: si mañana ese mismo número escribe
+            // por WhatsApp, cae sobre el contacto ya cargado en vez de crear un
+            // duplicado.
+            const created = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `INSERT INTO contacts (external_id, channel_type, name, phone, phone_normalized, email)
+                 VALUES ($1, 'whatsapp', $2, $3, $1, $4)
+                 ON CONFLICT (channel_type, external_id) DO UPDATE SET updated_at = NOW()
+                 RETURNING id`,
+                [normalized, row.name || null, phone, row.email || null],
+            );
+            contactId = created?.[0]?.id;
+        }
+        if (!contactId) throw new BadRequestException('No se pudo crear el contacto del socio.');
+
+        let planId: string | undefined;
+        if (row.planName) {
+            const plan = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id FROM membership_plans WHERE lower(name) = lower($1) LIMIT 1`,
+                [String(row.planName).trim()],
+            );
+            if (!plan?.length) {
+                // Decirlo, no ignorarlo: un socio sin plan no tiene vencimiento
+                // ni créditos, y el dueño creería que quedó bien cargado.
+                throw new BadRequestException(`No existe un plan llamado "${row.planName}".`);
+            }
+            planId = plan[0].id;
+        }
+
+        return this.createMember(schemaName, {
+            contactId,
+            planId,
+            memberNumber: row.memberNumber,
+            joinedAt: row.joinedAt,
+        });
     }
 
     async createMember(schemaName: string, data: {

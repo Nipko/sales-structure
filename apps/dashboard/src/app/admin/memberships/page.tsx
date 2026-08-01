@@ -16,8 +16,10 @@ import { cn } from "@/lib/utils";
 import {
     Dumbbell, Users, Plus, Trash2, Edit2, X, Loader2, Save, Pause, Play,
     AlertTriangle, CheckCircle, Calendar, CalendarDays, Search, Snowflake, Repeat,
+    FileSpreadsheet,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { BulkImportModal } from "@/components/BulkImportModal";
 
 interface Plan {
     id: string;
@@ -56,6 +58,7 @@ type TabId = "plans" | "members" | "classes";
 export default function MembershipsPage() {
     const t = useTranslations("memberships");
     const tc = useTranslations("common");
+    const tImport = useTranslations("bulkImport");
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
 
@@ -72,6 +75,7 @@ export default function MembershipsPage() {
     // miembros.
     const [classes, setClasses] = useState<any[]>([]);
     const [showClassForm, setShowClassForm] = useState(false);
+    const [showImport, setShowImport] = useState(false);
     // Alta de miembro. Sin esto el módulo entero era inalcanzable: book_class y
     // get_my_membership respondían "no es miembro" al 100% de los clientes
     // porque no existía ninguna forma de crear el primero.
@@ -159,6 +163,16 @@ export default function MembershipsPage() {
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
                 </div>
+                {/* El día 1 de un gimnasio con padrón de 200: cargarlos de a uno
+                    es el punto de abandono. Solo en la pestaña de socios. */}
+                {tab === "members" && (
+                    <button
+                        onClick={() => setShowImport(true)}
+                        className="inline-flex items-center gap-2 px-3 py-2 border border-border hover:bg-muted rounded-lg text-sm font-medium"
+                    >
+                        <FileSpreadsheet className="h-4 w-4" /> {tImport("pickFile")}
+                    </button>
+                )}
                 {tab === "plans" && (
                     <button
                         onClick={() => setShowPlanForm("new")}
@@ -524,6 +538,25 @@ export default function MembershipsPage() {
                     </div>
                 </div>
             )}
+
+            <BulkImportModal
+                open={showImport}
+                onClose={() => setShowImport(false)}
+                endpoint={`/gyms/${activeTenantId}/members/bulk-import`}
+                title={t("title")}
+                onImported={load}
+                fields={[
+                    // Un padron real trae nombre, telefono y el plan por NOMBRE.
+                    // El backend resuelve el contacto y el plan; sin eso el import
+                    // pediria UUIDs que el dueño no tiene.
+                    { key: 'name', label: tImport('f_name'), aliases: ['nombre', 'socio', 'apellido y nombre'] },
+                    { key: 'phone', label: tImport('f_phone'), required: true, aliases: ['telefono', 'celular', 'movil', 'whatsapp'] },
+                    { key: 'email', label: tImport('f_email'), aliases: ['correo', 'mail'] },
+                    { key: 'planName', label: tImport('f_plan'), aliases: ['plan', 'membresia', 'membresía'] },
+                    { key: 'memberNumber', label: tImport('f_memberNumber'), aliases: ['numero', 'n socio', 'legajo'] },
+                    { key: 'joinedAt', label: tImport('f_joinedAt'), aliases: ['ingreso', 'fecha de ingreso', 'alta'] },
+                ]}
+            />
         </div>
     );
 }
@@ -864,5 +897,6 @@ function ClassFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (c
                 </div>
             </div>
         </div>
+
     );
 }

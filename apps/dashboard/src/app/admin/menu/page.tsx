@@ -17,8 +17,10 @@ import {
     UtensilsCrossed, Plus, Trash2, Edit2, X, Loader2, Save,
     AlertTriangle, CheckCircle, FolderTree, ChevronDown, ChevronRight,
     Tag, Wheat, Sparkles, BadgeAlert,
+    FileSpreadsheet,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { BulkImportModal } from "@/components/BulkImportModal";
 
 interface Category {
     id: string;
@@ -53,6 +55,7 @@ export default function MenuPage() {
     const t = useTranslations("menu");
     const tHelp = useTranslations("help");
     const tc = useTranslations("common");
+    const tImport = useTranslations("bulkImport");
     const { activeTenantId } = useTenant();
 
     const [categories, setCategories] = useState<Category[]>([]);
@@ -64,6 +67,7 @@ export default function MenuPage() {
     const [showItemForm, setShowItemForm] = useState<MenuItem | "new" | null>(null);
     const [showCategoryForm, setShowCategoryForm] = useState(false);
     const [showPromotions, setShowPromotions] = useState(false);
+    const [showImport, setShowImport] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState("");
     const [toast, setToast] = useState<string | null>(null);
     const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
@@ -158,6 +162,12 @@ export default function MenuPage() {
                         className="inline-flex items-center gap-2 px-3 py-2 border border-border hover:bg-muted rounded-lg text-sm font-medium transition"
                     >
                         <Tag className="h-4 w-4" /> {t("promotions")}
+                    </button>
+                    <button
+                        onClick={() => setShowImport(true)}
+                        className="inline-flex items-center gap-2 px-3 py-2 border border-border hover:bg-muted rounded-lg text-sm font-medium transition"
+                    >
+                        <FileSpreadsheet className="h-4 w-4" /> {tImport("pickFile")}
                     </button>
                     <button
                         onClick={() => setShowItemForm("new")}
@@ -366,6 +376,19 @@ export default function MenuPage() {
                     {toast}
                 </div>
             )}
+
+            <BulkImportModal
+                open={showImport}
+                onClose={() => setShowImport(false)}
+                endpoint={`/restaurants/${activeTenantId}/items/bulk-import`}
+                title={t("title")}
+                onImported={load}
+                fields={[
+                    { key: 'name', label: tImport('f_name'), required: true, aliases: ['nombre', 'plato', 'producto', 'item'] },
+                    { key: 'price', label: tImport('f_price'), type: 'number', required: true, aliases: ['precio', 'valor'] },
+                    { key: 'description', label: tImport('f_description'), aliases: ['descripcion', 'detalle'] },
+                ]}
+            />
         </div>
     );
 }
@@ -711,5 +734,6 @@ function PromotionsModal({ onClose }: { onClose: () => void }) {
                 </div>
             </div>
         </div>
+
     );
 }

@@ -7,8 +7,10 @@ import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/ui/page-header";
 import {
     Car, Plus, X, Gauge, Fuel, Pencil, BadgeDollarSign, CalendarClock, Star,
+    FileSpreadsheet,
 } from "lucide-react";
 import { SkeletonCards, SkeletonTable } from "@/components/ui/skeleton-loader";
+import { BulkImportModal } from "@/components/BulkImportModal";
 
 const VEHICLES_API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 function resolveMediaUrl(url: string): string {
@@ -107,6 +109,7 @@ export default function VehiclesPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("vehicles");
     const tc = useTranslations("common");
+    const tImport = useTranslations("bulkImport");
 
     const [tab, setTab] = useState<"inventory" | "testDrives">("inventory");
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -118,6 +121,7 @@ export default function VehiclesPage() {
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<"all" | "available" | "reserved" | "sold">("all");
     const [showCreate, setShowCreate] = useState(false);
+    const [showImport, setShowImport] = useState(false);
     const [editVehicle, setEditVehicle] = useState<Vehicle | null>(null);
     const [sellVehicle, setSellVehicle] = useState<Vehicle | null>(null);
     const [toast, setToast] = useState<string | null>(null);
@@ -181,12 +185,22 @@ export default function VehiclesPage() {
                 subtitle={t("subtitle")}
                 icon={Car}
                 action={
-                    <button
-                        onClick={() => setShowCreate(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
-                    >
-                        <Plus size={16} /> {t("createVehicle")}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {/* En usados el inventario rota entero cada pocas semanas:
+                            cargarlo de a un auto es el punto de abandono. */}
+                        <button
+                            onClick={() => setShowImport(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
+                        >
+                            <FileSpreadsheet size={16} /> {tImport("pickFile")}
+                        </button>
+                        <button
+                            onClick={() => setShowCreate(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
+                        >
+                            <Plus size={16} /> {t("createVehicle")}
+                        </button>
+                    </div>
                 }
             />
 
@@ -428,6 +442,28 @@ export default function VehiclesPage() {
                     {toast}
                 </div>
             )}
+
+            <BulkImportModal
+                open={showImport}
+                onClose={() => setShowImport(false)}
+                endpoint={`/vehicles/${activeTenantId}/bulk-import`}
+                title={t("title")}
+                onImported={load}
+                fields={[
+                    { key: "make", label: tImport("f_make"), required: true, aliases: ["marca"] },
+                    { key: "model", label: tImport("f_model"), required: true, aliases: ["modelo", "linea"] },
+                    { key: "year", label: tImport("f_year"), type: "number", required: true, aliases: ["año", "ano", "modelo año"] },
+                    // El REST recibe CENTAVOS. La planilla trae pesos, asi que
+                    // el import los multiplica: sin esto un auto de 45.000.000
+                    // entraria como 450.000 y el agente lo ofreceria a ese precio.
+                    { key: "priceCents", label: tImport("f_price"), type: "number", required: true, aliases: ["precio", "valor", "precio de venta"] },
+                    { key: "mileageKm", label: tImport("f_mileage"), type: "number", aliases: ["kilometraje", "km", "kilometros"] },
+                    { key: "condition", label: tImport("f_condition"), aliases: ["estado", "condicion", "nuevo o usado"] },
+                    { key: "licensePlate", label: tImport("f_plate"), aliases: ["placa", "patente", "dominio"] },
+                    { key: "category", label: tImport("f_category"), aliases: ["categoria", "tipo", "carroceria"] },
+                ]}
+                transform={row => ({ ...row, priceCents: typeof row.priceCents === "number" ? Math.round(row.priceCents * 100) : row.priceCents })}
+            />
         </div>
     );
 }

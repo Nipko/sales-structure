@@ -16,8 +16,10 @@ import { cn } from "@/lib/utils";
 import {
     GraduationCap, Plus, Edit2, Trash2, X, Loader2, Save, Calendar,
     Users, BookOpen, AlertTriangle, CheckCircle, AlertCircle,
+    FileSpreadsheet,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { BulkImportModal } from "@/components/BulkImportModal";
 
 interface Course {
     id: string;
@@ -81,6 +83,7 @@ export default function CoursesPage() {
     const t = useTranslations("courses");
     const tHelp = useTranslations("help");
     const tc = useTranslations("common");
+    const tImport = useTranslations("bulkImport");
     const { activeTenantId } = useTenant();
 
     const [tab, setTab] = useState<TabId>("courses");
@@ -90,6 +93,7 @@ export default function CoursesPage() {
     const [loading, setLoading] = useState(true);
     const [showCourseForm, setShowCourseForm] = useState<Course | "new" | null>(null);
     const [showCohortForm, setShowCohortForm] = useState<Course | null>(null);
+    const [showImport, setShowImport] = useState(false);
     // La pestaña de inscripciones era de solo lectura: el alumno se inscribia por
     // chat con payment_status='pending' y el dueño no tenia con que registrar el
     // pago, ni dar de baja, ni inscribir a quien llamo por telefono.
@@ -146,11 +150,19 @@ export default function CoursesPage() {
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
                 </div>
-                {tab === "courses" && (
+                {tab === "courses" && (<>
+                    {/* Un instituto con 40 cursos los carga de una planilla, no
+                        de a uno en un formulario. */}
+                    <button
+                        onClick={() => setShowImport(true)}
+                        className="inline-flex items-center gap-2 px-3 py-2 border border-border hover:bg-muted rounded-lg text-sm font-medium"
+                    >
+                        <FileSpreadsheet className="h-4 w-4" /> {tImport("pickFile")}
+                    </button>
                     <button onClick={() => setShowCourseForm("new")} className="inline-flex items-center gap-2 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-medium">
                         <Plus className="h-4 w-4" /> {t("addCourse")}
                     </button>
-                )}
+                </>)}
                 {tab === "enrollments" && (
                     <button onClick={() => setShowEnrollForm("new")} className="inline-flex items-center gap-2 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-medium">
                         <Plus className="h-4 w-4" /> {t("addEnrollment")}
@@ -386,6 +398,23 @@ export default function CoursesPage() {
                     {toast}
                 </div>
             )}
+
+            <BulkImportModal
+                open={showImport}
+                onClose={() => setShowImport(false)}
+                endpoint={`/education/${activeTenantId}/courses/bulk-import`}
+                title={t("title")}
+                onImported={load}
+                fields={[
+                    { key: 'name', label: tImport('f_name'), required: true, aliases: ['nombre', 'curso', 'titulo'] },
+                    { key: 'description', label: tImport('f_description'), aliases: ['descripcion', 'detalle'] },
+                    { key: 'price', label: tImport('f_price'), type: 'number', aliases: ['precio', 'valor', 'costo'] },
+                    { key: 'durationHours', label: tImport('f_hours'), type: 'number', aliases: ['horas', 'duracion', 'intensidad'] },
+                    { key: 'level', label: tImport('f_level'), aliases: ['nivel'] },
+                    { key: 'modality', label: tImport('f_modality'), aliases: ['modalidad', 'virtual o presencial'] },
+                    { key: 'subject', label: tImport('f_subject'), aliases: ['area', 'materia', 'tema'] },
+                ]}
+            />
         </div>
     );
 }
@@ -550,6 +579,7 @@ function CohortFormModal({ course, onClose, onSaved, onError }: { course: Course
                 </div>
             </div>
         </div>
+
     );
 }
 

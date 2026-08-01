@@ -185,7 +185,7 @@ export class GymsController {
     @ApiOperation({ summary: "Bulk-import gym members from a parsed CSV/XLSX" })
     async bulkImportMembers(@Param('tenantId') tenantId: string, @Body() body: { rows?: any[] }) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await bulkImportRows(body?.rows, row => this.service.createMember(schemaName, row));
+        const data = await bulkImportRows(body?.rows, row => this.service.createMemberFromRow(schemaName, row));
         return { success: true, data };
     }
 }

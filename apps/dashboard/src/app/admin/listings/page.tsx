@@ -7,8 +7,9 @@ import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/ui/page-header";
 import Link from "next/link";
 import {
-    Building2, Plus, MapPin, BedDouble, Bath, Square, X, Tag,
+    Building2, Plus, MapPin, BedDouble, Bath, Square, X, Tag, FileSpreadsheet,
 } from "lucide-react";
+import { BulkImportModal } from "@/components/BulkImportModal";
 import { SkeletonCards } from "@/components/ui/skeleton-loader";
 import { HelpPanel } from "@/components/ui/help-panel";
 
@@ -52,11 +53,13 @@ export default function ListingsPage() {
     const t = useTranslations("listings");
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
+    const tImport = useTranslations("bulkImport");
 
     const [listings, setListings] = useState<Listing[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
     const [showZones, setShowZones] = useState(false);
+    const [showImport, setShowImport] = useState(false);
     const [filter, setFilter] = useState<"all" | "sale" | "rent">("all");
 
     useEffect(() => {
@@ -96,6 +99,14 @@ export default function ListingsPage() {
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
                         >
                             <MapPin size={16} /> {t("zonesTitle")}
+                        </button>
+                        {/* Cargar 40 propiedades de a una es el punto de abandono
+                            documentado del alta de una inmobiliaria. */}
+                        <button
+                            onClick={() => setShowImport(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
+                        >
+                            <FileSpreadsheet size={16} /> {tImport("pickFile")}
                         </button>
                         <button
                             onClick={() => setShowCreate(true)}
@@ -203,6 +214,26 @@ export default function ListingsPage() {
                 </div>
             )}
 
+            <BulkImportModal
+                open={showImport}
+                onClose={() => setShowImport(false)}
+                endpoint={`/listings/${activeTenantId}/bulk-import`}
+                title={t("title")}
+                onImported={load}
+                fields={[
+                    // Los alias son los encabezados que de verdad trae la
+                    // planilla de una inmobiliaria, no los del sistema.
+                    { key: "name", label: t("name"), required: true, aliases: ["nombre", "titulo", "inmueble", "propiedad"] },
+                    { key: "transactionType", label: t("transactionType"), required: true, aliases: ["operacion", "tipo de operacion", "venta o arriendo"] },
+                    { key: "propertyKind", label: t("propertyKind"), aliases: ["tipo", "tipo de inmueble"] },
+                    { key: "price", label: t("price"), type: "number", aliases: ["precio", "valor", "precio de venta"] },
+                    { key: "bedrooms", label: t("bedrooms"), type: "number", aliases: ["habitaciones", "alcobas", "cuartos", "dormitorios"] },
+                    { key: "bathrooms", label: t("bathrooms"), type: "number", aliases: ["baños", "banos"] },
+                    { key: "areaM2", label: t("areaM2"), type: "number", aliases: ["area", "metros", "m2", "metros cuadrados"] },
+                    { key: "neighborhood", label: t("neighborhood"), aliases: ["barrio", "zona", "sector"] },
+                    { key: "city", label: t("city"), aliases: ["ciudad", "municipio"] },
+                ]}
+            />
             {showCreate && (
                 <CreateListingModal
                     tenantId={activeTenantId!}

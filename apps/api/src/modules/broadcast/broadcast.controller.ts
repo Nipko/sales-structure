@@ -11,6 +11,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { BroadcastService, CreateCampaignDto } from './broadcast.service';
@@ -33,6 +34,7 @@ export class BroadcastController {
     ) {}
 
     @Post('campaigns')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a new broadcast campaign' })
     async createCampaign(
         @CurrentTenant() tenantId: string,
@@ -69,6 +71,7 @@ export class BroadcastController {
     }
 
     @Post('campaigns/:id/launch')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Launch a campaign — queues all recipients for sending' })
     async launchCampaign(
         @CurrentTenant() tenantId: string,
@@ -107,6 +110,7 @@ export class BroadcastController {
     }
 
     @Post('campaigns/:id/winner')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Manually select A/B test winner' })
     async selectAbWinner(
         @CurrentTenant() tenantId: string,

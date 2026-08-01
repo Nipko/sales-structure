@@ -4,6 +4,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { CarlaService } from './carla.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @ApiTags('carla')
@@ -30,12 +31,14 @@ export class CarlaController {
     }
 
     @Post('profiles/:tenantId')
+    @Roles('super_admin')
     @ApiOperation({ summary: 'Create a personality profile' })
     async createProfile(@Param('tenantId') tenantId: string, @Body() payload: any) {
         return this.carlaService.createProfile(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
     }
 
     @Put('profiles/:tenantId/:id')
+    @Roles('super_admin')
     @ApiOperation({ summary: 'Update a personality profile' })
     async updateProfile(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() payload: any) {
         return this.carlaService.updateProfile(await this.schemaFor(tenantId), id, payload);
@@ -50,12 +53,14 @@ export class CarlaController {
     }
 
     @Post('prompts/:tenantId')
+    @Roles('super_admin')
     @ApiOperation({ summary: 'Create a prompt template' })
     async createPrompt(@Param('tenantId') tenantId: string, @Body() payload: any) {
         return this.carlaService.createPromptTemplate(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
     }
 
     @Put('prompts/:tenantId/:id')
+    @Roles('super_admin')
     @ApiOperation({ summary: 'Update a prompt template' })
     async updatePrompt(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() payload: any) {
         return this.carlaService.updatePromptTemplate(await this.schemaFor(tenantId), id, payload);

@@ -5,6 +5,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { ListingsService } from './listings.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -37,6 +38,7 @@ export class ListingsController {
     }
 
     @Post(':tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a real-estate listing' })
     async create(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
@@ -74,6 +76,7 @@ export class ListingsController {
     }
 
     @Put(':tenantId/listings/:listingId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update a listing' })
     async update(
         @Param('tenantId') tenantId: string,
@@ -86,6 +89,7 @@ export class ListingsController {
     }
 
     @Delete(':tenantId/listings/:listingId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Soft-delete a listing' })
     async delete(@Param('tenantId') tenantId: string, @Param('listingId') listingId: string) {
@@ -105,6 +109,7 @@ export class ListingsController {
     }
 
     @Post(':tenantId/zones')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Set agent for a zone' })
     async setZone(
         @Param('tenantId') tenantId: string,
@@ -116,6 +121,7 @@ export class ListingsController {
     }
 
     @Delete(':tenantId/zones/:mappingId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Remove a zone → agent mapping' })
     async removeZone(@Param('tenantId') tenantId: string, @Param('mappingId') mappingId: string) {

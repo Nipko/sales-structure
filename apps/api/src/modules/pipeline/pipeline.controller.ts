@@ -32,11 +32,13 @@ export class PipelineController {
     }
 
     @Put('auto-progress/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async setAutoProgress(@Param('tenantId') tenantId: string, @Body() body: { enabled: boolean }) {
         return { success: true, data: await this.pipelineService.setAutoProgressEnabled(tenantId, !!body?.enabled) };
     }
 
     @Post('resync/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async resyncDeals(@Param('tenantId') tenantId: string) {
         return { success: true, data: await this.pipelineService.resyncDeals(tenantId) };
     }
@@ -50,6 +52,7 @@ export class PipelineController {
     }
 
     @Post('stages/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createStage(
         @Param('tenantId') tenantId: string,
         @Body() body: {
@@ -145,6 +148,7 @@ export class PipelineController {
     }
 
     @Post('automation/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createRule(
         @Param('tenantId') tenantId: string,
         @Body() body: {
@@ -157,6 +161,7 @@ export class PipelineController {
     }
 
     @Put('automation/:tenantId/:ruleId/toggle')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async toggleRule(
         @Param('tenantId') tenantId: string,
         @Param('ruleId') ruleId: string,
@@ -167,6 +172,7 @@ export class PipelineController {
     }
 
     @Delete('automation/:tenantId/:ruleId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async deleteRule(
         @Param('tenantId') tenantId: string,
         @Param('ruleId') ruleId: string,

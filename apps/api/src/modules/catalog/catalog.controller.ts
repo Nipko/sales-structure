@@ -4,6 +4,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { CatalogService } from './catalog.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @ApiTags('catalog')
@@ -36,12 +37,14 @@ export class CatalogController {
     }
 
     @Post('courses/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a new course' })
     async createCourse(@Param('tenantId') tenantId: string, @Body() payload: any) {
         return this.catalogService.createCourse(await this.schemaFor(tenantId), payload);
     }
 
     @Put('courses/:tenantId/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update a course' })
     async updateCourse(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() payload: any) {
         return this.catalogService.updateCourse(await this.schemaFor(tenantId), id, payload);
@@ -62,12 +65,14 @@ export class CatalogController {
     }
 
     @Post('campaigns/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a new campaign' })
     async createCampaign(@Param('tenantId') tenantId: string, @Body() payload: any) {
         return this.catalogService.createCampaign(await this.schemaFor(tenantId), payload);
     }
 
     @Put('campaigns/:tenantId/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update a campaign' })
     async updateCampaign(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() payload: any) {
         return this.catalogService.updateCampaign(await this.schemaFor(tenantId), id, payload);
@@ -82,6 +87,7 @@ export class CatalogController {
     }
 
     @Post('offers/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a commercial offer' })
     async createOffer(@Param('tenantId') tenantId: string, @Body() payload: any) {
         return this.catalogService.createOffer(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });

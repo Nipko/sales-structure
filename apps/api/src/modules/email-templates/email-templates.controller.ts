@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Http
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { EmailTemplatesService } from './email-templates.service';
@@ -38,6 +39,7 @@ export class EmailTemplatesController {
     }
 
     @Post(':tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a new email template' })
     async create(
         @Param('tenantId') tenantId: string,
@@ -54,6 +56,7 @@ export class EmailTemplatesController {
     }
 
     @Put(':tenantId/:templateId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update an email template' })
     async update(
         @Param('tenantId') tenantId: string,
@@ -66,6 +69,7 @@ export class EmailTemplatesController {
     }
 
     @Delete(':tenantId/:templateId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Delete an email template' })
     async delete(
@@ -78,6 +82,7 @@ export class EmailTemplatesController {
     }
 
     @Post(':tenantId/:templateId/test')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Send a test email with sample data' })
     async sendTest(
         @Param('tenantId') tenantId: string,

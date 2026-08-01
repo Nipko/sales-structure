@@ -53,6 +53,7 @@ export class AutomationController {
     }
 
     @Post('rules/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a new automation rule' })
     async createRule(
         @Param('tenantId') tenantId: string,
@@ -73,6 +74,7 @@ export class AutomationController {
     }
 
     @Put('rules/:tenantId/:ruleId/toggle')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Toggle active state for an automation rule' })
     async toggleRule(
         @Param('tenantId') tenantId: string,
@@ -85,6 +87,7 @@ export class AutomationController {
     }
 
     @Put('rules/:tenantId/:ruleId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update an automation rule' })
     async updateRule(
         @Param('tenantId') tenantId: string,
@@ -109,6 +112,7 @@ export class AutomationController {
     }
 
     @Delete('rules/:tenantId/:ruleId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Delete an automation rule' })
     async deleteRule(
         @Param('tenantId') tenantId: string,

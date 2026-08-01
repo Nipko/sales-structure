@@ -333,7 +333,12 @@ export class AIToolExecutorService {
                 case 'list_photo_packages':
                     return this.listConfiguredServicesTool(schemaName);
 
+                // Dos verticales distintas: la guardería reserva un RANGO contra
+                // la capacidad del servicio; el estudio de fotos reserva un DÍA
+                // entero. Compartían handler y por eso ninguna funcionaba bien.
                 case 'check_daycare_availability':
+                    return this.checkDaycareAvailabilityTool(schemaName, args);
+
                 case 'check_date_availability':
                     return this.checkDateAvailabilityTool(schemaName, args);
 
@@ -2998,30 +3003,160 @@ export class AIToolExecutorService {
     }
 
     /**
-     * Date availability check — reuses the appointments engine. For
-     * pet daycare/boarding: looks for blocked dates. For photography:
-     * checks if any appointment already overlaps the requested date.
+     * Guardería / hotel de mascotas: ¿hay lugar del check-in al check-out?
+     *
+     * Antes esto y `check_date_availability` (fotografía) compartían UN handler
+     * que ignoraba casi todo lo que su propio schema promete: tomaba
+     * `date || checkIn`, descartaba `checkOut` y `petSize`, no miraba
+     * `blocked_dates` pese al comentario que decía que sí, y decidía con
+     * `taken < 5` — una constante escrita en el código, sin ninguna relación
+     * con la capacidad que valida `create_appointment` al reservar.
+     *
+     * Las dos consecuencias eran visibles para el cliente: preguntaba por una
+     * estadía del 12 al 18 y el bot respondía mirando sólo el 12; y el bot
+     * afirmaba que había lugar y en el mismo turno la reserva fallaba, porque
+     * cada uno contaba distinto.
+     *
+     * Ahora la capacidad sale de la MISMA fuente que la reserva
+     * (`services.max_concurrent`) y se evalúa día por día en todo el rango.
+     */
+    private async checkDaycareAvailabilityTool(schemaName: string, args: any): Promise<any> {
+        try {
+            const checkIn = args.checkIn || args.date;
+            if (!checkIn) return { error: 'checkIn is required' };
+            // Estadía de un día si no dan salida. El rango es inclusivo del
+            // check-in y exclusivo del check-out: la noche que se va no ocupa.
+            const checkOut = args.checkOut || checkIn;
+
+            const start = new Date(`${checkIn}T00:00:00Z`);
+            const end = new Date(`${checkOut}T00:00:00Z`);
+            if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
+                return { error: 'Invalid date range: checkOut must be on or after checkIn.' };
+            }
+            const nights = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000));
+            if (nights > 60) return { error: 'Stay is too long to quote automatically — offer to connect with the team.' };
+
+            // Capacidad real del servicio de alojamiento. Se resuelve por
+            // categoría porque es lo que el bootstrap siembra (guarderia/hotel).
+            const svcRows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT id, name, COALESCE(max_concurrent, 1) AS max_concurrent
+                 FROM services
+                 WHERE is_active = true AND category IN ('guarderia', 'hotel')
+                 ORDER BY max_concurrent DESC LIMIT 1`,
+            ).catch(() => [] as any[]);
+            const capacity = Number(svcRows[0]?.max_concurrent || 0);
+            if (!capacity) {
+                return {
+                    available: false,
+                    message: 'This business has no daycare/boarding service configured yet. Do NOT promise availability — offer to connect the customer with the team.',
+                };
+            }
+            const serviceIds = svcRows.map(s => s.id);
+
+            const days: string[] = [];
+            for (let i = 0; i < nights; i++) {
+                const d = new Date(start);
+                d.setUTCDate(d.getUTCDate() + i);
+                days.push(d.toISOString().slice(0, 10));
+            }
+
+            // Días que el dueño bloqueó en el panel (user_id NULL = todo cerrado).
+            const blocked = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT DISTINCT blocked_date::text AS d FROM blocked_dates
+                 WHERE blocked_date = ANY($1::date[]) AND user_id IS NULL`,
+                [days],
+            ).catch(() => [] as any[]);
+            const blockedSet = new Set(blocked.map(b => b.d));
+
+            // Ocupación por día, contando SOLO el servicio de alojamiento.
+            const occupied = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT start_at::date::text AS d, COUNT(*)::int AS cnt
+                 FROM appointments
+                 WHERE status IN ('confirmed', 'pending')
+                   AND start_at::date = ANY($1::date[])
+                   AND service_id = ANY($2::uuid[])
+                 GROUP BY 1`,
+                [days, serviceIds],
+            ).catch(() => [] as any[]);
+            const byDay = new Map(occupied.map(o => [o.d, Number(o.cnt)]));
+
+            const full = days.filter(d => blockedSet.has(d) || (byDay.get(d) || 0) >= capacity);
+            const available = full.length === 0;
+
+            return {
+                checkIn,
+                checkOut,
+                nights,
+                capacity,
+                unavailableDates: full,
+                available,
+                // petSize se recibe y NO se usa para decidir: la capacidad del
+                // schema no distingue tamaños. Decirlo evita que el modelo
+                // invente una respuesta sobre el perro grande.
+                petSizeConsidered: false,
+                message: available
+                    ? `Space available for all ${nights} night(s).`
+                    : `No space on: ${full.join(', ')}. Offer other dates. If the customer asks about pet size or special needs, say the team confirms that directly — you cannot check it.`,
+            };
+        } catch (e: any) {
+            return { error: e.message };
+        }
+    }
+
+    /**
+     * Fotografía: ¿está libre esa fecha?
+     *
+     * Contaba sólo `appointments` y nunca miraba `photo_sessions` — la tabla
+     * donde escribe `request_photo_quote`. Los dos caminos de reserva del rubro
+     * no se veían entre sí, así que el bot podía confirmar un sábado que ya
+     * tenía una boda tomada. La propia regla del agente dice que el doble
+     * booking es catastrófico, y el producto lo permitía.
      */
     private async checkDateAvailabilityTool(schemaName: string, args: any): Promise<any> {
         try {
             const date = args.date || args.checkIn;
             if (!date) return { error: 'date is required' };
-            const blockedRows = await this.prisma.executeInTenantSchema<any[]>(
+
+            const blocked = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT COUNT(*)::int as cnt FROM appointments
-                 WHERE DATE(start_at) = $1::date AND status IN ('confirmed', 'pending')`,
+                `SELECT 1 FROM blocked_dates WHERE blocked_date = $1::date AND user_id IS NULL LIMIT 1`,
                 [date],
-            ).catch(() => [{ cnt: 0 }]);
-            const taken = Number(blockedRows[0]?.cnt || 0);
+            ).catch(() => [] as any[]);
+            if (blocked.length) {
+                return { date, available: false, message: 'That date is blocked by the studio. Offer another one.' };
+            }
+
+            const [appts, sessions] = await Promise.all([
+                this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT COUNT(*)::int AS cnt FROM appointments
+                     WHERE start_at::date = $1::date AND status IN ('confirmed', 'pending')`,
+                    [date],
+                ).catch(() => [{ cnt: 0 }]),
+                this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT COUNT(*)::int AS cnt FROM photo_sessions
+                     WHERE scheduled_at::date = $1::date AND status IN ('scheduled', 'in_progress')`,
+                    [date],
+                ).catch(() => [{ cnt: 0 }]),
+            ]);
+
+            const taken = Number(appts[0]?.cnt || 0) + Number(sessions[0]?.cnt || 0);
+            // Una sesión de fotos ocupa al fotógrafo el día entero: una sola
+            // basta para bloquear la fecha. El umbral de 5 que había era una
+            // constante sin relación con el negocio.
+            const available = taken === 0;
+
             return {
                 date,
                 taken,
-                available: taken < 5,  // simple capacity heuristic — tenant can override via blocked_dates
-                message: taken === 0
-                    ? 'Date fully available.'
-                    : taken < 5
-                        ? `${taken} bookings exist but there is still availability.`
-                        : 'Date has high occupancy, suggest an alternative.',
+                available,
+                message: available
+                    ? 'Date is free.'
+                    : `The studio already has ${taken} booking(s) that day. Do NOT confirm it — offer nearby dates.`,
             };
         } catch (e: any) {
             return { error: e.message };

@@ -58,7 +58,7 @@ export const LISTINGS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'send_listing_image',
-        description: 'Send the customer a real photo of a specific listing. Use when showing/recommending a property would benefit from a visual. Only call with a listingId you got from search_listings.',
+        description: 'Send the customer real photos of a specific listing (up to 3). Use when showing/recommending a property would benefit from a visual — a buyer decides on the facade AND the kitchen, not one thumbnail. Only call with a listingId you got from search_listings. The images are sent for you: do not paste links or describe them in your reply.',
         parameters: {
             type: 'object',
             properties: {

@@ -89,7 +89,7 @@ export const VACATION_RENTAL_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'send_property_image',
-        description: 'Send the guest a real photo of a specific property. Use when showing/recommending a property would benefit from a visual (e.g. the guest asks to see it). Only call with a propertyId you got from list_properties.',
+        description: 'Send the guest real photos of a specific property (up to 3). Use when showing/recommending a property would benefit from a visual (e.g. the guest asks to see it). Only call with a propertyId you got from list_properties. The images are sent for you: do not paste links or describe them in your reply.',
         parameters: {
             type: 'object',
             properties: {

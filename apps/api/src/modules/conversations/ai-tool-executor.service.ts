@@ -473,13 +473,13 @@ export class AIToolExecutorService {
     private async sendProductImage(schema: string, productIdOrName: string): Promise<any> {
         const product = await this.getProduct(schema, productIdOrName);
         if (product?.error) return { error: product.error };
-        const url = Array.isArray(product.images) && product.images.length ? product.images[0] : null;
-        if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+        const media = this.toMediaSet(product.images, product.name || undefined);
+        if (!media.length) {
             return { error: 'Ese producto no tiene una imagen disponible.' };
         }
         // `_mediaToSend` is consumed by ConversationsService (which has the channel
         // routing) and stripped before the result reaches the LLM.
-        return { success: true, productName: product.name, _mediaToSend: { url, caption: product.name || undefined } };
+        return { success: true, productName: product.name, count: media.length, _mediaToSend: media };
     }
 
     /** Send a vacation-rental property's real photo (URL from the DB, never the LLM). */
@@ -487,11 +487,11 @@ export class AIToolExecutorService {
         try {
             const p = await this.propertiesService.getById(schema, propertyId);
             if (!p) return { error: 'Property not found' };
-            const url = Array.isArray(p.images) && p.images.length ? p.images[0] : null;
-            if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+            const media = this.toMediaSet(p.images, p.name || undefined);
+            if (!media.length) {
                 return { error: 'Esa propiedad no tiene una imagen disponible.' };
             }
-            return { success: true, propertyName: p.name, _mediaToSend: { url, caption: p.name || undefined } };
+            return { success: true, propertyName: p.name, count: media.length, _mediaToSend: media };
         } catch (e: any) {
             this.logger.warn(`[Tool] send_property_image failed: ${e.message}`);
             return { error: 'No se pudo enviar la imagen de la propiedad.' };
@@ -566,16 +566,38 @@ export class AIToolExecutorService {
         }
     }
 
-    /** Send a real-estate listing's real photo (URL from the DB, never the LLM). */
+
+    /**
+     * De la lista cruda de imagenes de una entidad a hasta N medias validas.
+     *
+     * Mandar UNA sola foto de un inmueble, un auto o un alojamiento es la
+     * diferencia entre mostrar el producto y mostrar una miniatura: el cliente
+     * decide con la fachada Y la cocina Y el baño. Ahora que el pipeline acepta
+     * lista (send_portfolio), estas tres tools pueden mandar el carrusel.
+     *
+     * El tope es 3 y no mas: en WhatsApp cada imagen es un mensaje aparte, y
+     * seis notificaciones seguidas se leen como spam, no como catalogo.
+     */
+    private toMediaSet(images: unknown, caption?: string, max = 3): Array<{ url: string; caption?: string }> {
+        if (!Array.isArray(images)) return [];
+        return images
+            .filter((u): u is string => typeof u === 'string' && /^https?:\/\//i.test(u))
+            .slice(0, max)
+            // Solo la primera lleva epígrafe: repetir el nombre en cada foto
+            // llena la pantalla del cliente con el mismo texto tres veces.
+            .map((url, i) => ({ url, caption: i === 0 ? caption : undefined }));
+    }
+
+    /** Send a real-estate listing's real photos (URLs from the DB, never the LLM). */
     private async sendListingImage(schema: string, listingId: string): Promise<any> {
         try {
             const l = await this.listingsService.getById(schema, listingId);
             if (!l) return { error: 'listing_not_found' };
-            const url = Array.isArray(l.images) && l.images.length ? l.images[0] : null;
-            if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+            const media = this.toMediaSet(l.images, l.name || undefined);
+            if (!media.length) {
                 return { error: 'Ese inmueble no tiene una imagen disponible.' };
             }
-            return { success: true, listingName: l.name, _mediaToSend: { url, caption: l.name || undefined } };
+            return { success: true, listingName: l.name, count: media.length, _mediaToSend: media };
         } catch (e: any) {
             this.logger.warn(`[Tool] send_listing_image failed: ${e.message}`);
             return { error: 'No se pudo enviar la imagen del inmueble.' };

@@ -42,7 +42,7 @@ export const CATALOG_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'send_product_image',
-        description: 'Send the customer a photo of a specific product (the real catalog image). Use when showing/recommending a product would benefit from a visual — e.g. after the customer asks to see it or expresses interest. Only call with a product you got from search_products/get_product.',
+        description: 'Send the customer real photos of a specific product (up to 3 from the catalog). Use when showing/recommending a product would benefit from a visual — e.g. after the customer asks to see it or expresses interest. Only call with a product you got from search_products/get_product. The images are sent for you: do not paste links or describe them in your reply.',
         parameters: {
             type: 'object',
             properties: {

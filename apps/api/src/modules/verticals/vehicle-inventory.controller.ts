@@ -8,6 +8,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { VehicleInventoryService } from './vehicle-inventory.service';
+import { bulkImportRows } from '../../common/utils/bulk-import.util';
 
 @ApiTags('vehicles')
 @Controller('vehicles')
@@ -66,6 +67,29 @@ export class VehicleInventoryController {
     ) {
         const vehicle = await this.vehicleService.createVehicle(tenantId, schema, body);
         return { success: true, data: vehicle };
+    }
+
+    /**
+     * Import masivo. En autos usados el inventario rota entero cada pocas
+     * semanas: cargarlo de a un vehículo es el punto de abandono del alta.
+     * Reusa `createVehicle` fila por fila, así que la validación es la misma
+     * que por la UI.
+     *
+     * Va ANTES de `@Put(':tenantId/:vehicleId')` a propósito — no por orden de
+     * método (uno es POST y el otro PUT) sino porque este controller ya tiene
+     * rutas estáticas que conviven con `:vehicleId` y mantenerlas agrupadas
+     * arriba evita que la próxima ruta dinámica se las coma.
+     */
+    @Post(':tenantId/bulk-import')
+    @Roles('tenant_admin', 'tenant_supervisor')
+    @ApiOperation({ summary: 'Bulk-import vehicles from a parsed CSV/XLSX' })
+    async bulkImport(
+        @Param('tenantId') tenantId: string,
+        @CurrentTenant() schema: string,
+        @Body() body: { rows?: any[] },
+    ) {
+        const data = await bulkImportRows(body?.rows, row => this.vehicleService.createVehicle(tenantId, schema, row));
+        return { success: true, data };
     }
 
     @Put(':tenantId/:vehicleId')

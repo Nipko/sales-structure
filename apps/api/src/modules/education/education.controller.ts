@@ -3,12 +3,13 @@ import {
     UseGuards, HttpCode, HttpStatus, BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { EducationService } from './education.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { bulkImportRows } from '../../common/utils/bulk-import.util';
 
 @ApiTags('education')
 @Controller('education')
@@ -124,6 +125,21 @@ export class EducationController {
     ) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.updateEnrollment(schemaName, id, body);
+        return { success: true, data };
+    }
+
+    /**
+     * Import masivo. Cargar 40 propiedades / 200 miembros / 60 platos de a
+     * uno es el punto de abandono documentado del alta; esto lo vuelve un
+     * archivo. Reusa el create de siempre fila por fila, asi que la
+     * validacion es exactamente la misma que por la UI.
+     */
+    @Post(":tenantId/courses/bulk-import")
+    @Roles('tenant_admin', 'tenant_supervisor')
+    @ApiOperation({ summary: "Bulk-import courses from a parsed CSV/XLSX" })
+    async bulkImportCourses(@Param('tenantId') tenantId: string, @Body() body: { rows?: any[] }) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await bulkImportRows(body?.rows, row => this.service.createCourse(schemaName, row));
         return { success: true, data };
     }
 }

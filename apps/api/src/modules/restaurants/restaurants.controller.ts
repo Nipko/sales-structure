@@ -9,6 +9,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { RestaurantsService } from './restaurants.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { bulkImportRows } from '../../common/utils/bulk-import.util';
 
 @ApiTags('restaurants')
 @Controller('restaurants')
@@ -191,5 +192,20 @@ export class RestaurantsController {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         await this.service.deletePromotion(schemaName, id);
         return { success: true };
+    }
+
+    /**
+     * Import masivo. Cargar 40 propiedades / 200 miembros / 60 platos de a
+     * uno es el punto de abandono documentado del alta; esto lo vuelve un
+     * archivo. Reusa el create de siempre fila por fila, asi que la
+     * validacion es exactamente la misma que por la UI.
+     */
+    @Post(":tenantId/items/bulk-import")
+    @Roles('tenant_admin', 'tenant_supervisor')
+    @ApiOperation({ summary: "Bulk-import menu items from a parsed CSV/XLSX" })
+    async bulkImportItems(@Param('tenantId') tenantId: string, @Body() body: { rows?: any[] }) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const data = await bulkImportRows(body?.rows, row => this.service.createItem(schemaName, row));
+        return { success: true, data };
     }
 }

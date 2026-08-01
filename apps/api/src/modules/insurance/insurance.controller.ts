@@ -29,6 +29,7 @@ export class InsuranceController {
     }
 
     @Post(':tenantId/plans')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createPlan(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.createPlan(schemaName, body);
@@ -36,6 +37,7 @@ export class InsuranceController {
     }
 
     @Put(':tenantId/plans/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updatePlan(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.updatePlan(schemaName, id, body);
@@ -43,6 +45,7 @@ export class InsuranceController {
     }
 
     @Delete(':tenantId/plans/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     async deletePlan(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
@@ -67,6 +70,7 @@ export class InsuranceController {
     }
 
     @Put(':tenantId/quotes/:id/status')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updateQuoteStatus(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() body: { status: string }) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.updateQuoteStatus(schemaName, id, body.status);
@@ -90,6 +94,7 @@ export class InsuranceController {
     }
 
     @Post(':tenantId/policies')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createPolicy(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.createPolicy(schemaName, body);

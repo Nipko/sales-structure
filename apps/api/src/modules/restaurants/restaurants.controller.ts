@@ -33,6 +33,7 @@ export class RestaurantsController {
     }
 
     @Post(':tenantId/categories')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createCategory(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.createCategory(schemaName, body);
@@ -40,6 +41,7 @@ export class RestaurantsController {
     }
 
     @Put(':tenantId/categories/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updateCategory(
         @Param('tenantId') tenantId: string,
         @Param('id') id: string,
@@ -51,6 +53,7 @@ export class RestaurantsController {
     }
 
     @Delete(':tenantId/categories/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     async deleteCategory(
         @Param('tenantId') tenantId: string,
@@ -96,6 +99,7 @@ export class RestaurantsController {
     }
 
     @Put(':tenantId/items/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updateItem(
         @Param('tenantId') tenantId: string,
         @Param('id') id: string,
@@ -107,6 +111,7 @@ export class RestaurantsController {
     }
 
     @Delete(':tenantId/items/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     async deleteItem(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
@@ -180,6 +185,7 @@ export class RestaurantsController {
     }
 
     @Delete(':tenantId/promotions/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     async deletePromotion(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);

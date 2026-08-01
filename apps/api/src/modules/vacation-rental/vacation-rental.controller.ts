@@ -33,6 +33,7 @@ export class VacationRentalController {
     }
 
     @Post(':tenantId/properties')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a new property' })
     async createProperty(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
@@ -53,6 +54,7 @@ export class VacationRentalController {
     }
 
     @Put(':tenantId/properties/:propertyId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update a property' })
     async updateProperty(
         @Param('tenantId') tenantId: string,
@@ -65,6 +67,7 @@ export class VacationRentalController {
     }
 
     @Delete(':tenantId/properties/:propertyId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Soft-delete a property' })
     async deleteProperty(
@@ -106,6 +109,7 @@ export class VacationRentalController {
     }
 
     @Post(':tenantId/properties/:propertyId/blocks')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a manual calendar block' })
     async createBlock(
         @Param('tenantId') tenantId: string,
@@ -162,6 +166,7 @@ export class VacationRentalController {
     }
 
     @Put(':tenantId/bookings/:bookingId/cancel')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Cancel a booking' })
     async cancelBooking(
@@ -191,6 +196,7 @@ export class VacationRentalController {
     }
 
     @Post(':tenantId/properties/:propertyId/feeds')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Add an iCal feed for a property' })
     async addFeed(
         @Param('tenantId') tenantId: string,
@@ -243,6 +249,7 @@ export class VacationRentalController {
     }
 
     @Put(':tenantId/feeds/:feedId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update an iCal feed' })
     async updateFeed(
         @Param('tenantId') tenantId: string,
@@ -280,6 +287,7 @@ export class VacationRentalController {
     }
 
     @Delete(':tenantId/feeds/:feedId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Delete an iCal feed' })
     async deleteFeed(

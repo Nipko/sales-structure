@@ -34,6 +34,7 @@ export class ToursController {
     }
 
     @Post(':tenantId/packages')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a tour package' })
     async createPackage(
         @Param('tenantId') tenantId: string,
@@ -57,6 +58,7 @@ export class ToursController {
     }
 
     @Put(':tenantId/packages/:packageId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update a tour package' })
     async updatePackage(
         @Param('tenantId') tenantId: string,
@@ -69,6 +71,7 @@ export class ToursController {
     }
 
     @Delete(':tenantId/packages/:packageId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Soft-delete a tour package' })
     async deletePackage(
@@ -95,6 +98,7 @@ export class ToursController {
     }
 
     @Post(':tenantId/packages/:packageId/inventory')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create or update an inventory row for a date' })
     async createInventory(
         @Param('tenantId') tenantId: string,
@@ -107,6 +111,7 @@ export class ToursController {
     }
 
     @Delete(':tenantId/inventory/:inventoryId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Soft-delete an inventory row' })
     async deleteInventory(
@@ -164,6 +169,7 @@ export class ToursController {
     }
 
     @Put(':tenantId/bookings/:bookingId/cancel')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Cancel a tour booking and restore seat capacity' })
     async cancelBooking(

@@ -42,6 +42,7 @@ export class EducationController {
     }
 
     @Post(':tenantId/courses')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createCourse(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.createCourse(schemaName, body);
@@ -57,6 +58,7 @@ export class EducationController {
     }
 
     @Delete(':tenantId/courses/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     async deleteCourse(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
@@ -77,6 +79,7 @@ export class EducationController {
     }
 
     @Post(':tenantId/cohorts')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createCohort(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.createCohort(schemaName, body);
@@ -84,6 +87,7 @@ export class EducationController {
     }
 
     @Post(':tenantId/cohorts/:id/cancel')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async cancelCohort(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.cancelCohort(schemaName, id);
@@ -104,6 +108,7 @@ export class EducationController {
     }
 
     @Post(':tenantId/enrollments')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createEnrollment(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.enrollStudent(schemaName, body);
@@ -111,6 +116,7 @@ export class EducationController {
     }
 
     @Put(':tenantId/enrollments/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updateEnrollment(
         @Param('tenantId') tenantId: string,
         @Param('id') id: string,

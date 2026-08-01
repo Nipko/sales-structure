@@ -370,6 +370,7 @@ export class CrmController {
     }
 
     @Post('custom-attributes/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createCustomAttribute(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schema = await this.getSchema(tenantId);
         const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
@@ -380,6 +381,7 @@ export class CrmController {
     }
 
     @Put('custom-attributes/:tenantId/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updateCustomAttribute(
         @Param('tenantId') tenantId: string,
         @Param('id') id: string,
@@ -520,6 +522,7 @@ export class CrmController {
     }
 
     @Put('opportunities/:tenantId/:opportunityId/approve')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async approveOpportunity(
         @Param('tenantId') tenantId: string,
         @Param('opportunityId') opportunityId: string,
@@ -540,6 +543,7 @@ export class CrmController {
     }
 
     @Put('opportunities/:tenantId/:opportunityId/reject')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async rejectOpportunity(
         @Param('tenantId') tenantId: string,
         @Param('opportunityId') opportunityId: string,
@@ -567,6 +571,7 @@ export class CrmController {
     }
 
     @Post('scoring-config/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async saveScoringConfig(
         @Param('tenantId') tenantId: string,
         @Body() body: { weights?: any; purchase_keywords?: string[]; decay_enabled?: boolean; decay_days?: number; decay_factor?: number },
@@ -673,6 +678,7 @@ export class CrmController {
     }
 
     @Post('pipeline-stages/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createPipelineStage(
         @Param('tenantId') tenantId: string,
         @Body() body: { name: string; slug?: string; color?: string; position?: number; default_probability?: number; sla_hours?: number; is_terminal?: boolean; transition_rules?: any[] },
@@ -702,6 +708,7 @@ export class CrmController {
     }
 
     @Put('pipeline-stages/:tenantId/:stageId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updatePipelineStage(
         @Param('tenantId') tenantId: string,
         @Param('stageId') stageId: string,
@@ -723,6 +730,7 @@ export class CrmController {
     }
 
     @Delete('pipeline-stages/:tenantId/:stageId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async deletePipelineStage(
         @Param('tenantId') tenantId: string,
         @Param('stageId') stageId: string,
@@ -736,6 +744,7 @@ export class CrmController {
     }
 
     @Put('pipeline-stages/:tenantId/reorder')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async reorderPipelineStages(
         @Param('tenantId') tenantId: string,
         @Body() body: { stageIds: string[] },

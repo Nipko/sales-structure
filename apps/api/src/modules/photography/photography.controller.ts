@@ -5,6 +5,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PhotographyService } from './photography.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -48,6 +49,7 @@ export class PhotographyController {
     }
 
     @Post(':tenantId/sessions')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a new photo session booking' })
     async create(
         @Param('tenantId') tenantId: string,
@@ -59,6 +61,7 @@ export class PhotographyController {
     }
 
     @Put(':tenantId/sessions/:sessionId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update a photo session' })
     async update(
         @Param('tenantId') tenantId: string,
@@ -71,6 +74,7 @@ export class PhotographyController {
     }
 
     @Put(':tenantId/sessions/:sessionId/deliver')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Mark session as delivered with gallery URL' })
     async deliver(
         @Param('tenantId') tenantId: string,

@@ -5,6 +5,7 @@ import { AuditService } from './audit.service';
 import { AnalyticsService } from './analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @Controller('analytics')
@@ -103,6 +104,7 @@ export class AnalyticsController {
     }
 
     @Post('compliance/:tenantId/opt-out')
+    @Roles('tenant_admin')
     async registerOptOut(
         @Param('tenantId') tenantId: string,
         @Body() body: {

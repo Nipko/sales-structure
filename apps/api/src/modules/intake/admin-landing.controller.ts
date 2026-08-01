@@ -4,6 +4,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { IntakeService } from './intake.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
 @ApiTags('admin-landings')
@@ -28,6 +29,7 @@ export class AdminLandingController {
     }
 
     @Post(':tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a new landing page' })
     async createLandingPage(
         @Param('tenantId') tenantId: string,

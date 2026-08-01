@@ -37,6 +37,7 @@ export class GymsController {
     }
 
     @Put(':tenantId/plans/:id')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updatePlan(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.updatePlan(schemaName, id, body);
@@ -76,6 +77,7 @@ export class GymsController {
     }
 
     @Post(':tenantId/members')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async createMember(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.createMember(schemaName, body);
@@ -95,6 +97,7 @@ export class GymsController {
     }
 
     @Post(':tenantId/members/:id/unfreeze')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async unfreezeMember(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.unfreezeMember(schemaName, id);

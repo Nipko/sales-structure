@@ -104,6 +104,7 @@ export class CouponsController {
     // ── Tenant-facing ───────────────────────────────────────────────
 
     @Post('validate/:tenantId')
+    @Roles('tenant_admin')
     async validate(@Param('tenantId') tenantId: string, @Body() body: ValidateCouponDto) {
         const result = await this.couponsService.validate({
             code: body.code,
@@ -120,6 +121,7 @@ export class CouponsController {
      * by the runbook/manual refund flow.
      */
     @Post('redeem/:tenantId')
+    @Roles('tenant_admin')
     async redeem(@Param('tenantId') tenantId: string, @Body() body: RedeemCouponDto) {
         const sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
         if (!sub) {

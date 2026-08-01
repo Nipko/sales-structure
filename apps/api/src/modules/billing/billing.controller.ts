@@ -254,6 +254,7 @@ export class BillingController {
      * subscriptions on behalf of a tenant.
      */
     @Post(':tenantId/subscription')
+    @Roles('tenant_admin')
     @UseGuards(AuthGuard('jwt'))
     async startTrial(@Param('tenantId') tenantId: string, @Body() body: StartTrialDto) {
         const subscription = await this.billingService.createTrialSubscription({
@@ -273,6 +274,7 @@ export class BillingController {
      * recreate depending on the provider's behaviour.
      */
     @Post(':tenantId/subscription/upgrade')
+    @Roles('tenant_admin')
     @UseGuards(AuthGuard('jwt'))
     async upgrade(@Param('tenantId') tenantId: string, @Body() body: ChangePlanDto) {
         const updated = await this.billingService.upgradeSubscription(tenantId, body.planSlug, body.cardTokenId, body.billingCycle);
@@ -284,6 +286,7 @@ export class BillingController {
      * pass `immediate: true` for hard cancel that revokes access now.
      */
     @Post(':tenantId/subscription/cancel')
+    @Roles('tenant_admin')
     @UseGuards(AuthGuard('jwt'))
     async cancel(@Param('tenantId') tenantId: string, @Body() body: CancelSubscriptionDto) {
         await this.billingService.cancelSubscription(tenantId, {
@@ -319,6 +322,7 @@ export class BillingController {
      * with the same card on file.
      */
     @Post(':tenantId/subscription/pause')
+    @Roles('tenant_admin')
     @UseGuards(AuthGuard('jwt'))
     async pause(@Param('tenantId') tenantId: string, @Body() body: PauseSubscriptionDto) {
         await this.billingService.pauseSubscription(tenantId, { reason: body.reason });
@@ -327,6 +331,7 @@ export class BillingController {
 
     /** Resume a paused subscription. */
     @Post(':tenantId/subscription/resume')
+    @Roles('tenant_admin')
     @UseGuards(AuthGuard('jwt'))
     async resume(@Param('tenantId') tenantId: string) {
         await this.billingService.resumeSubscription(tenantId);
@@ -422,6 +427,7 @@ export class BillingController {
      * the hourly reconciliation cron.
      */
     @Post(':tenantId/subscription/sync')
+    @Roles('tenant_admin')
     @UseGuards(AuthGuard('jwt'))
     async sync(@Param('tenantId') tenantId: string) {
         const result = await this.billingService.syncFromProvider(tenantId);

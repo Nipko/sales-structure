@@ -35,6 +35,7 @@ export class ComplianceController {
     }
 
     @Post('legal-texts/:tenantId')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Create a new legal text version' })
     async createLegalText(@Param('tenantId') tenantId: string, @Body() payload: any, @CurrentUser() user: any) {
         const result = await this.complianceService.createLegalText(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
@@ -43,6 +44,7 @@ export class ComplianceController {
     }
 
     @Put('legal-texts/:tenantId/:id')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Update a legal text version' })
     async updateLegalText(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() payload: any, @CurrentUser() user: any) {
         const result = await this.complianceService.updateLegalText(await this.schemaFor(tenantId), id, payload);
@@ -51,6 +53,7 @@ export class ComplianceController {
     }
 
     @Delete('legal-texts/:tenantId/:id')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Delete a legal text version' })
     async deleteLegalText(@Param('tenantId') tenantId: string, @Param('id') id: string, @CurrentUser() user: any) {
         await this.complianceService.deleteLegalText(await this.schemaFor(tenantId), id);
@@ -67,6 +70,7 @@ export class ComplianceController {
     }
 
     @Post('consents/:tenantId')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Record a new consent' })
     async createConsent(@Param('tenantId') tenantId: string, @Body() payload: any) {
         return this.complianceService.createConsent(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
@@ -96,6 +100,7 @@ export class ComplianceController {
     }
 
     @Put('opt-outs/:tenantId/:recordId/confirm')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Confirm opt-out (block the lead)' })
     async confirmOptOut(
         @Param('tenantId') tenantId: string,
@@ -108,6 +113,7 @@ export class ComplianceController {
     }
 
     @Put('opt-outs/:tenantId/:recordId/reject')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Reject opt-out (false positive, do not block)' })
     async rejectOptOut(
         @Param('tenantId') tenantId: string,
@@ -120,6 +126,7 @@ export class ComplianceController {
     }
 
     @Post('opt-outs/:tenantId')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Register a manual opt-out' })
     async createOptOut(@Param('tenantId') tenantId: string, @Body() payload: any) {
         return this.complianceService.createOptOut(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
@@ -134,12 +141,14 @@ export class ComplianceController {
     }
 
     @Post('deletion-requests/:tenantId')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Create a deletion request' })
     async createDeletionRequest(@Param('tenantId') tenantId: string, @Body() payload: any) {
         return this.complianceService.createDeletionRequest(await this.schemaFor(tenantId), { ...payload, tenant_id: tenantId });
     }
 
     @Put('deletion-requests/:tenantId/:id/process')
+    @Roles('tenant_admin')
     @ApiOperation({ summary: 'Process a deletion request' })
     async processDeletionRequest(@Param('tenantId') tenantId: string, @Param('id') id: string) {
         return this.complianceService.processDeletionRequest(await this.schemaFor(tenantId), id);

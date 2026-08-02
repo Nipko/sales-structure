@@ -88,7 +88,13 @@ async function main() {
     const priceMode = args.fx ? `fx=${args.fx}` : 'local (from DB)';
     console.log(`\nSync plans to MercadoPago — country=${args.country} currency=${currency} prices=${priceMode}${args.dryRun ? ' [DRY-RUN]' : ''}\n`);
 
-    const prisma = new PrismaClient();
+    const prisma = new PrismaClient({
+        datasources: {
+            db: {
+                url: process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL,
+            },
+        },
+    });
     const mpConfig = new MercadoPagoConfig({ accessToken, options: { timeout: 10_000 } });
     const preApprovalPlan = new PreApprovalPlan(mpConfig);
 

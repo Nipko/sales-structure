@@ -605,9 +605,9 @@ jobs:
             chmod 600 .env
             echo "  [OK] .env generated and secured"
 
-            echo "===> Ensuring postgres and redis are healthy..."
+            echo "===> Ensuring postgres, pgbouncer and redis are healthy..."
             $DC \
-              up -d postgres redis
+              up -d postgres pgbouncer redis
 
             echo "===> Waiting for postgres to be ready..."
             for i in $(seq 1 12); do

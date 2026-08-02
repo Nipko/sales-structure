@@ -3,7 +3,13 @@
 // Uses CREATE TABLE IF NOT EXISTS for safe idempotent execution.
 // This is the safety net for schemas that were partially created.
 const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL,
+    },
+  },
+});
 
 function buildSQL(s) {
   return [

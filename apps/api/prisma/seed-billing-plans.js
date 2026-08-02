@@ -12,7 +12,13 @@
 
 const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+    datasources: {
+        db: {
+            url: process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL,
+        },
+    },
+});
 
 // ──────────────────────────────────────────────────────────────
 // DEFINITIVE PLAN MATRIX — single source of truth (May 2026)

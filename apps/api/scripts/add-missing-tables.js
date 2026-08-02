@@ -872,5 +872,5 @@ async function migrate() {
 
 migrate()
   .catch(function(err) { console.error('Fatal:', err); process.exit(1); })
-  .finally(function() { return prisma.$disconnect(); });
+  .finally(function() { return prisma.$disconnect().catch(function() {}); });
 

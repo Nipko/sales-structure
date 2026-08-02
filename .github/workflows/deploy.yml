@@ -672,17 +672,18 @@ jobs:
             set +e
             MIGRATE_OUT="$($DC run --rm api npm run migrate:tenants 2>&1 | tr -d '\r')"
             MIGRATE_RC=$?
+            SUMMARY="$(echo "$MIGRATE_OUT" | grep -o 'MIGRATE_TENANTS_SUMMARY .*' | tail -1 | tr -d '\r')"
+            SKIPPED="$(echo "$SUMMARY" | sed -n 's/.*skipped=\([0-9]*\).*/\1/p' | tr -d '\r')"
+            WARNINGS="$(echo "$SUMMARY" | sed -n 's/.*warnings=\([0-9]*\).*/\1/p' | tr -d '\r')"
             set -e
+
             echo "$MIGRATE_OUT"
 
-            SUMMARY="$(echo "$MIGRATE_OUT" | grep -o 'MIGRATE_TENANTS_SUMMARY .*' | tail -1 | tr -d '\r')"
             if [ "$MIGRATE_RC" -ne 0 ]; then
               echo "::error::Tenant migration exited $MIGRATE_RC (fallo FATAL, no per-tenant). El deploy sigue, pero los schemas de tenant NO se migraron. $SUMMARY"
             elif [ -z "$SUMMARY" ]; then
               echo "::warning::Tenant migration no emitio resumen — revisar el log del paso."
             else
-              SKIPPED="$(echo "$SUMMARY" | sed -n 's/.*skipped=\([0-9]*\).*/\1/p' | tr -d '\r')"
-              WARNINGS="$(echo "$SUMMARY" | sed -n 's/.*warnings=\([0-9]*\).*/\1/p' | tr -d '\r')"
               SKIPPED="${SKIPPED:-0}"
               WARNINGS="${WARNINGS:-0}"
               if [ "$SKIPPED" -gt 0 ] || [ "$WARNINGS" -gt 0 ]; then

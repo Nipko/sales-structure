@@ -178,9 +178,12 @@ async function migrate() {
     console.error('Fatal error during tenant migration:', error);
     process.exit(1);
   } finally {
-    await prisma.$disconnect();
+    await prisma.$disconnect().catch(() => {});
     console.log('--- Tenant Migration Complete ---');
   }
 }
 
-migrate();
+migrate().catch((err) => {
+  console.error('Fatal error during tenant migration:', err);
+  process.exit(1);
+});

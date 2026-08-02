@@ -62,6 +62,16 @@ const VIDEO_MIME_TYPES = ['video/mp4', 'video/3gpp', 'video/quicktime'];
 const VIDEO_EXT: Record<string, string> = {
     'video/mp4': '.mp4', 'video/3gpp': '.3gp', 'video/quicktime': '.mov',
 };
+// Imágenes ENTRANTES del chat. Se guardan tal cual llegan (sin pasar por sharp,
+// a diferencia de `upload`): la foto del cliente es evidencia y recomprimirla no
+// aporta nada. Sin este mapa `saveBuffer` les ponía `.bin`, y el endpoint que
+// las sirve resuelve el Content-Type POR EXTENSIÓN: llegaban como
+// application/octet-stream y el navegador las ofrecía para descargar en vez de
+// mostrarlas.
+const IMAGE_EXT: Record<string, string> = {
+    'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png',
+    'image/webp': '.webp', 'image/gif': '.gif',
+};
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB (images)
 const MAX_DOC_SIZE = 25 * 1024 * 1024; // 25MB (documents)
 const MAX_AUDIO_SIZE = 16 * 1024 * 1024; // 16MB (WhatsApp audio limit)
@@ -104,8 +114,10 @@ export class MediaService {
         try {
             if (!buffer?.length) return null;
             const ext =
-                AUDIO_EXT[mimeType] || VIDEO_EXT[mimeType] || DOC_EXT[mimeType] ||
-                (mimeType?.startsWith('audio/') ? '.ogg' : mimeType?.startsWith('video/') ? '.mp4' : '.bin');
+                AUDIO_EXT[mimeType] || VIDEO_EXT[mimeType] || DOC_EXT[mimeType] || IMAGE_EXT[mimeType] ||
+                (mimeType?.startsWith('audio/') ? '.ogg'
+                    : mimeType?.startsWith('video/') ? '.mp4'
+                        : mimeType?.startsWith('image/') ? '.jpg' : '.bin');
             const id = randomUUID();
             const fileName = `${id}${ext}`;
             const tenantDir = path.join(this.storagePath, tenantId);
@@ -281,13 +293,16 @@ export class MediaService {
     /**
      * List media files with optional filters
      */
-    async list(schemaName: string, tenantId: string, entityType?: string, tag?: string): Promise<MediaFile[]> {
+    async list(schemaName: string, tenantId: string, entityType?: string, tag?: string, entityId?: string): Promise<MediaFile[]> {
         let sql = `SELECT id, entity_type, entity_id, original_name, file_name, mime_type, size_bytes, width, height, thumbnail_name, label, description, tags, created_at
                     FROM media_files WHERE 1=1`;
         const params: any[] = [];
         let idx = 1;
 
         if (entityType) { sql += ` AND entity_type = $${idx++}`; params.push(entityType); }
+        // Galería de UN contacto: las fotos que mandó por el chat. Sin este
+        // filtro `list` sólo sabía devolver el banco entero del tenant.
+        if (entityId) { sql += ` AND entity_id = $${idx++}::uuid`; params.push(entityId); }
         if (tag) { sql += ` AND $${idx++} = ANY(tags)`; params.push(tag); }
 
         sql += ` ORDER BY created_at DESC`;

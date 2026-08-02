@@ -81,6 +81,76 @@ export class MediaProcessingService {
     }
 
     /**
+     * Guarda la imagen que mandó el cliente y la cuelga de su ficha.
+     *
+     * Hasta acá la imagen se bajaba, se le pedía una descripción al modelo de
+     * visión y el buffer se descartaba: quedaba el texto y se perdía la foto.
+     * Pero la foto ES el dato del negocio en media docena de rubros — el auto
+     * chocado del siniestro, la lesión que consulta el paciente, el caño roto,
+     * el corte que la clienta quiere copiar, el perro con la oreja inflamada.
+     * El agente humano abría la conversación y leía "el cliente envió una
+     * imagen: ..." sin poder verla.
+     *
+     * Dos escrituras, las dos best-effort (esto NO puede romper el turno):
+     *   1. `mediaUrl` en el mensaje, para que el inbox la muestre en el hilo.
+     *   2. Fila en `media_files` ligada al CONTACTO, que es lo que convierte
+     *      fotos sueltas en un historial visual del cliente.
+     */
+    private async persistInboundImage(
+        tenantId: string,
+        conversationId: string,
+        contactDbId: string,
+        buffer: Buffer,
+        mimeType: string,
+        description?: string,
+    ): Promise<void> {
+        try {
+            // Se guarda el original sin recomprimir: es evidencia, y `upload`
+            // (que pasa por sharp) está pensado para el banco de medios del
+            // tenant, no para lo que entra por el chat.
+            const url = await this.media.saveBuffer(tenantId, buffer, mimeType);
+            if (!url) return;
+            const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+            if (!schemaName) return;
+
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `UPDATE messages
+                 SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{mediaUrl}', to_jsonb($2::text))
+                 WHERE id = (
+                     SELECT id FROM messages
+                     WHERE conversation_id = $1::uuid AND direction = 'inbound' AND content_type = 'image'
+                     ORDER BY created_at DESC LIMIT 1
+                 )`,
+                [conversationId, url],
+            ).catch(() => { /* el hilo sigue sirviendo sin la miniatura */ });
+
+            // La galería del CRM. `entity_type='contact'` + `entity_id` es el
+            // mismo esquema que ya usa el banco de medios, así que la lista sale
+            // con el `list()` de siempre.
+            const fileName = url.split('/').pop() || '';
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `INSERT INTO media_files
+                   (entity_type, entity_id, original_name, file_name, mime_type, size_bytes, description, tags)
+                 VALUES ('contact', $1::uuid, $2, $3, $4, $5, $6, ARRAY['chat'])`,
+                [
+                    contactDbId,
+                    fileName,
+                    fileName,
+                    mimeType,
+                    buffer.length,
+                    // La descripción del modelo de visión ya está pagada: sirve
+                    // de pie de foto y hace la galería buscable por texto.
+                    description ? String(description).slice(0, 500) : null,
+                ],
+            ).catch((e: any) => this.logger.warn(`media_files insert failed: ${e.message}`));
+        } catch (e: any) {
+            this.logger.warn(`persistInboundImage failed: ${e.message}`);
+        }
+    }
+
+    /**
      * Process an inbound media message.
      * Returns a text representation that can be injected into the AI conversation,
      * or null if the media can't be processed (quota exceeded, unsupported type, etc).
@@ -129,6 +199,12 @@ export class MediaProcessingService {
                 result = await this.processAudio(tenantId, downloaded.buffer, downloaded.mimeType, throttleResult.limits.maxAudioDurationSec);
             } else {
                 result = await this.processImage(tenantId, downloaded.buffer, downloaded.mimeType, conversationContext);
+                // Después de procesar, para poder usar la descripción como pie
+                // de foto sin pagarla dos veces.
+                await this.persistInboundImage(
+                    tenantId, conversationId, contactDbId,
+                    downloaded.buffer, downloaded.mimeType, result?.text,
+                );
             }
 
             // 3. Record usage

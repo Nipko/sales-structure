@@ -72,8 +72,9 @@ export class MediaController {
         @CurrentUser() user: any,
         @Query('entityType') entityType?: string,
         @Query('tag') tag?: string,
+        @Query('entityId') entityId?: string,
     ) {
-        const files = await this.mediaService.list(user.schemaName, tenantId, entityType, tag);
+        const files = await this.mediaService.list(user.schemaName, tenantId, entityType, tag, entityId);
         return { success: true, data: files };
     }
 

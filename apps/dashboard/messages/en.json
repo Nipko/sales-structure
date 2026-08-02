@@ -662,6 +662,8 @@
       "tabTimeline": "Timeline",
       "tabNotes": "Notes ({count})",
       "tabTasks": "Tasks ({count})",
+      "tabGallery": "Photos ({count})",
+      "noGallery": "This contact has not sent any photos over chat yet.",
       "noActivity": "No activity recorded yet.",
       "addNotePlaceholder": "Add an internal note...",
       "saveNote": "Save note",

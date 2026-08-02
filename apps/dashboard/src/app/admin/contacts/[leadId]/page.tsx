@@ -18,7 +18,18 @@ import {
     ChevronDown, CheckCircle, Circle, AlertCircle, Briefcase,
     TrendingUp, Calendar, Zap, Send, Edit2, Save, X,
     Archive, Loader2, Sparkles,
+    Image as ImageIcon,
 } from "lucide-react";
+
+const MEDIA_API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
+// El banco de medios guarda rutas RELATIVAS; el navegador necesita la
+// absoluta. Mismo patron que ya usan listings y vehiculos.
+function resolveMediaUrl(url: string): string {
+    if (!url) return url;
+    if (/^https?:\/\//i.test(url)) return url;
+    const origin = MEDIA_API_BASE.replace(/\/api\/v1\/?$/, "");
+    return origin + (url.startsWith("/") ? url : "/" + url);
+}
 
 const STAGE_COLORS: Record<string, string> = {
     nuevo: "#95a5a6", contactado: "#3498db", respondio: "#9b59b6",
@@ -61,7 +72,11 @@ export default function Lead360Page() {
     const [timeline, setTimeline] = useState<any[]>([]);
     const [notes, setNotes] = useState<any[]>([]);
     const [tasks, setTasks] = useState<any[]>([]);
-    const [activeTab, setActiveTab] = useState<"timeline" | "notes" | "tasks">("timeline");
+    const [activeTab, setActiveTab] = useState<"timeline" | "notes" | "tasks" | "gallery">("timeline");
+    // Fotos que el cliente mando por el chat. Media-processing las guarda
+    // ligadas al contacto (entity_type=contact); antes se describian y se
+    // tiraban, asi que el agente leia "envio una imagen" sin poder verla.
+    const [gallery, setGallery] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
     const [newNote, setNewNote] = useState("");
@@ -127,6 +142,17 @@ export default function Lead360Page() {
             try {
                 const scoreRes = await api.fetch(`/crm/leads/${tenantId}/${leadId}/score`);
                 setScoreData(scoreRes?.data);
+            } catch (e) { /* non-critical */ }
+
+            // Galería del contacto. Se cuelga del contact_id, no del lead: un
+            // mismo cliente puede tener varios leads y las fotos son de la
+            // persona, no de la oportunidad.
+            try {
+                const contactId = d1?.data?.lead?.contact_id;
+                if (contactId) {
+                    const g = await api.fetch(`/media/list/${tenantId}?entityType=contact&entityId=${contactId}`);
+                    setGallery(Array.isArray(g?.data) ? g.data : []);
+                }
             } catch (e) { /* non-critical */ }
 
             // Load custom field definitions first, then values (sequential to avoid showing values without type definitions)
@@ -726,6 +752,7 @@ export default function Lead360Page() {
                             { key: "timeline", label: t("leadDetail.tabTimeline"), icon: Clock },
                             { key: "notes", label: t("leadDetail.tabNotes", { count: notes.length }), icon: StickyNote },
                             { key: "tasks", label: t("leadDetail.tabTasks", { count: tasks.filter((tk: any) => tk.status !== "done").length }), icon: CheckSquare },
+                            { key: "gallery", label: t("leadDetail.tabGallery", { count: gallery.length }), icon: ImageIcon },
                         ].map(tab => (
                             <button
                                 key={tab.key}
@@ -872,6 +899,41 @@ export default function Lead360Page() {
                                 ))}
                                 {tasks.length === 0 && (
                                     <p className="text-muted-foreground text-center py-8">{t("leadDetail.noTasks")}</p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* GALERÍA — lo que el cliente mandó por el chat */}
+                        {activeTab === "gallery" && (
+                            <div>
+                                {gallery.length === 0 ? (
+                                    <p className="text-muted-foreground text-center py-10">{t("leadDetail.noGallery")}</p>
+                                ) : (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                        {gallery.map((f: any) => (
+                                            <a
+                                                key={f.id}
+                                                href={resolveMediaUrl(f.url)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="group block rounded-lg border border-border overflow-hidden hover:border-primary transition-colors"
+                                                // El pie de foto es la descripción que ya generó el
+                                                // modelo de visión al procesar el mensaje.
+                                                title={f.description || ""}
+                                            >
+                                                <img
+                                                    src={resolveMediaUrl(f.url)}
+                                                    alt={f.description || ""}
+                                                    loading="lazy"
+                                                    className="w-full h-28 object-cover"
+                                                />
+                                                <div className="px-2 py-1.5 text-[11px] text-muted-foreground line-clamp-2">
+                                                    {new Date(f.createdAt).toLocaleDateString()}
+                                                    {f.description ? ` — ${f.description}` : ""}
+                                                </div>
+                                            </a>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
                         )}

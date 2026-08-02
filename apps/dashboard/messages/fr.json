@@ -662,6 +662,8 @@
       "tabTimeline": "Historique",
       "tabNotes": "Notes ({count})",
       "tabTasks": "Tâches ({count})",
+      "tabGallery": "Photos ({count})",
+      "noGallery": "Ce contact n’a pas encore envoyé de photos par chat.",
       "noActivity": "Aucune activité enregistrée pour l'instant.",
       "addNotePlaceholder": "Ajouter une note interne...",
       "saveNote": "Enregistrer la note",

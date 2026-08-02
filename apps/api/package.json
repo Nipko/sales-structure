@@ -13,6 +13,7 @@
         "test": "jest",
         "test:watch": "jest --watch",
         "test:bootstrap": "jest --testPathPattern=bootstrap --forceExit",
+        "test:migrate:tenants": "node scripts/test-tenant-migration.js",
         "test:e2e": "jest --config ./test/jest-e2e.json",
         "db:migrate": "prisma migrate dev",
         "db:seed": "ts-node prisma/seed.ts",

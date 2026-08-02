@@ -1476,6 +1476,11 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_personas" (
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
 
+-- CREATE TABLE IF NOT EXISTS does not add columns to tenant schemas created
+-- before multi-account channel bindings were introduced.
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_personas"
+    ADD COLUMN IF NOT EXISTS "channel_bindings" TEXT[] DEFAULT '{}';
+
 CREATE INDEX IF NOT EXISTS "idx_agent_personas_active" ON "{{SCHEMA_NAME}}"."agent_personas" ("is_active");
 CREATE INDEX IF NOT EXISTS "idx_agent_personas_channels" ON "{{SCHEMA_NAME}}"."agent_personas" USING GIN ("channels");
 CREATE INDEX IF NOT EXISTS "idx_agent_personas_bindings" ON "{{SCHEMA_NAME}}"."agent_personas" USING GIN ("channel_bindings");

@@ -105,6 +105,9 @@ jobs:
           npx prisma generate
           npx prisma migrate deploy
 
+      - name: Tenant schema migration compatibility smoke test
+        run: cd apps/api && npm run test:migrate:tenants
+
       - name: Build API (+ shared)
         run: npx turbo build --filter=@parallext/api
 
@@ -268,7 +271,7 @@ jobs:
     environment: production
     # The deploy job logs into GHCR on the VPS (GHCR_PAT = GITHUB_TOKEN) and pulls
     # the images, so its token MUST have packages:read. Without this the docker pull
-    # returns "denied" and (script_stop:true) aborts "Deploy to VPS".
+    # returns "denied" and `set -e` aborts "Deploy to VPS".
     permissions:
       contents: read
       packages: read
@@ -313,7 +316,7 @@ jobs:
 
       - name: Deploy to VPS
         if: steps.check_secrets.outputs.configured == 'true'
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.2
         env:
           GHCR_PAT: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
@@ -439,7 +442,6 @@ jobs:
             PROD_PIPEDRIVE_CLIENT_ID,PROD_PIPEDRIVE_CLIENT_SECRET,
             PROD_VAPID_PUBLIC_KEY,PROD_VAPID_PRIVATE_KEY,
             PROD_OFFSITE_BUCKET,PROD_OFFSITE_PATH,PROD_OFFSITE_PROVIDER,PROD_OFFSITE_REGION,PROD_OFFSITE_ENDPOINT,PROD_OFFSITE_ACCESS_KEY,PROD_OFFSITE_SECRET_KEY
-          script_stop: true
           # ↑ timeout: tiempo máximo para ESTABLECER la conexión SSH
           # ↑ command_timeout: tiempo máximo de ejecución del script completo
           timeout: 120s
@@ -669,13 +671,18 @@ jobs:
             #
             # Ahora se captura la salida y se anota el run. El deploy sigue sin
             # fallar; lo que cambia es que deja de ser invisible.
-            set +e
-            MIGRATE_OUT="$($DC run --rm api npm run migrate:tenants 2>&1 | tr -d '\r')"
-            MIGRATE_RC=$?
-            SUMMARY="$(echo "$MIGRATE_OUT" | grep -o 'MIGRATE_TENANTS_SUMMARY .*' | tail -1 | tr -d '\r')"
-            SKIPPED="$(echo "$SUMMARY" | sed -n 's/.*skipped=\([0-9]*\).*/\1/p' | tr -d '\r')"
-            WARNINGS="$(echo "$SUMMARY" | sed -n 's/.*warnings=\([0-9]*\).*/\1/p' | tr -d '\r')"
-            set -e
+            # ssh-action <=1.0.3 rewrote every line when script_stop=true and
+            # treated false `if` predicates as fatal commands. Keep normal shell
+            # semantics and capture the migration status inside the condition.
+            if MIGRATE_OUT="$($DC run --rm api npm run migrate:tenants 2>&1)"; then
+              MIGRATE_RC=0
+            else
+              MIGRATE_RC=$?
+            fi
+            MIGRATE_OUT="$(printf '%s\n' "$MIGRATE_OUT" | tr -d '\r')"
+            SUMMARY="$(printf '%s\n' "$MIGRATE_OUT" | grep -o 'MIGRATE_TENANTS_SUMMARY .*' | tail -1 || true)"
+            SKIPPED="$(printf '%s\n' "$SUMMARY" | sed -n 's/.*skipped=\([0-9]*\).*/\1/p')"
+            WARNINGS="$(printf '%s\n' "$SUMMARY" | sed -n 's/.*warnings=\([0-9]*\).*/\1/p')"
 
             echo "$MIGRATE_OUT"
 
@@ -705,9 +712,8 @@ jobs:
             # another country later, duplicate the line below with its ISO
             # code + FX rate from secrets (e.g. PROD_MP_FX_MX for Mexico).
             # The script is idempotent — already-synced tiers are skipped.
-            # appleboy/ssh-action wraps each line with exit-code tracking and
-            # chokes on bash arrays / case statements, so we keep the loop
-            # unrolled as plain sequential invocations.
+            # Keep this unrolled so each country remains independently visible
+            # and retryable in the deploy log.
             $DC run --rm api node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" || true
             # Add below when opening new countries:
             # $DC run --rm api node scripts/sync-mp-plans.js --country=MX --fx="${PROD_MP_FX_MX:-18.5}" || true

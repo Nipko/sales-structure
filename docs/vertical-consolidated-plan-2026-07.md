@@ -352,8 +352,7 @@ Auditoría de brecha sobre **todas** las fuentes (los 24 horizontales, el backlo
 
 | Motivo | Ítems |
 |---|---|
-| **Bloqueado por decisión del dueño** | D3 cobro al cliente final (H-22, checkout), D5 partición belleza/moda (sub-tipo `estetica`), D10 integraciones (H-18, Hostaway), D13 apuesta retail (carrito abandonado, webhooks), política de verificación de email |
-| **Esfuerzo M/L con dependencia real** | H-19 import masivo, H-21 identidad con OTP, H-23 galería por contacto, H-24 carrusel, producto financiero + simulador de cuota, KPIs B2B propios |
+| **Bloqueado por decisión del dueño** | D3 cobro al cliente final (H-22, checkout), D5 partición belleza/moda (sub-tipo `estetica`), D10 integraciones (H-18, Hostaway), D13 apuesta retail (carrito abandonado, webhooks), política de verificación de email, H-21 identidad con OTP (🔒D8: agrega fricción a toda consulta sensible), producto financiero + simulador de cuota (hace falta que el dueño defina los productos) |
 
 ### Segunda pasada — lo que se cerró después (jul 2026)
 
@@ -372,3 +371,19 @@ Tres hallazgos de esa auditoría valen más que el conteo:
 - **`send_portfolio`** (fotografía): la pregunta que cierra la venta del rubro es "¿tienen fotos de trabajos anteriores?" y el agente solo podía describirlas. Sale del banco de medios por etiqueta, tope de 4, con caída de categoría al portafolio general. El marcador `_mediaToSend` ahora acepta lista.
 - **Directorio de técnicos**: `assigned_technician_id` existía y no lo escribía nadie — el despacho pedía el nombre como texto libre. Ahora se elige de `staff_members`, con caída a texto libre si el directorio está vacío.
 - **`get_case_status`** salió del bucket bloqueado: la dependencia era "hace falta un id legible", y se disuelve igual que en servicios a domicilio — la tool no recibe parámetros y resuelve por el contacto. Devuelve el nombre de la etapa (no el slug) y una referencia corta que el cliente puede repetir por teléfono.
+
+### Tercera pasada — los horizontales que quedaban (jul 2026)
+
+**H-19 import masivo (alta, 5 verticales).** `bulkImportRows` recorre las filas reusando el `create` de cada módulo, más un componente de UI compartido con **mapeo de columnas**. El mapeo es el punto: el archivo del dueño nunca trae los nombres que espera el sistema —su planilla dice "Habitaciones", "Precio de venta"— y un importador que exige plantilla exacta se abandona igual que cargar de a uno. Conectado en inmuebles, menú, socios, cursos y vehículos.
+
+Tres decisiones de diseño que definen si sirve: no aborta en el primer error (quien sube 200 filas tiene 3 mal, y cortar todo obliga a reintentar a ciegas); reporta resultado **parcial y lo dice** (PgBouncer en modo transaction, no hay transacción que abarque las N filas); y números al estilo local, porque `Number('45.000.000')` es `NaN` y la fila entraría sin precio.
+
+Dos trampas que se encontraron al conectarlo:
+- **Gimnasios**: `createMember` exige `contactId` y `planId`, UUIDs internos. Un padrón trae nombre, teléfono y "Mensual". Sin una capa que los resuelva, el endpoint habría existido y fallado en las 200 filas — construido e inalcanzable otra vez. Se agregó `createMemberFromRow`, que busca el contacto por teléfono normalizado (creándolo con `external_id` = teléfono, para que cuando ese número escriba por WhatsApp caiga sobre el mismo contacto) y el plan por nombre, fallando la fila si el plan no existe en vez de dejar un socio sin vencimiento.
+- **Vehículos**: el REST recibe **centavos** y la planilla trae pesos. Sin conversión, un auto de 45.000.000 entraba como 450.000 y el agente lo ofrecía a ese precio.
+
+**H-24 carrusel.** Dejó de ser esfuerzo M: la plomería multi-imagen se construyó para `send_portfolio`, así que las tres tools de imagen (producto, inmueble, alojamiento) pasaron de mandar `images[0]` a mandar hasta 3. Tope de 3 porque en WhatsApp cada imagen es un mensaje y seis notificaciones se leen como spam; epígrafe solo en la primera.
+
+**H-23 galería por contacto.** El audio entrante ya se guardaba; la imagen se describía y **el buffer se descartaba**. En media docena de rubros la foto *es* el dato — el auto chocado, la lesión, el caño roto — y el agente humano leía "el cliente envió una imagen: …" sin poder verla. Ahora se persiste, se estampa en el mensaje y se cuelga del **contacto** (no del lead: un cliente tiene varios leads y las fotos son de la persona). La descripción del modelo de visión, ya pagada, se reusa como pie de foto. De paso: `saveBuffer` no tenía mapa de extensiones para imágenes y les ponía `.bin`, con lo cual el endpoint que las sirve —que resuelve el Content-Type por extensión— las habría entregado como `application/octet-stream`.
+
+**KPIs por vertical.** Finanzas, servicios profesionales y technology mostraban "Leads Hoy / Leads Calientes": contadores correctos con la etiqueta de otro negocio. Ahora tienen los suyos. La restricción que gobernó el cambio: **no inventar claves** — un KPI cuyo `key` no calcula `getCommercialOverview` se renderiza en cero para siempre. Se verificó en runtime que las 18 verticales usan solo claves existentes, y que ninguna depende del vocabulario del embudo (`leadsReadyToClose` es por score, `conversionRate` sale de `opportunities`), porque si dependiera nacería en cero justo en las tres verticales que tienen embudo propio.

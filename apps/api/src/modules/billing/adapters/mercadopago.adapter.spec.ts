@@ -6,14 +6,16 @@ import { MercadoPagoConfigService } from './mercadopago-config.service';
 /**
  * Unit tests for MercadoPagoAdapter.
  *
- * Focus: the pure helpers (status translation, HMAC verification) that do not
- * require a live MP account. The HTTP-dependent methods (createSubscription,
- * cancelSubscription, etc.) are exercised in the e2e tests in Sprint 2.11.
+ * Focus: pure helpers plus the request/response contract at the MercadoPago
+ * client boundary. The SDK client is mocked, so these tests never make a live
+ * provider call.
  */
 describe('MercadoPagoAdapter', () => {
     let adapter: MercadoPagoAdapter;
+    let preApprovalPlanCreate: jest.Mock;
 
     beforeEach(async () => {
+        preApprovalPlanCreate = jest.fn();
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 MercadoPagoAdapter,
@@ -23,12 +25,109 @@ describe('MercadoPagoAdapter', () => {
                         webhookSecret: 'test_webhook_secret_abc123',
                         isConfigured: () => true,
                         environment: () => 'sandbox',
+                        preApprovalPlan: { create: preApprovalPlanCreate },
                     },
                 },
             ],
         }).compile();
 
         adapter = module.get<MercadoPagoAdapter>(MercadoPagoAdapter);
+    });
+
+    describe('createPlan', () => {
+        const monthlyInput = {
+            slug: 'pro',
+            name: 'Pro — Parallly CO',
+            amountCents: 75_770_000,
+            currency: 'COP',
+            billingInterval: 'month' as const,
+        };
+
+        it('sends the exact MCO monthly preapproval_plan payload', async () => {
+            const previousDashboardUrl = process.env.DASHBOARD_URL;
+            process.env.DASHBOARD_URL = 'https://dashboard.example.test';
+            preApprovalPlanCreate.mockResolvedValue({ id: 'plan-mco-monthly-123' });
+
+            try {
+                await expect(adapter.createPlan(monthlyInput)).resolves.toEqual({
+                    providerPlanId: 'plan-mco-monthly-123',
+                    slug: 'pro',
+                    name: 'Pro — Parallly CO',
+                    amountCents: 75_770_000,
+                    currency: 'COP',
+                    billingInterval: 'month',
+                    trialDays: undefined,
+                });
+            } finally {
+                if (previousDashboardUrl === undefined) delete process.env.DASHBOARD_URL;
+                else process.env.DASHBOARD_URL = previousDashboardUrl;
+            }
+
+            expect(preApprovalPlanCreate).toHaveBeenCalledTimes(1);
+            expect(preApprovalPlanCreate).toHaveBeenCalledWith({
+                body: {
+                    reason: 'Pro — Parallly CO',
+                    auto_recurring: {
+                        frequency: 1,
+                        frequency_type: 'months',
+                        transaction_amount: 757_700,
+                        currency_id: 'COP',
+                    },
+                    back_url: 'https://dashboard.example.test/admin/settings/billing?status=return',
+                },
+            });
+        });
+
+        it('expresses an annual plan as one charge every 12 months', async () => {
+            preApprovalPlanCreate.mockResolvedValue({ id: 'plan-mco-annual-123' });
+
+            await adapter.createPlan({ ...monthlyInput, billingInterval: 'year' });
+
+            expect(preApprovalPlanCreate).toHaveBeenCalledWith(expect.objectContaining({
+                body: expect.objectContaining({
+                    auto_recurring: expect.objectContaining({
+                        frequency: 12,
+                        frequency_type: 'months',
+                    }),
+                }),
+            }));
+        });
+
+        it('preserves sanitized provider diagnostics when MercadoPago rejects the collector', async () => {
+            preApprovalPlanCreate.mockRejectedValue({
+                status: 403,
+                error: 'forbidden',
+                cause: [{
+                    code: 'rejected_by_regulations_collector_non_compliant',
+                    description: 'Collector blocked. Bearer APP_USR-super-secret-token',
+                }],
+                response: {
+                    headers: {
+                        authorization: 'Bearer APP_USR-super-secret-token',
+                        'x-request-id': 'req-mco-403-abc',
+                    },
+                },
+            });
+
+            let response: any;
+            try {
+                await adapter.createPlan(monthlyInput);
+            } catch (err: any) {
+                response = err.getResponse();
+            }
+
+            expect(response).toEqual({
+                error: 'mp_plan_create_rejected',
+                message: 'Collector blocked. Bearer [REDACTED]',
+                provider: {
+                    httpStatus: 403,
+                    code: 'rejected_by_regulations_collector_non_compliant',
+                    requestId: 'req-mco-403-abc',
+                },
+            });
+            expect(JSON.stringify(response)).not.toContain('APP_USR-super-secret-token');
+            expect(JSON.stringify(response)).not.toContain('authorization');
+        });
     });
 
     describe('verifyWebhookSignature', () => {

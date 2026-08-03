@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { useTranslations } from "next-intl";
-import { api } from "@/lib/api";
+import { api, type MercadoPagoProviderStatus } from "@/lib/api";
 import {
     Layers, Save, CheckCircle, AlertCircle, Loader2, Pencil, X,
     RefreshCw, Users, ToggleLeft, ToggleRight,
@@ -91,7 +91,7 @@ export default function PlansPage() {
     const [editBuffer, setEditBuffer] = useState<Plan | null>(null);
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
-    const [providerStatus, setProviderStatus] = useState<{ environment: "sandbox" | "production" | "unconfigured"; configured: boolean; webhookConfigured: boolean } | null>(null);
+    const [providerStatus, setProviderStatus] = useState<MercadoPagoProviderStatus | null>(null);
     const [syncing, setSyncing] = useState<string | null>(null);
     const [reconciling, setReconciling] = useState(false);
 
@@ -366,7 +366,7 @@ export default function PlansPage() {
                                 title={`${t("providerStatus")}${providerStatus.webhookConfigured ? "" : " · webhook ⚠"}`}
                                 className={`ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
                                     providerStatus.environment === "production"
-                                        ? "bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300"
+                                        ? "bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300"
                                         : providerStatus.environment === "sandbox"
                                         ? "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300"
                                         : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500"
@@ -377,6 +377,11 @@ export default function PlansPage() {
                         )}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
+                    {providerStatus?.credentialModeInferred === "app_usr" && providerStatus.collectorValidation === "not_checked" && (
+                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                            {t("mpCollectorPreflightPending")}
+                        </p>
+                    )}
                 </div>
                 <button
                     onClick={handleReconcile}

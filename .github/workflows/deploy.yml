@@ -99,6 +99,16 @@ jobs:
         continue-on-error: true
         run: cd apps/api && npx eslint "src/**/*.ts"
 
+      - name: MercadoPago collector and plan contract tests
+        run: |
+          cd apps/api
+          npm test -- --runInBand \
+            src/modules/billing/adapters/mercadopago-config.service.spec.ts \
+            src/modules/billing/adapters/mercadopago.adapter.spec.ts \
+            src/modules/billing/billing.service.spec.ts \
+            src/scripts/diagnose-mp-collector.spec.ts
+          node --test scripts/__tests__/sync-mp-plans.test.js
+
       - name: Prisma generate + migrate (ephemeral DB)
         run: |
           cd apps/api
@@ -366,10 +376,13 @@ jobs:
           PROD_MS_AUTH_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
           PROD_MS_CLIENT_ID: ${{ secrets.MS_AUTH_CLIENT_ID }}
           PROD_MS_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
-          # MercadoPago (sandbox values today; same variable names in production)
+          # MercadoPago (TEST in sandbox; APP_USR from the verified MCO merchant in production)
           PROD_MP_ACCESS_TOKEN: ${{ secrets.MP_ACCESS_TOKEN }}
           PROD_MP_WEBHOOK_SECRET: ${{ secrets.MP_WEBHOOK_SECRET }}
           PROD_MP_PUBLIC_KEY: ${{ secrets.MP_PUBLIC_KEY }}
+          # Optional but strongly recommended: numeric User/collector ID shown
+          # by the verified MCO merchant. The preflight compares without logging it.
+          PROD_MP_EXPECTED_COLLECTOR_ID: ${{ secrets.MP_EXPECTED_COLLECTOR_ID }}
           # Factus (DIAN electronic invoicing — Colombia). Credentials from the
           # Factus admin. FACTUS_BASE_URL = https://api-sandbox.factus.com.co
           # until production go-live.
@@ -378,10 +391,6 @@ jobs:
           PROD_FACTUS_CLIENT_SECRET: ${{ secrets.FACTUS_CLIENT_SECRET }}
           PROD_FACTUS_USERNAME: ${{ secrets.FACTUS_USERNAME }}
           PROD_FACTUS_PASSWORD: ${{ secrets.FACTUS_PASSWORD }}
-          # Optional — comma separated list of ISO codes for which to sync
-          # plans with MP on every deploy. Defaults to CO. Add more once you
-          # have an MP account per country. Example secret value: "CO,AR,MX"
-          PROD_MP_SYNC_COUNTRIES: ${{ secrets.MP_SYNC_COUNTRIES }}
           # Per-country USD→local FX rates. Override via secrets when prices drift.
           PROD_MP_FX_CO: ${{ secrets.MP_FX_CO }}
           PROD_MP_FX_AR: ${{ secrets.MP_FX_AR }}
@@ -434,9 +443,8 @@ jobs:
             PROD_BULL_BOARD_TOKEN,PROD_GRAFANA_PASSWORD,PROD_JWT_REFRESH_SECRET,
             PROD_MS_AUTH_CLIENT_ID,PROD_MS_AUTH_CLIENT_SECRET,
             PROD_MS_CLIENT_ID,PROD_MS_CLIENT_SECRET,
-            PROD_MP_ACCESS_TOKEN,PROD_MP_WEBHOOK_SECRET,PROD_MP_PUBLIC_KEY,
+            PROD_MP_ACCESS_TOKEN,PROD_MP_WEBHOOK_SECRET,PROD_MP_PUBLIC_KEY,PROD_MP_EXPECTED_COLLECTOR_ID,
             PROD_FACTUS_BASE_URL,PROD_FACTUS_CLIENT_ID,PROD_FACTUS_CLIENT_SECRET,PROD_FACTUS_USERNAME,PROD_FACTUS_PASSWORD,
-            PROD_MP_SYNC_COUNTRIES,
             PROD_MP_FX_CO,PROD_MP_FX_AR,PROD_MP_FX_MX,PROD_MP_FX_CL,PROD_MP_FX_PE,PROD_MP_FX_UY,PROD_MP_FX_BR,
             PROD_HUBSPOT_CLIENT_ID,PROD_HUBSPOT_CLIENT_SECRET,
             PROD_PIPEDRIVE_CLIENT_ID,PROD_PIPEDRIVE_CLIENT_SECRET,
@@ -564,6 +572,7 @@ jobs:
             echo "MP_ACCESS_TOKEN=${PROD_MP_ACCESS_TOKEN}" >> .env
             echo "MP_WEBHOOK_SECRET=${PROD_MP_WEBHOOK_SECRET}" >> .env
             echo "MP_PUBLIC_KEY=${PROD_MP_PUBLIC_KEY}" >> .env
+            echo "MP_EXPECTED_COLLECTOR_ID=${PROD_MP_EXPECTED_COLLECTOR_ID}" >> .env
             echo "MP_WEBHOOK_URL=https://api.parallly-chat.cloud/api/v1/billing/webhook/mercadopago" >> .env
             echo "# Factus (DIAN electronic invoicing — Colombia)" >> .env
             echo "FACTUS_BASE_URL=${PROD_FACTUS_BASE_URL:-https://api-sandbox.factus.com.co}" >> .env
@@ -707,17 +716,32 @@ jobs:
               run --rm api node prisma/seed-billing-plans.js \
               || { echo "::error::billing_plans seed FAILED — aborting deploy"; exit 1; }
 
+            echo "===> Validating MercadoPago collector (Colombia / MCO)..."
+            # Read-only preflight against /users/me, user status/permissions,
+            # and preapproval plan search. The app infers production mode from
+            # APP_USR, but that prefix does not prove country or write eligibility.
+            # MP_EXPECTED_COLLECTOR_ID additionally pins the exact merchant when
+            # configured; when empty, the report emits a non-blocking warning.
+            # Never attempt a plan write for another site or while the account
+            # reports status/permission blockers.
+            $DC \
+              run --rm api node scripts/diagnose-mp-collector.js --expected-site=MCO \
+              || { echo "::error::MercadoPago collector preflight FAILED — aborting deploy before plan sync"; exit 1; }
+
             echo "===> Syncing billing plans to MercadoPago (Colombia)..."
-            # Per-country sync. Colombia is the primary launch market. To add
-            # another country later, duplicate the line below with its ISO
-            # code + FX rate from secrets (e.g. PROD_MP_FX_MX for Mexico).
-            # The script is idempotent — already-synced tiers are skipped.
+            # Per-country sync. Colombia is the primary launch market. Before
+            # adding another country, extend the currently MCO-only preflight,
+            # then add an explicit sync with that merchant's credential + FX.
+            # The script validates saved IDs with the active credential and only
+            # skips plans that are accessible and match the expected definition.
             # Keep this unrolled so each country remains independently visible
             # and retryable in the deploy log.
-            $DC run --rm api node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" || true
-            # Add below when opening new countries:
-            # $DC run --rm api node scripts/sync-mp-plans.js --country=MX --fx="${PROD_MP_FX_MX:-18.5}" || true
-            # $DC run --rm api node scripts/sync-mp-plans.js --country=AR --fx="${PROD_MP_FX_AR:-1200}" || true
+            $DC \
+              run --rm api node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" \
+              || { echo "::error::MercadoPago plan sync FAILED — aborting deploy"; exit 1; }
+            # Add only after extending the collector preflight for that site:
+            # $DC run --rm api node scripts/sync-mp-plans.js --country=MX --fx="${PROD_MP_FX_MX:-18.5}"
+            # $DC run --rm api node scripts/sync-mp-plans.js --country=AR --fx="${PROD_MP_FX_AR:-1200}"
 
             echo "===> Fixing calendar_integrations UNIQUE index on all tenants..."
             for schema in $($DC exec -T postgres \

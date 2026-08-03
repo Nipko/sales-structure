@@ -245,8 +245,9 @@ export class BillingAdminController {
     }
 
     // ── MercadoPago provider status ─────────────────────────────
-    // Powers the sandbox/production badge in /admin/plans so the operator can
-    // confirm which environment is live before/after a credentials cutover.
+    // Powers the credential-mode badge in /admin/plans. This endpoint performs
+    // no provider call: environment is inferred locally and collector/KYC must
+    // be validated by the MercadoPago preflight.
     @Get('provider-status')
     providerStatus() {
         return {
@@ -254,6 +255,8 @@ export class BillingAdminController {
             data: {
                 mercadopago: {
                     environment: this.mpConfig.environment(),
+                    credentialModeInferred: this.mpConfig.credentialModeInferred(),
+                    collectorValidation: 'not_checked' as const,
                     configured: this.mpConfig.isConfigured(),
                     webhookConfigured: Boolean(this.mpConfig.webhookSecret),
                 },

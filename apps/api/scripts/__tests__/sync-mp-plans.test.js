@@ -1,0 +1,138 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const {
+    buildPlanBody,
+    compareExistingPlan,
+    createPlanRaw,
+    getPlanRaw,
+    isNotFoundError,
+    providerErrorDetails,
+} = require('../sync-mp-plans');
+
+test('buildPlanBody emits the documented COP monthly payload in peso units', () => {
+    const body = buildPlanBody({
+        plan: { name: 'Pro' },
+        country: 'CO',
+        currency: 'COP',
+        cycle: 'month',
+        amountCents: 249_900,
+    });
+
+    assert.deepEqual(body.auto_recurring, {
+        frequency: 1,
+        frequency_type: 'months',
+        transaction_amount: 2499,
+        currency_id: 'COP',
+    });
+    assert.equal('payment_methods_allowed' in body, false);
+    assert.match(body.back_url, /^https:\/\//);
+});
+
+test('compareExistingPlan accepts a matching plan and rejects stale configuration', () => {
+    const expected = { currency: 'COP', frequency: 12, amountCents: 2_499_900 };
+    const matching = compareExistingPlan({
+        id: 'plan-production',
+        status: 'active',
+        auto_recurring: {
+            frequency: 12,
+            frequency_type: 'months',
+            transaction_amount: 24999,
+            currency_id: 'COP',
+        },
+    }, expected);
+    assert.equal(matching.valid, true);
+
+    const stale = compareExistingPlan({
+        id: 'plan-sandbox',
+        status: 'active',
+        auto_recurring: {
+            frequency: 1,
+            frequency_type: 'months',
+            transaction_amount: 10,
+            currency_id: 'ARS',
+        },
+    }, expected);
+    assert.equal(stale.valid, false);
+    assert.ok(stale.reasons.some(reason => reason.startsWith('currency=')));
+    assert.ok(stale.reasons.some(reason => reason.startsWith('frequency=')));
+    assert.ok(stale.reasons.some(reason => reason.startsWith('amount=')));
+});
+
+test('providerErrorDetails retains the regulatory code without serializing credentials', () => {
+    const details = providerErrorDetails({
+        status: 403,
+        error: 'rejected_by_regulations_collector_non_compliant',
+        message: 'Collector is not compliant',
+        access_token: 'APP_USR-secret',
+        cause: [{
+            code: 'rejected_by_regulations_collector_non_compliant',
+            description: 'Collector blocked. Bearer APP_USR-super-secret-token',
+        }],
+    });
+
+    assert.deepEqual(details, {
+        status: 403,
+        code: 'rejected_by_regulations_collector_non_compliant',
+        message: 'Collector blocked. Bearer [REDACTED]',
+        requestId: null,
+    });
+    assert.equal(JSON.stringify(details).includes('APP_USR-secret'), false);
+    assert.equal(isNotFoundError({ status: 404, code: null }), true);
+});
+
+test('createPlanRaw captures x-request-id from a 403 without retaining request headers', async () => {
+    const fetchImpl = async (_url, request) => {
+        assert.equal(request.headers.Authorization, 'Bearer APP_USR-secret');
+        return new Response(JSON.stringify({
+            error: 'forbidden',
+            message: 'Collector is not compliant',
+            cause: [{ code: 'rejected_by_regulations_collector_non_compliant' }],
+        }), {
+            status: 403,
+            headers: { 'content-type': 'application/json', 'x-request-id': 'req-403-mco' },
+        });
+    };
+
+    await assert.rejects(
+        createPlanRaw({
+            accessToken: 'APP_USR-secret',
+            body: { reason: 'Pro — Parallly CO' },
+            fetchImpl,
+            idempotencyKey: 'test-idempotency-key',
+        }),
+        (error) => {
+            const details = providerErrorDetails(error);
+            assert.deepEqual(details, {
+                status: 403,
+                code: 'rejected_by_regulations_collector_non_compliant',
+                message: 'Collector is not compliant',
+                requestId: 'req-403-mco',
+            });
+            assert.equal(JSON.stringify(error).includes('APP_USR-secret'), false);
+            return true;
+        },
+    );
+});
+
+test('getPlanRaw safely reports a stale ID and captures its request id', async () => {
+    const fetchImpl = async (url, request) => {
+        assert.match(url, /preapproval_plan\/old-plan%2Fid$/);
+        assert.equal(request.method, 'GET');
+        return new Response(JSON.stringify({ error: 'not_found', message: 'Plan not found' }), {
+            status: 404,
+            headers: { 'content-type': 'application/json', 'x-request-id': 'req-stale-plan' },
+        });
+    };
+
+    await assert.rejects(
+        getPlanRaw({ accessToken: 'APP_USR-secret', planId: 'old-plan/id', fetchImpl }),
+        (error) => {
+            const details = providerErrorDetails(error);
+            assert.equal(isNotFoundError(details), true);
+            assert.equal(details.requestId, 'req-stale-plan');
+            assert.equal(JSON.stringify(error).includes('APP_USR-secret'), false);
+            return true;
+        },
+    );
+});

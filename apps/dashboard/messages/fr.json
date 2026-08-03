@@ -9030,6 +9030,7 @@
     "mpPlanId": "ID du plan MP",
     "notSynced": "Non synchronisé",
     "providerStatus": "État de MercadoPago",
+    "mpCollectorPreflightPending": "Identifiant APP_USR détecté — le collector/KYC est validé par le préflight.",
     "sandbox": "Sandbox",
     "production": "Production",
     "unconfigured": "Non configuré",

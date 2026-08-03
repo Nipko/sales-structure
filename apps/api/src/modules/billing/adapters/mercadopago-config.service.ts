@@ -63,16 +63,26 @@ export class MercadoPagoConfigService implements OnModuleInit {
     }
 
     /**
-     * sandbox/production inference by token prefix. MP uses TEST-* for sandbox
-     * and APP_USR-* for production credentials. Useful for logs and future
-     * conditional behaviour (e.g., shorter timeouts in tests).
+     * Credential mode inferred locally from the token prefix. This does not
+     * call MercadoPago and therefore says nothing about collector/KYC status.
      */
-    environment(): 'sandbox' | 'production' | 'unconfigured' {
+    credentialModeInferred(): 'test' | 'app_usr' | 'unknown' | 'unconfigured' {
         const token = process.env.MP_ACCESS_TOKEN;
         if (!token) return 'unconfigured';
-        if (token.startsWith('TEST-')) return 'sandbox';
-        if (token.startsWith('APP_USR-')) return 'production';
-        return 'production'; // conservative default for anything unrecognised
+        if (token.startsWith('TEST-')) return 'test';
+        if (token.startsWith('APP_USR-')) return 'app_usr';
+        return 'unknown';
+    }
+
+    /**
+     * Backwards-compatible environment label derived from the credential mode.
+     * It is not proof that the production collector is enabled or compliant.
+     */
+    environment(): 'sandbox' | 'production' | 'unconfigured' {
+        const mode = this.credentialModeInferred();
+        if (mode === 'unconfigured') return 'unconfigured';
+        if (mode === 'test') return 'sandbox';
+        return 'production'; // preserve the previous conservative default
     }
 
     get preApproval(): PreApproval {

@@ -9030,6 +9030,7 @@
     "mpPlanId": "ID de plan MP",
     "notSynced": "Sin sincronizar",
     "providerStatus": "Estado de MercadoPago",
+    "mpCollectorPreflightPending": "Credencial APP_USR detectada — collector/KYC se valida en el preflight.",
     "sandbox": "Sandbox",
     "production": "Producción",
     "unconfigured": "Sin configurar",

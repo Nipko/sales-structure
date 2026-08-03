@@ -108,11 +108,9 @@ export class MercadoPagoAdapter implements IPaymentProvider {
                 transaction_amount: input.amountCents / 100,
                 currency_id: input.currency,
             },
-            // Hardcoded to cards + account money — the two payment types MP
-            // supports for subscriptions. Customising this is rarely useful.
-            payment_methods_allowed: {
-                payment_types: [{ id: 'credit_card' }, { id: 'debit_card' }],
-            },
+            // payment_methods_allowed is optional. Let MercadoPago resolve the
+            // methods enabled for this MCO collector instead of hardcoding a
+            // country/account-specific allowlist into the plan definition.
             back_url: process.env.DASHBOARD_URL
                 ? `${process.env.DASHBOARD_URL}/admin/settings/billing?status=return`
                 : 'https://admin.parallly-chat.cloud/admin/settings/billing?status=return',
@@ -126,14 +124,22 @@ export class MercadoPagoAdapter implements IPaymentProvider {
             // operator knows what to fix. Common one at go-live: "The collector
             // does not meet the personal data verification requirements" → the
             // MP production account isn't verified/KYC-complete yet.
-            const mpMsg =
-                err?.cause?.[0]?.description ||
-                err?.cause?.[0]?.message ||
-                err?.cause?.message ||
-                err?.message ||
-                'MercadoPago rechazó la creación del plan';
-            this.logger.error(`MP createPlan rejected for slug=${input.slug}: ${mpMsg}`);
-            throw new BadRequestException({ error: 'mp_plan_create_rejected', message: mpMsg });
+            const diagnostic = this.toSanitizedProviderError(err);
+            this.logger.error(
+                `MP createPlan rejected for slug=${input.slug}` +
+                ` status=${diagnostic.httpStatus ?? 'unknown'}` +
+                ` code=${diagnostic.code ?? 'unknown'}` +
+                ` requestId=${diagnostic.requestId ?? 'unknown'}: ${diagnostic.message}`,
+            );
+            throw new BadRequestException({
+                error: 'mp_plan_create_rejected',
+                message: diagnostic.message,
+                provider: {
+                    httpStatus: diagnostic.httpStatus ?? null,
+                    code: diagnostic.code ?? null,
+                    requestId: diagnostic.requestId ?? null,
+                },
+            });
         }
         if (!res.id) {
             throw new BadRequestException({
@@ -565,6 +571,91 @@ export class MercadoPagoAdapter implements IPaymentProvider {
     // -------------------------------------------------------------------------
     // Internals — status translation table (used by 2.4 + 2.6)
     // -------------------------------------------------------------------------
+
+    /**
+     * Keep the provider diagnostics operators need without ever returning the
+     * raw SDK error. MercadoPago error shapes vary across SDK versions: v2
+     * generally exposes `status/error/cause`, while newer clients may attach
+     * response headers. Supporting both lets us retain x-request-id whenever
+     * the provider makes it available without leaking Authorization headers.
+     */
+    private toSanitizedProviderError(err: any): {
+        message: string;
+        httpStatus?: number;
+        code?: string;
+        requestId?: string;
+    } {
+        const cause = Array.isArray(err?.cause) ? err.cause[0] : err?.cause;
+        const rawStatus =
+            err?.status ??
+            err?.statusCode ??
+            err?.status_code ??
+            err?.response?.status ??
+            err?.api_response?.status;
+        const parsedStatus = Number(rawStatus);
+        const httpStatus = Number.isInteger(parsedStatus) && parsedStatus >= 100 && parsedStatus <= 599
+            ? parsedStatus
+            : undefined;
+
+        const message = this.sanitizeProviderText(
+            cause?.description ??
+            cause?.message ??
+            err?.error_description ??
+            err?.message,
+            500,
+        ) ?? 'MercadoPago rechazó la creación del plan';
+        const code = this.sanitizeProviderText(
+            cause?.code ?? err?.code ?? err?.error,
+            160,
+        );
+
+        const headerSources = [
+            err?.response?.headers,
+            err?.api_response?.headers,
+            err?.headers,
+        ];
+        let headerRequestId: unknown;
+        for (const headers of headerSources) {
+            headerRequestId = this.readHeader(headers, 'x-request-id') ?? this.readHeader(headers, 'x-correlation-id');
+            if (headerRequestId != null) break;
+        }
+        const requestId = this.sanitizeProviderText(
+            err?.request_id ??
+            err?.requestId ??
+            cause?.request_id ??
+            cause?.requestId ??
+            headerRequestId,
+            200,
+        );
+
+        return { message, httpStatus, code, requestId };
+    }
+
+    private readHeader(headers: any, name: string): unknown {
+        if (!headers) return undefined;
+        if (typeof headers.get === 'function') {
+            try {
+                return headers.get(name);
+            } catch {
+                return undefined;
+            }
+        }
+        if (typeof headers !== 'object') return undefined;
+        const key = Object.keys(headers).find(candidate => candidate.toLowerCase() === name);
+        const value = key ? headers[key] : undefined;
+        return Array.isArray(value) ? value[0] : value;
+    }
+
+    private sanitizeProviderText(value: unknown, maxLength: number): string | undefined {
+        if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+        const sanitized = String(value)
+            .replace(/\bBearer\s+[^\s,;"'}]+/gi, 'Bearer [REDACTED]')
+            .replace(/\b(?:APP_USR|TEST)-[A-Za-z0-9_-]+/gi, '[REDACTED]')
+            .replace(/[\r\n\t]+/g, ' ')
+            .trim()
+            .slice(0, maxLength);
+        return sanitized || undefined;
+    }
 
     /**
      * Translate MP's preapproval status string to our internal enum.

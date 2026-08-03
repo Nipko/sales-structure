@@ -8,6 +8,8 @@ import { MockPaymentProvider } from './adapters/mock-payment-provider.adapter';
 import { BillingEventType } from './types/billing-event.enum';
 import { SubscriptionStatus } from './types/subscription-status.enum';
 import { NormalizedBillingEvent } from './types/provider-types';
+import { FiscalConfigService } from '../fiscal/fiscal-config.service';
+import { SmsCreditsService } from '../sms-credits/sms-credits.service';
 
 /**
  * Unit tests for BillingService.
@@ -50,6 +52,14 @@ describe('BillingService', () => {
                 EventEmitter2,
                 { provide: PrismaService, useValue: prismaMock },
                 { provide: RedisService, useValue: redisMock },
+                {
+                    provide: FiscalConfigService,
+                    useValue: { getConfig: jest.fn().mockResolvedValue({ fiscalGateEnabled: false }) },
+                },
+                {
+                    provide: SmsCreditsService,
+                    useValue: { addCredits: jest.fn(), adjust: jest.fn() },
+                },
             ],
         })
             // Override the factory to always return the mock provider so we
@@ -110,9 +120,9 @@ describe('BillingService', () => {
             expect(patch?.cancelledAt).toBeInstanceOf(Date);
         });
 
-        it('TRIAL_ENDED on trialing moves to pending_auth (awaiting card)', () => {
+        it('TRIAL_ENDED on trialing moves to past_due for the grace period', () => {
             const patch = derive(BillingEventType.TRIAL_ENDED, SubscriptionStatus.TRIALING);
-            expect(patch?.status).toBe(SubscriptionStatus.PENDING_AUTH);
+            expect(patch?.status).toBe(SubscriptionStatus.PAST_DUE);
         });
     });
 

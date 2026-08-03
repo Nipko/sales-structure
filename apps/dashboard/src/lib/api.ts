@@ -7,6 +7,16 @@
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
+export type MercadoPagoProviderStatus = {
+    /** Backwards-compatible label inferred locally from the access-token prefix. */
+    environment: 'sandbox' | 'production' | 'unconfigured';
+    credentialModeInferred: 'test' | 'app_usr' | 'unknown' | 'unconfigured';
+    /** provider-status is intentionally read-only/local; preflight validates the collector. */
+    collectorValidation: 'not_checked';
+    configured: boolean;
+    webhookConfigured: boolean;
+};
+
 // ============================================
 // Core fetch with auth + refresh mutex
 // ============================================
@@ -1242,7 +1252,7 @@ export const api = {
     updateAdminPlan: (slug: string, data: any) => apiPut(`/billing-admin/plans/${slug}`, data),
     invalidatePlanCache: (slug: string) => apiPost(`/billing-admin/plans/${slug}/invalidate-cache`, {}),
     getMpProviderStatus: () =>
-        apiGet<{ mercadopago: { environment: 'sandbox' | 'production' | 'unconfigured'; configured: boolean; webhookConfigured: boolean } }>(
+        apiGet<{ mercadopago: MercadoPagoProviderStatus }>(
             '/billing-admin/provider-status',
         ),
     syncPlanToMp: (slug: string, body?: { country?: string; fx?: number; force?: boolean; cycle?: 'month' | 'year' }) =>

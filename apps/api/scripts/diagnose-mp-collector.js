@@ -35,6 +35,7 @@ const ENDPOINT_LABELS = Object.freeze({
 
 const EXPECTED_SITE_ID = 'MCO';
 const DEFAULT_TIMEOUT_MS = 10_000;
+const MARKETPLACE_STATUS_WARNING = 'Mercado Libre marketplace status flags are diagnostic only and do not prove whether preapproval_plan writes are allowed.';
 
 function isRecord(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -364,7 +365,7 @@ function addRequestFailure(blockers, result, endpoint) {
     return false;
 }
 
-function validateCollectorStatus(status, blockers, redactions) {
+function validateCollectorStatus(status, blockers, warnings, redactions) {
     if (!isRecord(status)) {
         blockers.push({
             code: 'collector_status_missing',
@@ -409,41 +410,45 @@ function validateCollectorStatus(status, blockers, redactions) {
     for (const permissionName of ['billing', 'sell', 'list']) {
         const permission = status[permissionName];
         if (!isRecord(permission)) {
-            blockers.push({
+            warnings.push({
                 code: 'permission_missing',
                 endpoint: ENDPOINT_LABELS.userStatus,
                 permission: permissionName,
                 expected: '{ allow: true, codes: [] }',
                 actual: 'missing_or_invalid',
+                message: MARKETPLACE_STATUS_WARNING,
             });
             continue;
         }
 
         if (permission.allow !== true) {
-            blockers.push({
+            warnings.push({
                 code: 'permission_not_allowed',
                 endpoint: ENDPOINT_LABELS.userStatus,
                 permission: permissionName,
                 expected: true,
                 actual: typeof permission.allow === 'boolean' ? permission.allow : null,
+                message: MARKETPLACE_STATUS_WARNING,
             });
         }
 
         if (!Array.isArray(permission.codes)) {
-            blockers.push({
+            warnings.push({
                 code: 'permission_codes_missing',
                 endpoint: ENDPOINT_LABELS.userStatus,
                 permission: permissionName,
                 expected: [],
                 actual: null,
+                message: MARKETPLACE_STATUS_WARNING,
             });
         } else if (permission.codes.length > 0) {
-            blockers.push({
+            warnings.push({
                 code: 'permission_codes_present',
                 endpoint: ENDPOINT_LABELS.userStatus,
                 permission: permissionName,
                 expected: [],
                 actual: sanitizeCodes(permission.codes, redactions),
+                message: MARKETPLACE_STATUS_WARNING,
             });
         }
     }
@@ -636,7 +641,7 @@ async function diagnoseCollector(options = {}) {
 
         if (!addRequestFailure(report.blockers, userStatus, ENDPOINT_LABELS.userStatus)) {
             const status = isRecord(userStatus.data) ? userStatus.data.status : null;
-            validateCollectorStatus(status, report.blockers, redactions);
+            validateCollectorStatus(status, report.blockers, report.warnings, redactions);
         }
     }
 

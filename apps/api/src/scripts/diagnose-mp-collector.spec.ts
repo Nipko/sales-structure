@@ -35,6 +35,8 @@ type DiagnosticReport = {
         code: string;
         endpoint: string;
         message: string;
+        permission?: string;
+        actual?: unknown;
     }>;
 };
 
@@ -186,7 +188,7 @@ describe('diagnose-mp-collector read-only preflight', () => {
         expect(serialized).not.toContain('nickname');
     });
 
-    it('returns blockers for country, required action, account state, terms, allow flags and codes', async () => {
+    it('blocks country, required action, account state and terms while reporting marketplace flags as warnings', async () => {
         const blockedStatus = {
             site_status: 'blocked',
             required_action: 'validate_identity',
@@ -203,6 +205,7 @@ describe('diagnose-mp-collector read-only preflight', () => {
 
         const report = await diagnoseCollector({ accessToken: token, fetchImpl: fetchMock, now });
         const codes = report.blockers.map((blocker) => blocker.code);
+        const warningCodes = report.warnings.map((warning) => warning.code);
 
         expect(report.ok).toBe(false);
         expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -211,15 +214,71 @@ describe('diagnose-mp-collector read-only preflight', () => {
             'required_action_present',
             'site_status_not_active',
             'mercadopago_terms_not_accepted',
+        ]));
+        expect(codes).not.toContain('permission_not_allowed');
+        expect(codes).not.toContain('permission_codes_present');
+        expect(codes).not.toContain('permission_codes_missing');
+        expect(warningCodes).toEqual(expect.arrayContaining([
             'permission_not_allowed',
             'permission_codes_present',
             'permission_codes_missing',
         ]));
-        expect(report.blockers).toEqual(expect.arrayContaining([
+        expect(report.warnings).toEqual(expect.arrayContaining([
             expect.objectContaining({ code: 'permission_not_allowed', permission: 'billing' }),
             expect.objectContaining({ code: 'permission_codes_present', permission: 'sell' }),
             expect.objectContaining({ code: 'permission_codes_missing', permission: 'list' }),
         ]));
+    });
+
+    it('does not block plan sync for address_pending in billing or list marketplace flags', async () => {
+        const addressPendingStatus = {
+            ...ACTIVE_STATUS,
+            billing: { allow: false, codes: ['address_pending'] },
+            list: { allow: false, codes: ['address_pending'] },
+        };
+        const fetchMock = queueFetch(
+            response({ id: 456, nickname: 'private', site_id: 'MCO' }),
+            response({ status: addressPendingStatus }),
+            response({ paging: { total: 0, limit: 1, offset: 0 }, results: [] }),
+        );
+        const output: string[] = [];
+
+        const exitCode = await runCli({
+            env: {
+                MP_ACCESS_TOKEN: token,
+                MP_EXPECTED_COLLECTOR_ID: '456',
+            },
+            argv: ['--expected-site=MCO'],
+            fetchImpl: fetchMock,
+            write: (chunk) => output.push(chunk),
+            now,
+        });
+        const report = JSON.parse(output[0]) as DiagnosticReport;
+
+        expect(exitCode).toBe(0);
+        expect(report.ok).toBe(true);
+        expect(report.blockers).toEqual([]);
+        expect(report.warnings).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                code: 'permission_not_allowed',
+                permission: 'billing',
+            }),
+            expect.objectContaining({
+                code: 'permission_codes_present',
+                permission: 'billing',
+                actual: ['address_pending'],
+            }),
+            expect.objectContaining({
+                code: 'permission_not_allowed',
+                permission: 'list',
+            }),
+            expect.objectContaining({
+                code: 'permission_codes_present',
+                permission: 'list',
+                actual: ['address_pending'],
+            }),
+        ]));
+        expect(fetchMock).toHaveBeenCalledTimes(3);
     });
 
     it('captures HTTP status, sanitized error body and x-request-id without leaking secrets or PII', async () => {

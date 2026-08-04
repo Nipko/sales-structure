@@ -31,7 +31,13 @@
 // (or another collector) to the real production account.
 
 const { PrismaClient } = require('@prisma/client');
-const { randomUUID } = require('crypto');
+const { createHash } = require('crypto');
+
+// RFC 9562 URL namespace. A namespaced UUID keeps retries of the exact same
+// plan specification on the same Mercado Pago idempotency key, including
+// retries after an accepted POST whose response/DB update was interrupted.
+const URL_UUID_NAMESPACE = '6ba7b811-9dad-11d1-80b4-00c04fd430c8';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const CURRENCY_BY_COUNTRY = {
     CO: 'COP',
@@ -42,6 +48,55 @@ const CURRENCY_BY_COUNTRY = {
     UY: 'UYU',
     BR: 'BRL',
 };
+
+function canonicalJson(value) {
+    if (value === null || typeof value !== 'object') {
+        return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+        return `[${value.map(item => canonicalJson(item) ?? 'null').join(',')}]`;
+    }
+    const entries = Object.keys(value)
+        .sort()
+        .filter(key => value[key] !== undefined)
+        .map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`);
+    return `{${entries.join(',')}}`;
+}
+
+function uuidV5(name, namespace = URL_UUID_NAMESPACE) {
+    const namespaceBytes = Buffer.from(namespace.replace(/-/g, ''), 'hex');
+    if (namespaceBytes.length !== 16) {
+        throw new TypeError('The UUID namespace must contain exactly 16 bytes.');
+    }
+
+    const bytes = createHash('sha1')
+        .update(namespaceBytes)
+        .update(String(name), 'utf8')
+        .digest()
+        .subarray(0, 16);
+    bytes[6] = (bytes[6] & 0x0f) | 0x50; // RFC 9562 version 5
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // RFC 9562 variant
+
+    const hex = bytes.toString('hex');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function buildPlanIdempotencyKey({ country, slug, cycle, body, replacementOf = null }) {
+    if (!country || !slug || !cycle || !body || typeof body !== 'object') {
+        throw new TypeError('country, slug, cycle and body are required to build the plan idempotency key.');
+    }
+
+    const specification = {
+        provider: 'mercadopago',
+        resource: 'preapproval_plan',
+        country: String(country).trim().toUpperCase(),
+        slug: String(slug).trim().toLowerCase(),
+        cycle: String(cycle).trim().toLowerCase(),
+        replacementOf: replacementOf ? String(replacementOf).trim() : null,
+        body,
+    };
+    return uuidV5(`parallly:${canonicalJson(specification)}`);
+}
 
 function parseArgs() {
     const argv = process.argv.slice(2);
@@ -161,9 +216,12 @@ function buildPlanBody({ plan, country, currency, cycle, amountCents }) {
     };
 }
 
-async function createPlanRaw({ accessToken, body, fetchImpl = globalThis.fetch, idempotencyKey = randomUUID() }) {
+async function createPlanRaw({ accessToken, body, fetchImpl = globalThis.fetch, idempotencyKey }) {
     if (typeof fetchImpl !== 'function') {
         throw new Error('Node.js 20+ is required because global fetch is unavailable.');
+    }
+    if (typeof idempotencyKey !== 'string' || !UUID_PATTERN.test(idempotencyKey)) {
+        throw new TypeError('A valid deterministic UUID idempotencyKey is required to create a Mercado Pago plan.');
     }
 
     const response = await fetchImpl('https://api.mercadopago.com/preapproval_plan', {
@@ -353,7 +411,14 @@ async function main() {
             try {
                 // Raw fetch is intentional here: SDK v2.12 discards response
                 // headers on non-2xx, including x-request-id required by MP support.
-                res = await createPlanRaw({ accessToken, body });
+                const idempotencyKey = buildPlanIdempotencyKey({
+                    country: args.country,
+                    slug: plan.slug,
+                    cycle: args.cycle,
+                    body,
+                    replacementOf: existingCycleId ?? null,
+                });
+                res = await createPlanRaw({ accessToken, body, idempotencyKey });
             } catch (error) {
                 console.error(`    FAILED to create ${plan.slug}/${args.cycle}:`, providerErrorDetails(error));
                 failures += 1;
@@ -408,6 +473,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+    buildPlanIdempotencyKey,
     buildPlanBody,
     compareExistingPlan,
     createPlanRaw,

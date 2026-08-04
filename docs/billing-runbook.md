@@ -64,19 +64,20 @@ Bootstrapea los **5 planes** (`emprendedor` USD $21, `starter` $49, `pro` $129, 
 docker compose run --rm api node scripts/diagnose-mp-collector.js --expected-site=MCO
 ```
 
-Este diagnóstico hace únicamente consultas **read-only** (`/users/me`, estado/permisos del usuario y búsqueda de planes) con el `MP_ACCESS_TOKEN` que realmente ve el contenedor. El deploy exige `MCO`, cuenta activa, términos aceptados, ausencia de acciones pendientes y permisos operativos antes de intentar crear planes. El código interpreta un prefijo `APP_USR-` como modo producción, pero el prefijo por sí solo **no demuestra** país, merchant correcto ni cumplimiento del collector.
+Este diagnóstico hace únicamente consultas **read-only** (`/users/me`, estado del usuario y búsqueda de planes) con el `MP_ACCESS_TOKEN` que realmente ve el contenedor. El deploy exige `MCO`, cuenta activa, términos aceptados y ausencia de acciones globales pendientes antes de intentar crear planes. Los flags `billing`, `sell` y `list` del estado de Mercado Libre —incluido `address_pending`— se conservan como advertencias diagnósticas: no documentan por sí solos la elegibilidad de escritura de `preapproval_plan`, cuya prueba autoritativa es el `POST` que ejecuta el sync. El código interpreta un prefijo `APP_USR-` como modo producción, pero el prefijo por sí solo **no demuestra** país, merchant correcto ni cumplimiento del collector.
 
 Para fijar también el merchant exacto, obtené su ID numérico desde el portal y usá `--expected-collector-id=<ID>` o definí `MP_EXPECTED_COLLECTOR_ID` dentro del contenedor. La comparación ocurre en memoria: el reporte sólo expone `collector_identity.expected_configured` y `matches`, nunca el ID esperado ni el recibido. El workflow toma el valor del GitHub Secret opcional `MP_EXPECTED_COLLECTOR_ID`; si queda vacío, el diagnóstico puede terminar `ok: true`, pero incluye la advertencia no bloqueante `collector_identity_not_pinned`: MCO/KYC pasaron, la identidad exacta del merchant no quedó probada.
 
-El preflight tampoco imprime el Access Token. Si falla por token ausente/inválido, site distinto, collector distinto o respuesta no autorizada de MP, el deploy aborta antes del `POST /preapproval_plan`. Como sólo ejecuta tres `GET`, un resultado exitoso conserva `read_only_scope.write_eligibility_tested: false`: reduce causas posibles, pero no garantiza que MercadoPago autorice el `POST`.
+El preflight tampoco imprime el Access Token. Si falla por token ausente/inválido, site distinto, collector distinto, estado global inactivo, términos no aceptados, una acción global pendiente o una respuesta inválida/no autorizada de MP, el deploy aborta antes del `POST /preapproval_plan`. Las advertencias de `billing`/`sell`/`list` no abortan el deploy. Como sólo ejecuta tres `GET`, un resultado exitoso conserva `read_only_scope.write_eligibility_tested: false`: reduce causas posibles, pero no garantiza que MercadoPago autorice el `POST`.
 
 ### 1.4 Sync de planes a MercadoPago (Colombia)
 ```bash
 docker compose run --rm api node scripts/sync-mp-plans.js --country=CO --fx=4200
+docker compose run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual
 ```
 Registra los **4 tiers pagos** (`emprendedor`, `starter`, `pro`, `enterprise`; `custom` es sales-led y se omite) como `preapproval_plan` en MercadoPago Colombia. Guarda el ID mensual en `billing_plans.priceLocalOverrides[CO].mpPlanId` y, para Colombia, mantiene el mirror legacy en la columna `mpPlanId`. El FX rate se lee del secret `PROD_MP_FX_CO` (default `4200`), aunque un precio local fijo existente tiene precedencia.
 
-El sync automático del deploy es mensual y **fail-fast**. El ciclo anual se crea por separado con `--cycle=annual`; ver `docs/billing-annual-cycle.md`.
+El deploy valida primero, sin escrituras, los payloads mensual y anual que salen de la base productiva (`--force --dry-run`). Sólo si ambos son válidos sincroniza los dos ciclos de forma **fail-fast**. El ciclo anual usa `priceLocalOverrides.CO.annual.amountCents`; ver `docs/billing-annual-cycle.md`.
 
 **Cómo agregar otro país**: al deploy.yml, después de la línea de Colombia, duplicá la invocación con el código ISO correcto. Ejemplo México:
 ```yaml
@@ -249,7 +250,7 @@ Causas comunes:
 - `Invalid --fx value` → el secret `MP_FX_<CC>` tiene un valor no-numérico.
 - MP devolvió un body de error → leé la línea "FAILED: MP returned..." en el log del deploy para la razón específica de MP.
 
-El preflight, el seed y el sync son fail-fast: un error aborta el deploy. No agregues `|| true`; un deploy verde con planes sin sincronizar deja el checkout inoperante y oculta el incidente.
+El seed y el sync son fail-fast; el preflight también aborta ante sus blockers fuertes. Las advertencias diagnósticas de `billing`/`sell`/`list` no son errores. No agregues `|| true`: un deploy verde con planes sin sincronizar deja el checkout inoperante y oculta el incidente.
 
 ### `403 rejected_by_regulations_collector_non_compliant` al crear `preapproval_plan`
 
@@ -264,7 +265,7 @@ El request de Parallly usa el cuerpo mínimo documentado (`reason`, `auto_recurr
        --expected-collector-id="$EXPECTED_MP_COLLECTOR_ID"
    ```
    Cargá `EXPECTED_MP_COLLECTOR_ID` desde el ID numérico que muestra el portal; también podés pasar el mismo valor como `MP_EXPECTED_COLLECTOR_ID` dentro del contenedor.
-2. Confirmá `ok: true`, `expected_site_id: MCO`, `collector_identity.expected_configured: true`, `collector_identity.matches: true` y ningún blocker. Por privacidad, el script no imprime ninguno de los dos IDs. Si omitís la identidad esperada, `collector_identity_not_pinned` es una advertencia: no bloquea, pero tampoco prueba que el token sea del merchant correcto. Nunca pegues el Access Token en tickets o logs.
+2. Confirmá `ok: true`, `expected_site_id: MCO`, `collector_identity.expected_configured: true`, `collector_identity.matches: true` y ningún blocker. Puede haber advertencias de `billing`/`sell`/`list` (por ejemplo, `address_pending`); quedan registradas, pero no sustituyen ni impiden la prueba real del `POST /preapproval_plan`. Por privacidad, el script no imprime ninguno de los dos IDs. Si omitís la identidad esperada, `collector_identity_not_pinned` es una advertencia: no bloquea, pero tampoco prueba que el token sea del merchant correcto. Nunca pegues el Access Token en tickets o logs.
 3. Si el site o collector no coincide, generá las credenciales desde la aplicación del merchant correcto, reemplazá `MP_ACCESS_TOKEN` y repetí el preflight.
 4. Si identidad y site son correctos pero el `POST /preapproval_plan` sigue devolviendo el mismo 403, escalá a soporte de MercadoPago con el `collector_id` obtenido de forma segura en el portal, `site_id`, aplicación, timestamp, endpoint y request-id del rechazo. Pedí confirmación explícita de que ese collector está habilitado para **Suscripciones / preapproval_plan en producción MCO**.
 
@@ -288,13 +289,8 @@ Los `preapproval_plan_id` son específicos del ambiente, aplicación y collector
 2. Guardar un respaldo del mapeo actual de IDs y confirmar que no existen suscripciones reales que dependan de ellos. Un cambio de catálogo no migra suscripciones activas.
 3. Conseguir el Access Token y Public Key de producción de la **misma aplicación**, más el Webhook Secret de producción.
 4. Reemplazar los GitHub Secrets `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY` y `MP_WEBHOOK_SECRET`, guardar también `MP_EXPECTED_COLLECTOR_ID` con el ID numérico del merchant correcto, y disparar un deploy para que el runtime y el dashboard reciban las nuevas credenciales. El preflight debe terminar con `MCO`, `expected_configured: true` y `matches: true`; si falla, el deploy aborta antes del sync.
-5. Durante el sync mensual del deploy, cada ID guardado se valida con la credencial nueva. Los IDs TEST normalmente responden `404` para el token de producción y se reemplazan automáticamente. Revisá el resumen final: debe mostrar `failures=0` y, en un cutover íntegramente desde TEST, normalmente `created=4 validated=0`.
-6. Sincronizá también el ciclo anual si se ofrecerá al lanzamiento; el deploy sólo procesa el ciclo mensual:
-   ```bash
-   docker compose -f infra/docker/docker-compose.prod.yml run --rm api \
-     node scripts/sync-mp-plans.js --country=CO --cycle=annual
-   ```
-   El precio anual debe existir en `priceLocalOverrides.CO.annual.amountCents`. Los IDs anuales guardados también se validan y reemplazan si no son visibles o no coinciden.
+5. Durante el deploy, cada ID mensual y anual guardado se valida con la credencial nueva. Los IDs TEST normalmente responden `404` para el token de producción y se reemplazan automáticamente. Revisá ambos resúmenes finales: deben mostrar `failures=0`; en un cutover íntegramente desde TEST normalmente habrá cuatro creaciones mensuales y cuatro anuales.
+6. Antes del primer POST, el deploy ejecuta ambos ciclos con `--force --dry-run` para mostrar y validar los ocho payloads respaldados por la DB. El precio anual debe existir en `priceLocalOverrides.CO.annual.amountCents`; si falta alguno, el deploy aborta antes de crear cualquier plan.
 7. Usá `--force` sólo si necesitás recrear intencionalmente planes que el sync considera accesibles y correctos, por ejemplo durante un cambio controlado de catálogo:
    ```bash
    docker compose -f infra/docker/docker-compose.prod.yml run --rm api \

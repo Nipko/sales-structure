@@ -13,6 +13,12 @@ on:
       - 'docs/**'
   workflow_dispatch:
 
+# All triggers target the same production VPS. Queue deployments instead of
+# allowing two runs to migrate/restart the shared stack concurrently.
+concurrency:
+  group: parallext-production-vps-deploy
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   API_IMAGE: ghcr.io/nipko/parallext-api
@@ -723,22 +729,40 @@ jobs:
             # MP_EXPECTED_COLLECTOR_ID additionally pins the exact merchant when
             # configured; when empty, the report emits a non-blocking warning.
             # Never attempt a plan write for another site or while the account
-            # reports status/permission blockers.
+            # reports a global status blocker. Mercado Libre billing/sell/list
+            # flags are warnings: the plan sync POST is the authoritative write
+            # eligibility check for the Subscriptions product.
             $DC \
               run --rm api node scripts/diagnose-mp-collector.js --expected-site=MCO \
               || { echo "::error::MercadoPago collector preflight FAILED — aborting deploy before plan sync"; exit 1; }
 
-            echo "===> Syncing billing plans to MercadoPago (Colombia)..."
+            echo "===> Validating MercadoPago plan payloads from production DB (no network writes)..."
             # Per-country sync. Colombia is the primary launch market. Before
             # adding another country, extend the currently MCO-only preflight,
             # then add an explicit sync with that merchant's credential + FX.
             # The script validates saved IDs with the active credential and only
             # skips plans that are accessible and match the expected definition.
-            # Keep this unrolled so each country remains independently visible
-            # and retryable in the deploy log.
+            # Force + dry-run prints the exact DB-backed payloads even when old IDs
+            # exist, and validates BOTH cycles before the first provider mutation.
+            $DC \
+              run --rm api node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" --force --dry-run \
+              || { echo "::error::MercadoPago monthly payload validation FAILED — aborting before plan writes"; exit 1; }
+            $DC \
+              run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual --force --dry-run \
+              || { echo "::error::MercadoPago annual payload validation FAILED — aborting before plan writes"; exit 1; }
+
+            echo "===> Syncing monthly billing plans to MercadoPago (Colombia)..."
             $DC \
               run --rm api node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" \
-              || { echo "::error::MercadoPago plan sync FAILED — aborting deploy"; exit 1; }
+              || { echo "::error::MercadoPago monthly plan sync FAILED — aborting deploy"; exit 1; }
+
+            echo "===> Syncing annual billing plans to MercadoPago (Colombia)..."
+            $DC \
+              run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual \
+              || { echo "::error::MercadoPago annual plan sync FAILED — aborting deploy"; exit 1; }
+
+            # Keep country syncs unrolled so each market remains independently
+            # visible and retryable in the deploy log.
             # Add only after extending the collector preflight for that site:
             # $DC run --rm api node scripts/sync-mp-plans.js --country=MX --fx="${PROD_MP_FX_MX:-18.5}"
             # $DC run --rm api node scripts/sync-mp-plans.js --country=AR --fx="${PROD_MP_FX_AR:-1200}"

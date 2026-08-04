@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+    buildPlanIdempotencyKey,
     buildPlanBody,
     compareExistingPlan,
     createPlanRaw,
@@ -9,6 +10,73 @@ const {
     isNotFoundError,
     providerErrorDetails,
 } = require('../sync-mp-plans');
+
+test('buildPlanIdempotencyKey is a stable UUID for the same normalized specification', () => {
+    const body = buildPlanBody({
+        plan: { name: 'Pro' },
+        country: 'CO',
+        currency: 'COP',
+        cycle: 'month',
+        amountCents: 249_900,
+    });
+    const reorderedBody = {
+        back_url: body.back_url,
+        auto_recurring: {
+            currency_id: body.auto_recurring.currency_id,
+            transaction_amount: body.auto_recurring.transaction_amount,
+            frequency_type: body.auto_recurring.frequency_type,
+            frequency: body.auto_recurring.frequency,
+        },
+        reason: body.reason,
+    };
+
+    const first = buildPlanIdempotencyKey({
+        country: 'CO', slug: 'pro', cycle: 'month', body, replacementOf: null,
+    });
+    const retry = buildPlanIdempotencyKey({
+        country: 'co', slug: 'PRO', cycle: 'month', body: reorderedBody, replacementOf: null,
+    });
+
+    assert.equal(first, retry);
+    assert.match(first, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
+test('buildPlanIdempotencyKey changes with identity, cycle, replacementOf or expected payload', () => {
+    const specification = {
+        country: 'CO',
+        slug: 'pro',
+        cycle: 'month',
+        replacementOf: null,
+        body: buildPlanBody({
+            plan: { name: 'Pro' },
+            country: 'CO',
+            currency: 'COP',
+            cycle: 'month',
+            amountCents: 249_900,
+        }),
+    };
+    const original = buildPlanIdempotencyKey(specification);
+    const variants = [
+        { ...specification, country: 'MX' },
+        { ...specification, slug: 'starter' },
+        { ...specification, cycle: 'year' },
+        { ...specification, replacementOf: 'existing-plan-id' },
+        {
+            ...specification,
+            body: {
+                ...specification.body,
+                auto_recurring: {
+                    ...specification.body.auto_recurring,
+                    transaction_amount: specification.body.auto_recurring.transaction_amount + 1,
+                },
+            },
+        },
+    ];
+
+    for (const variant of variants) {
+        assert.notEqual(buildPlanIdempotencyKey(variant), original);
+    }
+});
 
 test('buildPlanBody emits the documented COP monthly payload in peso units', () => {
     const body = buildPlanBody({
@@ -82,8 +150,10 @@ test('providerErrorDetails retains the regulatory code without serializing crede
 });
 
 test('createPlanRaw captures x-request-id from a 403 without retaining request headers', async () => {
+    const idempotencyKey = '72a2a488-7225-5fe3-916f-a0e4b70f90ad';
     const fetchImpl = async (_url, request) => {
         assert.equal(request.headers.Authorization, 'Bearer APP_USR-secret');
+        assert.equal(request.headers['X-Idempotency-Key'], idempotencyKey);
         return new Response(JSON.stringify({
             error: 'forbidden',
             message: 'Collector is not compliant',
@@ -99,7 +169,7 @@ test('createPlanRaw captures x-request-id from a 403 without retaining request h
             accessToken: 'APP_USR-secret',
             body: { reason: 'Pro — Parallly CO' },
             fetchImpl,
-            idempotencyKey: 'test-idempotency-key',
+            idempotencyKey,
         }),
         (error) => {
             const details = providerErrorDetails(error);

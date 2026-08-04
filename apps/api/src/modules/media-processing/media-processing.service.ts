@@ -56,12 +56,35 @@ export class MediaProcessingService {
         conversationId: string,
         buffer: Buffer,
         mimeType: string,
+        contactDbId?: string,
     ): Promise<void> {
         try {
             const url = await this.media.saveBuffer(tenantId, buffer, mimeType);
             if (!url) return;
             const schemaName = await this.prisma.getTenantSchemaName(tenantId);
             if (!schemaName) return;
+
+            // La fila en `media_files` NO es decorativa: el barrido semanal de
+            // huérfanos (media-cleanup, domingos 4:30 AM, y NO en dry-run)
+            // considera huérfano todo archivo en disco que no esté referenciado
+            // ahí, y lo borra. Como esto sólo estampaba `metadata.mediaUrl` en
+            // el mensaje, cada domingo se borraban las notas de voz que los
+            // clientes habían mandado durante la semana: el mensaje quedaba en
+            // el hilo apuntando a un archivo inexistente y el agente veía un
+            // reproductor que no reproduce nada. Pérdida de dato del negocio,
+            // silenciosa e irreversible.
+            const fileName = url.split('/').pop() || '';
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `INSERT INTO media_files
+                   (entity_type, entity_id, original_name, file_name, mime_type, size_bytes, tags)
+                 VALUES ($1, $2::uuid, $3, $4, $5, $6, ARRAY['chat','audio'])`,
+                [
+                    contactDbId ? 'contact' : 'conversation',
+                    contactDbId || conversationId,
+                    fileName, fileName, mimeType, buffer.length,
+                ],
+            ).catch((e: any) => this.logger.warn(`media_files insert (audio) failed: ${e.message}`));
             // Stamp the URL on the most recent inbound audio message in this conversation
             // (the one we just saved before the AI pipeline ran).
             await this.prisma.executeInTenantSchema(
@@ -198,7 +221,7 @@ export class MediaProcessingService {
 
             if (mediaType === 'audio') {
                 // Persist the voice note so the agent can play it back in the app (best-effort).
-                await this.persistInboundAudio(tenantId, conversationId, downloaded.buffer, downloaded.mimeType);
+                await this.persistInboundAudio(tenantId, conversationId, downloaded.buffer, downloaded.mimeType, contactDbId);
                 result = await this.processAudio(tenantId, downloaded.buffer, downloaded.mimeType, throttleResult.limits.maxAudioDurationSec);
             } else {
                 result = await this.processImage(tenantId, downloaded.buffer, downloaded.mimeType, conversationContext);

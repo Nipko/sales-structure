@@ -35,11 +35,24 @@ export class InboundQueueService {
             { msg, enqueuedAt: Date.now() },
             {
                 priority: await this.throttle.getPriority(msg.tenantId).catch(() => 10),
-                // attempts:1 to start. The turn is idempotent (external_id dedupe
-                // + turn:done marker + outbound dedupeId), so this can be raised
-                // once the queue has soaked in production — but a retry storm on
-                // day one would be the worst way to discover a gap in that chain.
-                attempts: 1,
+                // La cola ya asentó en producción, así que se sube a 3 — que es
+                // lo que usan todas las demás colas de negocio (saliente,
+                // broadcast, automation).
+                //
+                // attempts:1 hacía definitivo cualquier error transitorio: un
+                // timeout o un 5xx del proveedor LLM, un hipo de PgBouncer, una
+                // caída al bajar un audio. El mensaje quedaba en `failed` y
+                // nadie le contestaba nunca al cliente — en LA cola que el
+                // propio monitor llama la más importante de la plataforma.
+                //
+                // Reintentar es seguro porque el turno es idempotente por
+                // partida triple: índice único en `messages.external_id`,
+                // marcador `turn:done` (que además distingue "ya respondida" de
+                // "interrumpida a la mitad") y `dedupeId` del saliente.
+                attempts: 3,
+                // Espera creciente: si el proveedor LLM se cayó, reintentar a
+                // los 2 segundos es pegarle a algo que sigue caído.
+                backoff: { type: 'exponential', delay: 5000 },
                 // Both dimensions: Redis runs noeviction, so an unbounded
                 // completed set is a slow memory leak that ends in write errors.
                 removeOnComplete: { age: 3600, count: 5000 },

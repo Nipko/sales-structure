@@ -76,9 +76,23 @@ export class ChannelsController {
             return res.status(401).send('Invalid signature');
         }
 
-        this.whatsappWebhookService.handleWebhookPayload(body).catch((error) => {
-            this.logger.error(`Error processing WhatsApp webhook: ${error}`);
-        });
+        // ENCOLAR Y RECIÉN AHÍ CONFIRMAR. `handleWebhookPayload` mete el mensaje
+        // en la cola `inbound-messages`; dispararlo como promesa flotante y
+        // devolver 200 acto seguido es exactamente el modo de falla que la
+        // iniciativa de cero pérdida ya cerró en Instagram, Messenger, Email y
+        // Telegram: si la API se reinicia entre el 200 y el `queue.add` —y todo
+        // deploy la recrea— el payload se pierde para siempre, porque Meta no
+        // reintenta lo que ya confirmó.
+        //
+        // Si encolar falla se devuelve 500 A PROPÓSITO: Meta reintenta, que es
+        // justamente lo que queremos. Un 200 mentiroso convierte un error
+        // transitorio en un mensaje perdido.
+        try {
+            await this.whatsappWebhookService.handleWebhookPayload(body);
+        } catch (error: any) {
+            this.logger.error(`Error processing WhatsApp webhook: ${error?.message || error}`);
+            return res.status(500).send('ERROR');
+        }
 
         return res.status(200).send('OK');
     }

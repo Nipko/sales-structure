@@ -32,9 +32,26 @@ export class IncidentService {
             const open = await this.prisma.platformIncident.findFirst({
                 where: { key, status: { in: OPEN_STATUSES } },
                 orderBy: { lastSeenAt: 'desc' },
-                select: { id: true },
+                select: { id: true, status: true, acknowledgedAt: true },
             });
             if (open) {
+                // Un "acknowledged" silencia el ruido, no arregla el problema:
+                // es "lo estoy mirando", no "ya está". Como el UPDATE nunca
+                // tocaba `status`, un incidente reconocido se quedaba así para
+                // siempre por más que la condición siguiera firme — y como
+                // `summary()` cuenta los críticos SÓLO con status='active', el
+                // hub del Ops Center pasaba a "Operativo" con el disco
+                // llenándose. El semáforo en verde mientras arde.
+                //
+                // Se re-escala a 'active' si sigue disparando un rato largo
+                // después del ack. La ventana existe para no deshacer el ack en
+                // el chequeo inmediatamente posterior, que es justo lo que el
+                // operador quiso callar.
+                const ackGraceMs = 30 * 60 * 1000;
+                const reEscalate = !!(open.status === 'acknowledged'
+                    && open.acknowledgedAt
+                    && Date.now() - new Date(open.acknowledgedAt).getTime() > ackGraceMs);
+
                 await this.prisma.platformIncident.update({
                     where: { id: open.id },
                     data: {
@@ -44,8 +61,12 @@ export class IncidentService {
                         title,
                         body,
                         value: value ?? null,
+                        ...(reEscalate ? { status: 'active', acknowledgedAt: null, acknowledgedBy: null } : {}),
                     },
                 });
+                if (reEscalate) {
+                    this.logger.warn(`Incidente ${key} re-escalado: sigue disparando 30 min después del ack`);
+                }
             } else {
                 await this.prisma.platformIncident.create({
                     data: { key, severity, title, body, value: value ?? null, status: 'active' },

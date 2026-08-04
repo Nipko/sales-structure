@@ -510,9 +510,11 @@ export class WhatsappController {
       throw new UnauthorizedException('Invalid webhook signature');
     }
 
-    this.webhookService.handleWebhookPayload(payload).catch(err => {
-      this.logger.error(`Webhook processing failed: ${err.message}`, err.stack);
-    });
+    // Encolar ANTES de confirmar. Ver el comentario extenso en
+    // channels.controller (webhook/whatsapp): un 200 antes del `queue.add`
+    // convierte un reinicio en un mensaje perdido, porque Meta no reintenta lo
+    // confirmado. Al fallar se deja propagar el error → 500 → Meta reintenta.
+    await this.webhookService.handleWebhookPayload(payload);
     return 'EVENT_RECEIVED';
   }
 }

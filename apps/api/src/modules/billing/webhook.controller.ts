@@ -64,9 +64,15 @@ export class BillingWebhookController {
         const provider = this.providerFactory.getByName(providerName as PaymentProviderName);
 
         const rawBody = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body ?? {});
+        const queryDataId = req.query?.['data.id'];
+        const dataId = typeof queryDataId === 'string'
+            ? queryDataId
+            : (Array.isArray(queryDataId) && typeof queryDataId[0] === 'string'
+                ? queryDataId[0]
+                : undefined);
 
         // 1. Signature verification
-        const verified = provider.verifyWebhookSignature(rawBody, headers);
+        const verified = provider.verifyWebhookSignature(rawBody, headers, { dataId });
         if (!verified) {
             this.logger.warn(`[Webhook] ${providerName} signature rejected — request-id=${headers['x-request-id'] ?? 'n/a'}`);
             await this.recordWebhookFailure('signature');

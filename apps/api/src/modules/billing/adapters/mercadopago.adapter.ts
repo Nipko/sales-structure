@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotImplementedException } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
-import { IPaymentProvider } from './payment-provider.interface';
+import { IPaymentProvider, WebhookSignatureContext } from './payment-provider.interface';
 import { MercadoPagoConfigService } from './mercadopago-config.service';
 import { SubscriptionStatus } from '../types/subscription-status.enum';
 import { BillingEventType } from '../types/billing-event.enum';
@@ -362,15 +362,19 @@ export class MercadoPagoAdapter implements IPaymentProvider {
      *   x-request-id: the unique request id to reconstruct the signed string
      *
      * The signed message is:
-     *   id:<notification.data.id>;request-id:<x-request-id>;ts:<ts>;
+     *   id:<query data.id lowercased>;request-id:<x-request-id>;ts:<ts>;
      *
      * Compared against HMAC-SHA256(MP_WEBHOOK_SECRET, message).
      * Returns false on any parsing or mismatch so the controller can 401.
      * Never throws — lets the caller decide how to react.
      *
-     * Reference: developer portal webhook notifications simulator (Jan 2024)
+     * Reference: current Mercado Pago WebhookSignatureValidator contract.
      */
-    verifyWebhookSignature(rawBody: string, headers: Record<string, string>): boolean {
+    verifyWebhookSignature(
+        _rawBody: string,
+        headers: Record<string, string>,
+        context?: WebhookSignatureContext,
+    ): boolean {
         const secret = this.mpConfig.webhookSecret;
         if (!secret) {
             this.logger.warn('verifyWebhookSignature called with MP_WEBHOOK_SECRET unset — failing closed');
@@ -398,17 +402,12 @@ export class MercadoPagoAdapter implements IPaymentProvider {
             return false;
         }
 
-        // Extract notification.data.id from the JSON body
-        let dataId: string | undefined;
-        try {
-            const body = JSON.parse(rawBody);
-            dataId = body?.data?.id ?? body?.id;
-        } catch {
-            this.logger.warn('verifyWebhookSignature could not parse raw body as JSON');
-            return false;
-        }
+        // Mercado Pago signs the resource id from the URL query parameter,
+        // not body.data.id. Alphanumeric ids are normalized to lowercase by
+        // the official SDK before the HMAC manifest is built.
+        const dataId = context?.dataId?.trim().toLowerCase();
         if (!dataId) {
-            this.logger.warn('verifyWebhookSignature webhook body has no data.id');
+            this.logger.warn('verifyWebhookSignature webhook URL has no data.id query parameter');
             return false;
         }
 

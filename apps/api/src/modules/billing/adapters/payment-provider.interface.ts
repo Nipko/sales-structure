@@ -10,6 +10,11 @@ import {
     ProviderSubscription,
 } from '../types/provider-types';
 
+export interface WebhookSignatureContext {
+    /** Provider resource id from the request URL/query, when the signature scheme includes it. */
+    dataId?: string;
+}
+
 /**
  * Provider-agnostic contract for payment integrations.
  *
@@ -112,7 +117,11 @@ export interface IPaymentProvider {
      * Stripe-Signature for Stripe). MUST be called before parseWebhookEvent.
      * Return false on mismatch; do not throw — callers log and return 401.
      */
-    verifyWebhookSignature(rawBody: string, headers: Record<string, string>): boolean;
+    verifyWebhookSignature(
+        rawBody: string,
+        headers: Record<string, string>,
+        context?: WebhookSignatureContext,
+    ): boolean;
 
     /**
      * Parse a provider webhook into a NormalizedBillingEvent. Only call after

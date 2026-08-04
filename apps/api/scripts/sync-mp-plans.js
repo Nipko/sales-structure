@@ -26,18 +26,16 @@
 //   2. priceUsdCents × --fx (dynamic conversion)
 //   If neither is available, the plan is skipped with an error.
 //
-// Idempotent: validates existing ids with the current credential before
-// skipping them. This is important when cutting over from TEST-* credentials
-// (or another collector) to the real production account.
+// Recovery-safe: validates saved ids, then searches/adopts an exact active
+// provider match before creating. New POSTs use a fresh UUID v4 (the official
+// SDK behaviour), so a prior rejected deterministic key cannot replay a cached
+// response. This is important when cutting over from TEST-* credentials (or
+// another collector) to the real production account.
 
 const { PrismaClient } = require('@prisma/client');
-const { createHash } = require('crypto');
+const { randomUUID } = require('crypto');
 
-// RFC 9562 URL namespace. A namespaced UUID keeps retries of the exact same
-// plan specification on the same Mercado Pago idempotency key, including
-// retries after an accepted POST whose response/DB update was interrupted.
-const URL_UUID_NAMESPACE = '6ba7b811-9dad-11d1-80b4-00c04fd430c8';
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SELF_SERVICE_PLAN_SLUGS = Object.freeze(['emprendedor', 'starter', 'pro', 'enterprise']);
 
 const CURRENCY_BY_COUNTRY = {
@@ -57,6 +55,11 @@ function findMissingSelfServicePlanSlugs(plans) {
             .filter(slug => typeof slug === 'string'),
     );
     return SELF_SERVICE_PLAN_SLUGS.filter(slug => !activeSlugs.has(slug));
+}
+
+function selectPlansForSync(plans, only = null) {
+    const safePlans = Array.isArray(plans) ? plans : [];
+    return only ? safePlans.filter(plan => plan?.slug === only) : safePlans;
 }
 
 function deriveAnnualAmountCents(monthlyAmountCents, discountPct) {
@@ -88,53 +91,12 @@ async function persistPendingPlanUpdates(prisma, pendingUpdates, failures) {
     };
 }
 
-function canonicalJson(value) {
-    if (value === null || typeof value !== 'object') {
-        return JSON.stringify(value);
+function createFreshPlanIdempotencyKey(randomUUIDImpl = randomUUID) {
+    const key = randomUUIDImpl();
+    if (typeof key !== 'string' || !UUID_V4_PATTERN.test(key)) {
+        throw new TypeError('The UUID generator returned an invalid Mercado Pago idempotency key.');
     }
-    if (Array.isArray(value)) {
-        return `[${value.map(item => canonicalJson(item) ?? 'null').join(',')}]`;
-    }
-    const entries = Object.keys(value)
-        .sort()
-        .filter(key => value[key] !== undefined)
-        .map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`);
-    return `{${entries.join(',')}}`;
-}
-
-function uuidV5(name, namespace = URL_UUID_NAMESPACE) {
-    const namespaceBytes = Buffer.from(namespace.replace(/-/g, ''), 'hex');
-    if (namespaceBytes.length !== 16) {
-        throw new TypeError('The UUID namespace must contain exactly 16 bytes.');
-    }
-
-    const bytes = createHash('sha1')
-        .update(namespaceBytes)
-        .update(String(name), 'utf8')
-        .digest()
-        .subarray(0, 16);
-    bytes[6] = (bytes[6] & 0x0f) | 0x50; // RFC 9562 version 5
-    bytes[8] = (bytes[8] & 0x3f) | 0x80; // RFC 9562 variant
-
-    const hex = bytes.toString('hex');
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-function buildPlanIdempotencyKey({ country, slug, cycle, body, replacementOf = null }) {
-    if (!country || !slug || !cycle || !body || typeof body !== 'object') {
-        throw new TypeError('country, slug, cycle and body are required to build the plan idempotency key.');
-    }
-
-    const specification = {
-        provider: 'mercadopago',
-        resource: 'preapproval_plan',
-        country: String(country).trim().toUpperCase(),
-        slug: String(slug).trim().toLowerCase(),
-        cycle: String(cycle).trim().toLowerCase(),
-        replacementOf: replacementOf ? String(replacementOf).trim() : null,
-        body,
-    };
-    return uuidV5(`parallly:${canonicalJson(specification)}`);
+    return key;
 }
 
 function parseArgs() {
@@ -175,11 +137,17 @@ function parseArgs() {
             process.exit(1);
         }
     }
+    const only = get('only')?.trim().toLowerCase() || null;
+    if (only && !SELF_SERVICE_PLAN_SLUGS.includes(only)) {
+        console.error(`Invalid --only value ${only}. Expected one of: ${SELF_SERVICE_PLAN_SLUGS.join(', ')}.`);
+        process.exit(1);
+    }
     return {
         country,
         fx,
         cycle,
         deriveMissingAnnualPct,
+        only,
         dryRun: argv.includes('--dry-run'),
         force: argv.includes('--force'),
     };
@@ -223,11 +191,15 @@ function providerErrorDetails(error) {
     const requestId = headers?.['x-request-id']
         ?? headers?.get?.('x-request-id')
         ?? null;
+    const correlationId = headers?.['x-correlation-id']
+        ?? headers?.get?.('x-correlation-id')
+        ?? null;
     return {
         status,
         code: sanitizeProviderText(code, 160),
         message: sanitizeProviderText(message, 500) ?? 'Mercado Pago request failed',
         requestId: sanitizeProviderText(requestId, 200),
+        correlationId: sanitizeProviderText(correlationId, 200),
     };
 }
 
@@ -242,6 +214,12 @@ function compareExistingPlan(existing, expected) {
     const reasons = [];
     if (!existing?.id) reasons.push('missing id');
     if (existing?.status && existing.status !== 'active') reasons.push(`status=${existing.status}`);
+    if (expected.reason && existing?.reason !== expected.reason) {
+        reasons.push(`reason=${existing?.reason ?? 'missing'} (expected ${expected.reason})`);
+    }
+    if (expected.backUrl && existing?.back_url !== expected.backUrl) {
+        reasons.push(`back_url=${existing?.back_url ?? 'missing'} (expected ${expected.backUrl})`);
+    }
     if (recurring.currency_id !== expected.currency) {
         reasons.push(`currency=${recurring.currency_id ?? 'missing'} (expected ${expected.currency})`);
     }
@@ -253,6 +231,17 @@ function compareExistingPlan(existing, expected) {
         reasons.push(`amount=${recurring.transaction_amount ?? 'missing'} (expected ${(expected.amountCents / 100).toFixed(2)})`);
     }
     return { valid: reasons.length === 0, reasons };
+}
+
+function findMatchingExistingPlans(searchResponse, expected) {
+    const results = Array.isArray(searchResponse?.results) ? searchResponse.results : [];
+    return results
+        .filter(plan => compareExistingPlan(plan, expected).valid)
+        .sort((left, right) => {
+            const leftTime = Date.parse(left?.last_modified ?? left?.date_created ?? '') || 0;
+            const rightTime = Date.parse(right?.last_modified ?? right?.date_created ?? '') || 0;
+            return leftTime - rightTime;
+        });
 }
 
 function buildPlanBody({ plan, country, currency, cycle, amountCents }) {
@@ -269,12 +258,17 @@ function buildPlanBody({ plan, country, currency, cycle, amountCents }) {
     };
 }
 
-async function createPlanRaw({ accessToken, body, fetchImpl = globalThis.fetch, idempotencyKey }) {
+async function createPlanRaw({
+    accessToken,
+    body,
+    fetchImpl = globalThis.fetch,
+    idempotencyKey = createFreshPlanIdempotencyKey(),
+}) {
     if (typeof fetchImpl !== 'function') {
         throw new Error('Node.js 20+ is required because global fetch is unavailable.');
     }
-    if (typeof idempotencyKey !== 'string' || !UUID_PATTERN.test(idempotencyKey)) {
-        throw new TypeError('A valid deterministic UUID idempotencyKey is required to create a Mercado Pago plan.');
+    if (typeof idempotencyKey !== 'string' || !UUID_V4_PATTERN.test(idempotencyKey)) {
+        throw new TypeError('A valid UUID v4 idempotencyKey is required to create a Mercado Pago plan.');
     }
 
     const response = await fetchImpl('https://api.mercadopago.com/preapproval_plan', {
@@ -299,6 +293,47 @@ async function createPlanRaw({ accessToken, body, fetchImpl = globalThis.fetch, 
         // Deliberately retain only the provider's structured fields plus the
         // response object needed to read x-request-id. Never attach request
         // headers: they contain the Access Token.
+        throw {
+            status: response.status,
+            error: data?.error,
+            code: data?.code,
+            cause: data?.cause,
+            message: data?.message ?? `Mercado Pago request failed (HTTP ${response.status}).`,
+            response: { status: response.status, headers: response.headers },
+        };
+    }
+    return data;
+}
+
+async function searchPlansRaw({ accessToken, reason, fetchImpl = globalThis.fetch }) {
+    if (typeof fetchImpl !== 'function') {
+        throw new Error('Node.js 20+ is required because global fetch is unavailable.');
+    }
+    if (typeof reason !== 'string' || !reason.trim()) {
+        throw new TypeError('A non-empty reason is required to search Mercado Pago plans.');
+    }
+
+    const params = new URLSearchParams({ q: reason.trim(), status: 'active', limit: '100' });
+    const response = await fetchImpl(
+        `https://api.mercadopago.com/preapproval_plan/search?${params.toString()}`,
+        {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: 'application/json',
+            },
+            signal: AbortSignal.timeout(10_000),
+        },
+    );
+    const raw = await response.text();
+    let data;
+    try {
+        data = raw ? JSON.parse(raw) : {};
+    } catch {
+        data = { message: `Mercado Pago returned a non-JSON response (HTTP ${response.status}).` };
+    }
+
+    if (!response.ok) {
         throw {
             status: response.status,
             error: data?.error,
@@ -388,7 +423,12 @@ async function main() {
             );
         }
 
-        for (const plan of plans) {
+        const selectedPlans = selectPlansForSync(plans, args.only);
+        if (args.only) {
+            console.log(`  Clean probe scope: only ${args.only}/${args.cycle}.`);
+        }
+
+        for (const plan of selectedPlans) {
             const priceLocalOverrides = (plan.priceLocalOverrides && typeof plan.priceLocalOverrides === 'object')
                 ? { ...plan.priceLocalOverrides }
                 : {};
@@ -445,6 +485,38 @@ async function main() {
                 amountCents: localAmountCents,
             });
 
+            const queuePlanIdUpdate = (mpPlanId, providerCreated) => {
+                const nextOverrides = { ...priceLocalOverrides };
+                if (isAnnual) {
+                    nextOverrides[args.country] = {
+                        ...(existingOverride ?? {}),
+                        annual: {
+                            ...(existingOverride?.annual ?? {}),
+                            currency,
+                            amountCents: localAmountCents,
+                            mpPlanId,
+                        },
+                    };
+                } else {
+                    nextOverrides[args.country] = {
+                        ...(existingOverride ?? {}),
+                        currency,
+                        amountCents: localAmountCents,
+                        mpPlanId,
+                    };
+                }
+                const data = { priceLocalOverrides: nextOverrides };
+                if (args.country === 'CO' && !isAnnual) {
+                    data.mpPlanId = mpPlanId;
+                }
+                pendingUpdates.push({
+                    slug: plan.slug,
+                    providerCreated,
+                    where: { id: plan.id },
+                    data,
+                });
+            };
+
             // Idempotent PER CYCLE — but only after proving that the saved id is
             // visible to the current token and still matches the DB configuration.
             // A TEST→APP_USR cutover normally makes the old id return 404.
@@ -461,25 +533,13 @@ async function main() {
                         currency,
                         frequency: isAnnual ? 12 : 1,
                         amountCents: localAmountCents,
+                        reason: body.reason,
+                        backUrl: body.back_url,
                     });
                     if (assessment.valid) {
                         validated += 1;
                         if (derivedMissingAnnual && !args.dryRun) {
-                            priceLocalOverrides[args.country] = {
-                                ...(existingOverride ?? {}),
-                                annual: {
-                                    ...(existingOverride?.annual ?? {}),
-                                    currency,
-                                    amountCents: localAmountCents,
-                                    mpPlanId: existingCycleId,
-                                },
-                            };
-                            pendingUpdates.push({
-                                slug: plan.slug,
-                                providerCreated: false,
-                                where: { id: plan.id },
-                                data: { priceLocalOverrides },
-                            });
+                            queuePlanIdUpdate(existingCycleId, false);
                             console.log(`  [${plan.slug}] ${args.cycle} plan ${existingCycleId} matches; pending atomic annual-price repair.`);
                         } else {
                             console.log(`  [${plan.slug}] ${args.cycle} plan ${existingCycleId} is accessible and matches — skipping.`);
@@ -506,18 +566,67 @@ async function main() {
                 continue;
             }
 
+            // Recover a provider-side success that was not persisted locally
+            // (for example, the process lost the response or another plan later
+            // failed and the atomic DB transaction was skipped). This lets us use
+            // the SDK-compatible fresh UUID v4 on each POST without accumulating
+            // duplicate plans across deploy retries.
+            if (!args.force) {
+                try {
+                    const search = await searchPlansRaw({ accessToken, reason: body.reason });
+                    const matches = findMatchingExistingPlans(search, {
+                        currency,
+                        frequency: isAnnual ? 12 : 1,
+                        amountCents: localAmountCents,
+                        reason: body.reason,
+                        backUrl: body.back_url,
+                    });
+                    if (matches.length > 0) {
+                        let recovered = null;
+                        for (const candidate of matches) {
+                            try {
+                                const current = await getPlanRaw({ accessToken, planId: candidate.id });
+                                const currentAssessment = compareExistingPlan(current, {
+                                    currency,
+                                    frequency: isAnnual ? 12 : 1,
+                                    amountCents: localAmountCents,
+                                    reason: body.reason,
+                                    backUrl: body.back_url,
+                                });
+                                if (currentAssessment.valid) {
+                                    recovered = current;
+                                    break;
+                                }
+                            } catch (error) {
+                                const details = providerErrorDetails(error);
+                                if (!isNotFoundError(details)) throw error;
+                            }
+                        }
+                        if (recovered) {
+                            validated += 1;
+                            queuePlanIdUpdate(recovered.id, false);
+                            const duplicateNote = matches.length > 1
+                                ? ` (${matches.length} equivalent search matches; oldest live match selected)`
+                                : '';
+                            console.log(`    Recovered existing provider plan mpPlanId=${recovered.id}${duplicateNote}; pending atomic DB commit.`);
+                            continue;
+                        }
+                    }
+                } catch (error) {
+                    console.error(`    FAILED to search existing ${plan.slug}/${args.cycle} plans safely:`, providerErrorDetails(error));
+                    failures += 1;
+                    continue;
+                }
+            }
+
             let res;
             try {
                 // Raw fetch is intentional here: SDK v2.12 discards response
                 // headers on non-2xx, including x-request-id required by MP support.
-                const idempotencyKey = buildPlanIdempotencyKey({
-                    country: args.country,
-                    slug: plan.slug,
-                    cycle: args.cycle,
-                    body,
-                    replacementOf: existingCycleId ?? null,
-                });
-                res = await createPlanRaw({ accessToken, body, idempotencyKey });
+                // Mercado Pago's current SDK creates a fresh UUID v4 for every
+                // non-GET request. Do the same so a regulatory 403 captured under
+                // an older deterministic key cannot be replayed from idempotency.
+                res = await createPlanRaw({ accessToken, body });
             } catch (error) {
                 console.error(`    FAILED to create ${plan.slug}/${args.cycle}:`, providerErrorDetails(error));
                 failures += 1;
@@ -529,34 +638,7 @@ async function main() {
                 continue;
             }
             providerAccepted += 1;
-
-            // Merge into the SAME country object so the other cycle's id survives.
-            if (isAnnual) {
-                priceLocalOverrides[args.country] = {
-                    ...(existingOverride ?? {}),
-                    annual: { ...(existingOverride?.annual ?? {}), currency, amountCents: localAmountCents, mpPlanId: res.id },
-                };
-            } else {
-                priceLocalOverrides[args.country] = {
-                    ...(existingOverride ?? {}),
-                    currency,
-                    amountCents: localAmountCents,
-                    mpPlanId: res.id,
-                };
-            }
-
-            const updateData = { priceLocalOverrides };
-            // Legacy top-level column: CO monthly only (annual id lives in the override).
-            if (args.country === 'CO' && !isAnnual) {
-                updateData.mpPlanId = res.id;
-            }
-
-            pendingUpdates.push({
-                slug: plan.slug,
-                providerCreated: true,
-                where: { id: plan.id },
-                data: updateData,
-            });
+            queuePlanIdUpdate(res.id, true);
             console.log(`    Provider accepted mpPlanId=${res.id}; pending atomic DB commit.`);
         }
 
@@ -584,15 +666,18 @@ if (require.main === module) {
 }
 
 module.exports = {
-    buildPlanIdempotencyKey,
     buildPlanBody,
     compareExistingPlan,
+    createFreshPlanIdempotencyKey,
     createPlanRaw,
     deriveAnnualAmountCents,
+    findMatchingExistingPlans,
     findMissingSelfServicePlanSlugs,
     getPlanRaw,
     isNotFoundError,
     persistPendingPlanUpdates,
     providerErrorDetails,
     sanitizeProviderText,
+    searchPlansRaw,
+    selectPlansForSync,
 };

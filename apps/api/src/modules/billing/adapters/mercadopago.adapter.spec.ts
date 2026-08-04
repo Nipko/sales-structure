@@ -133,45 +133,51 @@ describe('MercadoPagoAdapter', () => {
     describe('verifyWebhookSignature', () => {
         const secret = 'test_webhook_secret_abc123';
 
-        const buildSignedRequest = (dataId: string, requestId: string, ts: string) => {
-            const message = `id:${dataId};request-id:${requestId};ts:${ts};`;
+        const buildSignedRequest = (queryDataId: string, requestId: string, ts: string) => {
+            const message = `id:${queryDataId.toLowerCase()};request-id:${requestId};ts:${ts};`;
             const v1 = createHmac('sha256', secret).update(message).digest('hex');
             return {
-                rawBody: JSON.stringify({ data: { id: dataId }, type: 'payment', action: 'payment.created' }),
+                rawBody: JSON.stringify({ data: { id: 'body-id-is-not-signed' }, type: 'payment', action: 'payment.created' }),
                 headers: {
                     'x-signature': `ts=${ts},v1=${v1}`,
                     'x-request-id': requestId,
                 },
+                context: { dataId: queryDataId },
             };
         };
 
-        it('accepts a valid signature', () => {
-            const { rawBody, headers } = buildSignedRequest('1234567890', 'req-abc', '1704382800');
-            expect(adapter.verifyWebhookSignature(rawBody, headers)).toBe(true);
+        it('accepts a valid mixed-case query data.id after SDK-compatible lowercase normalization', () => {
+            const { rawBody, headers, context } = buildSignedRequest('AbC-123', 'req-abc', '1704382800');
+            expect(adapter.verifyWebhookSignature(rawBody, headers, context)).toBe(true);
         });
 
         it('rejects when x-signature is missing', () => {
-            const { rawBody } = buildSignedRequest('1234567890', 'req-abc', '1704382800');
-            expect(adapter.verifyWebhookSignature(rawBody, { 'x-request-id': 'req-abc' })).toBe(false);
+            const { rawBody, context } = buildSignedRequest('1234567890', 'req-abc', '1704382800');
+            expect(adapter.verifyWebhookSignature(rawBody, { 'x-request-id': 'req-abc' }, context)).toBe(false);
         });
 
         it('rejects when the v1 hash does not match', () => {
-            const { rawBody, headers } = buildSignedRequest('1234567890', 'req-abc', '1704382800');
+            const { rawBody, headers, context } = buildSignedRequest('1234567890', 'req-abc', '1704382800');
             // Tamper with the signature
             headers['x-signature'] = headers['x-signature'].replace(/v1=[a-f0-9]+$/, 'v1=' + '00'.repeat(32));
-            expect(adapter.verifyWebhookSignature(rawBody, headers)).toBe(false);
+            expect(adapter.verifyWebhookSignature(rawBody, headers, context)).toBe(false);
         });
 
-        it('rejects when data.id in body does not match the signed message', () => {
-            const { headers } = buildSignedRequest('1234567890', 'req-abc', '1704382800');
-            // Different id in body → recomputed hash won't match
+        it('uses query data.id rather than body data.id', () => {
+            const { headers, context } = buildSignedRequest('AbC-123', 'req-abc', '1704382800');
             const rawBody = JSON.stringify({ data: { id: '9999999999' }, type: 'payment' });
-            expect(adapter.verifyWebhookSignature(rawBody, headers)).toBe(false);
+            expect(adapter.verifyWebhookSignature(rawBody, headers, context)).toBe(true);
         });
 
-        it('rejects when body is not valid JSON', () => {
-            const { headers } = buildSignedRequest('1234567890', 'req-abc', '1704382800');
-            expect(adapter.verifyWebhookSignature('not-json', headers)).toBe(false);
+        it('rejects a tampered query data.id even when the body contains the signed id', () => {
+            const { headers } = buildSignedRequest('signed-id', 'req-abc', '1704382800');
+            const rawBody = JSON.stringify({ data: { id: 'signed-id' }, type: 'payment' });
+            expect(adapter.verifyWebhookSignature(rawBody, headers, { dataId: 'tampered-id' })).toBe(false);
+        });
+
+        it('rejects when query data.id is absent even if the body has an id', () => {
+            const { rawBody, headers } = buildSignedRequest('1234567890', 'req-abc', '1704382800');
+            expect(adapter.verifyWebhookSignature(rawBody, headers)).toBe(false);
         });
 
         it('rejects when x-signature has no v1 component', () => {
@@ -179,7 +185,7 @@ describe('MercadoPagoAdapter', () => {
             expect(adapter.verifyWebhookSignature(rawBody, {
                 'x-signature': 'ts=1704382800',
                 'x-request-id': 'req-abc',
-            })).toBe(false);
+            }, { dataId: '1234567890' })).toBe(false);
         });
     });
 

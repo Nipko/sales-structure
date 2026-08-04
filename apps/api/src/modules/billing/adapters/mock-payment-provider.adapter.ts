@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { IPaymentProvider } from './payment-provider.interface';
+import { IPaymentProvider, WebhookSignatureContext } from './payment-provider.interface';
 import { BillingEventType } from '../types/billing-event.enum';
 import { SubscriptionStatus } from '../types/subscription-status.enum';
 import {
@@ -162,7 +162,11 @@ export class MockPaymentProvider implements IPaymentProvider {
     // Webhooks
     // -------------------------------------------------------------------------
 
-    verifyWebhookSignature(_rawBody: string, _headers: Record<string, string>): boolean {
+    verifyWebhookSignature(
+        _rawBody: string,
+        _headers: Record<string, string>,
+        _context?: WebhookSignatureContext,
+    ): boolean {
         return true; // Always trust — safe only in tests.
     }
 

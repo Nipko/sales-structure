@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { IPaymentProvider } from './payment-provider.interface';
+import { IPaymentProvider, WebhookSignatureContext } from './payment-provider.interface';
 import { StripeConfigService } from './stripe-config.service';
 import {
     PaymentProviderName,
@@ -151,7 +151,11 @@ export class StripeAdapter implements IPaymentProvider {
         return (list.data || []).map((s: any) => this.mapSubscription(s));
     }
 
-    verifyWebhookSignature(rawBody: string, headers: Record<string, string>): boolean {
+    verifyWebhookSignature(
+        rawBody: string,
+        headers: Record<string, string>,
+        _context?: WebhookSignatureContext,
+    ): boolean {
         const sig = headers['stripe-signature'];
         if (!sig || !this.stripeConfig.webhookSecret) return false;
 

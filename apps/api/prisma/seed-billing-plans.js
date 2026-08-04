@@ -1,8 +1,8 @@
 // prisma/seed-billing-plans.js
 //
-// Seed the 4 billing plans (starter, pro, enterprise, custom).
-// Rerunning is safe — slug is UNIQUE and the script UPSERTS: existing rows
-// get their price, limits, and features refreshed; missing rows get created.
+// Seed the billing plans (emprendedor, starter, pro, enterprise, custom).
+// Rerunning without --force is safe: missing rows are created and existing
+// rows keep every panel-managed value.
 //
 // Usage (prod container with plain node, no ts-node required):
 //   docker exec parallext-api node prisma/seed-billing-plans.js

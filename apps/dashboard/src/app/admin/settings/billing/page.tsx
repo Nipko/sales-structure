@@ -273,6 +273,17 @@ export default function BillingPage() {
     }, [fiscalData, fiscalComplete]);
 
     const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
+    const annualCycleAvailable = useMemo(() => {
+        const selfServicePlans = plans.filter((plan) => plan.slug !== "custom");
+        return selfServicePlans.length > 0
+            && selfServicePlans.every((plan) => !!plan.displayPriceAnnualCents && !!plan.mpPlanIdAnnual);
+    }, [plans]);
+
+    useEffect(() => {
+        if (!annualCycleAvailable && billingCycle === "annual") {
+            setBillingCycle("monthly");
+        }
+    }, [annualCycleAvailable, billingCycle]);
 
     const handleUpgrade = async (planSlug: string, cardTokenId?: string) => {
         if (!activeTenantId) return;
@@ -1151,7 +1162,7 @@ export default function BillingPage() {
             <section id="plans">
                 <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <h2 className="text-lg font-semibold">{t("availablePlans")}</h2>
-                    {plans.some((p) => p.displayPriceAnnualCents) && (
+                    {annualCycleAvailable && (
                         <div className="inline-flex rounded-lg border border-neutral-200 dark:border-neutral-800 p-0.5 text-sm">
                             <button
                                 onClick={() => setBillingCycle("monthly")}
@@ -1179,7 +1190,7 @@ export default function BillingPage() {
                             // in MP (charges now), so it must NOT show the "scheduled / no charge /
                             // keep features" downgrade UI — mirror the backend's `!cycleChanged` guard.
                             const isDowngrade = currentPlan && plan.priceUsdCents < currentPlan.priceUsdCents && currentCycle === billingCycle;
-                            const showAnnual = billingCycle === "annual" && !!plan.displayPriceAnnualCents;
+                            const showAnnual = billingCycle === "annual" && !!plan.displayPriceAnnualCents && !!plan.mpPlanIdAnnual;
                             const priceCents = showAnnual ? plan.displayPriceAnnualCents! : (plan.displayPriceCents ?? plan.priceUsdCents);
                             const Icon = PLAN_ICON[plan.slug] ?? Zap;
                             return (
@@ -1250,7 +1261,7 @@ export default function BillingPage() {
                                             }
                                             handleUpgrade(plan.slug);
                                         }}
-                                        disabled={isCurrent || action !== null}
+                                        disabled={isCurrent || action !== null || (billingCycle === "annual" && !showAnnual)}
                                         className={cn(
                                             "mt-4 w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors",
                                             isCurrent

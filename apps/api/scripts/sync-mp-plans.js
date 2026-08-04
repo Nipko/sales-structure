@@ -38,6 +38,7 @@ const { createHash } = require('crypto');
 // retries after an accepted POST whose response/DB update was interrupted.
 const URL_UUID_NAMESPACE = '6ba7b811-9dad-11d1-80b4-00c04fd430c8';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SELF_SERVICE_PLAN_SLUGS = Object.freeze(['emprendedor', 'starter', 'pro', 'enterprise']);
 
 const CURRENCY_BY_COUNTRY = {
     CO: 'COP',
@@ -48,6 +49,44 @@ const CURRENCY_BY_COUNTRY = {
     UY: 'UYU',
     BR: 'BRL',
 };
+
+function findMissingSelfServicePlanSlugs(plans) {
+    const activeSlugs = new Set(
+        (Array.isArray(plans) ? plans : [])
+            .map(plan => plan?.slug)
+            .filter(slug => typeof slug === 'string'),
+    );
+    return SELF_SERVICE_PLAN_SLUGS.filter(slug => !activeSlugs.has(slug));
+}
+
+function deriveAnnualAmountCents(monthlyAmountCents, discountPct) {
+    if (!Number.isSafeInteger(monthlyAmountCents) || monthlyAmountCents <= 0) {
+        throw new TypeError('A positive integer monthly amount is required to derive an annual price.');
+    }
+    if (!Number.isFinite(discountPct) || discountPct <= 0 || discountPct >= 100) {
+        throw new TypeError('Annual discount must be greater than 0 and less than 100.');
+    }
+    const amount = Math.round(monthlyAmountCents * 12 * (1 - discountPct / 100));
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
+        throw new RangeError('Derived annual amount is outside the supported integer range.');
+    }
+    return amount;
+}
+
+async function persistPendingPlanUpdates(prisma, pendingUpdates, failures) {
+    if (failures > 0 || pendingUpdates.length === 0) {
+        return { persisted: 0, providerCreated: 0 };
+    }
+    const queries = pendingUpdates.map(update => prisma.billingPlan.update({
+        where: update.where,
+        data: update.data,
+    }));
+    await prisma.$transaction(queries);
+    return {
+        persisted: pendingUpdates.length,
+        providerCreated: pendingUpdates.filter(update => update.providerCreated).length,
+    };
+}
 
 function canonicalJson(value) {
     if (value === null || typeof value !== 'object') {
@@ -123,10 +162,24 @@ function parseArgs() {
     // without touching the monthly slot. Default is monthly.
     const cycleRaw = get('cycle');
     const cycle = (cycleRaw === 'annual' || cycleRaw === 'year') ? 'year' : 'month';
+    const annualDiscountRaw = get('derive-missing-annual');
+    let deriveMissingAnnualPct = null;
+    if (annualDiscountRaw !== undefined) {
+        deriveMissingAnnualPct = Number(annualDiscountRaw);
+        if (!Number.isFinite(deriveMissingAnnualPct) || deriveMissingAnnualPct <= 0 || deriveMissingAnnualPct >= 100) {
+            console.error(`Invalid --derive-missing-annual value ${annualDiscountRaw}; expected a percentage between 0 and 100.`);
+            process.exit(1);
+        }
+        if (cycle !== 'year') {
+            console.error('--derive-missing-annual is only valid with --cycle=annual.');
+            process.exit(1);
+        }
+    }
     return {
         country,
         fx,
         cycle,
+        deriveMissingAnnualPct,
         dryRun: argv.includes('--dry-run'),
         force: argv.includes('--force'),
     };
@@ -318,15 +371,21 @@ async function main() {
     let failures = 0;
     let created = 0;
     let validated = 0;
+    let providerAccepted = 0;
+    const pendingUpdates = [];
 
     try {
         const plans = await prisma.billingPlan.findMany({
-            where: { isActive: true, slug: { in: ['emprendedor', 'starter', 'pro', 'enterprise'] } },
+            where: { isActive: true, slug: { in: [...SELF_SERVICE_PLAN_SLUGS] } },
             orderBy: { sortOrder: 'asc' },
         });
 
-        if (plans.length === 0) {
-            throw new Error('No active self-service billing plans were found in the database.');
+        const missingPlanSlugs = findMissingSelfServicePlanSlugs(plans);
+        if (missingPlanSlugs.length > 0) {
+            throw new Error(
+                `Missing active self-service billing plan(s): ${missingPlanSlugs.join(', ')}. `
+                + `Expected all of: ${SELF_SERVICE_PLAN_SLUGS.join(', ')}.`,
+            );
         }
 
         for (const plan of plans) {
@@ -337,13 +396,34 @@ async function main() {
             const isAnnual = args.cycle === 'year';
 
             let localAmountCents;
+            let derivedMissingAnnual = false;
             if (isAnnual) {
-                // Annual has no USD/FX source — the yearly total must be seeded in
-                // overrides[country].annual.amountCents.
-                if (existingOverride?.annual?.amountCents) {
+                const persistedAnnualAmount = existingOverride?.annual?.amountCents;
+                if (Number.isSafeInteger(persistedAnnualAmount) && persistedAnnualAmount > 0) {
                     localAmountCents = existingOverride.annual.amountCents;
+                } else if (
+                    (persistedAnnualAmount === undefined || persistedAnnualAmount === null)
+                    && args.deriveMissingAnnualPct !== null
+                ) {
+                    const monthlyAmount = Number.isSafeInteger(existingOverride?.amountCents)
+                        && existingOverride.amountCents > 0
+                        ? existingOverride.amountCents
+                        : (args.fx ? Math.round(plan.priceUsdCents * args.fx) : null);
+                    if (!Number.isSafeInteger(monthlyAmount) || monthlyAmount <= 0) {
+                        console.error(`  [${plan.slug}] cannot derive annual price: no positive monthly amount for ${args.country}.`);
+                        failures += 1;
+                        continue;
+                    }
+                    if (existingOverride?.amountCents && existingOverride?.currency !== currency) {
+                        console.error(`  [${plan.slug}] cannot derive annual price: override currency ${existingOverride.currency ?? 'missing'} does not match ${currency}.`);
+                        failures += 1;
+                        continue;
+                    }
+                    localAmountCents = deriveAnnualAmountCents(monthlyAmount, args.deriveMissingAnnualPct);
+                    derivedMissingAnnual = true;
+                    console.warn(`  [${plan.slug}] annual price missing; deriving ${args.deriveMissingAnnualPct}% discount from the monthly ${currency} price. It will be persisted only after every provider write succeeds.`);
                 } else {
-                    console.error(`  [${plan.slug}] no annual price in DB for ${args.country} (overrides.${args.country}.annual.amountCents).`);
+                    console.error(`  [${plan.slug}] no valid annual price in DB for ${args.country} (overrides.${args.country}.annual.amountCents).`);
                     failures += 1;
                     continue;
                 }
@@ -384,7 +464,26 @@ async function main() {
                     });
                     if (assessment.valid) {
                         validated += 1;
-                        console.log(`  [${plan.slug}] ${args.cycle} plan ${existingCycleId} is accessible and matches — skipping.`);
+                        if (derivedMissingAnnual && !args.dryRun) {
+                            priceLocalOverrides[args.country] = {
+                                ...(existingOverride ?? {}),
+                                annual: {
+                                    ...(existingOverride?.annual ?? {}),
+                                    currency,
+                                    amountCents: localAmountCents,
+                                    mpPlanId: existingCycleId,
+                                },
+                            };
+                            pendingUpdates.push({
+                                slug: plan.slug,
+                                providerCreated: false,
+                                where: { id: plan.id },
+                                data: { priceLocalOverrides },
+                            });
+                            console.log(`  [${plan.slug}] ${args.cycle} plan ${existingCycleId} matches; pending atomic annual-price repair.`);
+                        } else {
+                            console.log(`  [${plan.slug}] ${args.cycle} plan ${existingCycleId} is accessible and matches — skipping.`);
+                        }
                         continue;
                     }
                     console.warn(`  [${plan.slug}] saved ${args.cycle} plan is stale/mismatched (${assessment.reasons.join('; ')}) — creating a replacement.`);
@@ -429,6 +528,7 @@ async function main() {
                 failures += 1;
                 continue;
             }
+            providerAccepted += 1;
 
             // Merge into the SAME country object so the other cycle's id survives.
             if (isAnnual) {
@@ -451,15 +551,26 @@ async function main() {
                 updateData.mpPlanId = res.id;
             }
 
-            await prisma.billingPlan.update({ where: { id: plan.id }, data: updateData });
-            created += 1;
-            console.log(`    OK mpPlanId=${res.id}`);
+            pendingUpdates.push({
+                slug: plan.slug,
+                providerCreated: true,
+                where: { id: plan.id },
+                data: updateData,
+            });
+            console.log(`    Provider accepted mpPlanId=${res.id}; pending atomic DB commit.`);
         }
 
-        console.log(`\nDone. created=${created} validated=${validated} failures=${failures}.\n`);
         if (failures > 0) {
+            console.log(`\nDone. providerAccepted=${providerAccepted} created=0 validated=${validated} failures=${failures}; database updates skipped.\n`);
             throw new Error(`Mercado Pago plan sync finished with ${failures} failure(s).`);
         }
+
+        const persisted = await persistPendingPlanUpdates(prisma, pendingUpdates, failures);
+        created = persisted.providerCreated;
+        if (persisted.persisted > 0) {
+            console.log(`  Atomically persisted ${persisted.persisted} plan update(s).`);
+        }
+        console.log(`\nDone. created=${created} validated=${validated} failures=0.\n`);
     } finally {
         await prisma.$disconnect();
     }
@@ -477,8 +588,11 @@ module.exports = {
     buildPlanBody,
     compareExistingPlan,
     createPlanRaw,
+    deriveAnnualAmountCents,
+    findMissingSelfServicePlanSlugs,
     getPlanRaw,
     isNotFoundError,
+    persistPendingPlanUpdates,
     providerErrorDetails,
     sanitizeProviderText,
 };

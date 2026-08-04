@@ -6,10 +6,73 @@ const {
     buildPlanBody,
     compareExistingPlan,
     createPlanRaw,
+    deriveAnnualAmountCents,
+    findMissingSelfServicePlanSlugs,
     getPlanRaw,
     isNotFoundError,
+    persistPendingPlanUpdates,
     providerErrorDetails,
 } = require('../sync-mp-plans');
+
+test('derives the canonical 15% annual totals from persisted monthly COP prices', () => {
+    assert.equal(deriveAnnualAmountCents(12_570_000, 15), 128_214_000);
+    assert.equal(deriveAnnualAmountCents(27_690_000, 15), 282_438_000);
+    assert.equal(deriveAnnualAmountCents(75_770_000, 15), 772_854_000);
+    assert.equal(deriveAnnualAmountCents(178_980_000, 15), 1_825_596_000);
+    assert.throws(() => deriveAnnualAmountCents(0, 15), /positive integer monthly amount/);
+    assert.throws(() => deriveAnnualAmountCents(100, 100), /greater than 0 and less than 100/);
+});
+
+test('persists provider results atomically only when the whole cycle has no failures', async () => {
+    const calls = [];
+    const prisma = {
+        billingPlan: {
+            update(args) {
+                calls.push(['update', args]);
+                return { args };
+            },
+        },
+        async $transaction(queries) {
+            calls.push(['transaction', queries]);
+        },
+    };
+    const pending = [
+        { where: { id: 'one' }, data: { value: 1 }, providerCreated: true },
+        { where: { id: 'two' }, data: { value: 2 }, providerCreated: false },
+    ];
+
+    assert.deepEqual(await persistPendingPlanUpdates(prisma, pending, 1), {
+        persisted: 0,
+        providerCreated: 0,
+    });
+    assert.deepEqual(calls, []);
+
+    assert.deepEqual(await persistPendingPlanUpdates(prisma, pending, 0), {
+        persisted: 2,
+        providerCreated: 1,
+    });
+    assert.equal(calls.filter(([kind]) => kind === 'update').length, 2);
+    assert.equal(calls.filter(([kind]) => kind === 'transaction').length, 1);
+});
+
+test('requires all four active self-service plans before any provider write', () => {
+    const complete = [
+        { slug: 'enterprise' },
+        { slug: 'starter' },
+        { slug: 'emprendedor' },
+        { slug: 'pro' },
+    ];
+    assert.deepEqual(findMissingSelfServicePlanSlugs(complete), []);
+
+    assert.deepEqual(
+        findMissingSelfServicePlanSlugs(complete.filter(plan => plan.slug !== 'pro')),
+        ['pro'],
+    );
+    assert.deepEqual(
+        findMissingSelfServicePlanSlugs(null),
+        ['emprendedor', 'starter', 'pro', 'enterprise'],
+    );
+});
 
 test('buildPlanIdempotencyKey is a stable UUID for the same normalized specification', () => {
     const body = buildPlanBody({

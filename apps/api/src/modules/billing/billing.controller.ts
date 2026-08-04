@@ -11,6 +11,7 @@ import { BillingService } from './billing.service';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MediaThrottleService } from '../media-processing/media-throttle.service';
+import { resolveAnnualPlanDisplay } from './billing-plan-display.util';
 
 /**
  * Tenant-facing billing endpoints.
@@ -145,13 +146,8 @@ export class BillingController {
 
             // Annual cycle (override-only): the total yearly charge + its MP plan
             // id, plus the % discount vs paying the monthly price 12×.
-            const annual = countryOverride?.annual;
-            const displayPriceAnnualCents: number | null = annual?.amountCents ?? null;
-            const mpPlanIdAnnual: string | null = annual?.mpPlanId ?? null;
-            const annualDiscountPct: number | null =
-                displayPriceAnnualCents && displayPriceCents > 0
-                    ? Math.round((1 - displayPriceAnnualCents / (displayPriceCents * 12)) * 100)
-                    : null;
+            const { displayPriceAnnualCents, mpPlanIdAnnual, annualDiscountPct } =
+                resolveAnnualPlanDisplay(countryOverride, displayPriceCents);
 
             return {
                 ...p,

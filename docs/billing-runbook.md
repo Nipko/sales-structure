@@ -73,11 +73,11 @@ El preflight tampoco imprime el Access Token. Si falla por token ausente/inváli
 ### 1.4 Sync de planes a MercadoPago (Colombia)
 ```bash
 docker compose run --rm api node scripts/sync-mp-plans.js --country=CO --fx=4200
-docker compose run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual
+docker compose run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual --derive-missing-annual=15
 ```
-Registra los **4 tiers pagos** (`emprendedor`, `starter`, `pro`, `enterprise`; `custom` es sales-led y se omite) como `preapproval_plan` en MercadoPago Colombia. Guarda el ID mensual en `billing_plans.priceLocalOverrides[CO].mpPlanId` y, para Colombia, mantiene el mirror legacy en la columna `mpPlanId`. El FX rate se lee del secret `PROD_MP_FX_CO` (default `4200`), aunque un precio local fijo existente tiene precedencia.
+Registra los **4 tiers pagos** (`emprendedor`, `starter`, `pro`, `enterprise`; `custom` es sales-led y se omite) como `preapproval_plan` en MercadoPago Colombia. Guarda el ID mensual en `billing_plans.priceLocalOverrides[CO].mpPlanId` y, para Colombia, mantiene el mirror legacy en la columna `mpPlanId`. El FX rate se lee del secret `PROD_MP_FX_CO` (default `4200`), aunque un precio local fijo existente tiene precedencia. `--derive-missing-annual=15` repara filas legacy calculando el total anual desde el mensual; los precios e IDs solo se guardan en una transacción después de que los cuatro planes del ciclo fueron aceptados, por lo que un fallo parcial no habilita un checkout incompleto.
 
-El deploy valida primero, sin escrituras, los payloads mensual y anual que salen de la base productiva (`--force --dry-run`). Sólo si ambos son válidos sincroniza los dos ciclos de forma **fail-fast**. El ciclo anual usa `priceLocalOverrides.CO.annual.amountCents`; ver `docs/billing-annual-cycle.md`.
+El deploy valida primero, sin escrituras, los payloads mensual y anual que salen de la base productiva (`--force --dry-run`). Sólo si ambos son válidos sincroniza los dos ciclos de forma **fail-fast**. El ciclo anual usa `priceLocalOverrides.CO.annual.amountCents` o, únicamente para una fila legacy sin ese campo, deriva el total desde el precio mensual con el descuento explícito; ver `docs/billing-annual-cycle.md`.
 
 **Cómo agregar otro país**: al deploy.yml, después de la línea de Colombia, duplicá la invocación con el código ISO correcto. Ejemplo México:
 ```yaml

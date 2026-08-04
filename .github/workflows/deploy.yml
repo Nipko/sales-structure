@@ -111,6 +111,7 @@ jobs:
           npm test -- --runInBand \
             src/modules/billing/adapters/mercadopago-config.service.spec.ts \
             src/modules/billing/adapters/mercadopago.adapter.spec.ts \
+            src/modules/billing/billing-plan-display.util.spec.ts \
             src/modules/billing/billing.service.spec.ts \
             src/scripts/diagnose-mp-collector.spec.ts
           node --test scripts/__tests__/sync-mp-plans.test.js
@@ -748,7 +749,7 @@ jobs:
               run --rm api node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" --force --dry-run \
               || { echo "::error::MercadoPago monthly payload validation FAILED — aborting before plan writes"; exit 1; }
             $DC \
-              run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual --force --dry-run \
+              run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual --derive-missing-annual=15 --force --dry-run \
               || { echo "::error::MercadoPago annual payload validation FAILED — aborting before plan writes"; exit 1; }
 
             echo "===> Syncing monthly billing plans to MercadoPago (Colombia)..."
@@ -758,7 +759,7 @@ jobs:
 
             echo "===> Syncing annual billing plans to MercadoPago (Colombia)..."
             $DC \
-              run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual \
+              run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual --derive-missing-annual=15 \
               || { echo "::error::MercadoPago annual plan sync FAILED — aborting deploy"; exit 1; }
 
             # Keep country syncs unrolled so each market remains independently

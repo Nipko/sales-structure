@@ -585,6 +585,7 @@ export class AuthService {
                 role: true,
                 tenantId: true,
                 isActive: true,
+                emailVerified: true,
                 tenant: {
                     select: { schemaName: true },
                 },
@@ -615,6 +616,9 @@ export class AuthService {
             role: user.role,
             tenantId: user.tenantId,
             isActive: user.isActive,
+            // Necesario para EmailVerifiedGuard: sin esto en req.user no hay
+            // forma de gatear las acciones donde el correo importa de verdad.
+            emailVerified: user.emailVerified,
             schemaName: user.tenant?.schemaName,
             // Carry the delegation through. Re-selecting the user from the DB
             // dropped these, so anything written while impersonating was
@@ -664,6 +668,15 @@ export class AuthService {
                 data: {
                     googleId: googleUser.googleId,
                     picture: googleUser.picture || user.picture,
+                    // Google YA probó que la casilla existe y que es de esta
+                    // persona: pedirle además nuestro código de 6 dígitos es
+                    // fricción sin ninguna garantía extra. El alta con Google ya
+                    // marcaba verificado; faltaba el caso de quien se registró
+                    // con contraseña y vincula Google después, que quedaba sin
+                    // verificar para siempre.
+                    emailVerified: true,
+                    emailVerifyCode: null,
+                    emailVerifyExpires: null,
                 },
                 include: { tenant: true },
             });
@@ -774,6 +787,10 @@ export class AuthService {
                 data: {
                     microsoftId: microsoftUser.microsoftId,
                     picture: microsoftUser.picture || user.picture,
+                    // Igual que con Google: Microsoft ya probó la casilla.
+                    emailVerified: true,
+                    emailVerifyCode: null,
+                    emailVerifyExpires: null,
                 },
                 include: { tenant: true },
             });

@@ -1,4 +1,11 @@
 {
+  "emailVerification": {
+    "message": "Tu correo {email} todavía no está verificado.",
+    "resend": "Reenviar código",
+    "enterCode": "Ya lo tengo",
+    "sent": "Código enviado",
+    "sendFailed": "No pudimos enviarlo. Probá de nuevo en un minuto."
+  },
   "bulkImport": {
     "intro": "Subí un CSV o XLSX y elegí qué columna corresponde a cada campo. Hasta {max} filas por archivo.",
     "pickFile": "Elegir archivo",

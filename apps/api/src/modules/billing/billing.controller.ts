@@ -12,6 +12,7 @@ import { InvoiceGeneratorService } from './invoice-generator.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MediaThrottleService } from '../media-processing/media-throttle.service';
 import { resolveAnnualPlanDisplay } from './billing-plan-display.util';
+import { EmailVerifiedGuard } from '../../common/guards/email-verified.guard';
 
 /**
  * Tenant-facing billing endpoints.
@@ -271,7 +272,7 @@ export class BillingController {
      */
     @Post(':tenantId/subscription/upgrade')
     @Roles('tenant_admin')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(AuthGuard('jwt'), EmailVerifiedGuard)
     async upgrade(@Param('tenantId') tenantId: string, @Body() body: ChangePlanDto) {
         const updated = await this.billingService.upgradeSubscription(tenantId, body.planSlug, body.cardTokenId, body.billingCycle);
         return { success: true, data: updated };
@@ -298,7 +299,7 @@ export class BillingController {
      */
     @Post(':tenantId/subscription/payment-method')
     @Roles('tenant_admin')
-    @UseGuards(AuthGuard('jwt'))
+    @UseGuards(AuthGuard('jwt'), EmailVerifiedGuard)
     async updatePaymentMethod(@Param('tenantId') tenantId: string, @Body() body: UpdatePaymentMethodDto) {
         const sub = await this.billingService.getActiveSubscription(tenantId);
         if (!sub || !sub.providerCustomerId) {

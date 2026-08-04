@@ -20,6 +20,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { canAccessPath, defaultLandingForRole } from "@/lib/roles";
 import { OnbordaProvider, Onborda } from "onborda";
 import { TourCard, useProductTourSteps, TourLauncher, TourBoundary } from "@/components/tour/ProductTour";
+import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
 
 export type RestrictionLevel = "none" | "warning" | "soft_lock" | "hard_lock";
 
@@ -116,6 +117,7 @@ export default function AdminLayout({
           <ImpersonationBanner />
           <TopBar onMobileMenuToggle={() => setMobileOpen(true)} />
           <TrialCountdownBanner restriction={restriction} />
+          <EmailVerificationBanner />
           <FiscalBanner />
           <div className="flex-1 flex overflow-hidden">
             <main className="flex-1 overflow-auto p-6">{children}</main>

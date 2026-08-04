@@ -8,6 +8,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { InvitationsService } from './invitations.service';
+import { EmailVerifiedGuard } from '../../common/guards/email-verified.guard';
 
 class CreateInvitationDto {
     @IsEmail() email!: string;
@@ -44,7 +45,7 @@ export class InvitationsController {
     }
 
     @Post('tenants/:tenantId/invitations')
-    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard, EmailVerifiedGuard)
     @Roles('super_admin', 'tenant_admin')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Create a new invitation' })
@@ -64,7 +65,7 @@ export class InvitationsController {
     }
 
     @Post('tenants/:tenantId/invitations/:id/resend')
-    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard, EmailVerifiedGuard)
     @Roles('super_admin', 'tenant_admin')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Resend invitation email + bump expiration' })

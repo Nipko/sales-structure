@@ -38,7 +38,7 @@ export default function AdminLayout({
   const { isAuthenticated, isLoading, user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const { role, impersonating } = useRole();
+  const { role, impersonating, canManageChannels } = useRole();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [restriction, setRestriction] = useState<RestrictionInfo>({
     level: "none",
@@ -119,7 +119,13 @@ export default function AdminLayout({
           <FiscalBanner />
           <div className="flex-1 flex overflow-hidden">
             <main className="flex-1 overflow-auto p-6">{children}</main>
-            <OnboardingChecklist />
+            {/* Solo a quien puede EJECUTAR los pasos. 6 de los 9 apuntan a
+                /admin/agent, /admin/channels/* y /admin/users, que roles.ts
+                restringe a tenant_admin: un agente o supervisor veia una guia
+                con botones que lo rebotaban al inbox sin explicacion, y como
+                los items nunca se completaban desde su sesion, el checklist
+                tampoco desaparecia nunca. */}
+            {canManageChannels && <OnboardingChecklist />}
           </div>
         </div>
       </div>

@@ -1287,7 +1287,16 @@ export class BillingService {
                 id = countryOverride?.annual?.mpPlanId;
             } else if (countryOverride?.mpPlanId) {
                 id = countryOverride.mpPlanId;
-            } else {
+            } else if (!country || country === 'CO') {
+                // `plan.mpPlanId` es el id de COLOMBIA: es lo único que escribe
+                // el sync (`if (country === 'CO' && !isAnnual)`). Usarlo como
+                // comodín para cualquier país suscribía a un tenant mexicano o
+                // chileno al preapproval_plan colombiano y le cobraba en COP el
+                // monto de Colombia — un error que no se descubre en el deploy
+                // sino en el resumen de tarjeta del cliente.
+                //
+                // Se falla cerrado, igual que el ciclo anual de arriba. El error
+                // que sigue más abajo ya dice exactamente qué hay que correr.
                 id = plan.mpPlanId;
             }
         } else if (providerName === 'stripe') {

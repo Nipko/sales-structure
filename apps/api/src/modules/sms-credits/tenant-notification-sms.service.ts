@@ -2,12 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { SmsCreditsService } from './sms-credits.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { normalizePhoneE164 } from '../../common/utils/phone.util';
 
 const TWILIO_API = 'https://api.twilio.com/2010-04-01';
 
 export interface TenantSmsSendResult {
     sent: boolean;
-    reason?: 'invalid' | 'monetization_disabled' | 'platform_sms_unconfigured' | 'insufficient_credits' | 'send_failed';
+    reason?: 'invalid' | 'monetization_disabled' | 'platform_sms_unconfigured' | 'insufficient_credits' | 'send_failed' | 'opted_out';
     sid?: string;
     segments?: number;
     balance?: number;
@@ -37,6 +39,7 @@ export class TenantNotificationSmsService {
     constructor(
         config: ConfigService,
         private readonly smsCredits: SmsCreditsService,
+        private readonly prisma: PrismaService,
     ) {
         this.accountSid = config.get<string>('SMS_ALERT_ACCOUNT_SID');
         this.authToken = config.get<string>('SMS_ALERT_AUTH_TOKEN');
@@ -82,6 +85,19 @@ export class TenantNotificationSmsService {
         // is charged — the platform never fronts a per-SMS cost it can't recover.
         if (!(await this.smsCredits.isEnabled())) return { sent: false, reason: 'monetization_disabled' };
         if (!this.enabled) return { sent: false, reason: 'platform_sms_unconfigured' };
+
+        // Baja: no se manda Y no se cobra.
+        //
+        // `send()` validaba interruptor, credenciales y saldo, pero nunca
+        // consultaba el consentimiento — pese a que el módulo de compliance ya
+        // registra los opt-out. Cada reenvío a alguien que pidió la baja
+        // descontaba créditos igual: además del riesgo regulatorio y para la
+        // cuenta de Twilio, era cobrarle al tenant por un mensaje que no debía
+        // salir.
+        if (await this.isOptedOut(tenantId, to)) {
+            this.logger.log(`SMS bloqueado por opt-out tenant=${tenantId} to=${to}`);
+            return { sent: false, reason: 'opted_out' };
+        }
 
         const sender = (await this.smsCredits.getSenderId()) || this.envSender!;
         const est = this.estimateSegments(body);
@@ -133,6 +149,47 @@ export class TenantNotificationSmsService {
         }
 
         return { sent: true, sid: res.sid, segments: actual, balance: Math.max(0, reserved.balance - (actual - est)) };
+    }
+
+    /**
+     * ¿Este teléfono pidió la baja?
+     *
+     * Mira los dos lugares donde el sistema la registra, porque no son
+     * redundantes: `leads.opted_out` es la marca global del lead (la escribe el
+     * detector de opt-out del pipeline) y `opt_out_records` es el registro POR
+     * CANAL del módulo de compliance. Alguien puede haber pedido la baja de SMS
+     * sin haberla pedido de WhatsApp.
+     *
+     * Falla ABIERTO a propósito: si la consulta se cae, se manda. Un SMS de más
+     * es un problema; un recordatorio de turno que no llega porque la base
+     * hipó es peor, y este servicio no es el lugar donde defender el opt-out en
+     * última instancia.
+     */
+    private async isOptedOut(tenantId: string, phone: string): Promise<boolean> {
+        try {
+            const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+            if (!schemaName) return false;
+            const normalized = normalizePhoneE164(phone) || phone;
+            const rows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT 1
+                   FROM leads l
+                  WHERE (l.phone_normalized = $1 OR l.phone = $2)
+                    AND (
+                        l.opted_out = true
+                        OR EXISTS (
+                            SELECT 1 FROM opt_out_records o
+                             WHERE o.lead_id = l.id AND o.channel IN ('sms', 'all')
+                        )
+                    )
+                  LIMIT 1`,
+                [normalized, phone],
+            );
+            return (rows?.length || 0) > 0;
+        } catch (e: any) {
+            this.logger.warn(`Chequeo de opt-out falló (se envía igual): ${e.message}`);
+            return false;
+        }
     }
 
     private async twilioSend(

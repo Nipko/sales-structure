@@ -385,21 +385,55 @@ export class ChannelManagementController {
         let providerError: string | null = null;
 
         try {
-            const creds = await this.channelToken.getChannelToken(tenantId, 'telegram');
-            if (!creds?.accessToken) {
-                providerError = 'No active Telegram credentials';
+            // TODOS los bots, no el primero que devuelva getChannelToken.
+            //
+            // `finalizeChannelDisconnect` desactiva todas las filas del tipo, así
+            // que con 2 bots (enterprise) se apagaban los dos pero sólo uno
+            // perdía el webhook: el otro seguía apuntando a nuestra API con su
+            // fila inactiva. Mismo patrón que `disconnectMessenger`, que ya
+            // itera las páginas.
+            const bots = await this.prisma.channelAccount.findMany({
+                where: { tenantId, channelType: 'telegram', isActive: true },
+            });
+            const errors: string[] = [];
+            let okCount = 0;
+
+            for (const bot of bots) {
+                try {
+                    const botCreds = await this.channelToken.getChannelToken(tenantId, 'telegram', bot.accountId);
+                    if (!botCreds?.accessToken) { errors.push(`${bot.accountId}: sin token`); continue; }
+                    const r = await fetch(
+                        `https://api.telegram.org/bot${botCreds.accessToken}/deleteWebhook?drop_pending_updates=true`,
+                        { method: 'POST' },
+                    );
+                    if (r.ok) { okCount++; this.logger.log(`Telegram webhook deleted for @${bot.accountId} (tenant ${tenantId})`); }
+                    else { errors.push(`${bot.accountId}: ${r.status}`); }
+                } catch (e: any) {
+                    errors.push(`${bot.accountId}: ${e.message}`);
+                }
+            }
+
+            if (bots.length > 0) {
+                providerOk = okCount > 0;
+                if (errors.length) providerError = errors.join('; ');
             } else {
-                const res = await fetch(
-                    `https://api.telegram.org/bot${creds.accessToken}/deleteWebhook?drop_pending_updates=true`,
-                    { method: 'POST' },
-                );
-                if (res.ok) {
-                    providerOk = true;
-                    this.logger.log(`Telegram webhook deleted for tenant ${tenantId}`);
+                // Sin filas por-cuenta (tenant legacy): camino de siempre.
+                const creds = await this.channelToken.getChannelToken(tenantId, 'telegram');
+                if (!creds?.accessToken) {
+                    providerError = 'No active Telegram credentials';
                 } else {
-                    const body = await res.text().catch(() => '');
-                    providerError = `Telegram returned ${res.status}: ${body.substring(0, 200)}`;
-                    this.logger.warn(providerError);
+                    const res = await fetch(
+                        `https://api.telegram.org/bot${creds.accessToken}/deleteWebhook?drop_pending_updates=true`,
+                        { method: 'POST' },
+                    );
+                    if (res.ok) {
+                        providerOk = true;
+                        this.logger.log(`Telegram webhook deleted for tenant ${tenantId}`);
+                    } else {
+                        const body = await res.text().catch(() => '');
+                        providerError = `Telegram returned ${res.status}: ${body.substring(0, 200)}`;
+                        this.logger.warn(providerError);
+                    }
                 }
             }
         } catch (err: any) {

@@ -317,6 +317,39 @@ export class MercadoPagoAdapter implements IPaymentProvider {
         }
     }
 
+    /**
+     * Busca el pago aprobado de una orden por su `external_reference`.
+     *
+     * Existe porque el acreditamiento de un paquete de SMS dependía
+     * exclusivamente del webhook, y este mismo adaptador ya advierte arriba que
+     * "Webhooks are unreliable in production". Un webhook que no llega dejaba al
+     * tenant pagando sin recibir los créditos, de forma permanente y silenciosa:
+     * la orden quedaba 'pending' para siempre y nadie tenía dónde verlo.
+     *
+     * Devuelve null si no hay ningún pago aprobado para esa referencia — que es
+     * el caso normal de una orden que el usuario abrió y nunca pagó.
+     */
+    async findApprovedPaymentByReference(externalReference: string): Promise<{ providerPaymentId: string; amountCents: number; currency: string; paidAt?: Date } | null> {
+        try {
+            const res: any = await this.mpConfig.payment.search({
+                options: { external_reference: externalReference, sort: 'date_created', criteria: 'desc', limit: 10 },
+            } as any);
+            const approved = (res?.results || []).find((p: any) => p?.status === 'approved');
+            if (!approved) return null;
+            return {
+                providerPaymentId: String(approved.id),
+                amountCents: Math.round((approved.transaction_amount ?? 0) * 100),
+                currency: approved.currency_id ?? 'COP',
+                paidAt: approved.date_approved ? new Date(approved.date_approved) : undefined,
+            };
+        } catch (err: any) {
+            // Que la búsqueda falle no puede tumbar el barrido: se reintenta en
+            // la próxima corrida.
+            this.logger.warn(`MP payment search failed for ref=${externalReference}: ${err.message}`);
+            return null;
+        }
+    }
+
     async changeSubscriptionPlan(providerSubscriptionId: string, newProviderPlanId: string): Promise<ProviderSubscription> {
         // MP has no native plan change with proration. Try the simple PUT
         // updating `preapproval_plan_id` — works on some accounts. If MP

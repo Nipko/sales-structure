@@ -8,6 +8,7 @@ import { SubscriptionStatus } from '../types/subscription-status.enum';
 import { BillingEventType } from '../types/billing-event.enum';
 import { PaymentProviderName } from '../types/provider-types';
 import { CronLockService } from '../../redis/cron-lock.service';
+import { SmsCheckoutService } from '../sms-checkout.service';
 
 /**
  * Billing reconciliation.
@@ -40,7 +41,24 @@ export class BillingReconciliationProcessor {
         private readonly providerFactory: PaymentProviderFactory,
         private readonly eventEmitter: EventEmitter2,
         private readonly cronLock: CronLockService,
+        private readonly smsCheckout: SmsCheckoutService,
     ) {}
+
+    /**
+     * Cada 15 minutos: rescatar las compras de SMS que MP cobró y cuyo webhook
+     * nunca llegó. Vive acá porque es exactamente el mismo problema que
+     * `reconcilePastDue` —confiar en un webhook que este mismo adaptador
+     * advierte que es poco confiable— sólo que del lado del pago único.
+     */
+    @Cron('*/15 * * * *')
+    async sweepSmsOrdersCron() {
+        await this.cronLock.runExclusive('reconciliation.sweepSmsOrders', 840, async () => {
+            const res = await this.smsCheckout.sweepPendingOrders();
+            if (res.credited > 0) {
+                this.logger.warn(`[Reconcile][SMS] ${res.credited} de ${res.checked} órdenes pendientes estaban pagas y se acreditaron`);
+            }
+        });
+    }
 
     /**
      * Every hour at minute 0.

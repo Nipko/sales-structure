@@ -97,8 +97,23 @@ export class TenantNotificationSmsService {
         // 2. Send via platform Twilio.
         const res = await this.twilioSend(to, sender, body);
         if (!res.ok) {
+            // El ref del REEMBOLSO tiene que ser único por intento.
+            //
+            // El índice único parcial del ledger es (tenant_id, reason, ref)
+            // WHERE ref IS NOT NULL AND delta > 0: alcanza a los movimientos
+            // POSITIVOS, o sea a los reembolsos, no a los consumos. Y el
+            // broadcast pasa un ref estable por destinatario
+            // (`bcast:{campaignId}:{recipientId}`) con attempts:3.
+            //
+            // Con `refund:{ref}` fijo eso daba: intento 1 descuenta N y devuelve
+            // N; intentos 2 y 3 descuentan N y su reembolso choca contra el
+            // índice, se descarta como duplicado y no acredita. El tenant
+            // terminaba pagando 2N créditos por un mensaje que nunca salió, con
+            // el ledger mostrando consumos sin contrapartida.
+            //
+            // Un uuid por intento hace que cada consumo tenga su devolución.
             await this.smsCredits
-                .addCredits(tenantId, est, 'refund', `refund:${ref}`, { ...meta, error: res.error })
+                .addCredits(tenantId, est, 'refund', `refund:${ref}:${randomUUID()}`, { ...meta, forRef: ref, error: res.error })
                 .catch(() => { });
             this.logger.warn(`Notification SMS failed tenant=${tenantId} to=${to}: ${res.error}`);
             return { sent: false, reason: 'send_failed', error: res.error };

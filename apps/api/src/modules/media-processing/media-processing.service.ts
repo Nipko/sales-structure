@@ -187,8 +187,11 @@ export class MediaProcessingService {
 
         try {
             // 2. Download the media file
+            // `channelAccountId` viene en el mensaje normalizado y ya se usa
+            // para resolver persona y token de salida; faltaba acá, que es
+            // donde decide si el archivo se puede bajar.
             const downloaded = await this.download.download(
-                tenantId, channelType, content.mediaUrl, content.mimeType,
+                tenantId, channelType, content.mediaUrl, content.mimeType, msg.channelAccountId,
             );
 
             let result: MediaProcessingResult;

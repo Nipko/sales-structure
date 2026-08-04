@@ -21,6 +21,11 @@ export class MediaDownloadService {
         channelType: string,
         mediaUrl: string,
         mimeType?: string,
+        // De QUE cuenta llego el mensaje. Los file_id de Telegram son
+        // POR-BOT: pedirle a un bot el archivo de otro devuelve 400 y la
+        // nota de voz nunca se transcribe. Sin este parametro no habia
+        // manera de acertarle con 2 bots activos.
+        accountId?: string,
     ): Promise<DownloadedMedia> {
         switch (channelType) {
             case 'whatsapp':
@@ -29,7 +34,7 @@ export class MediaDownloadService {
             case 'messenger':
                 return this.downloadDirectUrl(mediaUrl, mimeType);
             case 'telegram':
-                return this.downloadTelegram(tenantId, mediaUrl, mimeType);
+                return this.downloadTelegram(tenantId, mediaUrl, mimeType, accountId);
             default:
                 throw new Error(`Media download not supported for channel: ${channelType}`);
         }
@@ -113,8 +118,8 @@ export class MediaDownloadService {
      * Step 1: GET api.telegram.org/bot{token}/getFile?file_id={id} → file_path
      * Step 2: GET api.telegram.org/file/bot{token}/{file_path} → binary
      */
-    private async downloadTelegram(tenantId: string, fileId: string, mimeType?: string): Promise<DownloadedMedia> {
-        const creds = await this.channelToken.getChannelToken(tenantId, 'telegram');
+    private async downloadTelegram(tenantId: string, fileId: string, mimeType?: string, accountId?: string): Promise<DownloadedMedia> {
+        const creds = await this.channelToken.getChannelToken(tenantId, 'telegram', accountId);
         if (!creds.accessToken) throw new Error('Telegram bot token not available');
 
         const fileRes = await fetch(

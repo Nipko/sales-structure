@@ -547,8 +547,11 @@ export class ChannelsController {
                     const botToken = channelAccount.accessToken !== 'encrypted_ref'
                         ? channelAccount.accessToken : null;
                     if (tgSenderId && botToken) {
-                        // Decrypt bot token
-                        const token = await this.channelToken.getChannelToken(channelAccount.tenantId, 'telegram');
+                        // Decrypt bot token — de ESTE bot. El accountId estaba
+                        // en la variable de al lado y no se pasaba: con 2 bots
+                        // activos se resolvía uno arbitrario y la foto de perfil
+                        // fallaba con 400 (los user_id de Telegram son por-bot).
+                        const token = await this.channelToken.getChannelToken(channelAccount.tenantId, 'telegram', channelAccount.accountId);
                         const photoRes = await fetch(
                             `https://api.telegram.org/bot${token.accessToken}/getUserProfilePhotos?user_id=${tgSenderId}&limit=1`,
                         );

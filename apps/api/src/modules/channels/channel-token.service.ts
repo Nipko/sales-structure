@@ -136,6 +136,19 @@ export class ChannelTokenService {
             : await this.prisma.channelAccount.findFirst({
                 where: { tenantId, channelType, isActive: true },
                 select: { accountId: true, accessToken: true },
+                // Sin `orderBy`, "la primera cuenta activa" no está definida:
+                // Postgres devuelve el orden físico, que cambia cada vez que la
+                // fila se reescribe (connect, disconnect, refresh de token de
+                // IG). Con 2 cuentas del mismo tipo la elegida alternaba entre
+                // llamadas, así que los envíos auxiliares sin conversación en
+                // contexto —recordatorios, recalls, nurturing— salían unas veces
+                // por una cuenta y otras por la otra. En Instagram y Messenger
+                // eso ni siquiera degrada: el PSID/IGSID está scopeado a la
+                // página, así que el envío falla de plano.
+                //
+                // La más antigua, igual que el camino propio de WhatsApp de más
+                // arriba (ORDER BY connected_at ASC).
+                orderBy: { createdAt: 'asc' },
             });
 
         if (!account) {

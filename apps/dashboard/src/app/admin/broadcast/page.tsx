@@ -19,12 +19,20 @@ import {
     FlaskConical, Trophy, Loader2,
 } from "lucide-react";
 
-const CHANNEL_OPTIONS = [
+const BASE_CHANNEL_OPTIONS = [
     { id: "whatsapp", label: "WhatsApp", icon: MessageCircle, color: "#25D366" },
     { id: "email", label: "Email", icon: Mail, color: "#6c5ce7" },
-    // SMS hidden until integration is ready
-    // { id: "sms", label: "SMS", icon: Phone, color: "#f39c12" },
-] as const;
+];
+
+// SMS estuvo escondido "hasta que la integracion este lista" desde mayo, y las
+// fases de monetizacion (jul) nunca lo revirtieron: el tenant podia COMPRAR
+// creditos y no tenia ni una pantalla donde gastarlos. El unico camino que los
+// descuenta —el broadcast— solo era alcanzable por POST directo a la API.
+// Vender un saldo inutilizable es un reclamo garantizado.
+//
+// Aparece solo con el interruptor maestro de la plataforma encendido, asi que
+// mientras siga apagado nada cambia.
+const SMS_CHANNEL_OPTION = { id: "sms", label: "SMS", icon: Phone, color: "#f39c12" };
 
 const statusStyle: Record<string, { color: string; icon: any }> = {
     draft: { color: "#95a5a6", icon: FileText },
@@ -47,6 +55,7 @@ export default function BroadcastPage() {
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
+    const [smsEnabled, setSmsEnabled] = useState(false);
 
     const loadCampaigns = async () => {
         if (!activeTenantId) return;
@@ -60,7 +69,15 @@ export default function BroadcastPage() {
 
     useEffect(() => {
         loadCampaigns();
+        if (!activeTenantId) return;
+        api.getSmsBalance(activeTenantId)
+            .then(res => setSmsEnabled(!!(res?.data as any)?.enabled))
+            .catch(() => setSmsEnabled(false));
     }, [activeTenantId]);
+
+    const CHANNEL_OPTIONS = smsEnabled
+        ? [...BASE_CHANNEL_OPTIONS, SMS_CHANNEL_OPTION]
+        : BASE_CHANNEL_OPTIONS;
 
     const [showNewCampaign, setShowNewCampaign] = useState(false);
     const [selectedChannels, setSelectedChannels] = useState<string[]>(["whatsapp"]);

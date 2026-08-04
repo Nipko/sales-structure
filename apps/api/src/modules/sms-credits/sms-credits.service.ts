@@ -262,8 +262,16 @@ export class SmsCreditsService {
         purchased: number;
         consumed: number;
         consumedThisMonth: number;
+        /**
+         * El interruptor maestro de la plataforma. Viaja acá porque el
+         * dashboard necesita saber si mostrar SMS COMO CANAL, no sólo si
+         * mostrar el saldo: sin esto el tenant podía comprar créditos y no
+         * tener ninguna pantalla donde gastarlos — vender un saldo inutilizable.
+         */
+        enabled: boolean;
     }> {
         const balance = await this.getBalance(tenantId);
+        const enabled = await this.isEnabled().catch(() => false);
         const rows = await this.prisma.$queryRaw<
             { purchased: number; consumed: number; consumed_month: number }[]
         >`
@@ -278,6 +286,7 @@ export class SmsCreditsService {
             purchased: Number(r.purchased || 0),
             consumed: Number(r.consumed || 0),
             consumedThisMonth: Number(r.consumed_month || 0),
+            enabled,
         };
     }
 

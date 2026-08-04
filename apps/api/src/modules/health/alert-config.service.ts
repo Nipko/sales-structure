@@ -35,10 +35,22 @@ export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
     sentryErrors: { warn: 50, crit: 200 },
     slaBreaches: { warn: 10, crit: 30 },
     queueDepth: {
+        // La cola de ENTRANTES faltaba, y es la que el propio platform-monitor
+        // llama "la más importante de la plataforma": un backlog acá significa
+        // clientes escribiendo y el bot mudo. Al no estar declarada, el chequeo
+        // caía a un literal de 500/2000 que además era inconfigurable — el
+        // merge recorre las claves de ESTE objeto, así que un PUT con
+        // queueDepth['inbound-messages'] se descartaba en silencio.
+        //
+        // Umbrales más bajos que el saliente a propósito: 200 entrantes sin
+        // procesar ya son 200 personas esperando respuesta.
+        'inbound-messages': { warn: 200, crit: 1000 },
         'outbound-messages': { warn: 500, crit: 2000 },
         'broadcast-messages': { warn: 1000, crit: 5000 },
         'automation-jobs': { warn: 300, crit: 1000 },
         'nurturing': { warn: 200, crit: 500 },
+        // DIAN: una factura fiscal atascada es una obligación legal sin cumplir.
+        'fiscal-invoice': { warn: 20, crit: 100 },
     },
     queueFailed: 100,
     paymentFailures: 5,

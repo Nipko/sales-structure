@@ -392,8 +392,25 @@ export default function SetupWizardPage() {
                             </>
                         )}
 
+                        {/* "Empezar desde cero" es una SALIDA del asistente, no un
+                            atajo dentro de él: el tenant se va al editor real.
+                            Hacía sólo `router.push`, sin marcar el wizard como
+                            saltado, así que `setupWizardCompleted` quedaba en
+                            false y el dashboard —que rebota al asistente cuando
+                            eso pasa— lo devolvía acá con una recarga dura cada
+                            vez que entraba a Inicio. Un tenant_admin que elegía
+                            esta opción quedaba en un bucle permanente.
+
+                            Se marca el skip primero y recién después se navega;
+                            si la llamada falla, `handleSkip` ya loguea y navega
+                            igual, así que no deja al usuario trabado. */}
                         <button
-                            onClick={() => router.push("/admin/agent")}
+                            onClick={async () => {
+                                if (tenantId) {
+                                    try { await api.skipSetupWizard(tenantId); } catch { /* handleSkip-style: no bloquear la salida */ }
+                                }
+                                router.push("/admin/agent");
+                            }}
                             className="mt-6 text-[13px] text-muted-foreground hover:text-indigo-500 transition-colors"
                         >
                             {t("templates.startFromScratch")} →

@@ -1016,11 +1016,29 @@ export class PlatformMonitorService implements OnModuleInit {
         // cooldown, so re-fires bump count/lastSeen and survive restarts.
         await this.incidents.record(key, severity, subject, html, value);
 
-        const prev = this.alertState.get(key);
+        // El cooldown vive en REDIS, no en memoria del proceso.
+        //
+        // Los chequeos corren bajo `cronLock.runExclusive`, que no libera el
+        // lock al terminar: expira por TTL mucho antes del siguiente tick, así
+        // que en cada corrida la API y el worker vuelven a competir y gana
+        // cualquiera de los dos. Con el estado en una Map de instancia, cada vez
+        // que cambiaba el ganador el proceso nuevo arrancaba con la Map vacía y
+        // remandaba la misma alerta: el cooldown de 1 hora se degradaba al
+        // intervalo del cron, multiplicado por cada super_admin en la lista y
+        // replicado a Telegram y —en las críticas— a SMS de Twilio, que se paga.
+        //
+        // SET NX con TTL: el primero en llegar manda la alerta, el otro no.
+        const cooldownKey = `alert:cooldown:${key}`;
+        const gotSlot = await this.redis
+            .acquireLock(cooldownKey, Math.floor(COOLDOWN_MS / 1000))
+            // Si Redis está caído se manda igual: perder una alerta de
+            // plataforma es peor que mandarla dos veces.
+            .catch(() => true);
+        if (!gotSlot) return;
+
         const now = Date.now();
-
-        if (prev && (now - prev.lastAlertedAt) < COOLDOWN_MS) return;
-
+        // Se mantiene la Map como memoria local del último valor visto (la usa
+        // el resumen en memoria); ya no gobierna el cooldown.
         this.alertState.set(key, { lastAlertedAt: now, value });
 
         this.logger.warn(`ALERT [${key}]: ${subject} (value=${value})`);

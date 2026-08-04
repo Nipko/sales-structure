@@ -29,6 +29,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Request as ExpressRequest } from 'express';
+import { ChannelTokenService } from '../channels/channel-token.service';
 
 @ApiTags('whatsapp')
 @Controller('channels/whatsapp')
@@ -42,6 +43,7 @@ export class WhatsappController {
     private readonly messagingService: WhatsappMessagingService,
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly channelToken: ChannelTokenService,
   ) {}
 
   private async resolveSchema(req: any): Promise<string | null> {
@@ -349,7 +351,8 @@ export class WhatsappController {
     },
   ) {
     const schemaName = await this.resolveSchema(req);
-    if (!schemaName) {
+    const tenantId = req.user?.tenantId;
+    if (!schemaName || !tenantId) {
       throw new BadRequestException('User does not belong to a tenant');
     }
 
@@ -357,23 +360,28 @@ export class WhatsappController {
       throw new BadRequestException('name, language, category, and components are required');
     }
 
-    const channels: any[] = body.phoneNumberId
-      ? await this.prisma.executeInTenantSchema(
-          schemaName,
-          `SELECT id, waba_id, access_token FROM whatsapp_channels WHERE is_active = true AND phone_number_id = $1 LIMIT 1`,
-          [body.phoneNumberId],
-        )
-      : await this.prisma.executeInTenantSchema(
-          schemaName,
-          `SELECT id, waba_id, access_token FROM whatsapp_channels WHERE is_active = true ORDER BY connected_at ASC NULLS LAST LIMIT 1`,
-        );
-
-    if (!channels?.length) {
+    // Las tres columnas que esta consulta pedía NO EXISTEN: la tabla
+    // `whatsapp_channels` tiene `meta_waba_id`, `access_token_ref` y
+    // `channel_status`, nunca tuvo `waba_id`, `access_token` ni `is_active`. O
+    // sea que crear una plantilla desde la app fallaba SIEMPRE con un 42703
+    // (columna inexistente) — y las plantillas son el requisito para iniciar
+    // conversación fuera de la ventana de 24h, así que el tenant quedaba
+    // obligado a ir a Meta Business Manager a mano.
+    //
+    // Se resuelve por ChannelTokenService, que ya sabe hacerlo bien: prefiere el
+    // `system_user_token` cifrado de la tabla global y cae al ref de la fila
+    // sólo si no lo hay. Copiar la consulta con los nombres corregidos habría
+    // dejado el token sin descifrar.
+    let creds: { accessToken: string; wabaId?: string; channelId?: string };
+    try {
+      const wa = await this.channelToken.getWhatsAppToken(tenantId, body.phoneNumberId);
+      creds = { accessToken: wa.accessToken, wabaId: wa.wabaId, channelId: wa.channelId };
+    } catch {
       throw new BadRequestException('No active WhatsApp channel. Complete Embedded Signup first.');
     }
 
-    const { id: channelId, waba_id: wabaId, access_token: accessToken } = channels[0];
-    if (!wabaId || !accessToken) {
+    const { channelId, wabaId, accessToken } = creds;
+    if (!wabaId || !accessToken || !channelId) {
       throw new BadRequestException('WhatsApp channel missing WABA ID or access token');
     }
 

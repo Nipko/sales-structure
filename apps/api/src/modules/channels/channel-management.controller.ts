@@ -331,6 +331,12 @@ export class ChannelManagementController {
             });
         }
 
+        // El connect de Telegram no invalidaba NADA. Si el dueño rota el token
+        // en BotFather y reconecta, sin esto los envíos siguen usando el token
+        // revocado hasta 5 minutos — que es exactamente el rato en que está
+        // probando si su reconexión funcionó.
+        await this.channelToken.invalidateCache('telegram', tenantId, accountId).catch(() => { /* no bloquear la conexión */ });
+
         this.logger.log(`Telegram bot @${accountId} connected for tenant ${tenantId}`);
         return {
             success: true,
@@ -681,8 +687,14 @@ export class ChannelManagementController {
             throw new BadRequestException('Failed to connect any Facebook page');
         }
 
-        // Invalidate cached token so next message uses the fresh one
+        // Invalidate cached token so next message uses the fresh one.
+        // Una por página conectada: el runtime lee la clave por-cuenta, y
+        // borrar sólo la genérica dejaba el token viejo vivo hasta 5 minutos
+        // justo cuando el dueño está reconectando porque dejó de funcionar.
         await this.channelToken.invalidateCache('messenger', tenantId);
+        for (const page of connected) {
+            await this.channelToken.invalidateCache('messenger', tenantId, String(page.id)).catch(() => { /* no bloquear la conexión */ });
+        }
 
         this.logger.log(`Messenger OAuth: ${connected.length} page(s) connected for tenant ${tenantId}${skippedForQuota.length ? `, ${skippedForQuota.length} skipped (plan limit)` : ''}`);
         return { success: true, data: { connected, total: pages.length, skippedForQuota } };
@@ -962,8 +974,15 @@ export class ChannelManagementController {
             this.logger.warn(`Instagram webhook subscription error for ${igScopedId}: ${subErr.message}`);
         }
 
-        // Invalidate cached token so next message uses the fresh one
-        await this.channelToken.invalidateCache('instagram', tenantId);
+        // Invalidate cached token so next message uses the fresh one.
+        //
+        // CON el accountId: el runtime lee SIEMPRE la clave por-cuenta cuando
+        // hay una conversación en contexto, y `invalidateCache` sólo la borra si
+        // se la pasan. Sin esto, justo en el caso en que el dueño reconecta
+        // —porque el token expiró o se lo revocaron— la plataforma seguía
+        // firmando envíos con el token viejo hasta 5 minutos: el usuario
+        // reconecta, prueba, sigue fallando, y vuelve a reconectar.
+        await this.channelToken.invalidateCache('instagram', tenantId, igScopedId);
 
         this.logger.log(`Instagram OAuth: ${displayName} connected for tenant ${tenantId}`);
         return {

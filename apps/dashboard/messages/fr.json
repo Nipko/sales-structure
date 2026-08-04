@@ -3165,7 +3165,7 @@
       "industryInmobiliaria": "Immobilier",
       "industryAutomotriz": "Automobile",
       "industryFinanzas": "Finance",
-      "industryModaBelleza": "Mode et beauté",
+      "industryModaBelleza": "Beauté et esthétique",
       "industryGimnasios": "Salles de sport et fitness",
       "industrySeguros": "Assurances",
       "industryServiciosHogar": "Services à domicile",
@@ -4038,7 +4038,7 @@
       "inmobiliaria": "Immobilier",
       "automotriz": "Automobile",
       "finanzas": "Finance / Banque",
-      "moda_belleza": "Mode / Beauté"
+      "moda_belleza": "Beauté et esthétique"
     },
     "languages": {
       "es-CO": "Espagnol (CO)",
@@ -4117,6 +4117,7 @@
     "linkedinUrl": "URL LinkedIn",
     "tiktokUrl": "URL TikTok",
     "businessType": "Type d'activité",
+    "businessTypeHint": "Un médecin prescrit-il le traitement ? Choisissez Santé. Sinon, Beauté et esthétique.",
     "select": "Sélectionner...",
     "back": "Retour",
     "creating": "Création...",
@@ -4193,7 +4194,7 @@
       "inmobiliaria": "Immobilier",
       "automotriz": "Automobile",
       "finanzas": "Finance / Banque",
-      "moda_belleza": "Mode / Beauté",
+      "moda_belleza": "Beauté et esthétique",
       "otro": "Autre"
     },
     "orgSizes": {
@@ -4243,7 +4244,8 @@
     "subTypes": {
       "dental": "Dentisterie",
       "medica_general": "Médecine générale",
-      "estetica": "Esthétique et dermatologie",
+      "estetica": "Centre esthétique",
+      "dermatologia": "Dermatologie et médecine esthétique",
       "psicologia": "Psychologie et thérapie",
       "farmacia": "Pharmacie",
       "clinica_general": "Clinique de petits animaux",
@@ -4516,7 +4518,7 @@
       "veterinaria": "propriétaires",
       "gimnasios": "membres",
       "seguros": "assurés",
-      "moda_belleza": "clients",
+      "moda_belleza": "Beauté et esthétique",
       "inmobiliaria": "prospects",
       "restaurantes": "clients",
       "automotriz": "acheteurs",
@@ -7761,7 +7763,8 @@
       "blanqueamiento": "Blanchiment",
       "limpieza_serie": "Série de nettoyages",
       "fisioterapia": "Physiothérapie",
-      "estetica": "Soin esthétique",
+      "estetica": "Centre esthétique",
+      "dermatologia": "Dermatologie et médecine esthétique",
       "psicologia": "Thérapie psychologique",
       "otro": "Autre"
     }

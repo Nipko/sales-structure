@@ -3165,7 +3165,7 @@
       "industryInmobiliaria": "Imobiliária",
       "industryAutomotriz": "Automotivo",
       "industryFinanzas": "Finanças",
-      "industryModaBelleza": "Moda e beleza",
+      "industryModaBelleza": "Beleza e estética",
       "industryGimnasios": "Academias e fitness",
       "industrySeguros": "Seguros",
       "industryServiciosHogar": "Serviços domésticos",
@@ -4038,7 +4038,7 @@
       "inmobiliaria": "Imobiliária",
       "automotriz": "Automotivo",
       "finanzas": "Finanças / Banco",
-      "moda_belleza": "Moda / Beleza"
+      "moda_belleza": "Beleza e estética"
     },
     "languages": {
       "es-CO": "Espanhol (CO)",
@@ -4117,6 +4117,7 @@
     "linkedinUrl": "URL do LinkedIn",
     "tiktokUrl": "URL do TikTok",
     "businessType": "Tipo de negócio",
+    "businessTypeHint": "Há um médico prescrevendo o tratamento? Escolha Saúde. Se não, Beleza e estética.",
     "select": "Selecionar...",
     "back": "Voltar",
     "creating": "Criando...",
@@ -4193,7 +4194,7 @@
       "inmobiliaria": "Imobiliária",
       "automotriz": "Automotivo",
       "finanzas": "Finanças / Banco",
-      "moda_belleza": "Moda / Beleza",
+      "moda_belleza": "Beleza e estética",
       "otro": "Outro"
     },
     "orgSizes": {
@@ -4243,7 +4244,8 @@
     "subTypes": {
       "dental": "Odontologia",
       "medica_general": "Medicina geral",
-      "estetica": "Estética e dermatologia",
+      "estetica": "Centro de estética",
+      "dermatologia": "Dermatologia e medicina estética",
       "psicologia": "Psicologia e terapia",
       "farmacia": "Farmácia",
       "clinica_general": "Clínica de pequenos animais",
@@ -4516,7 +4518,7 @@
       "veterinaria": "tutores",
       "gimnasios": "membros",
       "seguros": "segurados",
-      "moda_belleza": "clientes",
+      "moda_belleza": "Beleza e estética",
       "inmobiliaria": "prospectos",
       "restaurantes": "clientes",
       "automotriz": "compradores",

@@ -3165,7 +3165,7 @@
       "industryInmobiliaria": "Real estate",
       "industryAutomotriz": "Automotive",
       "industryFinanzas": "Finance",
-      "industryModaBelleza": "Fashion & beauty",
+      "industryModaBelleza": "Beauty & aesthetics",
       "industryGimnasios": "Gyms & fitness",
       "industrySeguros": "Insurance",
       "industryServiciosHogar": "Home services",
@@ -4038,7 +4038,7 @@
       "inmobiliaria": "Real estate",
       "automotriz": "Automotive",
       "finanzas": "Finance / Banking",
-      "moda_belleza": "Fashion / Beauty"
+      "moda_belleza": "Beauty & aesthetics"
     },
     "languages": {
       "es-CO": "Spanish (CO)",
@@ -4117,6 +4117,7 @@
     "linkedinUrl": "LinkedIn URL",
     "tiktokUrl": "TikTok URL",
     "businessType": "Business type",
+    "businessTypeHint": "Is a doctor prescribing the treatment? Choose Health. If not, Beauty & aesthetics.",
     "select": "Select...",
     "back": "Back",
     "creating": "Creating...",
@@ -4193,7 +4194,7 @@
       "inmobiliaria": "Real estate",
       "automotriz": "Automotive",
       "finanzas": "Finance / Banking",
-      "moda_belleza": "Fashion / Beauty",
+      "moda_belleza": "Beauty & aesthetics",
       "otro": "Other"
     },
     "orgSizes": {
@@ -4243,7 +4244,8 @@
     "subTypes": {
       "dental": "Dentistry",
       "medica_general": "General medicine",
-      "estetica": "Aesthetics and dermatology",
+      "estetica": "Aesthetics center",
+      "dermatologia": "Dermatology & aesthetic medicine",
       "psicologia": "Psychology and therapy",
       "farmacia": "Pharmacy",
       "clinica_general": "Small animal clinic",
@@ -4516,7 +4518,7 @@
       "veterinaria": "pet owners",
       "gimnasios": "members",
       "seguros": "policyholders",
-      "moda_belleza": "clients",
+      "moda_belleza": "Beauty & aesthetics",
       "inmobiliaria": "prospects",
       "restaurantes": "diners",
       "automotriz": "buyers",
@@ -7761,7 +7763,8 @@
       "blanqueamiento": "Whitening",
       "limpieza_serie": "Cleaning series",
       "fisioterapia": "Physiotherapy",
-      "estetica": "Aesthetic treatment",
+      "estetica": "Aesthetics center",
+      "dermatologia": "Dermatology & aesthetic medicine",
       "psicologia": "Psychological therapy",
       "otro": "Other"
     }

@@ -31,7 +31,10 @@ const SALUD: VerticalDefinition = {
     subTypes: [
         { key: 'dental', label: { es: 'Odontología', en: 'Dental', pt: 'Odontologia', fr: 'Dentaire' } },
         { key: 'medica_general', label: { es: 'Medicina general', en: 'General medicine', pt: 'Medicina geral', fr: 'Médecine générale' } },
-        { key: 'estetica', label: { es: 'Estética y dermatología', en: 'Aesthetics & dermatology', pt: 'Estética e dermatologia', fr: 'Esthétique et dermatologie' } },
+        // En Salud queda SOLO lo médico. La estética no-médica se mudó a
+        // "Belleza y estética": eran dos negocios distintos compartiendo una
+        // etiqueta ambigua, y el dueño no sabía cuál elegir.
+        { key: 'dermatologia', label: { es: 'Dermatología y medicina estética', en: 'Dermatology & aesthetic medicine', pt: 'Dermatologia e medicina estética', fr: 'Dermatologie et médecine esthétique' } },
         { key: 'psicologia', label: { es: 'Psicología y terapia', en: 'Psychology & therapy', pt: 'Psicologia e terapia', fr: 'Psychologie et thérapie' } },
         { key: 'farmacia', label: { es: 'Farmacia', en: 'Pharmacy', pt: 'Farmácia', fr: 'Pharmacie' } },
     ],
@@ -121,7 +124,16 @@ const MODA_BELLEZA: VerticalDefinition = {
         { key: 'salon_belleza', label: { es: 'Salón de belleza', en: 'Beauty salon', pt: 'Salão de beleza', fr: 'Salon de beauté' } },
         { key: 'barberia', label: { es: 'Barbería', en: 'Barbershop', pt: 'Barbearia', fr: 'Barbier' } },
         { key: 'spa', label: { es: 'Spa y bienestar', en: 'Spa & wellness', pt: 'Spa e bem-estar', fr: 'Spa et bien-être' } },
-        { key: 'boutique', label: { es: 'Boutique de moda', en: 'Fashion boutique', pt: 'Boutique de moda', fr: 'Boutique de mode' } },
+        // Estética NO médica: depilación láser, corporales, faciales, uñas.
+        // Vive acá y no en Salud porque no hay médico prescribiendo — su flujo
+        // es el de un centro de belleza (paquetes de sesiones, rebooking), no el
+        // de un consultorio. El research la marca como el comprador #1 y hasta
+        // ahora caía en el hueco entre las dos verticales.
+        { key: 'estetica', label: { es: 'Centro de estética', en: 'Aesthetics center', pt: 'Centro de estética', fr: 'Centre esthétique' } },
+        // `boutique` se fue a Retail: una tienda de ropa es catálogo, no sillón.
+        // Nacía con agendadora de peluquería y "Corte y estilo" agendable, y el
+        // dueño lo tenía que borrar a mano el día 1. Su equivalente es el
+        // sub-tipo `moda` de retail, que no siembra agenda.
     ],
     terminology: {
         customerNoun: { es: 'cliente', en: 'client', pt: 'cliente', fr: 'client' },

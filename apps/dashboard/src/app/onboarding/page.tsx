@@ -61,11 +61,15 @@ const REFERRAL_KEYS = [
     "youtube", "blog", "event", "other",
 ];
 
+// Las CLAVES tienen que coincidir con las de vertical-definitions.ts del API,
+// que es la fuente de verdad: son las que el bootstrap usa para decidir qué
+// sembrar (SUBTYPE_BOOTSTRAP). El `label` de acá no se muestra —el render usa
+// la traducción de subTypes.<key>— y queda sólo como referencia al leer el código.
 const SUB_TYPES: Record<string, Array<{key: string; label: string}>> = {
     salud: [
         { key: 'dental', label: 'Odontología' },
         { key: 'medica_general', label: 'Medicina general' },
-        { key: 'estetica', label: 'Estética y dermatología' },
+        { key: 'dermatologia', label: 'Dermatología y medicina estética' },
         { key: 'psicologia', label: 'Psicología y terapia' },
         { key: 'farmacia', label: 'Farmacia' },
     ],
@@ -125,7 +129,7 @@ const SUB_TYPES: Record<string, Array<{key: string; label: string}>> = {
         { key: 'salon_belleza', label: 'Salón de belleza' },
         { key: 'barberia', label: 'Barbería' },
         { key: 'spa', label: 'Spa y bienestar' },
-        { key: 'boutique', label: 'Boutique de moda' },
+        { key: 'estetica', label: 'Centro de estética' },
     ],
     finanzas: [
         { key: 'seguros', label: 'Seguros' },
@@ -868,6 +872,17 @@ export default function OnboardingPage() {
                                     <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
                                         {t('businessType')}
                                     </label>
+                                    {/* La frontera belleza/salud es la que más se
+                                        equivoca el dueño: una clínica de estética
+                                        puede razonablemente anotarse en cualquiera
+                                        de las dos, y de esa elección depende todo
+                                        lo que le sembramos. La regla del médico
+                                        prescribiendo la resuelve sin ambigüedad. */}
+                                    {(industry === 'moda_belleza' || industry === 'salud') && (
+                                        <p className="text-[11px] text-muted-foreground mb-1.5 -mt-0.5">
+                                            {t('businessTypeHint')}
+                                        </p>
+                                    )}
                                     <select
                                         value={subType}
                                         onChange={(e) => setSubType(e.target.value)}

@@ -60,6 +60,10 @@ const SUBTYPE_BOOTSTRAP: Record<string, SubtypeBootstrap> = {
     // exclusivo de dental.
     spa: { extraTools: ['treatments'] },
     estetica: { extraTools: ['treatments'] },
+    // Dermatología y medicina estética: mismo motor de paquetes de sesiones que
+    // `estetica`, del que se separó al partir belleza/salud. Sin esta entrada el
+    // sub-tipo nuevo nacía sin la herramienta que define su negocio.
+    dermatologia: { extraTools: ['treatments'] },
     psicologia: { extraTools: ['treatments'] },
 
     // servicios_profesionales — los cuatro sub-tipos venden cosas distintas y

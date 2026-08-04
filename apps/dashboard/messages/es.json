@@ -3165,7 +3165,7 @@
       "industryInmobiliaria": "Inmobiliaria",
       "industryAutomotriz": "Automotriz",
       "industryFinanzas": "Finanzas",
-      "industryModaBelleza": "Moda y belleza",
+      "industryModaBelleza": "Belleza y estética",
       "industryGimnasios": "Gimnasios y fitness",
       "industrySeguros": "Seguros",
       "industryServiciosHogar": "Servicios del hogar",
@@ -4038,7 +4038,7 @@
       "inmobiliaria": "Inmobiliaria",
       "automotriz": "Automotriz",
       "finanzas": "Finanzas / Banca",
-      "moda_belleza": "Moda / Belleza"
+      "moda_belleza": "Belleza y estética"
     },
     "languages": {
       "es-CO": "Español (CO)",
@@ -4117,6 +4117,7 @@
     "linkedinUrl": "URL de LinkedIn",
     "tiktokUrl": "URL de TikTok",
     "businessType": "Tipo de negocio",
+    "businessTypeHint": "¿Hay un médico prescribiendo el tratamiento? Elegí Salud. Si no, Belleza y estética.",
     "select": "Seleccionar...",
     "back": "Atrás",
     "creating": "Creando...",
@@ -4193,7 +4194,7 @@
       "inmobiliaria": "Inmobiliaria",
       "automotriz": "Automotriz",
       "finanzas": "Finanzas / Banca",
-      "moda_belleza": "Moda / Belleza",
+      "moda_belleza": "Belleza y estética",
       "otro": "Otro"
     },
     "orgSizes": {
@@ -4243,7 +4244,8 @@
     "subTypes": {
       "dental": "Odontología",
       "medica_general": "Medicina general",
-      "estetica": "Estética y dermatología",
+      "estetica": "Centro de estética",
+      "dermatologia": "Dermatología y medicina estética",
       "psicologia": "Psicología y terapia",
       "farmacia": "Farmacia",
       "clinica_general": "Clínica de pequeñas especies",
@@ -4516,7 +4518,7 @@
       "veterinaria": "tutores",
       "gimnasios": "miembros",
       "seguros": "asegurados",
-      "moda_belleza": "clientes",
+      "moda_belleza": "Belleza y estética",
       "inmobiliaria": "prospectos",
       "restaurantes": "comensales",
       "automotriz": "compradores",

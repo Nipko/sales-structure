@@ -783,10 +783,27 @@ export class BillingService {
     // -------------------------------------------------------------------------
 
     /**
-     * Issue a refund for a previously succeeded payment. Caller must be
-     * super_admin (enforced at controller level). The actual status update
-     * on BillingPayment.status='refunded' arrives via the provider webhook;
-     * this just kicks off the refund and writes an audit row immediately.
+     * Devuelve un pago ya cobrado. El controller exige super_admin.
+     *
+     * ANTES esto no marcaba nada localmente: el docstring decía que el estado
+     * 'refunded' "llega por el webhook del proveedor", y esa rama no existe —
+     * `handleBillingEvent` sólo contempla PAYMENT_SUCCEEDED y PAYMENT_FAILED, y
+     * en todo el API no hay un solo `billingPayment.update`. O sea que la guarda
+     * de "ya reembolsado" era inalcanzable, el panel seguía mostrando el pago
+     * como 'succeeded' con el botón activo, y cada clic volvía a llamar a
+     * MercadoPago y a sacar plata de verdad hasta agotar el monto.
+     *
+     * Ahora se RESERVA antes de llamar al proveedor y se libera si el proveedor
+     * falla. El orden importa: marcar después dejaría plata devuelta sin
+     * registrar si el proceso muere en el medio, y marcar sin reservar no frena
+     * el doble clic. PgBouncer está en modo transaction, así que no hay
+     * transacción que abarque "llamar al proveedor + escribir": la atomicidad
+     * que se puede tener es un UPDATE guardado cuyo conteo de filas se
+     * inspecciona.
+     *
+     * El acumulado vive en `metadata.refundedAmountCents` para que los
+     * reembolsos PARCIALES sigan siendo posibles (se puede devolver 30 y
+     * después 20 de un pago de 50) pero nunca sumen más que el pago.
      */
     async refundPayment(input: {
         paymentId: string;
@@ -810,16 +827,56 @@ export class BillingService {
         if (!payment.providerPaymentId) {
             throw new BadRequestException({ error: 'missing_provider_payment_id' });
         }
-        if (input.amountCents != null && input.amountCents > payment.amountCents) {
+
+        const alreadyRefunded = Number((payment.metadata as any)?.refundedAmountCents ?? 0) || 0;
+        const remaining = payment.amountCents - alreadyRefunded;
+        if (remaining <= 0) {
+            throw new BadRequestException({ error: 'already_refunded' });
+        }
+        const requested = input.amountCents ?? remaining;
+        if (requested > remaining) {
             throw new BadRequestException({
                 error: 'refund_exceeds_payment',
                 paymentAmountCents: payment.amountCents,
-                requestedAmountCents: input.amountCents,
+                alreadyRefundedCents: alreadyRefunded,
+                remainingCents: remaining,
+                requestedAmountCents: requested,
             });
         }
 
+        // Reserva optimista: sólo avanza si el acumulado sigue siendo el que
+        // leímos. Dos clics simultáneos: uno actualiza 1 fila, el otro 0.
+        const newTotal = alreadyRefunded + requested;
+        const reserved: number = await this.prisma.$executeRawUnsafe(
+            `UPDATE billing_payments
+                SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{refundedAmountCents}', to_jsonb($2::int)),
+                    status   = CASE WHEN $2::int >= amount_cents THEN 'refunded' ELSE status END
+              WHERE id = $1
+                AND status = 'succeeded'
+                AND COALESCE((metadata->>'refundedAmountCents')::int, 0) = $3::int`,
+            input.paymentId, newTotal, alreadyRefunded,
+        );
+        if (reserved !== 1) {
+            // Otro reembolso entró primero. Mejor negarse que cobrarle de nuevo
+            // al proveedor sobre una lectura vieja.
+            throw new BadRequestException({ error: 'refund_conflict', message: 'El pago cambió mientras se procesaba el reembolso. Volvé a intentarlo.' });
+        }
+
         const provider = this.providerFactory.getByName(payment.provider);
-        await provider.refundPayment(payment.providerPaymentId, input.amountCents);
+        try {
+            await provider.refundPayment(payment.providerPaymentId, input.amountCents);
+        } catch (e) {
+            // El proveedor no devolvió la plata: liberar la reserva o el pago
+            // quedaría bloqueado para siempre sin haberse reembolsado nunca.
+            await this.prisma.$executeRawUnsafe(
+                `UPDATE billing_payments
+                    SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{refundedAmountCents}', to_jsonb($2::int)),
+                        status   = 'succeeded'
+                  WHERE id = $1`,
+                input.paymentId, alreadyRefunded,
+            ).catch(() => { /* si esto falla queda bloqueado, pero no se cobró de más */ });
+            throw e;
+        }
 
         await this.prisma.auditLog.create({
             data: {
@@ -830,8 +887,11 @@ export class BillingService {
                 details: {
                     providerPaymentId: payment.providerPaymentId,
                     fullAmountCents: payment.amountCents,
-                    refundedAmountCents: input.amountCents ?? payment.amountCents,
-                    isPartial: input.amountCents != null && input.amountCents < payment.amountCents,
+                    refundedAmountCents: requested,
+                    // El acumulado, no sólo lo de esta vez: sin esto la auditoría
+                    // de tres parciales no dice cuánto se devolvió en total.
+                    totalRefundedAmountCents: newTotal,
+                    isPartial: newTotal < payment.amountCents,
                     reason: input.reason ?? null,
                 },
             },

@@ -841,11 +841,23 @@ export class ConversationsService {
             `SELECT * FROM conversations
              WHERE contact_id = $1::uuid AND channel_type = $2
                AND ($3::text IS NULL OR channel_account_id = $3 OR channel_account_id IS NULL)
-               AND status IN ('active', 'waiting_human', 'with_human')
+               AND status IN ('active', 'waiting_human', 'with_human', 'snoozed')
              ORDER BY (channel_account_id IS NOT DISTINCT FROM $3::text) DESC, created_at DESC
              LIMIT 1`,
             [contactIdStr, msg.channelType, msg.channelAccountId ?? null],
         ).then(res => res[0]);
+
+        // El cliente escribió: el "posponer hasta mañana" quedó sin efecto.
+        // Antes 'snoozed' no entraba en el IN de arriba, así que se le abría una
+        // conversación NUEVA y el historial se partía en dos justo con el
+        // cliente al que el agente había decidido seguir después.
+        if (conversation?.status === 'snoozed') {
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations SET status = 'active', snoozed_until = NULL, updated_at = NOW() WHERE id = $1::uuid`,
+                [String(conversation.id)],
+            ).catch(() => { /* el turno sigue; a lo sumo lo despierta el barrido */ });
+            conversation.status = 'active';
+        }
 
         // Backfill a legacy NULL-account conversation with the account it's now being
         // used from, so future routing is exact.

@@ -4,6 +4,7 @@ import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class
 import { SUPPORTED_BILLING_COUNTRIES } from '../../common/utils/billing-country.util';
 import type { Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { FiscalStorageService } from './fiscal-storage.service';
@@ -52,8 +53,27 @@ class FiscalDataDto {
  * issued fiscal invoices. tenantId is a path param (super_admin can operate on
  * any tenant), guarded by TenantGuard like the rest of /billing.
  */
+/*
+ * Todo este controller es tenant_admin, y va a nivel de CLASE a propósito.
+ *
+ * `RolesGuard` permite por defecto: sin metadata `@Roles` devuelve `true`
+ * (roles.guard.ts:17), así que declararlo en `@UseGuards` sin decorar las rutas
+ * lo dejaba de adorno — cualquier usuario autenticado del tenant entraba.
+ *
+ * Lo que estaba abierto no era menor: reescribir razón social, NIT y DV, que
+ * son los datos que salen impresos en facturas electrónicas legalmente
+ * vinculantes ante la DIAN; cambiar el país de facturación, que decide si el
+ * gate fiscal dispara, qué proveedor DIAN se usa y qué precio por país aplica
+ * en billing; y listar y descargar el PDF y el XML de todas las facturas del
+ * tenant.
+ *
+ * El dashboard ya lo escondía (`_settings-config.ts:64`, `canManageBilling`),
+ * pero un POST directo pasaba igual: el gate de UI sin el del backend es
+ * fachada. Es la misma clase de hueco que se cerró en las otras 237 rutas.
+ */
 @Controller('fiscal')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@Roles('tenant_admin')
 export class FiscalController {
     constructor(
         private readonly prisma: PrismaService,

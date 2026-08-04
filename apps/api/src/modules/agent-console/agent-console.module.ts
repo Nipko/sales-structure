@@ -9,6 +9,7 @@ import { CollisionDetectionService } from './collision-detection.service';
 import { AgentAvailabilityService } from './agent-availability.service';
 import { MacrosService } from './macros.service';
 import { SnoozeService, SNOOZE_QUEUE } from './snooze.service';
+import { SnoozeProcessor } from './snooze.processor';
 import { BullModule } from '@nestjs/bullmq';
 import { ChannelsModule } from '../channels/channels.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
@@ -34,7 +35,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
             inject: [ConfigService],
         }),
     ],
-    providers: [AgentConsoleGateway, AgentConsoleService, CollisionDetectionService, CannedResponsesService, AgentAvailabilityService, MacrosService, SnoozeService],
+    providers: [AgentConsoleGateway, AgentConsoleService, CollisionDetectionService, CannedResponsesService, AgentAvailabilityService, MacrosService, SnoozeService, SnoozeProcessor],
     controllers: [AgentConsoleController],
     exports: [AgentConsoleService, AgentConsoleGateway, AgentAvailabilityService],
 })

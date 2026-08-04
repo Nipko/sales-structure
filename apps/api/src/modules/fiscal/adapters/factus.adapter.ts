@@ -74,6 +74,41 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         return (process.env.FACTUS_BASE_URL || 'https://api-sandbox.factus.com.co').replace(/\/+$/, '');
     }
 
+    /**
+     * Producción de Factus son TRES interruptores independientes, y cualquier
+     * desalineación entre ellos pasaba en silencio y en verde:
+     *
+     *   1. `FACTUS_BASE_URL` — el entorno de la API. Si el secret falta, cada
+     *      deploy regenera el .env apuntando a sandbox.
+     *   2. `factusNumberingRangeId` — el rango de numeración: los de habilitación
+     *      y los de producción son distintos, y nada verificaba cuál es.
+     *   3. `factusEnvironment` — sólo elige el host del QR de la DIAN.
+     *
+     * Con base URL de sandbox y credenciales cargadas, `isProviderReady` daba
+     * true, Factus devolvía un CUFE de habilitación, la fila quedaba
+     * `status='issued'` y el panel se veía perfecto — pero al cliente que pagó
+     * de verdad se le mandaba algo que NO es una factura electrónica válida,
+     * con el QR apuntando al catálogo de habilitación.
+     *
+     * Una factura fiscal es un documento legal: acá se falla cerrado. Es mejor
+     * que la emisión quede pendiente y con un error explícito a emitir un
+     * papel inválido y creer que se cumplió.
+     */
+    private assertEnvironmentAligned(cfg: { factusEnvironment?: string }): void {
+        const url = this.baseUrl.toLowerCase();
+        const urlIsSandbox = url.includes('sandbox');
+        const declaredSandbox = (cfg.factusEnvironment || 'sandbox').toLowerCase() !== 'production';
+
+        if (urlIsSandbox !== declaredSandbox) {
+            throw new Error(
+                `Configuración fiscal desalineada: FACTUS_BASE_URL apunta a ${urlIsSandbox ? 'sandbox' : 'producción'} ` +
+                `pero fiscal.factus_environment dice '${cfg.factusEnvironment || 'sandbox'}'. ` +
+                `Emitir así produciría una factura que no es válida ante la DIAN. ` +
+                `Alineá el secret PROD_FACTUS_BASE_URL con factus_environment antes de facturar.`,
+            );
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Auth
     // -------------------------------------------------------------------------
@@ -156,6 +191,7 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         if (!cfg.factusNumberingRangeId) {
             throw new Error('Factus numbering_range_id not configured (fiscal.factus_numbering_range_id)');
         }
+        this.assertEnvironmentAligned(cfg);
 
         const baseCents = data.copAmountCents ?? data.amountCents;
         const line = this.buildLine(data.description, baseCents, data.ivaTreatment, cfg);

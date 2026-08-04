@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
+import { CronLockService } from '../redis/cron-lock.service';
 
 const DEFAULT_ROTTING_DAYS = 14;
 const OPEN = `stage NOT IN ('ganado', 'perdido', 'no_interesado')`;
@@ -10,7 +11,13 @@ const OPEN = `stage NOT IN ('ganado', 'perdido', 'no_interesado')`;
  * Deal rotting detector (T3.21). Every 6h, flags open opportunities with no
  * movement for ≥ rottingDays (per-tenant override via tenant.settings.crm.rottingDays)
  * and emits `crm.deal_rotting` for newly-stale deals (deduped via metadata.is_rotting).
- * Idempotent — safe even if the cron fires in multiple processes.
+ * El docstring decia "idempotente aunque el cron dispare en varios procesos"
+ * y NO lo era: el ciclo es SELECT (los que aun no estan marcados) -> UPDATE ->
+ * emit, asi que la API y el worker leian las mismas filas antes de que ninguno
+ * escribiera y ambos emitian el evento crm.deal_rotting. El dueño recibia la
+ * alerta de negocio duplicada por cada oportunidad estancada.
+ *
+ * Ahora corre en UNA sola instancia via CronLockService, como los otros 28.
  */
 @Injectable()
 export class DealRottingCronService {
@@ -19,9 +26,14 @@ export class DealRottingCronService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly eventEmitter: EventEmitter2,
+        private readonly cronLock: CronLockService,
     ) {}
 
     @Cron('0 */6 * * *')
+    async detectRottingCron(): Promise<void> {
+        await this.cronLock.runExclusive('crm-b2b.detectRotting', 1800, () => this.detectRotting());
+    }
+
     async detectRotting(): Promise<void> {
         let tenants: any[] = [];
         try {

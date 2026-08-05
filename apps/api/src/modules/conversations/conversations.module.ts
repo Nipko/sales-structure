@@ -45,6 +45,9 @@ import { EcommerceModule } from '../ecommerce/ecommerce.module';
 import { VerticalIntegrationsModule } from '../vertical-integrations/vertical-integrations.module';
 import { McpModule } from '../mcp/mcp.module';
 import { AttributionModule } from '../attribution/attribution.module';
+import { EmailModule } from '../email/email.module';
+import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
+import { ChatIdentityService } from './chat-identity.service';
 
 @Module({
     imports: [
@@ -78,6 +81,8 @@ import { AttributionModule } from '../attribution/attribution.module';
         AttributionModule,
         forwardRef(() => McpModule),
         forwardRef(() => MediaProcessingModule),
+        EmailModule,
+        SmsCreditsModule,
         JwtModule.registerAsync({
             imports: [ConfigModule],
             useFactory: (config: ConfigService) => ({
@@ -86,7 +91,7 @@ import { AttributionModule } from '../attribution/attribution.module';
             inject: [ConfigService],
         }),
     ],
-    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, ResponseValidatorService, CustomerMemoryService, BookingEngineService, ProcedureEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, AgentTestService, PreChatService],
+    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, ResponseValidatorService, CustomerMemoryService, BookingEngineService, ProcedureEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, AgentTestService, PreChatService, ChatIdentityService],
     controllers: [ConversationsController, AgentTestController],
     exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, AgentTestService, AIToolExecutorService],
 })

@@ -96,4 +96,24 @@ export const INSURANCE_TOOLS: ToolDefinition[] = [
             required: ['quoteId'],
         },
     },
+    // Verificación de identidad en dos pasos. Reemplaza al pedido de cédula que
+    // las plantillas hacían y el contrato base del prompt prohibía: en vez de
+    // que el cliente DECLARE quién es, lo prueba con un código que le llega por
+    // un canal distinto al del chat.
+    {
+        name: 'request_identity_code',
+        description: 'Send the customer a 6-digit identity verification code. The code goes to their email (or SMS) on file — NEVER to this chat, that is the whole point. Use when check_policy_status told you verification is needed, or when the customer asks for a new code. You never see the code: ask the customer to type it and pass it to verify_identity_code.',
+        parameters: { type: 'object', properties: {} },
+    },
+    {
+        name: 'verify_identity_code',
+        description: 'Check the 6-digit code the customer just gave you. On success the conversation stays verified for 30 minutes and you can look up their policy data. NEVER guess or retry codes on the customer\'s behalf, and never reveal policy data before this succeeds.',
+        parameters: {
+            type: 'object',
+            properties: {
+                code: { type: 'string', description: 'The 6 digits the customer typed' },
+            },
+            required: ['code'],
+        },
+    },
 ];

@@ -21,6 +21,7 @@ import { VerticalIntegrationsService } from '../vertical-integrations/vertical-i
 import { McpClientService } from '../mcp/mcp-client.service';
 import type { PolicyType } from '@parallext/shared';
 import { absoluteMediaUrl } from '../../common/utils/media-url.util';
+import { ChatIdentityService } from './chat-identity.service';
 
 /**
  * Executes AI tool calls against the appropriate services.
@@ -47,6 +48,7 @@ export class AIToolExecutorService {
         private gymsService: GymsService,
         private educationService: EducationService,
         private insuranceService: InsuranceService,
+        private chatIdentity: ChatIdentityService,
         private homeServicesService: HomeServicesService,
         private ecommerceService: EcommerceService,
         private verticalIntegrations: VerticalIntegrationsService,
@@ -63,7 +65,11 @@ export class AIToolExecutorService {
         toolName: string,
         args: Record<string, any>,
         conversationId?: string,
-        opts?: { evalMode?: boolean },
+        // channelType viaja por OPTS y no por args a proposito: args lo arma el
+        // LLM, asi que si el canal viniera por ahi el modelo podria decir que la
+        // conversacion es por email para que el codigo salga por email — o sea,
+        // por el mismo canal que estamos tratando de verificar.
+        opts?: { evalMode?: boolean; channelType?: string },
     ): Promise<any> {
         this.logger.log(`[Tool] Executing: ${toolName} args=${JSON.stringify(args)}`);
 
@@ -304,8 +310,22 @@ export class AIToolExecutorService {
                 case 'calculate_quote':
                     return this.calculateInsuranceQuoteTool(schemaName, contactId, args);
 
-                case 'check_policy_status':
+                // Paso previo obligatorio: una póliza devuelve titular, prima y
+                // vigencias. La guarda de propiedad (ownsPolicy) ata el dato al
+                // contacto de la conversación, pero quien controle ese número
+                // sigue pudiendo leerlo. El código por un canal distinto es lo
+                // que convierte la identidad de declarada en verificada.
+                case 'check_policy_status': {
+                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType);
+                    if (gate) return gate;
                     return this.checkPolicyStatusTool(schemaName, contactId, args);
+                }
+
+                case 'request_identity_code':
+                    return this.requestIdentityCodeTool(tenantId, schemaName, contactId, conversationId, opts?.channelType);
+
+                case 'verify_identity_code':
+                    return this.verifyIdentityCodeTool(conversationId, args?.code);
 
                 case 'file_claim':
                     return this.fileInsuranceClaimTool(schemaName, contactId, args);
@@ -2904,6 +2924,84 @@ export class AIToolExecutorService {
      */
     private ownsPolicy(policy: any, contactId: string): boolean {
         return !!policy?.contact_id && policy.contact_id === contactId;
+    }
+
+    // ── Verificación de identidad en dos pasos (D8 / H-21) ─────
+
+    /**
+     * Devuelve un resultado-directiva si HACE FALTA verificar, o `null` si ya
+     * está verificado y la tool puede seguir.
+     *
+     * Cuando no hay ningún canal fuera de banda (contacto sin correo, y la
+     * conversación es por SMS) NO se inventa una verificación ni se bloquea sin
+     * salida: se escala a un humano, que es la respuesta honesta.
+     */
+    private async requireVerifiedIdentity(
+        tenantId: string,
+        schemaName: string,
+        contactId: string,
+        conversationId: string | undefined,
+        channelType?: string,
+    ): Promise<any | null> {
+        if (!conversationId) return null; // sin conversación (eval/test) no se gatea
+        if (await this.chatIdentity.isVerified(conversationId)) return null;
+
+        const started = await this.chatIdentity.startVerification(
+            tenantId, schemaName, contactId, conversationId, channelType || '',
+        );
+
+        if (started.status === 'already_verified') return null;
+        if (started.status === 'no_channel') {
+            return {
+                error: 'identity_unverifiable',
+                message: 'No hay forma de verificar la identidad de este cliente por otro canal. NO reveles ningún dato de la póliza: ofrecé pasarlo con un asesor humano.',
+                shouldHandoff: true,
+            };
+        }
+        return {
+            needsVerification: true,
+            sentVia: started.via,
+            sentTo: started.hint,
+            message: `Antes de dar información de la póliza hay que verificar identidad. Se envió un código de 6 dígitos ${started.via === 'email' ? 'al correo' : 'por SMS'} ${started.hint}. Pedile al cliente ese código y llamá a verify_identity_code. NO reveles ningún dato de la póliza hasta que la verificación sea exitosa.`,
+        };
+    }
+
+    private async requestIdentityCodeTool(
+        tenantId: string,
+        schemaName: string,
+        contactId: string,
+        conversationId: string | undefined,
+        channelType?: string,
+    ): Promise<any> {
+        if (!conversationId) return { error: 'no_conversation' };
+        const res = await this.chatIdentity.startVerification(tenantId, schemaName, contactId, conversationId, channelType || '');
+        if (res.status === 'already_verified') return { alreadyVerified: true };
+        if (res.status === 'no_channel') {
+            return {
+                error: 'identity_unverifiable',
+                message: 'No hay correo ni otro canal donde mandar el código. Ofrecé pasarlo con un asesor humano.',
+                shouldHandoff: true,
+            };
+        }
+        return { sent: true, via: res.via, sentTo: res.hint };
+    }
+
+    private async verifyIdentityCodeTool(conversationId: string | undefined, code?: string): Promise<any> {
+        if (!conversationId) return { error: 'no_conversation' };
+        if (!code) return { error: 'missing_code', message: 'Pedile al cliente el código de 6 dígitos.' };
+        const res = await this.chatIdentity.verifyCode(conversationId, String(code));
+        if (res.ok) return { verified: true, message: 'Identidad verificada. Ya podés consultar los datos que pidió.' };
+        const messages: Record<string, string> = {
+            expired: 'El código venció o no se pidió ninguno. Ofrecé enviar uno nuevo con request_identity_code.',
+            wrong: 'El código no coincide. Pedíselo de nuevo; le quedan intentos.',
+            too_many: 'Demasiados intentos fallidos. NO sigas intentando: pasá la conversación a un asesor humano.',
+        };
+        return {
+            verified: false,
+            reason: res.reason,
+            message: messages[res.reason || 'wrong'],
+            shouldHandoff: res.reason === 'too_many',
+        };
     }
 
     private async checkPolicyStatusTool(schemaName: string, contactId: string, args: any): Promise<any> {

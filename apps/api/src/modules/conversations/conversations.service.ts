@@ -2228,7 +2228,7 @@ export class ConversationsService {
                                 ? JSON.parse(tc.function.arguments)
                                 : (tc.function.arguments || {});
                             result = await this.withTimeout(
-                                this.toolExecutor.execute(schemaName, tenantId, contactId, tc.function.name, args, conversation.id),
+                                this.toolExecutor.execute(schemaName, tenantId, contactId, tc.function.name, args, conversation.id, { channelType: msg.channelType }),
                                 TOOL_TIMEOUT_MS,
                                 tc.function.name,
                             );

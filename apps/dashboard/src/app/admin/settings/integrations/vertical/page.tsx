@@ -7,7 +7,10 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
-import { Plug, Loader2, CheckCircle2, RefreshCw, Trash2, Plug2, UtensilsCrossed, Dumbbell, Stethoscope } from "lucide-react";
+import {
+    Plug, Loader2, CheckCircle2, RefreshCw, Trash2, Plug2,
+    UtensilsCrossed, Dumbbell, Stethoscope, AlertTriangle,
+} from "lucide-react";
 
 type Provider = "toast" | "mindbody" | "cliniko";
 
@@ -114,6 +117,18 @@ export default function VerticalIntegrationsPage() {
     return (
         <div className="max-w-3xl mx-auto p-6">
             <PageHeader icon={Plug} title={t("title")} subtitle={t("subtitle")} />
+
+            {/* Decir la verdad sobre el estado de esto.
+                Las cuatro integraciones verticales son de SOLO LECTURA, se
+                congelaron en agosto de 2026 (no se les construye escritura) y
+                nunca se probaron contra una cuenta real porque no hay
+                credenciales. Presentarlas al mismo nivel que WhatsApp o Google
+                Calendar era prometer algo que no está verificado — y el dueño se
+                entera recién cuando conecta y no funciona. */}
+            <div className="mb-5 flex items-start gap-2 p-3 rounded-lg text-[13px] border bg-amber-500/10 text-amber-800 dark:text-amber-200 border-amber-500/20">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{t("betaNotice")}</span>
+            </div>
 
             <HelpPanel
                 title={tHelp("settingsIntegrationsVertical.title")}

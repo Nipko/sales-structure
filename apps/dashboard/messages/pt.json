@@ -6931,6 +6931,7 @@
       ]
     },
     "settingsIntegrationsVertical": {
+      "betaNotice": "Estas integrações são somente leitura e estão em beta: sincronizam o catálogo (cardápio, aulas, serviços) uma vez por dia, mas não escrevem nada no sistema de origem e ainda não foram verificadas com uma conta real. Se conectar uma e algo não funcionar como esperado, avise-nos.",
       "title": "O que são integrações verticais?",
       "description": "Conecte o Parallly a softwares especializados do seu setor (Toast para restaurantes, Mindbody para academias/wellness, Cliniko para clínicas) para que o agente consulte disponibilidade, agende compromissos e sincronize dados em tempo real.",
       "tips": [

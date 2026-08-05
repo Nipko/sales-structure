@@ -2,6 +2,8 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { Cron } from '@nestjs/schedule';
+import { CronLockService } from '../redis/cron-lock.service';
 
 export type VerticalProvider = 'toast' | 'mindbody' | 'cliniko';
 
@@ -51,6 +53,7 @@ export class VerticalIntegrationsService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly http: HttpService,
+        private readonly cronLock: CronLockService,
     ) {}
 
     // ── Config (tenant.settings) ─────────────────────────────
@@ -199,6 +202,59 @@ export class VerticalIntegrationsService {
             case 'mindbody': return this.syncMindbody(schemaName, config);
             case 'cliniko': return this.syncCliniko(schemaName, config);
         }
+    }
+
+    /**
+     * Re-sincronización diaria de lo que estas integraciones LEEN.
+     *
+     * Decisión de agosto 2026: las cuatro integraciones verticales (Toast,
+     * Mindbody, Cliniko, Hostaway) se congelan — no se les construye write-path
+     * — pero la lectura se fiabiliza. Son PMS de EE.UU. y Australia que un
+     * negocio LatAm de 5-25 empleados probablemente no usa, así que no justifican
+     * más inversión; pero lo ya construido no cuesta nada mantenerlo vivo.
+     *
+     * El problema concreto que resuelve: el sync sólo corría cuando alguien
+     * apretaba el botón. Un restaurante que cambia el menú en Toast seguía
+     * teniendo el menú viejo en `vi_items`, y el agente le recitaba a los
+     * clientes platos y precios que ya no existen. Un dato desactualizado que se
+     * presenta como actual es peor que no tenerlo.
+     *
+     * Una vez por día alcanza: son catálogos (menú, grilla de clases, servicios
+     * de la clínica), no inventario en tiempo real.
+     */
+    @Cron('0 5 * * *')
+    async resyncAllCron(): Promise<void> {
+        await this.cronLock.runExclusive('vertical-integrations.resyncAll', 3600, () => this.resyncAll());
+    }
+
+    async resyncAll(): Promise<void> {
+        let tenants: Array<{ id: string }> = [];
+        try {
+            tenants = await this.prisma.tenant.findMany({ where: { isActive: true }, select: { id: true } });
+        } catch (e: any) {
+            this.logger.warn(`[VI] No se pudo listar tenants: ${e.message}`);
+            return;
+        }
+
+        let ok = 0;
+        let failed = 0;
+        for (const tenant of tenants) {
+            const connected = await this.getConnectedProviders(tenant.id).catch(() => null);
+            if (!connected) continue;
+            for (const provider of ['toast', 'mindbody', 'cliniko'] as VerticalProvider[]) {
+                if (!connected[provider]) continue;
+                try {
+                    const res = await this.sync(tenant.id, provider);
+                    ok++;
+                    this.logger.log(`[VI] ${provider} re-sincronizado para ${tenant.id}: ${res.synced} ítems`);
+                } catch (e: any) {
+                    // Que una credencial vencida de un tenant no frene al resto.
+                    failed++;
+                    this.logger.warn(`[VI] ${provider} falló para ${tenant.id}: ${e.message}`);
+                }
+            }
+        }
+        if (ok || failed) this.logger.log(`[VI] Re-sync diario: ${ok} ok, ${failed} con error`);
     }
 
     async testConnection(tenantId: string, provider: VerticalProvider): Promise<{ ok: boolean; message?: string }> {

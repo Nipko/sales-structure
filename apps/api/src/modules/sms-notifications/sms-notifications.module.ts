@@ -5,6 +5,7 @@ import { SmsSenderService } from './sms-sender.service';
 import { SmsNotificationsService } from './sms-notifications.service';
 import { SmsNotificationListenerService } from './sms-notification-listener.service';
 import { SmsNotificationsController } from './sms-notifications.controller';
+import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
 
 /**
  * Transactional SMS notifications on the tenant plane (Phase 2+). Listens to
@@ -12,7 +13,7 @@ import { SmsNotificationsController } from './sms-notifications.controller';
  * number. TenantThrottleService is @Global, so no ThrottleModule import needed.
  */
 @Module({
-    imports: [PrismaModule, ChannelsModule],
+    imports: [PrismaModule, ChannelsModule, SmsCreditsModule],
     providers: [SmsSenderService, SmsNotificationsService, SmsNotificationListenerService],
     controllers: [SmsNotificationsController],
     exports: [SmsSenderService, SmsNotificationsService],

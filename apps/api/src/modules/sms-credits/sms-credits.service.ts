@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { SmsKillSwitchService } from './sms-kill-switch.service';
 
 /** A purchasable SMS credit tier. priceCents is in minor units of `currency`. */
 export interface SmsPackage {
@@ -58,6 +59,7 @@ export class SmsCreditsService {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
+        private killSwitch: SmsKillSwitchService,
     ) { }
 
     // ---------------------------------------------------------------- packages
@@ -84,6 +86,12 @@ export class SmsCreditsService {
 
     /** True when the super admin has switched the reseller model on. */
     async isEnabled(): Promise<boolean> {
+        // El interruptor maestro de plataforma manda sobre el del modelo
+        // reseller. Poniéndolo acá, todo lo que ya consultaba `isEnabled`
+        // —la grilla de paquetes, el checkout, el envío medido y el canal SMS
+        // del broadcast en el dashboard— se apaga con un solo ajuste, en vez de
+        // tener que acordarse de apagar cinco cosas.
+        if (!(await this.killSwitch.isEnabled())) return false;
         const { enabled } = await this.getConfig();
         return enabled === true;
     }

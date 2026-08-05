@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { SmsAdapter } from '../channels/sms/sms.adapter';
+import { SmsKillSwitchService } from '../sms-credits/sms-kill-switch.service';
 
 /**
  * Transactional (non-conversational) SMS sender on the TENANT plane: sends from
@@ -20,11 +21,16 @@ export class SmsSenderService {
     constructor(
         private readonly channelToken: ChannelTokenService,
         private readonly smsAdapter: SmsAdapter,
+        private readonly killSwitch: SmsKillSwitchService,
     ) {}
 
     /** Send a transactional SMS from the tenant's Twilio number. Returns true if sent. */
     async sendToNumber(tenantId: string, to: string, body: string): Promise<boolean> {
         if (!to || !body) return false;
+        // Interruptor maestro: apaga tambien el SMS que sale por el Twilio
+        // PROPIO del tenant. El costo no es nuestro, pero la decision fue no
+        // tener SMS en la plataforma, ni propio ni de tenants.
+        if (!(await this.killSwitch.isEnabled())) return false;
         try {
             const creds = await this.channelToken.getChannelToken(tenantId, 'sms');
             // accountId = tenant's Twilio "from" number; accessToken = "accountSid:authToken"

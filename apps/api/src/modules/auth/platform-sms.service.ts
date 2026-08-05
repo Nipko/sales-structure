@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SmsKillSwitchService } from '../sms-credits/sms-kill-switch.service';
 
 const TWILIO_API = 'https://api.twilio.com/2010-04-01';
 
@@ -18,7 +19,7 @@ export class PlatformSmsService {
     private readonly authToken?: string;
     private readonly from?: string;
 
-    constructor(config: ConfigService) {
+    constructor(config: ConfigService, private readonly killSwitch: SmsKillSwitchService) {
         this.accountSid = config.get<string>('SMS_ALERT_ACCOUNT_SID');
         this.authToken = config.get<string>('SMS_ALERT_AUTH_TOKEN');
         this.from = config.get<string>('SMS_ALERT_FROM');
@@ -31,6 +32,10 @@ export class PlatformSmsService {
     /** Send an SMS to an arbitrary number from the platform Twilio number. */
     async sendTo(to: string, body: string): Promise<boolean> {
         if (!this.enabled || !to) return false;
+        // Interruptor maestro: SMS apagado en toda la plataforma por decision
+        // del dueño (costo por mensaje por encima del precio). Ver
+        // SmsKillSwitchService.
+        if (!(await this.killSwitch.isEnabled())) return false;
         try {
             const url = `${TWILIO_API}/Accounts/${this.accountSid}/Messages.json`;
             const params = new URLSearchParams({ To: to, From: this.from!, Body: body });

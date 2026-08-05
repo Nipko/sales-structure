@@ -10,10 +10,12 @@ import { AlertConfigService } from './alert-config.service';
 import { SentryStatsService } from './sentry-stats.service';
 import { MediaModule } from '../media/media.module';
 import { AIModule } from '../ai/ai.module';
+import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
 
 @Module({
     imports: [
         MediaModule,
+        SmsCreditsModule,
         AIModule,
         BullModule.registerQueue(
             { name: 'outbound-messages' },

@@ -105,9 +105,16 @@ export class ChatIdentityService {
             }
         }
 
+        // Segundo canal: SMS. Hoy no sale nunca porque el SMS está apagado en
+        // toda la plataforma (SmsKillSwitchService, decisión de agosto 2026:
+        // el costo por mensaje estaba por encima del precio). Se deja el camino
+        // porque el interruptor es un ajuste, no una amputación: si mañana se
+        // enciende, la verificación gana un segundo canal sin tocar nada.
+        //
+        // Mientras tanto, un contacto sin correo cae en `no_channel` y la tool
+        // escala a un humano — que es lo correcto: sin canal fuera de banda no
+        // hay verificación posible, y fingir que sí la hay sería peor.
         const phone = contact.phone_normalized || normalizePhoneE164(contact.phone || '') || contact.phone;
-        // SMS sólo si la conversación NO viene por SMS — si no, estaríamos
-        // mandando el código por el mismo canal que queremos verificar.
         if (phone && conversationChannel !== 'sms') {
             const res = await this.sms.send(tenantId, phone, body, { reason: 'identity_verification' }).catch(() => null);
             if (res?.sent) {

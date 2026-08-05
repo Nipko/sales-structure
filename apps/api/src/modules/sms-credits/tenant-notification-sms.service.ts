@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { SmsCreditsService } from './sms-credits.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
+import { SmsKillSwitchService } from './sms-kill-switch.service';
 
 const TWILIO_API = 'https://api.twilio.com/2010-04-01';
 
@@ -40,6 +41,7 @@ export class TenantNotificationSmsService {
         config: ConfigService,
         private readonly smsCredits: SmsCreditsService,
         private readonly prisma: PrismaService,
+        private readonly killSwitch: SmsKillSwitchService,
     ) {
         this.accountSid = config.get<string>('SMS_ALERT_ACCOUNT_SID');
         this.authToken = config.get<string>('SMS_ALERT_AUTH_TOKEN');
@@ -81,6 +83,9 @@ export class TenantNotificationSmsService {
         opts?: { reason?: string; ref?: string; metadata?: Record<string, any> },
     ): Promise<TenantSmsSendResult> {
         if (!to || !body) return { sent: false, reason: 'invalid' };
+        // Interruptor maestro de plataforma, por encima del kill-switch del
+        // modelo reseller: apagado el SMS, no sale nada y no se cobra nada.
+        if (!(await this.killSwitch.isEnabled())) return { sent: false, reason: 'monetization_disabled' };
         // Master switch: while the reseller model is off, nothing is sent and nothing
         // is charged — the platform never fronts a per-SMS cost it can't recover.
         if (!(await this.smsCredits.isEnabled())) return { sent: false, reason: 'monetization_disabled' };

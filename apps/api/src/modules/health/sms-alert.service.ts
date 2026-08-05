@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SmsKillSwitchService } from '../sms-credits/sms-kill-switch.service';
 
 const TWILIO_API = 'https://api.twilio.com/2010-04-01';
 
@@ -21,7 +22,7 @@ export class SmsAlertService {
     private readonly from?: string;
     private readonly to: string[];
 
-    constructor(config: ConfigService) {
+    constructor(config: ConfigService, private readonly killSwitch: SmsKillSwitchService) {
         this.accountSid = config.get<string>('SMS_ALERT_ACCOUNT_SID');
         this.authToken = config.get<string>('SMS_ALERT_AUTH_TOKEN');
         this.from = config.get<string>('SMS_ALERT_FROM');
@@ -38,6 +39,10 @@ export class SmsAlertService {
     /** Best-effort SMS to every configured super_admin number. `text` is plain text. */
     async send(text: string): Promise<void> {
         if (!this.enabled) return;
+        // Interruptor maestro: SMS apagado en toda la plataforma por decision
+        // del dueño (costo por mensaje por encima del precio). Ver
+        // SmsKillSwitchService.
+        if (!(await this.killSwitch.isEnabled())) return;
         const body = text.slice(0, 600); // keep alerts short (a few segments max)
         const url = `${TWILIO_API}/Accounts/${this.accountSid}/Messages.json`;
         const auth = 'Basic ' + Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64');

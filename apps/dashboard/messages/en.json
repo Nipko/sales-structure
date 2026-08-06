@@ -1,4 +1,19 @@
 {
+  "tenantPayments": {
+    "title": "Charge your customers",
+    "subtitle": "Connect your MercadoPago account to collect deposits, advances and orders",
+    "directNotice": "Money goes DIRECTLY to your MercadoPago account. Parallly is not in the middle, does not hold funds and does not take a per-transaction fee: it only generates the payment link and marks the order as paid once MercadoPago confirms it.",
+    "accessToken": "Production access token",
+    "accessTokenHint": "Find it in MercadoPago → Your business → Settings → Production credentials. It is stored encrypted and never shown back.",
+    "publicKey": "Public key",
+    "saved": "Credentials saved and verified with MercadoPago",
+    "invalidCredentials": "Could not save the credentials",
+    "connected": "Account connected",
+    "connectedAs": "Connected as {email}",
+    "disconnect": "Disconnect",
+    "disconnectConfirm": "Disconnect the payments account? New payment links can no longer be created.",
+    "footnote": "Until you connect an account, the agent will not offer chat payment: it takes the details and says the business will follow up."
+  },
   "emailVerification": {
     "message": "Your email {email} is not verified yet.",
     "resend": "Resend code",
@@ -1155,6 +1170,10 @@
       "reviews": {
         "label": "Reviews",
         "description": "Google Business + AI replies"
+      },
+      "payments": {
+        "label": "Customer payments",
+        "description": "The business MercadoPago account for deposits and orders"
       },
       "ecommerce": {
         "label": "Online store",

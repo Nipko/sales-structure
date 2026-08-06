@@ -1,4 +1,19 @@
 {
+  "tenantPayments": {
+    "title": "Cobros a tus clientes",
+    "subtitle": "Conectá tu cuenta de MercadoPago para cobrar señas, anticipos y pedidos",
+    "directNotice": "El dinero va DIRECTO a tu cuenta de MercadoPago. Parallly no queda en el medio, no retiene fondos y no cobra comisión por transacción: solo genera el link de pago y marca el pedido como pagado cuando MercadoPago lo confirma.",
+    "accessToken": "Access Token de producción",
+    "accessTokenHint": "Lo encontrás en MercadoPago → Tu negocio → Configuraciones → Credenciales de producción. Se guarda cifrado y nunca se muestra de vuelta.",
+    "publicKey": "Public Key",
+    "saved": "Credenciales guardadas y verificadas con MercadoPago",
+    "invalidCredentials": "No se pudieron guardar las credenciales",
+    "connected": "Cuenta conectada",
+    "connectedAs": "Conectado como {email}",
+    "disconnect": "Desconectar",
+    "disconnectConfirm": "¿Desconectar la cuenta de cobros? Los links de pago que ya generaste dejan de poder crearse.",
+    "footnote": "Mientras no conectes una cuenta, el agente no ofrece pagar por chat: pide los datos y avisa que el negocio se contacta."
+  },
   "emailVerification": {
     "message": "Tu correo {email} todavía no está verificado.",
     "resend": "Reenviar código",
@@ -1155,6 +1170,10 @@
       "reviews": {
         "label": "Reseñas",
         "description": "Google Business + respuestas con IA"
+      },
+      "payments": {
+        "label": "Cobros a clientes",
+        "description": "MercadoPago del negocio para señas, anticipos y pedidos"
       },
       "ecommerce": {
         "label": "Tienda online",

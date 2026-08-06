@@ -1,4 +1,19 @@
 {
+  "tenantPayments": {
+    "title": "Encaisser vos clients",
+    "subtitle": "Connectez votre compte MercadoPago pour encaisser acomptes et commandes",
+    "directNotice": "L’argent va DIRECTEMENT sur votre compte MercadoPago. Parallly ne s’interpose pas, ne retient aucun fonds et ne prend pas de commission par transaction : nous générons seulement le lien de paiement et marquons la commande comme payée quand MercadoPago le confirme.",
+    "accessToken": "Access token de production",
+    "accessTokenHint": "Dans MercadoPago → Votre entreprise → Paramètres → Identifiants de production. Stocké chiffré, jamais réaffiché.",
+    "publicKey": "Public key",
+    "saved": "Identifiants enregistrés et vérifiés auprès de MercadoPago",
+    "invalidCredentials": "Impossible d’enregistrer les identifiants",
+    "connected": "Compte connecté",
+    "connectedAs": "Connecté en tant que {email}",
+    "disconnect": "Déconnecter",
+    "disconnectConfirm": "Déconnecter le compte d’encaissement ? Les nouveaux liens de paiement ne pourront plus être créés.",
+    "footnote": "Tant qu’aucun compte n’est connecté, l’agent ne propose pas le paiement par chat : il recueille les informations et indique que l’entreprise recontactera."
+  },
   "emailVerification": {
     "message": "Votre e-mail {email} n’est pas encore vérifié.",
     "resend": "Renvoyer le code",
@@ -1155,6 +1170,10 @@
       "reviews": {
         "label": "Avis",
         "description": "Google Business + réponses IA"
+      },
+      "payments": {
+        "label": "Encaissements clients",
+        "description": "Le compte MercadoPago de l’entreprise pour acomptes et commandes"
       },
       "ecommerce": {
         "label": "Boutique en ligne",

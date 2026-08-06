@@ -106,6 +106,7 @@ import databaseConfig from './config/database.config';
 import redisConfig from './config/redis.config';
 import authConfig from './config/auth.config';
 import llmConfig from './config/llm.config';
+import { TenantPaymentsModule } from './modules/tenant-payments/tenant-payments.module';
 
 @Module({
     providers: [
@@ -211,6 +212,7 @@ import llmConfig from './config/llm.config';
         SlackModule,
         SmsNotificationsModule,
         SmsCreditsModule,
+    TenantPaymentsModule,
         InventoryModule,
         OrdersModule,
         BroadcastModule,

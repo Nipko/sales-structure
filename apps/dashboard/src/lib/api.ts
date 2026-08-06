@@ -1064,6 +1064,12 @@ export const api = {
         apiPost(`/billing/${tenantId}/subscription/cancel-pending-downgrade`, {}),
 
     // --- SMS credits (monetized notification packages) ---
+    // ─── Cobros del tenant a SU cliente final (no confundir con billing, que
+    // es lo que el tenant nos paga a nosotros) ───
+    getTenantPaymentsConfig: (tenantId: string) => apiGet(`/tenant-payments/${tenantId}/config`),
+    setTenantPaymentsConfig: (tenantId: string, data: { accessToken?: string; publicKey?: string }) =>
+        apiPut(`/tenant-payments/${tenantId}/config`, data),
+    disconnectTenantPayments: (tenantId: string) => apiDelete(`/tenant-payments/${tenantId}/config`),
     getSmsPackages: () => apiGet(`/sms-credits/packages`),
     getSmsBalance: (tenantId: string) => apiGet(`/sms-credits/${tenantId}/balance`),
     getSmsLedger: (tenantId: string, limit?: number) =>

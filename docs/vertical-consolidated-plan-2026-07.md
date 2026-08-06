@@ -387,3 +387,34 @@ Dos trampas que se encontraron al conectarlo:
 **H-23 galería por contacto.** El audio entrante ya se guardaba; la imagen se describía y **el buffer se descartaba**. En media docena de rubros la foto *es* el dato — el auto chocado, la lesión, el caño roto — y el agente humano leía "el cliente envió una imagen: …" sin poder verla. Ahora se persiste, se estampa en el mensaje y se cuelga del **contacto** (no del lead: un cliente tiene varios leads y las fotos son de la persona). La descripción del modelo de visión, ya pagada, se reusa como pie de foto. De paso: `saveBuffer` no tenía mapa de extensiones para imágenes y les ponía `.bin`, con lo cual el endpoint que las sirve —que resuelve el Content-Type por extensión— las habría entregado como `application/octet-stream`.
 
 **KPIs por vertical.** Finanzas, servicios profesionales y technology mostraban "Leads Hoy / Leads Calientes": contadores correctos con la etiqueta de otro negocio. Ahora tienen los suyos. La restricción que gobernó el cambio: **no inventar claves** — un KPI cuyo `key` no calcula `getCommercialOverview` se renderiza en cero para siempre. Se verificó en runtime que las 18 verticales usan solo claves existentes, y que ninguna depende del vocabulario del embudo (`leadsReadyToClose` es por score, `conversionRate` sale de `opportunities`), porque si dependiera nacería en cero justo en las tres verticales que tienen embudo propio.
+
+### Cuarta pasada — las decisiones del dueño, tomadas (ago 2026)
+
+Las siete decisiones que bloqueaban trabajo se resolvieron una por una. Seis están implementadas; una queda **explícitamente en espera**.
+
+| # | Decisión | Resultado |
+|---|---|---|
+| **D5** | Belleza/moda | **Partirla del todo.** `boutique` → retail; `moda_belleza` gana `estetica` (centro no-médico) y se renombra «Belleza y estética»; salud pierde `estetica` y gana `dermatologia`. Más el texto de frontera en el alta: *«¿hay un médico prescribiendo? → Salud; si no → Belleza»*, sin el cual partir la vertical sólo muda la ambigüedad |
+| **Email** | Verificación | **No bloquear el alta, insistir con banner, bloquear invitar usuarios y cargar medio de pago.** Con una corrección del dueño que faltaba en la propuesta: quien entra con Google o Microsoft ya tiene la casilla probada por el proveedor — y el hueco real estaba en vincular el proveedor *después* de un alta con contraseña, que dejaba el correo sin verificar para siempre |
+| **D8 / H-21** | Identidad en verticales reguladas | **Sacar la cédula y verificar con código.** Regla que define el diseño: el código **nunca** sale por el canal desde el que escribe la persona — si alguien se apoderó de ese WhatsApp, mandárselo ahí no prueba nada |
+| **SMS** | Precio de los paquetes | **Apagar SMS por completo**, propio y de tenants, con un interruptor único que falla cerrado. Los tiers quedaban a 180/160/140 COP contra un costo Twilio-CO de 160–240: se pierde plata en el peor caso y se empata en el mejor |
+| **D10** | Integraciones verticales | **Congelar y fiabilizar la lectura.** No había write-path que congelar (ya eran read-only); lo que faltaba era el cron diario —sin él el agente recitaba menús viejos— y decir en la UI que son beta no verificadas |
+| **D3** | Cobro al cliente final | **Token del tenant, cifrado — no marketplace/split.** El dinero va directo al tenant; la plataforma no se vuelve intermediario financiero ni cobra comisión por transacción |
+
+#### D13 (retail) — EN ESPERA, no descartada
+
+El dueño la deja en pausa para dedicarle tiempo más adelante. Se registra acá con el contexto completo para que retomarla no obligue a re-derivar nada:
+
+**Qué cambió.** El bloqueante era D3: sin cobro propio, retail no era competitivo. D3 está resuelto (token del tenant cifrado, link de pago, webhook que escribe `payment_status`), así que **el impedimento estructural ya no existe**.
+
+**Por qué se pausa igual.** El propio dossier pedía no arrancarla por inercia: ranking interno #10, disposición a pagar 5/10, retención 5/10, contra competidores en 9/10 — Chatfuel a USD 69 ya tiene pagos dentro del chat. Mercado grande (USD 18.200M, 72% usa WhatsApp) pero muy disputado.
+
+**El camino mínimo, cuando se retome** — casi todo ya existe, es conectar:
+1. El agente arma el pedido → `createPaymentLink` con `external_reference` = `order:{uuid}` → el webhook ya lo marca pagado. Es la ruta más corta a valor real y no requiere nada nuevo del lado del pago.
+2. Recién después evaluar lo caro: webhooks bidireccionales con Shopify/Woo, recuperación de carrito abandonado, catálogo de Meta.
+
+**Qué tendría que ser cierto para justificar la apuesta profunda:** que aparezcan clientes de retail pidiéndolo (no que se construya esperando que aparezcan), o que la disposición a pagar medida suba de 5. El error a evitar es el ya cometido con turismo: invertir en profundidad donde el research nunca señaló demanda.
+
+#### La que sigue necesitando al dueño
+
+**Producto financiero + simulador de cuota** (vertical finanzas). No es una decisión de sí/no sino de contenido: hace falta definir qué productos vende una financiera de este segmento —montos, plazos, tasas, requisitos— antes de poder modelarlos. Sin eso, cualquier simulador que se construya inventa los parámetros.

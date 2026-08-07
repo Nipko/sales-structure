@@ -1372,8 +1372,17 @@ function ModalShell({
     footer?: React.ReactNode;
 }) {
     return (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-            <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        // Cierre por backdrop con onMouseDown + chequeo de target, NO con onClick.
+        // Un `click` se dispara en el ANCESTRO COMÚN del mousedown y el mouseup:
+        // al arrastrar para seleccionar texto dentro de un input y soltar afuera,
+        // ese ancestro es el overlay y el modal se cerraba solo, perdiendo lo
+        // cargado. Mirando el mousedown, el gesto arranca en el input y nunca
+        // llega a contar como clic en el fondo.
+        <div
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+            onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        >
+            <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl w-full max-w-lg">
                 <div className="flex items-center justify-between p-5 border-b border-neutral-200 dark:border-neutral-800">
                     <h3 className="text-base font-semibold">{title}</h3>
                     <button onClick={onClose} className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded">

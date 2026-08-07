@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { usePathname } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
@@ -45,7 +45,22 @@ import {
 } from "@/components/ui/sheet";
 import { ParalllyAssistant, type ParalllyState } from "@/components/ParalllyAssistant";
 
-const GREETED_KEY = "parallly:assistant-greeted";
+const ANNOUNCED_KEY = "parallly:assistant-announced";
+
+/** Chispas que salen disparadas cuando Parallly aterriza. */
+const INTRO_SPARKS = [
+  { sx: "-40px", sy: "-48px", delay: "120ms", cls: "size-1.5 bg-[#3897f0]" },
+  { sx: "36px", sy: "-56px", delay: "260ms", cls: "size-2 bg-amber-400" },
+  { sx: "-54px", sy: "-12px", delay: "400ms", cls: "size-1 bg-[#7ab9f5]" },
+  { sx: "50px", sy: "-16px", delay: "540ms", cls: "size-1.5 bg-indigo-400" },
+];
+
+/** Fases de la presentación: cae → aterriza y saluda → habla → se retira. */
+type IntroPhase = "hidden" | "enter" | "talk" | "done";
+
+// La fase inicial se aplica ANTES del primer pintado: si no, el launcher
+// aparece un frame en su sitio y recién ahí se esconde para entrar (parpadeo).
+const useIntroLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export function HelpAssistant() {
   const t = useTranslations("helpAssistant");
@@ -56,22 +71,47 @@ export function HelpAssistant() {
 
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const [greeting, setGreeting] = useState(false);
+  const [intro, setIntro] = useState<IntroPhase>("done");
 
-  // Saludo de bienvenida: una sola vez por navegador. Aparece a los 8s, saluda
-  // 6s y se retira — nunca vuelve a interrumpir.
-  useEffect(() => {
-    let hide: ReturnType<typeof setTimeout>;
-    let show: ReturnType<typeof setTimeout>;
+  const [searchQuery, setSearchQuery] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [activeGuideId, setActiveGuideId] = useState<string | null>(null);
+
+  // Dual-tab navigation state — el Asistente IA es la puerta de entrada
+  const [activeTab, setActiveTab] = useState<'guides' | 'chat'>('chat');
+
+  // Abrir siempre en el Asistente IA: es lo primero que ve quien pide ayuda.
+  const openAssistant = () => {
+    setActiveTab('chat');
+    setIntro("done");
+    setOpen(true);
+  };
+
+  // Presentación de bienvenida: una vez por sesión. Parallly entra rebotando,
+  // suelta chispas, saluda y cuenta para qué está. A los ~10s se retira solo.
+  useIntroLayoutEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
     try {
-      if (typeof window === "undefined" || localStorage.getItem(GREETED_KEY)) return;
-      show = setTimeout(() => {
-        setGreeting(true);
-        try { localStorage.setItem(GREETED_KEY, "1"); } catch { /* ignore */ }
-        hide = setTimeout(() => setGreeting(false), 6000);
-      }, 8000);
-    } catch { /* ignore */ }
-    return () => { clearTimeout(show); clearTimeout(hide); };
+      if (typeof window === "undefined" || sessionStorage.getItem(ANNOUNCED_KEY)) return;
+      // Si viene el tour guiado (recién salido del setup-wizard), no le pisamos
+      // la pantalla: Parallly se presenta en la próxima sesión.
+      if (localStorage.getItem("parallly:tour:pending") === "true") return;
+    } catch { return; }
+
+    const mark = () => { try { sessionStorage.setItem(ANNOUNCED_KEY, "1"); } catch { /* ignore */ } };
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+    if (reduce) {
+      // Sin movimiento: el mensaje igual aparece, solo que sin la entrada.
+      timers.push(setTimeout(() => { mark(); setIntro("talk"); }, 1200));
+      timers.push(setTimeout(() => setIntro("done"), 10200));
+    } else {
+      setIntro("hidden");
+      timers.push(setTimeout(() => { mark(); setIntro("enter"); }, 900));
+      timers.push(setTimeout(() => setIntro("talk"), 1700));
+      timers.push(setTimeout(() => setIntro("done"), 10000));
+    }
+    return () => timers.forEach(clearTimeout);
   }, []);
 
   // Allow other parts of the app (e.g. the onboarding tour) to open the copilot.
@@ -79,20 +119,14 @@ export function HelpAssistant() {
     try {
       if (typeof window !== "undefined" && localStorage.getItem("parallly:openCopilot")) {
         localStorage.removeItem("parallly:openCopilot");
-        setOpen(true);
+        openAssistant();
       }
     } catch { /* ignore */ }
-    const handler = () => setOpen(true);
+    const handler = () => openAssistant();
     window.addEventListener("parallly:open-copilot", handler);
     return () => window.removeEventListener("parallly:open-copilot", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [activeGuideId, setActiveGuideId] = useState<string | null>(null);
-  
-  // Dual-tab navigation state
-  const [activeTab, setActiveTab] = useState<'guides' | 'chat'>('guides');
 
   // AI Chat state
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([
@@ -769,32 +803,74 @@ configurar fórmulas ni umbrales.`,
     t("chat.suggestions.syncCalendar")
   ];
 
+  const introMoving = intro === "enter" || intro === "talk";
+  const showAnnounce = intro === "talk" && !open;
+
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <button
-          onClick={() => setOpen(true)}
+          onClick={openAssistant}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           aria-label={t("launcherTooltip")}
-          className="fixed bottom-4 right-6 z-40 flex items-end justify-center hover:scale-105 active:scale-95 transition-transform duration-300 group cursor-pointer drop-shadow-[0_6px_18px_rgba(56,151,240,0.35)]"
+          className={`fixed bottom-4 right-6 z-40 flex items-end justify-center hover:scale-105 active:scale-95 transition-[transform,opacity] duration-300 group cursor-pointer drop-shadow-[0_6px_18px_rgba(56,151,240,0.35)] ${
+            intro === "hidden" ? "opacity-0 pointer-events-none" : "opacity-100"
+          }`}
         >
-          {/* Globo de bienvenida (una sola vez) + tooltip al pasar el mouse */}
+          {/* Presentación de bienvenida (una vez por sesión) */}
           <span
-            className={`absolute bottom-full right-0 mb-1 bg-neutral-950 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[11px] font-semibold px-3 py-2 rounded-xl shadow-xl whitespace-nowrap border border-white/10 transition-all duration-300 ${
-              greeting ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1 pointer-events-none"
+            className={`absolute bottom-full right-0 mb-3 w-64 flex-col gap-1 rounded-2xl border border-[#3897f0]/25 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md p-3.5 text-left shadow-2xl shadow-[#3897f0]/15 ${
+              showAnnounce ? "parallly-bubble-in flex" : "hidden"
             }`}
           >
-            {t("greetingBubble")}
+            <span className="flex items-center gap-1.5 text-[12px] font-extrabold text-neutral-900 dark:text-white">
+              <Sparkles className="size-3.5 text-[#3897f0] animate-pulse" />
+              {t("announce.title")}
+            </span>
+            <span className="text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-400">
+              {t("announce.body")}
+            </span>
+            <span className="mt-1 inline-flex items-center gap-1 self-start rounded-full bg-[#3897f0]/10 px-2.5 py-1 text-[10px] font-bold text-[#2b7cd4] dark:text-[#7ab9f5]">
+              {t("announce.cta")} <ChevronRight className="size-2.5" />
+            </span>
+            {/* Colita del globo apuntando a Parallly */}
+            <span className="absolute -bottom-1.5 right-9 size-3 rotate-45 border-b border-r border-[#3897f0]/25 bg-white/95 dark:bg-neutral-900/95" />
           </span>
-          <span className="absolute bottom-full right-0 mb-1 scale-0 group-hover:scale-100 origin-bottom-right transition-transform duration-200 bg-neutral-950 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[11px] font-medium px-2.5 py-1.5 rounded-lg shadow-xl whitespace-nowrap border border-white/10">
+
+          {/* Tooltip al pasar el mouse (se calla mientras Parallly se presenta) */}
+          <span
+            className={`absolute bottom-full right-0 mb-1 scale-0 group-hover:scale-100 origin-bottom-right transition-transform duration-200 bg-neutral-950 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[11px] font-medium px-2.5 py-1.5 rounded-lg shadow-xl whitespace-nowrap border border-white/10 ${
+              showAnnounce ? "hidden" : ""
+            }`}
+          >
             {t("launcherTooltip")}
           </span>
-          <ParalllyAssistant
-            size={64}
-            state={greeting ? "wave" : hovered ? "hover" : "idle"}
-            label={t("launcherTooltip")}
-          />
+
+          <span className={`relative flex items-end justify-center ${introMoving ? "parallly-pop" : ""}`}>
+            {/* Ondas + chispas del aterrizaje */}
+            {introMoving && (
+              <>
+                <span className="parallly-ring pointer-events-none absolute bottom-4 left-1/2 -ml-8 size-16 rounded-full border-2 border-[#3897f0]/50" />
+                <span
+                  className="parallly-ring pointer-events-none absolute bottom-4 left-1/2 -ml-8 size-16 rounded-full border-2 border-[#3897f0]/35"
+                  style={{ animationDelay: "420ms" }}
+                />
+                {INTRO_SPARKS.map((s, i) => (
+                  <span
+                    key={i}
+                    className={`parallly-spark pointer-events-none absolute bottom-8 left-1/2 rounded-full ${s.cls}`}
+                    style={{ animationDelay: s.delay, "--sx": s.sx, "--sy": s.sy } as CSSProperties}
+                  />
+                ))}
+              </>
+            )}
+            <ParalllyAssistant
+              size={64}
+              state={introMoving ? "wave" : hovered ? "hover" : "idle"}
+              label={t("launcherTooltip")}
+            />
+          </span>
         </button>
       </SheetTrigger>
       
@@ -820,17 +896,6 @@ configurar fórmulas ni umbrales.`,
           {/* Premium Glassmorphic Toggle Tabs */}
           <div className="flex p-1 mt-4 bg-neutral-100/80 dark:bg-neutral-900/80 rounded-xl border border-neutral-200/50 dark:border-neutral-800/50 backdrop-blur-md">
             <button
-              onClick={() => setActiveTab('guides')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300 cursor-pointer ${
-                activeTab === 'guides'
-                  ? 'bg-white dark:bg-neutral-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-neutral-200/30 dark:border-neutral-700/30'
-                  : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-300'
-              }`}
-            >
-              <BookOpen className="size-3.5" />
-              {t("tabs.guides")}
-            </button>
-            <button
               onClick={() => setActiveTab('chat')}
               className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300 cursor-pointer ${
                 activeTab === 'chat'
@@ -840,6 +905,17 @@ configurar fórmulas ni umbrales.`,
             >
               <Sparkles className="size-3.5 animate-pulse text-indigo-500" />
               {t("tabs.chat")}
+            </button>
+            <button
+              onClick={() => setActiveTab('guides')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300 cursor-pointer ${
+                activeTab === 'guides'
+                  ? 'bg-white dark:bg-neutral-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-neutral-200/30 dark:border-neutral-700/30'
+                  : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-300'
+              }`}
+            >
+              <BookOpen className="size-3.5" />
+              {t("tabs.guides")}
             </button>
           </div>
 

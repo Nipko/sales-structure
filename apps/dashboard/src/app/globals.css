@@ -296,6 +296,56 @@
   to { opacity: 1; }
 }
 
+/* ============================================
+   Parallly (asistente IA) — entrada de bienvenida
+   ============================================ */
+
+/* Aterriza rebotando desde abajo, con un giro corto */
+.parallly-pop {
+  animation: paralllyPop 900ms cubic-bezier(0.18, 1.4, 0.42, 1) both;
+}
+@keyframes paralllyPop {
+  0%   { transform: translateY(130px) scale(0.4) rotate(-14deg); }
+  55%  { transform: translateY(-16px) scale(1.12) rotate(5deg); }
+  75%  { transform: translateY(5px) scale(0.96) rotate(-2deg); }
+  100% { transform: translateY(0) scale(1) rotate(0deg); }
+}
+
+/* Onda expansiva del aterrizaje */
+.parallly-ring {
+  animation: paralllyRing 1.6s ease-out forwards;
+}
+@keyframes paralllyRing {
+  0%   { opacity: 0.5; transform: scale(0.3); }
+  100% { opacity: 0; transform: scale(2.2); }
+}
+
+/* Chispas que salen disparadas (--sx / --sy definen la dirección) */
+.parallly-spark {
+  animation: paralllySpark 1.4s ease-out forwards;
+}
+@keyframes paralllySpark {
+  0%   { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  20%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--sx, 0), var(--sy, -40px)) scale(1.15); }
+}
+
+/* Globo de presentación */
+.parallly-bubble-in {
+  animation: paralllyBubbleIn 520ms cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+@keyframes paralllyBubbleIn {
+  0%   { opacity: 0; transform: translateY(12px) scale(0.82); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parallly-pop,
+  .parallly-bubble-in { animation: none; }
+  .parallly-ring,
+  .parallly-spark { display: none; }
+}
+
 /* Nav item hover underline (Stripe pattern) */
 .nav-underline {
   position: relative;

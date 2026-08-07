@@ -5569,6 +5569,13 @@
     "descriptionPlaceholder": "Ej. campaña Black Friday 2026",
     "codeHint": "3-40 caracteres, letras / números / _ / -",
     "monthsLabel": "Meses gratis (1-24)",
+    "plansLabel": "Planes en los que aplica",
+    "plansLoading": "Cargando planes…",
+    "plansHintAll": "Sin seleccionar ninguno, el cupón aplica a todos los planes.",
+    "plansHintSome": "El cupón solo se podrá canjear en los planes marcados.",
+    "plansClear": "Aplicar a todos los planes",
+    "planInactive": "inactivo",
+    "allPlans": "Todos",
     "maxRedemptions": "Máximo de canjes",
     "unlimited": "Ilimitado",
     "expiresAt": "Vence el",
@@ -5595,12 +5602,14 @@
       "invalid_code": "El código debe tener 3-40 caracteres: letras, números, _ o -.",
       "invalid_months": "Los meses gratis deben estar entre 1 y 24.",
       "code_already_exists": "Ya existe un cupón con ese código.",
-      "type_not_supported": "Solo se pueden emitir cupones de meses gratis."
+      "type_not_supported": "Solo se pueden emitir cupones de meses gratis.",
+      "unknown_plan": "Uno de los planes seleccionados ya no existe. Recargá la página."
     },
     "col": {
       "code": "Código",
       "type": "Tipo",
       "value": "Valor",
+      "plans": "Planes",
       "redemptions": "Canjes",
       "expires": "Vence",
       "status": "Estado",
@@ -6539,6 +6548,7 @@
       "tips": [
         "Haz clic en 'Crear cupón' e ingresa un código en mayúsculas sin espacios (por ejemplo, 'LANZAMIENTO1MES') para que sea fácil de compartir y recordar.",
         "Define los 'Meses gratis' que regala el código: 1 mes es lo habitual para campañas de adquisición. El cliente arranca con 7 días de prueba, así que un cupón de 1 mes le deja unos 37 días sin pagar.",
+        "En 'Planes en los que aplica' elige a qué tiers alcanza el cupón: si no marcas ninguno vale para todos, y si marcas por ejemplo Pro y Enterprise, quien esté en Emprendedor recibirá 'este cupón no aplica a tu plan actual'.",
         "Usa el campo 'Máximo de canjes' para limitar la disponibilidad; por ejemplo, pon 50 si es una promoción de lanzamiento que no debe exceder ese número de canjes.",
         "Configura una 'Fecha de vencimiento' para cupones de campaña temporales; así el código deja de funcionar automáticamente el día que elijas sin que tengas que desactivarlo manualmente.",
         "Haz clic en el número de la columna 'Canjes' para ver qué cuentas usaron el cupón, desde dónde lo canjearon y cuándo.",

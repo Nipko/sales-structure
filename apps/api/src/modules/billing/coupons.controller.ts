@@ -19,7 +19,8 @@ class CreateCouponDto {
     @IsOptional() @IsString() description?: string;
     @IsIn(['free_months']) type!: 'free_months';
     @IsInt() @Min(1) @Max(24) freeMonths!: number;
-    @IsOptional() @IsArray() appliesToPlanIds?: string[];
+    // Slugs de plan ('pro', 'enterprise'…). Vacío = aplica a todos.
+    @IsOptional() @IsArray() @IsString({ each: true }) appliesToPlanIds?: string[];
     @IsOptional() @IsInt() @Min(1) maxRedemptions?: number;
     @IsOptional() @IsString() expiresAt?: string;
 }
@@ -29,7 +30,8 @@ class UpdateCouponDto {
     @IsOptional() isActive?: boolean;
     @IsOptional() maxRedemptions?: number | null;
     @IsOptional() expiresAt?: string | null;
-    @IsOptional() @IsArray() appliesToPlanIds?: string[];
+    // Slugs de plan ('pro', 'enterprise'…). Vacío = aplica a todos.
+    @IsOptional() @IsArray() @IsString({ each: true }) appliesToPlanIds?: string[];
 }
 
 class ValidateCouponDto {

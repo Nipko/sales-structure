@@ -5569,6 +5569,13 @@
     "descriptionPlaceholder": "Ex. campagne Black Friday 2026",
     "codeHint": "3-40 caractères, lettres / chiffres / _ / -",
     "monthsLabel": "Mois gratuits (1-24)",
+    "plansLabel": "Plans concernés",
+    "plansLoading": "Chargement des plans…",
+    "plansHintAll": "Si aucun n'est sélectionné, le coupon s'applique à tous les plans.",
+    "plansHintSome": "Le coupon ne pourra être utilisé que sur les plans cochés.",
+    "plansClear": "Appliquer à tous les plans",
+    "planInactive": "inactif",
+    "allPlans": "Tous",
     "maxRedemptions": "Utilisations max",
     "unlimited": "Illimité",
     "expiresAt": "Expire le",
@@ -5595,12 +5602,14 @@
       "invalid_code": "Le code doit faire 3-40 caractères : lettres, chiffres, _ ou -.",
       "invalid_months": "Les mois gratuits doivent être entre 1 et 24.",
       "code_already_exists": "Un code avec cet identifiant existe déjà.",
-      "type_not_supported": "Seuls les codes de mois gratuits peuvent être émis."
+      "type_not_supported": "Seuls les codes de mois gratuits peuvent être émis.",
+      "unknown_plan": "L'un des plans sélectionnés n'existe plus. Rechargez la page."
     },
     "col": {
       "code": "Code",
       "type": "Type",
       "value": "Valeur",
+      "plans": "Plans",
       "redemptions": "Utilisations",
       "expires": "Expire",
       "status": "Statut",
@@ -6539,6 +6548,7 @@
       "tips": [
         "Cliquez sur 'Créer un coupon' et saisissez un code en majuscules sans espaces (par exemple, 'LANCEMENT1MOIS') pour le rendre facile à partager et à mémoriser.",
         "Définissez les 'Mois gratuits' offerts par le code : 1 mois est le choix habituel pour les campagnes d'acquisition. Le client démarre avec 7 jours d'essai, donc un coupon d'1 mois lui laisse environ 37 jours sans payer.",
+        "Dans « Plans concernés », choisissez les tiers visés par le coupon : sans rien cocher il s'applique partout ; en cochant Pro et Enterprise par exemple, un client sur Emprendedor recevra « ce code ne s'applique pas à votre forfait actuel ».",
         "Utilisez le champ 'Utilisations max' pour limiter la disponibilité ; par exemple, entrez 50 si c'est une promotion de lancement ne devant pas dépasser ce nombre d'utilisations.",
         "Définissez une 'Date d'expiration' pour les coupons de campagne limités dans le temps ; le code cessera de fonctionner automatiquement à la date choisie sans désactivation manuelle.",
         "Cliquez sur le nombre dans la colonne 'Utilisations' pour voir quels comptes ont utilisé le coupon, depuis où et quand.",

@@ -22,6 +22,11 @@ export interface CouponRedemptionRow {
     metadata: unknown;
 }
 
+export interface BillingPlanRef {
+    id: string;
+    slug: string;
+}
+
 export interface RedemptionTenantRef {
     id: string;
     name: string;
@@ -129,6 +134,8 @@ export class CouponsService {
         const existing = await this.prisma.billingCoupon.findUnique({ where: { code } });
         if (existing) throw new ConflictException({ error: 'code_already_exists' });
 
+        const appliesToPlanIds = await this.normalizePlanSlugs(input.appliesToPlanIds);
+
         const created = await this.prisma.billingCoupon.create({
             data: {
                 code,
@@ -138,7 +145,7 @@ export class CouponsService {
                 amountOffCents: null,
                 freeMonths: input.freeMonths,
                 durationCycles: null,
-                appliesToPlanIds: input.appliesToPlanIds ?? [],
+                appliesToPlanIds,
                 maxRedemptions: input.maxRedemptions ?? null,
                 expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
                 createdByUserId: input.createdByUserId ?? null,
@@ -150,6 +157,7 @@ export class CouponsService {
             freeMonths: created.freeMonths,
             maxRedemptions: created.maxRedemptions,
             expiresAt: created.expiresAt,
+            appliesToPlanIds,
         });
 
         return created;
@@ -166,6 +174,10 @@ export class CouponsService {
         }>,
         actorUserId?: string,
     ) {
+        const appliesToPlanIds = data.appliesToPlanIds !== undefined
+            ? await this.normalizePlanSlugs(data.appliesToPlanIds)
+            : undefined;
+
         const updated = await this.prisma.billingCoupon.update({
             where: { id },
             data: {
@@ -175,7 +187,7 @@ export class CouponsService {
                 ...(data.expiresAt !== undefined && {
                     expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
                 }),
-                ...(data.appliesToPlanIds !== undefined && { appliesToPlanIds: data.appliesToPlanIds }),
+                ...(appliesToPlanIds !== undefined && { appliesToPlanIds }),
             },
         });
 
@@ -219,7 +231,8 @@ export class CouponsService {
         if (coupon.maxRedemptions && coupon.redemptionCount >= coupon.maxRedemptions) {
             return { valid: false, error: 'max_redemptions_reached' };
         }
-        if (coupon.appliesToPlanIds.length > 0 && !coupon.appliesToPlanIds.includes(input.planId)) {
+        if (coupon.appliesToPlanIds.length > 0
+            && !(await this.isPlanEligible(coupon.appliesToPlanIds, input.planId))) {
             return { valid: false, error: 'plan_not_eligible' };
         }
         const previousRedemption = await this.prisma.billingCouponRedemption.findUnique({
@@ -430,6 +443,68 @@ export class CouponsService {
     }
 
     // ── Internals ──────────────────────────────────────────────────
+
+    /**
+     * Normaliza la lista de planes elegibles a SLUGS y rechaza los que no existen.
+     *
+     * Se guardan slugs y no ids aunque la columna se llame `applies_to_plan_ids`:
+     * `billing_subscriptions.plan_id` sí es el UUID del plan, pero esos UUID los
+     * genera el seed y se regeneran si la base se recrea, con lo cual un cupón
+     * viejo dejaría de aplicar sin que nadie se entere. Además un UUID en el
+     * panel no le dice nada a nadie. El slug es estable y legible.
+     *
+     * Un plan inexistente se rechaza en vez de guardarse: un typo silencioso
+     * dejaría un cupón que no aplica a NADA y que parece configurado.
+     */
+    private async normalizePlanSlugs(input?: string[]): Promise<string[]> {
+        if (!input || input.length === 0) return [];
+
+        const wanted = [...new Set(input.map((p: string) => String(p).trim()).filter(Boolean))];
+        if (wanted.length === 0) return [];
+
+        const plans = await this.prisma.billingPlan.findMany({
+            where: { OR: [{ slug: { in: wanted } }, { id: { in: wanted } }] },
+            select: { id: true, slug: true },
+        });
+        const bySlug = new Set<string>(plans.map((p: BillingPlanRef) => p.slug));
+        const byId = new Map<string, string>(
+            plans.map((p: BillingPlanRef): [string, string] => [p.id, p.slug]),
+        );
+
+        const resolved: string[] = [];
+        const unknown: string[] = [];
+        for (const key of wanted) {
+            const slug = bySlug.has(key) ? key : byId.get(key);
+            if (slug) resolved.push(slug);
+            else unknown.push(key);
+        }
+        if (unknown.length > 0) {
+            throw new BadRequestException({
+                error: 'unknown_plan',
+                message: `Unknown plan(s): ${unknown.join(', ')}`,
+            });
+        }
+        return [...new Set(resolved)];
+    }
+
+    /**
+     * ¿El plan del tenant está en la allow-list del cupón?
+     *
+     * Acepta slug o UUID de los dos lados: lo nuevo se guarda como slug, pero las
+     * filas creadas antes de este cambio pueden tener UUID y tienen que seguir
+     * funcionando.
+     */
+    private async isPlanEligible(appliesTo: string[], planKey: string): Promise<boolean> {
+        if (appliesTo.includes(planKey)) return true;
+
+        const plan = await this.prisma.billingPlan.findFirst({
+            where: { OR: [{ id: planKey }, { slug: planKey }] },
+            select: { id: true, slug: true },
+        });
+        if (!plan) return false;
+
+        return appliesTo.includes(plan.id) || appliesTo.includes(plan.slug);
+    }
 
     /**
      * Los cupones no dejaban ningún rastro: ni crearlos, ni desactivarlos, ni

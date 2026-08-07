@@ -5569,6 +5569,13 @@
     "descriptionPlaceholder": "e.g. Black Friday 2026 campaign",
     "codeHint": "3-40 chars, letters / digits / _ / -",
     "monthsLabel": "Free months (1-24)",
+    "plansLabel": "Plans it applies to",
+    "plansLoading": "Loading plans…",
+    "plansHintAll": "With none selected, the coupon applies to every plan.",
+    "plansHintSome": "The coupon can only be redeemed on the selected plans.",
+    "plansClear": "Apply to every plan",
+    "planInactive": "inactive",
+    "allPlans": "All",
     "maxRedemptions": "Max redemptions",
     "unlimited": "Unlimited",
     "expiresAt": "Expires",
@@ -5595,12 +5602,14 @@
       "invalid_code": "Code must be 3-40 chars: letters, digits, _ or -.",
       "invalid_months": "Free months must be between 1 and 24.",
       "code_already_exists": "A coupon with that code already exists.",
-      "type_not_supported": "Only free-month coupons can be issued."
+      "type_not_supported": "Only free-month coupons can be issued.",
+      "unknown_plan": "One of the selected plans no longer exists. Reload the page."
     },
     "col": {
       "code": "Code",
       "type": "Type",
       "value": "Value",
+      "plans": "Plans",
       "redemptions": "Redemptions",
       "expires": "Expires",
       "status": "Status",
@@ -6539,6 +6548,7 @@
       "tips": [
         "Click 'Create coupon' and enter an uppercase code without spaces (for example, 'LAUNCH1MONTH') to make it easy to share and remember.",
         "Set the 'Free months' the code gifts: 1 month is the usual choice for acquisition campaigns. Customers start with a 7-day trial, so a 1-month coupon leaves them about 37 days without paying.",
+        "Under 'Plans it applies to', pick which tiers the coupon reaches: leave it empty and it works everywhere; select Pro and Enterprise, for instance, and anyone on Emprendedor gets 'this coupon doesn't apply to your current plan'.",
         "Use the 'Max redemptions' field to cap availability; for example, set 50 if it is a launch promotion that should not exceed that number of redemptions.",
         "Set an 'Expiry date' for time-limited campaign coupons; the code will stop working automatically on the chosen date without requiring manual deactivation.",
         "Click the number in the 'Redemptions' column to see which accounts used the coupon, where they redeemed it, and when.",

@@ -5569,6 +5569,13 @@
     "descriptionPlaceholder": "Ex. campanha Black Friday 2026",
     "codeHint": "3-40 caracteres, letras / números / _ / -",
     "monthsLabel": "Meses grátis (1-24)",
+    "plansLabel": "Planos em que se aplica",
+    "plansLoading": "Carregando planos…",
+    "plansHintAll": "Sem selecionar nenhum, o cupom vale para todos os planos.",
+    "plansHintSome": "O cupom só poderá ser resgatado nos planos marcados.",
+    "plansClear": "Aplicar a todos os planos",
+    "planInactive": "inativo",
+    "allPlans": "Todos",
     "maxRedemptions": "Máximo de resgates",
     "unlimited": "Ilimitado",
     "expiresAt": "Vence em",
@@ -5595,12 +5602,14 @@
       "invalid_code": "O código deve ter 3-40 caracteres: letras, números, _ ou -.",
       "invalid_months": "Os meses grátis devem estar entre 1 e 24.",
       "code_already_exists": "Já existe um cupom com esse código.",
-      "type_not_supported": "Só é possível emitir cupons de meses grátis."
+      "type_not_supported": "Só é possível emitir cupons de meses grátis.",
+      "unknown_plan": "Um dos planos selecionados não existe mais. Recarregue a página."
     },
     "col": {
       "code": "Código",
       "type": "Tipo",
       "value": "Valor",
+      "plans": "Planos",
       "redemptions": "Resgates",
       "expires": "Vence",
       "status": "Estado",
@@ -6539,6 +6548,7 @@
       "tips": [
         "Clique em 'Criar cupom' e insira um código em maiúsculas sem espaços (por exemplo, 'LANCAMENTO1MES') para facilitar o compartilhamento e a memorização.",
         "Defina os 'Meses grátis' que o código presenteia: 1 mês é o padrão para campanhas de aquisição. O cliente começa com 7 dias de teste, então um cupom de 1 mês deixa cerca de 37 dias sem pagar.",
+        "Em 'Planos em que se aplica', escolha quais tiers o cupom alcança: sem marcar nenhum vale para todos; marcando Pro e Enterprise, por exemplo, quem estiver no Emprendedor recebe 'este cupom não se aplica ao seu plano atual'.",
         "Use o campo 'Máximo de resgates' para limitar a disponibilidade; por exemplo, defina 50 se for uma promoção de lançamento que não deve ultrapassar esse número de resgates.",
         "Configure uma 'Data de expiração' para cupons de campanha temporários; o código deixará de funcionar automaticamente na data escolhida sem precisar de desativação manual.",
         "Clique no número da coluna 'Resgates' para ver quais contas usaram o cupom, de onde resgataram e quando.",

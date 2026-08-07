@@ -28,6 +28,13 @@ interface Coupon {
     createdAt: string;
 }
 
+/** Plan elegible. El cupón guarda SLUGS, no los UUID de billing_plans. */
+interface PlanOption {
+    slug: string;
+    name: string;
+    isActive: boolean;
+}
+
 interface Redemption {
     id: string;
     tenantId: string;
@@ -47,7 +54,7 @@ const inputClasses =
 
 /** Claves i18n que sí existen: next-intl lanza si se le pide una inexistente. */
 const KNOWN_SOURCES = ["onboarding", "billing_settings", "admin"];
-const KNOWN_CREATE_ERRORS = ["invalid_code", "invalid_months", "code_already_exists", "type_not_supported"];
+const KNOWN_CREATE_ERRORS = ["invalid_code", "invalid_months", "code_already_exists", "type_not_supported", "unknown_plan"];
 
 /**
  * Convierte la fecha del `<input type=date>` en el ÚLTIMO instante de ese día.
@@ -75,6 +82,7 @@ export default function CouponsPage() {
     const router = useRouter();
 
     const [coupons, setCoupons] = useState<Coupon[]>([]);
+    const [plans, setPlans] = useState<PlanOption[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
     const [editing, setEditing] = useState<Coupon | null>(null);
@@ -94,6 +102,32 @@ export default function CouponsPage() {
         }
         load();
     }, [user, router, load]);
+
+    // Los planes se leen del catálogo real (billing_plans), no de una lista fija
+    // en el front: si se agrega o desactiva un tier, el selector lo refleja solo.
+    useEffect(() => {
+        if (user && user.role !== "super_admin") return;
+        let alive = true;
+        (async () => {
+            const res = await api.getAdminPlans();
+            if (!alive || !res.success || !Array.isArray(res.data)) return;
+            setPlans(
+                (res.data as any[]).map((p) => ({
+                    slug: String(p.slug),
+                    name: String(p.name || p.slug),
+                    isActive: p.isActive !== false,
+                })),
+            );
+        })();
+        return () => { alive = false; };
+    }, [user]);
+
+    /** Nombres legibles de los planes a los que aplica un cupón. */
+    const planNames = useCallback(
+        (slugs: string[]): string[] =>
+            slugs.map((s) => plans.find((p) => p.slug === s)?.name || s),
+        [plans],
+    );
 
     async function handleDeactivate(id: string) {
         if (!window.confirm(t("confirmDeactivate"))) return;
@@ -150,6 +184,7 @@ export default function CouponsPage() {
                                 <th className="px-4 py-2.5 text-left font-medium">{t("col.code")}</th>
                                 <th className="px-4 py-2.5 text-left font-medium">{t("col.type")}</th>
                                 <th className="px-4 py-2.5 text-left font-medium">{t("col.value")}</th>
+                                <th className="px-4 py-2.5 text-left font-medium">{t("col.plans")}</th>
                                 <th className="px-4 py-2.5 text-left font-medium">{t("col.redemptions")}</th>
                                 <th className="px-4 py-2.5 text-left font-medium">{t("col.expires")}</th>
                                 <th className="px-4 py-2.5 text-left font-medium">{t("col.status")}</th>
@@ -194,6 +229,22 @@ export default function CouponsPage() {
                                             )}
                                         </td>
                                         <td className="px-4 py-3 text-neutral-700 dark:text-neutral-300">{value}</td>
+                                        <td className="px-4 py-3 text-xs">
+                                            {c.appliesToPlanIds.length === 0 ? (
+                                                <span className="text-neutral-500 dark:text-neutral-400">{t("allPlans")}</span>
+                                            ) : (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {planNames(c.appliesToPlanIds).map((n) => (
+                                                        <span
+                                                            key={n}
+                                                            className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-700 dark:text-indigo-300"
+                                                        >
+                                                            {n}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </td>
                                         <td className="px-4 py-3 text-neutral-600 dark:text-neutral-400 text-xs">
                                             <button
                                                 onClick={() => setViewingRedemptions(c)}
@@ -265,6 +316,7 @@ export default function CouponsPage() {
 
             {showCreate && (
                 <CreateCouponModal
+                    plans={plans}
                     onClose={() => setShowCreate(false)}
                     onSuccess={() => {
                         setShowCreate(false);
@@ -276,6 +328,7 @@ export default function CouponsPage() {
             {editing && (
                 <EditCouponModal
                     coupon={editing}
+                    plans={plans}
                     onClose={() => setEditing(null)}
                     onSuccess={() => {
                         setEditing(null);
@@ -289,6 +342,71 @@ export default function CouponsPage() {
                     coupon={viewingRedemptions}
                     onClose={() => setViewingRedemptions(null)}
                 />
+            )}
+        </div>
+    );
+}
+
+/**
+ * Selector de planes elegibles. Ninguno marcado = aplica a todos, que es el
+ * default y el caso más común; por eso el vacío no es un estado inválido sino
+ * el explícito "todos", y así se rotula.
+ */
+function PlanScopePicker({
+    plans,
+    selected,
+    onChange,
+}: {
+    plans: PlanOption[];
+    selected: string[];
+    onChange: (next: string[]) => void;
+}) {
+    const t = useTranslations("couponsPage");
+
+    const toggle = (slug: string) => {
+        onChange(selected.includes(slug) ? selected.filter((s) => s !== slug) : [...selected, slug]);
+    };
+
+    return (
+        <div>
+            <label className="block text-sm font-medium mb-1">{t("plansLabel")}</label>
+            {plans.length === 0 ? (
+                <p className="text-xs text-neutral-500">{t("plansLoading")}</p>
+            ) : (
+                <>
+                    <div className="flex flex-wrap gap-2">
+                        {plans.map((p) => {
+                            const on = selected.includes(p.slug);
+                            return (
+                                <button
+                                    key={p.slug}
+                                    type="button"
+                                    onClick={() => toggle(p.slug)}
+                                    className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                                        on
+                                            ? "bg-indigo-600 border-indigo-600 text-white"
+                                            : "bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:border-indigo-400"
+                                    }`}
+                                >
+                                    {p.name}
+                                    {!p.isActive && ` · ${t("planInactive")}`}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <p className="text-xs text-neutral-500 mt-1.5">
+                        {selected.length === 0 ? t("plansHintAll") : t("plansHintSome")}
+                    </p>
+                    {selected.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => onChange([])}
+                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline mt-1"
+                        >
+                            {t("plansClear")}
+                        </button>
+                    )}
+                </>
             )}
         </div>
     );
@@ -330,12 +448,21 @@ function ModalShell({
  * salieron del formulario: nunca descontaron nada del cobro — el tenant veía
  * "cupón aplicado" y se le cobraba el 100%. El backend también los rechaza.
  */
-function CreateCouponModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+function CreateCouponModal({
+    plans,
+    onClose,
+    onSuccess,
+}: {
+    plans: PlanOption[];
+    onClose: () => void;
+    onSuccess: () => void;
+}) {
     const t = useTranslations("couponsPage");
     const tc = useTranslations("common");
     const [code, setCode] = useState("");
     const [description, setDescription] = useState("");
     const [freeMonths, setFreeMonths] = useState(1);
+    const [appliesToPlanIds, setAppliesToPlanIds] = useState<string[]>([]);
     const [maxRedemptions, setMaxRedemptions] = useState<number | "">("");
     const [expiresAt, setExpiresAt] = useState("");
     const [busy, setBusy] = useState(false);
@@ -350,6 +477,9 @@ function CreateCouponModal({ onClose, onSuccess }: { onClose: () => void; onSucc
                 type: "free_months",
                 freeMonths,
                 description: description || undefined,
+                // Vacío = todos los planes. Se manda igual para que el backend
+                // normalice y valide en un solo lugar.
+                appliesToPlanIds,
             };
             if (maxRedemptions !== "") body.maxRedemptions = Number(maxRedemptions);
             if (expiresAt) body.expiresAt = endOfDayIso(expiresAt);
@@ -429,6 +559,8 @@ function CreateCouponModal({ onClose, onSuccess }: { onClose: () => void; onSucc
                 />
             </div>
 
+            <PlanScopePicker plans={plans} selected={appliesToPlanIds} onChange={setAppliesToPlanIds} />
+
             <div className="grid grid-cols-2 gap-3">
                 <div>
                     <label className="block text-sm font-medium mb-1">{t("maxRedemptions")}</label>
@@ -463,10 +595,21 @@ function CreateCouponModal({ onClose, onSuccess }: { onClose: () => void; onSucc
  * acepta (el código y los meses son inmutables por diseño: cambiarlos redefiniría
  * un cupón que ya se canjeó).
  */
-function EditCouponModal({ coupon, onClose, onSuccess }: { coupon: Coupon; onClose: () => void; onSuccess: () => void }) {
+function EditCouponModal({
+    coupon,
+    plans,
+    onClose,
+    onSuccess,
+}: {
+    coupon: Coupon;
+    plans: PlanOption[];
+    onClose: () => void;
+    onSuccess: () => void;
+}) {
     const t = useTranslations("couponsPage");
     const tc = useTranslations("common");
     const [description, setDescription] = useState(coupon.description ?? "");
+    const [appliesToPlanIds, setAppliesToPlanIds] = useState<string[]>(coupon.appliesToPlanIds ?? []);
     const [maxRedemptions, setMaxRedemptions] = useState<number | "">(coupon.maxRedemptions ?? "");
     const [expiresAt, setExpiresAt] = useState(isoToDateInput(coupon.expiresAt));
     const [isActive, setIsActive] = useState(coupon.isActive);
@@ -480,11 +623,19 @@ function EditCouponModal({ coupon, onClose, onSuccess }: { coupon: Coupon; onClo
             const res = await api.updateCoupon(coupon.id, {
                 description,
                 isActive,
+                appliesToPlanIds,
                 maxRedemptions: maxRedemptions === "" ? null : Number(maxRedemptions),
                 expiresAt: expiresAt ? endOfDayIso(expiresAt) : null,
             });
             if (res.success) onSuccess();
-            else setError((res as any).error || tc("connectionError"));
+            else {
+                const errCode = (res as any).errorCode;
+                setError(
+                    errCode && KNOWN_CREATE_ERRORS.includes(errCode)
+                        ? t(`errors.${errCode}`)
+                        : ((res as any).error || tc("connectionError")),
+                );
+            }
         } catch (e: any) {
             setError(e?.message || tc("connectionError"));
         } finally {
@@ -527,6 +678,8 @@ function EditCouponModal({ coupon, onClose, onSuccess }: { coupon: Coupon; onClo
                     className={inputClasses}
                 />
             </div>
+
+            <PlanScopePicker plans={plans} selected={appliesToPlanIds} onChange={setAppliesToPlanIds} />
 
             <div className="grid grid-cols-2 gap-3">
                 <div>

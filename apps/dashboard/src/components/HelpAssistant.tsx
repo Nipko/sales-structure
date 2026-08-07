@@ -45,18 +45,7 @@ import {
 } from "@/components/ui/sheet";
 import { ParalllyAssistant, type ParalllyState } from "@/components/ParalllyAssistant";
 
-const ANNOUNCED_KEY = "parallly:assistant-announced";
-
-/** Chispas que salen disparadas cuando Parallly aterriza. */
-const INTRO_SPARKS = [
-  { sx: "-40px", sy: "-48px", delay: "120ms", cls: "size-1.5 bg-[#3897f0]" },
-  { sx: "36px", sy: "-56px", delay: "260ms", cls: "size-2 bg-amber-400" },
-  { sx: "-54px", sy: "-12px", delay: "400ms", cls: "size-1 bg-[#7ab9f5]" },
-  { sx: "50px", sy: "-16px", delay: "540ms", cls: "size-1.5 bg-indigo-400" },
-];
-
-/** Fases de la presentación: cae → aterriza y saluda → habla → se retira. */
-type IntroPhase = "hidden" | "enter" | "talk" | "done";
+const GREETED_KEY = "parallly:assistant-greeted";
 
 export function HelpAssistant() {
   const t = useTranslations("helpAssistant");
@@ -67,44 +56,22 @@ export function HelpAssistant() {
 
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const [intro, setIntro] = useState<IntroPhase>("done");
+  const [greeting, setGreeting] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [activeGuideId, setActiveGuideId] = useState<string | null>(null);
-
-  // Dual-tab navigation state — el Asistente IA es la puerta de entrada
-  const [activeTab, setActiveTab] = useState<'guides' | 'chat'>('chat');
-
-  // Abrir siempre en el Asistente IA: es lo primero que ve quien pide ayuda.
-  const openAssistant = () => {
-    setActiveTab('chat');
-    setIntro("done");
-    setOpen(true);
-  };
-
-  // Presentación de bienvenida: una vez por sesión. Parallly entra rebotando,
-  // suelta chispas, saluda y cuenta para qué está. A los ~9s se retira solo.
+  // Saludo de bienvenida: una sola vez por navegador. Aparece a los 8s, saluda
+  // 6s y se retira — nunca vuelve a interrumpir.
   useEffect(() => {
-    const timers: ReturnType<typeof setTimeout>[] = [];
+    let hide: ReturnType<typeof setTimeout>;
+    let show: ReturnType<typeof setTimeout>;
     try {
-      if (typeof window === "undefined" || sessionStorage.getItem(ANNOUNCED_KEY)) return;
-    } catch { return; }
-
-    const mark = () => { try { sessionStorage.setItem(ANNOUNCED_KEY, "1"); } catch { /* ignore */ } };
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-
-    if (reduce) {
-      // Sin movimiento: el mensaje igual aparece, solo que sin la entrada.
-      timers.push(setTimeout(() => { mark(); setIntro("talk"); }, 1200));
-      timers.push(setTimeout(() => setIntro("done"), 10200));
-    } else {
-      setIntro("hidden");
-      timers.push(setTimeout(() => { mark(); setIntro("enter"); }, 900));
-      timers.push(setTimeout(() => setIntro("talk"), 1700));
-      timers.push(setTimeout(() => setIntro("done"), 10000));
-    }
-    return () => timers.forEach(clearTimeout);
+      if (typeof window === "undefined" || localStorage.getItem(GREETED_KEY)) return;
+      show = setTimeout(() => {
+        setGreeting(true);
+        try { localStorage.setItem(GREETED_KEY, "1"); } catch { /* ignore */ }
+        hide = setTimeout(() => setGreeting(false), 6000);
+      }, 8000);
+    } catch { /* ignore */ }
+    return () => { clearTimeout(show); clearTimeout(hide); };
   }, []);
 
   // Allow other parts of the app (e.g. the onboarding tour) to open the copilot.
@@ -112,14 +79,20 @@ export function HelpAssistant() {
     try {
       if (typeof window !== "undefined" && localStorage.getItem("parallly:openCopilot")) {
         localStorage.removeItem("parallly:openCopilot");
-        openAssistant();
+        setOpen(true);
       }
     } catch { /* ignore */ }
-    const handler = () => openAssistant();
+    const handler = () => setOpen(true);
     window.addEventListener("parallly:open-copilot", handler);
     return () => window.removeEventListener("parallly:open-copilot", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [activeGuideId, setActiveGuideId] = useState<string | null>(null);
+  
+  // Dual-tab navigation state
+  const [activeTab, setActiveTab] = useState<'guides' | 'chat'>('guides');
 
   // AI Chat state
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([

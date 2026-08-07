@@ -5555,7 +5555,8 @@
       "no_subscription": "Você ainda não tem uma assinatura para aplicar o cupom.",
       "type_not_supported": "Este cupom não pode mais ser resgatado. Fale com a gente e resolvemos.",
       "active_provider_subscription": "Você tem uma assinatura com cobrança automática ativa. Fale com a gente para aplicar o cupom sem cobrança duplicada.",
-      "stacking_cap_reached": "Esta conta já atingiu o máximo de meses grátis acumuláveis por cupons."
+      "stacking_cap_reached": "Esta conta já atingiu o máximo de meses grátis acumuláveis por cupons.",
+      "already_covered": "Esta conta já tem mais tempo grátis do que este cupom oferece. Guarde-o para depois."
     },
     "limitReached": "Você atingiu o limite de {limit} {resource} no seu plano atual ({current}/{limit}).",
     "upgradePlan": "Melhorar plano",

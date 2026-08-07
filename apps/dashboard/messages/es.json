@@ -5555,7 +5555,8 @@
       "no_subscription": "Todavía no tenés una suscripción a la cual aplicar el cupón.",
       "type_not_supported": "Este cupón ya no se puede canjear. Escribinos y lo resolvemos.",
       "active_provider_subscription": "Tenés una suscripción con cobro automático activo. Escribinos para aplicar el cupón sin que se te duplique el cobro.",
-      "stacking_cap_reached": "Esta cuenta ya alcanzó el máximo de meses gratis acumulables por cupones."
+      "stacking_cap_reached": "Esta cuenta ya alcanzó el máximo de meses gratis acumulables por cupones.",
+      "already_covered": "Esta cuenta ya tiene más tiempo gratis del que da este cupón. Guardalo para más adelante."
     },
     "limitReached": "Has alcanzado el límite de {limit} {resource} en tu plan actual ({current}/{limit}).",
     "upgradePlan": "Mejorar plan",

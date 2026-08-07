@@ -5555,7 +5555,8 @@
       "no_subscription": "Vous n'avez pas encore d'abonnement auquel appliquer ce code.",
       "type_not_supported": "Ce code ne peut plus être utilisé. Contactez-nous et nous réglons ça.",
       "active_provider_subscription": "Vous avez un abonnement à prélèvement automatique actif. Contactez-nous pour appliquer le code sans double facturation.",
-      "stacking_cap_reached": "Ce compte a déjà atteint le maximum de mois gratuits cumulables via des coupons."
+      "stacking_cap_reached": "Ce compte a déjà atteint le maximum de mois gratuits cumulables via des coupons.",
+      "already_covered": "Ce compte a déjà plus de temps gratuit que ce coupon n'offre. Gardez-le pour plus tard."
     },
     "limitReached": "Vous avez atteint la limite de {limit} {resource} de votre plan actuel ({current}/{limit}).",
     "upgradePlan": "Améliorer le plan",

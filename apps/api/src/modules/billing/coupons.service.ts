@@ -566,14 +566,25 @@ export class CouponsService {
         // meses gratis sin límite. Se evalúa contra los meses YA canjeados vivos.
         await this.governance.assertStackingAllowed(input.tenantId, months);
 
-        // Base = el vencimiento futuro si todavía no pasó; si ya venció (tenant en
-        // past_due que vuelve por una campaña de recuperación), se cuenta desde hoy.
-        // Sumarle meses a una fecha pasada regalaría un mes que ya se consumió.
+        // El cupón DEFINE el período, contado desde HOY: no se apila sobre los días
+        // de prueba que le quedaban. Antes se tomaba `trialEndsAt` como base, así
+        // que un alta nueva (7 días de trial) que canjeaba 1 mes terminaba con 37
+        // días. La regla es: apenas usa el cupón, el trial deja de contar.
         const now = new Date();
-        const base = sub.trialEndsAt && sub.trialEndsAt > now ? sub.trialEndsAt : now;
-        const newTrialEnd = addCalendarMonths(base, months);
-        const newPeriodEnd =
-            sub.currentPeriodEnd && sub.currentPeriodEnd > newTrialEnd ? sub.currentPeriodEnd : newTrialEnd;
+        const newTrialEnd = addCalendarMonths(now, months);
+
+        // Si el tenant YA tiene más tiempo gratis del que otorga el cupón, canjearlo
+        // no le daría nada y le quemaría el código. Se rechaza para que lo conserve.
+        if (sub.trialEndsAt && sub.trialEndsAt >= newTrialEnd) {
+            throw new BadRequestException({
+                error: 'already_covered',
+                message: 'Tenant already has more free time than this coupon grants.',
+            });
+        }
+
+        // Durante el regalo el período y el trial son la misma fecha: no hay
+        // preapproval en el proveedor (lo garantiza la guarda de arriba).
+        const newPeriodEnd = newTrialEnd;
 
         const redemptionId = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             // Incremento condicional y atómico: el tope global se evalúa dentro del

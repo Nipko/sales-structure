@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { TelegramAlertService } from './telegram-alert.service';
-import { AlertConfigService } from './alert-config.service';
 
 /**
  * Avisos al canal de operaciones cuando alguien canjea —o se le revoca— un cupón
@@ -21,10 +20,7 @@ import { AlertConfigService } from './alert-config.service';
 export class CouponAlertListener {
     private readonly logger = new Logger(CouponAlertListener.name);
 
-    constructor(
-        private readonly telegram: TelegramAlertService,
-        private readonly alertConfig: AlertConfigService,
-    ) {}
+    constructor(private readonly telegram: TelegramAlertService) {}
 
     @OnEvent('coupon.redeemed')
     async onRedeemed(payload: {
@@ -104,15 +100,29 @@ export class CouponAlertListener {
     }
 
     /**
-     * Respeta el interruptor de Telegram del Centro de Operaciones y nunca
-     * propaga: que no salga un aviso no puede deshacer un canje ya commiteado.
+     * Envía el aviso. Nunca propaga: que no salga una notificación no puede
+     * deshacer un canje ya commiteado.
+     *
+     * NO se consulta `alertConfig.channels.telegram` a propósito. Ese interruptor
+     * gobierna las ALERTAS DE INFRAESTRUCTURA (disco, RAM, colas); apagarlo para
+     * dejar de recibir ruido de ops silenciaba también los avisos de cupones, que
+     * son un evento de negocio y el control antifraude del dueño. Eran dos cosas
+     * distintas atadas al mismo switch.
+     *
+     * Y cuando no se envía, ahora se dice POR QUÉ: antes retornaba en silencio,
+     * así que un aviso que no llegaba no dejaba ningún rastro para diagnosticar.
      */
     private async notify(lines: string[]): Promise<void> {
         try {
-            if (!this.telegram.enabled) return;
-            const cfg = await this.alertConfig.get();
-            if (!cfg.channels.telegram) return;
+            if (!this.telegram.enabled) {
+                this.logger.warn(
+                    '[Coupons] Aviso de cupón NO enviado: Telegram sin configurar ' +
+                    '(faltan TELEGRAM_ALERT_BOT_TOKEN y/o TELEGRAM_ALERT_CHAT_ID en el entorno).',
+                );
+                return;
+            }
             await this.telegram.send(lines.filter(Boolean).join('\n'));
+            this.logger.log('[Coupons] Aviso enviado al canal de operaciones.');
         } catch (err: any) {
             this.logger.warn(`[Coupons] Telegram notice failed: ${err?.message}`);
         }

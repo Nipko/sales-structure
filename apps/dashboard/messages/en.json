@@ -5555,7 +5555,8 @@
       "no_subscription": "You don't have a subscription yet to apply this coupon to.",
       "type_not_supported": "This coupon can no longer be redeemed. Contact us and we'll sort it out.",
       "active_provider_subscription": "You have an active auto-billing subscription. Contact us to apply the coupon without double charging you.",
-      "stacking_cap_reached": "This account already reached the maximum of stacked free months from coupons."
+      "stacking_cap_reached": "This account already reached the maximum of stacked free months from coupons.",
+      "already_covered": "This account already has more free time than this coupon grants. Save it for later."
     },
     "limitReached": "You've reached the limit of {limit} {resource} on your current plan ({current}/{limit}).",
     "upgradePlan": "Upgrade plan",

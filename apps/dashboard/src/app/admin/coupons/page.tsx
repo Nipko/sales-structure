@@ -1413,7 +1413,6 @@ function CreateCouponModal({
     const [description, setDescription] = useState("");
     const [freeMonths, setFreeMonths] = useState(1);
     const [appliesToPlanIds, setAppliesToPlanIds] = useState<string[]>([]);
-    const [maxRedemptions, setMaxRedemptions] = useState<number | "">("");
     const [expiresAt, setExpiresAt] = useState("");
     const [reason, setReason] = useState("");
     const [ownerPin, setOwnerPin] = useState("");
@@ -1435,7 +1434,8 @@ function CreateCouponModal({
                 reason: reason.trim() || undefined,
                 ownerPin: ownerPin || undefined,
             };
-            if (maxRedemptions !== "") body.maxRedemptions = Number(maxRedemptions);
+            // No se manda maxRedemptions: todo cupón es de un solo uso (el backend
+            // fuerza 1). Para repartir en campaña se usa "Generar lote".
             if (expiresAt) body.expiresAt = endOfDayIso(expiresAt);
 
             const res = await api.createCoupon(body);
@@ -1515,28 +1515,20 @@ function CreateCouponModal({
 
             <PlanScopePicker plans={plans} selected={appliesToPlanIds} onChange={setAppliesToPlanIds} />
 
-            <div className="grid grid-cols-2 gap-3">
-                <div>
-                    <label className="block text-sm font-medium mb-1">{t("maxRedemptions")}</label>
-                    <input
-                        type="number"
-                        min={1}
-                        value={maxRedemptions}
-                        onChange={e => setMaxRedemptions(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
-                        placeholder={t("unlimited")}
-                        className={inputClasses}
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium mb-1">{t("expiresAt")}</label>
-                    <input
-                        type="date"
-                        value={expiresAt}
-                        onChange={e => setExpiresAt(e.target.value)}
-                        className={inputClasses}
-                    />
-                </div>
+            <div>
+                <label className="block text-sm font-medium mb-1">{t("expiresAt")}</label>
+                <input
+                    type="date"
+                    value={expiresAt}
+                    onChange={e => setExpiresAt(e.target.value)}
+                    className={inputClasses}
+                />
             </div>
+
+            <p className="text-xs text-neutral-500 flex items-center gap-1.5">
+                <Gift className="w-3.5 h-3.5 text-purple-500" />
+                {t("singleUseNote")}
+            </p>
 
             <GovernanceFields
                 governance={governance}
@@ -1572,7 +1564,6 @@ function EditCouponModal({
     const tc = useTranslations("common");
     const [description, setDescription] = useState(coupon.description ?? "");
     const [appliesToPlanIds, setAppliesToPlanIds] = useState<string[]>(coupon.appliesToPlanIds ?? []);
-    const [maxRedemptions, setMaxRedemptions] = useState<number | "">(coupon.maxRedemptions ?? "");
     const [expiresAt, setExpiresAt] = useState(isoToDateInput(coupon.expiresAt));
     const [isActive, setIsActive] = useState(coupon.isActive);
     const [busy, setBusy] = useState(false);
@@ -1586,7 +1577,6 @@ function EditCouponModal({
                 description,
                 isActive,
                 appliesToPlanIds,
-                maxRedemptions: maxRedemptions === "" ? null : Number(maxRedemptions),
                 expiresAt: expiresAt ? endOfDayIso(expiresAt) : null,
             });
             if (res.success) onSuccess();
@@ -1643,27 +1633,14 @@ function EditCouponModal({
 
             <PlanScopePicker plans={plans} selected={appliesToPlanIds} onChange={setAppliesToPlanIds} />
 
-            <div className="grid grid-cols-2 gap-3">
-                <div>
-                    <label className="block text-sm font-medium mb-1">{t("maxRedemptions")}</label>
-                    <input
-                        type="number"
-                        min={1}
-                        value={maxRedemptions}
-                        onChange={e => setMaxRedemptions(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
-                        placeholder={t("unlimited")}
-                        className={inputClasses}
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium mb-1">{t("expiresAt")}</label>
-                    <input
-                        type="date"
-                        value={expiresAt}
-                        onChange={e => setExpiresAt(e.target.value)}
-                        className={inputClasses}
-                    />
-                </div>
+            <div>
+                <label className="block text-sm font-medium mb-1">{t("expiresAt")}</label>
+                <input
+                    type="date"
+                    value={expiresAt}
+                    onChange={e => setExpiresAt(e.target.value)}
+                    className={inputClasses}
+                />
             </div>
 
             <label className="flex items-center gap-2 text-sm cursor-pointer">

@@ -22,8 +22,9 @@ class CreateCouponDto {
     @IsInt() @Min(1) @Max(24) freeMonths!: number;
     // Slugs de plan ('pro', 'enterprise'…). Vacío = aplica a todos.
     @IsOptional() @IsArray() @IsString({ each: true }) appliesToPlanIds?: string[];
-    @IsOptional() @IsInt() @Min(1) maxRedemptions?: number;
     @IsOptional() @IsString() expiresAt?: string;
+    // maxRedemptions no se acepta: todo cupón es de un solo uso (maxRedemptions=1
+    // forzado en el service). Para repartir en campaña se generan lotes.
     // Gobernanza: motivo (obligatorio según config) y PIN del dueño (para alto
     // impacto / superar la cuota). Se validan en CouponGovernanceService.
     @IsOptional() @IsString() @MaxLength(300) reason?: string;
@@ -40,10 +41,10 @@ class GovernanceConfigDto {
 class UpdateCouponDto {
     @IsOptional() @IsString() description?: string;
     @IsOptional() isActive?: boolean;
-    @IsOptional() maxRedemptions?: number | null;
     @IsOptional() expiresAt?: string | null;
     // Slugs de plan ('pro', 'enterprise'…). Vacío = aplica a todos.
     @IsOptional() @IsArray() @IsString({ each: true }) appliesToPlanIds?: string[];
+    // maxRedemptions ya no se acepta: todos los cupones son de un solo uso.
 }
 
 class ValidateCouponDto {

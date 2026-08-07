@@ -118,7 +118,6 @@ export class CouponsService {
         type: string;
         freeMonths?: number;
         appliesToPlanIds?: string[];
-        maxRedemptions?: number;
         expiresAt?: string;
         reason?: string;
         ownerPin?: string;
@@ -144,12 +143,10 @@ export class CouponsService {
             throw new BadRequestException({ error: 'invalid_months', message: 'freeMonths must be 1-24' });
         }
 
-        // Gobernanza: motivo + cuota mensual + PIN del dueno. Un cupon sin tope de
-        // canjes tiene potencial infinito (alto impacto) → exige PIN; uno con tope,
-        // freeMonths x maxRedemptions consume la cuota del mes.
-        const plannedGiftedMonths = input.maxRedemptions == null
-            ? Infinity
-            : input.freeMonths * input.maxRedemptions;
+        // TODO cupón es de UN SOLO USO: un código, un canje, un tenant. Para
+        // repartir en campaña se generan lotes (N códigos únicos). Así el
+        // impacto de un cupón suelto es exactamente sus meses-gratis.
+        const plannedGiftedMonths = input.freeMonths;
         const gov = await this.governance.assertCanIssue({
             reason: input.reason,
             plannedGiftedMonths,
@@ -171,7 +168,8 @@ export class CouponsService {
                 freeMonths: input.freeMonths,
                 durationCycles: null,
                 appliesToPlanIds,
-                maxRedemptions: input.maxRedemptions ?? null,
+                // Siempre 1: no existen cupones de varios usos. Un código, un canje.
+                maxRedemptions: 1,
                 expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
                 createdByUserId: input.createdByUserId ?? null,
             },
@@ -205,12 +203,13 @@ export class CouponsService {
         data: Partial<{
             description: string;
             isActive: boolean;
-            maxRedemptions: number | null;
             expiresAt: string | null;
             appliesToPlanIds: string[];
         }>,
         actorUserId?: string,
     ) {
+        // maxRedemptions NO se edita: todos los cupones son de un solo uso y no
+        // hay forma de reintroducir multi-uso por acá.
         const appliesToPlanIds = data.appliesToPlanIds !== undefined
             ? await this.normalizePlanSlugs(data.appliesToPlanIds)
             : undefined;
@@ -220,7 +219,6 @@ export class CouponsService {
             data: {
                 ...(data.description !== undefined && { description: data.description }),
                 ...(data.isActive !== undefined && { isActive: data.isActive }),
-                ...(data.maxRedemptions !== undefined && { maxRedemptions: data.maxRedemptions }),
                 ...(data.expiresAt !== undefined && {
                     expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
                 }),

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { randomInt, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -82,8 +83,14 @@ export class CouponsService {
 
     // ── Admin CRUD ─────────────────────────────────────────────────
 
+    /**
+     * Cupones sueltos, los creados de a uno. Los generados por lote se excluyen a
+     * propósito: un lote de 200 códigos ahogaría la tabla y no se leería nada.
+     * Esos se ven agrupados por `listBatches()`.
+     */
     async list(filters: { active?: boolean } = {}) {
-        const where = filters.active === undefined ? {} : { isActive: filters.active };
+        const where: any = { batchId: null };
+        if (filters.active !== undefined) where.isActive = filters.active;
         return this.prisma.billingCoupon.findMany({
             where,
             orderBy: { createdAt: 'desc' },
@@ -204,6 +211,207 @@ export class CouponsService {
         });
         await this.writeAudit(actorUserId, 'coupon_deactivated', id, { code: updated.code });
         return updated;
+    }
+
+    // ── Generación de lotes ────────────────────────────────────────
+
+    /**
+     * Genera N códigos de UN SOLO USO a partir de una palabra: `LANZA-K7M2QX`.
+     *
+     * Cada código es un cupón independiente con `maxRedemptions = 1`, no un cupón
+     * con N usos: así se reparten uno por persona y se puede ver cuál se quemó y
+     * cuál sigue libre. El lote existe solo para agruparlos en el panel.
+     *
+     * El alfabeto excluye I, L, O, 0 y 1 a propósito: estos códigos los tipea una
+     * persona desde un mail o un cartel, y esas cinco son las que se confunden.
+     */
+    async generateBatch(input: {
+        label: string;
+        count: number;
+        freeMonths: number;
+        validDays: number;
+        appliesToPlanIds?: string[];
+        description?: string;
+        createdByUserId?: string;
+    }): Promise<{
+        batchId: string;
+        batchLabel: string;
+        created: number;
+        expiresAt: Date;
+        codes: string[];
+    }> {
+        const label = input.label.toUpperCase().trim().replace(/\s+/g, '');
+        if (!/^[A-Z0-9]{2,20}$/.test(label)) {
+            throw new BadRequestException({
+                error: 'invalid_batch_label',
+                message: 'Label must be 2-20 chars, letters and digits only.',
+            });
+        }
+        if (!Number.isInteger(input.count) || input.count < 1 || input.count > MAX_BATCH_SIZE) {
+            throw new BadRequestException({
+                error: 'invalid_count',
+                message: `count must be between 1 and ${MAX_BATCH_SIZE}`,
+            });
+        }
+        if (!Number.isInteger(input.freeMonths) || input.freeMonths < 1 || input.freeMonths > 24) {
+            throw new BadRequestException({ error: 'invalid_months', message: 'freeMonths must be 1-24' });
+        }
+        if (!Number.isInteger(input.validDays) || input.validDays < 1 || input.validDays > 365) {
+            throw new BadRequestException({
+                error: 'invalid_valid_days',
+                message: 'validDays must be between 1 and 365',
+            });
+        }
+
+        const appliesToPlanIds = await this.normalizePlanSlugs(input.appliesToPlanIds);
+
+        // Vence al FINAL del día N, no en el instante exacto de la generación:
+        // "vale 30 días" no debería morir a media mañana del día 30.
+        const expiresAt = new Date(Date.now() + input.validDays * 86_400_000);
+        expiresAt.setUTCHours(23, 59, 59, 999);
+
+        const batchId = randomUUID();
+
+        // Se generan de más y se filtra contra lo que ya existe: el UNIQUE de
+        // `code` es la garantía final, pero chequear antes evita que una colisión
+        // tumbe la inserción entera de 200 códigos.
+        const codes = await this.mintUniqueCodes(label, input.count);
+
+        await this.prisma.billingCoupon.createMany({
+            data: codes.map((code: string) => ({
+                code,
+                description: input.description ?? null,
+                type: CouponsService.REDEEMABLE_TYPE,
+                percentDiscount: null,
+                amountOffCents: null,
+                freeMonths: input.freeMonths,
+                durationCycles: null,
+                appliesToPlanIds,
+                maxRedemptions: 1,
+                expiresAt,
+                batchId,
+                batchLabel: label,
+                createdByUserId: input.createdByUserId ?? null,
+            })),
+            skipDuplicates: true,
+        });
+
+        await this.writeAudit(input.createdByUserId, 'coupon_batch_generated', batchId, {
+            batchLabel: label,
+            count: codes.length,
+            freeMonths: input.freeMonths,
+            validDays: input.validDays,
+            expiresAt: expiresAt.toISOString(),
+            appliesToPlanIds,
+        });
+
+        this.logger.log(`[Coupons] batch ${label} (${batchId}) — ${codes.length} single-use codes, expire ${expiresAt.toISOString()}`);
+
+        return { batchId, batchLabel: label, created: codes.length, expiresAt, codes };
+    }
+
+    /** Resumen por lote: cuántos quedan libres, cuántos se usaron y cuántos vencieron. */
+    async listBatches(): Promise<any[]> {
+        return this.prisma.$queryRaw<any[]>`
+            SELECT
+                "batch_id"                                          AS "batchId",
+                MIN("batch_label")                                  AS "batchLabel",
+                MIN("free_months")::int                             AS "freeMonths",
+                MIN("created_at")                                   AS "createdAt",
+                MAX("expires_at")                                   AS "expiresAt",
+                COUNT(*)::int                                       AS "total",
+                COUNT(*) FILTER (WHERE "redemption_count" > 0)::int AS "redeemed",
+                COUNT(*) FILTER (
+                    WHERE "redemption_count" = 0
+                      AND "is_active" = true
+                      AND ("expires_at" IS NULL OR "expires_at" >= NOW())
+                )::int                                              AS "available",
+                COUNT(*) FILTER (
+                    WHERE "redemption_count" = 0
+                      AND "is_active" = true
+                      AND "expires_at" IS NOT NULL AND "expires_at" < NOW()
+                )::int                                              AS "expired",
+                COUNT(*) FILTER (WHERE "is_active" = false)::int    AS "disabled"
+            FROM "public"."billing_coupons"
+            WHERE "batch_id" IS NOT NULL
+            GROUP BY "batch_id"
+            ORDER BY MIN("created_at") DESC
+            LIMIT 200
+        `;
+    }
+
+    /** Los códigos de un lote, con su estado, para repartirlos o auditarlos. */
+    async listBatchCodes(batchId: string) {
+        const rows = await this.prisma.billingCoupon.findMany({
+            where: { batchId },
+            orderBy: { code: 'asc' },
+            take: MAX_BATCH_SIZE,
+        });
+        const now = Date.now();
+        return rows.map((c: any) => ({
+            id: c.id,
+            code: c.code,
+            status: !c.isActive
+                ? 'disabled'
+                : c.redemptionCount > 0
+                    ? 'redeemed'
+                    : c.expiresAt && c.expiresAt.getTime() < now
+                        ? 'expired'
+                        : 'available',
+            expiresAt: c.expiresAt,
+        }));
+    }
+
+    /** Apaga un lote entero. Los ya canjeados no se tocan: el regalo sigue vivo. */
+    async deactivateBatch(batchId: string, actorUserId?: string) {
+        const result = await this.prisma.billingCoupon.updateMany({
+            where: { batchId, isActive: true },
+            data: { isActive: false },
+        });
+        await this.writeAudit(actorUserId, 'coupon_batch_deactivated', batchId, {
+            disabled: result.count,
+        });
+        return { disabled: result.count };
+    }
+
+    /**
+     * Acuña códigos únicos. Reintenta contra la base porque dos lotes con la
+     * misma palabra comparten espacio de nombres y el UNIQUE los rechazaría.
+     */
+    private async mintUniqueCodes(label: string, count: number): Promise<string[]> {
+        const picked = new Set<string>();
+        // El sufijo crece si el lote es grande, para no forzar la suerte: con 6
+        // caracteres del alfabeto seguro hay ~594 millones de combinaciones.
+        const suffixLen = count > 1000 ? 8 : 6;
+
+        for (let attempt = 0; attempt < 12 && picked.size < count; attempt++) {
+            const missing = count - picked.size;
+            const candidates: string[] = [];
+            // Se piden de más en cada vuelta para absorber duplicados y colisiones.
+            for (let i = 0; i < missing * 2; i++) {
+                candidates.push(`${label}-${randomSuffix(suffixLen)}`);
+            }
+
+            const unique = [...new Set(candidates)].filter((c: string) => !picked.has(c));
+            const taken = await this.prisma.billingCoupon.findMany({
+                where: { code: { in: unique } },
+                select: { code: true },
+            });
+            const takenSet = new Set<string>(taken.map((t: { code: string }) => t.code));
+
+            for (const candidate of unique) {
+                if (picked.size >= count) break;
+                if (!takenSet.has(candidate)) picked.add(candidate);
+            }
+        }
+
+        if (picked.size < count) {
+            throw new ConflictException({
+                error: 'code_space_exhausted',
+                message: `Could not mint ${count} unique codes for "${label}". Try a different word.`,
+            });
+        }
+        return [...picked];
     }
 
     // ── Validation + Redemption ────────────────────────────────────
@@ -752,6 +960,24 @@ export class CouponsService {
  * año. Si el mes destino no tiene ese día (31 de enero + 1 mes), cae al último día
  * del mes destino en vez de desbordar a marzo.
  */
+/** Tope por lote: cota superior del INSERT y del listado de códigos. */
+export const MAX_BATCH_SIZE = 2000;
+
+/**
+ * Alfabeto sin I, L, O, 0 ni 1. Estos códigos los tipea una persona desde un
+ * mail o un cartel, y esas cinco son exactamente las que se confunden entre sí.
+ * `randomInt` es criptográfico: un código adivinable es un mes gratis regalado.
+ */
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+function randomSuffix(length: number): string {
+    let out = '';
+    for (let i = 0; i < length; i++) {
+        out += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+    }
+    return out;
+}
+
 export function addCalendarMonths(from: Date, months: number): Date {
     const result = new Date(from.getTime());
     const day = result.getUTCDate();

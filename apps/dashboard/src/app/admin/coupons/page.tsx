@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
-import { Tag, Plus, Loader2, X, Power, Percent, DollarSign, Gift, Pencil, Users, AlertTriangle, RotateCcw, Ban } from "lucide-react";
+import { Tag, Plus, Loader2, X, Power, Percent, DollarSign, Gift, Pencil, Users, AlertTriangle, RotateCcw, Ban, Wand2, Copy, Check, Download } from "lucide-react";
 import { SkeletonTable } from "@/components/ui/skeleton-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 
@@ -26,6 +26,29 @@ interface Coupon {
     expiresAt: string | null;
     isActive: boolean;
     createdAt: string;
+}
+
+/** Lote generado: N códigos de un solo uso creados de una vez. */
+interface Batch {
+    batchId: string;
+    batchLabel: string;
+    freeMonths: number;
+    createdAt: string;
+    expiresAt: string | null;
+    total: number;
+    redeemed: number;
+    available: number;
+    expired: number;
+    disabled: number;
+}
+
+type BatchCodeStatus = "available" | "redeemed" | "expired" | "disabled";
+
+interface BatchCode {
+    id: string;
+    code: string;
+    status: BatchCodeStatus;
+    expiresAt: string | null;
 }
 
 /** Plan elegible. El cupón guarda SLUGS, no los UUID de billing_plans. */
@@ -66,6 +89,7 @@ const inputClasses =
 const KNOWN_SOURCES = ["onboarding", "billing_settings", "admin"];
 const KNOWN_CREATE_ERRORS = ["invalid_code", "invalid_months", "code_already_exists", "type_not_supported", "unknown_plan"];
 const KNOWN_REVOKE_ERRORS = ["redemption_not_found", "already_revoked", "active_provider_subscription"];
+const KNOWN_BATCH_ERRORS = ["invalid_batch_label", "invalid_count", "invalid_months", "invalid_valid_days", "code_space_exhausted", "unknown_plan"];
 
 /**
  * Convierte la fecha del `<input type=date>` en el ÚLTIMO instante de ese día.
@@ -101,6 +125,16 @@ export default function CouponsPage() {
 
     const [redemptions, setRedemptions] = useState<Redemption[]>([]);
     const [loadingRedemptions, setLoadingRedemptions] = useState(true);
+    const [batches, setBatches] = useState<Batch[]>([]);
+    const [loadingBatches, setLoadingBatches] = useState(true);
+    const [showGenerate, setShowGenerate] = useState(false);
+
+    const loadBatches = useCallback(async () => {
+        setLoadingBatches(true);
+        const res = await api.listCouponBatches();
+        if (res.success && Array.isArray(res.data)) setBatches(res.data as Batch[]);
+        setLoadingBatches(false);
+    }, []);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -123,7 +157,8 @@ export default function CouponsPage() {
         }
         load();
         loadRedemptions();
-    }, [user, router, load, loadRedemptions]);
+        loadBatches();
+    }, [user, router, load, loadRedemptions, loadBatches]);
 
     // Los planes se leen del catálogo real (billing_plans), no de una lista fija
     // en el front: si se agrega o desactiva un tier, el selector lo refleja solo.
@@ -171,13 +206,22 @@ export default function CouponsPage() {
                 subtitle={t("subtitle")}
                 icon={Tag}
                 action={
-                    <button
-                        onClick={() => setShowCreate(true)}
-                        className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg"
-                    >
-                        <Plus className="w-4 h-4" />
-                        {t("create")}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowGenerate(true)}
+                            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border border-indigo-300 dark:border-indigo-500/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10 rounded-lg"
+                        >
+                            <Wand2 className="w-4 h-4" />
+                            {t("generate")}
+                        </button>
+                        <button
+                            onClick={() => setShowCreate(true)}
+                            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg"
+                        >
+                            <Plus className="w-4 h-4" />
+                            {t("create")}
+                        </button>
+                    </div>
                 }
             />
             <HelpPanel
@@ -336,11 +380,26 @@ export default function CouponsPage() {
                 </div>
             )}
 
+            <BatchesSection
+                batches={batches}
+                loading={loadingBatches}
+                plans={plans}
+                onChanged={loadBatches}
+            />
+
             <RedemptionsControl
                 rows={redemptions}
                 loading={loadingRedemptions}
                 onChanged={() => { loadRedemptions(); load(); }}
             />
+
+            {showGenerate && (
+                <GenerateBatchModal
+                    plans={plans}
+                    onClose={() => setShowGenerate(false)}
+                    onSuccess={() => { setShowGenerate(false); loadBatches(); }}
+                />
+            )}
 
             {showCreate && (
                 <CreateCouponModal
@@ -374,6 +433,391 @@ export default function CouponsPage() {
         </div>
     );
 }
+
+/** Lotes generados, con el avance de cada uno de un vistazo. */
+function BatchesSection({
+    batches,
+    loading,
+    plans,
+    onChanged,
+}: {
+    batches: Batch[];
+    loading: boolean;
+    plans: PlanOption[];
+    onChanged: () => void;
+}) {
+    const t = useTranslations("couponsPage");
+    const [viewing, setViewing] = useState<Batch | null>(null);
+
+    async function handleDisable(batch: Batch) {
+        if (!window.confirm(t("confirmDisableBatch", { label: batch.batchLabel }))) return;
+        const res = await api.deactivateCouponBatch(batch.batchId);
+        if (res.success) onChanged();
+    }
+
+    return (
+        <div className="space-y-3">
+            <div className="flex items-center gap-2">
+                <Wand2 className="w-4 h-4 text-indigo-500" />
+                <h2 className="text-sm font-semibold">{t("batchesTitle")}</h2>
+            </div>
+
+            {loading && <SkeletonTable rows={2} cols={5} />}
+
+            {!loading && batches.length === 0 && (
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl p-6 text-center">
+                    {t("batchesEmpty")}
+                </p>
+            )}
+
+            {!loading && batches.length > 0 && (
+                <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-x-auto">
+                    <table className="w-full text-sm min-w-[760px]">
+                        <thead className="bg-neutral-50 dark:bg-neutral-800/50 text-xs text-neutral-500 dark:text-neutral-400 border-b border-neutral-200 dark:border-neutral-800">
+                            <tr>
+                                <th className="px-4 py-2.5 text-left font-medium">{t("col.batch")}</th>
+                                <th className="px-4 py-2.5 text-left font-medium">{t("col.progress")}</th>
+                                <th className="px-4 py-2.5 text-left font-medium">{t("col.value")}</th>
+                                <th className="px-4 py-2.5 text-left font-medium">{t("col.expires")}</th>
+                                <th className="px-4 py-2.5"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {batches.map((b) => {
+                                const expired = !!b.expiresAt && new Date(b.expiresAt) < new Date();
+                                return (
+                                    <tr key={b.batchId} className="border-b border-neutral-100 dark:border-neutral-800/60">
+                                        <td className="px-4 py-3">
+                                            <div className="font-mono font-semibold text-neutral-900 dark:text-neutral-100">
+                                                {b.batchLabel}
+                                            </div>
+                                            <div className="text-xs text-neutral-500">
+                                                {t("batchTotal", { n: b.total })} · {new Date(b.createdAt).toLocaleDateString()}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex flex-wrap gap-1 text-xs">
+                                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                                    {t("batchAvailable", { n: b.available })}
+                                                </span>
+                                                <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                                                    {t("batchRedeemed", { n: b.redeemed })}
+                                                </span>
+                                                {b.expired > 0 && (
+                                                    <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                                                        {t("batchExpired", { n: b.expired })}
+                                                    </span>
+                                                )}
+                                                {b.disabled > 0 && (
+                                                    <span className="px-2 py-0.5 rounded-full bg-neutral-500/10 text-neutral-500">
+                                                        {t("batchDisabled", { n: b.disabled })}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-neutral-700 dark:text-neutral-300 text-xs">
+                                            {b.freeMonths} {t("months")}
+                                        </td>
+                                        <td className={`px-4 py-3 text-xs ${expired ? "text-amber-600 dark:text-amber-400" : "text-neutral-600 dark:text-neutral-400"}`}>
+                                            {b.expiresAt ? new Date(b.expiresAt).toLocaleDateString() : "—"}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex items-center justify-end gap-3">
+                                                <button
+                                                    onClick={() => setViewing(b)}
+                                                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                                                >
+                                                    {t("viewCodes")}
+                                                </button>
+                                                {b.available > 0 && (
+                                                    <button
+                                                        onClick={() => handleDisable(b)}
+                                                        className="text-red-600 dark:text-red-400 hover:opacity-70"
+                                                        title={t("disableBatch")}
+                                                    >
+                                                        <Power className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {viewing && <BatchCodesModal batch={viewing} onClose={() => setViewing(null)} />}
+        </div>
+    );
+}
+
+/**
+ * Generador de lotes. El dueño pone una palabra y sale `PALABRA-K7M2QX` por cada
+ * código, todos de un solo uso.
+ */
+function GenerateBatchModal({
+    plans,
+    onClose,
+    onSuccess,
+}: {
+    plans: PlanOption[];
+    onClose: () => void;
+    onSuccess: () => void;
+}) {
+    const t = useTranslations("couponsPage");
+    const tc = useTranslations("common");
+    const [label, setLabel] = useState("");
+    const [count, setCount] = useState(25);
+    const [freeMonths, setFreeMonths] = useState(1);
+    const [validDays, setValidDays] = useState(30);
+    const [appliesToPlanIds, setAppliesToPlanIds] = useState<string[]>([]);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [result, setResult] = useState<{ codes: string[]; batchLabel: string } | null>(null);
+
+    async function handleGenerate() {
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await api.generateCouponBatch({
+                label,
+                count,
+                freeMonths,
+                validDays,
+                appliesToPlanIds,
+            });
+            if (res.success && res.data) {
+                const d = res.data as any;
+                setResult({ codes: d.codes || [], batchLabel: d.batchLabel });
+            } else {
+                const errCode = (res as any).errorCode;
+                setError(
+                    errCode && KNOWN_BATCH_ERRORS.includes(errCode)
+                        ? t(`errors.${errCode}`)
+                        : ((res as any).error || tc("connectionError")),
+                );
+            }
+        } catch (e: any) {
+            setError(e?.message || tc("connectionError"));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    // Ya generado: se muestran los códigos para repartir. Es el único momento en
+    // que se ven todos juntos y recién creados, así que la salida (copiar / CSV)
+    // tiene que estar acá y no escondida.
+    if (result) {
+        return (
+            <ModalShell
+                title={t("batchReadyTitle", { label: result.batchLabel })}
+                onClose={() => { onSuccess(); }}
+                footer={
+                    <button
+                        onClick={() => onSuccess()}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium"
+                    >
+                        {tc("close")}
+                    </button>
+                }
+            >
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                    {t("batchReadyHint", { n: result.codes.length })}
+                </p>
+                <CodeExportActions codes={result.codes} filename={result.batchLabel} />
+                <div className="max-h-56 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 font-mono text-xs grid grid-cols-2 gap-1">
+                    {result.codes.map((c) => <div key={c}>{c}</div>)}
+                </div>
+            </ModalShell>
+        );
+    }
+
+    const preview = label.trim()
+        ? `${label.toUpperCase().replace(/\s+/g, "")}-K7M2QX`
+        : "PALABRA-K7M2QX";
+
+    return (
+        <ModalShell
+            title={t("generateTitle")}
+            onClose={onClose}
+            footer={
+                <>
+                    <button onClick={onClose} disabled={busy} className="px-3 py-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-sm">{tc("cancel")}</button>
+                    <button
+                        onClick={handleGenerate}
+                        disabled={busy || !label.trim()}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg text-sm font-medium inline-flex items-center gap-2"
+                    >
+                        {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+                        {t("generate")}
+                    </button>
+                </>
+            }
+        >
+            <div className="flex items-start gap-2 text-xs text-neutral-600 dark:text-neutral-400 bg-indigo-500/5 border border-indigo-500/20 rounded-lg p-3">
+                <Wand2 className="w-4 h-4 text-indigo-500 flex-shrink-0 mt-0.5" />
+                <p>{t("generateHint")}</p>
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium mb-1">{t("batchLabelField")}</label>
+                <input
+                    type="text"
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+                    placeholder="LANZAMIENTO"
+                    maxLength={20}
+                    className={`${inputClasses} font-mono`}
+                />
+                <p className="text-xs text-neutral-500 mt-1">
+                    {t("batchPreview")} <span className="font-mono">{preview}</span>
+                </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+                <div>
+                    <label className="block text-sm font-medium mb-1">{t("batchCount")}</label>
+                    <input
+                        type="number"
+                        min={1}
+                        max={2000}
+                        value={count}
+                        onChange={(e) => setCount(parseInt(e.target.value || "1", 10))}
+                        className={inputClasses}
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium mb-1">{t("monthsLabel")}</label>
+                    <input
+                        type="number"
+                        min={1}
+                        max={24}
+                        value={freeMonths}
+                        onChange={(e) => setFreeMonths(parseInt(e.target.value || "1", 10))}
+                        className={inputClasses}
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium mb-1">{t("batchValidDays")}</label>
+                    <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={validDays}
+                        onChange={(e) => setValidDays(parseInt(e.target.value || "1", 10))}
+                        className={inputClasses}
+                    />
+                </div>
+            </div>
+            <p className="text-xs text-neutral-500 -mt-2">{t("batchValidDaysHint")}</p>
+
+            <PlanScopePicker plans={plans} selected={appliesToPlanIds} onChange={setAppliesToPlanIds} />
+
+            {error && <p className="text-sm text-red-600 bg-red-500/10 p-2 rounded">{error}</p>}
+        </ModalShell>
+    );
+}
+
+/** Copiar todo / descargar CSV: sin esto, un lote de 200 códigos es inservible. */
+function CodeExportActions({ codes, filename }: { codes: string[]; filename: string }) {
+    const t = useTranslations("couponsPage");
+    const [copied, setCopied] = useState(false);
+
+    async function copyAll() {
+        try {
+            await navigator.clipboard.writeText(codes.join("\n"));
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch { /* clipboard bloqueado → queda el CSV */ }
+    }
+
+    function downloadCsv() {
+        const blob = new Blob([`codigo\n${codes.join("\n")}\n`], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `cupones-${filename}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    return (
+        <div className="flex gap-2">
+            <button
+                onClick={copyAll}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? t("copied") : t("copyAll")}
+            </button>
+            <button
+                onClick={downloadCsv}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+                <Download className="w-3.5 h-3.5" />
+                {t("downloadCsv")}
+            </button>
+        </div>
+    );
+}
+
+/** Los códigos de un lote con su estado, y la exportación de los que siguen libres. */
+function BatchCodesModal({ batch, onClose }: { batch: Batch; onClose: () => void }) {
+    const t = useTranslations("couponsPage");
+    const [codes, setCodes] = useState<BatchCode[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            const res = await api.listCouponBatchCodes(batch.batchId);
+            if (!alive) return;
+            if (res.success && Array.isArray(res.data)) setCodes(res.data as BatchCode[]);
+            setLoading(false);
+        })();
+        return () => { alive = false; };
+    }, [batch.batchId]);
+
+    const available = codes.filter((c) => c.status === "available");
+
+    return (
+        <ModalShell title={`${t("codesOf")} ${batch.batchLabel}`} onClose={onClose}>
+            {loading && <SkeletonTable rows={4} cols={2} />}
+
+            {!loading && (
+                <>
+                    {available.length > 0 && (
+                        <>
+                            <p className="text-xs text-neutral-500">{t("exportAvailableHint", { n: available.length })}</p>
+                            <CodeExportActions codes={available.map((c) => c.code)} filename={batch.batchLabel} />
+                        </>
+                    )}
+                    <div className="max-h-72 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-800 divide-y divide-neutral-100 dark:divide-neutral-800">
+                        {codes.map((c) => (
+                            <div key={c.id} className="flex items-center justify-between px-3 py-2">
+                                <span className={`font-mono text-xs ${c.status === "available" ? "" : "text-neutral-400 line-through"}`}>
+                                    {c.code}
+                                </span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${BATCH_CODE_STATUS_STYLE[c.status]}`}>
+                                    {t(`codeStatus.${c.status}`)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
+        </ModalShell>
+    );
+}
+
+const BATCH_CODE_STATUS_STYLE: Record<BatchCodeStatus, string> = {
+    available: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    redeemed: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+    expired: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    disabled: "bg-neutral-500/10 text-neutral-500",
+};
 
 /**
  * Panel de control de los canjes: quién entró por cupón, con cuál, cuántos días

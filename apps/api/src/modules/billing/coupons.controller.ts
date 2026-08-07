@@ -43,6 +43,17 @@ class RedeemCouponDto {
     @IsString() code!: string;
 }
 
+/** Genera N códigos de un solo uso a partir de una palabra. */
+class GenerateBatchDto {
+    @IsString() @MaxLength(20) label!: string;
+    @IsInt() @Min(1) @Max(2000) count!: number;
+    @IsInt() @Min(1) @Max(24) freeMonths!: number;
+    /** Días que el código sigue siendo canjeable. Después vence sin usarse. */
+    @IsInt() @Min(1) @Max(365) validDays!: number;
+    @IsOptional() @IsArray() @IsString({ each: true }) appliesToPlanIds?: string[];
+    @IsOptional() @IsString() @MaxLength(300) description?: string;
+}
+
 class RevokeRedemptionDto {
     // El motivo queda en auditoría y en el aviso de Telegram: cortarle el regalo a
     // un cliente sin dejar dicho por qué es lo que después nadie puede explicar.
@@ -96,6 +107,41 @@ export class CouponsController {
     async deactivate(@Param('id') id: string, @Req() req: any) {
         await this.couponsService.deactivate(id, req.user?.sub);
         return { success: true };
+    }
+
+    // ── Lotes generados ─────────────────────────────────────────────
+    // Todas estas rutas van ANTES de `admin/:id` porque si no Nest matchearía
+    // 'batches' o 'redemptions' como un :id.
+
+    @Get('admin/batches')
+    @Roles('super_admin')
+    async listBatches() {
+        const data = await this.couponsService.listBatches();
+        return { success: true, data };
+    }
+
+    @Post('admin/batches')
+    @Roles('super_admin')
+    async generateBatch(@Body() body: GenerateBatchDto, @Req() req: any) {
+        const data = await this.couponsService.generateBatch({
+            ...body,
+            createdByUserId: req.user?.sub,
+        });
+        return { success: true, data };
+    }
+
+    @Get('admin/batches/:batchId/codes')
+    @Roles('super_admin')
+    async batchCodes(@Param('batchId') batchId: string) {
+        const data = await this.couponsService.listBatchCodes(batchId);
+        return { success: true, data };
+    }
+
+    @Delete('admin/batches/:batchId')
+    @Roles('super_admin')
+    async deactivateBatch(@Param('batchId') batchId: string, @Req() req: any) {
+        const data = await this.couponsService.deactivateBatch(batchId, req.user?.sub);
+        return { success: true, data };
     }
 
     /**

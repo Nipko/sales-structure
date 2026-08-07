@@ -454,6 +454,11 @@ model BillingCoupon {
   redemptionCount  Int       @default(0) @map("redemption_count")
   expiresAt        DateTime? @map("expires_at")
   isActive         Boolean   @default(true) @map("is_active")
+  // Lotes generados de una sola vez (N códigos de un uso). batchId agrupa la
+  // corrida; batchLabel es la palabra que escribió el dueño. Null en los cupones
+  // sueltos creados a mano.
+  batchId          String?   @map("batch_id")
+  batchLabel       String?   @map("batch_label")
   createdByUserId  String?   @map("created_by_user_id")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
@@ -461,6 +466,7 @@ model BillingCoupon {
   redemptions BillingCouponRedemption[]
 
   @@index([isActive, expiresAt])
+  @@index([batchId])
   @@map("billing_coupons")
   @@schema("public")
 }

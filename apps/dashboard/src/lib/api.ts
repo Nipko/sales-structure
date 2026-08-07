@@ -1317,6 +1317,17 @@ export const api = {
     deactivateCoupon: (id: string) => apiDelete(`/billing-coupons/admin/${id}`),
     listCouponRedemptions: (id: string) => apiGet(`/billing-coupons/admin/${id}/redemptions`),
     listAllCouponRedemptions: () => apiGet(`/billing-coupons/admin/redemptions`),
+    listCouponBatches: () => apiGet(`/billing-coupons/admin/batches`),
+    generateCouponBatch: (data: {
+        label: string;
+        count: number;
+        freeMonths: number;
+        validDays: number;
+        appliesToPlanIds?: string[];
+        description?: string;
+    }) => apiPost(`/billing-coupons/admin/batches`, data),
+    listCouponBatchCodes: (batchId: string) => apiGet(`/billing-coupons/admin/batches/${batchId}/codes`),
+    deactivateCouponBatch: (batchId: string) => apiDelete(`/billing-coupons/admin/batches/${batchId}`),
     revokeCouponRedemption: (redemptionId: string, reason?: string) =>
         apiPost(`/billing-coupons/admin/redemptions/${redemptionId}/revoke`, { reason }),
     validateCoupon: (tenantId: string, data: { code: string; planId: string }) =>

@@ -1316,6 +1316,9 @@ export const api = {
     updateCoupon: (id: string, data: any) => apiPut(`/billing-coupons/admin/${id}`, data),
     deactivateCoupon: (id: string) => apiDelete(`/billing-coupons/admin/${id}`),
     listCouponRedemptions: (id: string) => apiGet(`/billing-coupons/admin/${id}/redemptions`),
+    listAllCouponRedemptions: () => apiGet(`/billing-coupons/admin/redemptions`),
+    revokeCouponRedemption: (redemptionId: string, reason?: string) =>
+        apiPost(`/billing-coupons/admin/redemptions/${redemptionId}/revoke`, { reason }),
     validateCoupon: (tenantId: string, data: { code: string; planId: string }) =>
         apiPost(`/billing-coupons/validate/${tenantId}`, data),
     redeemCoupon: (tenantId: string, code: string) =>

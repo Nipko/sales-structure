@@ -5588,6 +5588,24 @@
     "redemptionsTitle": "Utilisations",
     "redemptionsEmpty": "Personne n'a encore utilisé ce code.",
     "tenantDeleted": "Compte supprimé",
+    "controlTitle": "Suivi des utilisations",
+    "controlCount": "{active} en cours sur {total}",
+    "controlEmpty": "Aucun compte n'est encore entré via un coupon.",
+    "giftOf": "{months} mois",
+    "daysLeft": "{n} jours",
+    "daysExpired": "Expiré",
+    "revoked": "Révoqué",
+    "revoke": "Révoquer",
+    "revokeTitle": "Révoquer l'offre",
+    "revokeWarning": "Vous allez retirer à {tenant} l'offre du coupon {code}. L'abonnement revient exactement à son état d'avant l'utilisation : si le temps offert est déjà consommé, il peut expirer immédiatement. La place est libérée pour un autre compte et le client ne pourra pas réutiliser le même code.",
+    "revokeReason": "Motif",
+    "revokeReasonPlaceholder": "Ex. utilisé par erreur / compte en double",
+    "revokeReasonHint": "Conservé dans l'audit et inclus dans la notification Telegram.",
+    "revokeErrors": {
+      "redemption_not_found": "Cette utilisation n'existe plus.",
+      "already_revoked": "Cette utilisation avait déjà été révoquée.",
+      "active_provider_subscription": "Ce compte est déjà passé à un abonnement à prélèvement automatique. Révoquer désynchroniserait les dates locales du prélèvement ; passez par Billing Ops."
+    },
     "type": {
       "percent_off": "% de réduction",
       "amount_off": "Montant fixe",
@@ -5615,7 +5633,8 @@
       "status": "Statut",
       "tenant": "Compte",
       "source": "Origine",
-      "redeemedAt": "Date"
+      "redeemedAt": "Date",
+      "daysLeft": "Jours restants"
     },
     "empty": {
       "title": "Aucun code créé",
@@ -7405,7 +7424,11 @@
   },
   "helpAssistant": {
     "launcherTooltip": "Assistant d'aide",
-    "greetingBubble": "Salut ! Je suis Parallly 👋 Je vous aide ?",
+    "announce": {
+      "title": "Salut ! Je suis Parallly 👋",
+      "body": "Je suis votre assistant IA. Posez-moi vos questions et je vous guide pas à pas.",
+      "cta": "Posez-moi une question"
+    },
     "drawerTitle": "Guide & Support",
     "drawerSubtitle": "Votre assistant interactif étape par étape",
     "searchPlaceholder": "Rechercher des guides ou FAQ...",

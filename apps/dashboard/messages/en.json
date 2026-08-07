@@ -5588,6 +5588,24 @@
     "redemptionsTitle": "Redemptions",
     "redemptionsEmpty": "Nobody has redeemed this coupon yet.",
     "tenantDeleted": "Account deleted",
+    "controlTitle": "Redemption control",
+    "controlCount": "{active} active of {total}",
+    "controlEmpty": "No accounts have come in through a coupon yet.",
+    "giftOf": "{months} month(s)",
+    "daysLeft": "{n} days",
+    "daysExpired": "Expired",
+    "revoked": "Revoked",
+    "revoke": "Revoke",
+    "revokeTitle": "Revoke the gift",
+    "revokeWarning": "You're about to cut {tenant}'s gift from coupon {code}. The subscription returns exactly to its pre-redemption state, so if the gifted time is already spent it may expire immediately. The slot is freed for another account and the customer won't be able to redeem the same code again.",
+    "revokeReason": "Reason",
+    "revokeReasonPlaceholder": "e.g. redeemed by mistake / duplicate account",
+    "revokeReasonHint": "Stored in the audit log and included in the Telegram notice.",
+    "revokeErrors": {
+      "redemption_not_found": "This redemption no longer exists.",
+      "already_revoked": "This redemption was already revoked.",
+      "active_provider_subscription": "This account already moved to an auto-billing subscription. Revoking would desync the local dates from the charge; handle it from Billing Ops."
+    },
     "type": {
       "percent_off": "% Off",
       "amount_off": "Fixed amount",
@@ -5615,7 +5633,8 @@
       "status": "Status",
       "tenant": "Account",
       "source": "Source",
-      "redeemedAt": "Date"
+      "redeemedAt": "Date",
+      "daysLeft": "Days left"
     },
     "empty": {
       "title": "No coupons created yet",
@@ -7405,7 +7424,11 @@
   },
   "helpAssistant": {
     "launcherTooltip": "Help Assistant",
-    "greetingBubble": "Hi! I'm Parallly 👋 Need a hand?",
+    "announce": {
+      "title": "Hi! I'm Parallly 👋",
+      "body": "I'm your AI assistant. Ask me anything and I'll walk you through it, step by step.",
+      "cta": "Ask me something"
+    },
     "drawerTitle": "Guide & Support",
     "drawerSubtitle": "Your step-by-step interactive assistant",
     "searchPlaceholder": "Search guides or FAQs...",

@@ -5588,6 +5588,24 @@
     "redemptionsTitle": "Resgates",
     "redemptionsEmpty": "Ninguém resgatou este cupom ainda.",
     "tenantDeleted": "Conta excluída",
+    "controlTitle": "Controle de resgates",
+    "controlCount": "{active} vigentes de {total}",
+    "controlEmpty": "Ainda não há contas que entraram por cupom.",
+    "giftOf": "{months} mês(es)",
+    "daysLeft": "{n} dias",
+    "daysExpired": "Vencido",
+    "revoked": "Revogado",
+    "revoke": "Revogar",
+    "revokeTitle": "Revogar o presente",
+    "revokeWarning": "Você vai cortar o presente do cupom {code} para {tenant}. A assinatura volta exatamente ao estado anterior ao resgate, então se o tempo presenteado já foi consumido ela pode vencer na hora. A vaga é liberada para outra conta e o cliente não poderá resgatar o mesmo código de novo.",
+    "revokeReason": "Motivo",
+    "revokeReasonPlaceholder": "Ex. resgate por engano / conta duplicada",
+    "revokeReasonHint": "Fica na auditoria e no aviso do Telegram.",
+    "revokeErrors": {
+      "redemption_not_found": "Este resgate não existe mais.",
+      "already_revoked": "Este resgate já havia sido revogado.",
+      "active_provider_subscription": "Esta conta já passou para uma assinatura com cobrança automática. Revogar deixaria as datas locais fora de sincronia com a cobrança; trate isso pelo Billing Ops."
+    },
     "type": {
       "percent_off": "% Desconto",
       "amount_off": "Valor fixo",
@@ -5615,7 +5633,8 @@
       "status": "Estado",
       "tenant": "Conta",
       "source": "Origem",
-      "redeemedAt": "Data"
+      "redeemedAt": "Data",
+      "daysLeft": "Dias restantes"
     },
     "empty": {
       "title": "Sem cupons criados",
@@ -7405,7 +7424,11 @@
   },
   "helpAssistant": {
     "launcherTooltip": "Assistente de Ajuda",
-    "greetingBubble": "Oi! Sou o Parallly 👋 Posso ajudar?",
+    "announce": {
+      "title": "Oi! Sou o Parallly 👋",
+      "body": "Sou seu assistente de IA. Pergunte o que precisar e eu te guio passo a passo.",
+      "cta": "Pergunte algo"
+    },
     "drawerTitle": "Guia & Suporte",
     "drawerSubtitle": "Seu assistente interativo passo a passo",
     "searchPlaceholder": "Buscar guias ou FAQs...",

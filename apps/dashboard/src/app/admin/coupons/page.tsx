@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
-import { Tag, Plus, Loader2, X, Power, Percent, DollarSign, Gift, Pencil, Users, AlertTriangle, RotateCcw } from "lucide-react";
+import { Tag, Plus, Loader2, X, Power, Percent, DollarSign, Gift, Pencil, Users, AlertTriangle, RotateCcw, Ban } from "lucide-react";
 import { SkeletonTable } from "@/components/ui/skeleton-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 
@@ -37,10 +37,20 @@ interface PlanOption {
 
 interface Redemption {
     id: string;
+    couponId: string;
+    couponCode: string | null;
+    freeMonths: number | null;
     tenantId: string;
-    redeemedAt: string;
-    metadata: { source?: string; freeMonths?: number; newTrialEndsAt?: string } | null;
     tenant: { id: string; name: string; slug: string; subscriptionStatus: string | null; trialEndsAt: string | null } | null;
+    redeemedAt: string;
+    source: string | null;
+    revoked: boolean;
+    revokedAt: string | null;
+    revokeReason: string | null;
+    trialEndsAt: string | null;
+    /** null cuando está revocado o el tenant no tiene fecha de prueba. */
+    daysRemaining: number | null;
+    subscriptionStatus: string | null;
 }
 
 const TYPE_META: Record<Coupon["type"], { icon: any; bg: string; text: string }> = {
@@ -55,6 +65,7 @@ const inputClasses =
 /** Claves i18n que sí existen: next-intl lanza si se le pide una inexistente. */
 const KNOWN_SOURCES = ["onboarding", "billing_settings", "admin"];
 const KNOWN_CREATE_ERRORS = ["invalid_code", "invalid_months", "code_already_exists", "type_not_supported", "unknown_plan"];
+const KNOWN_REVOKE_ERRORS = ["redemption_not_found", "already_revoked", "active_provider_subscription"];
 
 /**
  * Convierte la fecha del `<input type=date>` en el ÚLTIMO instante de ese día.
@@ -88,11 +99,21 @@ export default function CouponsPage() {
     const [editing, setEditing] = useState<Coupon | null>(null);
     const [viewingRedemptions, setViewingRedemptions] = useState<Coupon | null>(null);
 
+    const [redemptions, setRedemptions] = useState<Redemption[]>([]);
+    const [loadingRedemptions, setLoadingRedemptions] = useState(true);
+
     const load = useCallback(async () => {
         setLoading(true);
         const res = await api.listCoupons();
         if (res.success && Array.isArray(res.data)) setCoupons(res.data as Coupon[]);
         setLoading(false);
+    }, []);
+
+    const loadRedemptions = useCallback(async () => {
+        setLoadingRedemptions(true);
+        const res = await api.listAllCouponRedemptions();
+        if (res.success && Array.isArray(res.data)) setRedemptions(res.data as Redemption[]);
+        setLoadingRedemptions(false);
     }, []);
 
     useEffect(() => {
@@ -101,7 +122,8 @@ export default function CouponsPage() {
             return;
         }
         load();
-    }, [user, router, load]);
+        loadRedemptions();
+    }, [user, router, load, loadRedemptions]);
 
     // Los planes se leen del catálogo real (billing_plans), no de una lista fija
     // en el front: si se agrega o desactiva un tier, el selector lo refleja solo.
@@ -314,6 +336,12 @@ export default function CouponsPage() {
                 </div>
             )}
 
+            <RedemptionsControl
+                rows={redemptions}
+                loading={loadingRedemptions}
+                onChanged={() => { loadRedemptions(); load(); }}
+            />
+
             {showCreate && (
                 <CreateCouponModal
                     plans={plans}
@@ -344,6 +372,240 @@ export default function CouponsPage() {
                 />
             )}
         </div>
+    );
+}
+
+/**
+ * Panel de control de los canjes: quién entró por cupón, con cuál, cuántos días
+ * de regalo le quedan, y el botón para cortarlo.
+ *
+ * Los días salen del backend calculados contra el `trialEndsAt` actual del
+ * tenant, no contra el que se escribió al canjear: si después pagó o se le
+ * revocó, lo que importa es lo que le queda hoy.
+ */
+function RedemptionsControl({
+    rows,
+    loading,
+    onChanged,
+}: {
+    rows: Redemption[];
+    loading: boolean;
+    onChanged: () => void;
+}) {
+    const t = useTranslations("couponsPage");
+    const [revoking, setRevoking] = useState<Redemption | null>(null);
+
+    const active = rows.filter((r) => !r.revoked).length;
+
+    return (
+        <div className="space-y-3">
+            <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-indigo-500" />
+                <h2 className="text-sm font-semibold">{t("controlTitle")}</h2>
+                {!loading && rows.length > 0 && (
+                    <span className="text-xs text-neutral-500">{t("controlCount", { active, total: rows.length })}</span>
+                )}
+            </div>
+
+            {loading && <SkeletonTable rows={3} cols={6} />}
+
+            {!loading && rows.length === 0 && (
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl p-6 text-center">
+                    {t("controlEmpty")}
+                </p>
+            )}
+
+            {!loading && rows.length > 0 && (
+                <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-x-auto">
+                    <table className="w-full text-sm min-w-[820px]">
+                        <thead className="bg-neutral-50 dark:bg-neutral-800/50 text-xs text-neutral-500 dark:text-neutral-400 border-b border-neutral-200 dark:border-neutral-800">
+                            <tr>
+                                <th className="px-4 py-2.5 text-left font-medium">{t("col.tenant")}</th>
+                                <th className="px-4 py-2.5 text-left font-medium">{t("col.code")}</th>
+                                <th className="px-4 py-2.5 text-left font-medium">{t("col.daysLeft")}</th>
+                                <th className="px-4 py-2.5 text-left font-medium">{t("col.source")}</th>
+                                <th className="px-4 py-2.5 text-left font-medium">{t("col.redeemedAt")}</th>
+                                <th className="px-4 py-2.5"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((r) => (
+                                <tr key={r.id} className="border-b border-neutral-100 dark:border-neutral-800/60">
+                                    <td className="px-4 py-3">
+                                        {r.tenant ? (
+                                            <>
+                                                <div className="font-medium text-neutral-800 dark:text-neutral-200">{r.tenant.name}</div>
+                                                <div className="text-xs text-neutral-500 font-mono">{r.tenant.slug}</div>
+                                            </>
+                                        ) : (
+                                            <span className="text-xs text-neutral-500 italic">{t("tenantDeleted")}</span>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <span className="font-mono text-xs font-semibold">{r.couponCode || "—"}</span>
+                                        {r.freeMonths != null && (
+                                            <div className="text-xs text-neutral-500">
+                                                {t("giftOf", { months: r.freeMonths })}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <DaysLeftBadge row={r} />
+                                    </td>
+                                    <td className="px-4 py-3 text-xs text-neutral-600 dark:text-neutral-400">
+                                        {r.source && KNOWN_SOURCES.includes(r.source) ? t(`source.${r.source}`) : "—"}
+                                    </td>
+                                    <td className="px-4 py-3 text-xs text-neutral-600 dark:text-neutral-400">
+                                        {new Date(r.redeemedAt).toLocaleDateString()}
+                                    </td>
+                                    <td className="px-4 py-3 text-right">
+                                        {!r.revoked && (
+                                            <button
+                                                onClick={() => setRevoking(r)}
+                                                className="text-xs text-red-600 dark:text-red-400 hover:underline inline-flex items-center gap-1"
+                                            >
+                                                <Ban className="w-3.5 h-3.5" />
+                                                {t("revoke")}
+                                            </button>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {revoking && (
+                <RevokeModal
+                    redemption={revoking}
+                    onClose={() => setRevoking(null)}
+                    onSuccess={() => { setRevoking(null); onChanged(); }}
+                />
+            )}
+        </div>
+    );
+}
+
+function DaysLeftBadge({ row }: { row: Redemption }) {
+    const t = useTranslations("couponsPage");
+
+    if (row.revoked) {
+        return (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-neutral-500/10 text-neutral-500" title={row.revokeReason || undefined}>
+                {t("revoked")}
+            </span>
+        );
+    }
+    if (row.daysRemaining == null) {
+        return <span className="text-xs text-neutral-500">—</span>;
+    }
+    if (row.daysRemaining === 0) {
+        return (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-red-500/10 text-red-600 dark:text-red-400">
+                {t("daysExpired")}
+            </span>
+        );
+    }
+    const urgent = row.daysRemaining <= 7;
+    return (
+        <span
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${
+                urgent
+                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+            }`}
+            title={row.trialEndsAt ? new Date(row.trialEndsAt).toLocaleDateString() : undefined}
+        >
+            {t("daysLeft", { n: row.daysRemaining })}
+        </span>
+    );
+}
+
+/**
+ * Revocar es destructivo para el cliente: le devuelve la suscripción al estado
+ * previo al canje, así que si el regalo ya se consumió puede quedar vencido en
+ * el acto. Por eso el modal dice a qué fecha vuelve y pide motivo.
+ */
+function RevokeModal({
+    redemption,
+    onClose,
+    onSuccess,
+}: {
+    redemption: Redemption;
+    onClose: () => void;
+    onSuccess: () => void;
+}) {
+    const t = useTranslations("couponsPage");
+    const tc = useTranslations("common");
+    const [reason, setReason] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    async function handleRevoke() {
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await api.revokeCouponRedemption(redemption.id, reason.trim() || undefined);
+            if (res.success) onSuccess();
+            else {
+                const errCode = (res as any).errorCode;
+                setError(
+                    errCode && KNOWN_REVOKE_ERRORS.includes(errCode)
+                        ? t(`revokeErrors.${errCode}`)
+                        : ((res as any).error || tc("connectionError")),
+                );
+            }
+        } catch (e: any) {
+            setError(e?.message || tc("connectionError"));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    return (
+        <ModalShell
+            title={t("revokeTitle")}
+            onClose={onClose}
+            footer={
+                <>
+                    <button onClick={onClose} disabled={busy} className="px-3 py-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-sm">{tc("cancel")}</button>
+                    <button
+                        onClick={handleRevoke}
+                        disabled={busy}
+                        className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-lg text-sm font-medium inline-flex items-center gap-2"
+                    >
+                        {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+                        {t("revoke")}
+                    </button>
+                </>
+            }
+        >
+            <div className="flex items-start gap-2 text-sm bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
+                <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-neutral-700 dark:text-neutral-300">
+                    {t("revokeWarning", {
+                        tenant: redemption.tenant?.name || redemption.tenantId,
+                        code: redemption.couponCode || "—",
+                    })}
+                </p>
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium mb-1">{t("revokeReason")}</label>
+                <input
+                    type="text"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    maxLength={300}
+                    placeholder={t("revokeReasonPlaceholder")}
+                    className={inputClasses}
+                />
+                <p className="text-xs text-neutral-500 mt-1">{t("revokeReasonHint")}</p>
+            </div>
+
+            {error && <p className="text-sm text-red-600 bg-red-500/10 p-2 rounded">{error}</p>}
+        </ModalShell>
     );
 }
 
@@ -751,6 +1013,7 @@ function RedemptionsModal({ coupon, onClose }: { coupon: Coupon; onClose: () => 
                     <thead className="text-xs text-neutral-500 dark:text-neutral-400 border-b border-neutral-200 dark:border-neutral-800">
                         <tr>
                             <th className="py-2 text-left font-medium">{t("col.tenant")}</th>
+                            <th className="py-2 text-left font-medium">{t("col.daysLeft")}</th>
                             <th className="py-2 text-left font-medium">{t("col.source")}</th>
                             <th className="py-2 text-left font-medium">{t("col.redeemedAt")}</th>
                         </tr>
@@ -768,11 +1031,10 @@ function RedemptionsModal({ coupon, onClose }: { coupon: Coupon; onClose: () => 
                                         <span className="text-xs text-neutral-500 italic">{t("tenantDeleted")}</span>
                                     )}
                                 </td>
+                                <td className="py-2.5"><DaysLeftBadge row={r} /></td>
                                 <td className="py-2.5 text-xs text-neutral-600 dark:text-neutral-400">
                                     {/* Clave dinámica acotada: next-intl lanza si la clave no existe. */}
-                                    {r.metadata?.source && KNOWN_SOURCES.includes(r.metadata.source)
-                                        ? t(`source.${r.metadata.source}`)
-                                        : "—"}
+                                    {r.source && KNOWN_SOURCES.includes(r.source) ? t(`source.${r.source}`) : "—"}
                                 </td>
                                 <td className="py-2.5 text-xs text-neutral-600 dark:text-neutral-400">
                                     {new Date(r.redeemedAt).toLocaleString()}

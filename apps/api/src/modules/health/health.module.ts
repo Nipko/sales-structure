@@ -8,6 +8,7 @@ import { TelegramAlertService } from './telegram-alert.service';
 import { SmsAlertService } from './sms-alert.service';
 import { AlertConfigService } from './alert-config.service';
 import { SentryStatsService } from './sentry-stats.service';
+import { CouponAlertListener } from './coupon-alert.listener';
 import { MediaModule } from '../media/media.module';
 import { AIModule } from '../ai/ai.module';
 import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
@@ -26,7 +27,7 @@ import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
         ),
     ],
     controllers: [HealthController],
-    providers: [PlatformMonitorService, PlatformStorageService, IncidentService, TelegramAlertService, SmsAlertService, AlertConfigService, SentryStatsService],
+    providers: [PlatformMonitorService, PlatformStorageService, IncidentService, TelegramAlertService, SmsAlertService, AlertConfigService, SentryStatsService, CouponAlertListener],
     exports: [PlatformMonitorService, PlatformStorageService, IncidentService, AlertConfigService],
 })
 export class HealthModule { }

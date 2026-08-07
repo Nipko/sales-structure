@@ -5588,6 +5588,24 @@
     "redemptionsTitle": "Canjes",
     "redemptionsEmpty": "Todavía nadie canjeó este cupón.",
     "tenantDeleted": "Cuenta eliminada",
+    "controlTitle": "Control de canjes",
+    "controlCount": "{active} vigentes de {total}",
+    "controlEmpty": "Todavía no hay cuentas que hayan entrado por cupón.",
+    "giftOf": "{months} mes(es)",
+    "daysLeft": "{n} días",
+    "daysExpired": "Vencido",
+    "revoked": "Revocado",
+    "revoke": "Revocar",
+    "revokeTitle": "Revocar el regalo",
+    "revokeWarning": "Vas a cortarle a {tenant} el regalo del cupón {code}. La suscripción vuelve exactamente al estado que tenía antes del canje, así que si el tiempo regalado ya se consumió puede quedar vencida de inmediato. El cupo se libera para otra cuenta y el cliente no podrá volver a canjear el mismo código.",
+    "revokeReason": "Motivo",
+    "revokeReasonPlaceholder": "Ej. canje por error / cuenta duplicada",
+    "revokeReasonHint": "Queda en la auditoría y en el aviso de Telegram.",
+    "revokeErrors": {
+      "redemption_not_found": "Este canje ya no existe.",
+      "already_revoked": "Este canje ya estaba revocado.",
+      "active_provider_subscription": "Esta cuenta ya pasó a una suscripción con cobro automático. Revocarla dejaría las fechas locales fuera de sincronía con el cobro; gestionalo desde Billing Ops."
+    },
     "type": {
       "percent_off": "% Descuento",
       "amount_off": "Monto fijo",
@@ -5615,7 +5633,8 @@
       "status": "Estado",
       "tenant": "Cuenta",
       "source": "Origen",
-      "redeemedAt": "Fecha"
+      "redeemedAt": "Fecha",
+      "daysLeft": "Días restantes"
     },
     "empty": {
       "title": "No hay cupones creados",
@@ -7405,7 +7424,11 @@
   },
   "helpAssistant": {
     "launcherTooltip": "Asistente de Ayuda",
-    "greetingBubble": "¡Hola! Soy Parallly 👋 ¿Te ayudo?",
+    "announce": {
+      "title": "¡Hola! Soy Parallly 👋",
+      "body": "Soy tu asistente de IA. Pregúntame lo que necesites y te guío paso a paso.",
+      "cta": "Pregúntame algo"
+    },
     "drawerTitle": "Guía & Soporte",
     "drawerSubtitle": "Tu asistente interactivo paso a paso",
     "searchPlaceholder": "Buscar guías o preguntas frecuentes...",

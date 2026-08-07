@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { SubscriptionStatus } from './types/subscription-status.enum';
@@ -76,6 +77,7 @@ export class CouponsService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
+        private readonly events: EventEmitter2,
     ) {}
 
     // ── Admin CRUD ─────────────────────────────────────────────────
@@ -338,10 +340,14 @@ export class CouponsService {
                         tenantId: input.tenantId,
                         subscriptionId: sub.id,
                         cyclesRemaining: null,
+                        // El estado previo se guarda para poder DESHACER el regalo:
+                        // `revokeRedemption` lo restaura tal cual estaba. Sin esto,
+                        // cortar un cupón sería adivinar a qué fecha volver.
                         metadata: {
                             source: input.source,
                             freeMonths: months,
                             previousTrialEndsAt: sub.trialEndsAt?.toISOString() ?? null,
+                            previousCurrentPeriodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
                             previousStatus: sub.status,
                             newTrialEndsAt: newTrialEnd.toISOString(),
                             redeemedByUserId: input.actorUserId ?? null,
@@ -396,6 +402,20 @@ export class CouponsService {
             `[Coupons] ${coupon.code} redeemed by tenant ${input.tenantId} (${input.source}) — trial extended ${months}m to ${newTrialEnd.toISOString()}`,
         );
 
+        // El aviso al dueño sale por evento y no llamando a Telegram desde acá:
+        // así este servicio no depende del módulo de alertas (que arrastra colas y
+        // AIModule) y un fallo de la notificación no puede tumbar un canje ya hecho.
+        const tenantName = await this.tenantName(input.tenantId);
+        this.events.emit('coupon.redeemed', {
+            code: coupon.code,
+            tenantId: input.tenantId,
+            tenantName,
+            freeMonths: months,
+            source: input.source,
+            trialEndsAt: newTrialEnd,
+            description: coupon.description ?? null,
+        });
+
         return {
             redemptionId,
             code: coupon.code,
@@ -430,7 +450,145 @@ export class CouponsService {
             tenants.map((t: RedemptionTenantRef): [string, RedemptionTenantRef] => [t.id, t]),
         );
 
-        return rows.map((r: CouponRedemptionRow) => ({ ...r, tenant: byId.get(r.tenantId) ?? null }));
+        return rows.map((r: CouponRedemptionRow) => this.decorateRedemption(r, byId.get(r.tenantId) ?? null));
+    }
+
+    /**
+     * Todos los canjes, de todos los cupones — la vista de control del dueño:
+     * quién entró por cupón, con cuál, y cuántos días de regalo le quedan.
+     */
+    async listAllRedemptions(limit = 300) {
+        const rows = await this.prisma.billingCouponRedemption.findMany({
+            orderBy: { redeemedAt: 'desc' },
+            take: limit,
+            include: { coupon: true },
+        });
+        if (rows.length === 0) return [];
+
+        const tenantIds = [...new Set(rows.map((r: CouponRedemptionRow) => r.tenantId))];
+        const tenants = await this.prisma.tenant.findMany({
+            where: { id: { in: tenantIds } },
+            select: { id: true, name: true, slug: true, subscriptionStatus: true, trialEndsAt: true },
+        });
+        const byId = new Map<string, RedemptionTenantRef>(
+            tenants.map((t: RedemptionTenantRef): [string, RedemptionTenantRef] => [t.id, t]),
+        );
+
+        return rows.map((r: any) => this.decorateRedemption(r, byId.get(r.tenantId) ?? null, r.coupon));
+    }
+
+    /**
+     * Corta un regalo en curso y devuelve la suscripción al estado exacto que
+     * tenía antes del canje (fechas y estado guardados en `metadata`).
+     *
+     * La fila NO se borra: se marca revocada. Borrarla dejaría al tenant canjear
+     * el mismo código otra vez —el UNIQUE (couponId, tenantId) es justamente lo
+     * que lo impide— y además se perdería el rastro de que el regalo existió.
+     * El contador global sí se devuelve, para que el cupo quede libre para otro.
+     */
+    async revokeRedemption(redemptionId: string, actorUserId?: string, reason?: string) {
+        const redemption: any = await this.prisma.billingCouponRedemption.findUnique({
+            where: { id: redemptionId },
+            include: { coupon: true },
+        });
+        if (!redemption) throw new NotFoundException({ error: 'redemption_not_found' });
+
+        const meta = (redemption.metadata || {}) as Record<string, any>;
+        if (meta.revokedAt) {
+            throw new BadRequestException({ error: 'already_revoked', message: 'This redemption was already revoked.' });
+        }
+
+        const sub = await this.prisma.billingSubscription.findUnique({
+            where: { tenantId: redemption.tenantId },
+        });
+
+        // Si la suscripción ya tiene cobro automático vivo, el tenant pasó a pagar
+        // después del regalo: pisarle las fechas ahora lo dejaría en un estado que
+        // no se corresponde con lo que MercadoPago va a cobrar.
+        if (sub?.providerSubscriptionId) {
+            throw new BadRequestException({
+                error: 'active_provider_subscription',
+                message: 'Tenant already moved to a paid subscription; revoking would desync local dates from the provider.',
+            });
+        }
+
+        const restoredTrialEnd = meta.previousTrialEndsAt ? new Date(meta.previousTrialEndsAt) : null;
+        const restoredPeriodEnd = meta.previousCurrentPeriodEnd
+            ? new Date(meta.previousCurrentPeriodEnd)
+            // Los canjes anteriores a este cambio no guardaron el período: durante
+            // el trial coincide con trialEndsAt, así que es la mejor reconstrucción.
+            : restoredTrialEnd;
+        const restoredStatus = typeof meta.previousStatus === 'string'
+            ? meta.previousStatus
+            : SubscriptionStatus.TRIALING;
+
+        await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            if (sub) {
+                await tx.billingSubscription.update({
+                    where: { id: sub.id },
+                    data: {
+                        trialEndsAt: restoredTrialEnd,
+                        currentPeriodEnd: restoredPeriodEnd,
+                        status: restoredStatus,
+                    },
+                });
+                await tx.tenant.update({
+                    where: { id: redemption.tenantId },
+                    data: {
+                        trialEndsAt: restoredTrialEnd,
+                        currentPeriodEnd: restoredPeriodEnd,
+                        subscriptionStatus: restoredStatus,
+                    },
+                });
+            }
+
+            await tx.billingCouponRedemption.update({
+                where: { id: redemptionId },
+                data: {
+                    metadata: {
+                        ...meta,
+                        revokedAt: new Date().toISOString(),
+                        revokedByUserId: actorUserId ?? null,
+                        revokeReason: reason ?? null,
+                    },
+                },
+            });
+
+            // Nunca por debajo de 0: un contador negativo rompería el tope global.
+            await tx.$executeRaw`
+                UPDATE "public"."billing_coupons"
+                   SET "redemption_count" = GREATEST("redemption_count" - 1, 0),
+                       "updated_at" = NOW()
+                 WHERE "id" = ${redemption.couponId}
+            `;
+        });
+
+        await this.redis.del(`tenant_plan:${redemption.tenantId}`);
+        await this.redis.del(`sub_status:${redemption.tenantId}`);
+
+        await this.writeAudit(actorUserId, 'coupon_redemption_revoked', redemption.couponId, {
+            code: redemption.coupon?.code,
+            redemptionId,
+            tenantId: redemption.tenantId,
+            reason: reason ?? null,
+            restoredTrialEndsAt: restoredTrialEnd?.toISOString() ?? null,
+            restoredStatus,
+        }, redemption.tenantId);
+
+        const tenantName = await this.tenantName(redemption.tenantId);
+        this.events.emit('coupon.revoked', {
+            code: redemption.coupon?.code ?? '—',
+            tenantId: redemption.tenantId,
+            tenantName,
+            reason: reason ?? null,
+            restoredTrialEndsAt: restoredTrialEnd,
+        });
+
+        this.logger.log(
+            `[Coupons] redemption ${redemptionId} (${redemption.coupon?.code}) revoked for tenant ${redemption.tenantId}`,
+        );
+
+        return { redemptionId, restoredTrialEndsAt: restoredTrialEnd, restoredStatus };
     }
 
     /** Canjes de un tenant — para pintar el badge de "descuento aplicado". */
@@ -443,6 +601,60 @@ export class CouponsService {
     }
 
     // ── Internals ──────────────────────────────────────────────────
+
+    /**
+     * Agrega a cada canje lo que el dueño necesita ver de un vistazo: si sigue
+     * vigente y cuántos días de regalo quedan.
+     *
+     * Los días se calculan contra el `trialEndsAt` ACTUAL del tenant, no contra el
+     * que se escribió al canjear: si después cambió de plan, pagó o se le revocó,
+     * lo que importa es lo que le queda hoy, no lo que se le prometió.
+     */
+    private decorateRedemption(
+        row: any,
+        tenant: RedemptionTenantRef | null,
+        coupon?: { code?: string; freeMonths?: number | null } | null,
+    ) {
+        const meta = (row.metadata || {}) as Record<string, any>;
+        const revokedAt: string | null = meta.revokedAt ?? null;
+        const trialEndsAt: Date | null = tenant?.trialEndsAt ?? null;
+
+        let daysRemaining: number | null = null;
+        if (!revokedAt && trialEndsAt) {
+            const ms = trialEndsAt.getTime() - Date.now();
+            daysRemaining = ms <= 0 ? 0 : Math.ceil(ms / 86_400_000);
+        }
+
+        return {
+            id: row.id,
+            couponId: row.couponId,
+            couponCode: coupon?.code ?? null,
+            freeMonths: meta.freeMonths ?? coupon?.freeMonths ?? null,
+            tenantId: row.tenantId,
+            tenant,
+            redeemedAt: row.redeemedAt,
+            source: meta.source ?? null,
+            revoked: !!revokedAt,
+            revokedAt,
+            revokeReason: meta.revokeReason ?? null,
+            trialEndsAt,
+            daysRemaining,
+            subscriptionStatus: tenant?.subscriptionStatus ?? null,
+        };
+    }
+
+    /** Nombre del tenant para los avisos; nunca hace fallar al que lo llama. */
+    private async tenantName(tenantId: string): Promise<string> {
+        try {
+            const t = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { name: true },
+            });
+            return t?.name || tenantId;
+        } catch {
+            return tenantId;
+        }
+    }
 
     /**
      * Normaliza la lista de planes elegibles a SLUGS y rechaza los que no existen.

@@ -3,7 +3,7 @@ import {
     Req, UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { IsArray, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -41,6 +41,12 @@ class ValidateCouponDto {
 
 class RedeemCouponDto {
     @IsString() code!: string;
+}
+
+class RevokeRedemptionDto {
+    // El motivo queda en auditoría y en el aviso de Telegram: cortarle el regalo a
+    // un cliente sin dejar dicho por qué es lo que después nadie puede explicar.
+    @IsOptional() @IsString() @MaxLength(300) reason?: string;
 }
 
 /**
@@ -90,6 +96,29 @@ export class CouponsController {
     async deactivate(@Param('id') id: string, @Req() req: any) {
         await this.couponsService.deactivate(id, req.user?.sub);
         return { success: true };
+    }
+
+    /**
+     * Todos los canjes de todos los cupones. Va ANTES de `admin/:id/...` porque
+     * si no, Nest matchearía 'redemptions' como un :id.
+     */
+    @Get('admin/redemptions')
+    @Roles('super_admin')
+    async allRedemptions() {
+        const data = await this.couponsService.listAllRedemptions();
+        return { success: true, data };
+    }
+
+    /** Corta el regalo y devuelve la suscripción al estado previo al canje. */
+    @Post('admin/redemptions/:redemptionId/revoke')
+    @Roles('super_admin')
+    async revokeRedemption(
+        @Param('redemptionId') redemptionId: string,
+        @Body() body: RevokeRedemptionDto,
+        @Req() req: any,
+    ) {
+        const data = await this.couponsService.revokeRedemption(redemptionId, req.user?.sub, body?.reason);
+        return { success: true, data };
     }
 
     @Get('admin/:id/redemptions')

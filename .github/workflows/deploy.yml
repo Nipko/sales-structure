@@ -395,6 +395,9 @@ jobs:
           PROD_MP_ACCESS_TOKEN: ${{ secrets.MP_ACCESS_TOKEN }}
           PROD_MP_WEBHOOK_SECRET: ${{ secrets.MP_WEBHOOK_SECRET }}
           PROD_MP_PUBLIC_KEY: ${{ secrets.MP_PUBLIC_KEY }}
+          # PIN del dueño para emitir cupones de alto impacto. Opcional: si el
+          # secret no está, los cupones de alto impacto se bloquean (fail-closed).
+          PROD_OWNER_COUPON_PIN: ${{ secrets.OWNER_COUPON_PIN }}
           # Optional but strongly recommended: numeric User/collector ID shown
           # by the verified MCO merchant. The preflight compares without logging it.
           PROD_MP_EXPECTED_COLLECTOR_ID: ${{ secrets.MP_EXPECTED_COLLECTOR_ID }}
@@ -458,7 +461,7 @@ jobs:
             PROD_BULL_BOARD_TOKEN,PROD_GRAFANA_PASSWORD,PROD_JWT_REFRESH_SECRET,
             PROD_MS_AUTH_CLIENT_ID,PROD_MS_AUTH_CLIENT_SECRET,
             PROD_MS_CLIENT_ID,PROD_MS_CLIENT_SECRET,
-            PROD_MP_ACCESS_TOKEN,PROD_MP_WEBHOOK_SECRET,PROD_MP_PUBLIC_KEY,PROD_MP_EXPECTED_COLLECTOR_ID,
+            PROD_MP_ACCESS_TOKEN,PROD_MP_WEBHOOK_SECRET,PROD_MP_PUBLIC_KEY,PROD_MP_EXPECTED_COLLECTOR_ID,PROD_OWNER_COUPON_PIN,
             PROD_FACTUS_BASE_URL,PROD_FACTUS_CLIENT_ID,PROD_FACTUS_CLIENT_SECRET,PROD_FACTUS_USERNAME,PROD_FACTUS_PASSWORD,
             PROD_MP_FX_CO,PROD_MP_FX_AR,PROD_MP_FX_MX,PROD_MP_FX_CL,PROD_MP_FX_PE,PROD_MP_FX_UY,PROD_MP_FX_BR,
             PROD_HUBSPOT_CLIENT_ID,PROD_HUBSPOT_CLIENT_SECRET,
@@ -589,6 +592,11 @@ jobs:
             echo "MP_PUBLIC_KEY=${PROD_MP_PUBLIC_KEY}" >> .env
             echo "MP_EXPECTED_COLLECTOR_ID=${PROD_MP_EXPECTED_COLLECTOR_ID}" >> .env
             echo "MP_WEBHOOK_URL=https://api.parallly-chat.cloud/api/v1/billing/webhook/mercadopago" >> .env
+            # PIN del dueño para cupones de alto impacto / que superan la cuota
+            # mensual. Vive en Secrets (no en la DB) para que ningún super_admin
+            # pueda resetearlo desde el panel y vaciar el control. Si no se setea,
+            # los cupones de rutina funcionan igual; los de alto impacto se bloquean.
+            echo "OWNER_COUPON_PIN=${PROD_OWNER_COUPON_PIN}" >> .env
             echo "# Factus (DIAN electronic invoicing — Colombia)" >> .env
             echo "FACTUS_BASE_URL=${PROD_FACTUS_BASE_URL:-https://api-sandbox.factus.com.co}" >> .env
             echo "FACTUS_CLIENT_ID=${PROD_FACTUS_CLIENT_ID}" >> .env

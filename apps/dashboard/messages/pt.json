@@ -5554,7 +5554,8 @@
       "already_redeemed": "Você já resgatou este cupom antes.",
       "no_subscription": "Você ainda não tem uma assinatura para aplicar o cupom.",
       "type_not_supported": "Este cupom não pode mais ser resgatado. Fale com a gente e resolvemos.",
-      "active_provider_subscription": "Você tem uma assinatura com cobrança automática ativa. Fale com a gente para aplicar o cupom sem cobrança duplicada."
+      "active_provider_subscription": "Você tem uma assinatura com cobrança automática ativa. Fale com a gente para aplicar o cupom sem cobrança duplicada.",
+      "stacking_cap_reached": "Esta conta já atingiu o máximo de meses grátis acumuláveis por cupons."
     },
     "limitReached": "Você atingiu o limite de {limit} {resource} no seu plano atual ({current}/{limit}).",
     "upgradePlan": "Melhorar plano",
@@ -5663,7 +5664,10 @@
       "invalid_batch_label": "A palavra deve ter 2-20 caracteres, apenas letras e números.",
       "invalid_count": "A quantidade deve estar entre 1 e 2000.",
       "invalid_valid_days": "A validade deve estar entre 1 e 365 dias.",
-      "code_space_exhausted": "Não foi possível gerar códigos únicos com essa palavra. Tente outra."
+      "code_space_exhausted": "Não foi possível gerar códigos únicos com essa palavra. Tente outra.",
+      "reason_required": "Escreva um motivo para criar o cupom.",
+      "owner_pin_not_configured": "Esta emissão é de alto impacto ou ultrapassa a cota mensal e precisa do PIN do dono, que não está configurado no servidor.",
+      "invalid_owner_pin": "O PIN do dono é obrigatório ou está incorreto para esta emissão de alto impacto."
     },
     "col": {
       "code": "Código",
@@ -5683,6 +5687,34 @@
     "empty": {
       "title": "Sem cupons criados",
       "hint": "Crie um cupom para uma campanha promocional ou presenteie meses grátis a tenants específicos."
+    },
+    "gov": {
+      "title": "Governança de cupons",
+      "configure": "Configurar",
+      "thisMonth": "Presenteado este mês",
+      "months": "meses",
+      "remaining": "Restam {n} meses da cota",
+      "noCap": "Sem cota mensal configurada",
+      "pinOn": "PIN do dono ativo",
+      "pinOff": "PIN do dono não configurado",
+      "configTitle": "Configurar governança",
+      "capLabel": "Cota mensal (meses grátis)",
+      "capHint": "Teto de meses grátis emitidos por mês. Ultrapassar exige o PIN do dono. Vazio = sem cota.",
+      "noCapPlaceholder": "Sem teto",
+      "thresholdLabel": "Limiar de alto impacto (meses)",
+      "thresholdHint": "Uma emissão que presenteie essa quantidade de meses grátis ou mais (ou um cupom sem teto de resgates) pede o PIN do dono.",
+      "stackLabel": "Teto de meses por tenant",
+      "stackHint": "Máximo de meses grátis que um mesmo tenant pode acumular resgatando vários cupons. Vazio = sem teto.",
+      "noStackPlaceholder": "Sem teto",
+      "requireReason": "Exigir motivo ao criar cupons",
+      "pinConfigured": "O PIN do dono está configurado no servidor (OWNER_COUPON_PIN). Será pedido em emissões de alto impacto ou que ultrapassem a cota.",
+      "pinNotConfigured": "O PIN do dono NÃO está configurado (OWNER_COUPON_PIN). Sem ele, as emissões de alto impacto ficam bloqueadas. Configure nos Secrets do servidor.",
+      "reasonLabel": "Motivo",
+      "reasonPlaceholder": "Ex. campanha de lançamento Q3",
+      "pinLabel": "PIN do dono",
+      "pinPlaceholder": "Só se for de alto impacto",
+      "pinFieldHint": "Obrigatório para cupons de alto impacto ou que ultrapassem a cota mensal. Deixe vazio se não se aplica.",
+      "batchImpact": "Este lote emite {n} meses grátis no total."
     }
   },
   "financials": {

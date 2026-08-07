@@ -5554,7 +5554,8 @@
       "already_redeemed": "Vous avez déjà utilisé ce code.",
       "no_subscription": "Vous n'avez pas encore d'abonnement auquel appliquer ce code.",
       "type_not_supported": "Ce code ne peut plus être utilisé. Contactez-nous et nous réglons ça.",
-      "active_provider_subscription": "Vous avez un abonnement à prélèvement automatique actif. Contactez-nous pour appliquer le code sans double facturation."
+      "active_provider_subscription": "Vous avez un abonnement à prélèvement automatique actif. Contactez-nous pour appliquer le code sans double facturation.",
+      "stacking_cap_reached": "Ce compte a déjà atteint le maximum de mois gratuits cumulables via des coupons."
     },
     "limitReached": "Vous avez atteint la limite de {limit} {resource} de votre plan actuel ({current}/{limit}).",
     "upgradePlan": "Améliorer le plan",
@@ -5663,7 +5664,10 @@
       "invalid_batch_label": "Le mot doit faire 2-20 caractères, lettres et chiffres uniquement.",
       "invalid_count": "La quantité doit être comprise entre 1 et 2000.",
       "invalid_valid_days": "La validité doit être comprise entre 1 et 365 jours.",
-      "code_space_exhausted": "Impossible de générer des codes uniques avec ce mot. Essayez-en un autre."
+      "code_space_exhausted": "Impossible de générer des codes uniques avec ce mot. Essayez-en un autre.",
+      "reason_required": "Saisissez un motif pour créer le coupon.",
+      "owner_pin_not_configured": "Cette émission est à fort impact ou dépasse le quota mensuel et nécessite le PIN du propriétaire, qui n'est pas défini sur le serveur.",
+      "invalid_owner_pin": "Le PIN du propriétaire est requis ou incorrect pour cette émission à fort impact."
     },
     "col": {
       "code": "Code",
@@ -5683,6 +5687,34 @@
     "empty": {
       "title": "Aucun code créé",
       "hint": "Créez un code pour une campagne promo ou offrez des mois gratuits à des tenants spécifiques."
+    },
+    "gov": {
+      "title": "Gouvernance des coupons",
+      "configure": "Configurer",
+      "thisMonth": "Offert ce mois-ci",
+      "months": "mois",
+      "remaining": "Il reste {n} mois du quota",
+      "noCap": "Aucun quota mensuel défini",
+      "pinOn": "PIN du propriétaire actif",
+      "pinOff": "PIN du propriétaire non défini",
+      "configTitle": "Configurer la gouvernance",
+      "capLabel": "Quota mensuel (mois gratuits)",
+      "capHint": "Plafond de mois gratuits émis par mois. Le dépasser exige le PIN du propriétaire. Vide = sans quota.",
+      "noCapPlaceholder": "Sans plafond",
+      "thresholdLabel": "Seuil de fort impact (mois)",
+      "thresholdHint": "Une émission offrant ce nombre de mois gratuits ou plus (ou un coupon sans plafond d'utilisations) exige le PIN du propriétaire.",
+      "stackLabel": "Plafond de mois par tenant",
+      "stackHint": "Maximum de mois gratuits qu'un même tenant peut cumuler via plusieurs coupons. Vide = sans plafond.",
+      "noStackPlaceholder": "Sans plafond",
+      "requireReason": "Exiger un motif à la création des coupons",
+      "pinConfigured": "Le PIN du propriétaire est défini sur le serveur (OWNER_COUPON_PIN). Il sera demandé pour les émissions à fort impact ou au-delà du quota.",
+      "pinNotConfigured": "Le PIN du propriétaire n'est PAS défini (OWNER_COUPON_PIN). Sans lui, les émissions à fort impact sont bloquées. Configurez-le dans les Secrets du serveur.",
+      "reasonLabel": "Motif",
+      "reasonPlaceholder": "Ex. campagne de lancement T3",
+      "pinLabel": "PIN du propriétaire",
+      "pinPlaceholder": "Seulement si fort impact",
+      "pinFieldHint": "Requis pour les émissions à fort impact ou au-delà du quota mensuel. Laissez vide sinon.",
+      "batchImpact": "Ce lot émet {n} mois gratuits au total."
     }
   },
   "financials": {

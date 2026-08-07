@@ -5,6 +5,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { SubscriptionStatus } from './types/subscription-status.enum';
+import { CouponGovernanceService } from './coupon-governance.service';
 
 /**
  * Formas declaradas a mano de las filas que se mapean acá.
@@ -79,6 +80,7 @@ export class CouponsService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly events: EventEmitter2,
+        private readonly governance: CouponGovernanceService,
     ) {}
 
     // ── Admin CRUD ─────────────────────────────────────────────────
@@ -118,6 +120,8 @@ export class CouponsService {
         appliesToPlanIds?: string[];
         maxRedemptions?: number;
         expiresAt?: string;
+        reason?: string;
+        ownerPin?: string;
         createdByUserId?: string;
     }) {
         const code = input.code.toUpperCase().trim();
@@ -139,6 +143,18 @@ export class CouponsService {
         if (!input.freeMonths || input.freeMonths < 1 || input.freeMonths > 24) {
             throw new BadRequestException({ error: 'invalid_months', message: 'freeMonths must be 1-24' });
         }
+
+        // Gobernanza: motivo + cuota mensual + PIN del dueno. Un cupon sin tope de
+        // canjes tiene potencial infinito (alto impacto) → exige PIN; uno con tope,
+        // freeMonths x maxRedemptions consume la cuota del mes.
+        const plannedGiftedMonths = input.maxRedemptions == null
+            ? Infinity
+            : input.freeMonths * input.maxRedemptions;
+        const gov = await this.governance.assertCanIssue({
+            reason: input.reason,
+            plannedGiftedMonths,
+            ownerPin: input.ownerPin,
+        });
 
         const existing = await this.prisma.billingCoupon.findUnique({ where: { code } });
         if (existing) throw new ConflictException({ error: 'code_already_exists' });
@@ -167,6 +183,18 @@ export class CouponsService {
             maxRedemptions: created.maxRedemptions,
             expiresAt: created.expiresAt,
             appliesToPlanIds,
+            reason: input.reason ?? null,
+            highImpact: gov.highImpact,
+        });
+
+        this.events.emit('coupon.issued', {
+            kind: 'single',
+            code: created.code,
+            freeMonths: created.freeMonths,
+            maxRedemptions: created.maxRedemptions,
+            plannedGiftedMonths: Number.isFinite(plannedGiftedMonths) ? plannedGiftedMonths : null,
+            highImpact: gov.highImpact,
+            reason: input.reason ?? null,
         });
 
         return created;
@@ -232,6 +260,8 @@ export class CouponsService {
         validDays: number;
         appliesToPlanIds?: string[];
         description?: string;
+        reason?: string;
+        ownerPin?: string;
         createdByUserId?: string;
     }): Promise<{
         batchId: string;
@@ -262,6 +292,15 @@ export class CouponsService {
                 message: 'validDays must be between 1 and 365',
             });
         }
+
+        // Gobernanza: un lote emite freeMonths x count meses-gratis de una vez —
+        // el caso de mayor volumen, y el que el dueno mas quiere controlar.
+        const plannedGiftedMonths = input.freeMonths * input.count;
+        const gov = await this.governance.assertCanIssue({
+            reason: input.reason,
+            plannedGiftedMonths,
+            ownerPin: input.ownerPin,
+        });
 
         const appliesToPlanIds = await this.normalizePlanSlugs(input.appliesToPlanIds);
 
@@ -303,6 +342,19 @@ export class CouponsService {
             validDays: input.validDays,
             expiresAt: expiresAt.toISOString(),
             appliesToPlanIds,
+            reason: input.reason ?? null,
+            plannedGiftedMonths,
+            highImpact: gov.highImpact,
+        });
+
+        this.events.emit('coupon.issued', {
+            kind: 'batch',
+            code: label,
+            freeMonths: input.freeMonths,
+            count: codes.length,
+            plannedGiftedMonths,
+            highImpact: gov.highImpact,
+            reason: input.reason ?? null,
         });
 
         this.logger.log(`[Coupons] batch ${label} (${batchId}) — ${codes.length} single-use codes, expire ${expiresAt.toISOString()}`);
@@ -511,6 +563,11 @@ export class CouponsService {
         }
 
         const months: number = coupon.freeMonths;
+
+        // Tope de stacking: un tenant no puede apilar cupones distintos y encadenar
+        // meses gratis sin límite. Se evalúa contra los meses YA canjeados vivos.
+        await this.governance.assertStackingAllowed(input.tenantId, months);
+
         // Base = el vencimiento futuro si todavía no pasó; si ya venció (tenant en
         // past_due que vuelve por una campaña de recuperación), se cuenta desde hoy.
         // Sumarle meses a una fecha pasada regalaría un mes que ya se consumió.

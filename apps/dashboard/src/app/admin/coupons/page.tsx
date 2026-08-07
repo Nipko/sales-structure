@@ -4,10 +4,11 @@ import { useEffect, useState, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
-import { Tag, Plus, Loader2, X, Power, Percent, DollarSign, Gift, Pencil, Users, AlertTriangle, RotateCcw, Ban, Wand2, Copy, Check, Download } from "lucide-react";
+import { Tag, Plus, Loader2, X, Power, Percent, DollarSign, Gift, Pencil, Users, AlertTriangle, RotateCcw, Ban, Wand2, Copy, Check, Download, ShieldCheck } from "lucide-react";
 import { SkeletonTable } from "@/components/ui/skeleton-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 
@@ -40,6 +41,19 @@ interface Batch {
     available: number;
     expired: number;
     disabled: number;
+}
+
+interface GovernanceSummary {
+    giftedMonthsThisMonth: number;
+    monthlyCap: number | null;
+    remaining: number | null;
+    pinConfigured: boolean;
+    config: {
+        monthlyGiftedMonthsCap: number | null;
+        requireReason: boolean;
+        highImpactThresholdMonths: number;
+        maxStackedMonthsPerTenant: number | null;
+    };
 }
 
 type BatchCodeStatus = "available" | "redeemed" | "expired" | "disabled";
@@ -87,9 +101,10 @@ const inputClasses =
 
 /** Claves i18n que sí existen: next-intl lanza si se le pide una inexistente. */
 const KNOWN_SOURCES = ["onboarding", "billing_settings", "admin"];
-const KNOWN_CREATE_ERRORS = ["invalid_code", "invalid_months", "code_already_exists", "type_not_supported", "unknown_plan"];
+const GOVERNANCE_ERRORS = ["reason_required", "owner_pin_not_configured", "invalid_owner_pin"];
+const KNOWN_CREATE_ERRORS = ["invalid_code", "invalid_months", "code_already_exists", "type_not_supported", "unknown_plan", ...GOVERNANCE_ERRORS];
 const KNOWN_REVOKE_ERRORS = ["redemption_not_found", "already_revoked", "active_provider_subscription"];
-const KNOWN_BATCH_ERRORS = ["invalid_batch_label", "invalid_count", "invalid_months", "invalid_valid_days", "code_space_exhausted", "unknown_plan"];
+const KNOWN_BATCH_ERRORS = ["invalid_batch_label", "invalid_count", "invalid_months", "invalid_valid_days", "code_space_exhausted", "unknown_plan", ...GOVERNANCE_ERRORS];
 
 /**
  * Convierte la fecha del `<input type=date>` en el ÚLTIMO instante de ese día.
@@ -136,6 +151,12 @@ export default function CouponsPage() {
         setLoadingBatches(false);
     }, []);
 
+    const [governance, setGovernance] = useState<GovernanceSummary | null>(null);
+    const loadGovernance = useCallback(async () => {
+        const res = await api.getCouponGovernance();
+        if (res.success && res.data) setGovernance(res.data as GovernanceSummary);
+    }, []);
+
     const load = useCallback(async () => {
         setLoading(true);
         const res = await api.listCoupons();
@@ -158,7 +179,8 @@ export default function CouponsPage() {
         load();
         loadRedemptions();
         loadBatches();
-    }, [user, router, load, loadRedemptions, loadBatches]);
+        loadGovernance();
+    }, [user, router, load, loadRedemptions, loadBatches, loadGovernance]);
 
     // Los planes se leen del catálogo real (billing_plans), no de una lista fija
     // en el front: si se agrega o desactiva un tier, el selector lo refleja solo.
@@ -230,6 +252,10 @@ export default function CouponsPage() {
                 tips={tHelp.raw("coupons.tips") as string[]}
                 mediaKey="coupons"
             />
+
+            {governance && (
+                <GovernancePanel summary={governance} onChanged={loadGovernance} />
+            )}
 
             {loading && <SkeletonTable rows={5} cols={6} />}
 
@@ -396,18 +422,21 @@ export default function CouponsPage() {
             {showGenerate && (
                 <GenerateBatchModal
                     plans={plans}
+                    governance={governance}
                     onClose={() => setShowGenerate(false)}
-                    onSuccess={() => { setShowGenerate(false); loadBatches(); }}
+                    onSuccess={() => { setShowGenerate(false); loadBatches(); loadGovernance(); }}
                 />
             )}
 
             {showCreate && (
                 <CreateCouponModal
                     plans={plans}
+                    governance={governance}
                     onClose={() => setShowCreate(false)}
                     onSuccess={() => {
                         setShowCreate(false);
                         load();
+                        loadGovernance();
                     }}
                 />
             )}
@@ -559,10 +588,12 @@ function BatchesSection({
  */
 function GenerateBatchModal({
     plans,
+    governance,
     onClose,
     onSuccess,
 }: {
     plans: PlanOption[];
+    governance: GovernanceSummary | null;
     onClose: () => void;
     onSuccess: () => void;
 }) {
@@ -573,6 +604,8 @@ function GenerateBatchModal({
     const [freeMonths, setFreeMonths] = useState(1);
     const [validDays, setValidDays] = useState(30);
     const [appliesToPlanIds, setAppliesToPlanIds] = useState<string[]>([]);
+    const [reason, setReason] = useState("");
+    const [ownerPin, setOwnerPin] = useState("");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [result, setResult] = useState<{ codes: string[]; batchLabel: string } | null>(null);
@@ -587,6 +620,8 @@ function GenerateBatchModal({
                 freeMonths,
                 validDays,
                 appliesToPlanIds,
+                reason: reason.trim() || undefined,
+                ownerPin: ownerPin || undefined,
             });
             if (res.success && res.data) {
                 const d = res.data as any;
@@ -714,6 +749,20 @@ function GenerateBatchModal({
             <p className="text-xs text-neutral-500 -mt-2">{t("batchValidDaysHint")}</p>
 
             <PlanScopePicker plans={plans} selected={appliesToPlanIds} onChange={setAppliesToPlanIds} />
+
+            {/* Impacto = meses-gratis que emite este lote. Si supera el umbral o la
+                cuota, el backend va a pedir el PIN del dueño. */}
+            <div className="text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg p-2.5">
+                {t("gov.batchImpact", { n: count * freeMonths })}
+            </div>
+
+            <GovernanceFields
+                governance={governance}
+                reason={reason}
+                setReason={setReason}
+                ownerPin={ownerPin}
+                setOwnerPin={setOwnerPin}
+            />
 
             {error && <p className="text-sm text-red-600 bg-red-500/10 p-2 rounded">{error}</p>}
         </ModalShell>
@@ -1118,6 +1167,199 @@ function PlanScopePicker({
     );
 }
 
+/**
+ * Panel de gobernanza del dueño: cuánto se regaló este mes vs el tope, y la
+ * config editable (cuota, umbral de alto impacto, tope de stacking, motivo).
+ * Es la respuesta a "hacer y hacer cupones sin control".
+ */
+function GovernancePanel({ summary, onChanged }: { summary: GovernanceSummary; onChanged: () => void }) {
+    const t = useTranslations("couponsPage");
+    const [editing, setEditing] = useState(false);
+
+    const cap = summary.monthlyCap;
+    const used = summary.giftedMonthsThisMonth;
+    const pct = cap && cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
+    const near = cap != null && used / (cap || 1) >= 0.8;
+
+    return (
+        <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-indigo-500" />
+                    <h2 className="text-sm font-semibold">{t("gov.title")}</h2>
+                </div>
+                <button onClick={() => setEditing(true)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                    {t("gov.configure")}
+                </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                <div>
+                    <div className="text-xs text-neutral-500">{t("gov.thisMonth")}</div>
+                    <div className="font-semibold tabular-nums">
+                        {used}
+                        {cap != null && <span className="text-neutral-400 font-normal"> / {cap}</span>}
+                        <span className="text-neutral-500 font-normal text-xs"> {t("gov.months")}</span>
+                    </div>
+                </div>
+                {cap != null && (
+                    <div className="flex-1 min-w-[160px]">
+                        <div className="h-2 w-full bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                            <div
+                                className={cn("h-full rounded-full", near ? "bg-amber-500" : "bg-indigo-500")}
+                                style={{ width: `${pct}%` }}
+                            />
+                        </div>
+                        {summary.remaining != null && (
+                            <div className="text-[11px] text-neutral-500 mt-1">
+                                {t("gov.remaining", { n: summary.remaining })}
+                            </div>
+                        )}
+                    </div>
+                )}
+                {cap == null && (
+                    <div className="text-xs text-amber-600 dark:text-amber-400">{t("gov.noCap")}</div>
+                )}
+                <div className="flex items-center gap-1.5 text-xs">
+                    <span className={cn("w-2 h-2 rounded-full", summary.pinConfigured ? "bg-emerald-500" : "bg-neutral-400")} />
+                    {summary.pinConfigured ? t("gov.pinOn") : t("gov.pinOff")}
+                </div>
+            </div>
+
+            {editing && (
+                <GovernanceConfigModal
+                    summary={summary}
+                    onClose={() => setEditing(false)}
+                    onSuccess={() => { setEditing(false); onChanged(); }}
+                />
+            )}
+        </div>
+    );
+}
+
+function GovernanceConfigModal({ summary, onClose, onSuccess }: { summary: GovernanceSummary; onClose: () => void; onSuccess: () => void }) {
+    const t = useTranslations("couponsPage");
+    const tc = useTranslations("common");
+    const c = summary.config;
+    const [cap, setCap] = useState<number | "">(c.monthlyGiftedMonthsCap ?? "");
+    const [threshold, setThreshold] = useState(c.highImpactThresholdMonths);
+    const [stack, setStack] = useState<number | "">(c.maxStackedMonthsPerTenant ?? "");
+    const [requireReason, setRequireReason] = useState(c.requireReason);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    async function handleSave() {
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await api.updateCouponGovernance({
+                // Vacío = sin tope. El backend lo interpreta como null.
+                monthlyGiftedMonthsCap: cap === "" ? null : Number(cap),
+                highImpactThresholdMonths: Number(threshold),
+                maxStackedMonthsPerTenant: stack === "" ? null : Number(stack),
+                requireReason,
+            });
+            if (res.success) onSuccess();
+            else setError((res as any).error || tc("connectionError"));
+        } catch (e: any) {
+            setError(e?.message || tc("connectionError"));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    return (
+        <ModalShell
+            title={t("gov.configTitle")}
+            onClose={onClose}
+            footer={
+                <>
+                    <button onClick={onClose} disabled={busy} className="px-3 py-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-sm">{tc("cancel")}</button>
+                    <button onClick={handleSave} disabled={busy} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg text-sm font-medium inline-flex items-center gap-2">
+                        {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+                        {tc("save")}
+                    </button>
+                </>
+            }
+        >
+            <div>
+                <label className="block text-sm font-medium mb-1">{t("gov.capLabel")}</label>
+                <input type="number" min={0} value={cap} onChange={(e) => setCap(e.target.value === "" ? "" : parseInt(e.target.value, 10))} placeholder={t("gov.noCapPlaceholder")} className={inputClasses} />
+                <p className="text-xs text-neutral-500 mt-1">{t("gov.capHint")}</p>
+            </div>
+            <div>
+                <label className="block text-sm font-medium mb-1">{t("gov.thresholdLabel")}</label>
+                <input type="number" min={1} value={threshold} onChange={(e) => setThreshold(parseInt(e.target.value || "1", 10))} className={inputClasses} />
+                <p className="text-xs text-neutral-500 mt-1">{t("gov.thresholdHint")}</p>
+            </div>
+            <div>
+                <label className="block text-sm font-medium mb-1">{t("gov.stackLabel")}</label>
+                <input type="number" min={0} value={stack} onChange={(e) => setStack(e.target.value === "" ? "" : parseInt(e.target.value, 10))} placeholder={t("gov.noStackPlaceholder")} className={inputClasses} />
+                <p className="text-xs text-neutral-500 mt-1">{t("gov.stackHint")}</p>
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={requireReason} onChange={(e) => setRequireReason(e.target.checked)} className="rounded border-neutral-300 dark:border-neutral-600" />
+                {t("gov.requireReason")}
+            </label>
+            <div className="text-xs text-neutral-500 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg p-3">
+                {summary.pinConfigured ? t("gov.pinConfigured") : t("gov.pinNotConfigured")}
+            </div>
+            {error && <p className="text-sm text-red-600 bg-red-500/10 p-2 rounded">{error}</p>}
+        </ModalShell>
+    );
+}
+
+/**
+ * Campos de motivo (obligatorio si la config lo pide) y PIN del dueño (para alto
+ * impacto / superar la cuota). Compartidos por crear y generar.
+ */
+function GovernanceFields({
+    governance,
+    reason,
+    setReason,
+    ownerPin,
+    setOwnerPin,
+}: {
+    governance: GovernanceSummary | null;
+    reason: string;
+    setReason: (v: string) => void;
+    ownerPin: string;
+    setOwnerPin: (v: string) => void;
+}) {
+    const t = useTranslations("couponsPage");
+    const reasonRequired = governance?.config.requireReason ?? true;
+    return (
+        <>
+            <div>
+                <label className="block text-sm font-medium mb-1">
+                    {t("gov.reasonLabel")}{reasonRequired && <span className="text-rose-500"> *</span>}
+                </label>
+                <input
+                    type="text"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    maxLength={300}
+                    placeholder={t("gov.reasonPlaceholder")}
+                    className={inputClasses}
+                />
+            </div>
+            <div>
+                <label className="block text-sm font-medium mb-1">{t("gov.pinLabel")}</label>
+                <input
+                    type="password"
+                    value={ownerPin}
+                    onChange={(e) => setOwnerPin(e.target.value)}
+                    maxLength={100}
+                    placeholder={t("gov.pinPlaceholder")}
+                    className={`${inputClasses} font-mono`}
+                    autoComplete="off"
+                />
+                <p className="text-xs text-neutral-500 mt-1">{t("gov.pinFieldHint")}</p>
+            </div>
+        </>
+    );
+}
+
 function ModalShell({
     title,
     onClose,
@@ -1156,10 +1398,12 @@ function ModalShell({
  */
 function CreateCouponModal({
     plans,
+    governance,
     onClose,
     onSuccess,
 }: {
     plans: PlanOption[];
+    governance: GovernanceSummary | null;
     onClose: () => void;
     onSuccess: () => void;
 }) {
@@ -1171,6 +1415,8 @@ function CreateCouponModal({
     const [appliesToPlanIds, setAppliesToPlanIds] = useState<string[]>([]);
     const [maxRedemptions, setMaxRedemptions] = useState<number | "">("");
     const [expiresAt, setExpiresAt] = useState("");
+    const [reason, setReason] = useState("");
+    const [ownerPin, setOwnerPin] = useState("");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -1186,6 +1432,8 @@ function CreateCouponModal({
                 // Vacío = todos los planes. Se manda igual para que el backend
                 // normalice y valide en un solo lugar.
                 appliesToPlanIds,
+                reason: reason.trim() || undefined,
+                ownerPin: ownerPin || undefined,
             };
             if (maxRedemptions !== "") body.maxRedemptions = Number(maxRedemptions);
             if (expiresAt) body.expiresAt = endOfDayIso(expiresAt);
@@ -1289,6 +1537,14 @@ function CreateCouponModal({
                     />
                 </div>
             </div>
+
+            <GovernanceFields
+                governance={governance}
+                reason={reason}
+                setReason={setReason}
+                ownerPin={ownerPin}
+                setOwnerPin={setOwnerPin}
+            />
 
             {error && <p className="text-sm text-red-600 bg-red-500/10 p-2 rounded">{error}</p>}
         </ModalShell>

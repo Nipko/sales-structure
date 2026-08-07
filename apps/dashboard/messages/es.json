@@ -5554,7 +5554,8 @@
       "already_redeemed": "Ya canjeaste este cupón antes.",
       "no_subscription": "Todavía no tenés una suscripción a la cual aplicar el cupón.",
       "type_not_supported": "Este cupón ya no se puede canjear. Escribinos y lo resolvemos.",
-      "active_provider_subscription": "Tenés una suscripción con cobro automático activo. Escribinos para aplicar el cupón sin que se te duplique el cobro."
+      "active_provider_subscription": "Tenés una suscripción con cobro automático activo. Escribinos para aplicar el cupón sin que se te duplique el cobro.",
+      "stacking_cap_reached": "Esta cuenta ya alcanzó el máximo de meses gratis acumulables por cupones."
     },
     "limitReached": "Has alcanzado el límite de {limit} {resource} en tu plan actual ({current}/{limit}).",
     "upgradePlan": "Mejorar plan",
@@ -5663,7 +5664,10 @@
       "invalid_batch_label": "La palabra debe tener 2-20 caracteres, solo letras y números.",
       "invalid_count": "La cantidad debe estar entre 1 y 2000.",
       "invalid_valid_days": "Los días de validez deben estar entre 1 y 365.",
-      "code_space_exhausted": "No se pudieron generar códigos únicos con esa palabra. Probá con otra."
+      "code_space_exhausted": "No se pudieron generar códigos únicos con esa palabra. Probá con otra.",
+      "reason_required": "Escribí un motivo para crear el cupón.",
+      "owner_pin_not_configured": "Esta emisión es de alto impacto o supera la cuota mensual y necesita el PIN del dueño, que no está configurado en el servidor.",
+      "invalid_owner_pin": "El PIN del dueño es requerido o incorrecto para esta emisión de alto impacto."
     },
     "col": {
       "code": "Código",
@@ -5683,6 +5687,34 @@
     "empty": {
       "title": "No hay cupones creados",
       "hint": "Creá un cupón para una campaña promocional o regalá meses gratis a tenants específicos."
+    },
+    "gov": {
+      "title": "Gobernanza de cupones",
+      "configure": "Configurar",
+      "thisMonth": "Regalado este mes",
+      "months": "meses",
+      "remaining": "Quedan {n} meses de la cuota",
+      "noCap": "Sin cuota mensual configurada",
+      "pinOn": "PIN del dueño activo",
+      "pinOff": "PIN del dueño no configurado",
+      "configTitle": "Configurar gobernanza",
+      "capLabel": "Cuota mensual (meses-gratis)",
+      "capHint": "Tope de meses-gratis emitidos por mes. Superarlo exige el PIN del dueño. Vacío = sin cuota.",
+      "noCapPlaceholder": "Sin tope",
+      "thresholdLabel": "Umbral de alto impacto (meses)",
+      "thresholdHint": "Una emisión que regale esta cantidad de meses-gratis o más (o un cupón sin tope de canjes) pide el PIN del dueño.",
+      "stackLabel": "Tope de meses por tenant",
+      "stackHint": "Máximo de meses-gratis que un mismo tenant puede acumular canjeando varios cupones. Vacío = sin tope.",
+      "noStackPlaceholder": "Sin tope",
+      "requireReason": "Exigir motivo al crear cupones",
+      "pinConfigured": "El PIN del dueño está configurado en el servidor (OWNER_COUPON_PIN). Se pedirá para emisiones de alto impacto o que superen la cuota.",
+      "pinNotConfigured": "El PIN del dueño NO está configurado (OWNER_COUPON_PIN). Sin él, las emisiones de alto impacto quedan bloqueadas. Configúralo en los Secrets del servidor.",
+      "reasonLabel": "Motivo",
+      "reasonPlaceholder": "Ej. campaña de lanzamiento Q3",
+      "pinLabel": "PIN del dueño",
+      "pinPlaceholder": "Solo si es de alto impacto",
+      "pinFieldHint": "Requerido para cupones de alto impacto o que superen la cuota mensual. Dejalo vacío si no aplica.",
+      "batchImpact": "Este lote emite {n} meses-gratis en total."
     }
   },
   "financials": {

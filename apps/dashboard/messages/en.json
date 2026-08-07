@@ -5554,7 +5554,8 @@
       "already_redeemed": "You've already redeemed this coupon.",
       "no_subscription": "You don't have a subscription yet to apply this coupon to.",
       "type_not_supported": "This coupon can no longer be redeemed. Contact us and we'll sort it out.",
-      "active_provider_subscription": "You have an active auto-billing subscription. Contact us to apply the coupon without double charging you."
+      "active_provider_subscription": "You have an active auto-billing subscription. Contact us to apply the coupon without double charging you.",
+      "stacking_cap_reached": "This account already reached the maximum of stacked free months from coupons."
     },
     "limitReached": "You've reached the limit of {limit} {resource} on your current plan ({current}/{limit}).",
     "upgradePlan": "Upgrade plan",
@@ -5663,7 +5664,10 @@
       "invalid_batch_label": "The word must be 2-20 chars, letters and digits only.",
       "invalid_count": "The amount must be between 1 and 2000.",
       "invalid_valid_days": "Validity must be between 1 and 365 days.",
-      "code_space_exhausted": "Could not mint unique codes with that word. Try another one."
+      "code_space_exhausted": "Could not mint unique codes with that word. Try another one.",
+      "reason_required": "Enter a reason to create the coupon.",
+      "owner_pin_not_configured": "This issuance is high-impact or over the monthly cap and needs the owner PIN, which is not set on the server.",
+      "invalid_owner_pin": "The owner PIN is required or incorrect for this high-impact issuance."
     },
     "col": {
       "code": "Code",
@@ -5683,6 +5687,34 @@
     "empty": {
       "title": "No coupons created yet",
       "hint": "Create a coupon for a promo campaign or gift free months to specific tenants."
+    },
+    "gov": {
+      "title": "Coupon governance",
+      "configure": "Configure",
+      "thisMonth": "Gifted this month",
+      "months": "months",
+      "remaining": "{n} months left of the cap",
+      "noCap": "No monthly cap set",
+      "pinOn": "Owner PIN active",
+      "pinOff": "Owner PIN not set",
+      "configTitle": "Configure governance",
+      "capLabel": "Monthly cap (free-months)",
+      "capHint": "Cap on free-months issued per month. Going over requires the owner PIN. Empty = no cap.",
+      "noCapPlaceholder": "No cap",
+      "thresholdLabel": "High-impact threshold (months)",
+      "thresholdHint": "An issuance gifting this many free-months or more (or a coupon with no redemption cap) requires the owner PIN.",
+      "stackLabel": "Cap of months per tenant",
+      "stackHint": "Max free-months one tenant can stack across several coupons. Empty = no cap.",
+      "noStackPlaceholder": "No cap",
+      "requireReason": "Require a reason when creating coupons",
+      "pinConfigured": "The owner PIN is set on the server (OWNER_COUPON_PIN). It will be asked for high-impact or over-quota issuances.",
+      "pinNotConfigured": "The owner PIN is NOT set (OWNER_COUPON_PIN). Without it, high-impact issuances are blocked. Configure it in the server Secrets.",
+      "reasonLabel": "Reason",
+      "reasonPlaceholder": "e.g. Q3 launch campaign",
+      "pinLabel": "Owner PIN",
+      "pinPlaceholder": "Only if high-impact",
+      "pinFieldHint": "Required for high-impact issuances or ones over the monthly cap. Leave empty otherwise.",
+      "batchImpact": "This batch issues {n} free-months in total."
     }
   },
   "financials": {

@@ -97,6 +97,7 @@ See `.env.example`. Critical:
 - LLM keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY` (≥1 required)
 - `SENTRY_DSN`, `GOOGLE_OAUTH_CLIENT_ID`, `SMTP_HOST/USER/PASS`, `MEDIA_STORAGE_PATH`
 - `MERCADOPAGO_ACCESS_TOKEN/PUBLIC_KEY/WEBHOOK_SECRET`
+- `OWNER_COUPON_PIN` — PIN del dueño para emitir cupones de alto impacto (lotes/emisiones grandes o que superan la cuota mensual). Vive en Secrets, NO en la DB (para que ningún super_admin pueda resetearlo). Si no se setea, los cupones de rutina funcionan igual pero los de alto impacto se bloquean. Gobernanza en `billing/coupon-governance.service.ts` (cuota mensual + motivo + PIN, config editable en `platform_settings` key `coupons.governance`)
 - `NEXT_PUBLIC_INSTAGRAM_APP_ID`, `NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI`, `NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID`
 
 **CRITICAL**: `.env` regenerated on every deploy from GitHub Actions Secrets. New env vars MUST be added to BOTH GitHub Secrets AND `.github/workflows/deploy.yml` or they're lost on next deploy.

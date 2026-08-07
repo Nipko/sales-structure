@@ -8,6 +8,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CouponsService } from './coupons.service';
+import { CouponGovernanceService } from './coupon-governance.service';
 
 /**
  * Solo se emiten cupones de meses gratis. Los tipos percent_off / amount_off
@@ -23,6 +24,17 @@ class CreateCouponDto {
     @IsOptional() @IsArray() @IsString({ each: true }) appliesToPlanIds?: string[];
     @IsOptional() @IsInt() @Min(1) maxRedemptions?: number;
     @IsOptional() @IsString() expiresAt?: string;
+    // Gobernanza: motivo (obligatorio según config) y PIN del dueño (para alto
+    // impacto / superar la cuota). Se validan en CouponGovernanceService.
+    @IsOptional() @IsString() @MaxLength(300) reason?: string;
+    @IsOptional() @IsString() @MaxLength(100) ownerPin?: string;
+}
+
+class GovernanceConfigDto {
+    @IsOptional() monthlyGiftedMonthsCap?: number | null;
+    @IsOptional() requireReason?: boolean;
+    @IsOptional() @IsInt() @Min(1) highImpactThresholdMonths?: number;
+    @IsOptional() maxStackedMonthsPerTenant?: number | null;
 }
 
 class UpdateCouponDto {
@@ -52,6 +64,8 @@ class GenerateBatchDto {
     @IsInt() @Min(1) @Max(365) validDays!: number;
     @IsOptional() @IsArray() @IsString({ each: true }) appliesToPlanIds?: string[];
     @IsOptional() @IsString() @MaxLength(300) description?: string;
+    @IsOptional() @IsString() @MaxLength(300) reason?: string;
+    @IsOptional() @IsString() @MaxLength(100) ownerPin?: string;
 }
 
 class RevokeRedemptionDto {
@@ -73,7 +87,28 @@ class RevokeRedemptionDto {
 @Controller('billing-coupons')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class CouponsController {
-    constructor(private readonly couponsService: CouponsService) {}
+    constructor(
+        private readonly couponsService: CouponsService,
+        private readonly governance: CouponGovernanceService,
+    ) {}
+
+    // ── Gobernanza (dueño / super_admin) ────────────────────────────
+
+    /** Resumen del mes: cuántos meses-gratis se regalaron vs el tope + config. */
+    @Get('admin/governance')
+    @Roles('super_admin')
+    async governanceSummary() {
+        const data = await this.governance.summary();
+        return { success: true, data };
+    }
+
+    /** Ajusta la cuota mensual, el umbral de alto impacto y el tope de stacking. */
+    @Put('admin/governance')
+    @Roles('super_admin')
+    async updateGovernance(@Body() body: GovernanceConfigDto) {
+        const data = await this.governance.set(body);
+        return { success: true, data };
+    }
 
     // ── Admin (super_admin) ─────────────────────────────────────────
 

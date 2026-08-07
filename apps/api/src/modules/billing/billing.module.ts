@@ -8,6 +8,7 @@ import { BillingAdminController } from './billing-admin.controller';
 import { BillingWebhookController } from './webhook.controller';
 import { BillingPublicController } from './billing-public.controller';
 import { CouponsService } from './coupons.service';
+import { CouponGovernanceService } from './coupon-governance.service';
 import { CouponsController } from './coupons.controller';
 import { BillingEmailService } from './billing-email.service';
 import { MockPaymentProvider } from './adapters/mock-payment-provider.adapter';
@@ -41,6 +42,7 @@ import { SmsCheckoutController } from './sms-checkout.controller';
         BillingService,
         BillingEmailService,
         CouponsService,
+        CouponGovernanceService,
         PaymentProviderFactory,
         MockPaymentProvider,
         MercadoPagoAdapter,

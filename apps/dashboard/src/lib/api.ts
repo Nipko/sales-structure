@@ -1325,7 +1325,16 @@ export const api = {
         validDays: number;
         appliesToPlanIds?: string[];
         description?: string;
+        reason?: string;
+        ownerPin?: string;
     }) => apiPost(`/billing-coupons/admin/batches`, data),
+    getCouponGovernance: () => apiGet(`/billing-coupons/admin/governance`),
+    updateCouponGovernance: (data: {
+        monthlyGiftedMonthsCap?: number | null;
+        requireReason?: boolean;
+        highImpactThresholdMonths?: number;
+        maxStackedMonthsPerTenant?: number | null;
+    }) => apiPut(`/billing-coupons/admin/governance`, data),
     listCouponBatchCodes: (batchId: string) => apiGet(`/billing-coupons/admin/batches/${batchId}/codes`),
     deactivateCouponBatch: (batchId: string) => apiDelete(`/billing-coupons/admin/batches/${batchId}`),
     revokeCouponRedemption: (redemptionId: string, reason?: string) =>

@@ -123,6 +123,7 @@ const KNOWN_COUPON_ERRORS = [
     "no_subscription",
     "type_not_supported",
     "active_provider_subscription",
+    "stacking_cap_reached",
 ];
 
 function MpSecurityScript() {

@@ -49,6 +49,42 @@ export class CouponAlertListener {
         ]);
     }
 
+    /**
+     * Aviso al mintear. El dueño quería enterarse cuando se "hacen y hacen
+     * cupones": esto cierra el círculo del lado de la EMISIÓN, no solo del canje.
+     * Solo alerta lo que vale la pena mirar —lotes y emisiones de alto impacto—,
+     * para no spamear con cada cupón suelto de 1 mes.
+     */
+    @OnEvent('coupon.issued')
+    async onIssued(payload: {
+        kind: 'single' | 'batch';
+        code: string;
+        freeMonths: number;
+        maxRedemptions?: number | null;
+        count?: number;
+        plannedGiftedMonths?: number | null;
+        highImpact?: boolean;
+        reason?: string | null;
+    }): Promise<void> {
+        if (payload.kind !== 'batch' && !payload.highImpact) return;
+
+        const potential = payload.plannedGiftedMonths != null
+            ? `${payload.plannedGiftedMonths} mes(es)-gratis`
+            : 'sin tope (potencial infinito)';
+        const head = payload.kind === 'batch' ? '🎟️ <b>Lote de cupones emitido</b>' : '🎫 <b>Cupón emitido</b>';
+
+        await this.notify([
+            payload.highImpact ? `${head} · <b>ALTO IMPACTO</b>` : head,
+            ``,
+            payload.kind === 'batch'
+                ? `<b>Lote:</b> <code>${esc(payload.code)}</code> · ${payload.count} códigos`
+                : `<b>Código:</b> <code>${esc(payload.code)}</code>`,
+            `<b>Regalo:</b> ${payload.freeMonths} mes(es) c/u`,
+            `<b>Potencial:</b> ${esc(potential)}`,
+            payload.reason ? `<b>Motivo:</b> ${esc(payload.reason)}` : '',
+        ]);
+    }
+
     @OnEvent('coupon.revoked')
     async onRevoked(payload: {
         code: string;

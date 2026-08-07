@@ -269,7 +269,7 @@ export function advanceStateFromMessage(state: BookingState, userText: string, s
     // Detect time selection from slots
     if (state.step === 'has_slots' && state.slots?.length) {
         // Match patterns like "9:30", "09:30", "a las 10", "10am", "10:00"
-        const timeMatch = text.match(/(\d{1,2})[:\.]?(\d{2})?\s*(am|pm)?/i);
+        const timeMatch = text.match(/(\d{1,2})[:.]?(\d{2})?\s*(am|pm)?/i);
         if (timeMatch) {
             let hour = parseInt(timeMatch[1]);
             const min = timeMatch[2] ? parseInt(timeMatch[2]) : 0;

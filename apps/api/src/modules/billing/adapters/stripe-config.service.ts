@@ -14,7 +14,9 @@ export class StripeConfigService {
             if (!key) {
                 throw new Error('STRIPE_SECRET_KEY not configured');
             }
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            // Carga perezosa: el SDK de Stripe solo se resuelve si el tenant
+            // realmente usa Stripe, así que no puede ser un import de arriba.
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
             const Stripe = require('stripe');
             this._client = new Stripe(key);
             this.logger.log('Stripe client initialized');

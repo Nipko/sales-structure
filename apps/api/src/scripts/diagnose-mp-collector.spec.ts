@@ -65,11 +65,12 @@ type DiagnoseModule = {
 
 // The executable remains plain CommonJS so it can run in the production API
 // image without ts-node. This spec lives under src because that is Jest's root.
-const {
-    ENDPOINTS,
-    diagnoseCollector,
-    runCli,
-} = require('../../scripts/diagnose-mp-collector.js') as DiagnoseModule;
+// El require va en su propia línea para que el disable quede pegado a él: con el
+// destructuring multilínea, ESLint reporta en la línea del require, no en la del
+// `const`, y el disable-next-line no llegaba.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const diagnoseModule = require('../../scripts/diagnose-mp-collector.js') as DiagnoseModule;
+const { ENDPOINTS, diagnoseCollector, runCli } = diagnoseModule;
 
 const ACTIVE_STATUS = {
     site_status: 'active',

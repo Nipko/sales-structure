@@ -541,7 +541,13 @@ export class ConversationsService {
         // 4.3 Check if this is a response to an attendance confirmation
         if (content?.text) {
             const textLower = content.text.toLowerCase().trim();
-            const cleanText = textLower.replace(/^[✅❌🔄\s]+/, '');
+            // Flag `u` obligatorio: 🔄 es U+1F504, fuera del BMP, así que sin `u`
+            // el motor lo mete en la clase como sus DOS mitades sustitutas por
+            // separado. Una de ellas (\uD83D) la comparten cientos de emojis
+            // (😀😊👍…), de modo que un mensaje que empiece con cualquiera de
+            // esos perdía su mitad alta y quedaba con un sustituto huérfano —
+            // texto corrupto justo antes de evaluar si el cliente confirmó.
+            const cleanText = textLower.replace(/^[✅❌🔄\s]+/u, '');
             const isYes = /^(s[ií]|yes|sim|oui|claro|por supuesto|asist[ií]|fui|s[ií],?\s*asist[ií]|confirmar asistencia|confirm attendance|confirmar presen[çc]a|confirmer|yes,?\s*i attended|sim,?\s*compareci|oui,?\s*j'y [eé]tais)\b/i.test(cleanText);
             const isNo = /^(no|n[aã]o|non|no pude|no asist[ií]|no fui|no pude asistir|could not attend|n[aã]o pude ir|je n'ai pas pu)\b/i.test(cleanText);
 
@@ -2163,7 +2169,7 @@ export class ConversationsService {
         // 4. Execute LLM Call using Router (with tool execution loop)
         try {
             const MAX_TOOL_ITERATIONS = 5;
-            let currentMessages = [...messages] as any[];
+            const currentMessages = [...messages] as any[];
             let finalResponse = '';
             // Media the LLM asked to send (e.g. product images), collected across
             // tool iterations and dispatched after the text reply.

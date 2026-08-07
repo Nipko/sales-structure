@@ -234,7 +234,7 @@ export class BroadcastService {
 
         // If A/B test, assign recipients to variants before queuing
         const isAbTest = campaign.is_ab_test === true;
-        let variantContentMap: Record<string, Record<string, any>> = {};
+        const variantContentMap: Record<string, Record<string, any>> = {};
 
         if (isAbTest) {
             await this.abTestService.ensureAbTestTables(schema);

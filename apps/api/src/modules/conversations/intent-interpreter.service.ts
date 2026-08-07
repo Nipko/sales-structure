@@ -297,7 +297,7 @@ export class IntentInterpreterService {
         // ── Detect time ──
         // (?!\d) so a LatAm thousands separator like "30.000" (pesos) is NOT
         // parsed as 30:00 — the third digit after the dot rejects the match.
-        const timeMatch = t.match(/(\d{1,2})[:\.](\d{2})(?!\d)/);
+        const timeMatch = t.match(/(\d{1,2})[:.](\d{2})(?!\d)/);
         if (timeMatch) {
             base.timeMentioned = `${String(parseInt(timeMatch[1])).padStart(2, '0')}:${timeMatch[2]}`;
         } else {

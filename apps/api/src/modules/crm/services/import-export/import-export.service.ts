@@ -330,7 +330,6 @@ export class ImportExportService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant not found');
 
-        let rows: any[];
         let whereClause = '';
         let params: any[] = [];
 
@@ -372,7 +371,7 @@ export class ImportExportService {
             ORDER BY fl.created_at DESC
         `;
 
-        rows = await this.prisma.executeInTenantSchema<any[]>(schema, query, params);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema, query, params);
 
         const headers = 'first_name,last_name,phone,phone_normalized,email,stage,score,is_vip,preferred_contact,company,tags,utm_source,utm_medium,utm_campaign,created_at';
         const csvLines = [headers];

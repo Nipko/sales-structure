@@ -16,9 +16,12 @@ import {
 } from '../../common/utils/safe-outbound-url.util';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// pdf-parse y mammoth son CommonJS sin tipos ESM utilizables: se cargan con
+// require a propósito. El disable apunta a `no-require-imports` porque
+// typescript-eslint 8 fusionó ahí la vieja `no-var-requires`.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse = require('pdf-parse');
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const mammoth = require('mammoth');
 
 const CHUNK_MAX_CHARS = 2000;
@@ -1216,6 +1219,9 @@ export class KnowledgeService {
         if (mime === 'application/pdf' || ext === 'pdf') {
             try {
                 const data = await pdfParse(buffer);
+                // El \x00 es a propósito: los PDF traen bytes nulos y PostgreSQL
+                // rechaza el texto que los contenga ("invalid byte sequence").
+                // eslint-disable-next-line no-control-regex
                 const text = (data.text || '').replace(/\x00/g, ' ').trim();
                 if (!text) throw new Error('pdf-parse returned empty text — file may be image-based (scanned)');
                 this.logger.log(`[Parse] PDF parsed: ${data.numpages} pages, ${text.length} chars`);

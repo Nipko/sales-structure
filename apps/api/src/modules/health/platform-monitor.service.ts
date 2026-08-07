@@ -375,6 +375,9 @@ export class PlatformMonitorService implements OnModuleInit {
         if (!parsed.port || !parsed.hostname) return;
 
         let pg: any;
+        // Dependencia OPCIONAL: si `pg` no está instalado se saltea el chequeo en
+        // vez de romper el monitor, así que tiene que ser un require dentro del try.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         try { pg = require('pg'); } catch { return; } // pg not present → skip
 
         // URL.username/password are percent-encoded; decode defensively — a literal

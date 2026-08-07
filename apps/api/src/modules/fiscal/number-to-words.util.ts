@@ -38,7 +38,7 @@ function apocope(w: string): string {
 
 /** Non-negative integer → Spanish words (supports up to the billions range). */
 export function numberToSpanishWords(value: number): string {
-    let n = Math.floor(Math.abs(value));
+    const n = Math.floor(Math.abs(value));
     if (n === 0) return 'cero';
 
     const millones = Math.floor(n / 1_000_000);

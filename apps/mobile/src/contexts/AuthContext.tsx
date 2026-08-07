@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { api, tokens, setOnAuthFailure, AuthUser } from '../lib/api';
 import { disconnectSocket } from '../lib/socket';
@@ -145,6 +146,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // de modo que el próximo inicio de sesión vuelve a exigir 2FA (no queremos
         // que el 30-day device-trust sobreviva a un "cerrar sesión" intencional).
         await tokens.clearDeviceTrust().catch(() => { /* noop */ });
+        // Misma higiene para la caché offline del inbox: nombres y previews de
+        // clientes no deben sobrevivir en AsyncStorage plano a un logout, ni
+        // sembrar el inbox de otro agente que entre en este dispositivo.
+        try {
+            const keys = await AsyncStorage.getAllKeys();
+            const inboxKeys = keys.filter((k) => k.startsWith('inbox:last:'));
+            if (inboxKeys.length) await AsyncStorage.multiRemove(inboxKeys);
+        } catch { /* noop */ }
         setUser(null);
         setVerticalConfig(null);
         setLocked(false);

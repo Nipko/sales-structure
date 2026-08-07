@@ -132,7 +132,19 @@ async function authFetchForm(path: string, form: FormData): Promise<Response> {
 async function json<T = any>(path: string, options?: RequestInit): Promise<{ success: boolean; data?: T; error?: string }> {
     try {
         const res = await authFetch(path, options);
-        return await res.json();
+        let body: any = null;
+        try { body = await res.json(); } catch { body = null; }
+        if (!res.ok) {
+            // Nest error envelope is {statusCode, message, error} — no `success` field.
+            // Normalize so every caller can rely on {success:false, error} instead of
+            // reading a 400 body as if it were a successful payload (false-success bug).
+            const msg = Array.isArray(body?.message) ? body.message.join(', ')
+                : typeof body?.message === 'string' ? body.message
+                : typeof body?.error === 'string' ? body.error
+                : `http_${res.status}`;
+            return { success: false, error: msg };
+        }
+        return body ?? { success: false, error: 'empty_response' };
     } catch (e: any) {
         return { success: false, error: e?.message || 'network_error' };
     }
@@ -192,9 +204,12 @@ export const api = {
     },
 
     // Agent console (inbox)
-    getInbox: (tenantId: string, filter?: string, opts?: { limit?: number; offset?: number }) => {
+    getInbox: (tenantId: string, filter?: string, opts?: { limit?: number; offset?: number; agentId?: string }) => {
         const params = new URLSearchParams();
         if (filter) params.set('filter', filter);
+        // The 'mine' filter is scoped server-side by agentId — without it the
+        // endpoint has nothing to match and always returns an empty list.
+        if (opts?.agentId) params.set('agentId', opts.agentId);
         if (opts?.limit) params.set('limit', String(opts.limit));
         if (opts?.offset) params.set('offset', String(opts.offset));
         const qs = params.toString();
@@ -320,18 +335,23 @@ export const api = {
     subscribeExpoPush: (token: string) =>
         json('/push/expo-subscribe', { method: 'POST', body: JSON.stringify({ token }) }),
 
+    // Channel accounts (multi-channel-per-type): which connections the tenant has.
+    getChannelsOverview: () => json('/channels/overview'),
+
     // WhatsApp Templates (outbound HSM)
     getWhatsappTemplates: () =>
         json('/channels/whatsapp/templates'),
-    sendWhatsappTemplate: (toPhone: string, templateName: string, language: string, components?: any[]) =>
+    // phoneNumberId: multi-number tenants choose the sending number; the API
+    // defaults to the oldest connected number when omitted.
+    sendWhatsappTemplate: (toPhone: string, templateName: string, language: string, components?: any[], phoneNumberId?: string) =>
         json('/channels/whatsapp/send/template', {
             method: 'POST',
-            body: JSON.stringify({ toPhone, templateName, language, components: components || [] }),
+            body: JSON.stringify({ toPhone, templateName, language, components: components || [], phoneNumberId }),
         }),
-    sendWhatsappText: (toPhone: string, text: string, conversationId?: string) =>
+    sendWhatsappText: (toPhone: string, text: string, conversationId?: string, phoneNumberId?: string) =>
         json('/channels/whatsapp/send/text', {
             method: 'POST',
-            body: JSON.stringify({ toPhone, text, conversationId }),
+            body: JSON.stringify({ toPhone, text, conversationId, phoneNumberId }),
         }),
 
     // Contacts search (for outbound contact picker)

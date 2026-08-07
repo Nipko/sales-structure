@@ -549,7 +549,13 @@ export function ConversationScreen() {
                     {!!channel && (
                         <View style={[styles.channelChip, { borderColor: (channelColor[channel] || theme.border) + '99' }]}>
                             <Ionicons name={(channelIcon[channel] || 'chatbox') as any} size={12} color={channelColor[channel] || theme.textSecondary} />
-                            <Text style={[styles.channelText, { color: channelColor[channel] || theme.textSecondary }]}>{channelLabel[channel] || channel}</Text>
+                            {/* With multi-account tenants the type alone is ambiguous — show WHICH
+                                connection (business number/account) this conversation is bound to. */}
+                            <Text style={[styles.channelText, { color: channelColor[channel] || theme.textSecondary }]} numberOfLines={1}>
+                                {conv?.channelAccountName
+                                    ? `${channelLabel[channel] || channel} · ${conv.channelAccountName}`
+                                    : (channelLabel[channel] || channel)}
+                            </Text>
                         </View>
                     )}
                 </View>

@@ -34,7 +34,12 @@ interface Template {
     status: string;
     category: string;
     components?: any[];
+    // Multi-number: a template belongs to ITS channel's WABA — sending it from
+    // another number fails at Meta. Used to auto-select the right sender.
+    phoneNumberId?: string;
 }
+
+interface WaAccount { accountId: string; displayName: string }
 
 /** components_json puede venir como string JSON o como array ya parseado. */
 function parseComponents(raw: any): any[] {
@@ -124,9 +129,30 @@ export function OutboundScreen() {
     const [loadingTemplates, setLoadingTemplates] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
 
+    // Multi-number: the tenant's WhatsApp connections + which number sends.
+    const [waAccounts, setWaAccounts] = useState<WaAccount[]>([]);
+    const [senderId, setSenderId] = useState<string>('');
+
     // Step 3: send + template variable values (indexed by {{n}} → vars[n-1])
     const [sending, setSending] = useState(false);
     const [vars, setVars] = useState<string[]>([]);
+
+    // ── WhatsApp accounts (multi-number) ────────────────────────────────────
+    useEffect(() => {
+        api.getChannelsOverview().then((res: any) => {
+            const list = Array.isArray(res?.data) ? res.data : [];
+            const wa: WaAccount[] = list
+                .filter((a: any) => a.channelType === 'whatsapp' && a.isActive)
+                .map((a: any) => ({ accountId: a.accountId, displayName: a.displayName || a.accountId }));
+            setWaAccounts(wa);
+            // Overview is newest-first; the API's default sender is the OLDEST
+            // connected number — preselect it so no-touch behavior matches.
+            if (wa.length) setSenderId(wa[wa.length - 1].accountId);
+        }).catch(() => { /* single-number tenants work without this */ });
+    }, []);
+
+    const accountName = (id?: string) =>
+        waAccounts.find((a) => a.accountId === id)?.displayName || id || '';
 
     // ── Contact search ──────────────────────────────────────────────────────
     useEffect(() => {
@@ -168,6 +194,7 @@ export function OutboundScreen() {
                 status: r.approval_status || r.status || '',
                 category: r.category || '',
                 components: parseComponents(r.components_json ?? r.components),
+                phoneNumberId: r.phone_number_id || undefined,
             }));
             // Only APPROVED templates can actually be sent (Meta rejects the rest).
             setTemplates(mapped.filter((t) => String(t.status).toLowerCase() === 'approved'));
@@ -185,6 +212,9 @@ export function OutboundScreen() {
     const goStep3 = (tmpl: Template) => {
         haptic.tap();
         setSelectedTemplate(tmpl);
+        // An attributed template MUST go out from its own number (Meta rejects
+        // it from any other WABA) — override the picked sender.
+        if (tmpl.phoneNumberId) setSenderId(tmpl.phoneNumberId);
         setVars(new Array(varCount(bodyTextOf(tmpl))).fill(''));
         setStep(3);
     };
@@ -205,6 +235,7 @@ export function OutboundScreen() {
                 selectedTemplate.name,
                 selectedTemplate.language,
                 components,
+                senderId || undefined,
             );
             if (res?.success || res?.messageId || res?.messages) {
                 toast.success(t('outbound.sent'));
@@ -218,7 +249,7 @@ export function OutboundScreen() {
         } finally {
             setSending(false);
         }
-    }, [selectedTemplate, phone, toast, t, nav]);
+    }, [selectedTemplate, phone, toast, t, nav, senderId]);
 
     // ── Render helpers ───────────────────────────────────────────────────────
     function renderTemplateBody(tmpl: Template): string {
@@ -286,6 +317,23 @@ export function OutboundScreen() {
     function renderStep2() {
         return (
             <View style={{ flex: 1 }}>
+                {/* Sender picker — only when the tenant has >1 WhatsApp number.
+                    Attributed templates override this on selection. */}
+                {waAccounts.length > 1 && (
+                    <View style={styles.senderRow}>
+                        <Text style={styles.senderLabel}>{t('outbound.senderLabel')}</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                            {waAccounts.map((a) => (
+                                <TouchableOpacity key={a.accountId} onPress={() => { haptic.tap(); setSenderId(a.accountId); }}
+                                    accessibilityRole="button" accessibilityState={{ selected: senderId === a.accountId }}
+                                    style={[styles.senderChip, senderId === a.accountId && styles.senderChipOn]}>
+                                    <Ionicons name="logo-whatsapp" size={12} color={senderId === a.accountId ? '#fff' : theme.success} />
+                                    <Text style={[styles.senderText, senderId === a.accountId && { color: '#fff' }]} numberOfLines={1}>{a.displayName}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
                 {loadingTemplates
                     ? <ActivityIndicator color={theme.accent} style={{ marginTop: 40 }} />
                     : templates.length === 0
@@ -312,7 +360,10 @@ export function OutboundScreen() {
                                         <Text style={styles.templateBody} numberOfLines={3}>
                                             {renderTemplateBody(item)}
                                         </Text>
-                                        <Text style={styles.templateCategory}>{item.category}</Text>
+                                        <Text style={styles.templateCategory}>
+                                            {item.category}
+                                            {waAccounts.length > 1 && item.phoneNumberId ? ` · ${accountName(item.phoneNumberId)}` : ''}
+                                        </Text>
                                     </TouchableOpacity>
                                 )}
                             />
@@ -336,7 +387,10 @@ export function OutboundScreen() {
         return (
             <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
                 <Text style={styles.sectionTitle}>{t('outbound.previewTitle')}</Text>
-                <Text style={styles.previewMeta}>{t('outbound.to')}: {phone}</Text>
+                <Text style={styles.previewMeta}>
+                    {t('outbound.to')}: {phone}
+                    {waAccounts.length > 1 && senderId ? `  ·  ${t('outbound.from')}: ${accountName(senderId)}` : ''}
+                </Text>
 
                 {/* WhatsApp bubble preview (with variables substituted live) */}
                 <View style={styles.bubble}>
@@ -444,6 +498,11 @@ const styles = StyleSheet.create({
     templateBody: { color: theme.textSecondary, fontSize: 13, lineHeight: 18 },
     templateCategory: { color: theme.textSecondary, fontSize: 11, marginTop: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
     previewMeta: { color: theme.textSecondary, fontSize: 13, marginBottom: 14 },
+    senderRow: { paddingHorizontal: 16, paddingTop: 10 },
+    senderLabel: { color: theme.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+    senderChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgCard, maxWidth: 200 },
+    senderChipOn: { backgroundColor: theme.success, borderColor: theme.success },
+    senderText: { color: theme.textSecondary, fontSize: 12, fontWeight: '600' },
     varLabel: { color: theme.accent, fontSize: 12, fontWeight: '700', marginBottom: 4 },
     bubble: {
         backgroundColor: '#dcf8c6', borderRadius: 12, padding: 14,

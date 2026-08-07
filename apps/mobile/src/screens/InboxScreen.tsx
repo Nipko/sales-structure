@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Image, ScrollView, TextInput, Alert, Animated, PanResponder } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,6 +27,10 @@ interface Conv {
     lastMessageAt?: string;
     status: string;
     channel: string;
+    // Multi-channel-per-type: which of the tenant's N connections (e.g. which of
+    // 2 WhatsApp numbers) this conversation is bound to.
+    channelAccountName?: string;
+    channelAccountPicture?: string;
     assignedAgentId?: string | null;
     isAiHandled?: boolean;
     unreadCount?: number;
@@ -116,6 +121,23 @@ export function InboxScreen() {
 
     useEffect(() => onInboxStatus(setLive), []);
 
+    // Offline start: seed the list with the last known inbox so a cold start
+    // without network shows data instead of skeleton→error. Live data replaces
+    // it as soon as the page-0 query resolves — and once it resolved, never
+    // seed again (the cache must not overwrite a truthful empty inbox).
+    const liveResolvedRef = useRef(false);
+    useEffect(() => {
+        if (!tenantId) return;
+        AsyncStorage.getItem(`inbox:last:${tenantId}`).then((raw) => {
+            if (!raw || liveResolvedRef.current) return;
+            const cached: Conv[] = JSON.parse(raw);
+            if (Array.isArray(cached) && cached.length) {
+                setAllItems((prev) => (prev.length ? prev : cached));
+            }
+        }).catch(() => { /* cache is best-effort */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tenantId]);
+
     const pickFilter = useCallback((key: string) => {
         haptic.tap();
         setFilter(key);
@@ -129,7 +151,9 @@ export function InboxScreen() {
         queryKey,
         queryFn: async () => {
             if (!tenantId) return { items: [], hasMore: false };
-            const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: 0 });
+            // agentId scopes the 'mine' filter server-side — without it that filter
+            // has nothing to match and always comes back empty.
+            const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: 0, agentId: user?.id });
             const list: Conv[] = Array.isArray(res?.data) ? res.data : (res?.data?.conversations || []);
             return { items: list, hasMore: !!res?.hasMore };
         },
@@ -151,6 +175,16 @@ export function InboxScreen() {
         });
         if (page === 0) setHasMore(queryData.hasMore); // don't clobber the tail's hasMore
         setUnreadTotal(queryData.items.reduce((s: number, c: Conv) => s + (c.unreadCount || 0), 0));
+        // Persist the freshest page 0 (unfiltered view only) for offline cold
+        // starts; an EMPTY inbox removes the key so resolved conversations
+        // can't reappear as ghosts on the next cold start.
+        liveResolvedRef.current = true;
+        if (tenantId && filter === 'all') {
+            (queryData.items.length
+                ? AsyncStorage.setItem(`inbox:last:${tenantId}`, JSON.stringify(queryData.items))
+                : AsyncStorage.removeItem(`inbox:last:${tenantId}`)
+            ).catch(() => {});
+        }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [queryData]);
 
@@ -160,7 +194,7 @@ export function InboxScreen() {
         setLoadingMore(true);
         try {
             const nextPage = page + 1;
-            const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: nextPage * PAGE_SIZE });
+            const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: nextPage * PAGE_SIZE, agentId: user?.id });
             const more: Conv[] = Array.isArray(res?.data) ? res.data : [];
             setAllItems((prev) => {
                 const ids = new Set(prev.map((c) => c.id));
@@ -173,7 +207,7 @@ export function InboxScreen() {
         } finally {
             setLoadingMore(false);
         }
-    }, [tenantId, filter, loadingMore, hasMore, page, toast, t]);
+    }, [tenantId, filter, loadingMore, hasMore, page, toast, t, user?.id]);
 
     // Socket events → invalidate React Query (triggers background refetch, page 0)
     useEffect(() => {
@@ -239,6 +273,9 @@ export function InboxScreen() {
 
     // Channels actually present in the loaded list → drive the channel filter chips.
     const channelsPresent = Array.from(new Set(items.map((c) => c.channel || 'whatsapp')));
+    // Show which connection a conversation belongs to only when it disambiguates
+    // (tenant has >1 named account in play — e.g. two WhatsApp numbers).
+    const showAccounts = new Set(items.map((c) => c.channelAccountName).filter(Boolean)).size > 1;
 
     const q = search.trim().toLowerCase();
     const visible = items.filter((c) => {
@@ -366,6 +403,9 @@ export function InboxScreen() {
                                         <Text style={styles.name} numberOfLines={1}>{item.contactName || t('inbox.customer')}</Text>
                                         <Text style={styles.time}>{relTime(item.lastMessageAt, t('common.justNow'))}</Text>
                                     </View>
+                                    {showAccounts && !!item.channelAccountName && (
+                                        <Text style={[styles.accountTag, { color: color }]} numberOfLines={1}>{item.channelAccountName}</Text>
+                                    )}
                                     <View style={styles.rowBottom}>
                                         <Text style={styles.preview} numberOfLines={1}>{item.lastMessage || '—'}</Text>
                                         {waiting && (
@@ -419,6 +459,7 @@ const styles = StyleSheet.create({
     name: { color: theme.text, fontSize: 15, fontWeight: '600', flex: 1, marginRight: 8 },
     time: { color: theme.textSecondary, fontSize: 12 },
     rowBottom: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
+    accountTag: { fontSize: 11, fontWeight: '600', marginTop: 1 },
     preview: { color: theme.textSecondary, fontSize: 13, flex: 1 },
     handoffBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: theme.warning + '22', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, marginLeft: 6 },
     handoffText: { color: theme.warning, fontSize: 10, fontWeight: '700' },

@@ -44,12 +44,16 @@ export function PipelineScreen() {
     const [agents, setAgents] = useState<any[]>([]);
 
     // React Query: stages + kanban in parallel (2min stale).
-    const { data: pipelineData, isLoading: loading, isFetching, refetch } = useQuery({
+    const { data: pipelineData, isLoading: loading, isFetching, isError, refetch } = useQuery({
         queryKey: pipelineQKey,
         queryFn: async () => {
             if (!tenantId) return { stages: [], groups: {} };
             const [s, k]: any[] = await Promise.all([api.getPipelineStages(tenantId), api.getKanban(tenantId)]);
-            const stageList: Stage[] = s?.success ? (Array.isArray(s.data) ? s.data : s.data?.stages || []) : [];
+            // Throw on failure so isError renders error+retry — an empty-stages fallback
+            // made a failed fetch indistinguishable from a tenant with no deals.
+            if (!s?.success) throw new Error(s?.error || 'load_failed');
+            if (k?.success === false) throw new Error(k?.error || 'load_failed');
+            const stageList: Stage[] = Array.isArray(s.data) ? s.data : s.data?.stages || [];
             const g: Record<string, Deal[]> = {};
             const kd = k?.data ?? k;
             const cols = Array.isArray(kd) ? kd : (kd?.stages || kd?.columns || []);
@@ -97,11 +101,36 @@ export function PipelineScreen() {
 
     const closeDetail = () => { setDetail(null); setAgentsOpen(false); };
 
+    // The transition-rules engine rejects moves with 400 'TRANSITION_RULE_FAILED:<type>[:extra]'
+    // (and terminal stages with their own message). Map each rule to a human explanation —
+    // same contract the web board handles — instead of a generic failure.
+    const moveErrorMessage = (err?: string): string => {
+        const s = err || '';
+        if (s.includes('terminal stage')) return t('pipeline.ruleTerminal');
+        const idx = s.indexOf('TRANSITION_RULE_FAILED');
+        if (idx < 0) return t('pipeline.moveError');
+        const parts = s.slice(idx).split(':');
+        switch (parts[1]) {
+            case 'email_required': return t('pipeline.ruleEmail');
+            case 'phone_required': return t('pipeline.rulePhone');
+            case 'name_required': return t('pipeline.ruleName');
+            case 'min_score': return t('pipeline.ruleScore', { score: parts[2] || '0' });
+            case 'agent_assigned': return t('pipeline.ruleAgent');
+            case 'appointment_required': return t('pipeline.ruleAppointment');
+            case 'order_required': return t('pipeline.ruleOrder');
+            case 'offer_required': return t('pipeline.ruleOffer');
+            case 'custom_attribute_required': return t('pipeline.ruleCustomRequired', { field: parts[2] || '' });
+            case 'custom_attribute_equals': return t('pipeline.ruleCustomEquals', { field: parts[2] || '' });
+            default: return t('pipeline.ruleGeneric');
+        }
+    };
+
     const move = async (stageId: string) => {
         if (!tenantId || !detail) return;
         setBusy(true);
         try {
-            await api.moveDeal(tenantId, detail.id, stageId);
+            const r: any = await api.moveDeal(tenantId, detail.id, stageId);
+            if (!r?.success) { toast.error(moveErrorMessage(r?.error)); return; }
             toast.success(t('pipeline.moved'));
             closeDetail();
             queryClient.invalidateQueries({ queryKey: pipelineQKey });
@@ -132,8 +161,11 @@ export function PipelineScreen() {
         if (!tenantId || !detail || !agentId) return;
         setBusy(true);
         try {
-            // moveDeal to the same stage with agentId is the documented assignment path.
-            await api.moveDeal(tenantId, detail.id, detailStageId || detail.stage_id || '', agentId);
+            // PUT /pipeline/deals/:tenantId/:dealId with assignedAgentId is the assignment
+            // contract. A same-stage moveDeal never writes assigned_agent_id and resets
+            // probability/SLA as a side effect — it is NOT an assignment path.
+            const r: any = await api.updateDeal(tenantId, detail.id, { assignedAgentId: agentId });
+            if (!r?.success) { toast.error(t('pipeline.assignError')); return; }
             toast.success(t('pipeline.assigned'));
             closeDetail();
             queryClient.invalidateQueries({ queryKey: pipelineQKey });
@@ -142,6 +174,20 @@ export function PipelineScreen() {
     };
 
     if (loading) return <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>;
+
+    // Solo pantalla completa de error si NO hay datos: un refetch de fondo
+    // fallido (React Query mantiene data con status 'error') no debe tapar
+    // un tablero ya poblado con la pantalla offline.
+    if (isError && !pipelineData) return (
+        <View style={styles.center}>
+            <Ionicons name="cloud-offline-outline" size={40} color={theme.textSecondary} />
+            <Text style={[styles.empty, { marginTop: 10 }]}>{t('pipeline.loadError')}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()} accessibilityRole="button" accessibilityLabel={t('common.retry')}>
+                <Ionicons name="refresh" size={16} color="#fff" />
+                <Text style={styles.retryText}>{t('common.retry')}</Text>
+            </TouchableOpacity>
+        </View>
+    );
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -272,6 +318,8 @@ function Row({ label, value }: { label: string; value?: string }) {
 const styles = StyleSheet.create({
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60, backgroundColor: theme.bg },
     empty: { color: theme.textSecondary },
+    retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, backgroundColor: theme.accent, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
+    retryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
     chips: { maxHeight: 56, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgCard },
     chipText: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },

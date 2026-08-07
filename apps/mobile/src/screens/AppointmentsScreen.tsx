@@ -68,7 +68,7 @@ export function AppointmentsScreen() {
     const [creating, setCreating] = useState(false);
 
     // React Query — 14-day appointment window (5 min stale, refetch on focus).
-    const { data: apptData, isLoading: loading, isFetching, refetch } = useQuery({
+    const { data: apptData, isLoading: loading, isFetching, isError, refetch } = useQuery({
         queryKey: ['appointments', tenantId],
         queryFn: async () => {
             if (!tenantId) return [];
@@ -76,7 +76,10 @@ export function AppointmentsScreen() {
             const horizon = new Date(today.getTime() + 14 * 86400000);
             const params = `start=${today.toISOString()}&end=${horizon.toISOString()}`;
             const res: any = await api.getAppointments(tenantId, params);
-            const data = res?.success ? (Array.isArray(res.data) ? res.data : res.data?.appointments || []) : [];
+            // Throw on failure so isError renders the error+retry state — returning []
+            // here made a failed request indistinguishable from a clear calendar.
+            if (!res?.success) throw new Error(res?.error || 'load_failed');
+            const data = Array.isArray(res.data) ? res.data : res.data?.appointments || [];
             return data
                 .filter((a: Appt) => { const s = start(a); return s && s >= today && a.status !== 'cancelled'; })
                 .sort((a: Appt, b: Appt) => (start(a)!.getTime()) - (start(b)!.getTime())) as Appt[];
@@ -111,7 +114,11 @@ export function AppointmentsScreen() {
     const confirm = async (a: Appt) => {
         if (!tenantId) return;
         setBusy(a.id);
-        try { await api.updateAppointment(tenantId, a.id, { status: 'confirmed' }); toast.success(t('citas.confirmed')); await refetch(); }
+        try {
+            const r: any = await api.updateAppointment(tenantId, a.id, { status: 'confirmed' });
+            if (!r?.success) throw new Error('fail');
+            toast.success(t('citas.confirmed')); await refetch();
+        }
         catch { toast.error(t('citas.confirmError')); }
         finally { setBusy(''); }
     };
@@ -121,7 +128,11 @@ export function AppointmentsScreen() {
             { text: t('citas.yesCancel'), style: 'destructive', onPress: async () => {
                 if (!tenantId) return;
                 setBusy(a.id);
-                try { await api.cancelAppointment(tenantId, a.id, t('citas.cancelReason')); toast.success(t('citas.cancelled')); setSelected(null); await refetch(); }
+                try {
+                    const r: any = await api.cancelAppointment(tenantId, a.id, t('citas.cancelReason'));
+                    if (!r?.success) throw new Error('fail');
+                    toast.success(t('citas.cancelled')); setSelected(null); await refetch();
+                }
                 catch { toast.error(t('citas.cancelError')); }
                 finally { setBusy(''); }
             } },
@@ -205,6 +216,18 @@ export function AppointmentsScreen() {
     };
 
     if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></SafeAreaView>;
+
+    // Solo pantalla completa de error si NO hay datos (ver PipelineScreen).
+    if (isError && !apptData) return (
+        <SafeAreaView style={styles.center}>
+            <Ionicons name="cloud-offline-outline" size={40} color={theme.textSecondary} />
+            <Text style={[styles.empty, { marginTop: 10 }]}>{t('citas.loadError')}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()} accessibilityRole="button" accessibilityLabel={t('common.retry')}>
+                <Ionicons name="refresh" size={16} color="#fff" />
+                <Text style={styles.retryText}>{t('common.retry')}</Text>
+            </TouchableOpacity>
+        </SafeAreaView>
+    );
 
     const todayStr = new Date().toDateString();
     const dateChips = Array.from({ length: 14 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i); return d; });
@@ -436,6 +459,8 @@ function Row({ label, value }: { label: string; value?: string }) {
 
 const styles = StyleSheet.create({
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60, backgroundColor: theme.bg },
+    retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, backgroundColor: theme.accent, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
+    retryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
     empty: { color: theme.textSecondary },
     h1: { color: theme.text, fontSize: 22, fontWeight: '700', paddingHorizontal: 16, paddingVertical: 12 },
     card: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 12, marginVertical: 5, padding: 12, borderRadius: 12, backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1, gap: 12 },

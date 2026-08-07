@@ -88,6 +88,7 @@ export default function TenantsPage() {
           onboardingCompleted: t.onboardingCompleted ?? false,
           suspendedAt: t.suspendedAt || null,
           suspendReason: t.suspendReason || null,
+          coupon: t.coupon ?? null,
         }))
       );
     }

@@ -3933,6 +3933,13 @@
   "tenants": {
     "title": "Tenants",
     "newTenant": "New tenant",
+    "coupon": {
+      "filter": "By coupon",
+      "filterHint": "Show only accounts that came in by redeeming a free-months coupon.",
+      "badge": "Coupon",
+      "badgeHint": "Came in with coupon {code} · {months} free month(s). See details in Coupons.",
+      "badgeRevokedHint": "Came in with coupon {code}, but the gift was revoked."
+    },
     "plan": "Plan",
     "schema": "Schema",
     "industry": "Industry",

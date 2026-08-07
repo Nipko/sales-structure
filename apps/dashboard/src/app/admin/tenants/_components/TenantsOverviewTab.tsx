@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
   Building2, Search, Eye, Edit, Ban, UserCheck, MoreHorizontal,
-  DollarSign, Users, Activity, Clock, AlertTriangle, Globe,
+  DollarSign, Users, Activity, Clock, AlertTriangle, Globe, Gift,
 } from "lucide-react";
 import Link from "next/link";
 import type { Tenant, PlatformStats } from "./types";
@@ -86,7 +86,12 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
   const tc = useTranslations("common");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  // Filtro dedicado a la modalidad cupón, independiente del estado de suscripción:
+  // un tenant que entró por cupón puede estar en trial, activo o vencido.
+  const [couponOnly, setCouponOnly] = useState(false);
   const [openMenu, setOpenMenu] = useState<{ id: string; top: number; right: number } | null>(null);
+
+  const couponCount = tenants.filter((t2) => !!t2.coupon).length;
 
   // Close dropdown on scroll/resize so the fixed-position menu doesn't drift
   useEffect(() => {
@@ -106,7 +111,8 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
       tenant.slug.toLowerCase().includes(search.toLowerCase());
     const status = resolveStatus(tenant);
     const matchesStatus = statusFilter === "all" || status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesCoupon = !couponOnly || !!tenant.coupon;
+    return matchesSearch && matchesStatus && matchesCoupon;
   });
 
   const kpis = [
@@ -158,6 +164,30 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
               </button>
             ))}
 
+            {/* Filtro dedicado: solo cuentas que entraron por cupón. Separado y con
+                icono para que no se confunda con un estado de suscripción. */}
+            <button
+              onClick={() => setCouponOnly((v) => !v)}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors border",
+                couponOnly
+                  ? "bg-purple-600 text-white border-transparent"
+                  : "bg-white dark:bg-neutral-900 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/30 hover:border-purple-300 dark:hover:border-purple-500/50"
+              )}
+              title={t("coupon.filterHint")}
+            >
+              <Gift size={13} />
+              {t("coupon.filter")}
+              {couponCount > 0 && (
+                <span className={cn(
+                  "tabular-nums rounded-full px-1.5 text-[10px]",
+                  couponOnly ? "bg-white/20" : "bg-purple-500/10"
+                )}>
+                  {couponCount}
+                </span>
+              )}
+            </button>
+
             <div className="ml-auto relative max-w-[240px] w-full">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
               <input
@@ -201,7 +231,27 @@ export default function TenantsOverviewTab({ tenants, stats, onEdit, onSuspend, 
                               <Building2 size={16} className="text-indigo-500" />
                             </div>
                             <div>
-                              <div className="font-medium text-neutral-900 dark:text-neutral-100">{tenant.name}</div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-medium text-neutral-900 dark:text-neutral-100">{tenant.name}</span>
+                                {tenant.coupon && (
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium",
+                                      tenant.coupon.revoked
+                                        ? "bg-neutral-500/10 text-neutral-500 line-through"
+                                        : "bg-purple-500/10 text-purple-600 dark:text-purple-400"
+                                    )}
+                                    title={
+                                      tenant.coupon.revoked
+                                        ? t("coupon.badgeRevokedHint", { code: tenant.coupon.code || "—" })
+                                        : t("coupon.badgeHint", { code: tenant.coupon.code || "—", months: tenant.coupon.freeMonths ?? 0 })
+                                    }
+                                  >
+                                    <Gift size={10} />
+                                    {tenant.coupon.code || t("coupon.badge")}
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-xs text-neutral-500 dark:text-neutral-400">{tenant.slug}</div>
                             </div>
                           </div>

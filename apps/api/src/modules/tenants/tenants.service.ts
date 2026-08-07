@@ -573,7 +573,53 @@ export class TenantsService {
             this.prisma.tenant.count({ where }),
         ]);
 
-        return { tenants, total, page, limit };
+        // Adjunta a cada tenant si entró por cupón (canje de meses gratis). Es la
+        // "modalidad" que el dueño necesita ver e filtrar desde la vista de
+        // empresas, no solo desde /admin/coupons. Los canjes viven en la tabla
+        // global billing_coupon_redemptions (tenant_id TEXT, sin FK).
+        const couponByTenant = await this.buildCouponSummary(tenants.map((t: any) => t.id));
+        const withCoupon = tenants.map((t: any) => ({
+            ...t,
+            coupon: couponByTenant.get(t.id) ?? null,
+        }));
+
+        return { tenants: withCoupon, total, page, limit };
+    }
+
+    /**
+     * Resuelve, para un conjunto de tenants, su canje de cupón MÁS RECIENTE (o
+     * null). Una sola consulta con IN sobre la tabla indexada por tenant_id.
+     */
+    private async buildCouponSummary(tenantIds: string[]): Promise<Map<string, {
+        code: string | null;
+        source: string | null;
+        freeMonths: number | null;
+        redeemedAt: Date;
+        revoked: boolean;
+    }>> {
+        const map = new Map<string, any>();
+        if (tenantIds.length === 0) return map;
+
+        const rows = await this.prisma.billingCouponRedemption.findMany({
+            where: { tenantId: { in: tenantIds } },
+            orderBy: { redeemedAt: 'desc' },
+            include: { coupon: { select: { code: true, freeMonths: true } } },
+        });
+
+        for (const r of rows) {
+            // El más reciente gana: findMany viene ordenado desc, así que la
+            // primera fila de cada tenant es la que queda.
+            if (map.has(r.tenantId)) continue;
+            const meta = (r.metadata || {}) as Record<string, any>;
+            map.set(r.tenantId, {
+                code: r.coupon?.code ?? null,
+                source: meta.source ?? null,
+                freeMonths: meta.freeMonths ?? r.coupon?.freeMonths ?? null,
+                redeemedAt: r.redeemedAt,
+                revoked: !!meta.revokedAt,
+            });
+        }
+        return map;
     }
 
     /**

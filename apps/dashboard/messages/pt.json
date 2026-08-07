@@ -3933,6 +3933,13 @@
   "tenants": {
     "title": "Tenants",
     "newTenant": "Novo tenant",
+    "coupon": {
+      "filter": "Por cupom",
+      "filterHint": "Mostrar apenas as contas que entraram resgatando um cupom de meses grátis.",
+      "badge": "Cupom",
+      "badgeHint": "Entrou com o cupom {code} · {months} mês(es) grátis. Veja o detalhe em Cupons.",
+      "badgeRevokedHint": "Havia entrado com o cupom {code}, mas o presente foi revogado."
+    },
     "plan": "Plano",
     "schema": "Schema",
     "industry": "Industria",

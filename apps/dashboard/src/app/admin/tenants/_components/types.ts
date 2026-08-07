@@ -17,6 +17,14 @@ export interface Tenant {
   onboardingCompleted?: boolean;
   suspendedAt?: string | null;
   suspendReason?: string | null;
+  /** Canje de cupón más reciente de esta cuenta, o null si entró por la vía normal. */
+  coupon?: {
+    code: string | null;
+    source: string | null;
+    freeMonths: number | null;
+    redeemedAt: string;
+    revoked: boolean;
+  } | null;
 }
 
 export type TenantPlanSlug = "emprendedor" | "starter" | "pro" | "enterprise" | "custom";

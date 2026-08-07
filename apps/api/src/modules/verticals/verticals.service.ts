@@ -755,8 +755,20 @@ export class VerticalsService {
         const bootstrapMode = resolveSubtypeBootstrap(definition.industry, subType);
         const requiredTools = this.requiredTools(definition.industry, subType, effectiveBooking, bootstrapMode);
         for (const [index, agent] of agents.entries()) {
+            const agentTools = agent.config_json?.tools || {};
             for (const tool of requiredTools) {
-                if (agent.config_json?.tools?.[tool]?.enabled !== true) {
+                if (agentTools[tool]?.enabled !== true) {
+                    if (tool === 'appointments') {
+                        const appointmentsConfig = agentTools.appointments;
+                        const isExplicitlyDisabled =
+                            appointmentsConfig?.enabled === false && appointmentsConfig?.pendingPrerequisites !== true;
+                        const hasOtherDomainTool = Object.keys(agentTools).some(
+                            (t) => t !== 'appointments' && t !== 'faqs' && t !== 'crm' && t !== 'knowledge' && agentTools[t]?.enabled === true,
+                        );
+                        if (isExplicitlyDisabled || hasOtherDomainTool) {
+                            continue;
+                        }
+                    }
                     throw new Error(`Invariant failed: active agent ${index + 1} is missing enabled tool "${tool}"`);
                 }
             }

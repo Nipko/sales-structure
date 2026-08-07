@@ -314,4 +314,80 @@ describe('VerticalsService resumable bootstrap', () => {
         expect((service as any).requiredTools('retail', 'marketplace', false))
             .not.toContain('appointments');
     });
+
+    it('passes assertProvisioningInvariants when specialized agent template intentionally disables appointments', async () => {
+        (service as any).assertProvisioningInvariants.mockRestore();
+
+        prisma.executeInTenantSchema.mockImplementation(async (_schema: string, sql: string) => {
+            if (sql.includes('pipeline_stages')) {
+                return [
+                    { slug: 'consulta', terminal_outcome: null },
+                    { slug: 'cotizacion', terminal_outcome: null },
+                    { slug: 'reserva', terminal_outcome: null },
+                    { slug: 'confirmado', terminal_outcome: null },
+                    { slug: 'completado', terminal_outcome: 'won' },
+                    { slug: 'cancelado', terminal_outcome: 'lost' },
+                ];
+            }
+            if (sql.includes('SELECT name FROM services')) {
+                return [
+                    { name: 'Tour día completo' },
+                    { name: 'Paquete fin de semana' },
+                    { name: 'Excursión medio día' },
+                ];
+            }
+            if (sql.includes('availability_slots')) {
+                return [{ slots: 7, faqs: 5 }];
+            }
+            if (sql.includes('question FROM faqs')) {
+                return [
+                    { question: '¿Qué destinos manejan?' },
+                    { question: '¿Qué incluye el paquete?' },
+                    { question: '¿Cuál es la política de cancelación?' },
+                    { question: '¿Necesito seguro de viaje?' },
+                    { question: '¿Qué documentos necesito para viajar?' },
+                ];
+            }
+            if (sql.includes('agent_personas')) {
+                return [
+                    {
+                        config_json: {
+                            tools: {
+                                faqs: { enabled: true },
+                                tours: { enabled: true },
+                                appointments: { enabled: false },
+                            },
+                        },
+                    },
+                ];
+            }
+            return [];
+        });
+
+        prisma.tenant.findUnique.mockResolvedValue({
+            settings: {
+                verticalConfig: {
+                    industry: 'turismo',
+                    subType: 'tours',
+                    bookingEnabled: true,
+                },
+            },
+        } as any);
+
+        const definition = VERTICAL_REGISTRY['turismo'];
+        const result = await (service as any).assertProvisioningInvariants(
+            tenantId,
+            schemaName,
+            definition,
+            'tours',
+            'es',
+            { pipelineStages: -1, appointmentServices: -1, availabilitySlots: -1, publishedFaqs: -1, selectedStageSlugs: [], selectedServiceIndexes: [] },
+            definition.pipeline.stages,
+            definition.services,
+            true,
+        );
+
+        expect(result).toBeDefined();
+        expect(result.pipelineStages).toBe(6);
+    });
 });

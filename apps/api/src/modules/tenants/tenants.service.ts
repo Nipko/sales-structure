@@ -495,7 +495,11 @@ export class TenantsService {
             orderBy: { sortOrder: 'asc' },
         });
         const allowed = new Set<string>(TENANT_PLAN_SLUGS);
-        return plans.map((plan) => plan.slug).filter((slug): slug is TenantPlanSlug => allowed.has(slug));
+        // `plan` va anotado a mano: en CI `tsc` corre antes de `prisma generate`, así
+        // que el modelo es `any` y el callback sin anotar rompe el build con TS7006.
+        return plans
+            .map((plan: { slug: string }) => plan.slug)
+            .filter((slug: string): slug is TenantPlanSlug => allowed.has(slug));
     }
 
     private async isTenantSchemaReady(schemaName: string): Promise<boolean> {

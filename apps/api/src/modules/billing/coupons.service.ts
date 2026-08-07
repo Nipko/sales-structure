@@ -5,6 +5,32 @@ import { RedisService } from '../redis/redis.service';
 import { SubscriptionStatus } from './types/subscription-status.enum';
 
 /**
+ * Formas declaradas a mano de las filas que se mapean acá.
+ *
+ * No es redundancia con el cliente de Prisma: en CI el chequeo de tipos corre
+ * ANTES de `prisma generate`, así que los modelos generados no existen todavía y
+ * `findMany` devuelve `any`. Sin estas anotaciones el build falla con TS7006
+ * ("implicitly has an 'any' type") solo en CI, nunca en local.
+ */
+export interface CouponRedemptionRow {
+    id: string;
+    couponId: string;
+    tenantId: string;
+    subscriptionId: string | null;
+    redeemedAt: Date;
+    cyclesRemaining: number | null;
+    metadata: unknown;
+}
+
+export interface RedemptionTenantRef {
+    id: string;
+    name: string;
+    slug: string;
+    subscriptionStatus: string | null;
+    trialEndsAt: Date | null;
+}
+
+/**
  * Cupones promocionales.
  *
  * HISTORIA (importante para no repetir el error): la tabla nació con tres tipos
@@ -375,15 +401,23 @@ export class CouponsService {
         });
         if (rows.length === 0) return [];
 
+        // Los callbacks van anotados a mano a propósito: en CI `tsc` corre ANTES de
+        // `prisma generate` (.github/workflows/deploy.yml), así que ahí los modelos
+        // del cliente son `any` y cualquier parámetro sin anotar explota con TS7006
+        // aunque en local compile limpio.
+        const tenantIds = [...new Set(rows.map((r: CouponRedemptionRow) => r.tenantId))];
+
         // `tenant_id` es TEXT sin FK (la tabla es global y los tenants se purgan),
         // así que la resolución del nombre se hace acá y tolera huérfanos.
         const tenants = await this.prisma.tenant.findMany({
-            where: { id: { in: [...new Set(rows.map(r => r.tenantId))] } },
+            where: { id: { in: tenantIds } },
             select: { id: true, name: true, slug: true, subscriptionStatus: true, trialEndsAt: true },
         });
-        const byId = new Map(tenants.map(t => [t.id, t]));
+        const byId = new Map<string, RedemptionTenantRef>(
+            tenants.map((t: RedemptionTenantRef): [string, RedemptionTenantRef] => [t.id, t]),
+        );
 
-        return rows.map(r => ({ ...r, tenant: byId.get(r.tenantId) ?? null }));
+        return rows.map((r: CouponRedemptionRow) => ({ ...r, tenant: byId.get(r.tenantId) ?? null }));
     }
 
     /** Canjes de un tenant — para pintar el badge de "descuento aplicado". */

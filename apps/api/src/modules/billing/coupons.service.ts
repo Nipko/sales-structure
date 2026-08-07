@@ -937,8 +937,17 @@ export class CouponsService {
         const wanted = [...new Set(input.map((p: string) => String(p).trim()).filter(Boolean))];
         if (wanted.length === 0) return [];
 
+        // `billing_plans.id` es UUID NATIVO en Postgres, no texto. Meter un slug
+        // en el filtro de `id` hace que el driver de Prisma intente convertirlo a
+        // UUID y reviente con "Error creating UUID" — un 500, no un match vacío.
+        // Por eso solo los valores con forma de UUID entran a esa rama.
+        const uuidKeys = wanted.filter(isUuid);
+        const where = uuidKeys.length > 0
+            ? { OR: [{ slug: { in: wanted } }, { id: { in: uuidKeys } }] }
+            : { slug: { in: wanted } };
+
         const plans = await this.prisma.billingPlan.findMany({
-            where: { OR: [{ slug: { in: wanted } }, { id: { in: wanted } }] },
+            where,
             select: { id: true, slug: true },
         });
         const bySlug = new Set<string>(plans.map((p: BillingPlanRef) => p.slug));
@@ -972,8 +981,10 @@ export class CouponsService {
     private async isPlanEligible(appliesTo: string[], planKey: string): Promise<boolean> {
         if (appliesTo.includes(planKey)) return true;
 
+        // Mismo cuidado que en normalizePlanSlugs: `id` es UUID nativo, así que
+        // solo se consulta por id si la clave tiene esa forma.
         const plan = await this.prisma.billingPlan.findFirst({
-            where: { OR: [{ id: planKey }, { slug: planKey }] },
+            where: isUuid(planKey) ? { OR: [{ id: planKey }, { slug: planKey }] } : { slug: planKey },
             select: { id: true, slug: true },
         });
         if (!plan) return false;
@@ -1017,6 +1028,19 @@ export class CouponsService {
  */
 /** Tope por lote: cota superior del INSERT y del listado de códigos. */
 export const MAX_BATCH_SIZE = 2000;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * ¿La cadena tiene forma de UUID?
+ *
+ * Existe porque `billing_plans.id` es una columna UUID NATIVA de Postgres: si se
+ * le pasa un slug al filtro de `id`, Prisma intenta convertirlo y lanza
+ * "Error creating UUID" — o sea un 500, no un simple "no encontrado".
+ */
+export function isUuid(value: string): boolean {
+    return UUID_RE.test(value);
+}
 
 /**
  * Alfabeto sin I, L, O, 0 ni 1. Estos códigos los tipea una persona desde un

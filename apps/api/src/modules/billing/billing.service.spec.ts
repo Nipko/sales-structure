@@ -127,6 +127,51 @@ describe('BillingService', () => {
     });
 
     // -------------------------------------------------------------------------
+    // Upgrade durante un mes regalado por cupón: NO debe cobrar en el acto
+    // -------------------------------------------------------------------------
+
+    describe('upgradeSubscription during a gifted trial', () => {
+        it('unlocks the new plan features without touching the provider (no early charge)', async () => {
+            const future = new Date(Date.now() + 20 * 86_400_000); // 20 días de regalo
+            const sub = {
+                id: 'sub-1',
+                tenantId: 'tenant-1',
+                planId: 'plan-emp',
+                status: SubscriptionStatus.TRIALING,
+                provider: 'mercadopago',
+                providerSubscriptionId: null, // trial con cupón: sin preapproval
+                providerCustomerId: null,
+                currentPeriodStart: new Date(),
+                currentPeriodEnd: future,
+                trialEndsAt: future,
+                metadata: {},
+            };
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(sub);
+            prismaMock.billingPlan.findUnique.mockImplementation(({ where }: any) => {
+                if (where.slug === 'pro') return Promise.resolve({ id: 'plan-pro', slug: 'pro', isActive: true, priceUsdCents: 12900 });
+                if (where.id === 'plan-emp') return Promise.resolve({ id: 'plan-emp', slug: 'emprendedor', priceUsdCents: 2100 });
+                return Promise.resolve(null);
+            });
+            const createSpy = jest.spyOn(mockProvider, 'createSubscription');
+
+            const result = await service.upgradeSubscription('tenant-1', 'pro', 'card-token-xyz');
+
+            // El proveedor NUNCA se toca: no hay cobro adelantado.
+            expect(createSpy).not.toHaveBeenCalled();
+            // Las features del plan nuevo se desbloquean localmente.
+            expect(result.planId).toBe('plan-pro');
+            const subUpdate = prismaMock.billingSubscription.update.mock.calls[0][0];
+            expect(subUpdate.data.planId).toBe('plan-pro');
+            // El regalo se preserva: no se pisa trialEndsAt ni se setea un preapproval.
+            expect(subUpdate.data.providerSubscriptionId).toBeUndefined();
+            expect(subUpdate.data.trialEndsAt).toBeUndefined();
+            expect(prismaMock.tenant.update).toHaveBeenCalledWith(
+                expect.objectContaining({ data: expect.objectContaining({ plan: 'pro' }) }),
+            );
+        });
+    });
+
+    // -------------------------------------------------------------------------
     // Idempotency — handleBillingEvent with duplicate providerEventId
     // -------------------------------------------------------------------------
 

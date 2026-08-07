@@ -261,6 +261,41 @@ export class BillingService {
             return this.scheduleDowngrade(tenantId, sub.id, newPlan.id, currentCycle);
         }
 
+        // Upgrade DURANTE un mes regalado por cupón. El tenant tiene un trial futuro
+        // y todavía SIN preapproval (por eso el cupón se pudo canjear). Si creáramos
+        // ahora la suscripción del proveedor, cobraría en el acto y se comería el
+        // regalo. En su lugar acreditamos el tiempo: desbloqueamos las features del
+        // plan nuevo YA, sin tocar al proveedor. El regalo sigue corriendo y el cobro
+        // recién arranca cuando el trial vence — el mismo camino que cualquier trial,
+        // así que es correcto sea cual sea la pasarela (no depende de un free_trial
+        // nativo de MercadoPago). El tenant gana las features superiores durante lo
+        // que le quedaba de regalo.
+        const nowTs = new Date();
+        if (sub.trialEndsAt && sub.trialEndsAt > nowTs && !sub.providerSubscriptionId) {
+            await this.prisma.billingSubscription.update({
+                where: { id: sub.id },
+                data: {
+                    planId: newPlan.id,
+                    metadata: {
+                        ...(sub.metadata && typeof sub.metadata === 'object' ? (sub.metadata as any) : {}),
+                        billingCycle: targetCycle,
+                    } as any,
+                },
+            });
+            await this.prisma.tenant.update({
+                where: { id: tenantId },
+                data: { plan: newPlan.slug },
+            });
+            await this.redis.del(`tenant_plan:${tenantId}`);
+            await this.redis.del(`sub_status:${tenantId}`);
+            await this.redis.del(`plan_features:${tenantId}`);
+            this.emit(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, tenantId, sub.id, { fromPlan: sub.planId, toPlan: newPlan.id });
+            this.logger.log(
+                `[Billing] Tenant ${tenantId} upgraded to ${newPlan.slug} DURING a gifted trial — features unlocked now, billing deferred to trial end (${sub.trialEndsAt.toISOString()})`,
+            );
+            return { ...sub, planId: newPlan.id };
+        }
+
         const providerName = sub.provider as PaymentProviderName;
         const provider = this.providerFactory.getByName(providerName);
         const tenant = await this.prisma.tenant.findUnique({

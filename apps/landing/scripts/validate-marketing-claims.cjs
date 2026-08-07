@@ -1,0 +1,493 @@
+const fs = require("node:fs");
+const path = require("node:path");
+const ts = require("typescript");
+
+const landingRoot = path.resolve(__dirname, "..");
+const locales = ["es", "en", "pt", "fr"];
+const failures = [];
+
+function assert(condition, message) {
+  if (!condition) failures.push(message);
+}
+
+function loadJson(locale) {
+  const file = path.join(landingRoot, "messages", `${locale}.json`);
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (error) {
+    failures.push(`${locale}.json is not valid JSON: ${error.message}`);
+    return {};
+  }
+}
+
+function loadTsModule(relativeFile) {
+  const file = path.join(landingRoot, relativeFile);
+  const source = fs.readFileSync(file, "utf8");
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2021,
+    },
+    fileName: file,
+  }).outputText;
+  const loaded = { exports: {} };
+  new Function("module", "exports", output)(loaded, loaded.exports);
+  return loaded.exports;
+}
+
+function loadVerticalData() {
+  return loadTsModule(path.join("src", "data", "verticals.ts")).VERTICALS;
+}
+
+function deepMerge(base, overlay) {
+  if (!base || typeof base !== "object" || Array.isArray(base)) return overlay;
+  const result = { ...base };
+  for (const [key, value] of Object.entries(overlay || {})) {
+    result[key] = value && typeof value === "object" && !Array.isArray(value)
+      ? deepMerge(base[key] || {}, value)
+      : value;
+  }
+  return result;
+}
+
+function readMarketingSourceTree(directory) {
+  const chunks = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const fullPath = path.join(directory, entry.name);
+    const normalized = fullPath.replaceAll("\\", "/");
+    if (/\/app\/(?:privacy|terms|data-policy|data-deletion)\//.test(normalized)) continue;
+    if (entry.isDirectory()) chunks.push(readMarketingSourceTree(fullPath));
+    else if (/\.(?:ts|tsx)$/.test(entry.name)) chunks.push(fs.readFileSync(fullPath, "utf8"));
+  }
+  return chunks.join("\n");
+}
+
+function translatedDemoText(messages, slug) {
+  const vertical = messages?.verticals?.[slug] || {};
+  return Object.entries(vertical)
+    .filter(([key, value]) => /^demo\d+$/.test(key) && typeof value === "string")
+    .map(([, value]) => value)
+    .join(" ");
+}
+
+const verticals = loadVerticalData();
+assert(Array.isArray(verticals) && verticals.length === 18, "Vertical catalog must contain exactly 18 entries");
+for (const vertical of verticals || []) {
+  assert(
+    vertical.demoMode === "illustrative",
+    `${vertical.slug}: every demo must be explicitly marked illustrative`,
+  );
+}
+
+const chatDemoSource = fs.readFileSync(
+  path.join(landingRoot, "src", "components", "demos", "VerticalChatDemo.tsx"),
+  "utf8",
+);
+assert(
+  chatDemoSource.includes('vertical.demoMode === "illustrative"')
+    && chatDemoSource.includes('t("demoDisclaimer")'),
+  "VerticalChatDemo must render the illustrative-data disclaimer",
+);
+
+const markerPatterns = {
+  es: /\b(?:ejemplo|ilustrativ[oa])\b/i,
+  en: /\b(?:example|illustrative)\b/i,
+  pt: /\b(?:exemplo|ilustrativ[oa])\b/i,
+  fr: /\b(?:exemple|illustratif|illustrative)\b/i,
+};
+
+// Wave 0 claim freeze. These are either unsupported absolutes, invented
+// performance metrics, unpublished commercial policies, or certifications not
+// backed by evidence. Legal/privacy pages are intentionally outside this
+// marketing-copy scan.
+const frozenClaimPatterns = [
+  { label: "invented +45%/-60% outcome", pattern: /(?:\+\s*45|[-−]\s*60)\s*%/i },
+  { label: "unverified 3-second response SLA", pattern: /\b3\s*(?:sec(?:onds?)?|seg(?:undos?)?|secondes?)\b/i },
+  {
+    label: "unverified 5/10-minute setup promise",
+    pattern: /(?:(?:setup|configura(?:ci[oó]n|ç[aã]o|tion)|onboarding|connect\w*|conect\w*|operat\w*)\b.{0,70}\b(?:5|10)\s*(?:min(?:ute)?s?|minutos?)\b|\b(?:5|10)\s*(?:min(?:ute)?s?|minutos?)\b.{0,70}\b(?:setup|configura(?:ci[oó]n|ç[aã]o|tion)|onboarding|connect\w*|conect\w*|operat\w*))/i,
+  },
+  { label: "unverified adoption or satisfaction metric", pattern: /\b(?:2[.,]?000[.,]?000|70\s*%|4[.,]9\s*\/\s*5)\b/i },
+  { label: "unverified partner/certification badge", pattern: /\b(?:Meta Tech Provider|Mercado\s*Pago\s*Partner|MercadoPago\s*Partner)\b/i },
+  { label: "unverified 24/7 support promise", pattern: /(?:\b(?:support|soporte|suporte)\b.{0,35}\b24\s*\/\s*7\b|\b24\s*\/\s*7\b.{0,35}\b(?:support|soporte|suporte)\b)/i },
+  { label: "absolute or military-grade security claim", pattern: /\b(?:100\s*%\s*(?:secure|segur[oa]|s[ûu]r)|military-grade|cifrado militar|criptografia militar|chiffrement militaire)\b/i },
+  { label: "unverified daily-backup or compliance claim", pattern: /\b(?:daily backups?|backups? diarios?|backups? diários?|backups? quotidiens?|GDPR-compliant|cumplimos GDPR|conforme RGPD)\b/i },
+  { label: "unsupported subscription pause/refund/retention promise", pattern: /(?:\b(?:pause|paus(?:a|ar|e)|mettre en pause)\b.{0,45}\b(?:30|90)\s*(?:days?|días?|dias?|jours?)\b|\b(?:full refund|reembolso completo|remboursement complet)\b|\b(?:data|datos|dados|données)\b.{0,30}\b(?:kept|mantienen|mantidos|conservées)\b.{0,20}\b30\s*(?:days?|días?|dias?|jours?)\b)/i },
+  { label: "unsupported direct CRM integration", pattern: /\b(?:HubSpot|Salesforce)\b/i },
+  { label: "no-ban guarantee", pattern: /\b(?:no ban risk|sin riesgo de baneo|sem risco de banimento|sans risque de bannissement)\b/i },
+  {
+    label: "unsupported automated ticket management",
+    pattern: /\b(?:automated support tickets?|tickets? de soporte automatizados?|tickets? de suporte automatizados?|tickets? de support automatisés?)\b/i,
+  },
+  {
+    label: "unsupported automotive diagnosis or repair tracking",
+    pattern: /\b(?:diagnosis and quotes? by chat|diagnóstico y cotización por chat|diagnóstico e cotação por chat|diagnostic et devis par chat|repair tracking|seguimiento de reparaciones|acompanhamento de reparos|suivi de réparations)\b/i,
+  },
+  {
+    label: "unsupported financial quotes or portfolio tracking",
+    pattern: /\b(?:personalized quotes? by chat|cotizaciones personalizadas por chat|cotações personalizadas por chat|devis personnalisés par chat|portfolio tracking|seguimiento de portafolio|acompanhamento de portfólio|suivi de portefeuille|investment profile qualification|calificación de perfil de inversión|qualificação de perfil de investimento|évaluation du profil d'investissement)\b/i,
+  },
+  {
+    label: "services preconfigured across all 18 verticals",
+    pattern: /\b18\b.{0,120}\b(?:pre-?configured services?|servicios pre-?configurados?|serviços pré-configurados?|services pré-configurés?)\b/i,
+  },
+];
+
+// Regression fixtures ensure every high-risk branch remains executable. The
+// companion script also injects a fixture and verifies the validator exits 1.
+const frozenClaimRegressionSamples = [
+  ["invented +45%/-60% outcome", "Sales increased +45%"],
+  ["unverified 3-second response SLA", "Reply in 3 seconds"],
+  ["unverified 5/10-minute setup promise", "Setup in 10 minutes"],
+  ["unverified adoption or satisfaction metric", "Rated 4.9/5"],
+  ["unverified partner/certification badge", "Verified Meta Tech Provider"],
+  ["unverified 24/7 support promise", "24/7 support"],
+  ["absolute or military-grade security claim", "100% secure"],
+  ["unverified daily-backup or compliance claim", "Daily backups"],
+  ["unsupported subscription pause/refund/retention promise", "Full refund"],
+  ["unsupported direct CRM integration", "Native HubSpot integration"],
+  ["no-ban guarantee", "No ban risk"],
+  ["unsupported automated ticket management", "Automated support tickets"],
+  ["unsupported automotive diagnosis or repair tracking", "Ongoing repair tracking"],
+  ["unsupported financial quotes or portfolio tracking", "Portfolio tracking"],
+  ["services preconfigured across all 18 verticals", "18 verticals with pre-configured services"],
+];
+for (const [label, sample] of frozenClaimRegressionSamples) {
+  const rule = frozenClaimPatterns.find((claim) => claim.label === label);
+  assert(rule?.pattern.test(sample), `claim-freeze regression rule must reject: ${label}`);
+}
+
+const unsupportedClaims = [
+  {
+    slug: "inmobiliaria",
+    label: "hard-coded property inventory",
+    pattern: /\b(?:12|5)\s+(?:opciones|options|apartamentos|apartments|appartements|opções)\b/i,
+  },
+  {
+    slug: "seguros",
+    label: "unverified insurance plan or price",
+    pattern: /[$€£]\s*\d|\b(?:básico|basic|basique|completo|full|complète|premium)\b.{0,40}\d/i,
+  },
+  {
+    slug: "veterinaria",
+    label: "specific veterinary diagnosis or vaccine",
+    pattern: /\b(?:dhpp|v8|triple|parvovirus|parvovirose|parvovírus|vaccin polyvalent)\b/i,
+  },
+  {
+    slug: "hogar",
+    label: "unverified technician ETA or price",
+    pattern: /\b35\s*(?:min|minutes?)\b|[$€£]\s*60k/i,
+  },
+  {
+    slug: "tecnologia",
+    label: "unsupported support ticket or ETA",
+    pattern: /\b15\s*(?:min|minutes?)\b|(?:creat|gener|cr[ée]).{0,35}ticket.{0,25}(?:prior|support)/i,
+  },
+  {
+    slug: "pet-services",
+    label: "unverified boarding capacity or price",
+    pattern: /[$€£]\s*45k|\b(?:tenemos cupo|we have space|temos vaga|nous avons de la place)\b/i,
+  },
+  {
+    slug: "finanzas",
+    label: "unverified personalized financial recommendation",
+    pattern: /\b(?:tengo|i have|tenho|j'ai)\s+3\s+(?:opciones|options|opções)\b/i,
+  },
+];
+
+// Keep the exact high-risk legacy examples from resurfacing in another landing
+// section (the hero also carries scenario copy, independently of VERTICALS).
+const legacyClaimsAnywhere = [
+  {
+    label: "hard-coded property inventory",
+    pattern: /\b(?:12\s+(?:opciones|options|opções|appartements)|5\s+(?:aptos|apartamentos|apartments|opções|appartements))\b/i,
+  },
+  {
+    label: "hard-coded insurance pricing",
+    pattern: /\$\s*89k.{0,120}\$\s*145k.{0,120}\$\s*210k\b/i,
+  },
+  {
+    label: "specific veterinary vaccine recommendation",
+    pattern: /\b(?:dhpp|v8|triple|parvovirus|parvovirose|parvovírus|vaccin polyvalent)\b/i,
+  },
+  {
+    label: "unverified 35-minute home-service ETA or price",
+    pattern: /\b35\s*(?:min|minutes?)\b|\$\s*60k(?:\s*-\s*\$?\s*120k)?/i,
+  },
+  {
+    label: "unsupported priority-ticket or 15-minute support promise",
+    pattern: /\b15\s*(?:min|minutes?)\b|(?:creat|gener|gerar|cr[ée]).{0,35}ticket.{0,25}(?:prior|support)/i,
+  },
+  {
+    label: "hard-coded pet-care price",
+    pattern: /\$\s*45k\b/i,
+  },
+];
+
+const rawBySlug = new Map((verticals || []).map((vertical) => [
+  vertical.slug,
+  vertical.demoMessages.map((message) => message.text).join(" "),
+]));
+
+for (const claim of unsupportedClaims) {
+  assert(
+    !claim.pattern.test(rawBySlug.get(claim.slug) || ""),
+    `verticals.ts ${claim.slug}: ${claim.label}`,
+  );
+}
+
+for (const locale of locales) {
+  const messages = loadJson(locale);
+  const allLandingCopy = JSON.stringify(messages);
+  const marker = markerPatterns[locale];
+  assert(marker.test(messages?.hero?.demoLabel || ""), `${locale}: hero.demoLabel must say the demo is illustrative`);
+  assert(marker.test(messages?.verticals?.demoRespondedIn || ""), `${locale}: demo badge must say the demo is illustrative`);
+  assert(
+    typeof messages?.verticals?.demoDisclaimer === "string"
+      && messages.verticals.demoDisclaimer.trim().length >= 20,
+    `${locale}: verticals.demoDisclaimer is required`,
+  );
+  assert(
+    marker.test(messages?.channels?.demoDisclaimer || ""),
+    `${locale}: multichannel scenarios must be explicitly illustrative`,
+  );
+  assert(
+    !/\d/.test(messages?.verticals?.demoRespondedIn || ""),
+    `${locale}: illustrative demo badge must not claim a measured response time`,
+  );
+
+  for (const claim of unsupportedClaims) {
+    assert(
+      !claim.pattern.test(translatedDemoText(messages, claim.slug)),
+      `${locale} ${claim.slug}: ${claim.label}`,
+    );
+  }
+
+  for (const claim of legacyClaimsAnywhere) {
+    assert(
+      !claim.pattern.test(allLandingCopy),
+      `${locale}: legacy claim resurfaced anywhere in landing copy (${claim.label})`,
+    );
+  }
+
+  const regulatedText = ["salud", "veterinaria", "seguros", "finanzas", "servicios-profesionales"]
+    .map((slug) => translatedDemoText(messages, slug))
+    .join(" ");
+  assert(
+    !/\b(?:guaranteed coverage|cobertura garantizada|cobertura garantida|garantie assurée|approved|aprobado|aprovado|approuvé)\b/i.test(regulatedText),
+    `${locale}: regulated demos must not promise coverage or approval`,
+  );
+
+  for (const claim of frozenClaimPatterns) {
+    assert(!claim.pattern.test(allLandingCopy), `${locale}: frozen marketing claim (${claim.label})`);
+  }
+
+  const statLabels = [1, 2, 3, 4, 5].map((index) => messages?.socialProof?.[`stat${index}Label`]);
+  assert(
+    statLabels.every((label) => typeof label === "string" && label.trim().length > 0),
+    `${locale}: all five code-backed capability labels are required`,
+  );
+}
+
+const spanish = loadJson("es");
+const argentinaOverlay = loadJson("es-AR");
+const argentinaMessages = deepMerge(spanish, argentinaOverlay);
+assert(Object.keys(argentinaOverlay).length > 0, "es-AR: regional overlay must be present and valid JSON");
+for (const claim of frozenClaimPatterns) {
+  assert(
+    !claim.pattern.test(JSON.stringify(argentinaMessages)),
+    `es-AR: frozen marketing claim (${claim.label})`,
+  );
+}
+
+const marketingSource = [
+  readMarketingSourceTree(path.join(landingRoot, "src")),
+  process.env.MARKETING_CLAIM_PROBE || "",
+].join("\n");
+for (const claim of frozenClaimPatterns) {
+  assert(!claim.pattern.test(marketingSource), `landing source: frozen marketing claim (${claim.label})`);
+}
+
+// Testimonial publication fails closed: importing the section into the home is
+// allowed only after both explicit enablement and verifiable evidence/consent.
+const homeSource = fs.readFileSync(path.join(landingRoot, "src", "app", "(marketing)", "page.tsx"), "utf8");
+const testimonialComponentSource = fs.readFileSync(
+  path.join(landingRoot, "src", "components", "sections", "TestimonialsSection.tsx"),
+  "utf8",
+);
+const testimonialContract = loadTsModule(path.join("src", "data", "testimonial-evidence.ts"));
+const testimonialEvidence = testimonialContract.VERIFIED_TESTIMONIAL_EVIDENCE || [];
+const testimonialEvidenceReady = testimonialContract.TESTIMONIALS_PUBLICATION_ENABLED === true
+  && testimonialEvidence.length > 0
+  && testimonialEvidence.every((item) => (
+    typeof item.id === "string" && item.id.length > 0
+    && typeof item.evidenceUrl === "string" && /^https:\/\//.test(item.evidenceUrl)
+    && /^\d{4}-\d{2}-\d{2}$/.test(item.consentRecordedAt || "")
+  ));
+const homePublishesTestimonials = /TestimonialsSection/.test(homeSource);
+assert(!homePublishesTestimonials, "Wave 0: TestimonialsSection must remain removed from the home until evidence is approved");
+assert(
+  !homePublishesTestimonials || testimonialEvidenceReady,
+  "TestimonialsSection cannot be published without enablement, source evidence and recorded consent",
+);
+assert(
+  testimonialComponentSource.includes("TESTIMONIALS_PUBLICATION_ENABLED")
+    && testimonialComponentSource.includes("VERIFIED_TESTIMONIAL_EVIDENCE.length === 0"),
+  "TestimonialsSection must fail closed when publication evidence is absent",
+);
+
+// Code-backed stats: compare the displayed product counts with their concrete
+// registries/modules instead of trusting marketing copy.
+const capabilityCounts = loadTsModule(path.join("src", "data", "product-capabilities.ts"))
+  .PRODUCT_CAPABILITY_COUNTS;
+const channelRegistry = loadTsModule(path.join("src", "data", "channels.ts")).CHANNELS;
+const supportedChannelKeys = ["whatsapp", "instagram", "messenger", "telegram", "sms", "email"];
+assert(capabilityCounts.verticals === verticals.length, "Capability stat must match the vertical registry");
+assert(
+  capabilityCounts.channels === Object.keys(channelRegistry || {}).length
+    && supportedChannelKeys.every((channel) => channelRegistry?.[channel]),
+  "Capability stat must match the six registered messaging adapters",
+);
+assert(capabilityCounts.interfaceLanguages === locales.length, "Capability stat must match es/en/pt/fr locales");
+
+const repoRoot = path.resolve(landingRoot, "..", "..");
+const channelModuleSource = fs.readFileSync(
+  path.join(repoRoot, "apps", "api", "src", "modules", "channels", "channels.module.ts"),
+  "utf8",
+);
+const adapterClassByChannel = {
+  whatsapp: "WhatsAppAdapter",
+  instagram: "InstagramAdapter",
+  messenger: "MessengerAdapter",
+  telegram: "TelegramAdapter",
+  sms: "SmsAdapter",
+  email: "EmailAdapter",
+};
+for (const [channel, adapterClass] of Object.entries(adapterClassByChannel)) {
+  const adapterFile = path.join(
+    repoRoot,
+    "apps",
+    "api",
+    "src",
+    "modules",
+    "channels",
+    channel,
+    `${channel}.adapter.ts`,
+  );
+  assert(fs.existsSync(adapterFile), `${channel}: backend channel adapter file is required`);
+  assert(
+    channelModuleSource.includes(adapterClass)
+      && channelModuleSource.includes(`registerAdapter(this.${channel}Adapter)`),
+    `${channel}: backend adapter must be registered in ChannelsModule`,
+  );
+}
+const knowledgeEvidenceFiles = [
+  "apps/api/src/modules/business-info/business-info.service.ts",
+  "apps/api/src/modules/catalog/catalog.service.ts",
+  "apps/api/src/modules/faqs/faqs.service.ts",
+  "apps/api/src/modules/policies/policies.service.ts",
+  "apps/api/src/modules/knowledge/knowledge.service.ts",
+];
+assert(
+  capabilityCounts.knowledgeTiers === knowledgeEvidenceFiles.length
+    && knowledgeEvidenceFiles.every((file) => fs.existsSync(path.join(repoRoot, file))),
+  "Capability stat must match the five implemented knowledge tiers",
+);
+const promptAssemblerSource = fs.readFileSync(
+  path.join(repoRoot, "apps", "api", "src", "modules", "conversations", "prompt-assembler.service.ts"),
+  "utf8",
+);
+assert(
+  capabilityCounts.promptLayers === 3
+    && /const layer1\s*=\s*this\.buildContractLayer\(\)/.test(promptAssemblerSource)
+    && /const layer2\s*=\s*this\.personaService\.buildSystemPrompt/.test(promptAssemblerSource)
+    && /const layer3\s*=\s*this\.buildTurnLayer\(turn\)/.test(promptAssemblerSource),
+  "Capability stat must match the three-layer prompt assembler",
+);
+
+const statsSource = fs.readFileSync(
+  path.join(landingRoot, "src", "components", "sections", "StatsCounter.tsx"),
+  "utf8",
+);
+assert(
+  statsSource.includes("PRODUCT_CAPABILITY_COUNTS.verticals")
+    && statsSource.includes("PRODUCT_CAPABILITY_COUNTS.channels")
+    && statsSource.includes("PRODUCT_CAPABILITY_COUNTS.interfaceLanguages")
+    && statsSource.includes("PRODUCT_CAPABILITY_COUNTS.knowledgeTiers")
+    && statsSource.includes("PRODUCT_CAPABILITY_COUNTS.promptLayers"),
+  "StatsCounter must render only code-backed product capability counts",
+);
+
+const trustSource = fs.readFileSync(
+  path.join(landingRoot, "src", "components", "sections", "TrustRow.tsx"),
+  "utf8",
+);
+const footerSource = fs.readFileSync(path.join(landingRoot, "src", "components", "layout", "Footer.tsx"), "utf8");
+assert(
+  !/meta-tech-provider\.svg|Tech Provider|MercadoPago Partner/i.test(`${trustSource}\n${footerSource}`),
+  "TrustRow/Footer must present integrations and capabilities, not certifications",
+);
+
+// The landing fallback matrix must never undershoot the canonical vertical
+// bootstrap. Cross-check both the exported floors and the API seed.
+const pricing = loadTsModule(path.join("src", "data", "pricing.ts"));
+const planSeedSource = fs.readFileSync(path.join(repoRoot, "apps", "api", "prisma", "seed-billing-plans.js"), "utf8");
+function featureFromSeed(slug, feature) {
+  const start = planSeedSource.indexOf(`slug: '${slug}'`);
+  const end = planSeedSource.indexOf("\n    {", start + 1);
+  const block = planSeedSource.slice(start, end === -1 ? undefined : end);
+  const match = block.match(new RegExp(`${feature}:\\s*(-?\\d+)`));
+  return match ? Number(match[1]) : undefined;
+}
+function channelsFromSeed(slug) {
+  const start = planSeedSource.indexOf(`slug: '${slug}'`);
+  const end = planSeedSource.indexOf("\n    {", start + 1);
+  const block = planSeedSource.slice(start, end === -1 ? undefined : end);
+  const match = block.match(/channels:\s*\[([^\]]*)\]/);
+  return match ? [...match[1].matchAll(/'([^']+)'/g)].map((item) => item[1]) : [];
+}
+for (const slug of ["emprendedor", "starter"]) {
+  const floor = pricing.VERTICAL_BOOTSTRAP_PLAN_FLOORS?.[slug];
+  assert(floor?.pipelineStages === 7, `${slug}: landing pipeline-stage floor must be 7`);
+  assert(floor?.appointmentsServices === 4, `${slug}: landing service floor must be 4`);
+  assert(
+    floor?.pipelineStages === featureFromSeed(slug, "pipelineStages"),
+    `${slug}: landing pipeline-stage fallback drifted from billing seed`,
+  );
+  assert(
+    floor?.appointmentsServices === featureFromSeed(slug, "appointmentsServices"),
+    `${slug}: landing service fallback drifted from billing seed`,
+  );
+}
+const pipelineRow = pricing.FEATURE_MATRIX.find((row) => row.key === "pipelineStages");
+const servicesRow = pricing.FEATURE_MATRIX.find((row) => row.key === "services");
+const channelRow = pricing.FEATURE_MATRIX.find((row) => row.key === "channels");
+assert(
+  pipelineRow?.values[0] === "7" && pipelineRow?.values[1] === "7",
+  "Pricing fallback must show 7 pipeline stages for Emprendedor and Starter",
+);
+assert(
+  servicesRow?.values[0] === "4" && servicesRow?.values[1] === "4",
+  "Pricing fallback must show 4 services for Emprendedor and Starter",
+);
+const marketedPlanOrder = ["emprendedor", "starter", "pro", "enterprise"];
+for (const [index, slug] of marketedPlanOrder.entries()) {
+  const seedChannels = channelsFromSeed(slug);
+  const displayedCount = Number.parseInt(channelRow?.values?.[index] || "", 10);
+  assert(seedChannels.length > 0, `${slug}: billing seed must declare its channel set`);
+  assert(
+    displayedCount === seedChannels.length,
+    `${slug}: landing channel count must match billing seed (${seedChannels.length})`,
+  );
+}
+
+const english = loadJson("en");
+assert(/\b18\b/.test(english?.verticals?.subtitle || ""), "en: verticals.subtitle must advertise 18 industries");
+assert(/\b18\b/.test(english?.howItWorks?.step2Desc || ""), "en: howItWorks.step2Desc must advertise 18 templates");
+
+if (failures.length) {
+  console.error("Marketing claim contract failed:\n" + failures.map((failure) => `- ${failure}`).join("\n"));
+  process.exit(1);
+}
+
+console.log("Marketing claim contract passed for 18 verticals, es/en/pt/fr + es-AR, evidence gates and plan floors.");

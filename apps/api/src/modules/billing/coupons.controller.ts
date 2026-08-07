@@ -1,5 +1,5 @@
 import {
-    BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query,
+    Body, Controller, Delete, Get, Param, Post, Put, Query,
     Req, UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -8,17 +8,17 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CouponsService } from './coupons.service';
-import { BillingService } from './billing.service';
-import { PrismaService } from '../prisma/prisma.service';
 
+/**
+ * Solo se emiten cupones de meses gratis. Los tipos percent_off / amount_off
+ * existen en la tabla por historia pero nunca descontaron nada del cobro, así que
+ * ya no se aceptan acá ni en el service. Ver el docstring de CouponsService.
+ */
 class CreateCouponDto {
     @IsString() code!: string;
     @IsOptional() @IsString() description?: string;
-    @IsString() @IsIn(['percent_off', 'amount_off', 'free_months']) type!: 'percent_off' | 'amount_off' | 'free_months';
-    @IsOptional() @IsInt() @Min(1) @Max(100) percentDiscount?: number;
-    @IsOptional() @IsInt() @Min(1) amountOffCents?: number;
-    @IsOptional() @IsInt() @Min(1) @Max(24) freeMonths?: number;
-    @IsOptional() @IsInt() @Min(1) durationCycles?: number;
+    @IsIn(['free_months']) type!: 'free_months';
+    @IsInt() @Min(1) @Max(24) freeMonths!: number;
     @IsOptional() @IsArray() appliesToPlanIds?: string[];
     @IsOptional() @IsInt() @Min(1) maxRedemptions?: number;
     @IsOptional() @IsString() expiresAt?: string;
@@ -54,11 +54,7 @@ class RedeemCouponDto {
 @Controller('billing-coupons')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class CouponsController {
-    constructor(
-        private readonly couponsService: CouponsService,
-        private readonly billingService: BillingService,
-        private readonly prisma: PrismaService,
-    ) {}
+    constructor(private readonly couponsService: CouponsService) {}
 
     // ── Admin (super_admin) ─────────────────────────────────────────
 
@@ -82,15 +78,15 @@ export class CouponsController {
 
     @Put('admin/:id')
     @Roles('super_admin')
-    async update(@Param('id') id: string, @Body() body: UpdateCouponDto) {
-        const updated = await this.couponsService.update(id, body as any);
+    async update(@Param('id') id: string, @Body() body: UpdateCouponDto, @Req() req: any) {
+        const updated = await this.couponsService.update(id, body as any, req.user?.sub);
         return { success: true, data: updated };
     }
 
     @Delete('admin/:id')
     @Roles('super_admin')
-    async deactivate(@Param('id') id: string) {
-        await this.couponsService.deactivate(id);
+    async deactivate(@Param('id') id: string, @Req() req: any) {
+        await this.couponsService.deactivate(id, req.user?.sub);
         return { success: true };
     }
 
@@ -115,45 +111,28 @@ export class CouponsController {
     }
 
     /**
-     * Redeem a coupon for the tenant's active subscription. For free_months
-     * coupons, this also extends the trial period locally. For percent/amount
-     * coupons, this just records the redemption — actual credit is handled
-     * by the runbook/manual refund flow.
+     * Canjea el cupón para la suscripción del tenant. El canje y la extensión del
+     * trial ocurren en una sola transacción dentro del service — antes eran dos
+     * pasos y un fallo del segundo dejaba el cupón quemado sin regalar nada.
      */
     @Post('redeem/:tenantId')
     @Roles('tenant_admin')
-    async redeem(@Param('tenantId') tenantId: string, @Body() body: RedeemCouponDto) {
-        const sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
-        if (!sub) {
-            throw new BadRequestException({ error: 'no_subscription', message: 'Tenant has no subscription to apply coupon to.' });
-        }
-
-        const validation = await this.couponsService.validate({
+    async redeem(@Param('tenantId') tenantId: string, @Body() body: RedeemCouponDto, @Req() req: any) {
+        const result = await this.couponsService.redeemForTenant({
             code: body.code,
             tenantId,
-            planId: sub.planId,
+            actorUserId: req.user?.sub,
+            source: req.user?.role === 'super_admin' ? 'admin' : 'billing_settings',
         });
-        if (!validation.valid || !validation.coupon) {
-            throw new BadRequestException({ error: validation.error, message: 'Invalid or already-used coupon.' });
-        }
-
-        const redemption = await this.couponsService.redeem({
-            couponId: validation.coupon.id,
-            tenantId,
-            subscriptionId: sub.id,
-        });
-
-        // For free_months — extend the trial period locally
-        if (validation.coupon.type === 'free_months' && validation.coupon.freeMonths) {
-            await this.billingService.applyFreeMonthsExtension(tenantId, validation.coupon.freeMonths);
-        }
 
         return {
             success: true,
             data: {
-                redemptionId: redemption.redemptionId,
-                couponType: validation.coupon.type,
-                description: validation.coupon.description,
+                redemptionId: result.redemptionId,
+                couponType: 'free_months',
+                freeMonths: result.freeMonths,
+                trialEndsAt: result.trialEndsAt,
+                description: result.description,
             },
         };
     }

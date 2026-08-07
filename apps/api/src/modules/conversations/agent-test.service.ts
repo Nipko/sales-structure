@@ -29,10 +29,20 @@ import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
 import { GYMS_TOOLS } from './tools/gyms-tools';
 import { EDUCATION_TOOLS } from './tools/education-tools';
 import { INSURANCE_TOOLS } from './tools/insurance-tools';
-import { HOME_SERVICES_TOOLS, PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS } from './tools/tier3-tools';
+import {
+    HOME_SERVICES_TOOLS,
+    PET_SERVICES_TOOLS,
+    PHOTOGRAPHY_TOOLS,
+    PROFESSIONAL_SERVICES_TOOLS,
+} from './tools/tier3-tools';
+import { ECOMMERCE_TOOLS } from './tools/ecommerce-tools';
 import { TenantsService } from '../tenants/tenants.service';
-
-const TEST_CONTACT_ID = 'test-agent-contact';
+import {
+    agentTestBlockedToolResult,
+    isAgentTestSafeToolName,
+    resolveAgentTestContactId,
+} from './agent-test-tool-policy';
+import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 
 /**
  * AgentTestService — runs the full prompt pipeline for a single test message
@@ -63,7 +73,8 @@ export class AgentTestService {
         const startedAt = Date.now();
 
         // 1. Resolve the agent config (may be a draft the user just saved)
-        const agent = await this.personaService.getAgent(tenantId, agentId);
+        const executionContext = AGENT_TEST_EXECUTION_CONTEXT;
+        const agent = await this.personaService.getAgent(tenantId, agentId, executionContext);
         if (!agent) throw new NotFoundException('Agent not found');
         const config = agent.config_json as TenantConfig;
 
@@ -87,7 +98,7 @@ export class AgentTestService {
 
         // Business identity
         try {
-            const bi = await this.businessInfoService.getPrimary(tenantId);
+            const bi = await this.businessInfoService.getPrimary(tenantId, executionContext);
             if (bi) {
                 turnContext.business = {
                     companyName: bi.companyName,
@@ -102,19 +113,22 @@ export class AgentTestService {
                     socialLinks: bi.socialLinks,
                 };
             }
-        } catch {}
+        } catch { /* Business identity is optional in Agent Test. */ }
 
         // 3. RAG (respects agent config topK + threshold)
         const ragHits: RetrievedKnowledgeItem[] = [];
         try {
             const ragConfig = config.rag;
             if (ragConfig?.enabled !== false) {
-                const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId);
+                const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext);
                 if (hasKnowledge) {
                     const topK = ragConfig?.topK ?? 5;
                     const similarityThreshold = ragConfig?.similarityThreshold ?? 0;
                     const results = await this.knowledgeService.searchRelevant(
-                        tenantId, req.message, topK, { similarityThreshold },
+                        tenantId,
+                        req.message,
+                        topK,
+                        { similarityThreshold, executionContext },
                     );
                     for (const r of results) {
                         ragHits.push({
@@ -160,22 +174,17 @@ export class AgentTestService {
         if (cfgTools?.homeServices?.enabled === true) tools.push(...HOME_SERVICES_TOOLS);
         if (cfgTools?.petServices?.enabled === true) tools.push(...PET_SERVICES_TOOLS);
         if (cfgTools?.photography?.enabled === true) tools.push(...PHOTOGRAPHY_TOOLS);
+        if (cfgTools?.professionalServices?.enabled === true) tools.push(...PROFESSIONAL_SERVICES_TOOLS);
+        if (cfgTools?.ecommerce?.enabled === true) tools.push(...ECOMMERCE_TOOLS);
 
-        if (options?.evalMode) {
-            // Only create_appointment honours the evalMode no-outbound guard. Default-deny
-            // the rest so an eval run can't invoke an UNAUDITED writer (property/tour/food
-            // booking, reschedule/cancel, send_booking_link, send_*_image, etc.) that would
-            // fire real messages/events/rows during the eval. Read-only tools stay.
-            const EVAL_SAFE_TOOL_NAMES = new Set([
-                'create_appointment',
-                'list_services', 'check_availability', 'list_customer_appointments', 'get_appointment_details',
-                'search_faqs', 'search_knowledge', 'get_policy', 'get_policies', 'list_offers', 'get_customer_context',
-                'list_products', 'get_product', 'check_stock',
-            ]);
-            const safe = tools.filter((t: any) => EVAL_SAFE_TOOL_NAMES.has(t?.name));
-            tools.length = 0;
-            tools.push(...safe);
-        }
+        // Agent Test always points at the tenant's real schema. Advertise only the
+        // audited read-only subset, regardless of evalMode. In particular, evalMode
+        // is execution metadata; it is NOT permission to write production data.
+        // Vertical integrations and MCP stay unavailable until they have an isolated
+        // sandbox/read-only contract (see agent-test-tool-policy.ts).
+        const safeTools = tools.filter((t: any) => isAgentTestSafeToolName(t?.name));
+        tools.length = 0;
+        tools.push(...safeTools);
 
         // 5. Assemble the FULL system prompt (Layer 1 + 2 + 3).
         const systemPrompt = this.promptAssembler.assemble(config, turnContext);
@@ -190,9 +199,10 @@ export class AgentTestService {
         messages.push({ role: 'user', content: req.message });
 
         // 7. Run the LLM with tool loop (max 3 iterations in test mode to keep it bounded).
-        const schemaName = await this.tenantsService.getSchemaName(tenantId);
+        const schemaName = await this.tenantsService.getSchemaName(tenantId, executionContext);
         const toolCalls: TestAgentToolCall[] = [];
-        let currentMessages = [...messages] as any[];
+        const testContactId = resolveAgentTestContactId(options?.sandboxContactId);
+        const currentMessages = [...messages] as any[];
         let finalResponse = '';
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
@@ -209,6 +219,7 @@ export class AgentTestService {
                 temperature: config.llm?.temperature ?? 0.7,
                 tools: hasTools ? tools : undefined,
                 tenantId,
+                executionContext,
             });
 
             totalInputTokens += (response as any).usage?.inputTokens ?? (response as any).usage?.prompt_tokens ?? 0;
@@ -225,10 +236,20 @@ export class AgentTestService {
                 for (const tc of response.toolCalls) {
                     const args = this.safeJsonParse(tc.function.arguments);
                     const tStart = Date.now();
-                    const result = await this.toolExecutor.execute(
-                        schemaName, tenantId, options?.sandboxContactId || TEST_CONTACT_ID, tc.function.name, args,
-                        undefined, { evalMode: options?.evalMode },
-                    );
+                    // Do not trust toolCalls merely because the provider returned
+                    // them: a model can emit an unadvertised writer or mcp__* name.
+                    // Enforce the same default-deny policy at the execution boundary.
+                    const result = isAgentTestSafeToolName(tc.function.name)
+                        ? await this.toolExecutor.execute(
+                            schemaName,
+                            tenantId,
+                            testContactId,
+                            tc.function.name,
+                            args,
+                            undefined,
+                            { evalMode: false, readOnly: true, executionContext },
+                        )
+                        : agentTestBlockedToolResult(tc.function.name);
                     const dur = Date.now() - tStart;
                     toolCalls.push({
                         name: tc.function.name,

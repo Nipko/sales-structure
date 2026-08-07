@@ -1,10 +1,136 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { getVerticalDefinition } from './vertical-definitions';
 import { PERSONA_CACHE_CHANNELS } from '../../common/utils/persona-cache.util';
-import { TenantVerticalConfig, VerticalDefinition, VerticalServiceDefinition } from '@parallext/shared';
+import {
+    TenantVerticalConfig,
+    VerticalDefinition,
+    VerticalServiceDefinition,
+    VerticalStageDefinition,
+} from '@parallext/shared';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
+import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+
+export const VERTICAL_PROVISIONING_VERSION = 1;
+
+type VerticalProvisioningStatus = 'pending' | 'complete' | 'failed';
+type VerticalProvisioningStep =
+    | 'quota_plan'
+    | 'pipeline'
+    | 'persona'
+    | 'knowledge'
+    | 'agenda'
+    | 'vertical_tools'
+    | 'config'
+    | 'cache'
+    | 'invariants';
+
+interface VerticalProvisioningQuotaPolicy {
+    pipelineStages: number;
+    appointmentServices: number;
+    selectedStageSlugs: string[];
+    selectedServiceIndexes: number[];
+}
+
+export interface VerticalProvisioningState {
+    version: number;
+    status: VerticalProvisioningStatus;
+    industry: string;
+    subType: string | null;
+    language: string;
+    plan: string;
+    attempt: number;
+    startedAt: string;
+    updatedAt: string;
+    completedAt?: string;
+    currentStep?: VerticalProvisioningStep;
+    completedSteps: VerticalProvisioningStep[];
+    quotaPolicy?: VerticalProvisioningQuotaPolicy;
+    failure?: { step: VerticalProvisioningStep; message: string; at: string };
+    invariants?: VerticalProvisioningInvariants;
+}
+
+interface VerticalProvisioningInvariants {
+    pipelineStages: number;
+    appointmentServices: number;
+    availabilitySlots: number;
+    publishedFaqs: number;
+    activeAgents: number;
+    requiredTools: string[];
+}
+
+export interface QuotaAwareVerticalDefaults {
+    pipelineStages: VerticalStageDefinition[];
+    services: VerticalServiceDefinition[];
+}
+
+function assertQuotaValue(value: unknown, key: string): number {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < -1) {
+        throw new Error(`Missing or invalid plan quota "${key}"`);
+    }
+    return value;
+}
+
+/**
+ * Política explícita defaults-vs-cuota:
+ * - los registros existentes nunca se borran;
+ * - si ya superan la cuota, el provisioning falla y no declara éxito;
+ * - los servicios opcionales ocupan solo la capacidad restante;
+ * - el pipeline es estructural e indivisible: si el plan/override no alcanza
+ *   para TODAS sus etapas canónicas, el provisioning falla en vez de crear una
+ *   vertical mutilada.
+ */
+export function selectQuotaAwareVerticalDefaults(
+    definition: VerticalDefinition,
+    services: VerticalServiceDefinition[],
+    limits: { pipelineStages: number; appointmentServices: number },
+    existing: { stageSlugs?: string[]; serviceNames?: string[] } = {},
+): QuotaAwareVerticalDefaults {
+    const stageLimit = assertQuotaValue(limits.pipelineStages, 'pipelineStages');
+    const serviceLimit = assertQuotaValue(limits.appointmentServices, 'appointmentsServices');
+    const existingStageSlugs = [...new Set(existing.stageSlugs || [])];
+    const existingServiceNames = [...new Set(existing.serviceNames || [])];
+
+    if (stageLimit !== -1 && existingStageSlugs.length > stageLimit) {
+        throw new Error(`Existing pipeline stages (${existingStageSlugs.length}) exceed plan quota (${stageLimit})`);
+    }
+    if (serviceLimit !== -1 && existingServiceNames.length > serviceLimit) {
+        throw new Error(`Existing appointment services (${existingServiceNames.length}) exceed plan quota (${serviceLimit})`);
+    }
+
+    const defaultStageSlugs = new Set(definition.pipeline.stages.map((stage) => stage.slug));
+    const customStageCount = existingStageSlugs.filter((slug) => !defaultStageSlugs.has(slug)).length;
+    const requiredPipelineCapacity = customStageCount + definition.pipeline.stages.length;
+    if (stageLimit !== -1 && requiredPipelineCapacity > stageLimit) {
+        throw new Error(
+            `Plan quota pipelineStages=${stageLimit} is below canonical minimum ` +
+            `${requiredPipelineCapacity} for vertical "${definition.industry}"`,
+        );
+    }
+
+    const allDefaultServiceNames = services.map((service) => new Set(Object.values(service.name)));
+    const matchingExistingServiceIndexes = new Set<number>();
+    for (const existingName of existingServiceNames) {
+        const index = allDefaultServiceNames.findIndex((names) => names.has(existingName));
+        if (index >= 0) matchingExistingServiceIndexes.add(index);
+    }
+    const customServiceCount = existingServiceNames.length - matchingExistingServiceIndexes.size;
+    const serviceCapacity = serviceLimit === -1
+        ? services.length
+        : Math.max(0, serviceLimit - customServiceCount);
+    const selectedServiceIndexes = new Set([...matchingExistingServiceIndexes].slice(0, serviceCapacity));
+    for (let index = 0; index < services.length && selectedServiceIndexes.size < serviceCapacity; index++) {
+        selectedServiceIndexes.add(index);
+    }
+
+    return {
+        pipelineStages: [...definition.pipeline.stages],
+        services: services.filter((_service, index) => selectedServiceIndexes.has(index)),
+    };
+}
 
 /**
  * Los sub-tipos que cambian lo que el bootstrap siembra.
@@ -40,74 +166,113 @@ interface SubtypeBootstrap {
     services?: VerticalServiceDefinition[];
 }
 
-const SUBTYPE_BOOTSTRAP: Record<string, SubtypeBootstrap> = {
-    // moda_belleza — la boutique es RETAIL de ropa: catálogo, no sillón.
-    boutique: { skipAgenda: true, extraTools: ['catalog'] },
-    // salud — la farmacia despacha, no agenda consultas.
-    farmacia: { skipAgenda: true, extraTools: ['catalog'] },
-    // salud — urgencias 24h: la grilla semanal de 9 a 18 es exactamente al revés
-    // de lo que el negocio necesita.
-    hospital_24h: { roundTheClock: true },
-    // restaurantes — sin salón no hay mesa que reservar.
-    dark_kitchen: { skipAgenda: true },
-    delivery: { skipAgenda: true },
-    // turismo — el alojamiento reserva NOCHES contra `properties`, no franjas de
-    // 4 horas contra `services`. Su tool ya se enciende más abajo.
-    hotel: { skipAgenda: true },
-    alquiler_vacacional: { skipAgenda: true },
-    // moda_belleza / salud — paquetes de sesiones (6 depilaciones, 10 masajes,
-    // una serie de keratinas). El módulo de treatments estaba pagado y era
-    // exclusivo de dental.
-    spa: { extraTools: ['treatments'] },
-    estetica: { extraTools: ['treatments'] },
-    // Dermatología y medicina estética: mismo motor de paquetes de sesiones que
-    // `estetica`, del que se separó al partir belleza/salud. Sin esta entrada el
-    // sub-tipo nuevo nacía sin la herramienta que define su negocio.
-    dermatologia: { extraTools: ['treatments'] },
-    psicologia: { extraTools: ['treatments'] },
-
-    // servicios_profesionales — los cuatro sub-tipos venden cosas distintas y
-    // la vertical sembraba "Consulta inicial" + "Asesoría especializada" para
-    // todos. Los precios son el orden de magnitud del mercado colombiano y el
-    // dueño los ajusta; lo que importa es que el NOMBRE del servicio sea el que
-    // usa el rubro, porque es lo que el agente le ofrece al cliente.
-    contadores: {
-        services: [
-            { name: { es: 'Declaración de renta', en: 'Income tax return', pt: 'Declaração de renda', fr: 'Déclaration de revenus' }, description: { es: 'Preparación y presentación de la declaración anual', en: 'Preparation and filing of the annual return', pt: 'Preparação e envio da declaração anual', fr: 'Préparation et dépôt de la déclaration annuelle' }, durationMinutes: 60, price: 250000, currency: 'COP', category: 'tributario' },
-            { name: { es: 'Asesoría contable mensual', en: 'Monthly accounting service', pt: 'Assessoria contábil mensal', fr: 'Suivi comptable mensuel' }, description: { es: 'Contabilidad y obligaciones del mes', en: 'Monthly bookkeeping and filings', pt: 'Contabilidade e obrigações do mês', fr: 'Comptabilité et obligations du mois' }, durationMinutes: 60, price: 400000, currency: 'COP', category: 'contable' },
-            { name: { es: 'Primera reunión', en: 'First meeting', pt: 'Primeira reunião', fr: 'Premier rendez-vous' }, description: { es: 'Diagnóstico inicial sin compromiso', en: 'Initial assessment, no obligation', pt: 'Diagnóstico inicial sem compromisso', fr: 'Diagnostic initial sans engagement' }, durationMinutes: 30, price: 0, currency: 'COP', category: 'consulta' },
-        ],
+/**
+ * Las reglas de bootstrap están namespaced por industria. Un mismo slug de
+ * sub-tipo puede significar negocios distintos: `turismo/hotel` reserva noches
+ * y no usa la agenda genérica, mientras `pet_services/hotel` sí agenda estadías
+ * como servicios. Indexarlas solo por `subType` hacía que la segunda heredara
+ * accidentalmente el `skipAgenda` de la primera.
+ *
+ * `boutique` y `delivery` se conservan dentro de su industria aunque ya no estén
+ * en el selector actual: son compatibilidad intencional para tenants antiguos,
+ * sin volver a convertirlos en reglas globales.
+ */
+const SUBTYPE_BOOTSTRAP_BY_INDUSTRY: Record<string, Record<string, SubtypeBootstrap>> = {
+    moda_belleza: {
+        // Boutique de ropa: catálogo, no sillón.
+        boutique: { skipAgenda: true, extraTools: ['catalog'] },
+        // Paquetes de sesiones (depilación, masajes, etc.).
+        spa: { extraTools: ['treatments'] },
+        estetica: { extraTools: ['treatments'] },
     },
-    arquitectos: {
-        services: [
-            { name: { es: 'Visita a obra', en: 'Site visit', pt: 'Visita à obra', fr: 'Visite de chantier' }, description: { es: 'Relevamiento en el lugar', en: 'On-site survey', pt: 'Levantamento no local', fr: 'Relevé sur place' }, durationMinutes: 90, price: 200000, currency: 'COP', category: 'relevamiento' },
-            { name: { es: 'Anteproyecto', en: 'Preliminary design', pt: 'Anteprojeto', fr: 'Avant-projet' }, description: { es: 'Propuesta inicial de diseño', en: 'Initial design proposal', pt: 'Proposta inicial de projeto', fr: 'Proposition de conception initiale' }, durationMinutes: 60, price: 500000, currency: 'COP', category: 'diseno' },
-            { name: { es: 'Primera reunión', en: 'First meeting', pt: 'Primeira reunião', fr: 'Premier rendez-vous' }, description: { es: 'Conversación inicial sobre el proyecto', en: 'Initial conversation about the project', pt: 'Conversa inicial sobre o projeto', fr: 'Premier échange sur le projet' }, durationMinutes: 45, price: 0, currency: 'COP', category: 'consulta' },
-        ],
+    salud: {
+        // La farmacia despacha, no agenda consultas.
+        farmacia: { skipAgenda: true, extraTools: ['catalog'] },
+        // Mismo motor de paquetes de sesiones que estética.
+        dermatologia: { extraTools: ['treatments'] },
+        psicologia: { extraTools: ['treatments'] },
     },
-    consultores: {
-        services: [
-            { name: { es: 'Diagnóstico inicial', en: 'Initial assessment', pt: 'Diagnóstico inicial', fr: 'Diagnostic initial' }, description: { es: 'Relevamiento de la situación actual', en: 'Review of the current situation', pt: 'Levantamento da situação atual', fr: 'Analyse de la situation actuelle' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'consulta' },
-            { name: { es: 'Sesión de consultoría', en: 'Consulting session', pt: 'Sessão de consultoria', fr: 'Séance de conseil' }, description: { es: 'Trabajo sobre un tema puntual', en: 'Work on a specific topic', pt: 'Trabalho sobre um tema específico', fr: 'Travail sur un sujet précis' }, durationMinutes: 90, price: 350000, currency: 'COP', category: 'consultoria' },
-        ],
+    veterinaria: {
+        // Urgencias 24h: reemplaza la grilla semanal de la industria.
+        hospital_24h: { roundTheClock: true },
     },
-    // 'abogados' NO entra: "consulta inicial" y "asesoría especializada" son
-    // exactamente como se vende un despacho jurídico. Ramificarlo sería
-    // ruido — la misma regla que hace que un sub-tipo sin efecto salga del
-    // selector en vez de fingir que significa algo.
-
-    // technology — desarrollo y consultoría no "demuestran" nada: relevan.
-    desarrollo: {
-        services: [
-            { name: { es: 'Reunión de relevamiento', en: 'Requirements meeting', pt: 'Reunião de levantamento', fr: 'Réunion de cadrage' }, description: { es: 'Entender qué hay que construir', en: 'Understand what needs to be built', pt: 'Entender o que precisa ser construído', fr: 'Comprendre ce qui doit être construit' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'discovery' },
-        ],
+    restaurantes: {
+        // Sin salón no hay mesa que reservar.
+        dark_kitchen: { skipAgenda: true },
+        delivery: { skipAgenda: true },
     },
-    consultoria_ti: {
-        services: [
-            { name: { es: 'Diagnóstico de infraestructura', en: 'Infrastructure assessment', pt: 'Diagnóstico de infraestrutura', fr: 'Audit d\'infrastructure' }, description: { es: 'Revisión del estado actual', en: 'Review of the current setup', pt: 'Revisão do estado atual', fr: 'Revue de l\'existant' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'discovery' },
-        ],
+    turismo: {
+        // El alojamiento reserva noches contra `properties`, no franjas de
+        // cuatro horas contra `services`.
+        hotel: { skipAgenda: true },
+        alquiler_vacacional: { skipAgenda: true },
+    },
+    servicios_profesionales: {
+        // Los precios son una base editable; el valor del preset es que el
+        // nombre del servicio corresponda al rubro desde el primer día.
+        contadores: {
+            services: [
+                { name: { es: 'Declaración de renta', en: 'Income tax return', pt: 'Declaração de renda', fr: 'Déclaration de revenus' }, description: { es: 'Preparación y presentación de la declaración anual', en: 'Preparation and filing of the annual return', pt: 'Preparação e envio da declaração anual', fr: 'Préparation et dépôt de la déclaration annuelle' }, durationMinutes: 60, price: 250000, currency: 'COP', category: 'tributario' },
+                { name: { es: 'Asesoría contable mensual', en: 'Monthly accounting service', pt: 'Assessoria contábil mensal', fr: 'Suivi comptable mensuel' }, description: { es: 'Contabilidad y obligaciones del mes', en: 'Monthly bookkeeping and filings', pt: 'Contabilidade e obrigações do mês', fr: 'Comptabilité et obligations du mois' }, durationMinutes: 60, price: 400000, currency: 'COP', category: 'contable' },
+                { name: { es: 'Primera reunión', en: 'First meeting', pt: 'Primeira reunião', fr: 'Premier rendez-vous' }, description: { es: 'Diagnóstico inicial sin compromiso', en: 'Initial assessment, no obligation', pt: 'Diagnóstico inicial sem compromisso', fr: 'Diagnostic initial sans engagement' }, durationMinutes: 30, price: 0, currency: 'COP', category: 'consulta' },
+            ],
+        },
+        arquitectos: {
+            services: [
+                { name: { es: 'Visita a obra', en: 'Site visit', pt: 'Visita à obra', fr: 'Visite de chantier' }, description: { es: 'Relevamiento en el lugar', en: 'On-site survey', pt: 'Levantamento no local', fr: 'Relevé sur place' }, durationMinutes: 90, price: 200000, currency: 'COP', category: 'relevamiento' },
+                { name: { es: 'Anteproyecto', en: 'Preliminary design', pt: 'Anteprojeto', fr: 'Avant-projet' }, description: { es: 'Propuesta inicial de diseño', en: 'Initial design proposal', pt: 'Proposta inicial de projeto', fr: 'Proposition de conception initiale' }, durationMinutes: 60, price: 500000, currency: 'COP', category: 'diseno' },
+                { name: { es: 'Primera reunión', en: 'First meeting', pt: 'Primeira reunião', fr: 'Premier rendez-vous' }, description: { es: 'Conversación inicial sobre el proyecto', en: 'Initial conversation about the project', pt: 'Conversa inicial sobre o projeto', fr: 'Premier échange sur le projet' }, durationMinutes: 45, price: 0, currency: 'COP', category: 'consulta' },
+            ],
+        },
+        consultores: {
+            services: [
+                { name: { es: 'Diagnóstico inicial', en: 'Initial assessment', pt: 'Diagnóstico inicial', fr: 'Diagnostic initial' }, description: { es: 'Relevamiento de la situación actual', en: 'Review of the current situation', pt: 'Levantamento da situação atual', fr: 'Analyse de la situation actuelle' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'consulta' },
+                { name: { es: 'Sesión de consultoría', en: 'Consulting session', pt: 'Sessão de consultoria', fr: 'Séance de conseil' }, description: { es: 'Trabajo sobre un tema puntual', en: 'Work on a specific topic', pt: 'Trabalho sobre um tema específico', fr: 'Travail sur un sujet précis' }, durationMinutes: 90, price: 350000, currency: 'COP', category: 'consultoria' },
+            ],
+        },
+        // `abogados` usa correctamente los servicios genéricos de la vertical.
+    },
+    technology: {
+        // Desarrollo y consultoría no "demuestran" nada: relevan.
+        desarrollo: {
+            services: [
+                { name: { es: 'Reunión de relevamiento', en: 'Requirements meeting', pt: 'Reunião de levantamento', fr: 'Réunion de cadrage' }, description: { es: 'Entender qué hay que construir', en: 'Understand what needs to be built', pt: 'Entender o que precisa ser construído', fr: 'Comprendre ce qui doit être construit' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'discovery' },
+            ],
+        },
+        consultoria_ti: {
+            services: [
+                { name: { es: 'Diagnóstico de infraestructura', en: 'Infrastructure assessment', pt: 'Diagnóstico de infraestrutura', fr: 'Audit d\'infrastructure' }, description: { es: 'Revisión del estado actual', en: 'Review of the current setup', pt: 'Revisão do estado atual', fr: 'Revue de l\'existant' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'discovery' },
+            ],
+        },
     },
 };
+
+const DAY_OF_WEEK_INDEX = {
+    sun: 0,
+    mon: 1,
+    tue: 2,
+    wed: 3,
+    thu: 4,
+    fri: 5,
+    sat: 6,
+} as const;
+
+type ScheduleDay = keyof typeof DAY_OF_WEEK_INDEX;
+
+const ROUND_THE_CLOCK_SCHEDULE: Record<ScheduleDay, string> = {
+    sun: '00:00-23:59',
+    mon: '00:00-23:59',
+    tue: '00:00-23:59',
+    wed: '00:00-23:59',
+    thu: '00:00-23:59',
+    fri: '00:00-23:59',
+    sat: '00:00-23:59',
+};
+
+function resolveSubtypeBootstrap(industry: string, subType?: string | null): SubtypeBootstrap | undefined {
+    if (!subType) return undefined;
+    return SUBTYPE_BOOTSTRAP_BY_INDUSTRY[industry]?.[subType];
+}
 
 @Injectable()
 export class VerticalsService {
@@ -116,6 +281,7 @@ export class VerticalsService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
+        private readonly throttle: TenantThrottleService,
     ) {}
 
     /**
@@ -130,198 +296,483 @@ export class VerticalsService {
     ): Promise<void> {
         const definition = getVerticalDefinition(industry);
         const l = lang || 'es';
-
-        this.logger.log(`Bootstrapping vertical "${industry}" (sub: ${subType || 'none'}) for tenant ${tenantId}`);
-
-        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-
-        // 1. Seed pipeline stages
-        await this.seedPipelineStages(tenantId, schemaName, definition, l);
-
-        // 2. Patch default agent with vertical persona
-        await this.patchDefaultAgent(schemaName, definition, l);
-
-        // 3. Seed FAQs + turn the FAQ tool on. Sembrarlas sin encender
-        // `tools.faqs` las dejaba visibles solo en el portal público: el
-        // registro de FAQ_TOOL en el pipeline exige el flag
-        // (`conversations.service.ts`, `cfgTools?.faqs?.enabled === true`).
-        await this.seedFaqs(schemaName, definition, l);
-        await this.enableSimpleTool(schemaName, 'faqs');
-
-        // 4. Seed services (if booking-enabled)
-        //
-        // El sub-tipo manda sobre la vertical. `bookingEnabled` es una propiedad
-        // de la INDUSTRIA, y hay sub-tipos dentro de una industria de agenda que
-        // no agendan nada: una boutique no da turnos de peluquería, una dark
-        // kitchen no reserva mesas, un hotel no vende "Tour día completo" como
-        // cita de 4 horas, una farmacia no agenda consultas médicas. Sembrarles
-        // servicios y horarios los dejaba con un agendador ofreciendo cosas que
-        // el negocio no hace — y el dueño teniendo que borrarlas una por una.
-        const bootstrapMode = SUBTYPE_BOOTSTRAP[subType || ''];
-        const seedsAgenda = definition.bookingEnabled && !bootstrapMode?.skipAgenda;
-
-        // Si el sub-tipo trae los suyos, mandan: son los de su rubro, no el
-        // mínimo común denominador de la industria.
-        const servicesToSeed = bootstrapMode?.services?.length
-            ? bootstrapMode.services
-            : definition.services;
-
-        if (seedsAgenda && servicesToSeed.length > 0) {
-            await this.seedServices(schemaName, { ...definition, services: servicesToSeed }, l);
+        const lockKey = `lock:vertical-provision:${tenantId}`;
+        const lockTtlSeconds = 120;
+        const lockToken = await this.redis.acquireLockToken(lockKey, lockTtlSeconds);
+        if (!lockToken) {
+            throw new ConflictException('El provisioning vertical ya está en ejecución para este tenant.');
         }
+        const lease = new OwnedLockLease(
+            this.redis,
+            lockKey,
+            lockToken,
+            lockTtlSeconds,
+            this.logger,
+            `Vertical provisioning lock lost for tenant ${tenantId}`,
+        );
+        lease.start();
+        const assertLockOwned = () => lease.assertOwned();
 
-        // 4a. Seed la disponibilidad semanal. Va junto con los servicios porque
-        // el agendador necesita las dos cosas: con servicios pero sin slots el
-        // bot ofrece turnos y después responde "no hay disponibilidad" siempre.
-        if (seedsAgenda) {
-            await this.seedAvailability(tenantId, schemaName, definition, bootstrapMode?.roundTheClock);
+        let state: VerticalProvisioningState | null = null;
+        try {
+            this.logger.log(`Provisioning vertical "${industry}" (sub: ${subType || 'none'}) for tenant ${tenantId}`);
+            const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+            const plan = await this.throttle.getTenantPlan(tenantId);
+            const features = await this.throttle.getPlanFeatures(tenantId);
+            const limits = {
+                pipelineStages: assertQuotaValue(features.pipelineStages, 'pipelineStages'),
+                appointmentServices: assertQuotaValue(features.appointmentsServices, 'appointmentsServices'),
+            };
+            const bootstrapMode = resolveSubtypeBootstrap(industry, subType);
+            const agendaAllowed = definition.bookingEnabled && !bootstrapMode?.skipAgenda;
+            const candidateServices = bootstrapMode?.services?.length
+                ? bootstrapMode.services
+                : definition.services;
+            const quotaEligibleServices = agendaAllowed ? candidateServices : [];
+
+            state = await this.initializeProvisioningState(
+                tenantId, industry, subType, l, plan, limits, assertLockOwned,
+            );
+
+            let usage = await this.readQuotaUsage(schemaName);
+            if (state.status === 'complete' && state.quotaPolicy) {
+                try {
+                    const selectedStages = definition.pipeline.stages.filter((stage) =>
+                        state!.quotaPolicy!.selectedStageSlugs.includes(stage.slug));
+                    const selectedServices = quotaEligibleServices.filter((_service, index) =>
+                        state!.quotaPolicy!.selectedServiceIndexes.includes(index));
+                    const effectiveBooking = agendaAllowed && (usage.serviceNames.length > 0 || selectedServices.length > 0);
+                    state.invariants = await this.assertProvisioningInvariants(
+                        tenantId, schemaName, definition, subType, l, state.quotaPolicy,
+                        selectedStages, selectedServices, effectiveBooking,
+                    );
+                    await this.persistProvisioningState(tenantId, state, assertLockOwned);
+                    this.logger.log(`Vertical provisioning already complete and verified for tenant ${tenantId}`);
+                    return;
+                } catch (error: any) {
+                    this.logger.warn(`Completed vertical provisioning failed re-verification; rebuilding: ${error.message}`);
+                    state.status = 'pending';
+                    state.completedSteps = [];
+                    delete state.completedAt;
+                    delete state.invariants;
+                    await this.persistProvisioningState(tenantId, state, assertLockOwned);
+                }
+            }
+
+            await this.runProvisioningStep(tenantId, state, 'quota_plan', assertLockOwned, async () => {
+                usage = await this.readQuotaUsage(schemaName);
+                const selected = selectQuotaAwareVerticalDefaults(definition, quotaEligibleServices, limits, usage);
+                state!.quotaPolicy = {
+                    ...limits,
+                    selectedStageSlugs: selected.pipelineStages.map((stage) => stage.slug),
+                    selectedServiceIndexes: selected.services.map((service) => quotaEligibleServices.indexOf(service)),
+                };
+            });
+
+            if (!state.quotaPolicy) throw new Error('Vertical quota plan was not persisted');
+            const selectedStages = definition.pipeline.stages.filter((stage) =>
+                state!.quotaPolicy!.selectedStageSlugs.includes(stage.slug));
+            const selectedServices = quotaEligibleServices.filter((_service, index) =>
+                state!.quotaPolicy!.selectedServiceIndexes.includes(index));
+            usage = await this.readQuotaUsage(schemaName);
+            const effectiveBooking = agendaAllowed && (usage.serviceNames.length > 0 || selectedServices.length > 0);
+
+            await this.runProvisioningStep(tenantId, state, 'pipeline', assertLockOwned, () =>
+                this.seedPipelineStages(
+                    tenantId,
+                    schemaName,
+                    { ...definition, pipeline: { stages: selectedStages } },
+                    l,
+                ));
+            await this.runProvisioningStep(tenantId, state, 'persona', assertLockOwned, () =>
+                this.patchDefaultAgent(schemaName, definition, l));
+            await this.runProvisioningStep(tenantId, state, 'knowledge', assertLockOwned, async () => {
+                await this.seedFaqs(schemaName, definition, l);
+                await this.enableSimpleTool(schemaName, 'faqs');
+            });
+            await this.runProvisioningStep(tenantId, state, 'agenda', assertLockOwned, async () => {
+                if (selectedServices.length > 0) {
+                    await this.seedServices(schemaName, { ...definition, services: selectedServices }, l);
+                }
+                if (effectiveBooking) {
+                    await this.seedAvailability(tenantId, schemaName, definition, bootstrapMode?.roundTheClock);
+                }
+                await this.restoreAppointmentsTool(schemaName, effectiveBooking);
+            });
+            await this.runProvisioningStep(tenantId, state, 'vertical_tools', assertLockOwned, () =>
+                this.seedVerticalTools(tenantId, schemaName, industry, subType, l, bootstrapMode));
+            await this.runProvisioningStep(tenantId, state, 'config', assertLockOwned, () =>
+                this.persistResolvedVerticalConfig(
+                    tenantId,
+                    {
+                        industry,
+                        subType,
+                        terminology: definition.terminology,
+                        sidebar: definition.sidebar,
+                        dashboard: definition.dashboard,
+                        bookingEnabled: effectiveBooking,
+                    },
+                    assertLockOwned,
+                ));
+            await this.runProvisioningStep(tenantId, state, 'cache', assertLockOwned, () =>
+                this.invalidateRuntimeCaches(tenantId));
+            await this.runProvisioningStep(tenantId, state, 'invariants', assertLockOwned, async () => {
+                state!.invariants = await this.assertProvisioningInvariants(
+                    tenantId, schemaName, definition, subType, l, state!.quotaPolicy!,
+                    selectedStages, selectedServices, effectiveBooking,
+                );
+            });
+
+            state.status = 'complete';
+            state.completedAt = new Date().toISOString();
+            state.updatedAt = state.completedAt;
+            delete state.failure;
+            await this.persistProvisioningState(tenantId, state, assertLockOwned);
+            this.logger.log(
+                `Vertical provisioning complete for tenant ${tenantId}: ` +
+                `${selectedStages.length}/${limits.pipelineStages} stages, ` +
+                `${selectedServices.length}/${limits.appointmentServices} services`,
+            );
+        } catch (error: any) {
+            if (error instanceof LockOwnershipLostError || lease.hasLostOwnership()) {
+                throw new ConflictException({
+                    error: 'vertical_provisioning_lock_lost',
+                    message: 'El alta vertical perdió su lock; ningún paso posterior fue confirmado.',
+                    tenantId,
+                });
+            }
+            if (state && state.status !== 'failed') {
+                const step = state.currentStep || 'invariants';
+                state.status = 'failed';
+                state.failure = { step, message: error?.message || String(error), at: new Date().toISOString() };
+                state.updatedAt = state.failure.at;
+                try {
+                    await this.persistProvisioningState(tenantId, state, assertLockOwned);
+                } catch (persistError: any) {
+                    this.logger.error(`Could not persist failed provisioning state: ${persistError.message}`);
+                }
+            }
+            throw error;
+        } finally {
+            lease.stop();
+            await this.redis.releaseLockToken(lockKey, lockToken)
+                .catch((error: any) => this.logger.warn(`Could not release vertical provisioning lock: ${error.message}`));
         }
+    }
 
-        // Herramientas que el sub-tipo necesita y su industria no enciende por
-        // defecto (una boutique vende catálogo; un spa arma paquetes de sesiones).
+    /**
+     * El estado vive en `public.tenants.settings.verticalProvisioning`: evita
+     * una migración global, está disponible incluso si el schema tenant quedó
+     * a medio crear y puede evolucionar mediante `version`.
+     */
+    private async initializeProvisioningState(
+        tenantId: string,
+        industry: string,
+        subType: string | null,
+        language: string,
+        plan: string,
+        limits: { pipelineStages: number; appointmentServices: number },
+        assertLockOwned: () => Promise<void>,
+    ): Promise<VerticalProvisioningState> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        if (!tenant) throw new Error(`Tenant ${tenantId} not found while provisioning vertical`);
+        const existing = ((tenant.settings as any) || {}).verticalProvisioning as VerticalProvisioningState | undefined;
+        const sameIdentity = existing
+            && existing.version === VERTICAL_PROVISIONING_VERSION
+            && existing.industry === industry
+            && existing.subType === subType
+            && existing.language === language
+            && existing.plan === plan
+            && (!existing.quotaPolicy
+                || (existing.quotaPolicy.pipelineStages === limits.pipelineStages
+                    && existing.quotaPolicy.appointmentServices === limits.appointmentServices));
+        const now = new Date().toISOString();
+        const resetAfterInvariantFailure = sameIdentity
+            && existing?.status === 'failed'
+            && existing.failure?.step === 'invariants';
+        const state: VerticalProvisioningState = sameIdentity
+            ? {
+                ...existing,
+                status: existing.status === 'complete' ? 'complete' : 'pending',
+                attempt: (existing.attempt || 0) + 1,
+                updatedAt: now,
+                currentStep: undefined,
+                failure: existing.status === 'complete' ? undefined : existing.failure,
+                // Una invariante es la verificación transversal de todos los pasos.
+                // Si falla, no sabemos cuál no produjo su efecto (p. ej. el alta
+                // del agente pudo haber tragado un INSERT fallido). Reejecutar los
+                // pasos idempotentes es la reparación segura; conservarlos como
+                // completos dejaría el retry fallando para siempre.
+                completedSteps: resetAfterInvariantFailure ? [] : existing.completedSteps,
+            }
+            : {
+                version: VERTICAL_PROVISIONING_VERSION,
+                status: 'pending',
+                industry,
+                subType,
+                language,
+                plan,
+                attempt: 1,
+                startedAt: now,
+                updatedAt: now,
+                completedSteps: [],
+            };
+        await this.persistProvisioningState(tenantId, state, assertLockOwned);
+        return state;
+    }
+
+    private async persistProvisioningState(
+        tenantId: string,
+        state: VerticalProvisioningState,
+        assertLockOwned: () => Promise<void>,
+    ): Promise<void> {
+        await assertLockOwned();
+        await mergeTenantSettingsAtomic(this.prisma, tenantId, {
+            verticalProvisioning: state,
+        });
+    }
+
+    private async runProvisioningStep(
+        tenantId: string,
+        state: VerticalProvisioningState,
+        step: VerticalProvisioningStep,
+        assertLockOwned: () => Promise<void>,
+        run: () => Promise<void>,
+    ): Promise<void> {
+        if (state.completedSteps.includes(step)) return;
+        state.status = 'pending';
+        state.currentStep = step;
+        state.updatedAt = new Date().toISOString();
+        delete state.failure;
+        await this.persistProvisioningState(tenantId, state, assertLockOwned);
+        try {
+            await assertLockOwned();
+            await run();
+            await assertLockOwned();
+            state.completedSteps = [...state.completedSteps, step];
+            state.currentStep = undefined;
+            state.updatedAt = new Date().toISOString();
+            await this.persistProvisioningState(tenantId, state, assertLockOwned);
+        } catch (error: any) {
+            if (error instanceof LockOwnershipLostError) throw error;
+            const at = new Date().toISOString();
+            state.status = 'failed';
+            state.currentStep = undefined;
+            state.updatedAt = at;
+            state.failure = { step, message: error?.message || String(error), at };
+            try {
+                await this.persistProvisioningState(tenantId, state, assertLockOwned);
+            } catch (persistError: any) {
+                this.logger.error(`Could not persist failed provisioning step ${step}: ${persistError.message}`);
+            }
+            throw error;
+        }
+    }
+
+    private async readQuotaUsage(
+        schemaName: string,
+    ): Promise<{ stageSlugs: string[]; serviceNames: string[] }> {
+        const [stages, services] = await Promise.all([
+            this.prisma.executeInTenantSchema<Array<{ slug: string }>>(
+                schemaName,
+                `SELECT slug FROM pipeline_stages`,
+            ),
+            this.prisma.executeInTenantSchema<Array<{ name: string }>>(
+                schemaName,
+                `SELECT name FROM services WHERE is_active = true`,
+            ),
+        ]);
+        return {
+            stageSlugs: stages.map((row) => row.slug),
+            serviceNames: services.map((row) => row.name),
+        };
+    }
+
+    private async persistResolvedVerticalConfig(
+        tenantId: string,
+        config: TenantVerticalConfig,
+        assertLockOwned: () => Promise<void>,
+    ): Promise<void> {
+        await assertLockOwned();
+        await mergeTenantSettingsAtomic(this.prisma, tenantId, {
+            verticalConfig: config,
+            subType: config.subType,
+        });
+    }
+
+    private async seedVerticalTools(
+        tenantId: string,
+        schemaName: string,
+        industry: string,
+        subType: string | null,
+        lang: string,
+        bootstrapMode?: SubtypeBootstrap,
+    ): Promise<void> {
         for (const tool of bootstrapMode?.extraTools || []) {
             await this.enableSimpleTool(schemaName, tool);
         }
-
-        // 4a-bis. Con la agenda ya sembrada, devolver la herramienta de citas al estado
-        // que pedía la plantilla. `createDefaultAgentFromGoals` corre ANTES que este
-        // bootstrap (auth.service), así que ahí el schema todavía no tenía servicios ni
-        // horarios y la apagó dejando un marcador; sin este paso los tenants de
-        // salud/belleza/veterinaria/… arrancarían sin agendador. Va fuera del `if` a
-        // propósito: aunque la vertical no sea de agenda hay que limpiar el marcador
-        // (el método no toca nada si no está, y decide por los contadores reales).
-        await this.restoreAppointmentsTool(schemaName);
-
-        // 4b. Sub-type specific extras: tours / agencia_viajes get extra FAQs
-        // tailored to the operational reality (transfer, child discount,
-        // languages, cancellation, meeting point) and the tours.enabled tool
-        // flag is turned on so the AI can use search_packages out of the box.
         if (industry === 'turismo' && (subType === 'tours' || subType === 'agencia_viajes')) {
-            await this.seedToursExtras(tenantId, schemaName, l);
+            await this.seedToursExtras(tenantId, schemaName, lang);
             await this.enableSimpleTool(schemaName, 'tours');
         }
         if (industry === 'turismo' && (subType === 'hotel' || subType === 'alquiler_vacacional')) {
-            // El módulo vacation-rental (properties, disponibilidad por noches,
-            // iCal) existe completo, pero tools.properties no se encendía nunca:
-            // el tenant de alojamiento tenía que descubrir el toggle a mano en el
-            // editor de agente para que la IA pudiera cotizar estadías.
             await this.enableSimpleTool(schemaName, 'properties');
         }
-
-        // 4c. Dental sub-type: dental-specific FAQs + activate treatments tool
-        // so the AI can answer about ongoing orthodontic / multi-session plans.
         if (industry === 'salud' && subType === 'dental') {
-            await this.seedDentalExtras(tenantId, schemaName, l);
+            await this.seedDentalExtras(tenantId, schemaName, lang);
             await this.enableSimpleTool(schemaName, 'treatments');
         }
-
-        // 4d. Inmobiliaria: real-estate-specific FAQs + activate the listings
-        // tool so the AI can show actual catalog entries via search_listings.
         if (industry === 'inmobiliaria') {
-            await this.seedInmobiliariaExtras(tenantId, schemaName, l);
+            await this.seedInmobiliariaExtras(tenantId, schemaName, lang);
             await this.enableSimpleTool(schemaName, 'realEstate');
         }
 
-        // 4e. Veterinaria: turn on the pets tool so the AI can register
-        // pets, look up vaccination calendars, and triage emergencies.
-        if (industry === 'veterinaria') {
-            await this.enableSimpleTool(schemaName, 'pets');
-        }
-
-        // 4f. Restaurantes: enable the restaurants tool so Luca can
-        // look up the menu, list active promotions, and place orders.
-        if (industry === 'restaurantes') {
-            await this.enableSimpleTool(schemaName, 'restaurants');
-        }
-
-        // 4g. Gimnasios: enable the gyms tool so Alex can show plans,
-        // class schedule, and let members book / freeze.
-        if (industry === 'gimnasios') {
-            await this.enableSimpleTool(schemaName, 'gyms');
-            await this.seedMembershipPlans(schemaName, l);
-        }
-
-        // 4h. Education: enable the education tool so Pablo can list
-        // courses, show open cohorts, send placement tests and enroll.
-        if (industry === 'education') {
-            await this.enableSimpleTool(schemaName, 'education');
-        }
-
-        // 4i. Seguros: enable the insurance tool so Roberto can show
-        // plans, calculate quotes, look up policies and file claims.
-        if (industry === 'seguros') {
-            await this.enableSimpleTool(schemaName, 'insurance');
-        }
-
-        // 4j. Tier 3 verticals — light bootstrap: each just flips the
-        // appropriate tool flag on the default agent. Pet services and
-        // photography reuse the existing services + appointments engine
-        // so no per-vertical schema is needed.
-        if (industry === 'servicios_hogar') {
-            await this.enableSimpleTool(schemaName, 'homeServices');
-        }
-        if (industry === 'pet_services') {
-            await this.enableSimpleTool(schemaName, 'petServices');
-            // El módulo pets (register_pet, ficha por contacto) ya está pagado por
-            // veterinaria y era vet-only: la vertical de MASCOTAS no tenía el objeto
-            // mascota — /admin/pets quedaba vacío para siempre, la persona exigía
-            // "confirma vacunas al día" sin herramienta, y el check de activación
-            // (que lee pets) marcaba a todo tenant sano como no-activado.
-            await this.enableSimpleTool(schemaName, 'pets');
-        }
-        if (industry === 'fotografia') {
-            await this.enableSimpleTool(schemaName, 'photography');
-        }
-        // El "caso" de un despacho es la oportunidad del embudo, que ya viene
-        // con su vocabulario traducido. Sin este flag get_case_status queda
-        // escrita y nunca registrada — el patrón exacto que la auditoría
-        // encontró repetido: construido, sembrado, y apagado.
-        if (industry === 'servicios_profesionales') {
-            await this.enableSimpleTool(schemaName, 'professionalServices');
-        }
-        // Retail y `otro` venden cosas: sin el catálogo encendido el agente sólo
-        // puede hablar de lo que haya en la base de conocimiento. `otro` es el
-        // cajón donde caen la ferretería, la papelería, la imprenta y el taller
-        // de bicicletas — negocios reales que el catálogo de 18 verticales no
-        // nombra y que igual necesitan mostrar productos y precios.
-        if (industry === 'retail' || industry === 'otro') {
-            await this.enableSimpleTool(schemaName, 'catalog');
-        }
-        if (industry === 'automotriz') {
-            // El módulo vehicle-inventory y las VEHICLE_TOOLS existen completos
-            // desde T3; esta era la única industria con módulo propio cuyo flag
-            // no encendía nadie — la vertical vendía "mostrar inventario" en el
-            // alta y el agente no podía hacerlo.
-            await this.enableSimpleTool(schemaName, 'vehicles');
-        }
-
-        // 5. Save resolved config to tenant
-        const resolvedConfig: TenantVerticalConfig = {
-            industry,
-            subType,
-            terminology: definition.terminology,
-            sidebar: definition.sidebar,
-            dashboard: definition.dashboard,
-            bookingEnabled: definition.bookingEnabled,
+        const toolsByIndustry: Record<string, string[]> = {
+            veterinaria: ['pets'],
+            restaurantes: ['restaurants'],
+            gimnasios: ['gyms'],
+            education: ['education'],
+            seguros: ['insurance'],
+            servicios_hogar: ['homeServices'],
+            pet_services: ['petServices', 'pets'],
+            fotografia: ['photography'],
+            servicios_profesionales: ['professionalServices'],
+            retail: ['catalog'],
+            otro: ['catalog'],
+            automotriz: ['vehicles'],
         };
+        for (const tool of toolsByIndustry[industry] || []) {
+            await this.enableSimpleTool(schemaName, tool);
+        }
+        if (industry === 'gimnasios') {
+            await this.seedMembershipPlans(schemaName, lang);
+        }
+    }
 
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: {
-                settings: {
-                    // Merge with existing settings
-                    ...(await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } }))?.settings as any || {},
-                    verticalConfig: resolvedConfig,
-                    subType: subType || undefined,
-                },
-            },
-        });
+    private requiredTools(
+        industry: string,
+        subType: string | null,
+        effectiveBooking: boolean,
+        bootstrapMode?: SubtypeBootstrap,
+    ): string[] {
+        const required = new Set<string>(['faqs', ...(bootstrapMode?.extraTools || [])]);
+        if (effectiveBooking) required.add('appointments');
+        if (industry === 'turismo' && (subType === 'tours' || subType === 'agencia_viajes')) required.add('tours');
+        if (industry === 'turismo' && (subType === 'hotel' || subType === 'alquiler_vacacional')) required.add('properties');
+        if (industry === 'salud' && subType === 'dental') required.add('treatments');
+        if (industry === 'inmobiliaria') required.add('realEstate');
+        const toolsByIndustry: Record<string, string[]> = {
+            veterinaria: ['pets'], restaurantes: ['restaurants'], gimnasios: ['gyms'],
+            education: ['education'], seguros: ['insurance'], servicios_hogar: ['homeServices'],
+            pet_services: ['petServices', 'pets'], fotografia: ['photography'],
+            servicios_profesionales: ['professionalServices'], retail: ['catalog'], otro: ['catalog'],
+            automotriz: ['vehicles'],
+        };
+        for (const tool of toolsByIndustry[industry] || []) required.add(tool);
+        return [...required];
+    }
 
-        // 6. Tirar abajo los caches calientes que sirven lo que acabamos de
-        // escribir (persona por canal, servicios del agendador, verticalConfig).
-        await this.invalidateRuntimeCaches(tenantId);
-
-        this.logger.log(`Vertical bootstrap complete for tenant ${tenantId}: ${definition.pipeline.stages.length} stages, ${definition.faqs.length} FAQs, ${definition.services.length} services`);
+    private async assertProvisioningInvariants(
+        tenantId: string,
+        schemaName: string,
+        definition: VerticalDefinition,
+        subType: string | null,
+        lang: string,
+        quota: VerticalProvisioningQuotaPolicy,
+        selectedStages: VerticalStageDefinition[],
+        selectedServices: VerticalServiceDefinition[],
+        effectiveBooking: boolean,
+    ): Promise<VerticalProvisioningInvariants> {
+        const [stageRows, serviceRows, countsRows, faqRows, agents, tenant] = await Promise.all([
+            this.prisma.executeInTenantSchema<Array<{ slug: string; terminal_outcome: string | null }>>(
+                schemaName,
+                `SELECT slug, terminal_outcome FROM pipeline_stages`,
+            ),
+            this.prisma.executeInTenantSchema<Array<{ name: string }>>(
+                schemaName,
+                `SELECT name FROM services WHERE is_active = true`,
+            ),
+            this.prisma.executeInTenantSchema<Array<{ slots: number; faqs: number }>>(
+                schemaName,
+                `SELECT
+                    (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true) AS slots,
+                    (SELECT COUNT(*)::int FROM faqs WHERE is_published = true) AS faqs`,
+            ),
+            this.prisma.executeInTenantSchema<Array<{ question: string }>>(
+                schemaName,
+                `SELECT question FROM faqs WHERE is_published = true`,
+            ),
+            this.prisma.executeInTenantSchema<Array<{ config_json: any }>>(
+                schemaName,
+                `SELECT config_json FROM agent_personas WHERE is_active = true`,
+            ),
+            this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } }),
+        ]);
+        const stageCount = stageRows.length;
+        const serviceCount = serviceRows.length;
+        if (quota.pipelineStages !== -1 && stageCount > quota.pipelineStages) {
+            throw new Error(`Invariant failed: ${stageCount} pipeline stages exceed quota ${quota.pipelineStages}`);
+        }
+        if (quota.appointmentServices !== -1 && serviceCount > quota.appointmentServices) {
+            throw new Error(`Invariant failed: ${serviceCount} appointment services exceed quota ${quota.appointmentServices}`);
+        }
+        const actualStageBySlug = new Map(stageRows.map((row) => [row.slug, row]));
+        for (const stage of selectedStages) {
+            const actual = actualStageBySlug.get(stage.slug);
+            if (!actual) throw new Error(`Invariant failed: missing pipeline stage "${stage.slug}"`);
+            const expectedOutcome = stage.isTerminal ? stage.terminalOutcome : null;
+            if (actual.terminal_outcome !== expectedOutcome) {
+                throw new Error(`Invariant failed: stage "${stage.slug}" has terminal outcome ${actual.terminal_outcome}`);
+            }
+        }
+        const actualServiceNames = new Set(serviceRows.map((row) => row.name));
+        for (const service of selectedServices) {
+            const expectedName = service.name[lang] || service.name.es;
+            if (!actualServiceNames.has(expectedName)) {
+                throw new Error(`Invariant failed: missing appointment service "${expectedName}"`);
+            }
+        }
+        const counts = countsRows[0] || { slots: 0, faqs: 0 };
+        const slots = Number(counts.slots || 0);
+        const faqs = Number(counts.faqs || 0);
+        if (faqs < definition.faqs.length) {
+            throw new Error(`Invariant failed: only ${faqs}/${definition.faqs.length} vertical FAQs are published`);
+        }
+        const actualFaqQuestions = new Set(faqRows.map((row) => row.question));
+        for (const faq of definition.faqs) {
+            const expectedQuestion = faq.question[lang] || faq.question.es;
+            if (!actualFaqQuestions.has(expectedQuestion)) {
+                throw new Error(`Invariant failed: missing vertical FAQ "${expectedQuestion}"`);
+            }
+        }
+        if (agents.length === 0) throw new Error('Invariant failed: no active agent persona exists');
+        if (effectiveBooking && (serviceCount === 0 || slots === 0)) {
+            throw new Error(`Invariant failed: booking requires services and slots (services=${serviceCount}, slots=${slots})`);
+        }
+        const bootstrapMode = resolveSubtypeBootstrap(definition.industry, subType);
+        const requiredTools = this.requiredTools(definition.industry, subType, effectiveBooking, bootstrapMode);
+        for (const [index, agent] of agents.entries()) {
+            for (const tool of requiredTools) {
+                if (agent.config_json?.tools?.[tool]?.enabled !== true) {
+                    throw new Error(`Invariant failed: active agent ${index + 1} is missing enabled tool "${tool}"`);
+                }
+            }
+        }
+        const config = ((tenant?.settings as any) || {}).verticalConfig as TenantVerticalConfig | undefined;
+        if (!config || config.industry !== definition.industry || config.subType !== subType || config.bookingEnabled !== effectiveBooking) {
+            throw new Error('Invariant failed: persisted verticalConfig does not match resolved provisioning');
+        }
+        return {
+            pipelineStages: stageCount,
+            appointmentServices: serviceCount,
+            availabilitySlots: slots,
+            publishedFaqs: faqs,
+            activeAgents: agents.length,
+            requiredTools,
+        };
     }
 
     /**
@@ -362,11 +813,24 @@ export class VerticalsService {
 
         // El mismo criterio del bootstrap: un sub-tipo que no agenda no recibe
         // servicios, o le volveríamos a llenar la agenda de cosas que no hace.
-        const bootstrapMode = SUBTYPE_BOOTSTRAP[config?.subType || ''];
+        const bootstrapMode = resolveSubtypeBootstrap(industry, config?.subType);
         const seedsAgenda = definition.bookingEnabled && !bootstrapMode?.skipAgenda;
-        const servicesToSeed = bootstrapMode?.services?.length
+        const candidateServices = bootstrapMode?.services?.length
             ? bootstrapMode.services
             : definition.services;
+        const features = await this.throttle.getPlanFeatures(tenantId);
+        const limits = {
+            pipelineStages: assertQuotaValue(features.pipelineStages, 'pipelineStages'),
+            appointmentServices: assertQuotaValue(features.appointmentsServices, 'appointmentsServices'),
+        };
+        const usage = await this.readQuotaUsage(schemaName);
+        const quotaDefaults = selectQuotaAwareVerticalDefaults(
+            definition,
+            seedsAgenda ? candidateServices : [],
+            limits,
+            usage,
+        );
+        const servicesToSeed = quotaDefaults.services;
         if (seedsAgenda && servicesToSeed.length > 0) {
             await this.seedServices(schemaName, { ...definition, services: servicesToSeed }, lang);
         }
@@ -375,7 +839,7 @@ export class VerticalsService {
         return {
             industry,
             faqs: definition.faqs.length,
-            services: seedsAgenda ? servicesToSeed.length : 0,
+            services: servicesToSeed.length,
         };
     }
 
@@ -410,14 +874,8 @@ export class VerticalsService {
                 bookingEnabled: definition.bookingEnabled,
             };
             try {
-                await this.prisma.tenant.update({
-                    where: { id: tenantId },
-                    data: {
-                        settings: {
-                            ...(settings || {}),
-                            verticalConfig: config,
-                        },
-                    },
+                await mergeTenantSettingsAtomic(this.prisma, tenantId, {
+                    verticalConfig: config,
                 });
                 this.logger.log(`Backfilled verticalConfig for tenant ${tenantId} (industry=${tenant.industry})`);
             } catch (err: any) {
@@ -444,22 +902,26 @@ export class VerticalsService {
             for (let i = 0; i < definition.pipeline.stages.length; i++) {
                 const stage = definition.pipeline.stages[i];
                 const name = stage.name[lang] || stage.name['es'] || stage.slug;
+                const terminalOutcome = stage.isTerminal ? stage.terminalOutcome : null;
                 // El target tiene que ser el índice real: `uidx_pipeline_stages_pipeline_slug`
                 // es (pipeline_id, slug) NULLS NOT DISTINCT — no (slug) a secas — porque un
                 // segundo embudo reutiliza legítimamente los mismos slugs. El bootstrap
                 // inserta con pipeline_id NULL, y ahí el índice sí muerde.
                 await this.prisma.$queryRawUnsafe(
                     `INSERT INTO "${schemaName}"."pipeline_stages"
-                     (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, transition_rules)
-                     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-                     ON CONFLICT (pipeline_id, slug) DO NOTHING`,
-                    tenantId, name, stage.slug, stage.color, i, stage.probability, stage.slaHours || null, stage.isTerminal,
-                    JSON.stringify((stage as any).transitionRules || []),
+                     (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, terminal_outcome, transition_rules)
+                     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+                     ON CONFLICT (pipeline_id, slug) DO UPDATE
+                     SET is_terminal = EXCLUDED.is_terminal,
+                         terminal_outcome = EXCLUDED.terminal_outcome`,
+                     tenantId, name, stage.slug, stage.color, i, stage.probability, stage.slaHours || null, stage.isTerminal,
+                     terminalOutcome, JSON.stringify((stage as any).transitionRules || []),
                 );
             }
             this.logger.debug(`Seeded ${definition.pipeline.stages.length} pipeline stages`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed pipeline stages: ${error.message}`);
+            throw error;
         }
     }
 
@@ -497,7 +959,9 @@ export class VerticalsService {
                 schemaName,
                 `SELECT id, name, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
             );
-            if (!agents || agents.length === 0) return;
+            if (!agents || agents.length === 0) {
+                throw new Error('No default agent persona exists to patch');
+            }
 
             const agent = agents[0];
             const existingConfig = agent.config_json || {};
@@ -576,6 +1040,7 @@ export class VerticalsService {
             this.logger.debug(`Patched default agent with vertical persona: "${displayName}"`);
         } catch (error: any) {
             this.logger.warn(`Failed to patch default agent: ${error.message}`);
+            throw error;
         }
     }
 
@@ -640,6 +1105,7 @@ export class VerticalsService {
             this.logger.debug(`Seeded ${definition.faqs.length} FAQs`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed FAQs: ${error.message}`);
+            throw error;
         }
     }
 
@@ -669,6 +1135,7 @@ export class VerticalsService {
             this.logger.debug(`Seeded ${definition.services.length} services`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed services: ${error.message}`);
+            throw error;
         }
     }
 
@@ -693,7 +1160,7 @@ export class VerticalsService {
             // Guardia 24h: la grilla semanal de la industria (9 a 18, sábado
             // medio día) es exactamente al revés de lo que necesita una urgencia.
             const schedule = roundTheClock
-                ? { monday: '00:00-23:59', tuesday: '00:00-23:59', wednesday: '00:00-23:59', thursday: '00:00-23:59', friday: '00:00-23:59', saturday: '00:00-23:59', sunday: '00:00-23:59' }
+                ? ROUND_THE_CLOCK_SCHEDULE
                 : (definition.businessHours?.schedule || {});
             const days: Array<[string, unknown]> = Object.entries(schedule);
             if (days.length === 0) return;
@@ -731,7 +1198,6 @@ export class VerticalsService {
             }
 
             // 0=domingo … 6=sábado, igual que `availability_slots.day_of_week`.
-            const dayIndex: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
             const toMinutes = (hhmm: string): number => {
                 const [h, m] = hhmm.split(':').map(Number);
                 return h * 60 + m;
@@ -739,7 +1205,7 @@ export class VerticalsService {
 
             let inserted = 0;
             for (const [day, range] of days) {
-                const dow = dayIndex[day.toLowerCase()];
+                const dow = DAY_OF_WEEK_INDEX[day.toLowerCase() as ScheduleDay];
                 if (dow === undefined || typeof range !== 'string') continue;
 
                 const [rawStart, rawEnd] = range.split('-').map((part) => part.trim());
@@ -761,6 +1227,7 @@ export class VerticalsService {
             this.logger.debug(`Seeded ${inserted} availability slots from vertical business hours`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed availability slots: ${error.message}`);
+            throw error;
         }
     }
 
@@ -794,6 +1261,7 @@ export class VerticalsService {
             }
         } catch (error: any) {
             this.logger.warn(`Failed to invalidate caches after vertical bootstrap: ${error.message}`);
+            throw error;
         }
     }
 
@@ -895,6 +1363,7 @@ export class VerticalsService {
             this.logger.debug(`Seeded ${faqs.length} tours-specific FAQs`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed tours FAQs: ${error.message}`);
+            throw error;
         }
     }
 
@@ -996,6 +1465,7 @@ export class VerticalsService {
             this.logger.debug(`Seeded ${faqs.length} dental-specific FAQs`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed dental FAQs: ${error.message}`);
+            throw error;
         }
     }
 
@@ -1097,6 +1567,7 @@ export class VerticalsService {
             this.logger.debug(`Seeded ${faqs.length} inmobiliaria-specific FAQs`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed inmobiliaria FAQs: ${error.message}`);
+            throw error;
         }
     }
 
@@ -1135,6 +1606,7 @@ export class VerticalsService {
             this.logger.debug(`Enabled ${toolKey} tool on ${agents.length} active agent(s)`);
         } catch (error: any) {
             this.logger.warn(`Failed to enable ${toolKey} tool: ${error.message}`);
+            throw error;
         }
     }
 
@@ -1154,7 +1626,7 @@ export class VerticalsService {
      * desde Agente → Herramientas cuando complete su agenda (el gate de
      * `updateAgent` la validará ahí).
      */
-    private async restoreAppointmentsTool(schemaName: string): Promise<void> {
+    private async restoreAppointmentsTool(schemaName: string, effectiveBooking: boolean): Promise<void> {
         try {
             // TODOS los agentes activos, por lo mismo que enableSimpleTool: con un
             // agente por conexión, el segundo nacía sin agendador porque este
@@ -1184,7 +1656,10 @@ export class VerticalsService {
                     counted = { services: Number(counts?.services || 0), slots: Number(counts?.slots || 0) };
                 }
 
-                const restored = { ...appointments, enabled: counted.services > 0 && counted.slots > 0 };
+                const restored = {
+                    ...appointments,
+                    enabled: effectiveBooking && counted.services > 0 && counted.slots > 0,
+                };
                 delete restored.pendingPrerequisites;
 
                 const newConfig = { ...config, tools: { ...config.tools, appointments: restored } };
@@ -1204,6 +1679,7 @@ export class VerticalsService {
             }
         } catch (error: any) {
             this.logger.warn(`Failed to restore appointments tool: ${error.message}`);
+            throw error;
         }
     }
 
@@ -1283,9 +1759,8 @@ export class VerticalsService {
             }
             this.logger.debug(`Seeded ${PLANS.length} membership plans`);
         } catch (error: any) {
-            // Un gimnasio sin planes sembrados sigue siendo utilizable; no puede
-            // tumbar el alta entera.
             this.logger.warn(`Failed to seed membership plans: ${error.message}`);
+            throw error;
         }
     }
 

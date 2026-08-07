@@ -72,7 +72,7 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
             {agentName}
           </p>
           <p className="text-white/80 text-[11px]">
-            {statusText} · {t.has("demoRespondsIn") ? t("demoRespondsIn") : "responde en segundos"}
+            {statusText} · {t.has("demoRespondsIn") ? t("demoRespondsIn") : "ejemplo de respuesta automatizada"}
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -128,34 +128,43 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
       </div>
 
       {/* Footer -- Channel + response time badge */}
-      <div className="bg-surface border-t border-border px-3 py-2 flex items-center justify-between gap-2">
-        <span
-          className="text-[10px] font-semibold uppercase tracking-wider"
-          style={{ color: skin.accent }}
-        >
-          {skin.name}
-        </span>
-        <div className="flex items-center gap-1.5">
-          <svg
-            className="w-3.5 h-3.5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke={vertical.color}
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z"
-            />
-          </svg>
+      <div className="bg-surface border-t border-border px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
           <span
-            className="text-[11px] font-medium"
-            style={{ color: vertical.color }}
+            className="text-[10px] font-semibold uppercase tracking-wider"
+            style={{ color: skin.accent }}
           >
-            {t.has("demoRespondedIn") ? t("demoRespondedIn") : "Respondió en 3 segundos"}
+            {skin.name}
           </span>
+          <div className="flex items-center gap-1.5">
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke={vertical.color}
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z"
+              />
+            </svg>
+            <span
+              className="text-[11px] font-medium"
+              style={{ color: vertical.color }}
+            >
+              {t.has("demoRespondedIn") ? t("demoRespondedIn") : "Ejemplo ilustrativo"}
+            </span>
+          </div>
         </div>
+        {vertical.demoMode === "illustrative" && (
+          <p className="mt-1.5 text-[9px] leading-snug text-text-muted">
+            {t.has("demoDisclaimer")
+              ? t("demoDisclaimer")
+              : "Los datos, precios y disponibilidad los configura cada negocio."}
+          </p>
+        )}
       </div>
     </div>
   );

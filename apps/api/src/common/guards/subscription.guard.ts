@@ -4,7 +4,12 @@ import { RedisService } from '../../modules/redis/redis.service';
 
 const CACHE_TTL = 300; // 5 min
 const HARD_LOCK_STATUSES = ['expired', 'cancelled'];
-const EXEMPT_PATHS = ['/billing/', '/billing-admin/', '/auth/', '/health', '/billing/webhook'];
+// OJO: el match es por substring sobre la URL completa, así que un prefijo no
+// cubre a sus "hermanos": '/billing/' NO exime a '/billing-coupons/'. Sin esa
+// entrada, un tenant en soft_lock (día 3, solo GET) o hard_lock (día 7, nada) no
+// podía canjear el cupón — justo la campaña de recuperación "volvé, te damos un
+// mes gratis" moría contra este guard.
+const EXEMPT_PATHS = ['/billing/', '/billing-admin/', '/billing-coupons/', '/auth/', '/health', '/billing/webhook'];
 const SOFT_LOCK_ALLOWED_METHODS = ['GET', 'HEAD', 'OPTIONS'];
 const GRACE_DAYS_SOFT_LOCK = 3;
 const GRACE_DAYS_HARD_LOCK = 7;

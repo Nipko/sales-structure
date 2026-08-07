@@ -1,7 +1,19 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as webpush from 'web-push';
 import { ConfigService } from '@nestjs/config';
+import { prepareSafeHttpsTarget } from '../../common/utils/safe-outbound-url.util';
+
+/**
+ * A PushSubscription endpoint is supplied by an authenticated browser, but its
+ * API payload can be tampered with. Resolve it through the shared public-network
+ * policy and pin that exact address in the HTTPS agent passed to web-push. This
+ * preserves standards-compliant/custom push services without permitting SSRF
+ * or a second DNS lookup that could rebind to an internal address.
+ */
+export async function prepareTrustedWebPushTarget(rawEndpoint: unknown) {
+    return prepareSafeHttpsTarget(rawEndpoint, 'suscripcion push');
+}
 
 @Injectable()
 export class PushService implements OnModuleInit {
@@ -31,37 +43,61 @@ export class PushService implements OnModuleInit {
     }
 
     async subscribe(userId: string, tenantId: string, subscription: any): Promise<void> {
-        await this.prisma.$queryRawUnsafe(
-            `INSERT INTO public.push_subscriptions (user_id, tenant_id, endpoint, keys, created_at)
+        const p256dh = subscription?.keys?.p256dh;
+        const auth = subscription?.keys?.auth;
+        if (typeof p256dh !== 'string' || !p256dh || p256dh.length > 512
+            || typeof auth !== 'string' || !auth || auth.length > 512) {
+            throw new BadRequestException('Claves de suscripcion push invalidas');
+        }
+        const target = await prepareTrustedWebPushTarget(subscription?.endpoint);
+        const endpoint = target.url.toString();
+        target.httpsAgent.destroy();
+        const rows = await this.prisma.$queryRawUnsafe(
+            `INSERT INTO public.push_subscriptions AS ps (user_id, tenant_id, endpoint, keys, created_at)
              VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, NOW())
-             ON CONFLICT (endpoint) DO UPDATE SET user_id = $1::uuid, tenant_id = $2::uuid, keys = $4::jsonb`,
-            userId, tenantId, subscription.endpoint,
-            JSON.stringify({ p256dh: subscription.keys.p256dh, auth: subscription.keys.auth }),
+             ON CONFLICT (endpoint) DO UPDATE SET keys = EXCLUDED.keys, created_at = NOW()
+             WHERE ps.user_id = EXCLUDED.user_id AND ps.tenant_id = EXCLUDED.tenant_id
+            RETURNING endpoint`,
+            userId, tenantId, endpoint,
+            JSON.stringify({ p256dh, auth }),
+        ) as any[];
+        if (!rows?.length) {
+            throw new ConflictException('La suscripcion push ya pertenece a otra cuenta');
+        }
+    }
+
+    async unsubscribe(userId: string, tenantId: string, endpoint: string): Promise<void> {
+        await this.prisma.$queryRawUnsafe(
+            `DELETE FROM public.push_subscriptions
+              WHERE endpoint = $1 AND user_id = $2::uuid AND tenant_id = $3::uuid`,
+            endpoint, userId, tenantId,
         );
     }
 
-    async unsubscribe(endpoint: string): Promise<void> {
-        await this.prisma.$queryRawUnsafe(
-            `DELETE FROM public.push_subscriptions WHERE endpoint = $1`,
-            endpoint,
-        );
+    private async deleteStoredSubscription(endpoint: string, userId: string, tenantId: string): Promise<void> {
+        await this.unsubscribe(userId, tenantId, endpoint);
     }
 
     /** Register a native Expo push token (provider='expo'). */
     async subscribeExpo(userId: string, tenantId: string, token: string): Promise<void> {
         if (!token) return;
         await this.ensurePushTable();
-        await this.prisma.$queryRawUnsafe(
-            `INSERT INTO public.push_subscriptions (user_id, tenant_id, endpoint, keys, provider, created_at)
+        const rows = await this.prisma.$queryRawUnsafe(
+            `INSERT INTO public.push_subscriptions AS ps (user_id, tenant_id, endpoint, keys, provider, created_at)
              VALUES ($1::uuid, $2::uuid, $3, '{}'::jsonb, 'expo', NOW())
-             ON CONFLICT (endpoint) DO UPDATE SET user_id = $1::uuid, tenant_id = $2::uuid, provider = 'expo'`,
+             ON CONFLICT (endpoint) DO UPDATE SET provider = 'expo', created_at = NOW()
+             WHERE ps.user_id = EXCLUDED.user_id AND ps.tenant_id = EXCLUDED.tenant_id
+             RETURNING endpoint`,
             userId, tenantId, token,
-        );
+        ) as any[];
+        if (!rows?.length) {
+            throw new ConflictException('El token push ya pertenece a otra cuenta');
+        }
     }
 
     async sendToUser(userId: string, payload: { title: string; body: string; url?: string; tag?: string }): Promise<number> {
         const subs: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT endpoint, keys, COALESCE(provider, 'webpush') AS provider
+            `SELECT endpoint, keys, user_id, tenant_id, COALESCE(provider, 'webpush') AS provider
              FROM public.push_subscriptions WHERE user_id = $1::uuid`,
             userId,
         );
@@ -70,7 +106,7 @@ export class PushService implements OnModuleInit {
 
     async sendToTenantRole(tenantId: string, role: string, payload: { title: string; body: string; url?: string; tag?: string }): Promise<number> {
         const subs: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT ps.endpoint, ps.keys, COALESCE(ps.provider, 'webpush') AS provider
+            `SELECT ps.endpoint, ps.keys, ps.user_id, ps.tenant_id, COALESCE(ps.provider, 'webpush') AS provider
              FROM public.push_subscriptions ps
              JOIN public.users u ON u.id = ps.user_id
              WHERE ps.tenant_id = $1::uuid AND u.role = $2 AND u.is_active = true`,
@@ -87,16 +123,24 @@ export class PushService implements OnModuleInit {
         for (const sub of subs) {
             if (sub.provider === 'expo') { expoTokens.push(sub.endpoint); continue; }
             if (!this.enabled) continue; // web-push needs VAPID
+            let target: Awaited<ReturnType<typeof prepareTrustedWebPushTarget>> | undefined;
             try {
+                target = await prepareTrustedWebPushTarget(sub.endpoint);
                 const keys = typeof sub.keys === 'string' ? JSON.parse(sub.keys) : sub.keys;
-                await webpush.sendNotification({ endpoint: sub.endpoint, keys }, JSON.stringify(payload));
+                await webpush.sendNotification(
+                    { endpoint: target.url.toString(), keys },
+                    JSON.stringify(payload),
+                    { agent: target.httpsAgent, timeout: 10_000 },
+                );
                 sent++;
             } catch (err: any) {
-                if (err.statusCode === 410 || err.statusCode === 404) {
-                    await this.unsubscribe(sub.endpoint);
+                if (err instanceof BadRequestException || err.statusCode === 410 || err.statusCode === 404) {
+                    await this.deleteStoredSubscription(sub.endpoint, sub.user_id, sub.tenant_id);
                 } else {
                     this.logger.warn(`Web push to ${String(sub.endpoint).slice(0, 40)}… failed: ${err.message}`);
                 }
+            } finally {
+                target?.httpsAgent.destroy();
             }
         }
 
@@ -131,7 +175,7 @@ export class PushService implements OnModuleInit {
             const tickets: any[] = Array.isArray(data?.data) ? data.data : [];
             tickets.forEach((t, i) => {
                 if (t?.status === 'error' && t?.details?.error === 'DeviceNotRegistered') {
-                    this.unsubscribe(tokens[i]).catch(() => {});
+                    this.deleteExpoSubscription(tokens[i]).catch(() => {});
                 }
             });
             return tokens.length;
@@ -139,6 +183,13 @@ export class PushService implements OnModuleInit {
             this.logger.warn(`Expo push failed: ${err.message}`);
             return 0;
         }
+    }
+
+    private async deleteExpoSubscription(token: string): Promise<void> {
+        await this.prisma.$queryRawUnsafe(
+            `DELETE FROM public.push_subscriptions WHERE endpoint = $1 AND provider = 'expo'`,
+            token,
+        );
     }
 
     async ensurePushTable(): Promise<void> {

@@ -5,9 +5,10 @@ import { FormController } from './form.controller';
 import { AdminLandingController } from './admin-landing.controller';
 import { IntakeService } from './intake.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { PipelineModule } from '../pipeline/pipeline.module';
 
 @Module({
-    imports: [PrismaModule],
+    imports: [PrismaModule, PipelineModule],
     controllers: [IntakeController, LandingController, FormController, AdminLandingController],
     providers: [IntakeService],
     exports: [IntakeService],

@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import type { ToolDefinition } from '@parallext/shared';
+import { prepareSafeHttpsTarget, safeAxiosOptions } from '../../common/utils/safe-outbound-url.util';
 
 export interface McpServerConfig {
     id: string;          // short slug used in tool-name prefix
@@ -48,6 +49,7 @@ export class McpClientService {
 
     async saveServer(tenantId: string, input: { id?: string; name: string; url: string; authHeader?: string; enabled?: boolean }): Promise<McpServerConfig> {
         if (!input.name?.trim() || !input.url?.trim()) throw new BadRequestException('name y url son obligatorios');
+        const validatedUrl = (await prepareSafeHttpsTarget(input.url, 'servidor MCP')).url.toString();
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
         if (!tenant) throw new NotFoundException('Tenant not found');
         const settings = (tenant.settings as any) || {};
@@ -57,13 +59,13 @@ export class McpClientService {
         if (input.id) {
             const existing = servers.find((s) => s.id === input.id);
             if (!existing) throw new NotFoundException('Servidor MCP no encontrado');
-            server = { ...existing, name: input.name, url: input.url, enabled: input.enabled ?? existing.enabled };
+            server = { ...existing, name: input.name, url: validatedUrl, enabled: input.enabled ?? existing.enabled };
             if (input.authHeader !== undefined && input.authHeader !== '***') server.authHeader = input.authHeader;
             const idx = servers.findIndex((s) => s.id === input.id);
             servers[idx] = server;
         } else {
             const id = this.slug(input.name, servers.map((s) => s.id));
-            server = { id, name: input.name, url: input.url, authHeader: input.authHeader, enabled: input.enabled ?? true };
+            server = { id, name: input.name, url: validatedUrl, authHeader: input.authHeader, enabled: input.enabled ?? true };
             servers.push(server);
         }
         await this.persist(tenantId, settings, servers);
@@ -161,32 +163,43 @@ export class McpClientService {
 
     /** Initialize → capture session id → run fn → (best-effort) returns fn result. */
     private async withSession<T>(server: McpServerConfig, fn: (sessionId?: string) => Promise<T>): Promise<T> {
-        const initRes = await this.http.axiosRef.post(
-            server.url,
+        const initRes = await this.postServer(
+            server,
             this.envelope('initialize', {
                 protocolVersion: PROTOCOL_VERSION,
                 capabilities: {},
                 clientInfo: { name: 'parallly', version: '1.0' },
             }),
-            { headers: this.headers(server), timeout: RPC_TIMEOUT, validateStatus: () => true },
+            this.headers(server),
         );
         const sessionId = initRes.headers?.['mcp-session-id'] || initRes.headers?.['Mcp-Session-Id'];
         // Notify initialized (best effort; ignore failures)
         try {
-            await this.http.axiosRef.post(server.url, { jsonrpc: '2.0', method: 'notifications/initialized' }, {
-                headers: this.headers(server, sessionId), timeout: RPC_TIMEOUT, validateStatus: () => true,
-            });
+            await this.postServer(
+                server,
+                { jsonrpc: '2.0', method: 'notifications/initialized' },
+                this.headers(server, sessionId),
+            );
         } catch { /* noop */ }
         return fn(sessionId);
     }
 
     private async rpc(server: McpServerConfig, method: string, params: any, sessionId?: string): Promise<any> {
-        const res = await this.http.axiosRef.post(server.url, this.envelope(method, params), {
-            headers: this.headers(server, sessionId), timeout: RPC_TIMEOUT, validateStatus: () => true,
-        });
+        const res = await this.postServer(server, this.envelope(method, params), this.headers(server, sessionId));
         const data = this.parseResponse(res.data);
         if (data?.error) throw new Error(data.error.message || 'JSON-RPC error');
         return data?.result;
+    }
+
+    private async postServer(server: McpServerConfig, body: any, headers: Record<string, string>) {
+        // Resolve and pin on every outbound call. This also protects configs
+        // created before URL validation was introduced.
+        const target = await prepareSafeHttpsTarget(server.url, 'servidor MCP');
+        return this.http.axiosRef.post(target.url.toString(), body, {
+            ...safeAxiosOptions(target, RPC_TIMEOUT),
+            headers,
+            validateStatus: () => true,
+        });
     }
 
     private envelope(method: string, params: any) {

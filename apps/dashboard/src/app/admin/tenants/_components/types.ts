@@ -3,6 +3,7 @@ export interface Tenant {
   name: string;
   slug: string;
   industry: string;
+  subType?: string | null;
   language: string;
   plan: string;
   isActive: boolean;
@@ -17,6 +18,10 @@ export interface Tenant {
   suspendedAt?: string | null;
   suspendReason?: string | null;
 }
+
+export type TenantPlanSlug = "emprendedor" | "starter" | "pro" | "enterprise" | "custom";
+
+export type { VerticalDefinitions as TenantVerticalDefinitions } from "@/lib/vertical-catalog";
 
 export interface TenantUser {
   id: string;

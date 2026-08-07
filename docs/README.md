@@ -1,6 +1,6 @@
 # Parallext Engine — Documentación
 
-_Última actualización: 2026-07-23_
+_Última actualización: 2026-08-06_
 
 Índice de la documentación del proyecto. La **fuente canónica** del índice es la tabla `## Documentation Index` en [`../CLAUDE.md`](../CLAUDE.md); este README la espeja para navegación humana. Cuando agregues o archives un doc, actualizá **ambos**.
 
@@ -76,6 +76,9 @@ _Última actualización: 2026-07-23_
 
 | Documento | Descripción |
 |-----------|-------------|
+| [vertical-system-audit-2026-08.md](vertical-system-audit-2026-08.md) | Auditoría vigente de las 18 verticales: madurez, trazabilidad, benchmark competitivo, seguridad y backlog P0/P1/P2 con criterios de cierre |
+| [wave-0-execution-2026-08.md](wave-0-execution-2026-08.md) | Estado de ejecución de Ola 0: mitigaciones P0, evidencia automática, contrato comercial, manifest v1 y gates de integración pendientes |
+| [vertical-master-test-plan-2026-08.md](vertical-master-test-plan-2026-08.md) | Plan maestro de certificación: 76 configuraciones, 1.520 escenarios de bootstrap, tools, IA, seguridad, UI, integraciones y quality gates |
 | [competitive-analysis-2026-q2.md](competitive-analysis-2026-q2.md) | Análisis competitivo Q2 2026 (canónico) |
 | [onboarding-redesign-2026-q2.md](onboarding-redesign-2026-q2.md) · [onboarding-redesign-implementation-plan.md](onboarding-redesign-implementation-plan.md) · [onboarding-audit-2026-06.md](onboarding-audit-2026-06.md) | Rediseño de onboarding + estado |
 | [market-research-latam.md](market-research-latam.md) · [external-crm-integration-research.md](external-crm-integration-research.md) · [feature-board-research.md](feature-board-research.md) | Research |

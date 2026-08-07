@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { resolveMirroredDealStatus } from '../pipeline/pipeline-outcome.util';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
@@ -76,55 +77,80 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     }
 
     /**
-     * Create a new tenant schema from the SQL template
+     * Execute a multi-statement business mutation on one tenant connection/transaction.
+     * The callback receives the same parameter-sanitized query primitive used by
+     * executeInTenantSchema, but every call shares one SET LOCAL search_path and commit.
      */
-    async createTenantSchema(schemaName: string): Promise<void> {
+    async transactionInTenantSchema<T>(
+        schemaName: string,
+        callback: (query: <R = any[]>(sql: string, params?: any[]) => Promise<R>) => Promise<T>,
+        options?: { timeout?: number },
+    ): Promise<T> {
         this.validateSchemaName(schemaName);
+        return this.$transaction(async (tx: any) => {
+            await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}", public`);
+            const query = async <R = any[]>(sql: string, params: any[] = []): Promise<R> => {
+                const sanitizedParams = this.sanitizeParams(sql, params);
+                return tx.$queryRawUnsafe(sql, ...sanitizedParams) as Promise<R>;
+            };
+            return callback(query);
+        }, { timeout: options?.timeout ?? 15000 });
+    }
 
-        // 1. Check if schema already exists (stale data from deleted tenant)
-        const existing = await this.$queryRawUnsafe(
-            `SELECT 1 FROM information_schema.schemata WHERE schema_name = $1 LIMIT 1`,
-            schemaName,
-        ) as any[];
+    /**
+     * Create a new tenant schema from the SQL template.
+     *
+     * Callers initially persist a readable slug-based placeholder (tenant_acme).
+     * Before any DDL runs, this method replaces it with a physical schema name
+     * suffixed by the tenant UUID. A future tenant may reuse the human slug, but
+     * can never be pointed at the previous tenant's physical schema.
+     */
+    async createTenantSchema(requestedSchemaName: string): Promise<string> {
+        this.validateSchemaName(requestedSchemaName);
 
-        if (existing?.length > 0) {
-            // Schema exists — clean stale data from previous tenant
-            this.logger.warn(`[createTenantSchema] Schema "${schemaName}" already exists — cleaning stale data`);
-            await this.cleanStaleSchemaData(schemaName);
-        } else {
-            await this.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schemaName}";`);
+        const tenant = await this.tenant.findUnique({
+            where: { schemaName: requestedSchemaName },
+            select: { id: true, schemaName: true },
+        });
+        if (!tenant) {
+            throw new NotFoundException(
+                `Cannot provision schema "${requestedSchemaName}": no tenant owns that schema name`,
+            );
         }
 
-        // 2. Read and execute the tenant schema template
-        const fs = await import('fs');
-        const path = await import('path');
+        const schemaName = this.buildUniqueTenantSchemaName(requestedSchemaName, tenant.id);
+        this.validateSchemaName(schemaName);
+        const schemaAlreadyExists = await this.schemaExists(schemaName);
 
-        const possiblePaths = [
-            path.join(process.cwd(), 'prisma', 'tenant-schema.sql'),
-            path.join(process.cwd(), 'apps', 'api', 'prisma', 'tenant-schema.sql'),
-            path.join(__dirname, '..', '..', 'prisma', 'tenant-schema.sql'),
-            '/app/prisma/tenant-schema.sql', // Docker path
-        ];
-
-        let template: string | null = null;
-        for (const p of possiblePaths) {
-            if (fs.existsSync(p)) {
-                template = fs.readFileSync(p, 'utf-8');
-                break;
-            }
+        // Existing physical schemas are safe only for an idempotent retry by the
+        // same tenant. Never bind a newly-created placeholder to an orphan schema.
+        if (schemaAlreadyExists && tenant.schemaName !== schemaName) {
+            throw new ConflictException(
+                `Refusing to reuse existing tenant schema "${schemaName}"`,
+            );
         }
 
-        if (!template) {
-            throw new Error(`tenant-schema.sql not found. Searched: ${possiblePaths.join(', ')}`);
+        if (tenant.schemaName !== schemaName) {
+            await this.tenant.update({
+                where: { id: tenant.id },
+                data: { schemaName },
+            });
         }
+
+        if (!schemaAlreadyExists) {
+            await this.$executeRawUnsafe(`CREATE SCHEMA "${schemaName}";`);
+        }
+
+        const template = await this.loadTenantSchemaTemplate();
 
         // Replace placeholder
-        template = template.replace(/\{\{SCHEMA_NAME\}\}/g, schemaName);
+        const renderedTemplate = template.replace(/\{\{SCHEMA_NAME\}\}/g, schemaName);
 
         // Execute each statement individually, skipping comments and empty lines.
         // Use a smarter split that handles dollar-quoted blocks (PL/pgSQL).
-        const statements = this.splitSqlStatements(template);
+        const statements = this.splitSqlStatements(renderedTemplate);
 
+        const unexpectedErrors: Array<{ statement: string; error: unknown }> = [];
         for (const statement of statements) {
             try {
                 await this.$executeRawUnsafe(statement);
@@ -132,10 +158,65 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 // Skip "already exists" errors (42P06, 42710, 42P07) for idempotency
                 const code = e?.meta?.code || '';
                 if (['42P06', '42710', '42P07'].includes(code)) continue;
-                // Log but don't fail — partial schema is better than no schema
-                console.warn(`[createTenantSchema] Non-fatal error in "${schemaName}": ${e.message}`);
+                // Keep running the remaining independent statements so a retry has
+                // less work to repair, but never report a partial schema as ready.
+                // The caller persists provisioning=failed and a subsequent retry
+                // replays this idempotent template against the same physical schema.
+                unexpectedErrors.push({ statement, error: e });
+                console.error(`[createTenantSchema] Statement failed in "${schemaName}": ${e?.message || e}`);
             }
         }
+
+        if (unexpectedErrors.length > 0) {
+            const first = unexpectedErrors[0];
+            const firstMessage = first.error instanceof Error
+                ? first.error.message
+                : String(first.error);
+            throw new Error(
+                `Tenant schema "${schemaName}" is incomplete: ${unexpectedErrors.length} statement(s) failed. First error: ${firstMessage}`,
+            );
+        }
+
+        return schemaName;
+    }
+
+    private buildUniqueTenantSchemaName(requestedSchemaName: string, tenantId: string): string {
+        const tenantSuffix = tenantId.replace(/-/g, '').toLowerCase();
+        if (!/^[a-f0-9]{32}$/.test(tenantSuffix)) {
+            throw new BadRequestException(`Invalid tenant ID for schema allocation`);
+        }
+        if (requestedSchemaName.endsWith(`_${tenantSuffix}`)) return requestedSchemaName;
+
+        const maxBaseLength = 63 - tenantSuffix.length - 1;
+        const base = requestedSchemaName.slice(0, maxBaseLength).replace(/_+$/, '');
+        return `${base}_${tenantSuffix}`;
+    }
+
+    private async schemaExists(schemaName: string): Promise<boolean> {
+        const rows = await this.$queryRawUnsafe(
+            `SELECT 1 FROM information_schema.schemata WHERE schema_name = $1 LIMIT 1`,
+            schemaName,
+        ) as any[];
+        return rows?.length > 0;
+    }
+
+    private async loadTenantSchemaTemplate(): Promise<string> {
+        const fs = await import('fs');
+        const path = await import('path');
+        const possiblePaths = [
+            path.join(process.cwd(), 'prisma', 'tenant-schema.sql'),
+            path.join(process.cwd(), 'apps', 'api', 'prisma', 'tenant-schema.sql'),
+            path.join(__dirname, '..', '..', 'prisma', 'tenant-schema.sql'),
+            '/app/prisma/tenant-schema.sql', // Docker path
+        ];
+
+        for (const candidate of possiblePaths) {
+            if (fs.existsSync(candidate)) {
+                return fs.readFileSync(candidate, 'utf-8');
+            }
+        }
+
+        throw new Error(`tenant-schema.sql not found. Searched: ${possiblePaths.join(', ')}`);
     }
 
     /**
@@ -190,6 +271,213 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     async dropTenantSchema(schemaName: string): Promise<void> {
         this.validateSchemaName(schemaName);
         await this.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE;`);
+        if (await this.schemaExists(schemaName)) {
+            throw new Error(`Tenant schema "${schemaName}" still exists after DROP SCHEMA`);
+        }
+    }
+
+    /**
+     * Delete every public-schema row owned by a tenant in one transaction.
+     *
+     * The tenant row is deliberately deleted last: its unique slug and
+     * schema_name remain the identity barrier until every classified global
+     * table has been purged.  Any statement failure (including the final tenant
+     * delete) rolls the complete public purge back, making the operation safe
+     * to retry after the tenant schema has already been dropped.
+     *
+     * Fiscal invoices are the sole classified retention exception.  Colombian
+     * fiscal records remain in place and receive an immutable tenant snapshot
+     * before payment rows are removed.
+     */
+    async purgeTenantPublicDataAtomic(
+        tenantId: string,
+        tenantSnapshot: { name: string; schemaName: string },
+    ): Promise<Record<string, number>> {
+        const purgeOrder = [
+            // Raw/lazy public tables and user-dependent records first.
+            'push_subscriptions',
+            'feature_request_subscribers',
+            'feature_request_comments',
+            'feature_request_votes',
+            'feature_requests',
+            'webhook_subscriptions',
+            'email_channel_configs',
+            'widget_sessions',
+            'widget_configs',
+            // Billing children must precede their subscription parent.
+            'billing_events',
+            'billing_payments',
+            'billing_coupon_redemptions',
+            'billing_subscriptions',
+            // Remaining tenant-owned platform data.
+            'tenant_invitations',
+            'channel_accounts',
+            'whatsapp_onboardings',
+            'whatsapp_credentials',
+            'tenant_financial_snapshots',
+            'storage_snapshots',
+            'sms_package_orders',
+            'sms_credit_ledger',
+            'sms_credit_balances',
+            'crm_connections',
+            'api_keys',
+            'audit_logs',
+            'users',
+        ] as const;
+        const classifiedTenantTables = new Set<string>([
+            ...purgeOrder.filter((table) => table !== 'feature_request_subscribers'),
+            'fiscal_invoices',
+        ]);
+
+        return this.$transaction(async (tx: any) => {
+            const rows = await tx.$queryRawUnsafe(
+                `SELECT table_name
+                   FROM information_schema.columns
+                  WHERE table_schema = 'public'
+                    AND column_name = 'tenant_id'
+                  ORDER BY table_name`,
+            ) as Array<{ table_name: string }>;
+            const observed = new Set(rows.map((row) => row.table_name));
+            const unclassified = [...observed].filter((table) => !classifiedTenantTables.has(table));
+            if (unclassified.length > 0) {
+                throw new ConflictException({
+                    error: 'tenant_purge_unclassified_public_data',
+                    tables: unclassified,
+                });
+            }
+
+            const deleted: Record<string, number> = {};
+            const deleteByTenantId = async (table: string): Promise<void> => {
+                if (!observed.has(table)) {
+                    deleted[table] = 0;
+                    return;
+                }
+                // `table` only comes from the constant allowlist above.  The
+                // tenant value remains parameterized and UUID validated by PG.
+                deleted[table] = await tx.$executeRawUnsafe(
+                    `DELETE FROM public."${table}" WHERE tenant_id::text = $1::uuid::text`,
+                    tenantId,
+                );
+            };
+
+            // Retention barrier: if this stamp fails, no public row is deleted.
+            if (observed.has('fiscal_invoices')) {
+                deleted.fiscal_invoices_retained = await tx.$executeRawUnsafe(
+                    `UPDATE public.fiscal_invoices
+                        SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+                            'tenantPurgedAt', NOW()::text,
+                            'tenantNameSnapshot', $2::text,
+                            'tenantSchemaSnapshot', $3::text
+                        )
+                      WHERE tenant_id::text = $1::uuid::text`,
+                    tenantId,
+                    tenantSnapshot.name,
+                    tenantSnapshot.schemaName,
+                );
+            } else {
+                deleted.fiscal_invoices_retained = 0;
+            }
+
+            // This table has no tenant_id column.  Remove subscriptions owned by
+            // tenant users and subscriptions to requests authored by the tenant.
+            const featureTables = await tx.$queryRawUnsafe(
+                `SELECT
+                    to_regclass('public.feature_request_subscribers')::text AS subscribers,
+                    to_regclass('public.feature_requests')::text AS requests`,
+            ) as Array<{ subscribers: string | null; requests: string | null }>;
+            const hasFeatureSubscribers = Boolean(featureTables[0]?.subscribers);
+            const hasFeatureRequests = Boolean(featureTables[0]?.requests);
+            if (hasFeatureSubscribers !== hasFeatureRequests) {
+                throw new ConflictException({
+                    error: 'tenant_purge_incomplete_feature_request_schema',
+                });
+            }
+            if (hasFeatureSubscribers && hasFeatureRequests) {
+                deleted.feature_request_subscribers = await tx.$executeRawUnsafe(
+                    `DELETE FROM public.feature_request_subscribers
+                      WHERE user_id IN (
+                                SELECT id FROM public.users
+                                 WHERE tenant_id::text = $1::uuid::text
+                            )
+                         OR request_id IN (
+                                SELECT id FROM public.feature_requests
+                                 WHERE author_tenant_id::text = $1::uuid::text
+                            )`,
+                    tenantId,
+                );
+            } else {
+                deleted.feature_request_subscribers = 0;
+            }
+
+            for (const table of purgeOrder) {
+                if (table === 'feature_request_subscribers') continue;
+                if (table === 'billing_events' && observed.has(table)) {
+                    deleted.billing_events = await tx.$executeRawUnsafe(
+                        `DELETE FROM public.billing_events
+                          WHERE tenant_id::text = $1::uuid::text
+                             OR subscription_id IN (
+                                    SELECT id FROM public.billing_subscriptions
+                                     WHERE tenant_id::text = $1::uuid::text
+                                )`,
+                        tenantId,
+                    );
+                    continue;
+                }
+                if (table === 'feature_request_comments' && observed.has(table)) {
+                    deleted.feature_request_comments = await tx.$executeRawUnsafe(
+                        `DELETE FROM public.feature_request_comments
+                          WHERE tenant_id::text = $1::uuid::text
+                             OR user_id IN (
+                                    SELECT id FROM public.users
+                                     WHERE tenant_id::text = $1::uuid::text
+                                )`,
+                        tenantId,
+                    );
+                    continue;
+                }
+                if (table === 'feature_request_votes' && observed.has(table)) {
+                    deleted.feature_request_votes = await tx.$executeRawUnsafe(
+                        `DELETE FROM public.feature_request_votes
+                          WHERE tenant_id::text = $1::uuid::text
+                             OR user_id IN (
+                                    SELECT id FROM public.users
+                                     WHERE tenant_id::text = $1::uuid::text
+                                )`,
+                        tenantId,
+                    );
+                    continue;
+                }
+                if (table === 'feature_requests' && hasFeatureRequests) {
+                    deleted.feature_requests = await tx.$executeRawUnsafe(
+                        `DELETE FROM public.feature_requests
+                          WHERE author_tenant_id::text = $1::uuid::text
+                             OR author_user_id IN (
+                                    SELECT id FROM public.users
+                                     WHERE tenant_id::text = $1::uuid::text
+                                )`,
+                        tenantId,
+                    );
+                    continue;
+                }
+                if (table === 'audit_logs' && observed.has(table)) {
+                    deleted.audit_logs = await tx.$executeRawUnsafe(
+                        `DELETE FROM public.audit_logs
+                          WHERE tenant_id::text = $1::uuid::text
+                             OR user_id IN (
+                                    SELECT id FROM public.users
+                                     WHERE tenant_id::text = $1::uuid::text
+                                )`,
+                        tenantId,
+                    );
+                    continue;
+                }
+                await deleteByTenantId(table);
+            }
+
+            await tx.tenant.delete({ where: { id: tenantId } });
+            deleted.tenants = 1;
+            return deleted;
+        }, { maxWait: 10_000, timeout: 30_000 });
     }
 
     /**
@@ -205,7 +493,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
     /**
      * Resolve canonical tenant schema name from the public tenants table.
-     * Avoid deriving schema from UUID since schema names are slug-based.
+     * Never derive it at request time: new physical names include the tenant
+     * UUID and legacy tenants may still use the older slug-only convention.
      */
     async getTenantSchemaName(tenantId: string): Promise<string> {
         const tenant = await this.tenant.findUnique({
@@ -218,50 +507,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         }
 
         return tenant.schemaName;
-    }
-
-    /**
-     * Clean stale data from a reused tenant schema.
-     * Called when a new tenant gets the same slug as a previously deleted one.
-     * Truncates data tables but keeps the schema structure intact.
-     */
-    private async cleanStaleSchemaData(schemaName: string): Promise<void> {
-        // Order matters: delete child tables before parent tables (FK constraints)
-        const tablesToClean = [
-            'property_bookings', 'ical_blocks', 'ical_feeds', 'properties',
-            'campaign_recipients', 'campaign_logs',
-            'messages', 'conversation_assignments',
-            'conversations',
-            'csat_surveys', 'analytics_events', 'daily_metrics',
-            'automation_executions', 'wait_jobs',
-            'notes', 'tasks', 'stage_history',
-            'opportunities', 'lead_tags', 'custom_attribute_values',
-            'leads', 'contacts', 'customer_profiles',
-            'deals', 'stage_transitions',
-            'agent_personas', 'persona_config',
-            'faqs', 'knowledge_chunks', 'knowledge_resources', 'knowledge_approvals',
-            'pipeline_stages', 'scoring_config',
-            'services', 'service_staff', 'appointments', 'availability_slots', 'blocked_dates',
-            'calendar_integrations',
-            'companies',
-            'tags', 'contact_segments',
-            'whatsapp_channels', 'whatsapp_templates', 'whatsapp_webhook_events', 'whatsapp_message_logs',
-            'consent_records', 'opt_out_records', 'deletion_requests', 'legal_text_versions',
-            'orders', 'order_items', 'inventory_items', 'inventory_movements',
-            'landing_pages', 'form_definitions', 'form_submissions', 'intake_sources',
-            'commercial_offers', 'campaigns', 'campaign_courses', 'courses', 'products',
-            'alert_rules', 'alert_history', 'scheduled_reports', 'dashboard_preferences',
-        ];
-
-        for (const table of tablesToClean) {
-            try {
-                await this.$executeRawUnsafe(`DELETE FROM "${schemaName}"."${table}"`);
-            } catch {
-                // Table may not exist in older schemas — skip silently
-            }
-        }
-
-        this.logger.log(`[cleanStaleSchemaData] Cleaned ${tablesToClean.length} tables in "${schemaName}"`);
     }
 
     $queryRawUnsafe<T = any>(query: string, ...values: any[]): any {
@@ -409,13 +654,71 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 
                 if (!hasPipelines?.length) continue;
 
-                // 2. Query opportunities that do NOT have open deals linked to their contact
+                // Older tenant schemas predate the explicit outcome/link columns. Add
+                // the contract, but never manufacture a terminal outcome from probability.
+                await (super.$executeRawUnsafe as any)(
+                    `ALTER TABLE "${schemaName}"."pipeline_stages"
+                     ADD COLUMN IF NOT EXISTS terminal_outcome VARCHAR(10)`
+                );
+                await (super.$executeRawUnsafe as any)(
+                    `UPDATE "${schemaName}"."pipeline_stages"
+                        SET terminal_outcome = NULL
+                      WHERE COALESCE(is_terminal, false) = false
+                        AND terminal_outcome IS NOT NULL`
+                );
+                await (super.$executeRawUnsafe as any)(
+                    `ALTER TABLE "${schemaName}"."pipeline_stages"
+                     DROP CONSTRAINT IF EXISTS pipeline_stages_terminal_outcome_check`
+                );
+                await (super.$executeRawUnsafe as any)(
+                    `ALTER TABLE "${schemaName}"."pipeline_stages"
+                     ADD CONSTRAINT pipeline_stages_terminal_outcome_check CHECK (
+                         (COALESCE(is_terminal, false) = false AND terminal_outcome IS NULL)
+                         OR (is_terminal = true AND terminal_outcome IN ('won', 'lost'))
+                     ) NOT VALID`
+                );
+                await (super.$executeRawUnsafe as any)(
+                    `ALTER TABLE "${schemaName}"."opportunities"
+                     ADD COLUMN IF NOT EXISTS deal_id UUID
+                     REFERENCES "${schemaName}"."deals"(id) ON DELETE SET NULL`
+                );
+                await (super.$executeRawUnsafe as any)(
+                    `CREATE INDEX IF NOT EXISTS idx_opportunities_deal_id
+                     ON "${schemaName}"."opportunities"(deal_id)`
+                );
+
+                // 2. Repair the historical Deal mirror from the canonical stage outcome.
+                // Opportunities and Deals feed different dashboards; allowing an explicit
+                // terminal stage to keep status='open' makes those dashboards disagree.
+                await (super.$queryRawUnsafe as any)(
+                    `UPDATE "${schemaName}"."deals" d
+                        SET status = CASE
+                            WHEN ps.terminal_outcome = 'won' THEN 'won'
+                            WHEN ps.terminal_outcome = 'lost' THEN 'lost'
+                            ELSE 'open'
+                        END,
+                            updated_at = NOW()
+                       FROM "${schemaName}"."pipeline_stages" ps
+                      WHERE d.stage_id = ps.id
+                        AND (COALESCE(ps.is_terminal, false) = false
+                             OR ps.terminal_outcome IN ('won', 'lost'))
+                        AND d.status IS DISTINCT FROM CASE
+                            WHEN ps.terminal_outcome = 'won' THEN 'won'
+                            WHEN ps.terminal_outcome = 'lost' THEN 'lost'
+                            ELSE 'open'
+                        END`
+                );
+
+                // 3. Every Opportunity owns its exact Deal mirror through deal_id. A
+                // contact may have multiple opportunities, so contact-level de-duplication
+                // is deliberately forbidden here.
                 const opportunities = await (super.$queryRawUnsafe as any)(
-                    `SELECT o.lead_id, o.stage, l.contact_id, l.first_name, l.last_name, l.phone
+                    `SELECT o.id AS opportunity_id
                      FROM "${schemaName}"."opportunities" o
                      JOIN "${schemaName}"."leads" l ON l.id = o.lead_id
-                     WHERE l.contact_id IS NOT NULL 
-                       AND l.contact_id NOT IN (SELECT contact_id FROM "${schemaName}"."deals" WHERE status = 'open')`
+                     WHERE l.contact_id IS NOT NULL
+                       AND o.deal_id IS NULL
+                     ORDER BY o.updated_at ASC`
                 );
 
                 if (!opportunities?.length) continue;
@@ -430,50 +733,95 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 if (!pipelineId) continue;
 
                 for (const opp of opportunities) {
-                    let targetStageSlug = opp.stage;
-                    if (opp.stage === 'listo_cierre') targetStageSlug = 'listo_para_cierre';
-                    else if (opp.stage === 'listo_para_cierre') targetStageSlug = 'listo_cierre';
+                    try {
+                        await this.transactionInTenantSchema(schemaName, async (query) => {
+                            const locked = await query<any[]>(
+                                `SELECT o.id, o.lead_id, o.stage, o.won_at, o.lost_at,
+                                        l.contact_id, l.first_name, l.last_name, l.phone
+                                   FROM opportunities o
+                                   JOIN leads l ON l.id = o.lead_id
+                                  WHERE o.id = $1::uuid AND o.deal_id IS NULL
+                                  FOR UPDATE OF o`,
+                                [opp.opportunity_id],
+                            );
+                            const exact = locked?.[0];
+                            if (!exact) return;
 
-                    let stageRows = await (super.$queryRawUnsafe as any)(
-                        `SELECT id, default_probability, sla_hours FROM "${schemaName}"."pipeline_stages" 
-                         WHERE (slug = $1 OR slug = $2) AND tenant_id = $3::uuid LIMIT 1`,
-                        opp.stage, targetStageSlug, tenantId
-                    );
-
-                    if (!stageRows?.length) {
-                        stageRows = await (super.$queryRawUnsafe as any)(
-                            `SELECT id, default_probability, sla_hours FROM "${schemaName}"."pipeline_stages" 
-                             WHERE tenant_id = $1::uuid ORDER BY position ASC LIMIT 1`,
-                            tenantId
-                        );
-                    }
-
-                    const stage = stageRows?.[0];
-                    if (!stage) continue;
-
-                    const title = `${opp.first_name || ''} ${opp.last_name || ''}`.trim() || opp.phone || 'Interés Conversacional';
-                    const probability = stage.default_probability || 0;
-                    const slaDeadline = stage.sla_hours ? `NOW() + INTERVAL '${parseInt(stage.sla_hours)} hours'` : 'NULL';
-
-                    // Insert retroactive deal
-                    const dealRes = await (super.$queryRawUnsafe as any)(
-                        `INSERT INTO "${schemaName}"."deals" 
-                           (contact_id, title, value, stage_id, probability, status, sla_deadline, pipeline_id, created_at, updated_at, stage_entered_at)
-                         VALUES 
-                           ($1::uuid, $2, 0, $3::uuid, $4, 'open', ${slaDeadline}, $5::uuid, NOW(), NOW(), NOW())
-                         RETURNING id`,
-                        opp.contact_id, title, stage.id, probability, pipelineId
-                    );
-
-                    const dealId = dealRes?.[0]?.id;
-                    if (dealId) {
-                        await (super.$queryRawUnsafe as any)(
-                            `INSERT INTO "${schemaName}"."stage_transitions" 
-                               (deal_id, to_stage, changed_by, reason, created_at)
-                             VALUES 
-                               ($1::uuid, $2, 'system', 'Retroactive sync from opportunity', NOW())`,
-                            dealId, stage.id
-                        );
+                            // One-way compatibility only: persisted writes use the
+                            // canonical listo_para_cierre slug, never listo_cierre.
+                            const targetStageSlug = exact.stage === 'listo_cierre'
+                                ? 'listo_para_cierre'
+                                : exact.stage;
+                            const stageRows = await query<any[]>(
+                                `SELECT id, slug, default_probability, sla_hours,
+                                        is_terminal, terminal_outcome
+                                   FROM pipeline_stages
+                                  WHERE slug = $1 AND tenant_id = $2::uuid
+                                    AND (pipeline_id = $3::uuid OR pipeline_id IS NULL)
+                                  ORDER BY (pipeline_id = $3::uuid) DESC, position ASC
+                                  LIMIT 1`,
+                                [targetStageSlug, tenantId, pipelineId],
+                            );
+                            const stage = stageRows?.[0];
+                            if (!stage) {
+                                throw new Error(`No canonical stage "${targetStageSlug}" for opportunity ${exact.id}`);
+                            }
+                            const status = resolveMirroredDealStatus(stage, exact);
+                            const title = `${exact.first_name || ''} ${exact.last_name || ''}`.trim()
+                                || exact.phone
+                                || 'Interés Conversacional';
+                            const dealRes = await query<any[]>(
+                                `INSERT INTO deals
+                                    (contact_id, title, value, stage_id, probability, status,
+                                     sla_deadline, pipeline_id, created_at, updated_at, stage_entered_at)
+                                 VALUES
+                                    ($1::uuid, $2, 0, $3::uuid, $4, $5,
+                                     CASE WHEN $6::int IS NULL THEN NULL ELSE NOW() + ($6::int * INTERVAL '1 hour') END,
+                                     $7::uuid, NOW(), NOW(), NOW())
+                                 RETURNING id`,
+                                [
+                                    exact.contact_id,
+                                    title,
+                                    stage.id,
+                                    Number(stage.default_probability || 0),
+                                    status,
+                                    stage.sla_hours ?? null,
+                                    pipelineId,
+                                ],
+                            );
+                            const dealId = dealRes?.[0]?.id;
+                            if (!dealId) throw new Error(`Deal mirror creation failed for opportunity ${exact.id}`);
+                            const linked = await query<any[]>(
+                                `UPDATE opportunities
+                                    SET deal_id = $1::uuid, stage = $2, updated_at = NOW()
+                                  WHERE id = $3::uuid AND deal_id IS NULL
+                                  RETURNING id`,
+                                [dealId, stage.slug, exact.id],
+                            );
+                            if (!linked?.length) throw new Error(`Opportunity ${exact.id} was linked concurrently`);
+                            if (exact.stage !== stage.slug) {
+                                await query(
+                                    `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
+                                    [stage.slug, exact.lead_id],
+                                );
+                                await query(
+                                    `INSERT INTO stage_history
+                                        (lead_id, opportunity_id, from_stage, to_stage, reason, triggered_by)
+                                     VALUES ($1::uuid, $2::uuid, $3, $4,
+                                             'Canonicalized during retroactive deal sync', 'historical_sync')`,
+                                    [exact.lead_id, exact.id, exact.stage, stage.slug],
+                                );
+                            }
+                            await query(
+                                `INSERT INTO stage_transitions
+                                    (deal_id, from_stage, to_stage, changed_by, reason, created_at)
+                                 VALUES ($1::uuid, NULL, $2, 'system',
+                                         'Retroactive sync from exact opportunity', NOW())`,
+                                [dealId, stage.id],
+                            );
+                        });
+                    } catch (error: any) {
+                        this.logger.warn(`[Historical Sync] Skipped opportunity ${opp.opportunity_id}: ${error.message}`);
                     }
                 }
             }

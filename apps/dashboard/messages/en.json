@@ -4036,10 +4036,21 @@
       "createTitle": "New tenant",
       "companyName": "Company name",
       "language": "Language",
-      "name": "Name"
+      "name": "Name",
+      "ownerTitle": "Tenant owner",
+      "ownerFirstName": "First name",
+      "ownerLastName": "Last name",
+      "ownerEmail": "Owner email",
+      "ownerEmailPlaceholder": "owner@company.com",
+      "provisioningHint": "Creation configures and verifies the owner, schema, AI agent, identity, and vertical. If the email has no account yet, an invitation is sent before activation.",
+      "verticalChangeWarning": "The vertical and subtype are locked after provisioning. Changing them requires a controlled migration of the pipeline, services, knowledge, tools, and agent."
     },
     "slugLabel": "Slug",
+    "slugPlaceholder": "my-company",
     "companyPlaceholder": "e.g.: My Company",
+    "catalogLoadError": "The canonical vertical and plan catalog could not be loaded.",
+    "createdToast": "{name} was created and provisioned",
+    "planUpdateError": "The other changes were saved, but the plan could not be updated.",
     "tenantLabel": "Tenant",
     "onboardingFunnelTitle": "Onboarding Funnel",
     "industries": {
@@ -4071,12 +4082,13 @@
       "es-MX": "Spanish (MX)",
       "es-ES": "Spanish (ES)",
       "en-US": "English (US)",
-      "pt-BR": "Portuguese (BR)"
+      "pt-BR": "Portuguese (BR)",
+      "fr-FR": "French (FR)"
     },
     "plans": {
       "emprendedor": "Entrepreneur",
       "starter": "Starter",
-      "professional": "Professional",
+      "pro": "Pro",
       "enterprise": "Enterprise",
       "custom": "Custom"
     },
@@ -4144,6 +4156,8 @@
     "tiktokUrl": "TikTok URL",
     "businessType": "Business type",
     "businessTypeHint": "Is a doctor prescribing the treatment? Choose Health. If not, Beauty & aesthetics.",
+    "verticalCatalogLoading": "Loading the industry catalog...",
+    "verticalCatalogError": "The industry catalog could not be loaded. Reload the page to try again.",
     "select": "Select...",
     "back": "Back",
     "creating": "Creating...",
@@ -4330,18 +4344,25 @@
       "hardware": "Hardware and networks",
       "peluqueria": "Dog / cat grooming",
       "guarderia": "Daycare and boarding",
+      "pet_hotel": "Pet hotel",
       "paseos": "Dog walking and home care",
+      "adiestramiento": "Training",
       "entrenamiento": "Training and obedience",
       "tienda": "Pet store",
       "plomeria": "Plumbing",
       "electricidad": "Electrical services",
+      "fumigacion": "Pest control",
       "cerrajeria": "Locksmith",
       "limpieza": "Professional cleaning",
+      "jardineria": "Landscaping",
       "pintura": "Painting and remodeling",
       "multiservicio": "Multi-service / General",
+      "estudio": "Photo studio",
       "bodas": "Weddings and events",
+      "eventos": "Social and corporate events",
       "retrato": "Portrait and photo book",
       "producto": "Product photography",
+      "wedding_planner": "Wedding planner",
       "corporativo": "Corporate and business",
       "inmobiliaria": "Real estate photography"
     },
@@ -4558,6 +4579,11 @@
       "servicios_hogar": "clients",
       "fotografia": "clients"
     },
+    "couponLabel": "Promo code (optional)",
+    "couponPlaceholder": "LAUNCH1MONTH",
+    "couponHint": "If you have a code, we'll add free months to your trial. You can leave it empty.",
+    "couponApplied": "Coupon applied: {months} free month(s) added to your trial",
+    "couponFailed": "We couldn't apply that code. Your account was created anyway — try again from Settings → Billing.",
     "bridge": {
       "title": "Account ready!",
       "subtitle": "Setting up your agent…"
@@ -5509,7 +5535,7 @@
     "pendingDowngradeCancel": "Keep my plan",
     "downgradeCancelled": "Plan change cancelled. You keep your current plan.",
     "couponTitle": "Coupon code",
-    "couponHint": "Enter a promo code for a discount or free months.",
+    "couponHint": "Enter a promo code to add free months to your plan.",
     "redeem": "Apply",
     "couponRedeemed": "Coupon applied successfully",
     "couponErrors": {
@@ -5518,7 +5544,10 @@
       "expired": "This coupon has expired.",
       "max_redemptions_reached": "This coupon reached its maximum redemptions.",
       "plan_not_eligible": "This coupon doesn't apply to your current plan.",
-      "already_redeemed": "You've already redeemed this coupon."
+      "already_redeemed": "You've already redeemed this coupon.",
+      "no_subscription": "You don't have a subscription yet to apply this coupon to.",
+      "type_not_supported": "This coupon can no longer be redeemed. Contact us and we'll sort it out.",
+      "active_provider_subscription": "You have an active auto-billing subscription. Contact us to apply the coupon without double charging you."
     },
     "limitReached": "You've reached the limit of {limit} {resource} on your current plan ({current}/{limit}).",
     "upgradePlan": "Upgrade plan",
@@ -5526,29 +5555,47 @@
   },
   "couponsPage": {
     "title": "Promo coupons",
-    "subtitle": "Discount codes and free months for marketing campaigns",
+    "subtitle": "Free-month codes for marketing campaigns",
     "create": "Create coupon",
     "createTitle": "New coupon",
+    "createHint": "The coupon adds free months to the customer's trial. It can be redeemed at signup or from Settings → Billing.",
+    "editTitle": "Edit coupon",
+    "editLocked": "The code and the {months} free months can't be edited: the coupon is already issued and has {redemptions} redemption(s). To change them, deactivate this one and create a new coupon.",
+    "activeToggle": "Coupon active (can be redeemed)",
     "deactivate": "Deactivate",
+    "reactivate": "Reactivate",
     "confirmDeactivate": "Deactivate this coupon? It can't be redeemed anymore.",
     "description": "Description",
     "descriptionPlaceholder": "e.g. Black Friday 2026 campaign",
     "codeHint": "3-40 chars, letters / digits / _ / -",
-    "percentLabel": "Discount percent (1-100)",
-    "amountLabel": "Amount in cents (USD)",
     "monthsLabel": "Free months (1-24)",
-    "cyclesLabel": "{n} cycles",
-    "cyclesLabel2": "Duration (billing cycles)",
-    "cyclesPlaceholder": "Empty = forever",
     "maxRedemptions": "Max redemptions",
     "unlimited": "Unlimited",
     "expiresAt": "Expires",
     "months": "months",
-    "forever": "forever",
+    "legacyBadge": "Not redeemable",
+    "legacyHint": "Percent and fixed-amount coupons never discounted the actual charge. They stay as history but can't be redeemed.",
+    "statusExpired": "Expired",
+    "statusExhausted": "Exhausted",
+    "viewRedemptions": "View redemptions",
+    "redemptionsTitle": "Redemptions",
+    "redemptionsEmpty": "Nobody has redeemed this coupon yet.",
+    "tenantDeleted": "Account deleted",
     "type": {
       "percent_off": "% Off",
       "amount_off": "Fixed amount",
       "free_months": "Free months"
+    },
+    "source": {
+      "onboarding": "At signup",
+      "billing_settings": "From Billing",
+      "admin": "Applied by support"
+    },
+    "errors": {
+      "invalid_code": "Code must be 3-40 chars: letters, digits, _ or -.",
+      "invalid_months": "Free months must be between 1 and 24.",
+      "code_already_exists": "A coupon with that code already exists.",
+      "type_not_supported": "Only free-month coupons can be issued."
     },
     "col": {
       "code": "Code",
@@ -5556,7 +5603,10 @@
       "value": "Value",
       "redemptions": "Redemptions",
       "expires": "Expires",
-      "status": "Status"
+      "status": "Status",
+      "tenant": "Account",
+      "source": "Source",
+      "redeemedAt": "Date"
     },
     "empty": {
       "title": "No coupons created yet",
@@ -6484,14 +6534,16 @@
       ]
     },
     "coupons": {
-      "title": "How do I create and manage discount coupons?",
-      "description": "Coupons are discount codes you can create and distribute to customers or partners to reduce the price of Parallly plans; they support three types: percentage off, fixed amount, and free months. This section is exclusive to super admins and lets you control expiry, usage limits, and which plans each coupon applies to.",
+      "title": "How do I create and manage free-month coupons?",
+      "description": "Coupons are codes that gift free months: they extend the customer's trial at no charge. Hand them out in campaigns — the customer redeems them at signup or from Settings → Billing. This section is exclusive to super admins and lets you control expiry, redemption limits, and see who redeemed each coupon.",
       "tips": [
-        "Click 'Create coupon' and enter an uppercase code without spaces (for example, 'LAUNCH50') to make it easy to share and remember.",
-        "Choose the coupon type based on your strategy: 'Percentage off' for relative discounts (for example, 20% off), 'Fixed amount' to subtract an exact amount (for example, $10), or 'Free months' to gift full subscription periods.",
-        "Use the 'Max redemptions' field to cap availability; for example, set 50 if it is a launch promotion that should not exceed that number of uses.",
+        "Click 'Create coupon' and enter an uppercase code without spaces (for example, 'LAUNCH1MONTH') to make it easy to share and remember.",
+        "Set the 'Free months' the code gifts: 1 month is the usual choice for acquisition campaigns. Customers start with a 7-day trial, so a 1-month coupon leaves them about 37 days without paying.",
+        "Use the 'Max redemptions' field to cap availability; for example, set 50 if it is a launch promotion that should not exceed that number of redemptions.",
         "Set an 'Expiry date' for time-limited campaign coupons; the code will stop working automatically on the chosen date without requiring manual deactivation.",
-        "When a coupon should no longer accept new uses, click the 'Deactivate' icon (red button in the row) to mark it as inactive without deleting it; this preserves the redemption history in the 'Uses' column."
+        "Click the number in the 'Redemptions' column to see which accounts used the coupon, where they redeemed it, and when.",
+        "When a coupon should no longer accept new redemptions, use the red 'Deactivate' icon to mark it inactive without deleting it; the history is preserved and you can always reactivate it.",
+        "A coupon can't be redeemed if the customer already has active auto-billing on MercadoPago: extending their date locally does not stop that charge, so they'd get both. Cancel the subscription first or handle the credit manually."
       ]
     },
     "identity": {

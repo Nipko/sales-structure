@@ -407,7 +407,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."leads" (
     "phone_normalized"    VARCHAR(20),                   -- E.164 normalized for dedup matching
     "email"               VARCHAR(255),
     "score"               INTEGER DEFAULT 0 CHECK (score >= 0 AND score <= 10),
-    "stage"               VARCHAR(50) DEFAULT 'nuevo',   -- nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado
+    "stage"               VARCHAR(50) DEFAULT 'nuevo',   -- canonical stage slugs include listo_para_cierre (listo_cierre is read-only legacy input)
     "primary_intent"      VARCHAR(100),                  -- precio, fecha, modalidad, duracion, certificacion, financiacion, objecion_economica, objecion_tiempo, hablar_humano, no_interesado
     "secondary_intent"    VARCHAR(100),
     "is_vip"              BOOLEAN DEFAULT false,          -- grupo, varios cursos o alto valor
@@ -578,11 +578,65 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pipeline_stages" (
     "default_probability" INTEGER DEFAULT 0,
     "sla_hours"           INTEGER,
     "is_terminal"         BOOLEAN DEFAULT false,
+    "terminal_outcome"    VARCHAR(10),
     "transition_rules"    JSONB DEFAULT '[]'::jsonb,
-    "created_at"          TIMESTAMP DEFAULT NOW()
+    "created_at"          TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT "pipeline_stages_terminal_outcome_check" CHECK (
+        (COALESCE("is_terminal", false) = false AND "terminal_outcome" IS NULL)
+        OR ("is_terminal" = true AND "terminal_outcome" IN ('won', 'lost'))
+    )
 );
 CREATE INDEX IF NOT EXISTS "idx_pipeline_stages_tenant_id" ON "{{SCHEMA_NAME}}"."pipeline_stages" ("tenant_id");
 CREATE INDEX IF NOT EXISTS "idx_pipeline_stages_position" ON "{{SCHEMA_NAME}}"."pipeline_stages" ("position");
+ALTER TABLE "{{SCHEMA_NAME}}"."pipeline_stages" ADD COLUMN IF NOT EXISTS "terminal_outcome" VARCHAR(10);
+UPDATE "{{SCHEMA_NAME}}"."pipeline_stages"
+SET "terminal_outcome" = NULL
+WHERE COALESCE("is_terminal", false) = false AND "terminal_outcome" IS NOT NULL;
+-- Backfill de las etapas que existen desde antes de la columna. Sin esto, todo
+-- tenant ya creado se queda con sus etapas terminales en NULL, y como
+-- resolveTerminalOutcome() falla cerrado, getStages y getKanban
+-- (pipeline.service.ts:615 y :750) responden 500: el embudo entero deja de
+-- abrir. El CHECK de abajo entra NOT VALID, así que la migración pasaría igual
+-- y el daño solo aparecería en runtime, tenant por tenant.
+--
+-- Se reconstruye la intención con dos señales, en orden de confianza:
+--   1. el slug terminal canónico —los de las 18 verticales más el embudo
+--      genérico—, que es la fuente de verdad de lo que se sembró;
+--   2. para etapas terminales que el dueño creó a mano y no están en esa lista,
+--      la probabilidad: en TODO el catálogo canónico 'won' es 100 y 'lost' es 0.
+--
+-- Que quede claro por qué esto no contradice el cambio: la probabilidad ya no
+-- decide nada en runtime. Acá es reparación de datos históricos, donde es la
+-- única señal de intención que sobrevivió.
+UPDATE "{{SCHEMA_NAME}}"."pipeline_stages"
+SET "terminal_outcome" = CASE
+    WHEN "slug" IN (
+        'ganado', 'cerrado', 'cerrado_ganado', 'completado', 'completada',
+        'entregado', 'entregada', 'alta', 'vip', 'aprobado', 'poliza_emitida'
+    ) THEN 'won'
+    WHEN "slug" IN (
+        'perdido', 'no_interesado', 'cerrado_perdido', 'cancelado', 'declinado',
+        'desercion', 'devolucion', 'no_show', 'rechazado', 'inactivo'
+    ) THEN 'lost'
+    WHEN COALESCE("default_probability", 0) >= 50 THEN 'won'
+    ELSE 'lost'
+END
+WHERE "is_terminal" = true AND "terminal_outcome" IS NULL;
+ALTER TABLE "{{SCHEMA_NAME}}"."pipeline_stages" DROP CONSTRAINT IF EXISTS "pipeline_stages_terminal_outcome_check";
+ALTER TABLE "{{SCHEMA_NAME}}"."pipeline_stages" ADD CONSTRAINT "pipeline_stages_terminal_outcome_check" CHECK (
+    (COALESCE("is_terminal", false) = false AND "terminal_outcome" IS NULL)
+    OR ("is_terminal" = true AND "terminal_outcome" IN ('won', 'lost'))
+) NOT VALID;
+UPDATE "{{SCHEMA_NAME}}"."opportunities" o
+SET "won_at" = COALESCE(o."won_at", o."updated_at", o."created_at", NOW()),
+    "lost_at" = NULL
+FROM "{{SCHEMA_NAME}}"."pipeline_stages" ps
+WHERE o."stage" = ps."slug" AND ps."terminal_outcome" = 'won' AND o."won_at" IS NULL;
+UPDATE "{{SCHEMA_NAME}}"."opportunities" o
+SET "lost_at" = COALESCE(o."lost_at", o."updated_at", o."created_at", NOW()),
+    "won_at" = NULL
+FROM "{{SCHEMA_NAME}}"."pipeline_stages" ps
+WHERE o."stage" = ps."slug" AND ps."terminal_outcome" = 'lost' AND o."lost_at" IS NULL;
 
 -- ---- Deals (sales pipeline tracking) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."deals" (
@@ -608,6 +662,30 @@ CREATE INDEX IF NOT EXISTS "idx_deals_stage_id" ON "{{SCHEMA_NAME}}"."deals" ("s
 CREATE INDEX IF NOT EXISTS "idx_deals_contact_id" ON "{{SCHEMA_NAME}}"."deals" ("contact_id");
 CREATE INDEX IF NOT EXISTS "idx_deals_status" ON "{{SCHEMA_NAME}}"."deals" ("status");
 CREATE INDEX IF NOT EXISTS "idx_deals_sla_deadline" ON "{{SCHEMA_NAME}}"."deals" ("sla_deadline") WHERE status = 'open' AND sla_deadline IS NOT NULL;
+
+-- Exact, durable Opportunity -> Deal ownership. Contact identity is not a safe
+-- correlation key because one contact can have multiple concurrent opportunities.
+ALTER TABLE "{{SCHEMA_NAME}}"."opportunities"
+    ADD COLUMN IF NOT EXISTS "deal_id" UUID REFERENCES "{{SCHEMA_NAME}}"."deals"("id") ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS "idx_opportunities_deal_id" ON "{{SCHEMA_NAME}}"."opportunities" ("deal_id");
+
+-- Keep the B2B Deal mirror aligned with the canonical stage outcome. This is
+-- deliberately slug-independent so every vertical and language behaves alike.
+UPDATE "{{SCHEMA_NAME}}"."deals" d
+SET "status" = CASE
+        WHEN ps."terminal_outcome" = 'won' THEN 'won'
+        WHEN ps."terminal_outcome" = 'lost' THEN 'lost'
+        ELSE 'open'
+    END,
+    "updated_at" = NOW()
+FROM "{{SCHEMA_NAME}}"."pipeline_stages" ps
+WHERE d."stage_id" = ps."id"
+  AND (COALESCE(ps."is_terminal", false) = false OR ps."terminal_outcome" IN ('won', 'lost'))
+  AND d."status" IS DISTINCT FROM CASE
+        WHEN ps."terminal_outcome" = 'won' THEN 'won'
+        WHEN ps."terminal_outcome" = 'lost' THEN 'lost'
+        ELSE 'open'
+    END;
 
 -- ---- Stage Transitions (audit trail for deal pipeline moves) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."stage_transitions" (

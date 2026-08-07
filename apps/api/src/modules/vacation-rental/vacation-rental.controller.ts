@@ -10,6 +10,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { PropertiesService } from './properties.service';
 import { IcalSyncService } from './ical-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { prepareSafeHttpsTarget } from '../../common/utils/safe-outbound-url.util';
 
 @ApiTags('vacation-rental')
 @Controller('vacation-rental')
@@ -206,6 +207,9 @@ export class VacationRentalController {
         if (!body.feedName || !body.source) {
             throw new BadRequestException('feedName and source are required');
         }
+        const importUrl = body.importUrl
+            ? (await prepareSafeHttpsTarget(body.importUrl, 'feed iCal')).url.toString()
+            : null;
 
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
 
@@ -218,7 +222,7 @@ export class VacationRentalController {
             `INSERT INTO ical_feeds (property_id, feed_name, source, import_url, export_token)
              VALUES ($1::uuid, $2, $3, $4, $5)
              RETURNING *`,
-            [propertyId, body.feedName, body.source, body.importUrl || null, exportToken],
+            [propertyId, body.feedName, body.source, importUrl, exportToken],
         );
 
         const created = rows?.[0];
@@ -228,7 +232,7 @@ export class VacationRentalController {
         // in last_sync_status but do NOT roll back the feed creation —
         // the user can fix the URL and retry from the UI.
         let syncResult: { imported: number; deleted: number } | null = null;
-        if (created?.id && body.importUrl) {
+        if (created?.id && importUrl) {
             try {
                 syncResult = await this.icalSyncService.syncFeed(schemaName, created.id);
             } catch (err: any) {
@@ -268,7 +272,9 @@ export class VacationRentalController {
         }
         if (body.importUrl !== undefined) {
             sets.push(`import_url = $${idx}`);
-            params.push(body.importUrl);
+            params.push(body.importUrl
+                ? (await prepareSafeHttpsTarget(body.importUrl, 'feed iCal')).url.toString()
+                : null);
             idx++;
         }
 

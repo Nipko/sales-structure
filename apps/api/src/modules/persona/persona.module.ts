@@ -1,10 +1,10 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { PersonaService } from './persona.service';
 import { PersonaController } from './persona.controller';
 import { TenantsModule } from '../tenants/tenants.module';
 
 @Module({
-    imports: [TenantsModule],
+    imports: [forwardRef(() => TenantsModule)],
     controllers: [PersonaController],
     providers: [PersonaService],
     exports: [PersonaService],

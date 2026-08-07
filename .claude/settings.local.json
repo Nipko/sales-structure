@@ -47,7 +47,17 @@
       "Bash(git -C C:/Users/USER/Desktop/Sales_Structure add apps/api/src/modules/billing/billing-email.service.ts apps/api/src/modules/billing/billing.module.ts)",
       "Bash(git -C \"C:/Users/USER/Desktop/Sales_Structure\" status --short)",
       "Bash(git -C \"C:/Users/USER/Desktop/Sales_Structure\" add apps/api/prisma/tenant-schema.sql apps/api/src/modules/treatment-plans/ apps/api/src/app.module.ts apps/api/src/modules/conversations/conversations.module.ts apps/api/src/modules/conversations/conversations.service.ts apps/api/src/modules/conversations/agent-test.service.ts apps/api/src/modules/conversations/ai-tool-executor.service.ts apps/api/src/modules/conversations/tools/treatment-tools.ts)",
-      "Bash(git -C \"C:/Users/USER/Desktop/Sales_Structure\" push origin main)"
+      "Bash(git -C \"C:/Users/USER/Desktop/Sales_Structure\" push origin main)",
+      "PowerShell(cd apps/api; npx tsc --noEmit 2>&1 | Select-String -Pattern \"error TS\" | Select-Object -First 30; \"TSC_DONE exit=$LASTEXITCODE\")",
+      "Bash(cd /c/Users/USER/Desktop/Sales_Structure && cat apps/api/prisma/migrations/20260623000000_add_user_fields_and_platform_settings/migration.sql | head -50)",
+      "Bash(cd /c/Users/USER/Desktop/Sales_Structure && sed -n '104,120p' apps/api/prisma/schema.prisma)",
+      "Bash(cd /c/Users/USER/Desktop/Sales_Structure && sed -n '65,102p' apps/api/prisma/schema.prisma)",
+      "Bash(cd /c/Users/USER/Desktop/Sales_Structure && grep -n \"GOOGLE_AI_KEY\\\\|GOOGLE_GENERATIVE_AI_API_KEY\" .github/workflows/deploy.yml)",
+      "Bash(cd /c/Users/USER/Desktop/Sales_Structure && sed -n '32,50p' infra/scripts/reset-db.sh)",
+      "PowerShell(Set-Location 'C:\\\\Users\\\\USER\\\\Desktop\\\\Sales_Structure\\\\apps\\\\api'; npx tsc --noEmit 2>&1 | Select-Object -First 20; Write-Output \"API_TSC_EXIT=$LASTEXITCODE\")",
+      "Bash(gh run *)",
+      "mcp__claude-in-chrome__navigate",
+      "mcp__claude-in-chrome__get_page_text"
     ]
   }
 }

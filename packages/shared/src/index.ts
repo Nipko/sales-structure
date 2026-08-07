@@ -603,6 +603,8 @@ export interface TurnContext {
         currency?: string;
     }>;
     retrievedKnowledge?: RetrievedKnowledgeItem[];
+    /** Probable but unverified knowledge; must be presented with uncertainty. */
+    possibleKnowledge?: RetrievedKnowledgeItem[];
     /** E-commerce catalog sample (T2.17): real products so the agent never invents them. */
     catalog?: Array<{
         id: string;
@@ -712,15 +714,23 @@ export const UNIVERSAL_FORBIDDEN_TOPICS = [
 
 export type LocalizedString = Record<string, string>; // {es: '...', en: '...', pt: '...', fr: '...'}
 
-export interface VerticalStageDefinition {
+interface VerticalStageDefinitionBase {
     name: LocalizedString;
     slug: string;
     color: string;
     probability: number;
     slaHours?: number;
-    isTerminal: boolean;
     transitionRules?: any[];
 }
+
+/**
+ * Terminal business meaning is part of the vertical contract. It must never be
+ * inferred from a translated slug or a display probability.
+ */
+export type VerticalStageDefinition = VerticalStageDefinitionBase & (
+    | { isTerminal: true; terminalOutcome: 'won' | 'lost' }
+    | { isTerminal: false; terminalOutcome?: never }
+);
 
 export interface VerticalFaqDefinition {
     question: LocalizedString;

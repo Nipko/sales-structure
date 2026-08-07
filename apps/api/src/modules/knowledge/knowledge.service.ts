@@ -9,6 +9,13 @@ import { kbmsg } from './knowledge-i18n';
 import OpenAI from 'openai';
 import axios from 'axios';
 import * as crypto from 'crypto';
+import {
+    type PinnedHttpsTarget,
+    prepareSafeHttpsTarget,
+    safeAxiosOptions,
+} from '../../common/utils/safe-outbound-url.util';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
+import { persistenceDisabled } from '../../common/types/execution-context';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pdfParse = require('pdf-parse');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -172,19 +179,19 @@ export class KnowledgeService {
             }
         }
 
-        let parsedUrl: URL;
+        let target: PinnedHttpsTarget;
         try {
-            parsedUrl = new URL(url);
-            if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('Invalid protocol');
+            target = await prepareSafeHttpsTarget(url, 'fuente de conocimiento');
         } catch {
             const lang = await this.getTenantLanguage(tenantId);
             throw new BadRequestException({ error: 'invalid_url', message: kbmsg(lang, 'crawl.invalidUrl') });
         }
+        const parsedUrl = target.url;
 
-        this.logger.log(`[Crawl] Fetching ${url} for tenant ${tenantId}`);
+        this.logger.log(`[Crawl] Fetching ${parsedUrl.toString()} for tenant ${tenantId}`);
 
-        const response = await axios.get(url, {
-            timeout: CRAWL_TIMEOUT_MS,
+        const response = await axios.get(parsedUrl.toString(), {
+            ...safeAxiosOptions(target, CRAWL_TIMEOUT_MS),
             maxContentLength: CRAWL_MAX_BYTES,
             headers: {
                 'User-Agent': 'ParallextBot/1.0 (+https://parallly-chat.cloud)',
@@ -214,7 +221,7 @@ export class KnowledgeService {
             content: textContent,
             mimeType: 'text/html',
             sourceType: 'url',
-            sourceUrl: url,
+            sourceUrl: parsedUrl.toString(),
             category,
         });
     }
@@ -230,8 +237,9 @@ export class KnowledgeService {
         }
 
         const doc = docs[0];
-        const response = await axios.get(doc.source_url, {
-            timeout: CRAWL_TIMEOUT_MS,
+        const target = await prepareSafeHttpsTarget(doc.source_url, 'fuente de conocimiento');
+        const response = await axios.get(target.url.toString(), {
+            ...safeAxiosOptions(target, CRAWL_TIMEOUT_MS),
             maxContentLength: CRAWL_MAX_BYTES,
             headers: { 'User-Agent': 'ParallextBot/1.0 (+https://parallly-chat.cloud)', Accept: 'text/html,application/xhtml+xml,text/plain' },
             responseType: 'text',
@@ -637,14 +645,24 @@ export class KnowledgeService {
         tenantId: string,
         query: string,
         topK = 5,
-        options?: { similarityThreshold?: number; poolSize?: number; conversationId?: string; language?: string; rerank?: boolean; rerankTopN?: number },
+        options?: {
+            similarityThreshold?: number;
+            poolSize?: number;
+            conversationId?: string;
+            language?: string;
+            rerank?: boolean;
+            rerankTopN?: number;
+            executionContext?: ServiceExecutionContext;
+        },
     ): Promise<any[]> {
         const schema = await this.tenantSchema(tenantId);
         const poolSize = Math.max(topK, options?.poolSize ?? topK * 4);
         const similarityThreshold = options?.similarityThreshold ?? 0;
 
-        await this.ensureKbSearchVector(schema);
-        const queryEmbedding = await this.embedQueryCached(query, tenantId);
+        if (!persistenceDisabled(options?.executionContext)) {
+            await this.ensureKbSearchVector(schema);
+        }
+        const queryEmbedding = await this.embedQueryCached(query, tenantId, options?.executionContext);
         const embeddingStr = `[${queryEmbedding.join(',')}]`;
         const regconfig = this.pgRegconfig(options?.language);
 
@@ -735,13 +753,21 @@ export class KnowledgeService {
         // Optional LLM reranker over the top-N of the fused pool — best-effort, gated by
         // the caller (cost + latency). Reorders before the final topK cut.
         const reranked = (options?.rerank && ranked.length > 1)
-            ? await this.rerankChunks(query, ranked, options.rerankTopN ?? 12, tenantId)
+            ? await this.rerankChunks(
+                query,
+                ranked,
+                options.rerankTopN ?? 12,
+                tenantId,
+                options.executionContext,
+            )
             : ranked;
 
         const enriched = reranked.slice(0, topK).map(({ _rrf, ...rest }) => rest);
 
         // Fire-and-forget analytics tracking
-        this.trackRetrieval(schema, tenantId, query, enriched, similarityThreshold, options?.conversationId).catch(() => {});
+        if (!persistenceDisabled(options?.executionContext)) {
+            this.trackRetrieval(schema, tenantId, query, enriched, similarityThreshold, options?.conversationId).catch(() => {});
+        }
 
         return enriched;
     }
@@ -751,7 +777,13 @@ export class KnowledgeService {
      * return indices ordered by relevance, reorders the top-N and appends the rest.
      * Any failure (parse/timeout/no key) returns the input unchanged — never blocks search.
      */
-    private async rerankChunks(query: string, candidates: any[], topN: number, tenantId?: string): Promise<any[]> {
+    private async rerankChunks(
+        query: string,
+        candidates: any[],
+        topN: number,
+        tenantId?: string,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<any[]> {
         const pool = candidates.slice(0, Math.min(topN, candidates.length));
         if (pool.length <= 1) return candidates;
         try {
@@ -767,6 +799,7 @@ export class KnowledgeService {
                 temperature: 0,
                 maxTokens: 200,
                 tenantId,
+                executionContext,
                 systemPrompt: 'Sos un reranker. Devolvé SOLO un JSON array de índices (enteros) ordenados por relevancia a la consulta, el más relevante primero. Sin texto extra.',
                 messages: [{ role: 'user', content: `Consulta: ${query}\n\nFragmentos:\n${list}` }],
             });
@@ -973,7 +1006,21 @@ export class KnowledgeService {
 
     // ─── Tenant Knowledge Check (cached) ─────────────────────────────────────
 
-    async tenantHasKnowledge(tenantId: string): Promise<boolean> {
+    async tenantHasKnowledge(
+        tenantId: string,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<boolean> {
+        if (persistenceDisabled(executionContext)) {
+            const schema = await this.tenantSchema(tenantId);
+            const rows = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `SELECT COUNT(*)::int AS cnt FROM knowledge_embeddings ke
+                 JOIN knowledge_documents kd ON kd.id = ke.document_id
+                 WHERE kd.status = 'ready'`,
+            );
+            return rows[0]?.cnt > 0;
+        }
+
         const cacheKey = this.redis.tenantKey(tenantId, 'has_knowledge');
         const cached = await this.redis.get(cacheKey);
         if (cached !== null) return cached === '1';
@@ -1235,7 +1282,11 @@ export class KnowledgeService {
 
     // Public so other services (e.g. CustomerMemoryService) can reuse the same
     // embedding pipeline + usage tracking instead of building a second OpenAI client.
-    async generateEmbedding(text: string, tenantId?: string): Promise<number[]> {
+    async generateEmbedding(
+        text: string,
+        tenantId?: string,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<number[]> {
         // Embeddings currently require OpenAI specifically. Fail with a clear,
         // actionable message instead of an opaque 401 from the SDK when the key
         // is missing (the platform contract only guarantees ≥1 provider of any kind).
@@ -1244,7 +1295,7 @@ export class KnowledgeService {
             model: 'text-embedding-3-small',
             input: text,
         });
-        if (tenantId) {
+        if (tenantId && !persistenceDisabled(executionContext)) {
             const date = new Date().toISOString().slice(0, 10);
             const baseKey = `ai:stats:${tenantId}:${date}:embeddings`;
             const tokens = response.usage?.total_tokens || Math.ceil(text.length / 4);
@@ -1269,14 +1320,21 @@ export class KnowledgeService {
     }
 
     /** Query-embedding cache (Redis) — the same question shouldn't re-hit OpenAI. */
-    private async embedQueryCached(query: string, tenantId?: string): Promise<number[]> {
+    private async embedQueryCached(
+        query: string,
+        tenantId?: string,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<number[]> {
+        if (persistenceDisabled(executionContext)) {
+            return this.generateEmbedding(query, tenantId, executionContext);
+        }
         const h = crypto.createHash('sha256').update(query.trim().toLowerCase()).digest('hex').slice(0, 32);
         const key = `kb:qemb:${tenantId || 'g'}:${h}`;
         try {
             const cached = await this.redis.getJson<number[]>(key);
             if (cached && cached.length) return cached;
         } catch { /* fall through and compute */ }
-        const emb = await this.generateEmbedding(query, tenantId);
+        const emb = await this.generateEmbedding(query, tenantId, executionContext);
         this.redis.setJson(key, emb, 3600).catch(() => {});
         return emb;
     }

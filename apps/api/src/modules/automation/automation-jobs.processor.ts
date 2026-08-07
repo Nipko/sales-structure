@@ -8,6 +8,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { AUTOMATION_JOBS_QUEUE } from './automation-listener.service';
 import { HttpRequestHandler } from './handlers/http-request.handler';
 import { LeadCapturedEvent } from './events/lead-captured.event';
+import { PipelineService } from '../pipeline/pipeline.service';
 
 export interface AutomationJobData {
     tenantId: string;
@@ -51,6 +52,7 @@ export class AutomationJobsProcessor extends WorkerHost {
         private readonly whatsappMessaging: WhatsappMessagingService,
         private readonly throttle: TenantThrottleService,
         private readonly httpRequestHandler: HttpRequestHandler,
+        private readonly pipelineService: PipelineService,
     ) {
         super();
     }
@@ -86,7 +88,7 @@ export class AutomationJobsProcessor extends WorkerHost {
                 // default y no hacía nada. Se aceptan los dos.
                 case 'update_stage':
                 case 'change_stage':
-                    result = await this.handleUpdateStage(schemaName, action, event);
+                    result = await this.handleUpdateStage(tenantId, schemaName, action, event);
                     break;
 
                 case 'add_tag':
@@ -223,6 +225,7 @@ export class AutomationJobsProcessor extends WorkerHost {
      * Mueve la oportunidad del lead a una nueva etapa del pipeline.
      */
     private async handleUpdateStage(
+        tenantId: string,
         schemaName: string,
         action: AutomationJobData['action'],
         event: LeadCapturedEvent,
@@ -232,23 +235,21 @@ export class AutomationJobsProcessor extends WorkerHost {
             throw new Error('stage es requerido para accion update_stage');
         }
 
-        // Actualizar la oportunidad vinculada al lead
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `UPDATE opportunities SET stage = $1, updated_at = NOW()
-             WHERE lead_id = $2::uuid AND stage != $1
-             RETURNING id, stage`,
-            [newStage, event.leadId],
+        const write = await this.pipelineService.writeLeadStage(
+            tenantId,
+            event.leadId,
+            newStage,
+            { schemaName, onlyActiveOpportunities: true },
         );
 
         this.logger.log(
-            `[AutomationJobs] Etapa actualizada a '${newStage}' para ${rows?.length || 0} oportunidad(es) del lead ${event.leadId}`,
+            `[AutomationJobs] Etapa actualizada a '${write.stage.slug}' para ${write.updatedOpportunities} oportunidad(es) del lead ${event.leadId}`,
         );
 
         return {
             action: 'update_stage',
-            newStage,
-            updatedOpportunities: rows?.length || 0,
+            newStage: write.stage.slug,
+            updatedOpportunities: write.updatedOpportunities,
         };
     }
 

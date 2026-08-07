@@ -411,7 +411,7 @@ export class AnalyticsService {
             const convRows = await this.prisma.executeInTenantSchema<Array<{ won: string; total: string }>>(
                 schemaName,
                 `SELECT
-                    COUNT(*) FILTER (WHERE stage IN ('ganado', 'cerrado', 'cerrado_ganado', 'entregado', 'completado')) as won,
+                    COUNT(*) FILTER (WHERE won_at IS NOT NULL) as won,
                     COUNT(*) as total
                  FROM opportunities
                  WHERE created_at >= NOW() - INTERVAL '30 days'`
@@ -462,7 +462,7 @@ export class AnalyticsService {
                     COALESCE(SUM(o.estimated_value), 0) as total_value
                  FROM opportunities o
                  LEFT JOIN leads l ON o.lead_id = l.id
-                 WHERE o.stage NOT IN ('ganado', 'perdido', 'no_interesado')
+                 WHERE o.won_at IS NULL AND o.lost_at IS NULL
                  GROUP BY o.stage
                  ORDER BY count DESC`, []
             );
@@ -572,8 +572,8 @@ export class AnalyticsService {
                 `SELECT 
                     COUNT(*) as total_opps,
                     SUM(estimated_value) as total_value,
-                    COUNT(*) FILTER (WHERE stage = 'ganado') as won,
-                    COUNT(*) FILTER (WHERE stage IN ('perdido','no_interesado')) as lost
+                    COUNT(*) FILTER (WHERE won_at IS NOT NULL) as won,
+                    COUNT(*) FILTER (WHERE lost_at IS NOT NULL) as lost
                  FROM opportunities`, []
             ).catch(() => [{ total_opps: 0, total_value: 0, won: 0, lost: 0 }]),
         ]);
@@ -668,11 +668,17 @@ export class AnalyticsService {
                 COUNT(l.id) as total_leads,
                 COUNT(l.id) FILTER (WHERE l.score >= 5) as qualified_leads,
                 COUNT(l.id) FILTER (WHERE l.score >= 8) as hot_leads,
-                COUNT(l.id) FILTER (WHERE l.stage = 'ganado') as converted,
+                COUNT(l.id) FILTER (WHERE EXISTS (
+                    SELECT 1 FROM opportunities o
+                    WHERE o.lead_id = l.id AND o.won_at IS NOT NULL
+                )) as converted,
                 ROUND(AVG(l.score)::numeric, 1) as avg_score,
                 ROUND(
                     CASE WHEN COUNT(l.id) > 0 
-                    THEN (COUNT(l.id) FILTER (WHERE l.stage = 'ganado')::numeric / COUNT(l.id) * 100)
+                    THEN (COUNT(l.id) FILTER (WHERE EXISTS (
+                        SELECT 1 FROM opportunities o
+                        WHERE o.lead_id = l.id AND o.won_at IS NOT NULL
+                    ))::numeric / COUNT(l.id) * 100)
                     ELSE 0 END, 1
                 ) as conversion_rate
              FROM campaigns c
@@ -689,20 +695,31 @@ export class AnalyticsService {
         const schemaName = await this.getSchemaName(tenantId);
         if (!schemaName) return null;
 
-        const stages = ['nuevo', 'contactado', 'calificado', 'caliente', 'listo_cierre', 'ganado', 'perdido'];
-        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT stage, COUNT(*) as count FROM leads WHERE opted_out = false GROUP BY stage`, []
+        return this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `WITH configured AS (
+                 SELECT slug,
+                        MAX(name) AS name,
+                        MIN(position) AS position,
+                        MAX(terminal_outcome) AS terminal_outcome
+                   FROM pipeline_stages
+                  WHERE tenant_id = $1::uuid
+                  GROUP BY slug
+             ), opportunity_counts AS (
+                 SELECT o.stage, COUNT(*)::int AS count
+                   FROM opportunities o
+                   JOIN leads l ON l.id = o.lead_id
+                  WHERE l.opted_out = false AND l.archived_at IS NULL
+                  GROUP BY o.stage
+             )
+             SELECT COALESCE(c.slug, oc.stage) AS stage,
+                    COALESCE(c.name, oc.stage) AS name,
+                    COALESCE(oc.count, 0)::int AS count,
+                    c.terminal_outcome AS outcome
+               FROM configured c
+               FULL OUTER JOIN opportunity_counts oc ON oc.stage = c.slug
+              ORDER BY c.position NULLS LAST, COALESCE(c.slug, oc.stage)`,
+            [tenantId],
         ).catch(() => []);
-
-        const stageMap: Record<string, number> = {};
-        for (const r of rows) stageMap[r.stage] = parseInt(r.count);
-        // Auto-advance persists the generic slug 'listo_para_cierre'; fold it into the
-        // canonical 'listo_cierre' bucket so ready-to-close leads aren't undercounted.
-        if (stageMap['listo_para_cierre']) {
-            stageMap['listo_cierre'] = (stageMap['listo_cierre'] || 0) + stageMap['listo_para_cierre'];
-        }
-
-        return stages.map(s => ({ stage: s, count: stageMap[s] || 0 }));
     }
 
     private async getSchemaName(tenantId: string): Promise<string | null> {

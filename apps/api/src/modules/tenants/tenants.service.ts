@@ -1,11 +1,50 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import {
+    BadRequestException,
+    ConflictException,
+    forwardRef,
+    Inject,
+    Injectable,
+    InternalServerErrorException,
+    Logger,
+    NotFoundException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
-import { VERTICAL_REGISTRY, getVerticalDefinition } from '../verticals/vertical-definitions';
-import type { TenantVerticalConfig } from '@parallext/shared';
+import {
+    InvalidVerticalSelectionError,
+    resolveVerticalSelection,
+} from '../verticals/vertical-identifiers';
+import { VerticalsService } from '../verticals/verticals.service';
+import { PersonaService } from '../persona/persona.service';
+import { BusinessInfoService } from '../business-info/business-info.service';
+import { InvitationsService } from '../invitations/invitations.service';
+import { validateEmailDomain } from '../../common/utils/email.util';
+import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
+import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
+import { persistenceDisabled } from '../../common/types/execution-context';
+
+export const TENANT_PLAN_SLUGS = ['emprendedor', 'starter', 'pro', 'enterprise', 'custom'] as const;
+export type TenantPlanSlug = typeof TENANT_PLAN_SLUGS[number];
+export const TENANT_LANGUAGE_TAGS = ['es-CO', 'es-MX', 'es-ES', 'en-US', 'pt-BR', 'fr-FR'] as const;
+
+type TenantProvisioningStage = 'owner' | 'schema' | 'agent' | 'businessInfo' | 'vertical' | 'invitation';
+
+interface TenantProvisioningState {
+    version: 2;
+    source: 'super_admin';
+    status: 'pending' | 'failed' | 'complete';
+    selection: { industry: string; subType: string | null; plan: TenantPlanSlug; ownerEmail: string };
+    stages: Record<TenantProvisioningStage, boolean>;
+    currentStage?: TenantProvisioningStage;
+    error?: string;
+    startedAt: string;
+    updatedAt: string;
+    completedAt?: string;
+}
 
 @Injectable()
 export class TenantsService {
@@ -15,6 +54,10 @@ export class TenantsService {
         private prisma: PrismaService,
         private redis: RedisService,
         private throttle: TenantThrottleService,
+        @Inject(forwardRef(() => PersonaService)) private personaService: PersonaService,
+        @Inject(forwardRef(() => BusinessInfoService)) private businessInfoService: BusinessInfoService,
+        private verticalsService: VerticalsService,
+        private invitationsService: InvitationsService,
         @InjectQueue('outbound-messages') private outboundQueue: Queue,
         @InjectQueue('broadcast-messages') private broadcastQueue: Queue,
         @InjectQueue('automation-jobs') private automationQueue: Queue,
@@ -29,54 +72,441 @@ export class TenantsService {
         name: string;
         slug: string;
         industry: string;
+        subType?: string | null;
         language?: string;
         plan?: string;
-    }) {
-        // Check slug uniqueness
-        const existing = await this.prisma.tenant.findUnique({
-            where: { slug: data.slug },
-        });
-        if (existing) {
-            throw new ConflictException(`Tenant slug "${data.slug}" already exists`);
+        ownerEmail: string;
+        ownerFirstName: string;
+        ownerLastName?: string;
+    }, actorUserId?: string) {
+        const name = data.name?.trim();
+        const slug = (data.slug || '').trim().toLowerCase();
+        const language = data.language || 'es-CO';
+        const plan = (data.plan || 'emprendedor') as TenantPlanSlug;
+        const ownerEmail = (data.ownerEmail || '').trim().toLowerCase();
+        const ownerFirstName = (data.ownerFirstName || '').trim();
+        const ownerLastName = (data.ownerLastName || '').trim();
+
+        if (!name) throw new BadRequestException('El nombre del tenant es obligatorio');
+        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 50) {
+            throw new BadRequestException('El slug debe usar solo minúsculas, números y guiones');
         }
+        if (!TENANT_PLAN_SLUGS.includes(plan)) {
+            throw new BadRequestException({
+                error: 'invalid_tenant_plan',
+                message: `El plan "${plan}" no está soportado`,
+                allowedPlans: TENANT_PLAN_SLUGS,
+            });
+        }
+        if (!(TENANT_LANGUAGE_TAGS as readonly string[]).includes(language)) {
+            throw new BadRequestException({
+                error: 'invalid_tenant_language',
+                message: `El idioma "${language}" no está soportado`,
+                allowedLanguages: TENANT_LANGUAGE_TAGS,
+            });
+        }
+        if (!ownerFirstName) {
+            throw new BadRequestException('El nombre del propietario es obligatorio');
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) {
+            throw new BadRequestException({ error: 'invalid_owner_email', message: 'El correo del propietario no es válido' });
+        }
+        validateEmailDomain(ownerEmail);
 
-        const schemaName = `tenant_${data.slug.replace(/-/g, '_')}`;
-
-        // Create tenant record
-        const tenant = await this.prisma.tenant.create({
-            data: {
-                name: data.name,
-                slug: data.slug,
-                industry: data.industry,
-                language: data.language || 'es-CO',
-                schemaName,
-                plan: data.plan || 'starter',
-            },
-        });
-
-        // Create isolated database schema
+        let selection;
         try {
-            this.logger.log(`Creating schema "${schemaName}" for tenant "${data.name}"...`);
-            await this.prisma.createTenantSchema(schemaName);
-            this.logger.log(`Schema "${schemaName}" created successfully`);
+            selection = resolveVerticalSelection(data.industry, data.subType);
         } catch (error) {
-            // Rollback tenant creation if schema fails
-            this.logger.error(`Failed to create schema: ${error}`);
-            await this.prisma.tenant.delete({ where: { id: tenant.id } });
+            if (error instanceof InvalidVerticalSelectionError) {
+                throw new BadRequestException({
+                    error: 'invalid_vertical_selection',
+                    message: error.message,
+                    industry: error.industry,
+                    subType: error.subType,
+                });
+            }
             throw error;
         }
+        const { industry, subType } = selection;
+        // The slug is the only stable identity available before the tenant row
+        // exists. Lock it before the first INSERT so two API instances cannot
+        // both create/claim resources for the same administrative request.
+        const lockKey = `lock:tenant-provision:slug:${slug}`;
+        const lockTtlSeconds = 120;
+        const lockToken = await this.redis.acquireLockToken(lockKey, lockTtlSeconds);
+        if (!lockToken) {
+            throw new ConflictException({
+                error: 'tenant_provisioning_in_progress',
+                message: 'El alta de este tenant ya está en ejecución',
+                slug,
+            });
+        }
+        const lease = new OwnedLockLease(
+            this.redis,
+            lockKey,
+            lockToken,
+            lockTtlSeconds,
+            this.logger,
+            `Administrative tenant provisioning lock lost for slug ${slug}`,
+        );
+        lease.start();
+        const assertLockOwned = () => lease.assertOwned();
 
-        // Audit log
+        try {
+        await assertLockOwned();
+        const requestedSchemaName = `tenant_${slug.replace(/-/g, '_')}`;
+        const now = new Date().toISOString();
+
+        let tenant = await this.prisma.tenant.findUnique({ where: { slug } });
+        let schemaName = tenant?.schemaName || requestedSchemaName;
+        let provisioning: TenantProvisioningState;
+        let provisioningWasComplete = false;
+
+        if (tenant) {
+            const existingState = (tenant.settings as any)?.provisioning as TenantProvisioningState | undefined;
+            const sameRequest = existingState?.source === 'super_admin'
+                && tenant.name === name
+                && tenant.industry === industry
+                && tenant.language === language
+                && tenant.plan === plan
+                && existingState.selection?.subType === subType
+                && existingState.selection?.ownerEmail === ownerEmail;
+
+            if (!sameRequest) {
+                throw new ConflictException(`Tenant slug "${slug}" already exists`);
+            }
+            provisioningWasComplete = existingState.status === 'complete';
+            const existingStages = existingState.stages as Partial<Record<TenantProvisioningStage, boolean>>;
+            provisioning = {
+                ...existingState,
+                version: 2,
+                selection: { industry, subType, plan, ownerEmail },
+                stages: {
+                    owner: existingStages.owner === true,
+                    schema: existingStages.schema === true,
+                    agent: existingStages.agent === true,
+                    businessInfo: existingStages.businessInfo === true,
+                    vertical: existingStages.vertical === true,
+                    invitation: existingStages.invitation === true,
+                },
+            };
+            this.logger.warn(`Resuming failed tenant provisioning for ${tenant.id} at ${existingState.currentStage || 'unknown'}`);
+        } else {
+            const activePlan = await this.prisma.billingPlan.findFirst({
+                where: { slug: plan, isActive: true },
+                select: { slug: true },
+            });
+            if (!activePlan) {
+                throw new BadRequestException({
+                    error: 'tenant_plan_unavailable',
+                    message: `El plan "${plan}" no está disponible para altas`,
+                });
+            }
+            provisioning = {
+                version: 2,
+                source: 'super_admin',
+                status: 'pending',
+                selection: { industry, subType, plan, ownerEmail },
+                stages: {
+                    owner: false,
+                    schema: false,
+                    agent: false,
+                    businessInfo: false,
+                    vertical: false,
+                    invitation: false,
+                },
+                startedAt: now,
+                updatedAt: now,
+            };
+            try {
+                await assertLockOwned();
+                tenant = await this.prisma.tenant.create({
+                    data: {
+                        name,
+                        slug,
+                        industry,
+                        language,
+                        schemaName: requestedSchemaName,
+                        plan,
+                        isActive: false,
+                        signupSource: 'super_admin',
+                        settings: { subType, provisioning } as any,
+                    },
+                });
+            } catch (error: any) {
+                if (error?.code === 'P2002') {
+                    throw new ConflictException({
+                        error: 'tenant_slug_conflict',
+                        message: `El slug "${slug}" ya está en uso`,
+                    });
+                }
+                throw error;
+            }
+        }
+
+        const persistProvisioning = async (
+            next: TenantProvisioningState,
+            extra?: { isActive?: boolean; onboardingCompletedAt?: Date },
+        ) => {
+            await assertLockOwned();
+            await mergeTenantSettingsAtomic(this.prisma, tenant!.id, {
+                subType,
+                provisioning: next,
+            }, extra);
+            const current = await this.prisma.tenant.findUnique({
+                where: { id: tenant!.id },
+            });
+            if (!current) throw new Error(`Tenant ${tenant!.id} disappeared during provisioning`);
+            return current;
+        };
+
+        const runStage = async (stage: TenantProvisioningStage, work: () => Promise<void>) => {
+            if (provisioning.stages[stage]) return;
+            provisioning = {
+                ...provisioning,
+                status: 'pending',
+                currentStage: stage,
+                error: undefined,
+                updatedAt: new Date().toISOString(),
+            };
+            await persistProvisioning(provisioning);
+            try {
+                await assertLockOwned();
+                await work();
+                await assertLockOwned();
+                provisioning = {
+                    ...provisioning,
+                    stages: { ...provisioning.stages, [stage]: true },
+                    updatedAt: new Date().toISOString(),
+                };
+                await persistProvisioning(provisioning);
+            } catch (error: any) {
+                if (error instanceof LockOwnershipLostError || lease.hasLostOwnership()) throw error;
+                const message = error?.message || String(error);
+                provisioning = {
+                    ...provisioning,
+                    status: 'failed',
+                    currentStage: stage,
+                    error: message.slice(0, 1000),
+                    updatedAt: new Date().toISOString(),
+                };
+                await persistProvisioning(provisioning, { isActive: false }).catch((persistError: any) => {
+                    this.logger.error(`Could not persist provisioning failure for ${tenant!.id}: ${persistError.message}`);
+                });
+                this.logger.error(`Tenant ${tenant!.id} provisioning failed at ${stage}: ${message}`);
+                throw new InternalServerErrorException({
+                    error: 'tenant_provisioning_failed',
+                    message: `No se pudo completar el alta en la etapa "${stage}". Puedes reintentar con los mismos datos.`,
+                    tenantId: tenant!.id,
+                    stage,
+                });
+            }
+        };
+
+        await runStage('owner', async () => {
+            const existingOwner = await this.prisma.user.findUnique({ where: { email: ownerEmail } });
+            if (existingOwner) {
+                if (existingOwner.tenantId === tenant!.id
+                    && existingOwner.role === 'tenant_admin'
+                    && existingOwner.isActive) {
+                    return;
+                }
+                if (existingOwner.tenantId === null
+                    && existingOwner.role === 'tenant_admin'
+                    && existingOwner.isActive) {
+                    await this.throttle.enforcePlanLimit(tenant!.id, 'seats', 0, 'usuarios');
+                    await assertLockOwned();
+                    await this.prisma.user.update({
+                        where: { id: existingOwner.id },
+                        data: {
+                            tenantId: tenant!.id,
+                            onboardingCompleted: true,
+                        },
+                    });
+                    return;
+                }
+                throw new ConflictException({
+                    error: 'owner_email_unavailable',
+                    message: 'El correo del propietario ya pertenece a otra cuenta o tenant',
+                });
+            }
+
+            await this.throttle.enforcePlanLimit(tenant!.id, 'seats', 0, 'usuarios');
+            await assertLockOwned();
+            await this.prisma.user.create({
+                data: {
+                    email: ownerEmail,
+                    firstName: ownerFirstName,
+                    lastName: ownerLastName,
+                    role: 'tenant_admin',
+                    tenantId: tenant!.id,
+                    isActive: true,
+                    emailVerified: false,
+                    onboardingCompleted: false,
+                    authProvider: 'invitation',
+                },
+            });
+
+            const createdOwner = await this.prisma.user.findUnique({ where: { email: ownerEmail } });
+            if (!createdOwner || createdOwner.tenantId !== tenant!.id || createdOwner.role !== 'tenant_admin') {
+                throw new Error('No se pudo crear el propietario del tenant');
+            }
+        });
+
+        const assertOwnerOwnership = async () => {
+            await assertLockOwned();
+            const owner = await this.prisma.user.findUnique({ where: { email: ownerEmail } });
+            if (!owner
+                || owner.tenantId !== tenant!.id
+                || owner.role !== 'tenant_admin'
+                || !owner.isActive) {
+                throw new ConflictException({
+                    error: 'tenant_owner_invalid',
+                    message: 'El propietario ya no pertenece activamente a este tenant',
+                    tenantId: tenant!.id,
+                });
+            }
+            return owner;
+        };
+        await assertOwnerOwnership();
+        if (provisioningWasComplete) return tenant;
+
+        await runStage('schema', async () => {
+            this.logger.log(`Allocating schema from "${schemaName}" for tenant "${name}"...`);
+            schemaName = await this.prisma.createTenantSchema(schemaName);
+            if (!await this.isTenantSchemaReady(schemaName)) {
+                throw new Error('El schema quedó incompleto después de crearlo');
+            }
+        });
+
+        await runStage('agent', async () => {
+            await this.personaService.createDefaultAgentFromGoals(
+                tenant!.id,
+                [],
+                'super_admin',
+                industry,
+                subType || undefined,
+            );
+            const rows = await this.prisma.$queryRawUnsafe(
+                `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".agent_personas WHERE is_active = true`,
+            ) as any[];
+            if (Number(rows[0]?.cnt || 0) < 1) throw new Error('No se creó el agente predeterminado');
+        });
+
+        await runStage('businessInfo', async () => {
+            const identity = await this.businessInfoService.upsertPrimary(tenant!.id, {
+                companyName: name,
+                industry,
+            });
+            if (!identity?.id) throw new Error('No se creó la identidad del negocio');
+        });
+
+        await runStage('vertical', async () => {
+            await this.verticalsService.bootstrapVertical(
+                tenant!.id,
+                industry,
+                subType,
+                language.split('-')[0] || 'es',
+            );
+            const config = await this.verticalsService.getVerticalConfig(tenant!.id);
+            if (config?.industry !== industry || (config?.subType || null) !== subType) {
+                throw new Error('El bootstrap vertical no produjo la configuración solicitada');
+            }
+        });
+
+        await runStage('invitation', async () => {
+            const owner = await assertOwnerOwnership();
+
+            const needsInvitation = owner.authProvider === 'invitation'
+                && !owner.password
+                && owner.emailVerified !== true;
+            if (!needsInvitation) return;
+
+            const pendingInvitation = await this.prisma.tenantInvitation.findFirst({
+                where: {
+                    tenantId: tenant!.id,
+                    email: ownerEmail,
+                    acceptedAt: null,
+                    revokedAt: null,
+                    expiresAt: { gt: new Date() },
+                },
+                select: { id: true },
+            });
+            if (pendingInvitation) return;
+
+            await assertLockOwned();
+            const invitation = await this.invitationsService.create({
+                tenantId: tenant!.id,
+                email: ownerEmail,
+                role: 'tenant_admin',
+                invitedByUserId: actorUserId,
+            });
+            if (!invitation?.id) throw new Error('No se creó la invitación del propietario');
+        });
+
+        await assertOwnerOwnership();
+        const completedAt = new Date().toISOString();
+        provisioning = {
+            ...provisioning,
+            status: 'complete',
+            currentStage: undefined,
+            error: undefined,
+            updatedAt: completedAt,
+            completedAt,
+        };
+        tenant = await persistProvisioning(provisioning, {
+            isActive: true,
+            onboardingCompletedAt: new Date(completedAt),
+        });
+
+        await assertLockOwned();
         await this.prisma.auditLog.create({
             data: {
                 tenantId: tenant.id,
+                userId: actorUserId,
                 action: 'tenant_created',
                 resource: 'tenant',
-                details: { name: data.name, slug: data.slug, schemaName },
+                details: { name, slug, schemaName, industry, subType, plan, ownerEmail, provisioning: 'complete' },
             },
-        });
+        }).catch((error: any) => this.logger.warn(`Tenant ${tenant!.id} audit failed: ${error.message}`));
 
         return tenant;
+        } catch (error: unknown) {
+            if (error instanceof LockOwnershipLostError || lease.hasLostOwnership()) {
+                throw new ConflictException({
+                    error: 'tenant_provisioning_lock_lost',
+                    message: 'El alta perdió su lock y fue detenida antes del siguiente commit.',
+                    slug,
+                });
+            }
+            throw error;
+        } finally {
+            lease.stop();
+            await this.redis.releaseLockToken(lockKey, lockToken).catch((error: any) => {
+                this.logger.warn(`Could not release provisioning lock for ${slug}: ${error.message}`);
+            });
+        }
+    }
+
+    async getProvisioningPlans() {
+        const plans = await this.prisma.billingPlan.findMany({
+            where: { slug: { in: [...TENANT_PLAN_SLUGS] }, isActive: true },
+            select: { slug: true },
+            orderBy: { sortOrder: 'asc' },
+        });
+        const allowed = new Set<string>(TENANT_PLAN_SLUGS);
+        return plans.map((plan) => plan.slug).filter((slug): slug is TenantPlanSlug => allowed.has(slug));
+    }
+
+    private async isTenantSchemaReady(schemaName: string): Promise<boolean> {
+        const rows = await this.prisma.$queryRawUnsafe(
+            `SELECT table_name
+               FROM information_schema.tables
+              WHERE table_schema = $1
+                AND table_name IN ('agent_personas', 'companies', 'pipeline_stages', 'faqs')`,
+            schemaName,
+        ) as Array<{ table_name: string }>;
+        return new Set(rows.map((row) => row.table_name)).size === 4;
     }
 
     /**
@@ -188,7 +618,18 @@ export class TenantsService {
     /**
      * Get the schema name for a tenant
      */
-    async getSchemaName(tenantId: string): Promise<string> {
+    async getSchemaName(tenantId: string, executionContext?: ServiceExecutionContext): Promise<string> {
+        // Introspection must not warm Redis. Resolve directly from the source of
+        // truth whenever the caller explicitly disables persistence.
+        if (persistenceDisabled(executionContext)) {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { schemaName: true },
+            });
+            if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
+            return tenant.schemaName;
+        }
+
         const cached = await this.redis.get(`tenant:${tenantId}:schema`);
         if (cached) return cached;
 
@@ -208,17 +649,26 @@ export class TenantsService {
     /**
      * Update tenant settings.
      *
-     * Ojo con `industry`: escribir la columna no alcanza. Lo que el runtime
-     * lee (terminología del prompt, etiquetas del sidebar, KPIs del panel) es
-     * `settings.verticalConfig`, cacheado en Redis bajo `vertical:{tenantId}`
-     * — y `getVerticalConfig` prioriza ese objeto sobre la columna. Sin
-     * reconstruirlo e invalidar esa clave, el tenant que corrige su industria
-     * se queda con la vertical vieja para siempre (el bot le sigue diciendo
-     * "paciente" después de pasar de salud a retail).
+     * Vertical identity is immutable through this generic endpoint. Changing
+     * only the public column/config would leave pipeline, FAQs, tools, persona,
+     * and booking data from the previous vertical. A dedicated migration flow
+     * must perform that operation as an auditable, resumable unit.
      */
-    async update(id: string, data: Partial<{ name: string; industry: string; language: string; isActive: boolean; settings: any }>) {
-        // Una sola lectura previa: las settings actuales para fusionarlas y la
-        // industria actual para saber si realmente cambió.
+    async update(id: string, data: Partial<{
+        name: string;
+        industry: string;
+        subType: string | null;
+        language: string;
+        isActive: boolean;
+        settings: any;
+    }>) {
+        if (data.language && !(TENANT_LANGUAGE_TAGS as readonly string[]).includes(data.language)) {
+            throw new BadRequestException({
+                error: 'invalid_tenant_language',
+                message: `El idioma "${data.language}" no está soportado`,
+                allowedLanguages: TENANT_LANGUAGE_TAGS,
+            });
+        }
         const existing = await this.prisma.tenant.findUnique({
             where: { id },
             select: { industry: true, settings: true },
@@ -227,78 +677,74 @@ export class TenantsService {
             throw new NotFoundException(`Tenant ${id} not found`);
         }
         const existingSettings = (existing.settings as any) || {};
+        const existingSubType = existingSettings.verticalConfig?.subType
+            ?? existingSettings.subType
+            ?? null;
+        const {
+            subType: requestedSubType,
+            settings: requestedSettings,
+            ...tenantData
+        } = data;
 
-        // Merge settings with existing instead of replacing
-        if (data.settings) {
-            data.settings = { ...existingSettings, ...data.settings };
-        }
+        const selectionWasProvided = data.industry !== undefined || requestedSubType !== undefined;
+        let nextIndustry = existing.industry;
+        let nextSubType = existingSubType;
 
-        const nextIndustry = typeof data.industry === 'string' && data.industry.length > 0
-            ? data.industry
-            : null;
-        let industryChanged = false;
-
-        if (nextIndustry && nextIndustry !== existing.industry) {
-            industryChanged = true;
-
-            if (!Object.prototype.hasOwnProperty.call(VERTICAL_REGISTRY, nextIndustry)) {
-                // getVerticalDefinition cae a "otro" en silencio; al menos que quede
-                // el rastro de por qué el tenant terminó con terminología genérica.
-                this.logger.warn(
-                    `Tenant ${id}: industry "${nextIndustry}" is not a known vertical slug — falling back to "otro"`,
-                );
+        if (selectionWasProvided) {
+            const rawIndustry = data.industry ?? existing.industry;
+            const rawSubType = requestedSubType !== undefined
+                ? requestedSubType
+                : existingSubType;
+            try {
+                const resolved = resolveVerticalSelection(rawIndustry, rawSubType);
+                nextIndustry = resolved.industry;
+                nextSubType = resolved.subType;
+            } catch (error) {
+                if (error instanceof InvalidVerticalSelectionError) {
+                    throw new BadRequestException({
+                        error: 'invalid_vertical_selection',
+                        message: error.message,
+                        industry: error.industry,
+                        subType: error.subType,
+                    });
+                }
+                throw error;
             }
 
-            const definition = getVerticalDefinition(nextIndustry);
-            const base: any = data.settings ?? existingSettings;
-            const rebuilt: TenantVerticalConfig = {
-                industry: nextIndustry,
-                // El subType pertenece a la vertical anterior ("dental" dentro de
-                // salud, "tours" dentro de turismo): no sobrevive al cambio.
-                subType: null,
-                terminology: definition.terminology,
-                sidebar: definition.sidebar,
-                dashboard: definition.dashboard,
-                bookingEnabled: definition.bookingEnabled,
-            };
-            const nextSettings = { ...base, verticalConfig: rebuilt };
-            delete nextSettings.subType;
-            data.settings = nextSettings;
+            const verticalChanged = nextIndustry !== existing.industry || nextSubType !== existingSubType;
+            if (verticalChanged) {
+                throw new ConflictException({
+                    error: 'vertical_migration_required',
+                    message: 'Cambiar la vertical requiere el flujo explícito de migración para evitar datos híbridos.',
+                    from: { industry: existing.industry, subType: existingSubType },
+                    to: { industry: nextIndustry, subType: nextSubType },
+                });
+            }
+
+            // Aliases that resolve to the same canonical identity are accepted,
+            // but the stored column remains canonical.
+            tenantData.industry = nextIndustry;
         }
 
-        const tenant = await this.prisma.tenant.update({
-            where: { id },
-            data,
-        });
+        if (requestedSettings) {
+            const {
+                verticalConfig: _ignoredVerticalConfig,
+                subType: _ignoredNestedSubType,
+                provisioning: _ignoredProvisioning,
+                verticalProvisioning: _ignoredVerticalProvisioning,
+                ...safeSettings
+            } = requestedSettings;
+            await mergeTenantSettingsAtomic(this.prisma, id, safeSettings);
+        }
+
+        const tenant = Object.keys(tenantData).length > 0
+            ? await this.prisma.tenant.update({ where: { id }, data: tenantData })
+            : await this.prisma.tenant.findUnique({ where: { id } });
+        if (!tenant) throw new NotFoundException(`Tenant ${id} not found`);
 
         // Invalidate cache
         await this.redis.del(`tenant:${id}:config`);
         await this.redis.del(`tenant:${id}:schema`);
-
-        if (industryChanged) {
-            // Clave propia de la config vertical: la leen VerticalsService y el
-            // pipeline de conversaciones (TTL 10 min). Sin este del, el cambio
-            // ni siquiera se ve en la conversación en curso.
-            await this.redis.del(`vertical:${id}`);
-            this.logger.log(`Tenant ${id}: industry ${existing.industry} → ${nextIndustry}, verticalConfig rebuilt`);
-
-            // Rastro para diagnóstico: el cambio NO re-siembra el contenido de la
-            // vertical (etapas del embudo, FAQs, servicios ni la persona del
-            // agente siguen siendo los de la industria anterior).
-            await this.prisma.auditLog.create({
-                data: {
-                    tenantId: id,
-                    action: 'tenant_industry_changed',
-                    resource: 'tenant',
-                    details: {
-                        from: existing.industry,
-                        to: nextIndustry,
-                        verticalConfigRebuilt: true,
-                        contentReseeded: false,
-                    },
-                },
-            }).catch(() => { });
-        }
 
         return tenant;
     }

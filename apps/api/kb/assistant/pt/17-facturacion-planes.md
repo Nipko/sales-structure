@@ -84,7 +84,7 @@ Na mesma página de **Faturamento**, a seção **Histórico de faturas** mostra 
 
 ## Cupons promocionais
 
-Se você recebeu um código promocional, em **Faturamento** procure a seção **Código de cupom**, cole o código e clique em **Aplicar**. Há cupons de porcentagem de desconto, de valor fixo e de meses grátis (estendem seu teste). Se o cupom não for aceito, a mensagem dirá o motivo (vencido, já usado, não se aplica ao seu plano, etc.).
+Se você recebeu um código promocional, pode usá-lo em dois momentos: ao **criar sua conta** (campo "Código promocional" no primeiro passo) ou depois, em **Faturamento** → seção **Código de cupom**: cole o código e clique em **Aplicar**. Os cupons somam meses grátis ao seu período de teste. Se o cupom não for aceito, a mensagem dirá o motivo (vencido, já usado, não se aplica ao seu plano, etc.).
 
 ## Créditos SMS (notificações aos seus clientes)
 

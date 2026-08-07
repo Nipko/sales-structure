@@ -55,8 +55,19 @@ export class InvitationsService {
 
         // Already a member?
         const existingUser = await this.prisma.user.findUnique({ where: { email } });
-        if (existingUser && existingUser.tenantId === input.tenantId) {
-            throw new ConflictException({ error: 'already_member', message: 'This email is already a member of your team.' });
+        const claimableProvisionedOwner = existingUser
+            && existingUser.tenantId === input.tenantId
+            && existingUser.role === input.role
+            && existingUser.authProvider === 'invitation'
+            && !existingUser.password
+            && existingUser.emailVerified !== true;
+        if (existingUser && !claimableProvisionedOwner) {
+            throw new ConflictException({
+                error: existingUser.tenantId === input.tenantId ? 'already_member' : 'user_exists',
+                message: existingUser.tenantId === input.tenantId
+                    ? 'This email is already a member of your team.'
+                    : 'An account already exists for this email.',
+            });
         }
 
         // Pending invitation already? Resend instead of duplicating.
@@ -80,7 +91,8 @@ export class InvitationsService {
                 where: { tenantId: input.tenantId, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
             }),
         ]);
-        await this.throttle.enforcePlanLimit(input.tenantId, 'seats', activeUsers + pendingInvites, 'usuarios');
+        const occupiedSeats = activeUsers + pendingInvites - (claimableProvisionedOwner ? 1 : 0);
+        await this.throttle.enforcePlanLimit(input.tenantId, 'seats', occupiedSeats, 'usuarios');
 
         const token = randomBytes(TOKEN_BYTES).toString('base64url');
         const expiresAt = new Date(Date.now() + DEFAULT_TTL_DAYS * 86_400_000);
@@ -246,38 +258,61 @@ export class InvitationsService {
         const existingUser = await this.prisma.user.findUnique({
             where: { email: invitation.email },
         });
-        if (existingUser) {
-            // The email already has an account. Block to avoid silently
-            // moving users between tenants — admin must merge or the user
-            // signs in with their existing creds and asks to be added.
+        const claimableProvisionedOwner = existingUser
+            && existingUser.tenantId === invitation.tenantId
+            && existingUser.role === invitation.role
+            && existingUser.authProvider === 'invitation'
+            && !existingUser.password
+            && existingUser.emailVerified !== true;
+        if (existingUser && !claimableProvisionedOwner) {
+            // Never move or overwrite a normal account. Only the inert owner
+            // placeholder created by administrative tenant provisioning can be claimed.
             throw new ConflictException({
                 error: 'user_exists',
                 message: 'An account already exists for this email. Sign in to your existing account.',
             });
         }
 
-        // Backstop seat enforcement at the moment a seat is actually consumed
-        // (the invite may have been created before a plan downgrade).
-        const activeUsers = await this.prisma.user.count({
-            where: { tenantId: invitation.tenantId, isActive: true },
-        });
-        await this.throttle.enforcePlanLimit(invitation.tenantId, 'seats', activeUsers, 'usuarios');
-
         const password = await bcrypt.hash(input.password, 12);
-        const user = await this.prisma.user.create({
-            data: {
-                email: invitation.email,
-                firstName: input.firstName,
-                lastName: input.lastName || '',
-                password,
-                role: invitation.role,
-                tenantId: invitation.tenantId,
-                skillTags: invitation.skillTags,
-                isActive: true,
-                emailVerified: true,  // verified via invitation link possession
-                authProvider: 'email',
-            },
-        });
+        let user;
+        if (claimableProvisionedOwner) {
+            user = await this.prisma.user.update({
+                where: { id: existingUser!.id },
+                data: {
+                    firstName: input.firstName,
+                    lastName: input.lastName || '',
+                    password,
+                    skillTags: invitation.skillTags,
+                    isActive: true,
+                    emailVerified: true,
+                    authProvider: 'email',
+                    onboardingCompleted: true,
+                },
+            });
+        } else {
+            // Backstop seat enforcement at the moment a new seat is consumed
+            // (the invite may have been created before a plan downgrade).
+            const activeUsers = await this.prisma.user.count({
+                where: { tenantId: invitation.tenantId, isActive: true },
+            });
+            await this.throttle.enforcePlanLimit(invitation.tenantId, 'seats', activeUsers, 'usuarios');
+
+            user = await this.prisma.user.create({
+                data: {
+                    email: invitation.email,
+                    firstName: input.firstName,
+                    lastName: input.lastName || '',
+                    password,
+                    role: invitation.role,
+                    tenantId: invitation.tenantId,
+                    skillTags: invitation.skillTags,
+                    isActive: true,
+                    emailVerified: true,  // verified via invitation link possession
+                    authProvider: 'email',
+                    onboardingCompleted: true,
+                },
+            });
+        }
 
         await this.prisma.tenantInvitation.update({
             where: { id: invitation.id },

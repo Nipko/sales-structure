@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Put, Delete, Param, Body, Query, UseGuards, ForbiddenException, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
-import { TenantsService } from './tenants.service';
+import { TENANT_LANGUAGE_TAGS, TENANT_PLAN_SLUGS, TenantsService } from './tenants.service';
 import { TenantThrottleService, QuotaOverrides } from '../throttle/tenant-throttle.service';
 import { FeatureFlagsService, FEATURE_FLAGS_REGISTRY } from '../throttle/feature-flags.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
@@ -9,20 +9,78 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
+import { IsBoolean, IsEmail, IsIn, IsObject, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
-class CreateTenantDto {
+export class CreateTenantDto {
+    @IsString()
+    @MinLength(2)
+    @MaxLength(120)
     name: string;
+
+    @IsString()
+    @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    @MaxLength(50)
     slug: string;
+
+    @IsString()
+    @MaxLength(80)
     industry: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(80)
+    subType?: string | null;
+
+    @IsOptional()
+    @IsIn([...TENANT_LANGUAGE_TAGS])
     language?: string;
+
+    @IsOptional()
+    @IsIn([...TENANT_PLAN_SLUGS])
     plan?: string;
+
+    @IsEmail()
+    @MaxLength(254)
+    ownerEmail: string;
+
+    @IsString()
+    @MinLength(1)
+    @MaxLength(100)
+    ownerFirstName: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(100)
+    ownerLastName?: string;
 }
 
-class UpdateTenantDto {
+export class UpdateTenantDto {
+    @IsOptional()
+    @IsString()
+    @MinLength(2)
+    @MaxLength(120)
     name?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(80)
     industry?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(80)
+    subType?: string | null;
+
+    @IsOptional()
+    @IsIn([...TENANT_LANGUAGE_TAGS])
     language?: string;
+
+    @IsOptional()
+    @IsBoolean()
     isActive?: boolean;
+
+    @IsOptional()
+    @IsObject()
     settings?: any;
 }
 
@@ -42,12 +100,19 @@ export class TenantsController {
     @Post()
     @Roles('super_admin')
     @ApiOperation({ summary: 'Create a new tenant' })
-    async create(@Body() dto: CreateTenantDto) {
-        const tenant = await this.tenantsService.create(dto);
+    async create(@Body() dto: CreateTenantDto, @CurrentUser() currentUser: any) {
+        const tenant = await this.tenantsService.create(dto, currentUser?.sub);
         return { success: true, data: tenant };
     }
 
     // ── Super Admin Platform Endpoints (static routes BEFORE :id) ────
+
+    @Get('provisioning-plans')
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Canonical plans allowed for administrative tenant provisioning' })
+    async getProvisioningPlans() {
+        return { success: true, data: await this.tenantsService.getProvisioningPlans() };
+    }
 
     @Get('stats')
     @Roles('super_admin')
@@ -255,13 +320,14 @@ export class TenantsController {
         const enriched = result.tenants.map((t: any) => {
             const settings = (t as any).settings || {};
             const vertical: string | null = settings.verticalConfig?.industry || null;
+            const subType: string | null = settings.verticalConfig?.subType ?? settings.subType ?? null;
 
             // Lightweight health score from counts already in the response
             const channelBonus = (t._count?.channelAccounts || 0) > 0 ? 20 : 0;
             // Remaining factors default to 0 for the list view (detailed via engagement endpoint)
             const healthScore = channelBonus;
 
-            return { ...t, vertical, healthScore };
+            return { ...t, vertical, subType, healthScore };
         });
 
         return { success: true, data: enriched, meta: { page: result.page, limit: result.limit, total: result.total } };

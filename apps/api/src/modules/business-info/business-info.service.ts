@@ -1,8 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
 import type { BusinessIdentity, SocialLinks } from '@parallext/shared';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
+import { persistenceDisabled } from '../../common/types/execution-context';
 
 /**
  * Business Identity service — owns the "who the business is" data that the
@@ -21,7 +23,7 @@ export class BusinessInfoService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
-        private readonly tenantsService: TenantsService,
+        @Inject(forwardRef(() => TenantsService)) private readonly tenantsService: TenantsService,
     ) {}
 
     /** Idempotent: ensure the companies extensions exist for older tenants. */
@@ -52,7 +54,14 @@ export class BusinessInfoService {
      * is configured yet (new tenants must set it up in Settings → Business Info).
      * Cached in Redis for 10 min.
      */
-    async getPrimary(tenantId: string): Promise<BusinessIdentity | null> {
+    async getPrimary(
+        tenantId: string,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<BusinessIdentity | null> {
+        if (persistenceDisabled(executionContext)) {
+            return this.getPrimaryWithoutWrites(tenantId, executionContext);
+        }
+
         const cacheKey = `business-info:${tenantId}:primary`;
         const cached = await this.redis.getJson<BusinessIdentity>(cacheKey);
         if (cached) return cached;
@@ -82,6 +91,39 @@ export class BusinessInfoService {
         const identity = this.rowToIdentity(tenantId, rows[0]);
         await this.redis.setJson(cacheKey, identity, 600);
         return identity;
+    }
+
+    /**
+     * Source-only lookup for Agent Test/evaluations. It intentionally bypasses
+     * both ensureSchema (DDL) and Redis (cache population). The legacy projection
+     * keeps older tenant schemas readable without repairing them from a GET.
+     */
+    private async getPrimaryWithoutWrites(
+        tenantId: string,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<BusinessIdentity | null> {
+        const schemaName = await this.tenantsService.getSchemaName(tenantId, executionContext);
+        const modernSelect = `SELECT id, name, industry, city, country, website, phone, email, about, address,
+                                     logo_url, social_links, is_primary, created_at, updated_at
+                                FROM "${schemaName}"."companies"
+                            ORDER BY is_primary DESC, updated_at DESC
+                               LIMIT 1`;
+        let rows: any[];
+        try {
+            rows = await this.prisma.$queryRawUnsafe(modernSelect) as any[];
+        } catch {
+            rows = await this.prisma.$queryRawUnsafe(
+                `SELECT id, name, industry, city, country, website,
+                        NULL::varchar AS phone, NULL::varchar AS email,
+                        NULL::text AS about, NULL::text AS address,
+                        NULL::varchar AS logo_url, '{}'::jsonb AS social_links,
+                        false AS is_primary, created_at, updated_at
+                   FROM "${schemaName}"."companies"
+               ORDER BY updated_at DESC
+                  LIMIT 1`,
+            ) as any[];
+        }
+        return rows.length ? this.rowToIdentity(tenantId, rows[0]) : null;
     }
 
     /**

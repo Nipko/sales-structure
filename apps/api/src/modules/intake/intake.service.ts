@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { createHash } from 'crypto';
 import { imsg, isOptOutMessage } from './intake-i18n';
+import { PipelineService } from '../pipeline/pipeline.service';
 
 interface IntakeResult {
     leadId: string;
@@ -18,7 +19,8 @@ export class IntakeService {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly eventEmitter: EventEmitter2
+        private readonly eventEmitter: EventEmitter2,
+        private readonly pipelineService: PipelineService,
     ) { }
 
     // ─── Internal Landing Admin ──────────────────────────────────────────────────
@@ -190,6 +192,11 @@ export class IntakeService {
     ): Promise<IntakeResult> {
         const { schemaName } = meta;
         const phone = dto.phone; // Assuming normalized early
+        const initialStage = await this.pipelineService.resolveTenantStage(
+            meta.tenantId,
+            undefined,
+            { schemaName },
+        );
 
         // 1. Detect duplicates by phone + campaign
         const existingLead = await this.findExistingLead(schemaName, phone, dto.campaignId);
@@ -203,7 +210,7 @@ export class IntakeService {
             await this.updateLead(schemaName, leadId, dto);
             this.logger.log(`[Intake] Updated existing lead ${leadId} (phone: ${phone})`);
         } else {
-            leadId = await this.createLead(schemaName, phone, dto);
+            leadId = await this.createLead(schemaName, phone, dto, initialStage.slug);
             isNew = true;
             this.logger.log(`[Intake] Created new lead ${leadId} (phone: ${phone})`);
         }
@@ -212,7 +219,13 @@ export class IntakeService {
         await this.saveConsentRecord(schemaName, leadId, dto, meta);
 
         // 3. Create opportunity
-        const opportunityId = await this.createOpportunity(schemaName, leadId, dto);
+        const opportunityId = await this.createOpportunity(schemaName, leadId, dto, initialStage.slug);
+        await this.pipelineService.writeLeadStage(
+            meta.tenantId,
+            leadId,
+            initialStage.slug,
+            { schemaName, onlyActiveOpportunities: true },
+        );
 
         this.logger.log(`[Intake] LeadCaptured: lead=${leadId}, opp=${opportunityId}, isNew=${isNew}`);
 
@@ -265,7 +278,7 @@ export class IntakeService {
 
     // ─── Lead CRUD ────────────────────────────────────────────────────────────
 
-    private async createLead(schemaName: string, phone: string, dto: CreateLeadDto): Promise<string> {
+    private async createLead(schemaName: string, phone: string, dto: CreateLeadDto, stage: string): Promise<string> {
         const rows = await this.prisma.executeInTenantSchema<Array<{ id: string }>>(
             schemaName,
             `INSERT INTO leads (
@@ -279,13 +292,13 @@ export class IntakeService {
                 $5::uuid, $6::uuid, $7,
                 $8, $9, $10, $11,
                 $12, $13, $14,
-                'nuevo', 0
+                $15, 0
             ) RETURNING id`,
             [
                 dto.firstName, dto.lastName, phone, dto.email ?? null,
                 dto.courseId ?? null, dto.campaignId ?? null, dto.preferredContact ?? 'whatsapp',
                 dto.utmSource ?? null, dto.utmMedium ?? null, dto.utmCampaign ?? null, dto.utmContent ?? null,
-                dto.referrerUrl ?? null, dto.gclid ?? null, dto.fbclid ?? null,
+                dto.referrerUrl ?? null, dto.gclid ?? null, dto.fbclid ?? null, stage,
             ]
         );
         return rows[0].id;
@@ -306,13 +319,13 @@ export class IntakeService {
 
     // ─── Opportunity creation ─────────────────────────────────────────────────
 
-    private async createOpportunity(schemaName: string, leadId: string, dto: CreateLeadDto): Promise<string> {
+    private async createOpportunity(schemaName: string, leadId: string, dto: CreateLeadDto, stage: string): Promise<string> {
         const rows = await this.prisma.executeInTenantSchema<Array<{ id: string }>>(
             schemaName,
             `INSERT INTO opportunities (lead_id, course_id, campaign_id, stage, score)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, 'nuevo', 0)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 0)
              RETURNING id`,
-            [leadId, dto.courseId ?? null, dto.campaignId ?? null]
+            [leadId, dto.courseId ?? null, dto.campaignId ?? null, stage]
         );
         return rows[0].id;
     }

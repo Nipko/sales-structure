@@ -1,0 +1,73 @@
+import { Type } from 'class-transformer';
+import {
+    ArrayMaxSize,
+    IsArray,
+    IsEmail,
+    IsIn,
+    IsObject,
+    IsOptional,
+    IsString,
+    MaxLength,
+    ValidateNested,
+} from 'class-validator';
+
+class SocialMediaDto {
+    @IsOptional() @IsString() @MaxLength(500) instagram?: string;
+    @IsOptional() @IsString() @MaxLength(500) facebook?: string;
+    @IsOptional() @IsString() @MaxLength(500) linkedin?: string;
+    @IsOptional() @IsString() @MaxLength(500) tiktok?: string;
+}
+
+class OnboardingCompanyDto {
+    @IsOptional() @IsString() @MaxLength(200) name?: string;
+    @IsOptional() @IsString() @MaxLength(500) website?: string;
+    @IsOptional() @IsString() @MaxLength(30) phone?: string;
+    @IsOptional() @IsEmail() @MaxLength(254) email?: string;
+    @IsOptional() @IsString() @MaxLength(5000) about?: string;
+
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => SocialMediaDto)
+    socialMedia?: SocialMediaDto;
+
+    @IsOptional() @IsString() @MaxLength(80) industry?: string;
+    @IsOptional() @IsString() @MaxLength(80) subType?: string;
+    @IsOptional() @IsString() @MaxLength(50) orgSize?: string;
+    @IsOptional() @IsString() @MaxLength(100) timezone?: string;
+    @IsOptional() @IsString() @MaxLength(2) country?: string;
+}
+
+export class CompleteOnboardingDto {
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => OnboardingCompanyDto)
+    company?: OnboardingCompanyDto;
+
+    @IsOptional() @IsArray() @ArrayMaxSize(25) @IsString({ each: true }) audiences?: string[];
+    @IsOptional() @IsArray() @ArrayMaxSize(25) @IsString({ each: true }) goals?: string[];
+    @IsOptional() @IsString() @MaxLength(300) referral?: string;
+    @IsOptional() @IsString() @MaxLength(10) locale?: string;
+    @IsOptional() @IsIn(['emprendedor', 'starter', 'pro', 'enterprise', 'custom']) plan?: string;
+    @IsOptional() @IsString() @MaxLength(500) cardTokenId?: string;
+    // Código promocional opcional del alta. Sin esta declaración el ValidationPipe
+    // global (whitelist: true) lo descartaría en silencio, sin error visible.
+    @IsOptional() @IsString() @MaxLength(40) couponCode?: string;
+
+    // Backwards-compatible top-level fields accepted by older clients.
+    @IsOptional() @IsString() @MaxLength(200) companyName?: string;
+    @IsOptional() @IsString() @MaxLength(500) website?: string;
+    @IsOptional() @IsObject() socialLinks?: Record<string, string>;
+    @IsOptional() @IsString() @MaxLength(80) industry?: string;
+    @IsOptional() @IsString() @MaxLength(80) subType?: string;
+    @IsOptional() @IsString() @MaxLength(50) companySize?: string;
+    @IsOptional() @IsString() @MaxLength(100) timezone?: string;
+    @IsOptional() @IsArray() @ArrayMaxSize(25) @IsString({ each: true }) customerTypes?: string[];
+    @IsOptional() @IsArray() @ArrayMaxSize(25) @IsString({ each: true }) chatReasons?: string[];
+    @IsOptional() @IsString() @MaxLength(300) referralSource?: string;
+    @IsOptional() @IsIn(['emprendedor', 'starter', 'pro', 'enterprise', 'custom']) planSlug?: string;
+    @IsOptional() @IsString() @MaxLength(100) signupSource?: string;
+    @IsOptional() @IsString() @MaxLength(30) phone?: string;
+    @IsOptional() @IsEmail() @MaxLength(254) businessEmail?: string;
+    @IsOptional() @IsString() @MaxLength(5000) about?: string;
+    @IsOptional() @IsString() @MaxLength(2) billingCountry?: string;
+}

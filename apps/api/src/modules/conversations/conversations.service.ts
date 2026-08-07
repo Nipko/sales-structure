@@ -403,23 +403,34 @@ export class ConversationsService {
             this.logger.warn(`Drip stop-on-reply failed (non-fatal): ${(e as Error).message}`),
         );
 
-        // Auto-progress stage from 'nuevo' to 'respondio' upon user message
-        // (schemaName resolved above, right after acquiring the lock).
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE opportunities SET stage = 'respondio' WHERE conversation_id = $1::uuid AND stage = 'nuevo'`,
+        // Auto-progress from the tenant's own initial/replied stages. Compatibility
+        // aliases in the predicate repair legacy generic rows without persisting them.
+        const [initialStage, repliedStage] = await Promise.all([
+            this.pipelineService.resolveTenantStage(tenantId, undefined, { schemaName }),
+            this.pipelineService.resolveTenantStage(tenantId, 'respondio', { schemaName }),
+        ]);
+        const replyOpportunities = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT id, lead_id, stage
+               FROM opportunities
+              WHERE conversation_id = $1::uuid`,
             [conversation.id],
         );
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE leads
-             SET stage = 'respondio'
-             WHERE id = (SELECT lead_id FROM opportunities WHERE conversation_id = $1::uuid LIMIT 1)
-               AND stage = 'nuevo'`,
-            [conversation.id],
-        );
-
-        if (lead?.id) {
-            await this.pipelineService.syncOpportunityToDeal(tenantId, String(lead.id), 'respondio').catch(e =>
-                this.logger.error(`Failed to sync opportunity to deal on customer reply: ${e.message}`)
+        for (const opportunity of replyOpportunities || []) {
+            const current = await this.pipelineService.resolveTenantStage(
+                tenantId,
+                opportunity.stage,
+                { schemaName },
+            );
+            if (current.slug !== initialStage.slug) continue;
+            await this.pipelineService.writeLeadStage(
+                tenantId,
+                String(opportunity.lead_id),
+                repliedStage.slug,
+                {
+                    schemaName,
+                    opportunityId: String(opportunity.id),
+                    triggeredBy: 'customer_reply',
+                },
             );
         }
 
@@ -800,6 +811,11 @@ export class ConversationsService {
         }
 
         // 2. Find or create lead
+        const initialPipelineStage = await this.pipelineService.resolveTenantStage(
+            tenantId,
+            undefined,
+            { schemaName },
+        );
         const contactIdStr = String(contact.id);
         let lead = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT * FROM leads WHERE contact_id = $1::uuid LIMIT 1`,
@@ -819,8 +835,9 @@ export class ConversationsService {
                 // behavioral signal — seeding 10 (the hottest) wrongly flagged every new
                 // lead as "ready" and, via value-routing, inflated ticketValue to max.
                 // The scoring cron recalculates on the next message.
-                `INSERT INTO leads (contact_id, first_name, last_name, phone, stage, score) VALUES ($1::uuid, $2, $3, $4, 'nuevo', 1) RETURNING *`,
-                [contactIdStr, firstName, lastName, contactId],
+                `INSERT INTO leads (contact_id, first_name, last_name, phone, stage, score)
+                 VALUES ($1::uuid, $2, $3, $4, $5, 1) RETURNING *`,
+                [contactIdStr, firstName, lastName, contactId, initialPipelineStage.slug],
             ).then(res => res[0]);
             isNewLead = true;
         } else if (lead.first_name === 'Unknown' && resolvedName) {
@@ -877,24 +894,34 @@ export class ConversationsService {
 
             // Create an opportunity only if the lead doesn't already have an active one
             const existingOpp = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT id FROM opportunities WHERE lead_id = $1::uuid AND stage NOT IN ('ganado', 'perdido', 'no_interesado') LIMIT 1`,
+                `SELECT id FROM opportunities
+                 WHERE lead_id = $1::uuid AND won_at IS NULL AND lost_at IS NULL LIMIT 1`,
                 [String(lead.id)],
             );
             if (!existingOpp?.length) {
                 await this.prisma.executeInTenantSchema(schemaName,
-                    `INSERT INTO opportunities (lead_id, conversation_id, stage, score) VALUES ($1::uuid, $2::uuid, 'nuevo', 10)`,
-                    [String(lead.id), String(conversation.id)],
+                    `INSERT INTO opportunities (lead_id, conversation_id, stage, score)
+                     VALUES ($1::uuid, $2::uuid, $3, 10)
+                     RETURNING id`,
+                    [String(lead.id), String(conversation.id), initialPipelineStage.slug],
                 );
             }
         }
 
         if (lead?.id) {
             const activeOpp = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT stage FROM opportunities WHERE lead_id = $1::uuid AND stage NOT IN ('ganado', 'perdido', 'no_interesado') LIMIT 1`,
+                `SELECT id, stage FROM opportunities
+                 WHERE lead_id = $1::uuid AND won_at IS NULL AND lost_at IS NULL LIMIT 1`,
                 [String(lead.id)],
             );
-            const oppStage = activeOpp?.[0]?.stage || 'nuevo';
-            await this.pipelineService.syncOpportunityToDeal(tenantId, String(lead.id), oppStage).catch(e =>
+            const oppStage = activeOpp?.[0]?.stage || initialPipelineStage.slug;
+            const oppId = activeOpp?.[0]?.id;
+            if (oppId) await this.pipelineService.syncOpportunityToDeal(
+                tenantId,
+                String(lead.id),
+                oppStage,
+                String(oppId),
+            ).catch(e =>
                 this.logger.error(`Failed to sync opportunity to deal on conversation start: ${e.message}`)
             );
         }

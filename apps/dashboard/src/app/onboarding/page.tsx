@@ -10,6 +10,12 @@ import {
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import {
+    getVerticalLabel,
+    isCanonicalVerticalCatalog,
+    type VerticalCatalogLocale,
+    type VerticalDefinitions,
+} from "@/lib/vertical-catalog";
 import { TIMEZONE_GROUPS, TIMEZONE_VALUES, DEFAULT_TIMEZONE, normalizeTimezone } from "@parallext/shared";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import MpCardForm from "@/components/billing/MpCardForm";
@@ -40,13 +46,6 @@ function draftKeyForCurrentUser(): string {
 const PLAN_SLUGS = ["emprendedor", "starter", "pro", "enterprise"] as const;
 type PlanSlug = typeof PLAN_SLUGS[number];
 
-const INDUSTRY_KEYS = [
-    "turismo", "education", "salud", "veterinaria", "retail", "technology",
-    "servicios_profesionales", "restaurantes", "inmobiliaria",
-    "automotriz", "finanzas", "moda_belleza", "gimnasios", "seguros",
-    "servicios_hogar", "pet_services", "fotografia", "otro",
-];
-
 const ORG_SIZE_KEYS = ["1-10", "11-20", "21-50", "51-200", "201-1000", "1000+"];
 
 const AUDIENCE_KEYS = ["b2c", "b2b", "government", "other"];
@@ -60,124 +59,6 @@ const REFERRAL_KEYS = [
     "google", "social_media", "referral", "ai_chat",
     "youtube", "blog", "event", "other",
 ];
-
-// Las CLAVES tienen que coincidir con las de vertical-definitions.ts del API,
-// que es la fuente de verdad: son las que el bootstrap usa para decidir qué
-// sembrar (SUBTYPE_BOOTSTRAP). El `label` de acá no se muestra —el render usa
-// la traducción de subTypes.<key>— y queda sólo como referencia al leer el código.
-const SUB_TYPES: Record<string, Array<{key: string; label: string}>> = {
-    salud: [
-        { key: 'dental', label: 'Odontología' },
-        { key: 'medica_general', label: 'Medicina general' },
-        { key: 'dermatologia', label: 'Dermatología y medicina estética' },
-        { key: 'psicologia', label: 'Psicología y terapia' },
-        { key: 'farmacia', label: 'Farmacia' },
-    ],
-    veterinaria: [
-        { key: 'clinica_general', label: 'Clínica de pequeñas especies' },
-        { key: 'hospital_24h', label: 'Hospital veterinario 24h' },
-        { key: 'exoticos', label: 'Animales exóticos' },
-        { key: 'peluqueria_canina', label: 'Peluquería canina / felina' },
-    ],
-    gimnasios: [
-        { key: 'gimnasio_general', label: 'Gimnasio tradicional' },
-        { key: 'crossfit', label: 'Box CrossFit' },
-        { key: 'yoga_pilates', label: 'Estudio de yoga / pilates' },
-        { key: 'cycling', label: 'Cycling / spinning' },
-        { key: 'martial_arts', label: 'Artes marciales' },
-    ],
-    seguros: [
-        { key: 'broker', label: 'Broker / Corredor' },
-        { key: 'aseguradora', label: 'Aseguradora' },
-        { key: 'vida', label: 'Especialista en vida' },
-        { key: 'auto', label: 'Especialista en auto' },
-        { key: 'salud', label: 'Especialista en salud' },
-    ],
-    education: [
-        { key: 'idiomas', label: 'Escuela de idiomas' },
-        { key: 'universitaria', label: 'Universidad / Instituto' },
-        { key: 'online', label: 'Cursos online' },
-        { key: 'capacitacion', label: 'Capacitación empresarial' },
-    ],
-    turismo: [
-        { key: 'agencia_viajes', label: 'Agencia de viajes' },
-        { key: 'hotel', label: 'Hotel / Hostal' },
-        { key: 'tours', label: 'Tours y actividades' },
-        // Existía en el registry (4 idiomas) pero no acá: un property manager no
-        // podía declararse como tal — la "industria fantasma" de la auditoría.
-        { key: 'alquiler_vacacional', label: 'Alquiler vacacional' },
-    ],
-    restaurantes: [
-        { key: 'casual_dining', label: 'Restaurante casual' },
-        { key: 'comida_rapida', label: 'Comida rápida' },
-        { key: 'cafeteria', label: 'Cafetería' },
-        { key: 'dark_kitchen', label: 'Dark kitchen / Delivery' },
-    ],
-    inmobiliaria: [
-        { key: 'venta', label: 'Venta de inmuebles' },
-        { key: 'arriendo', label: 'Arriendo' },
-        { key: 'comercial', label: 'Inmuebles comerciales' },
-        { key: 'construccion', label: 'Construcción y proyectos' },
-    ],
-    automotriz: [
-        { key: 'concesionario', label: 'Concesionario' },
-        { key: 'taller', label: 'Taller mecánico' },
-        { key: 'repuestos', label: 'Repuestos y accesorios' },
-        { key: 'alquiler', label: 'Alquiler de vehículos' },
-    ],
-    moda_belleza: [
-        { key: 'salon_belleza', label: 'Salón de belleza' },
-        { key: 'barberia', label: 'Barbería' },
-        { key: 'spa', label: 'Spa y bienestar' },
-        { key: 'estetica', label: 'Centro de estética' },
-    ],
-    finanzas: [
-        { key: 'seguros', label: 'Seguros' },
-        { key: 'asesoria', label: 'Asesoría financiera' },
-        { key: 'fintech', label: 'Fintech' },
-        { key: 'creditos', label: 'Créditos y préstamos' },
-    ],
-    servicios_profesionales: [
-        { key: 'abogados', label: 'Abogados' },
-        { key: 'contadores', label: 'Contadores' },
-        { key: 'arquitectos', label: 'Arquitectos' },
-        { key: 'consultores', label: 'Consultores' },
-    ],
-    retail: [
-        { key: 'moda', label: 'Moda y ropa' },
-        { key: 'electronica', label: 'Electrónica' },
-        { key: 'hogar', label: 'Hogar y decoración' },
-        { key: 'marketplace', label: 'Marketplace / E-commerce' },
-    ],
-    technology: [
-        { key: 'saas', label: 'SaaS' },
-        { key: 'consultoria_ti', label: 'Consultoría TI' },
-        { key: 'desarrollo', label: 'Desarrollo de software' },
-        { key: 'hardware', label: 'Hardware y redes' },
-    ],
-    pet_services: [
-        { key: 'peluqueria', label: 'Peluquería canina / felina' },
-        { key: 'guarderia', label: 'Guardería y hotel' },
-        { key: 'paseos', label: 'Paseos y cuidado a domicilio' },
-        { key: 'entrenamiento', label: 'Entrenamiento y adiestramiento' },
-        { key: 'tienda', label: 'Tienda de mascotas' },
-    ],
-    servicios_hogar: [
-        { key: 'plomeria', label: 'Plomería' },
-        { key: 'electricidad', label: 'Electricidad' },
-        { key: 'cerrajeria', label: 'Cerrajería' },
-        { key: 'limpieza', label: 'Limpieza profesional' },
-        { key: 'pintura', label: 'Pintura y remodelación' },
-        { key: 'multiservicio', label: 'Multiservicio / General' },
-    ],
-    fotografia: [
-        { key: 'bodas', label: 'Bodas y eventos' },
-        { key: 'retrato', label: 'Retrato y book' },
-        { key: 'producto', label: 'Fotografía de producto' },
-        { key: 'corporativo', label: 'Corporativo y empresas' },
-        { key: 'inmobiliaria', label: 'Fotografía inmobiliaria' },
-    ],
-};
 
 const VERTICAL_GOALS: Record<string, Array<{key: string; label: string; icon: string}>> = {
     salud: [
@@ -394,6 +275,7 @@ const selectClasses = cn(inputClasses, "appearance-none cursor-pointer dark:bg-n
 export default function OnboardingPage() {
     const t = useTranslations('onboarding');
     const locale = useLocale();
+    const catalogLocale = locale.split("-")[0] as VerticalCatalogLocale;
     const [step, setStep] = useState(0);
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -418,6 +300,16 @@ export default function OnboardingPage() {
     const [subType, setSubType] = useState("");
     const [orgSize, setOrgSize] = useState("");
     const [timezone, setTimezone] = useState(DEFAULT_TIMEZONE);
+    // Código promocional del alta. Opcional y no bloqueante: si es inválido el alta
+    // se completa igual y el aviso se muestra en la pantalla puente.
+    const [couponCode, setCouponCode] = useState("");
+    const [couponNotice, setCouponNotice] = useState<{ ok: boolean; months?: number } | null>(null);
+    const [verticalDefinitions, setVerticalDefinitions] = useState<VerticalDefinitions>({});
+    const [verticalCatalogLoading, setVerticalCatalogLoading] = useState(true);
+    const [verticalCatalogError, setVerticalCatalogError] = useState(false);
+    const industryKeys = Object.keys(verticalDefinitions);
+    const selectedSubTypes = verticalDefinitions[industry] || [];
+    const verticalCatalogReady = industryKeys.length > 0;
 
     // Step 2
     const [audiences, setAudiences] = useState<string[]>([]);
@@ -440,6 +332,51 @@ export default function OnboardingPage() {
         const token = localStorage.getItem("accessToken");
         if (!token) router.push("/login");
     }, [router]);
+
+    // The API registry is the only source of truth for industries/subtypes.
+    // Administrative creation consumes the same endpoint, preventing the two
+    // onboarding paths from drifting when a subtype is added or renamed.
+    useEffect(() => {
+        let cancelled = false;
+        setVerticalCatalogLoading(true);
+        setVerticalCatalogError(false);
+
+        api.getVerticalDefinitions()
+            .then((result) => {
+                if (cancelled) return;
+                if (result.success && isCanonicalVerticalCatalog(result.data)) {
+                    setVerticalDefinitions(result.data);
+                    return;
+                }
+                setVerticalDefinitions({});
+                setVerticalCatalogError(true);
+            })
+            .catch(() => {
+                if (cancelled) return;
+                setVerticalDefinitions({});
+                setVerticalCatalogError(true);
+            })
+            .finally(() => {
+                if (!cancelled) setVerticalCatalogLoading(false);
+            });
+
+        return () => { cancelled = true; };
+    }, []);
+
+    // A restored draft can contain an identifier removed from a newer manifest.
+    // Clear only the invalid selection and keep the rest of the draft intact.
+    useEffect(() => {
+        if (verticalCatalogLoading || !industry) return;
+        const available = verticalDefinitions[industry];
+        if (!available) {
+            setIndustry("");
+            setSubType("");
+            return;
+        }
+        if (subType && !available.some((candidate) => candidate.key === subType)) {
+            setSubType("");
+        }
+    }, [industry, subType, verticalCatalogLoading, verticalDefinitions]);
 
     const [draftLoaded, setDraftLoaded] = useState(false);
     const [draftKey, setDraftKey] = useState<string | null>(null);
@@ -480,6 +417,7 @@ export default function OnboardingPage() {
             setAudienceOther(str(draft.audienceOther));
             setGoals(arr(draft.goals));
             setGoalOther(str(draft.goalOther));
+            setCouponCode(str(draft.couponCode).toUpperCase());
             if (TIMEZONE_VALUES.includes(str(draft.timezone))) setTimezone(draft.timezone);
 
             // Solo devolverlo a un paso avanzado si el paso 1 sigue completo; si no,
@@ -511,12 +449,12 @@ export default function OnboardingPage() {
                 step, companyName, website, phone, businessEmail, about,
                 instagram, facebook, linkedin, tiktok,
                 industry, subType, orgSize, timezone,
-                audiences, audienceOther, goals, goalOther,
+                audiences, audienceOther, goals, goalOther, couponCode,
             }));
         } catch { /* storage lleno o no disponible → seguir sin persistir */ }
     }, [draftLoaded, draftKey, step, companyName, website, phone, businessEmail, about,
         instagram, facebook, linkedin, tiktok, industry, subType, orgSize, timezone,
-        audiences, audienceOther, goals, goalOther]);
+        audiences, audienceOther, goals, goalOther, couponCode]);
 
     const toggleCheckbox = (
         list: string[],
@@ -536,7 +474,12 @@ export default function OnboardingPage() {
                 // `about` es requerido: es el campo más impactante para la calidad del
                 // agente (alimenta <turn.business> → "¿qué hacen?"). Sin él, el agente
                 // no puede describir el negocio desde el día 1.
-                return !!companyName.trim() && !!industry && !!orgSize && !!about.trim();
+                return verticalCatalogReady
+                    && !!companyName.trim()
+                    && !!industry
+                    && (selectedSubTypes.length === 0 || !!subType)
+                    && !!orgSize
+                    && !!about.trim();
             case 1:
                 return audiences.length > 0;
             case 2:
@@ -596,6 +539,7 @@ export default function OnboardingPage() {
             locale,
             plan: planSlug,
             cardTokenId: planSlug !== "emprendedor" && planSlug !== "starter" ? cardTokenId : undefined,
+            couponCode: couponCode.trim() || undefined,
         };
 
         try {
@@ -613,6 +557,9 @@ export default function OnboardingPage() {
                 if (d.refreshToken) localStorage.setItem("refreshToken", d.refreshToken);
                 if (d.user) localStorage.setItem("user", JSON.stringify(d.user));
                 if (d.verticalConfig) localStorage.setItem("verticalConfig", JSON.stringify(d.verticalConfig));
+                // El backend nunca falla el alta por un cupón: informa el resultado
+                // acá para que el usuario sepa si su código entró o no.
+                if (d.coupon) setCouponNotice({ ok: !!d.coupon.applied, months: d.coupon.freeMonths });
             }
 
             // El alta ya está hecha: el borrador no debe sobrevivir (si no, reaparecería
@@ -623,7 +570,10 @@ export default function OnboardingPage() {
             // flash), mostramos una transición breve y vamos DIRECTO al setup-wizard.
             // Full page reload para que AuthContext re-lea los tokens nuevos con tenantId.
             setRedirecting(true);
-            redirectTimerRef.current = setTimeout(() => { window.location.href = "/admin/setup-wizard"; }, 1400);
+            // Con aviso de cupón el puente se alarga: 1400 ms no alcanzan para leer
+            // que el código no entró, y después de la redirección ya no hay dónde verlo.
+            const bridgeDelay = (result.data as any)?.coupon ? 3600 : 1400;
+            redirectTimerRef.current = setTimeout(() => { window.location.href = "/admin/setup-wizard"; }, bridgeDelay);
             return;
         } catch {
             setError(t('connectionError'));
@@ -640,6 +590,20 @@ export default function OnboardingPage() {
                     <div className="w-10 h-10 border-[3px] border-neutral-200 dark:border-white/15 border-t-indigo-500 rounded-full animate-spin mx-auto mb-5" />
                     <h2 className="text-lg font-semibold text-foreground mb-1">{t('bridge.title')}</h2>
                     <p className="text-sm text-muted-foreground">{t('bridge.subtitle')}</p>
+                    {couponNotice && (
+                        <p
+                            className={cn(
+                                "text-sm mt-4 px-3 py-2 rounded-lg inline-block",
+                                couponNotice.ok
+                                    ? "text-emerald-700 dark:text-emerald-300 bg-emerald-500/10"
+                                    : "text-amber-700 dark:text-amber-300 bg-amber-500/10",
+                            )}
+                        >
+                            {couponNotice.ok
+                                ? t('couponApplied', { months: couponNotice.months ?? 1 })
+                                : t('couponFailed')}
+                        </p>
+                    )}
                 </div>
             </div>
         );
@@ -843,6 +807,7 @@ export default function OnboardingPage() {
                                 </label>
                                 <select
                                     value={industry}
+                                    disabled={!verticalCatalogReady || verticalCatalogLoading}
                                     // Audiencias y objetivos son listas por vertical: si no se
                                     // limpian al cambiar de industria, el usuario avanza con
                                     // selecciones de otro rubro que ya no ve en pantalla.
@@ -858,16 +823,26 @@ export default function OnboardingPage() {
                                     style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239898b0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
                                 >
                                     <option value="" disabled>—</option>
-                                    {INDUSTRY_KEYS.map((key) => (
+                                    {industryKeys.map((key) => (
                                         <option key={key} value={key} className="bg-white dark:bg-[#1a1a2e] text-foreground">
                                             {t(`industries.${key}`)}
                                         </option>
                                     ))}
                                 </select>
+                                {(verticalCatalogLoading || verticalCatalogError) && (
+                                    <p className={cn(
+                                        "mt-1.5 text-[11px]",
+                                        verticalCatalogError ? "text-rose-500" : "text-muted-foreground",
+                                    )}>
+                                        {verticalCatalogLoading
+                                            ? t('verticalCatalogLoading')
+                                            : t('verticalCatalogError')}
+                                    </p>
+                                )}
                             </div>
 
                             {/* Sub-type (conditional) */}
-                            {SUB_TYPES[industry] && (
+                            {selectedSubTypes.length > 0 && (
                                 <div className="mb-4">
                                     <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
                                         {t('businessType')}
@@ -890,9 +865,9 @@ export default function OnboardingPage() {
                                         style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239898b0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
                                     >
                                         <option value="">{t('select')}</option>
-                                        {SUB_TYPES[industry].map((st) => (
+                                        {selectedSubTypes.map((st) => (
                                             <option key={st.key} value={st.key} className="bg-white dark:bg-[#1a1a2e] text-foreground">
-                                                {t(`subTypes.${st.key}`)}
+                                                {getVerticalLabel(st, catalogLocale)}
                                             </option>
                                         ))}
                                     </select>
@@ -936,6 +911,24 @@ export default function OnboardingPage() {
                                         </optgroup>
                                     ))}
                                 </select>
+                            </div>
+
+                            {/* Código promocional — opcional. Va acá y no en una pantalla
+                                aparte porque el alta es trial-first: el cupón extiende el
+                                trial en el mismo submit, sin pedir tarjeta. */}
+                            <div className="mt-4">
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                                    {t('couponLabel')}
+                                </label>
+                                <input
+                                    type="text"
+                                    value={couponCode}
+                                    onChange={(e) => setCouponCode(e.target.value.toUpperCase().trim())}
+                                    placeholder={t('couponPlaceholder')}
+                                    maxLength={40}
+                                    className={cn(inputClasses, "font-mono uppercase")}
+                                />
+                                <p className="text-[12px] text-muted-foreground mt-1">{t('couponHint')}</p>
                             </div>
                         </div>
                     )}

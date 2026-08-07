@@ -84,7 +84,7 @@ Sur la même page **Facturation**, la section **Historique des factures** affich
 
 ## Coupons promotionnels
 
-Si vous avez reçu un code promotionnel, dans **Facturation**, repérez la section **Code de coupon**, collez le code et cliquez sur **Appliquer**. Il existe des coupons en pourcentage de remise, en montant fixe et en mois gratuits (ils prolongent votre essai). Si le coupon n'est pas accepté, le message vous en indiquera la raison (expiré, déjà utilisé, non applicable à votre forfait, etc.).
+Si vous avez reçu un code promotionnel, vous pouvez l'utiliser à deux moments : lors de la **création de votre compte** (champ « Code promo » à la première étape) ou plus tard, dans **Facturation** → section **Code de coupon** : collez le code et cliquez sur **Appliquer**. Les coupons ajoutent des mois gratuits à votre période d'essai. Si le coupon n'est pas accepté, le message vous en indiquera la raison (expiré, déjà utilisé, non applicable à votre forfait, etc.).
 
 ## Crédits SMS (notifications à vos clients)
 

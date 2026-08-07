@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { Opportunity } from '../interfaces/opportunity.interface';
+import { PipelineService } from '../../pipeline/pipeline.service';
 
 @Injectable()
 export class OpportunitiesRepository {
@@ -10,6 +11,7 @@ export class OpportunitiesRepository {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private pipelineService: PipelineService,
   ) {}
 
   private async getTenantSchema(tenantId: string): Promise<string | null> {
@@ -68,8 +70,17 @@ export class OpportunitiesRepository {
     const d = { ...(data as Record<string, any>) };
     if (d.lead_id == null && (d.leadId ?? d.contactId) != null) d.lead_id = d.leadId ?? d.contactId;
     if (d.estimated_value == null && d.value != null) d.estimated_value = d.value;
-    if (!d.stage) d.stage = 'nuevo';
     if (!d.lead_id) return null;
+
+    const canonicalStage = await this.pipelineService.resolveTenantStage(tenantId, d.stage, { schemaName: schema });
+    d.stage = canonicalStage.slug;
+    if (canonicalStage.terminal_outcome === 'won') {
+      d.won_at = d.won_at || new Date();
+      d.lost_at = null;
+    } else if (canonicalStage.terminal_outcome === 'lost') {
+      d.lost_at = d.lost_at || new Date();
+      d.won_at = null;
+    }
     const metadata = { ...(d.metadata || {}) };
     if (d.title) metadata.title = d.title;
     if (d.notes) metadata.notes = d.notes;
@@ -96,16 +107,29 @@ export class OpportunitiesRepository {
       `INSERT INTO opportunities (${fields.join(', ')}) VALUES (${placeholders}) RETURNING *`,
       values
     );
-    return results && results.length > 0 ? results[0] : null;
+    const created = results && results.length > 0 ? results[0] : null;
+    if (created) {
+      await this.pipelineService.syncOpportunityToDeal(
+        tenantId,
+        String(d.lead_id),
+        canonicalStage.slug,
+        String((created as any).id),
+      );
+    }
+    return created;
   }
 
   async updateOpportunity(tenantId: string, id: string, data: Partial<Opportunity>): Promise<Opportunity | null> {
     const schema = await this.getTenantSchema(tenantId);
     if (!schema) return null;
 
-    const record = data as Record<string, any>;
+    const record = { ...(data as Record<string, any>) };
+    if (record.stage !== undefined) {
+      await this.moveOpportunity(tenantId, id, String(record.stage));
+      delete record.stage;
+    }
     const ALLOWED_FIELDS = [
-      'lead_id', 'title', 'value', 'currency', 'stage', 'probability',
+      'lead_id', 'title', 'value', 'currency', 'probability',
       'expected_close_date', 'assigned_to', 'notes', 'metadata',
       'source', 'lost_reason', 'won_date', 'lost_date',
     ];
@@ -144,22 +168,23 @@ export class OpportunitiesRepository {
 
       // Load configurable stages from DB, fallback to defaults
       const DEFAULT_STAGES = [
-          { key: 'nuevo', name: 'Nuevo', color: '#95a5a6', position: 0, probability: 10, is_terminal: false },
-          { key: 'contactado', name: 'Contactado', color: '#3498db', position: 1, probability: 20, is_terminal: false },
-          { key: 'respondio', name: 'Respondió', color: '#9b59b6', position: 2, probability: 30, is_terminal: false },
-          { key: 'calificado', name: 'Calificado', color: '#e67e22', position: 3, probability: 50, is_terminal: false },
-          { key: 'tibio', name: 'Tibio', color: '#f39c12', position: 4, probability: 60, is_terminal: false },
-          { key: 'caliente', name: 'Caliente', color: '#e74c3c', position: 5, probability: 80, is_terminal: false },
-          { key: 'listo_cierre', name: 'Listo para cierre', color: '#27ae60', position: 6, probability: 95, is_terminal: false },
-          { key: 'ganado', name: 'Ganado', color: '#2ecc71', position: 7, probability: 100, is_terminal: true },
-          { key: 'perdido', name: 'Perdido', color: '#7f8c8d', position: 8, probability: 0, is_terminal: true },
-          { key: 'no_interesado', name: 'No interesado', color: '#bdc3c7', position: 9, probability: 0, is_terminal: true },
+          { key: 'nuevo', name: 'Nuevo', color: '#95a5a6', position: 0, probability: 10, is_terminal: false, terminal_outcome: null },
+          { key: 'contactado', name: 'Contactado', color: '#3498db', position: 1, probability: 20, is_terminal: false, terminal_outcome: null },
+          { key: 'respondio', name: 'Respondió', color: '#9b59b6', position: 2, probability: 30, is_terminal: false, terminal_outcome: null },
+          { key: 'calificado', name: 'Calificado', color: '#e67e22', position: 3, probability: 50, is_terminal: false, terminal_outcome: null },
+          { key: 'tibio', name: 'Tibio', color: '#f39c12', position: 4, probability: 60, is_terminal: false, terminal_outcome: null },
+          { key: 'caliente', name: 'Caliente', color: '#e74c3c', position: 5, probability: 80, is_terminal: false, terminal_outcome: null },
+          { key: 'listo_para_cierre', name: 'Listo para cierre', color: '#27ae60', position: 6, probability: 95, is_terminal: false, terminal_outcome: null },
+          { key: 'ganado', name: 'Ganado', color: '#2ecc71', position: 7, probability: 100, is_terminal: true, terminal_outcome: 'won' },
+          { key: 'perdido', name: 'Perdido', color: '#7f8c8d', position: 8, probability: 0, is_terminal: true, terminal_outcome: 'lost' },
+          { key: 'no_interesado', name: 'No interesado', color: '#bdc3c7', position: 9, probability: 0, is_terminal: true, terminal_outcome: 'lost' },
       ];
 
       let STAGES = DEFAULT_STAGES;
       try {
           const dbStages = await this.prisma.executeInTenantSchema<any[]>(schema,
-              `SELECT slug as key, name, color, position, default_probability as probability, is_terminal
+              `SELECT slug as key, name, color, position, default_probability as probability,
+                      is_terminal, terminal_outcome
                FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC`,
               [tenantId],
           );
@@ -171,6 +196,7 @@ export class OpportunitiesRepository {
                   position: s.position,
                   probability: s.probability ?? 0,
                   is_terminal: !!s.is_terminal,
+                  terminal_outcome: s.terminal_outcome || null,
               }));
           }
       } catch (e) {
@@ -206,18 +232,18 @@ export class OpportunitiesRepository {
       // card fails the exact `o.stage === s.key` match and piles into column 1. Map
       // any unmatched-but-known generic slug to the closest column by probability,
       // respecting terminal-ness (won/lost generic → terminal column).
-      const GENERIC_PROB: Record<string, { prob: number; terminal: boolean }> = {
-          nuevo: { prob: 10, terminal: false },
-          contactado: { prob: 20, terminal: false },
-          respondio: { prob: 30, terminal: false },
-          calificado: { prob: 50, terminal: false },
-          tibio: { prob: 60, terminal: false },
-          caliente: { prob: 80, terminal: false },
-          listo_cierre: { prob: 95, terminal: false },
-          listo_para_cierre: { prob: 95, terminal: false },
-          ganado: { prob: 100, terminal: true },
-          perdido: { prob: 0, terminal: true },
-          no_interesado: { prob: 0, terminal: true },
+      const GENERIC_PROB: Record<string, { prob: number; outcome: 'won' | 'lost' | null }> = {
+          nuevo: { prob: 10, outcome: null },
+          contactado: { prob: 20, outcome: null },
+          respondio: { prob: 30, outcome: null },
+          calificado: { prob: 50, outcome: null },
+          tibio: { prob: 60, outcome: null },
+          caliente: { prob: 80, outcome: null },
+          listo_cierre: { prob: 95, outcome: null },
+          listo_para_cierre: { prob: 95, outcome: null },
+          ganado: { prob: 100, outcome: 'won' },
+          perdido: { prob: 0, outcome: 'lost' },
+          no_interesado: { prob: 0, outcome: 'lost' },
       };
       const resolveColumnIndex = (stage: string | null | undefined): number => {
           if (!stage) return -1; // null → caller drops into column 0 catch-all
@@ -227,13 +253,10 @@ export class OpportunitiesRepository {
           if (!gen) return -1; // unknown custom slug → column 0 catch-all
           const indexed = STAGES.map((s, i) => ({ i, s }));
           let pool: Array<{ i: number; s: typeof STAGES[number] }>;
-          if (gen.terminal) {
-              // Match terminal polarity: a won generic (prob>=50) only maps to a won-type
-              // terminal column and a lost generic (prob<50) only to a lost-type one. This
-              // stops a lost deal from landing in a single-terminal vertical's WON column
-              // (which would also inflate the weighted forecast to 100%).
-              const wonGeneric = gen.prob >= 50;
-              pool = indexed.filter(({ s }) => s.is_terminal && (((s.probability ?? 0) >= 50) === wonGeneric));
+          if (gen.outcome) {
+              // Match the explicit business outcome, never a translated slug or
+              // display probability. This keeps won/lost cards and forecasts aligned.
+              pool = indexed.filter(({ s }) => s.is_terminal && s.terminal_outcome === gen.outcome);
               if (!pool.length) return -1; // no matching-polarity terminal → column 0 catch-all
           } else {
               pool = indexed.filter(({ s }) => !s.is_terminal);
@@ -299,41 +322,12 @@ export class OpportunitiesRepository {
   }
 
   async moveOpportunity(tenantId: string, opportunityId: string, newStage: string) {
-      const schema = await this.getTenantSchema(tenantId);
-      if (!schema) throw new Error('Tenant not found');
-
-      const current = await this.prisma.executeInTenantSchema<any[]>(schema,
-          `SELECT stage, lead_id FROM opportunities WHERE id = $1::uuid LIMIT 1`,
-          [opportunityId]
+      const target = await this.pipelineService.moveOpportunityStage(
+          tenantId,
+          opportunityId,
+          newStage,
+          'agent',
       );
-      
-      const currentArray = current as any[];
-      const oldStage = currentArray?.[0]?.stage || 'unknown';
-      const leadId = currentArray?.[0]?.lead_id;
-
-      const wonFields = newStage === 'ganado' ? ', won_at = NOW()' : '';
-      const lostFields = ['perdido', 'no_interesado'].includes(newStage) ? ', lost_at = NOW()' : '';
-
-      await this.prisma.executeInTenantSchema(schema,
-          `UPDATE opportunities SET stage = $1, updated_at = NOW()${wonFields}${lostFields} WHERE id = $2::uuid`,
-          [newStage, opportunityId]
-      );
-
-      if (leadId) {
-          await this.prisma.executeInTenantSchema(schema,
-              `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
-              [newStage, leadId]
-          );
-      }
-
-      await this.recordStageHistory(tenantId, {
-          lead_id: leadId,
-          opportunity_id: opportunityId,
-          from_stage: oldStage,
-          to_stage: newStage,
-          triggered_by: 'agent'
-      });
-
-      this.logger.log(`Opportunity ${opportunityId} moved from ${oldStage} → ${newStage}`);
+      this.logger.log(`Opportunity ${opportunityId} moved to ${target.slug}`);
   }
 }

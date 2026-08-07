@@ -84,7 +84,7 @@ En la misma página de **Facturación**, la sección **Historial de facturas** m
 
 ## Cupones promocionales
 
-Si recibiste un código promocional, en **Facturación** busca la sección **Código de cupón**, pega el código y haz clic en **Aplicar**. Hay cupones de porcentaje de descuento, de monto fijo y de meses gratis (extienden tu prueba). Si el cupón no entra, el mensaje te dirá por qué (vencido, ya usado, no aplica a tu plan, etc.).
+Si recibiste un código promocional tenés dos momentos para usarlo: al **crear tu cuenta** (campo "Código promocional" en el primer paso) o después, en **Facturación** → sección **Código de cupón**: pegá el código y hacé clic en **Aplicar**. Los cupones suman meses gratis a tu período de prueba. Si el cupón no entra, el mensaje te dirá por qué (vencido, ya usado, no aplica a tu plan, etc.).
 
 ## Créditos SMS (notificaciones a tus clientes)
 

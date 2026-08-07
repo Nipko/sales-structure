@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
 import { TenantThrottleService } from '../../../throttle/tenant-throttle.service';
 import { normalizePhoneE164 } from '../../../../common/utils/phone.util';
+import { PipelineService, resolveTenantNativeStage } from '../../../pipeline/pipeline.service';
 
 @Injectable()
 export class ImportExportService {
@@ -12,6 +13,7 @@ export class ImportExportService {
         private prisma: PrismaService,
         private redis: RedisService,
         private throttle: TenantThrottleService,
+        private pipelineService: PipelineService,
     ) {}
 
     private async getTenantSchema(tenantId: string): Promise<string | null> {
@@ -35,16 +37,17 @@ export class ImportExportService {
     ): Promise<{ imported: number; skipped: number; errors: string[] }> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant not found');
+        const stageCatalog = await this.pipelineService.getTenantStageCatalog(tenantId, schema);
 
         // Plan contact cap — enforced incrementally so the bulk import can't
         // bypass the per-plan limit the way single-create (crm.controller) is gated.
-        // -1 (unlimited) resolves to Infinity; count uses the same active-stage
-        // filter as the single-create gate for consistency.
+        // -1 (unlimited) resolves to Infinity; archived_at is the lifecycle
+        // contract. Stage slugs are vertical-specific and must never decide quota.
         const maxContacts = await this.throttle.getPlanLimit(tenantId, 'maxContacts');
         let liveContactCount = 0;
         if (Number.isFinite(maxContacts)) {
             const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT COUNT(*)::int AS c FROM leads WHERE stage NOT IN ('perdido', 'no_interesado')`);
+                `SELECT COUNT(*)::int AS c FROM leads WHERE archived_at IS NULL`);
             liveContactCount = cnt?.[0]?.c || 0;
         }
 
@@ -131,32 +134,6 @@ export class ImportExportService {
             };
         }
 
-        const STAGE_MAPPING: Record<string, string> = {
-            'nuevo': 'nuevo',
-            'new': 'nuevo',
-            'contactado': 'contactado',
-            'contacted': 'contactado',
-            'respondio': 'respondio',
-            'respondió': 'respondio',
-            'replied': 'respondio',
-            'calificado': 'calificado',
-            'qualified': 'calificado',
-            'tibio': 'tibio',
-            'warm': 'tibio',
-            'caliente': 'caliente',
-            'hot': 'caliente',
-            'listo_cierre': 'listo_cierre',
-            'listo para cierre': 'listo_cierre',
-            'ready_to_close': 'listo_cierre',
-            'ganado': 'ganado',
-            'won': 'ganado',
-            'perdido': 'perdido',
-            'lost': 'perdido',
-            'no_interesado': 'no_interesado',
-            'no interesado': 'no_interesado',
-            'uninterested': 'no_interesado',
-        };
-
         let imported = 0;
         let skipped = 0;
         const errors: string[] = [];
@@ -189,6 +166,18 @@ export class ImportExportService {
                     continue;
                 }
 
+                // Resolve before any row-side effect (including company creation).
+                // Empty means the first non-terminal tenant stage; unknown non-empty
+                // labels are row errors rather than silently becoming a generic slug.
+                let stage: string;
+                try {
+                    stage = resolveTenantNativeStage(stageCatalog, row.stage || undefined).slug;
+                } catch (error: any) {
+                    errors.push(`Fila ${i + 1}: Etapa inválida (${row.stage || '(vacía)'}): ${error.message}`);
+                    skipped++;
+                    continue;
+                }
+
                 // Company search or creation
                 let companyId: string | null = null;
                 const companyName = row.company ? row.company.trim() : '';
@@ -211,10 +200,6 @@ export class ImportExportService {
                         }
                     }
                 }
-
-                // Stage validation & mapping
-                const rawStage = (row.stage || '').toLowerCase().trim();
-                const stage = STAGE_MAPPING[rawStage] || 'nuevo';
 
                 // VIP parsing (flexible terms)
                 const rawVip = (row.is_vip || '').toLowerCase().trim();
@@ -253,6 +238,12 @@ export class ImportExportService {
                         company: companyName || currentMetadata.company || null,
                     };
 
+                    await this.pipelineService.writeLeadStage(
+                        tenantId,
+                        String(leadId),
+                        stage,
+                        { schemaName: schema, onlyActiveOpportunities: true },
+                    );
                     await this.prisma.executeInTenantSchema(
                         schema,
                         `UPDATE leads

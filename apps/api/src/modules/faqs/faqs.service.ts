@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
 import type { FAQ } from '@parallext/shared';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
+import { persistenceDisabled } from '../../common/types/execution-context';
 
 /**
  * Plegado de diacríticos para la búsqueda de FAQs.
@@ -166,8 +168,15 @@ export class FaqsService {
      * over `question` + `answer`. Returns top N ranked matches. Only published
      * FAQs are returned. Falls back to ILIKE if tsvector is empty.
      */
-    async search(tenantId: string, query: string, limit = 5): Promise<FAQ[]> {
-        const schemaName = await this.ensureSchema(tenantId);
+    async search(
+        tenantId: string,
+        query: string,
+        limit = 5,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<FAQ[]> {
+        const schemaName = persistenceDisabled(executionContext)
+            ? await this.tenantsService.getSchemaName(tenantId, executionContext)
+            : await this.ensureSchema(tenantId);
         const fold = (expr: string) => `translate(${expr}, '${FOLD_FROM}', '${FOLD_TO}')`;
         const rows = await this.prisma.$queryRawUnsafe(
             `SELECT id, question, answer, category, tags, order_index, is_published, views, created_at, updated_at,

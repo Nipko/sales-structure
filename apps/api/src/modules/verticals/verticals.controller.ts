@@ -1,10 +1,15 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantGuard } from '../../common/guards/tenant.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { VerticalsService } from './verticals.service';
 import { VERTICAL_REGISTRY, getVerticalDefinition } from './vertical-definitions';
+import {
+    VERTICAL_IDENTIFIER_CONTRACT_VERSION,
+    VERTICAL_INDUSTRY_ALIASES,
+} from './vertical-identifiers';
 
 @ApiTags('verticals')
 @Controller('verticals')
@@ -13,7 +18,35 @@ import { VERTICAL_REGISTRY, getVerticalDefinition } from './vertical-definitions
 export class VerticalsController {
     constructor(private readonly verticalsService: VerticalsService) {}
 
+    @Get('definitions/all')
+    @ApiOperation({ summary: 'Get all canonical vertical definitions (for subtype selectors)' })
+    async getDefinitions() {
+        const subtypes: Record<string, any[]> = {};
+        for (const [key, def] of Object.entries(VERTICAL_REGISTRY)) {
+            subtypes[key] = def.subTypes;
+        }
+        const subtypeCount = Object.values(subtypes)
+            .reduce((total, entries) => total + entries.length, 0);
+        const configurationCount = Object.values(subtypes)
+            .reduce((total, entries) => total + Math.max(1, entries.length), 0);
+        return {
+            success: true,
+            // Keep `data` as the original Record<industry, subtype[]> contract so
+            // existing selectors remain backward compatible.
+            data: subtypes,
+            meta: {
+                version: VERTICAL_IDENTIFIER_CONTRACT_VERSION,
+                contract: 'vertical-identifiers',
+                count: Object.keys(subtypes).length,
+                subtypeCount,
+                configurationCount,
+                aliases: VERTICAL_INDUSTRY_ALIASES,
+            },
+        };
+    }
+
     @Get(':tenantId')
+    @UseGuards(TenantGuard)
     @ApiOperation({ summary: 'Get vertical config for a tenant' })
     async getConfig(@Param('tenantId') tenantId: string) {
         const config = await this.verticalsService.getVerticalConfig(tenantId);
@@ -21,6 +54,7 @@ export class VerticalsController {
     }
 
     @Get(':tenantId/stages-presets')
+    @UseGuards(TenantGuard)
     @ApiOperation({ summary: 'Get default stages and transition rules for tenant vertical' })
     async getStagesPresets(@Param('tenantId') tenantId: string) {
         const config = await this.verticalsService.getVerticalConfig(tenantId);
@@ -41,6 +75,7 @@ export class VerticalsController {
      * tenant configuró a mano.
      */
     @Post(':tenantId/reseed-content')
+    @UseGuards(TenantGuard)
     @Roles('tenant_admin')
     @ApiOperation({ summary: 'Re-seed vertical FAQs and services (additive only)' })
     async reseedContent(
@@ -51,15 +86,4 @@ export class VerticalsController {
         return { success: true, data };
     }
 
-    @Get('definitions/all')
-    @ApiOperation({ summary: 'Get all vertical definitions (for onboarding sub-types)' })
-    async getDefinitions() {
-        const subtypes: Record<string, any[]> = {};
-        for (const [key, def] of Object.entries(VERTICAL_REGISTRY)) {
-            if (def.subTypes.length > 0) {
-                subtypes[key] = def.subTypes;
-            }
-        }
-        return { success: true, data: subtypes };
-    }
 }

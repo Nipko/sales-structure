@@ -739,44 +739,14 @@ export class BillingService {
     // -------------------------------------------------------------------------
     // Coupon application
     // -------------------------------------------------------------------------
-
-    /**
-     * Apply free_months by extending the local trial end. The provider
-     * subscription continues on its own schedule; we just delay our
-     * "expected next charge" notion. percent_off / amount_off coupons
-     * are tracked as redemption rows but do NOT mutate the subscription
-     * here — see the runbook for how the actual credit is reconciled.
-     */
-    async applyFreeMonthsExtension(tenantId: string, months: number): Promise<void> {
-        const sub = await this.requireSubscription(tenantId);
-        const ms = months * 30 * 86_400_000;
-        const newTrialEnd = sub.trialEndsAt
-            ? new Date(sub.trialEndsAt.getTime() + ms)
-            : new Date(Date.now() + ms);
-        const newPeriodEnd = sub.currentPeriodEnd
-            ? new Date(sub.currentPeriodEnd.getTime() + ms)
-            : newTrialEnd;
-
-        await this.prisma.billingSubscription.update({
-            where: { id: sub.id },
-            data: {
-                trialEndsAt: newTrialEnd,
-                currentPeriodEnd: newPeriodEnd,
-                status: SubscriptionStatus.TRIALING,
-            },
-        });
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: {
-                trialEndsAt: newTrialEnd,
-                currentPeriodEnd: newPeriodEnd,
-                subscriptionStatus: SubscriptionStatus.TRIALING,
-            },
-        });
-        await this.redis.del(`tenant_plan:${tenantId}`);
-        await this.redis.del(`sub_status:${tenantId}`);
-        this.logger.log(`[Billing] Extended trial for tenant ${tenantId} by ${months} months`);
-    }
+    //
+    // `applyFreeMonthsExtension` vivía acá y tenía tres defectos: pisaba el estado
+    // a TRIALING sin mirar si el tenant ya pagaba (el cron de trial vencido lo
+    // tiraba a past_due un mes después), contaba el mes como 30 días fijos, y no
+    // avisaba al proveedor — con preapproval vivo en MercadoPago le seguían
+    // cobrando durante el "regalo". Se movió a CouponsService.redeemForTenant(),
+    // que aplica el efecto en la misma transacción que el canje y rechaza el
+    // cupón si la suscripción tiene providerSubscriptionId.
 
     // -------------------------------------------------------------------------
     // Refund (super_admin only)

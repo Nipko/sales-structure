@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { CronLockService } from '../redis/cron-lock.service';
+import { resolveTerminalOutcome } from './pipeline-outcome.util';
 
 // ============================================
 // Types
@@ -18,6 +19,7 @@ export interface PipelineStage {
     position: number;
     slaHours: number | null;
     isTerminal: boolean;
+    terminalOutcome: 'won' | 'lost' | null;
     defaultProbability: number;
     dealCount: number;
     totalValue: number;
@@ -45,6 +47,156 @@ export interface Deal {
     daysInStage: number;
     slaStatus: 'on_track' | 'at_risk' | 'breached' | 'no_sla';
     slaDeadline: string | null;
+}
+
+export type TenantStageMapping = {
+    id?: string;
+    pipeline_id?: string | null;
+    name?: string;
+    slug: string;
+    position: number;
+    is_terminal: boolean;
+    terminal_outcome: 'won' | 'lost' | null;
+    prob: number;
+    sla_hours?: number | null;
+};
+
+export type UnknownStagePolicy = 'error' | 'first_non_terminal';
+type TenantTxQuery = <R = any[]>(sql: string, params?: any[]) => Promise<R>;
+
+const STAGE_SEMANTIC_ALIASES: Record<string, string> = {
+    nuevo: 'nuevo',
+    new: 'nuevo',
+    novo: 'nuevo',
+    nouveau: 'nuevo',
+    nouvelle: 'nuevo',
+    contactado: 'contactado',
+    contacted: 'contactado',
+    contatado: 'contactado',
+    contacte: 'contactado',
+    respondio: 'respondio',
+    replied: 'respondio',
+    respondeu: 'respondio',
+    repondu: 'respondio',
+    calificado: 'calificado',
+    qualified: 'calificado',
+    qualificado: 'calificado',
+    qualifie: 'calificado',
+    tibio: 'tibio',
+    warm: 'tibio',
+    morno: 'tibio',
+    tiede: 'tibio',
+    caliente: 'caliente',
+    hot: 'caliente',
+    quente: 'caliente',
+    chaud: 'caliente',
+    listo_cierre: 'listo_para_cierre',
+    listo_para_cierre: 'listo_para_cierre',
+    ready_to_close: 'listo_para_cierre',
+    pronto_para_fechar: 'listo_para_cierre',
+    pret_a_conclure: 'listo_para_cierre',
+    ganado: 'ganado',
+    won: 'ganado',
+    closed_won: 'ganado',
+    gagne: 'ganado',
+    perdido: 'perdido',
+    lost: 'perdido',
+    closed_lost: 'perdido',
+    perdu: 'perdido',
+    cancelado: 'perdido',
+    canceled: 'perdido',
+    cancelled: 'perdido',
+    no_interesado: 'no_interesado',
+    no_interes: 'no_interesado',
+    not_interested: 'no_interesado',
+    uninterested: 'no_interesado',
+    sem_interesse: 'no_interesado',
+    pas_interesse: 'no_interesado',
+};
+
+/**
+ * Normalizes a user/CSV/automation stage label without assuming a language.
+ * It is intentionally shared by exact slug/name matching and semantic aliases.
+ */
+export function normalizeStageIdentifier(value: string): string {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+/**
+ * Resolve any accepted stage input into a stage that actually belongs to the tenant.
+ *
+ * Resolution order is deterministic:
+ *  1. exact tenant slug or localized stage name;
+ *  2. semantic alias mapped by probability for non-terminal stages;
+ *  3. explicit terminal_outcome for won/lost aliases (probability never decides it);
+ *  4. missing input uses the tenant's first non-terminal stage.
+ *
+ * Unknown non-empty inputs fail closed by default. Callers may explicitly opt into the
+ * first-stage fallback only for repair/migration flows where dropping the write is worse.
+ */
+export function resolveTenantNativeStage(
+    tenantStages: TenantStageMapping[],
+    requestedStage?: string | null,
+    unknownPolicy: UnknownStagePolicy = 'error',
+): TenantStageMapping {
+    const stages = [...(tenantStages || [])].sort((a, b) => Number(a.position) - Number(b.position));
+    if (!stages.length) {
+        throw new BadRequestException('No active pipeline stage is configured');
+    }
+
+    const normalized = normalizeStageIdentifier(requestedStage || '');
+    const firstNonTerminal = stages.find((stage) => !stage.is_terminal);
+    if (!normalized) {
+        if (!firstNonTerminal) throw new BadRequestException('No non-terminal pipeline stage is configured');
+        return firstNonTerminal;
+    }
+
+    const exact = stages.find((stage) =>
+        normalizeStageIdentifier(stage.slug) === normalized
+        || normalizeStageIdentifier(stage.name || '') === normalized,
+    );
+    if (exact) return exact;
+
+    const genericSlug = STAGE_SEMANTIC_ALIASES[normalized];
+    const generic = genericSlug
+        ? DEFAULT_PIPELINE_STAGES.find((stage) => stage.slug === genericSlug)
+        : undefined;
+
+    if (!generic) {
+        if (unknownPolicy === 'first_non_terminal') {
+            if (!firstNonTerminal) throw new BadRequestException('No non-terminal pipeline stage is configured');
+            return firstNonTerminal;
+        }
+        throw new BadRequestException(`Unknown pipeline stage: ${requestedStage}`);
+    }
+
+    let pool: TenantStageMapping[];
+    if (generic.is_terminal) {
+        pool = stages.filter((stage) =>
+            stage.is_terminal && stage.terminal_outcome === generic.terminal_outcome,
+        );
+        if (!pool.length) {
+            throw new BadRequestException(
+                `Pipeline has no terminal stage for outcome: ${generic.terminal_outcome}`,
+            );
+        }
+    } else {
+        pool = stages.filter((stage) => !stage.is_terminal);
+        if (!pool.length) throw new BadRequestException('No non-terminal pipeline stage is configured');
+    }
+
+    const targetProbability = Number(generic.default_probability || 0);
+    return pool.reduce((best, stage) => {
+        const bestDistance = Math.abs(Number(best.prob || 0) - targetProbability);
+        const distance = Math.abs(Number(stage.prob || 0) - targetProbability);
+        return distance < bestDistance ? stage : best;
+    }, pool[0]);
 }
 
 export interface StageTransition {
@@ -107,16 +259,16 @@ export const AUTO_PROGRESS_KEYWORDS: Record<string, { purchase: string[]; intent
 
 /** Default pipeline stages seeded per tenant */
 export const DEFAULT_PIPELINE_STAGES = [
-    { slug: 'nuevo', name: 'Nuevo', color: '#95a5a6', position: 0, sla_hours: 1, is_terminal: false, default_probability: 10 },
-    { slug: 'contactado', name: 'Contactado', color: '#3498db', position: 1, sla_hours: 4, is_terminal: false, default_probability: 20 },
-    { slug: 'respondio', name: 'Respondió', color: '#9b59b6', position: 2, sla_hours: 24, is_terminal: false, default_probability: 30 },
-    { slug: 'calificado', name: 'Calificado', color: '#e67e22', position: 3, sla_hours: 48, is_terminal: false, default_probability: 50 },
-    { slug: 'tibio', name: 'Tibio', color: '#f39c12', position: 4, sla_hours: 72, is_terminal: false, default_probability: 60 },
-    { slug: 'caliente', name: 'Caliente', color: '#e74c3c', position: 5, sla_hours: 48, is_terminal: false, default_probability: 80 },
-    { slug: 'listo_para_cierre', name: 'Listo para cierre', color: '#27ae60', position: 6, sla_hours: 24, is_terminal: false, default_probability: 95 },
-    { slug: 'ganado', name: 'Ganado', color: '#2ecc71', position: 7, sla_hours: null, is_terminal: true, default_probability: 100 },
-    { slug: 'perdido', name: 'Perdido', color: '#7f8c8d', position: 8, sla_hours: null, is_terminal: true, default_probability: 0 },
-    { slug: 'no_interesado', name: 'No interesado', color: '#bdc3c7', position: 9, sla_hours: null, is_terminal: true, default_probability: 0 },
+    { slug: 'nuevo', name: 'Nuevo', color: '#95a5a6', position: 0, sla_hours: 1, is_terminal: false, terminal_outcome: null, default_probability: 10 },
+    { slug: 'contactado', name: 'Contactado', color: '#3498db', position: 1, sla_hours: 4, is_terminal: false, terminal_outcome: null, default_probability: 20 },
+    { slug: 'respondio', name: 'Respondió', color: '#9b59b6', position: 2, sla_hours: 24, is_terminal: false, terminal_outcome: null, default_probability: 30 },
+    { slug: 'calificado', name: 'Calificado', color: '#e67e22', position: 3, sla_hours: 48, is_terminal: false, terminal_outcome: null, default_probability: 50 },
+    { slug: 'tibio', name: 'Tibio', color: '#f39c12', position: 4, sla_hours: 72, is_terminal: false, terminal_outcome: null, default_probability: 60 },
+    { slug: 'caliente', name: 'Caliente', color: '#e74c3c', position: 5, sla_hours: 48, is_terminal: false, terminal_outcome: null, default_probability: 80 },
+    { slug: 'listo_para_cierre', name: 'Listo para cierre', color: '#27ae60', position: 6, sla_hours: 24, is_terminal: false, terminal_outcome: null, default_probability: 95 },
+    { slug: 'ganado', name: 'Ganado', color: '#2ecc71', position: 7, sla_hours: null, is_terminal: true, terminal_outcome: 'won', default_probability: 100 },
+    { slug: 'perdido', name: 'Perdido', color: '#7f8c8d', position: 8, sla_hours: null, is_terminal: true, terminal_outcome: 'lost', default_probability: 0 },
+    { slug: 'no_interesado', name: 'No interesado', color: '#bdc3c7', position: 9, sla_hours: null, is_terminal: true, terminal_outcome: 'lost', default_probability: 0 },
 ];
 
 // ============================================
@@ -134,6 +286,163 @@ export class PipelineService {
         private throttle: TenantThrottleService,
         private readonly cronLock: CronLockService,
     ) {}
+
+    /** Load the canonical stage catalog used by every stage writer. */
+    async getTenantStageCatalog(
+        tenantId: string,
+        schemaName?: string,
+        pipelineId?: string,
+    ): Promise<TenantStageMapping[]> {
+        const schema = schemaName || await this.getTenantSchema(tenantId);
+        if (!schema) throw new BadRequestException('Tenant not found');
+        const pipelineFilter = pipelineId ? ' AND pipeline_id = $2::uuid' : '';
+        const params: any[] = pipelineId ? [tenantId, pipelineId] : [tenantId];
+
+        const stages = await this.prisma.executeInTenantSchema<TenantStageMapping[]>(
+            schema,
+            `SELECT id, pipeline_id, name, slug, position, is_terminal, terminal_outcome, sla_hours,
+                    COALESCE(default_probability, 0) AS prob
+             FROM pipeline_stages
+             WHERE tenant_id = $1::uuid${pipelineFilter}
+             ORDER BY pipeline_id NULLS FIRST, position ASC`,
+            params,
+        );
+        if (pipelineId) return stages;
+
+        // Opportunity/lead rows predate multi-pipeline and carry no pipeline_id. Prefer
+        // the legacy/default catalog so position 0 from a secondary pipeline can never
+        // become the canonical initial stage by accident.
+        const unscoped = stages.filter((stage) => stage.pipeline_id == null);
+        if (unscoped.length) return unscoped;
+        const defaults = await this.prisma.executeInTenantSchema<Array<{ id: string }>>(
+            schema,
+            `SELECT id FROM pipelines
+              WHERE tenant_id = $1::uuid AND is_default = true AND is_active = true
+              ORDER BY created_at ASC LIMIT 1`,
+            [tenantId],
+        ).catch(() => [] as Array<{ id: string }>);
+        const defaultPipelineId = defaults?.[0]?.id;
+        return defaultPipelineId
+            ? stages.filter((stage) => stage.pipeline_id === defaultPipelineId)
+            : stages;
+    }
+
+    /** Resolve a slug/name/semantic alias without ever returning a foreign slug. */
+    async resolveTenantStage(
+        tenantId: string,
+        requestedStage?: string | null,
+        options?: { schemaName?: string; pipelineId?: string; unknownPolicy?: UnknownStagePolicy },
+    ): Promise<TenantStageMapping> {
+        const stages = await this.getTenantStageCatalog(tenantId, options?.schemaName, options?.pipelineId);
+        return resolveTenantNativeStage(stages, requestedStage, options?.unknownPolicy);
+    }
+
+    /**
+     * Canonical write boundary for services that move every active opportunity of a lead.
+     * It keeps lead, opportunity timestamps and mirrored deal status aligned.
+     */
+    async writeLeadStage(
+        tenantId: string,
+        leadId: string,
+        requestedStage?: string | null,
+        options?: {
+            schemaName?: string;
+            opportunityId?: string;
+            onlyActiveOpportunities?: boolean;
+            unknownPolicy?: UnknownStagePolicy;
+            triggeredBy?: string;
+        },
+    ): Promise<{ stage: TenantStageMapping; updatedOpportunities: number }> {
+        const schema = options?.schemaName || await this.getTenantSchema(tenantId);
+        if (!schema) throw new BadRequestException('Tenant not found');
+        await this.ensurePipelinesTables(schema);
+        await this.migrateToMultiPipeline(schema, tenantId);
+        const stageCatalog = await this.getTenantStageCatalog(tenantId, schema);
+        const stage = await this.resolveTenantStage(tenantId, requestedStage, {
+            schemaName: schema,
+            unknownPolicy: options?.unknownPolicy,
+        });
+        const terminalOutcome = resolveTerminalOutcome(stage);
+
+        return this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const scopeParams: any[] = [leadId];
+            let scope = 'lead_id = $1::uuid';
+            if (options?.opportunityId) {
+                scopeParams.push(options.opportunityId);
+                scope += ' AND id = $2::uuid';
+            }
+            const scoped = await query<Array<{
+                id: string;
+                stage: string;
+                won_at: Date | null;
+                lost_at: Date | null;
+            }>>(
+                `SELECT id, stage, won_at, lost_at
+                   FROM opportunities
+                  WHERE ${scope}
+                  ORDER BY updated_at DESC
+                  FOR UPDATE`,
+                scopeParams,
+            );
+
+            if (options?.opportunityId && !scoped.length) {
+                throw new BadRequestException(`Opportunity not found: ${options.opportunityId}`);
+            }
+
+            for (const opportunity of scoped) {
+                const current = resolveTenantNativeStage(stageCatalog, opportunity.stage);
+                if (current.is_terminal) resolveTerminalOutcome(current);
+                if (current.is_terminal && current.slug !== stage.slug) {
+                    throw new BadRequestException(`Cannot move lead from terminal stage: ${current.slug}`);
+                }
+            }
+
+            const candidates = options?.onlyActiveOpportunities === false
+                ? scoped
+                : scoped.filter((opportunity) => !opportunity.won_at && !opportunity.lost_at);
+            let updatedOpportunities = 0;
+            for (const opportunity of candidates) {
+                const current = resolveTenantNativeStage(stageCatalog, opportunity.stage);
+                const outcomeFields = terminalOutcome === 'won'
+                    ? ', won_at = COALESCE(won_at, NOW()), lost_at = NULL'
+                    : terminalOutcome === 'lost'
+                        ? ', lost_at = COALESCE(lost_at, NOW()), won_at = NULL'
+                        : ', won_at = NULL, lost_at = NULL';
+                await query(
+                    `UPDATE opportunities
+                        SET stage = $1, updated_at = NOW()${outcomeFields}
+                      WHERE id = $2::uuid`,
+                    [stage.slug, opportunity.id],
+                );
+                await this.syncExactOpportunityDealTx(query, tenantId, leadId, opportunity.id, stage);
+                if (current.slug !== stage.slug) {
+                    await query(
+                        `INSERT INTO stage_history
+                            (lead_id, opportunity_id, from_stage, to_stage, triggered_by)
+                         VALUES ($1::uuid, $2::uuid, $3, $4, $5)`,
+                        [leadId, opportunity.id, current.slug, stage.slug, options?.triggeredBy || 'system'],
+                    );
+                }
+                updatedOpportunities++;
+            }
+
+            // Idempotent terminal retry: no candidate is active, but its exact linked
+            // deal still gets verified without reopening or selecting another contact deal.
+            if (!candidates.length && scoped.length) {
+                for (const opportunity of scoped) {
+                    const current = resolveTenantNativeStage(stageCatalog, opportunity.stage);
+                    if (current.slug === stage.slug) {
+                        await this.syncExactOpportunityDealTx(query, tenantId, leadId, opportunity.id, current);
+                    }
+                }
+            }
+            await query(
+                `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
+                [stage.slug, leadId],
+            );
+            return { stage, updatedOpportunities };
+        });
+    }
 
     // ============================================
     // Multi-Pipeline Support
@@ -161,6 +470,12 @@ export class PipelineService {
 
         await this.prisma.executeInTenantSchema(schemaName,
             `ALTER TABLE deals ADD COLUMN IF NOT EXISTS pipeline_id UUID`);
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS deal_id UUID REFERENCES deals(id) ON DELETE SET NULL`);
+
+        await this.prisma.executeInTenantSchema(schemaName,
+            `CREATE INDEX IF NOT EXISTS idx_opportunities_deal_id ON opportunities(deal_id)`);
 
         await this.redis.set(cacheKey, '1', 86400);
     }
@@ -297,6 +612,7 @@ export class PipelineService {
             position: r.position,
             slaHours: r.sla_hours != null ? parseInt(r.sla_hours) : null,
             isTerminal: r.is_terminal || false,
+            terminalOutcome: resolveTerminalOutcome(r),
             defaultProbability: parseInt(r.default_probability) || 0,
             dealCount: parseInt(r.deal_count) || 0,
             totalValue: parseFloat(r.total_value) || 0,
@@ -306,7 +622,8 @@ export class PipelineService {
     /** Create a new pipeline stage */
     async createStage(tenantId: string, data: {
         name: string; color: string; defaultProbability?: number;
-        slug?: string; slaHours?: number; isTerminal?: boolean; pipelineId?: string;
+        slug?: string; slaHours?: number; isTerminal?: boolean;
+        terminalOutcome?: 'won' | 'lost'; pipelineId?: string;
     }): Promise<void> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return;
@@ -332,10 +649,18 @@ export class PipelineService {
         );
 
         try {
+            const isTerminal = data.isTerminal ?? false;
+            if (isTerminal && data.terminalOutcome !== 'won' && data.terminalOutcome !== 'lost') {
+                throw new BadRequestException('A terminal stage requires terminalOutcome: won or lost');
+            }
+            if (!isTerminal && data.terminalOutcome != null) {
+                throw new BadRequestException('A non-terminal stage cannot define terminalOutcome');
+            }
+            const terminalOutcome = isTerminal ? data.terminalOutcome! : null;
             await this.prisma.executeInTenantSchema(
                 schema,
-                `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, pipeline_id)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::uuid)`,
+                `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, terminal_outcome, pipeline_id)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid)`,
                 [
                     tenantId,
                     data.name,
@@ -344,7 +669,8 @@ export class PipelineService {
                     maxPos?.[0]?.next_pos || 0,
                     data.defaultProbability || 0,
                     data.slaHours ?? null,
-                    data.isTerminal ?? false,
+                    isTerminal,
+                    terminalOutcome,
                     data.pipelineId || null,
                 ],
             );
@@ -387,7 +713,7 @@ export class PipelineService {
 
         const stages = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT id, name, slug, color, position, sla_hours, is_terminal, default_probability
+            `SELECT id, name, slug, color, position, sla_hours, is_terminal, terminal_outcome, default_probability
              FROM pipeline_stages ${stageFilter} ORDER BY position ASC`,
             stageParams,
         );
@@ -421,6 +747,7 @@ export class PipelineService {
                 position: s.position,
                 slaHours: s.sla_hours != null ? parseInt(s.sla_hours) : null,
                 isTerminal: s.is_terminal || false,
+                terminalOutcome: resolveTerminalOutcome(s),
                 defaultProbability: parseInt(s.default_probability) || 0,
                 dealCount: stageDeals.length,
                 totalValue,
@@ -526,9 +853,7 @@ export class PipelineService {
                  FROM opportunities o
                  LEFT JOIN leads l ON l.id = o.lead_id
                  LEFT JOIN conversations c ON c.id = o.conversation_id
-                 WHERE o.lead_id IN (
-                     SELECT id FROM leads WHERE contact_id = (SELECT contact_id FROM deals WHERE id = $1::uuid)
-                 )
+                 WHERE o.deal_id = $1::uuid
                  ORDER BY o.updated_at DESC
                  LIMIT 1`,
                 [dealId],
@@ -591,146 +916,200 @@ export class PipelineService {
         // Get stage info for SLA deadline
         const stageRows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT sla_hours, default_probability, name FROM pipeline_stages WHERE id = $1::uuid`,
+            `SELECT sla_hours, default_probability, name, is_terminal, terminal_outcome
+             FROM pipeline_stages WHERE id = $1::uuid`,
             [data.stageId],
         );
         const stage = stageRows?.[0];
         const probability = data.probability ?? (stage?.default_probability || 0);
-        const slaDeadline = stage?.sla_hours
-            ? `NOW() + INTERVAL '${parseInt(stage.sla_hours)} hours'`
-            : 'NULL';
+        const initialStatus = resolveTerminalOutcome(stage || {}) || 'open';
+        const created = await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const result = await query<any[]>(
+                `INSERT INTO deals (contact_id, title, value, stage_id, probability, expected_close_date,
+                                    assigned_agent_id, notes, status, sla_deadline,
+                                    pipeline_id,
+                                    created_at, updated_at, stage_entered_at)
+                 VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6, $7::uuid, $8, $9,
+                         CASE WHEN $10::int IS NULL THEN NULL ELSE NOW() + ($10::int * INTERVAL '1 hour') END,
+                         $11::uuid, NOW(), NOW(), NOW())
+                 RETURNING *`,
+                [
+                    data.contactId,
+                    data.title,
+                    data.value,
+                    data.stageId,
+                    probability,
+                    data.expectedCloseDate || null,
+                    data.assignedAgentId || null,
+                    data.notes || '',
+                    initialStatus,
+                    stage?.sla_hours ?? null,
+                    data.pipelineId || null,
+                ],
+            );
+            if (!result?.[0]) throw new Error('Deal creation failed');
+            await query(
+                `INSERT INTO stage_transitions
+                    (deal_id, from_stage, to_stage, changed_by, reason, created_at)
+                 VALUES ($1::uuid, NULL, $2, 'system', 'Deal created', NOW())`,
+                [result[0].id, data.stageId],
+            );
+            return result[0];
+        });
 
-        const result = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `INSERT INTO deals (contact_id, title, value, stage_id, probability, expected_close_date,
-                                assigned_agent_id, notes, status, sla_deadline,
-                                pipeline_id,
-                                created_at, updated_at, stage_entered_at)
-             VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6, $7::uuid, $8, 'open', ${slaDeadline}, $9::uuid, NOW(), NOW(), NOW())
-             RETURNING *`,
-            [data.contactId, data.title, data.value, data.stageId,
-                probability, data.expectedCloseDate || null,
-                data.assignedAgentId || null, data.notes || '', data.pipelineId || null],
-        );
-
-        // Record initial stage transition
-        await this.recordStageTransition(schema, result[0].id, null, data.stageId, 'system', 'Deal created');
-
-        return this.mapDeal(result[0]);
+        return this.mapDeal(created);
     }
 
-    /** Synchronize an opportunity/lead stage change to the corresponding deal */
-    async syncOpportunityToDeal(tenantId: string, leadId: string, opportunityStage: string): Promise<void> {
-        const schema = await this.getTenantSchema(tenantId);
-        if (!schema) return;
-
-        // Ensure the pipelines tables exist and are migrated for this tenant (crucial for background webhook/bot sync!)
-        await this.ensurePipelinesTables(schema);
-        await this.migrateToMultiPipeline(schema, tenantId);
-
-        // 1. Get lead information to obtain contact_id and details
-        const leadRows = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `SELECT contact_id, first_name, last_name, email, phone, score FROM leads WHERE id = $1::uuid`,
-            [leadId],
+    /**
+     * Transactional mirror for one exact Opportunity. It never searches a Deal by
+     * contact: an existing mirror must be referenced by opportunities.deal_id.
+     */
+    private async syncExactOpportunityDealTx(
+        query: TenantTxQuery,
+        tenantId: string,
+        leadId: string,
+        opportunityId: string,
+        stage: TenantStageMapping,
+    ): Promise<void> {
+        if (!stage.id) throw new Error(`Canonical stage ${stage.slug} has no id`);
+        const outcome = resolveTerminalOutcome(stage);
+        const status = outcome || 'open';
+        const opportunities = await query<any[]>(
+            `SELECT o.id, o.stage, o.lead_id, o.deal_id,
+                    l.contact_id, l.first_name, l.last_name, l.phone
+               FROM opportunities o
+               JOIN leads l ON l.id = o.lead_id
+              WHERE o.id = $1::uuid AND o.lead_id = $2::uuid
+              FOR UPDATE OF o`,
+            [opportunityId, leadId],
         );
-        const lead = leadRows?.[0];
-        if (!lead || !lead.contact_id) return;
-
-        // 2. Fetch pipelines for the tenant. If none exist, we cannot sync a deal.
-        const pipelines = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `SELECT id FROM pipelines WHERE is_active = true ORDER BY is_default DESC, created_at ASC LIMIT 1`,
-        );
-        const pipelineId = pipelines?.[0]?.id;
-        if (!pipelineId) return;
-
-        // 3. Find the stage matching the opportunity stage by slug/name.
-        // Support listo_cierre / listo_para_cierre matching.
-        let targetStageSlug = opportunityStage;
-        if (opportunityStage === 'listo_cierre') targetStageSlug = 'listo_para_cierre';
-        else if (opportunityStage === 'listo_para_cierre') targetStageSlug = 'listo_cierre';
-
-        let stageRows = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `SELECT id FROM pipeline_stages WHERE (slug = $1 OR slug = $2) AND tenant_id = $3::uuid LIMIT 1`,
-            [opportunityStage, targetStageSlug, tenantId],
-        );
-
-        if (!stageRows?.length) {
-            // No exact slug match — typical for a vertical tenant whose stages
-            // (consulta/cotizacion/...) differ from the generic funnel slugs. Map the
-            // generic slug to the tenant's closest NON-terminal stage by probability
-            // instead of collapsing everything into the first stage.
-            const mappedId = await this.resolveDealStageForGeneric(schema, tenantId, opportunityStage);
-            if (mappedId) {
-                stageRows = [{ id: mappedId }];
-            } else {
-                stageRows = await this.prisma.executeInTenantSchema<any[]>(
-                    schema,
-                    `SELECT id FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC LIMIT 1`,
-                    [tenantId],
-                );
-            }
+        const opportunity = opportunities?.[0];
+        if (!opportunity) throw new BadRequestException(`Opportunity not found: ${opportunityId}`);
+        if (opportunity.stage !== stage.slug) {
+            throw new ConflictException(
+                `Opportunity ${opportunityId} is at ${opportunity.stage}, not canonical stage ${stage.slug}`,
+            );
         }
+        if (!opportunity.contact_id) return;
 
-        const stageId = stageRows?.[0]?.id;
-        if (!stageId) return;
+        let pipelineId = stage.pipeline_id || null;
+        if (!pipelineId) {
+            const pipelines = await query<any[]>(
+                `SELECT id FROM pipelines
+                  WHERE tenant_id = $1::uuid AND is_default = true AND is_active = true
+                  ORDER BY created_at ASC LIMIT 1`,
+                [tenantId],
+            );
+            pipelineId = pipelines?.[0]?.id || null;
+        }
+        if (!pipelineId) throw new Error('No active default pipeline is configured');
 
-        // 4. Check if a deal already exists for this contact in this pipeline
-        const existingDeals = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `SELECT id, stage_id FROM deals WHERE contact_id = $1::uuid AND status = 'open' LIMIT 1`,
-            [lead.contact_id],
-        );
-
-        const title = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || lead.phone || 'Interés Automatizado';
-
-        if (existingDeals?.length > 0) {
-            const deal = existingDeals[0];
-            if (deal.stage_id !== stageId) {
-                // Update deal stage
-                const stageInfo = await this.prisma.executeInTenantSchema<any[]>(
-                    schema,
-                    `SELECT sla_hours, default_probability, is_terminal, slug FROM pipeline_stages WHERE id = $1::uuid`,
-                    [stageId],
+        const title = `${opportunity.first_name || ''} ${opportunity.last_name || ''}`.trim()
+            || opportunity.phone
+            || 'Interés Automatizado';
+        let deal: any;
+        if (opportunity.deal_id) {
+            const deals = await query<any[]>(
+                `SELECT id, stage_id, contact_id, status
+                   FROM deals
+                  WHERE id = $1::uuid AND contact_id = $2::uuid
+                  FOR UPDATE`,
+                [opportunity.deal_id, opportunity.contact_id],
+            );
+            deal = deals?.[0];
+            if (!deal) {
+                throw new ConflictException(
+                    `Opportunity ${opportunityId} references a missing or foreign deal`,
                 );
-                const stg = stageInfo?.[0];
-                const prob = stg?.default_probability || 0;
-                const sla = stg?.sla_hours ? `NOW() + INTERVAL '${parseInt(stg.sla_hours)} hours'` : 'NULL';
-                
-                let statusUpdate = '';
-                if (stg?.is_terminal) {
-                    // Won vs lost by the stage's win-probability, NOT the literal 'ganado'
-                    // slug: vertical tenants' won stage is cerrado/completada/alta/vip/
-                    // entregado (prob 100), never 'ganado', so the old slug check wrongly
-                    // marked every vertical won deal as lost.
-                    const wonLike = stg.slug === 'ganado' || (Number(stg.default_probability) || 0) >= 50;
-                    statusUpdate = wonLike ? `, status = 'won'` : `, status = 'lost'`;
-                }
-
-                await this.prisma.executeInTenantSchema(
-                    schema,
-                    `UPDATE deals
-                     SET stage_id = $1::uuid, probability = $2, stage_entered_at = NOW(),
-                         updated_at = NOW(), sla_deadline = ${sla}, sla_status = 'on_track'${statusUpdate}
-                     WHERE id = $3::uuid`,
-                    [stageId, prob, deal.id],
-                );
-
-                await this.recordStageTransition(schema, deal.id, deal.stage_id, stageId, 'system', 'Synchronized from Opportunity');
             }
         } else {
-            // Create a new deal in the matched stage
-            await this.createDeal(tenantId, {
-                contactId: lead.contact_id,
-                title,
-                value: 0,
-                stageId,
-                notes: 'Creado por la IA mediante chat interactivo',
-                pipelineId,
-            });
+            const created = await query<any[]>(
+                `INSERT INTO deals
+                    (contact_id, title, value, stage_id, probability, status,
+                     sla_deadline, sla_status, stage_entered_at, pipeline_id,
+                     notes, created_at, updated_at)
+                 VALUES
+                    ($1::uuid, $2, 0, $3::uuid, $4, $5,
+                     CASE WHEN $6::int IS NULL THEN NULL ELSE NOW() + ($6::int * INTERVAL '1 hour') END,
+                     'on_track', NOW(), $7::uuid,
+                     'Creado por la IA mediante chat interactivo', NOW(), NOW())
+                 RETURNING id, stage_id, contact_id`,
+                [
+                    opportunity.contact_id,
+                    title,
+                    stage.id,
+                    Number(stage.prob || 0),
+                    status,
+                    stage.sla_hours ?? null,
+                    pipelineId,
+                ],
+            );
+            deal = created?.[0];
+            if (!deal) throw new Error(`Failed to create Deal mirror for Opportunity ${opportunityId}`);
+            await query(
+                `UPDATE opportunities
+                    SET deal_id = $1::uuid
+                  WHERE id = $2::uuid AND deal_id IS NULL`,
+                [deal.id, opportunityId],
+            );
+            await query(
+                `INSERT INTO stage_transitions
+                    (deal_id, from_stage, to_stage, changed_by, reason, created_at)
+                 VALUES ($1::uuid, NULL, $2, 'system', 'Created from exact Opportunity link', NOW())`,
+                [deal.id, stage.id],
+            );
+            return;
         }
+
+        const stageChanged = deal.stage_id !== stage.id;
+        if (stageChanged) {
+            await query(
+                `UPDATE deals
+                    SET stage_id = $1::uuid,
+                        probability = $2,
+                        status = $3,
+                        stage_entered_at = NOW(),
+                        updated_at = NOW(),
+                        sla_deadline = CASE
+                            WHEN $4::int IS NULL THEN NULL
+                            ELSE NOW() + ($4::int * INTERVAL '1 hour')
+                        END,
+                        sla_status = 'on_track',
+                        pipeline_id = $5::uuid
+                  WHERE id = $6::uuid`,
+                [stage.id, Number(stage.prob || 0), status, stage.sla_hours ?? null, pipelineId, deal.id],
+            );
+            await query(
+                `INSERT INTO stage_transitions
+                    (deal_id, from_stage, to_stage, changed_by, reason, created_at)
+                 VALUES ($1::uuid, $2, $3, 'system', 'Synchronized from exact Opportunity link', NOW())`,
+                [deal.id, deal.stage_id, stage.id],
+            );
+        } else if (deal.status !== status) {
+            // Idempotent retries may repair status from explicit stage metadata, but
+            // must not reset stage_entered_at or extend the SLA clock.
+            await query(
+                `UPDATE deals SET status = $1, updated_at = NOW() WHERE id = $2::uuid`,
+                [status, deal.id],
+            );
+        }
+    }
+
+    /** Synchronize one explicitly identified Opportunity to its exact Deal mirror. */
+    async syncOpportunityToDeal(
+        tenantId: string,
+        leadId: string,
+        opportunityStage: string,
+        opportunityId: string,
+    ): Promise<void> {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) return;
+        await this.ensurePipelinesTables(schema);
+        await this.migrateToMultiPipeline(schema, tenantId);
+        const canonicalStage = await this.resolveTenantStage(tenantId, opportunityStage, { schemaName: schema });
+        await this.prisma.transactionInTenantSchema(schema, (query) =>
+            this.syncExactOpportunityDealTx(query, tenantId, leadId, opportunityId, canonicalStage),
+        );
     }
 
     /** Evaluate all transition rules for a stage before allowing a move (deal path) */
@@ -745,8 +1124,10 @@ export class PipelineService {
                     ct.email as contact_email, ct.phone as contact_phone
              FROM deals d
              LEFT JOIN contacts ct ON ct.id = d.contact_id
-             LEFT JOIN leads l ON l.contact_id = d.contact_id
+             LEFT JOIN opportunities o ON o.deal_id = d.id
+             LEFT JOIN leads l ON l.id = o.lead_id
              WHERE d.id = $1::uuid
+             ORDER BY o.updated_at DESC NULLS LAST
              LIMIT 1`,
             [dealId],
         ).then(res => res[0]);
@@ -820,7 +1201,8 @@ export class PipelineService {
         );
         const leadId = rows?.[0]?.lead_id;
         if (leadId) {
-            await this.evaluateRulesForLead(schema, tenantId, leadId, targetSlug);
+            const canonical = await this.resolveTenantStage(tenantId, targetSlug, { schemaName: schema });
+            await this.evaluateRulesForLead(schema, tenantId, leadId, canonical.slug);
         }
     }
 
@@ -967,28 +1349,12 @@ export class PipelineService {
         }
         newStageId = resolvedStageId;
 
-        // Get current deal state
-        const dealRows = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `SELECT d.stage_id, ps.is_terminal as current_is_terminal, ps.slug as current_slug
-             FROM deals d
-             LEFT JOIN pipeline_stages ps ON d.stage_id = ps.id
-             WHERE d.id = $1::uuid`,
-            [dealId],
-        );
-        if (!dealRows || dealRows.length === 0) {
-            throw new Error('Deal not found');
-        }
-
-        const currentDeal = dealRows[0];
-        if (currentDeal.current_is_terminal) {
-            throw new Error(`Cannot move deal from terminal stage '${currentDeal.current_slug}'`);
-        }
-
         // Get new stage info
         const newStageRows = await this.prisma.executeInTenantSchema<any[]>(
             schema,
-            `SELECT id, sla_hours, default_probability, is_terminal, slug, transition_rules FROM pipeline_stages WHERE id = $1::uuid`,
+            `SELECT id, sla_hours, default_probability, is_terminal, slug, transition_rules,
+                    terminal_outcome
+             FROM pipeline_stages WHERE id = $1::uuid`,
             [newStageId],
         );
         if (!newStageRows || newStageRows.length === 0) {
@@ -1000,81 +1366,121 @@ export class PipelineService {
         const transitionRules = newStage.transition_rules || [];
         await this.evaluateTransitionRules(schema, dealId, transitionRules);
 
-        const probability = newStage.default_probability || 0;
-
-        // Calculate SLA deadline for new stage
-        const slaDeadline = newStage.sla_hours
-            ? `NOW() + INTERVAL '${parseInt(newStage.sla_hours)} hours'`
-            : 'NULL';
-
-        // Determine deal status based on terminal stages
-        let statusUpdate = '';
-        if (newStage.is_terminal) {
-            if (newStage.slug === 'ganado') {
-                statusUpdate = `, status = 'won'`;
-            } else {
-                statusUpdate = `, status = 'lost'`;
-            }
-        }
-
-        // Update deal
-        await this.prisma.executeInTenantSchema(
-            schema,
-            `UPDATE deals
-             SET stage_id = $1::uuid, probability = $2, stage_entered_at = NOW(),
-                 updated_at = NOW(), sla_deadline = ${slaDeadline}, sla_status = 'on_track'${statusUpdate}
-             WHERE id = $3::uuid`,
-            [newStageId, probability, dealId],
-        );
-
-        // Synchronize the opportunity and lead stage to match the deal stage
-        const oppRows = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `SELECT o.id, o.lead_id FROM opportunities o
-             WHERE o.lead_id IN (
-                 SELECT id FROM leads WHERE contact_id = (SELECT contact_id FROM deals WHERE id = $1::uuid)
-             )
-             LIMIT 1`,
-            [dealId],
-        );
-        if (oppRows?.length > 0) {
-            const opp = oppRows[0];
-            let oppStage = newStage.slug;
-            // Map 'listo_para_cierre' back to opportunity's 'listo_cierre' slug
-            if (newStage.slug === 'listo_para_cierre') {
-                oppStage = 'listo_cierre';
-            }
-
-            await this.prisma.executeInTenantSchema(
-                schema,
-                `UPDATE opportunities SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
-                [oppStage, opp.id],
+        const probability = Number(newStage.default_probability || 0);
+        const terminalOutcome = resolveTerminalOutcome(newStage);
+        const changedBy = agentId || 'system';
+        const txResult = await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const dealRows = await query<any[]>(
+                `SELECT d.stage_id, ps.is_terminal AS current_is_terminal,
+                        ps.terminal_outcome AS current_terminal_outcome,
+                        ps.default_probability AS current_default_probability,
+                        ps.slug AS current_slug
+                   FROM deals d
+                   LEFT JOIN pipeline_stages ps ON d.stage_id = ps.id
+                  WHERE d.id = $1::uuid
+                  FOR UPDATE OF d`,
+                [dealId],
             );
-            if (opp.lead_id) {
-                await this.prisma.executeInTenantSchema(
-                    schema,
-                    `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
-                    [oppStage, opp.lead_id],
+            if (!dealRows?.length) throw new BadRequestException('Deal not found');
+            const currentDeal = dealRows[0];
+            if (currentDeal.current_is_terminal) {
+                resolveTerminalOutcome({
+                    is_terminal: true,
+                    terminal_outcome: currentDeal.current_terminal_outcome,
+                    default_probability: currentDeal.current_default_probability,
+                });
+                throw new BadRequestException(`Cannot move deal from terminal stage '${currentDeal.current_slug}'`);
+            }
+
+            await query(
+                `UPDATE deals
+                    SET stage_id = $1::uuid,
+                        probability = $2,
+                        status = $3,
+                        stage_entered_at = CASE WHEN stage_id IS DISTINCT FROM $1::uuid THEN NOW() ELSE stage_entered_at END,
+                        updated_at = NOW(),
+                        sla_deadline = CASE
+                            WHEN $4::int IS NULL THEN NULL
+                            ELSE NOW() + ($4::int * INTERVAL '1 hour')
+                        END,
+                        sla_status = 'on_track'
+                  WHERE id = $5::uuid`,
+                [newStageId, probability, terminalOutcome || 'open', newStage.sla_hours ?? null, dealId],
+            );
+
+            const oppRows = await query<Array<{ id: string; lead_id: string | null; stage: string }>>(
+                `SELECT id, lead_id, stage
+                   FROM opportunities
+                  WHERE deal_id = $1::uuid
+                  ORDER BY updated_at DESC
+                  FOR UPDATE`,
+                [dealId],
+            );
+            if (oppRows.length > 1) {
+                throw new ConflictException(`Deal ${dealId} is linked to multiple opportunities`);
+            }
+            const opportunity = oppRows[0];
+            if (opportunity) {
+                const outcomeTimestamps = terminalOutcome === 'won'
+                    ? ', won_at = COALESCE(won_at, NOW()), lost_at = NULL'
+                    : terminalOutcome === 'lost'
+                        ? ', lost_at = COALESCE(lost_at, NOW()), won_at = NULL'
+                        : ', won_at = NULL, lost_at = NULL';
+                await query(
+                    `UPDATE opportunities
+                        SET stage = $1, updated_at = NOW()${outcomeTimestamps}
+                      WHERE id = $2::uuid`,
+                    [newStage.slug, opportunity.id],
+                );
+                if (opportunity.lead_id) {
+                    await query(
+                        `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
+                        [newStage.slug, opportunity.lead_id],
+                    );
+                    if (opportunity.stage !== newStage.slug) {
+                        await query(
+                            `INSERT INTO stage_history
+                                (lead_id, opportunity_id, from_stage, to_stage, reason, triggered_by, agent_id)
+                             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::uuid)`,
+                            [
+                                opportunity.lead_id,
+                                opportunity.id,
+                                opportunity.stage,
+                                newStage.slug,
+                                reason || null,
+                                agentId ? 'agent' : 'system',
+                                agentId || null,
+                            ],
+                        );
+                    }
+                }
+            }
+
+            const stageChanged = currentDeal.stage_id !== newStageId;
+            if (stageChanged) {
+                await query(
+                    `INSERT INTO stage_transitions
+                        (deal_id, from_stage, to_stage, changed_by, reason, created_at)
+                     VALUES ($1::uuid, $2, $3, $4, $5, NOW())`,
+                    [dealId, currentDeal.stage_id, newStageId, changedBy, reason || null],
                 );
             }
-        }
-
-        // Record audit trail
-        await this.recordStageTransition(
-            schema, dealId, currentDeal.stage_id, newStageId,
-            agentId || 'system', reason || null,
-        );
+            return { fromStageId: currentDeal.stage_id, stageChanged };
+        });
 
         // Emit event for automation
-        this.eventEmitter.emit('pipeline.stage_changed', {
-            tenantId,
-            dealId,
-            fromStageId: currentDeal.stage_id,
-            toStageId: newStageId,
-            toStageSlug: newStage.slug,
-            changedBy: agentId || 'system',
-            reason,
-        });
+        if (txResult.stageChanged) {
+            this.eventEmitter.emit('pipeline.stage_changed', {
+                tenantId,
+                dealId,
+                fromStageId: txResult.fromStageId,
+                toStageId: newStageId,
+                toStageSlug: newStage.slug,
+                terminalOutcome,
+                changedBy,
+                reason,
+            });
+        }
 
         this.logger.log(`Deal ${dealId} moved to stage ${newStage.slug} (${newStageId})`);
     }
@@ -1180,7 +1586,8 @@ export class PipelineService {
                         'system',
                         NOW()
                  FROM leads l
-                 WHERE l.contact_id = (SELECT contact_id FROM deals WHERE id = $1::uuid)
+                 JOIN opportunities o ON o.lead_id = l.id
+                 WHERE o.deal_id = $1::uuid
                  LIMIT 1`,
                 [
                     deal.id,
@@ -1316,7 +1723,6 @@ export class PipelineService {
     ): Promise<void> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return;
-        if (!(await this.isAutoProgressEnabled(tenantId))) return; // per-tenant toggle (default ON)
 
         // Find the opportunity linked to this conversation
         const oppRows = await this.prisma.executeInTenantSchema<any[]>(
@@ -1332,7 +1738,38 @@ export class PipelineService {
 
         const opp = oppRows[0];
         const messageText = (signals.messageText || '').toLowerCase();
-        const currentSlug = opp.opp_stage || 'nuevo';
+        const tenantStages = await this.getTenantStageCatalog(tenantId, schema);
+
+        // Canonicalization is independent from advancement. Even a turn with no signal,
+        // a disabled auto-progress toggle, or a backward target repairs a known legacy
+        // generic slug before returning.
+        let currentStage: TenantStageMapping;
+        try {
+            currentStage = resolveTenantNativeStage(tenantStages, opp.opp_stage || undefined);
+        } catch (error: any) {
+            this.logger.warn(
+                `Cannot canonicalize opportunity ${opp.opp_id} stage "${opp.opp_stage || ''}": ${error.message}`,
+            );
+            return;
+        }
+        const currentSlug = currentStage.slug;
+        if (opp.opp_stage !== currentStage.slug) {
+            if (!opp.lead_id) {
+                this.logger.warn(`Cannot canonicalize opportunity ${opp.opp_id}: it has no lead_id`);
+                return;
+            }
+            await this.writeLeadStage(tenantId, opp.lead_id, currentStage.slug, {
+                schemaName: schema,
+                opportunityId: opp.opp_id,
+                onlyActiveOpportunities: false,
+                triggeredBy: 'canonical_repair',
+            });
+            this.logger.log(
+                `Canonicalized opportunity ${opp.opp_id} stage "${opp.opp_stage || ''}" → "${currentStage.slug}"`,
+            );
+        }
+
+        if (!(await this.isAutoProgressEnabled(tenantId))) return; // toggle disables advancement, not repair
 
         // Determine target stage based on signals
         let targetSlug: string | null = null;
@@ -1365,51 +1802,19 @@ export class PipelineService {
 
         if (!targetSlug) return;
 
-        // Resolve the generic target into the tenant's OWN stage vocabulary. Vertical
-        // tenants have stage slugs (consulta/cotizacion/reserva/...) disjoint from the
-        // generic funnel — persisting a generic slug to opportunities.stage makes the
-        // Kanban board bucket the card into column 1. When the tenant has no custom
-        // pipeline_stages we keep the generic slug (original behavior, unchanged).
-        const tenantStages = await this.prisma.executeInTenantSchema<Array<{ slug: string; position: number; is_terminal: boolean; prob: number }>>(
-            schema,
-            `SELECT slug, position, is_terminal, COALESCE(default_probability, 0) AS prob
-             FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC`,
-            [tenantId],
-        ).catch(() => [] as Array<{ slug: string; position: number; is_terminal: boolean; prob: number }>);
-
-        let writeSlug = targetSlug;
-        let currentIdx: number;
-        let targetIdx: number;
-
-        if (tenantStages && tenantStages.length) {
-            const targetStage = this.mapGenericToTenantStage(targetSlug, tenantStages);
-            if (!targetStage) return; // can't resolve safely → skip rather than corrupt stage
-            const currentStage = this.mapGenericToTenantStage(currentSlug, tenantStages);
-            // Never auto-advance an opportunity that's already terminal (won/lost).
-            // currentStage is null when currentSlug is a generic terminal with no
-            // matching-polarity terminal column (e.g. 'no_interesado' in a vertical whose
-            // only terminal is "won") — treat that as terminal too, otherwise currentIdx=-1
-            // would defeat the forward-only guard and resurrect a lost/uninterested lead.
-            const currentIsTerminal = currentStage
-                ? currentStage.is_terminal
-                : !!DEFAULT_PIPELINE_STAGES.find((s) => s.slug === currentSlug)?.is_terminal;
-            if (currentIsTerminal) return;
-            writeSlug = targetStage.slug;
-            targetIdx = targetStage.position;
-            currentIdx = currentStage ? currentStage.position : -1;
-        } else {
-            // Generic-slug tenant: preserve the original forward-only ordering
-            const stageOrder = DEFAULT_PIPELINE_STAGES.map(s => s.slug);
-            currentIdx = stageOrder.indexOf(currentSlug);
-            targetIdx = stageOrder.indexOf(targetSlug);
+        if (currentStage.is_terminal) return;
+        let targetStage: TenantStageMapping;
+        try {
+            targetStage = resolveTenantNativeStage(tenantStages, targetSlug);
+        } catch (error: any) {
+            this.logger.warn(`Cannot resolve auto-progress target "${targetSlug}": ${error.message}`);
+            return;
         }
+        const writeSlug = targetStage.slug;
+        const currentIdx = currentStage.position;
+        const targetIdx = targetStage.position;
 
         if (targetIdx <= currentIdx) return; // Already at or past this stage (never move backward)
-
-        // NOTE: we intentionally persist the generic slug 'listo_para_cierre' as-is (NOT
-        // canonicalized to 'listo_cierre'). Rewriting it here broke the generic-tenant
-        // forward-only guard (DEFAULT_PIPELINE_STAGES has no 'listo_cierre') and the rule
-        // lookup below. Scoring/analytics tolerate both slugs via aliases instead.
 
         // Governance: never auto-advance a card PAST a stage whose prerequisites are unmet
         // (appointment/offer/email/score/...). Soft-hold — leave it where it is rather than
@@ -1429,90 +1834,15 @@ export class PipelineService {
             }
         }
 
-        // Update the opportunity stage
-        await this.prisma.executeInTenantSchema(
-            schema,
-            `UPDATE opportunities SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
-            [writeSlug, opp.opp_id],
-        );
-
-        // Update the lead stage too
         if (opp.lead_id) {
-            await this.prisma.executeInTenantSchema(
-                schema,
-                `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
-                [writeSlug, opp.lead_id],
-            );
-            await this.syncOpportunityToDeal(tenantId, opp.lead_id, writeSlug).catch(e =>
-                this.logger.error(`Failed to sync opportunity to deal in autoProgressFromConversation: ${e.message}`)
-            );
+            await this.writeLeadStage(tenantId, opp.lead_id, writeSlug, {
+                schemaName: schema,
+                opportunityId: opp.opp_id,
+                triggeredBy: 'auto_progress',
+            });
         }
 
         this.logger.log(`Auto-progressed conversation ${conversationId} to stage "${writeSlug}": ${reason}`);
-    }
-
-    /**
-     * Map a generic funnel slug to the tenant's closest NON-terminal pipeline stage by
-     * probability. Lets auto-progression work for vertical tenants whose stage slugs
-     * differ from the generic funnel — without ever auto-moving a deal into a terminal
-     * (won/cancelled) stage.
-     */
-    private async resolveDealStageForGeneric(schema: string, tenantId: string, genericSlug: string): Promise<string | null> {
-        const gen = DEFAULT_PIPELINE_STAGES.find(s => s.slug === genericSlug);
-        if (!gen) return null;
-        const targetProb = gen.default_probability ?? 0;
-        const stages = await this.prisma.executeInTenantSchema<Array<{ id: string; is_terminal: boolean; prob: number }>>(
-            schema,
-            `SELECT id, is_terminal, COALESCE(default_probability, 0) AS prob
-             FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC`,
-            [tenantId],
-        );
-        if (!stages?.length) return null;
-        const active = stages.filter((s) => !s.is_terminal);
-        const pool = active.length ? active : stages;
-        let best = pool[0];
-        let bestDiff = Infinity;
-        for (const s of pool) {
-            const diff = Math.abs(Number(s.prob) - targetProb);
-            if (diff < bestDiff) { bestDiff = diff; best = s; } // strict < keeps the earlier stage on ties
-        }
-        return best?.id ?? null;
-    }
-
-    /**
-     * Map a stage slug to the tenant's own pipeline stage. Exact slug wins (already a
-     * tenant-native slug); otherwise a generic funnel slug is mapped to the closest
-     * stage by probability, matching terminal-ness (won/lost generic → terminal stage,
-     * everything else → non-terminal). Pure (no query) — operates on the passed stages.
-     */
-    private mapGenericToTenantStage(
-        slug: string,
-        tenantStages: Array<{ slug: string; position: number; is_terminal: boolean; prob: number }>,
-    ): { slug: string; position: number; is_terminal: boolean; prob: number } | null {
-        if (!slug || !tenantStages?.length) return null;
-        const exact = tenantStages.find((s) => s.slug === slug);
-        if (exact) return exact;
-        const gen = DEFAULT_PIPELINE_STAGES.find((s) => s.slug === slug);
-        if (!gen) return null;
-        const targetProb = gen.default_probability ?? 0;
-        let pool: Array<{ slug: string; position: number; is_terminal: boolean; prob: number }>;
-        if (gen.is_terminal) {
-            // Match terminal polarity so a lost generic (prob 0) never maps to a WON
-            // stage in a vertical that only has a won terminal (and vice-versa).
-            const wonGeneric = targetProb >= 50;
-            pool = tenantStages.filter((s) => s.is_terminal && ((Number(s.prob) >= 50) === wonGeneric));
-            if (!pool.length) return null; // no matching-polarity terminal → caller leaves it as-is
-        } else {
-            pool = tenantStages.filter((s) => !s.is_terminal);
-            if (!pool.length) pool = tenantStages;
-        }
-        let best = pool[0];
-        let bestDiff = Infinity;
-        for (const s of pool) {
-            const diff = Math.abs(Number(s.prob) - targetProb);
-            if (diff < bestDiff) { bestDiff = diff; best = s; } // strict < keeps the earlier stage on ties
-        }
-        return best ?? null;
     }
 
     /** Per-tenant auto-progression toggle (default ON). Cached in Redis. */
@@ -1550,14 +1880,8 @@ export class PipelineService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return { synced: 0 };
 
-        // Tenant's own stages (empty for generic-slug tenants → no remap needed).
-        const tenantStages = await this.prisma.executeInTenantSchema<Array<{ slug: string; position: number; is_terminal: boolean; prob: number }>>(
-            schema,
-            `SELECT slug, position, is_terminal, COALESCE(default_probability, 0) AS prob
-             FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC`,
-            [tenantId],
-        ).catch(() => [] as Array<{ slug: string; position: number; is_terminal: boolean; prob: number }>);
-        const tenantSlugs = new Set(tenantStages.map((s) => s.slug));
+        const tenantStages = await this.getTenantStageCatalog(tenantId, schema)
+            .catch(() => [] as TenantStageMapping[]);
 
         let opps: Array<{ id: string; lead_id: string; stage: string }> = [];
         try {
@@ -1574,33 +1898,13 @@ export class PipelineService {
         let synced = 0;
         for (const o of opps) {
             try {
-                let stage = o.stage || 'nuevo';
-                // Persist a tenant-native slug when the current one isn't a real column
-                // (e.g. generic 'nuevo'/'calificado' on a vertical tenant) so the board,
-                // analytics and deals all agree — not just the read-time board mapping.
-                // Only NON-terminal generic slugs are remapped: terminal end-states
-                // (ganado/perdido/no_interesado) are left untouched so re-sync never flips
-                // a deal's won/lost status or shifts won/lost analytics.
-                if (tenantStages.length && !tenantSlugs.has(stage)) {
-                    const genDef = DEFAULT_PIPELINE_STAGES.find((s) => s.slug === stage);
-                    if (genDef && !genDef.is_terminal) {
-                        const mapped = this.mapGenericToTenantStage(stage, tenantStages);
-                        if (mapped && mapped.slug !== stage) {
-                            await this.prisma.executeInTenantSchema(
-                                schema,
-                                `UPDATE opportunities SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
-                                [mapped.slug, o.id],
-                            );
-                            await this.prisma.executeInTenantSchema(
-                                schema,
-                                `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = $2::uuid`,
-                                [mapped.slug, o.lead_id],
-                            );
-                            stage = mapped.slug;
-                        }
-                    }
-                }
-                await this.syncOpportunityToDeal(tenantId, o.lead_id, stage);
+                const mapped = resolveTenantNativeStage(tenantStages, o.stage || undefined);
+                await this.writeLeadStage(tenantId, o.lead_id, mapped.slug, {
+                    schemaName: schema,
+                    opportunityId: o.id,
+                    onlyActiveOpportunities: false,
+                    triggeredBy: 'resync',
+                });
                 synced++;
             } catch { /* skip individual failures */ }
         }
@@ -1670,23 +1974,58 @@ export class PipelineService {
         schema: string, tenantId: string, stageRef: string, pipelineId?: string,
     ): Promise<string | null> {
         if (!stageRef) return null;
-        if (PipelineService.UUID_RE.test(stageRef)) return stageRef;
-
-        const params: any[] = [stageRef, tenantId];
-        let pipelineFilter = '';
-        if (pipelineId && PipelineService.UUID_RE.test(pipelineId)) {
-            pipelineFilter = ' AND pipeline_id = $3::uuid';
-            params.push(pipelineId);
+        if (PipelineService.UUID_RE.test(stageRef)) {
+            const params: any[] = [stageRef, tenantId];
+            let pipelineFilter = '';
+            if (pipelineId && PipelineService.UUID_RE.test(pipelineId)) {
+                pipelineFilter = ' AND pipeline_id = $3::uuid';
+                params.push(pipelineId);
+            }
+            const rows = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `SELECT id FROM pipeline_stages
+                  WHERE id = $1::uuid AND tenant_id = $2::uuid${pipelineFilter}
+                  LIMIT 1`,
+                params,
+            );
+            return rows?.[0]?.id || null;
         }
+        try {
+            const stage = await this.resolveTenantStage(tenantId, stageRef, {
+                schemaName: schema,
+                pipelineId: pipelineId && PipelineService.UUID_RE.test(pipelineId) ? pipelineId : undefined,
+            });
+            return stage.id || null;
+        } catch {
+            return null;
+        }
+    }
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
+    /** Move one exact Opportunity through the atomic lead/opportunity/deal/history boundary. */
+    async moveOpportunityStage(
+        tenantId: string,
+        opportunityId: string,
+        requestedStage: string,
+        triggeredBy = 'agent',
+    ): Promise<TenantStageMapping> {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) throw new BadRequestException('Tenant not found');
+        const rows = await this.prisma.executeInTenantSchema<Array<{ lead_id: string }>>(
             schema,
-            `SELECT id FROM pipeline_stages
-             WHERE slug = $1 AND tenant_id = $2::uuid${pipelineFilter}
-             ORDER BY position ASC LIMIT 1`,
-            params,
+            `SELECT lead_id FROM opportunities WHERE id = $1::uuid LIMIT 1`,
+            [opportunityId],
         );
-        return rows?.[0]?.id || null;
+        const leadId = rows?.[0]?.lead_id;
+        if (!leadId) throw new BadRequestException('Opportunity not found');
+        const target = await this.resolveTenantStage(tenantId, requestedStage, { schemaName: schema });
+        await this.evaluateRulesForLead(schema, tenantId, leadId, target.slug);
+        const result = await this.writeLeadStage(tenantId, leadId, target.slug, {
+            schemaName: schema,
+            opportunityId,
+            onlyActiveOpportunities: true,
+            triggeredBy,
+        });
+        return result.stage;
     }
 
     private async recordStageTransition(

@@ -60,7 +60,8 @@ const PLANS = [
             automationRules: 0,
             maxDripSequences: 0,
             broadcastCampaigns: 0,
-            appointmentsServices: 1,
+            // Vertical bootstrap canonical maximum: veterinaria seeds 4.
+            appointmentsServices: 4,
             knowledgeArticles: 5,
             knowledgeMaxCharsPerDoc: 25_000,
             knowledgeEmbeddingsPerMonth: 100,
@@ -68,7 +69,8 @@ const PLANS = [
             knowledgeAnalytics: false,
             customAttributes: 0,
             emailTemplates: 2,
-            pipelineStages: 3,
+            // Structural vertical pipelines are indivisible; canonical max is 7.
+            pipelineStages: 7,
             maxPipelines: 1,
             segments: 0,
             mediaStorageMb: 50,
@@ -163,7 +165,8 @@ const PLANS = [
             automationRules: 5,
             maxDripSequences: 3,
             broadcastCampaigns: 3,
-            appointmentsServices: 2,
+            // Same canonical floor as every self-serve plan.
+            appointmentsServices: 4,
             knowledgeArticles: 20,
             knowledgeMaxCharsPerDoc: 100_000,
             knowledgeEmbeddingsPerMonth: 1_000,
@@ -171,7 +174,7 @@ const PLANS = [
             knowledgeAnalytics: true,
             customAttributes: 5,
             emailTemplates: 4,
-            pipelineStages: 5,
+            pipelineStages: 7,
             maxPipelines: 1,
             segments: 3,
             mediaStorageMb: 100,

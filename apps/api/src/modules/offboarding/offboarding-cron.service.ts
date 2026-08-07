@@ -236,30 +236,14 @@ export class OffboardingCronService {
 
             for (const tenant of staleInactiveTenants) {
                 try {
-                    // Sanitize schema name to prevent SQL injection
-                    const schemaName = tenant.schemaName.replace(/[^a-zA-Z0-9_]/g, '');
-                    if (!schemaName || schemaName !== tenant.schemaName) {
-                        this.logger.warn(`Skipping tenant ${tenant.id}: suspicious schema name "${tenant.schemaName}"`);
-                        continue;
-                    }
-
-                    await this.prisma.$queryRawUnsafe(
-                        `DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`,
-                    );
-
-                    this.logger.log(`Dropped schema "${schemaName}" for inactive tenant ${tenant.id} (${tenant.name})`);
-
-                    // Audit log
-                    await this.prisma.auditLog.create({
-                        data: {
-                            tenantId: tenant.id,
-                            action: 'schema_dropped',
-                            resource: 'offboarding',
-                            details: { schemaName, reason: 'inactive_90_days' },
-                        },
-                    });
+                    // The retention expiry uses the same fenced, verified and
+                    // atomic purge saga as an explicit admin purge.  A direct
+                    // DROP here used to lose OAuth credentials before they
+                    // could be revoked and left partially deleted global rows.
+                    await this.offboardingService.purgeTenant(tenant.id);
+                    this.logger.log(`Purged inactive tenant ${tenant.id} (${tenant.name}) after 90-day retention`);
                 } catch (error) {
-                    this.logger.error(`Failed to drop schema for tenant ${tenant.id}: ${error}`);
+                    this.logger.error(`Failed to purge inactive tenant ${tenant.id}: ${error}`);
                 }
             }
 

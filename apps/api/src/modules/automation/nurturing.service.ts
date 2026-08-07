@@ -12,6 +12,7 @@ import { ComplianceService } from '../analytics/compliance.service';
 import { OutboundMessage } from '@parallext/shared';
 import { nurtureMsg, LANG_NAME } from './nurturing-i18n';
 import { CronLockService } from '../redis/cron-lock.service';
+import { PipelineService } from '../pipeline/pipeline.service';
 
 export const NURTURING_QUEUE = 'nurturing';
 
@@ -53,6 +54,7 @@ export class NurturingService {
         private readonly channelToken: ChannelTokenService,
         private readonly compliance: ComplianceService,
         private readonly cronLock: CronLockService,
+        private readonly pipelineService: PipelineService,
     ) {}
 
     // ─── Public API ──────────────────────────────────────────────────
@@ -606,21 +608,18 @@ export class NurturingService {
         // Apply final action: mark as not interested or just leave the task
         const finalAction = config.finalAction || 'mark_not_interested';
         if (finalAction === 'mark_not_interested') {
-            // Mark lead as no_interesado
-            await this.prisma.executeInTenantSchema(schemaName,
-                `UPDATE leads SET stage = 'no_interesado' WHERE id = $1::uuid`,
-                [leadId],
-            );
-            await this.prisma.executeInTenantSchema(schemaName,
-                `UPDATE opportunities SET stage = 'no_interesado' WHERE lead_id = $1::uuid AND stage NOT IN ('ganado', 'perdido', 'no_interesado')`,
-                [leadId],
+            const write = await this.pipelineService.writeLeadStage(
+                tenantId,
+                leadId,
+                'no_interesado',
+                { schemaName, onlyActiveOpportunities: true },
             );
             // Close the conversation
             await this.prisma.executeInTenantSchema(schemaName,
                 `UPDATE conversations SET status = 'resolved', resolved_at = NOW() WHERE id = $1::uuid`,
                 [conversationId],
             );
-            this.logger.log(`Final action: marked lead ${leadId} as no_interesado, conversation resolved`);
+            this.logger.log(`Final action: marked lead ${leadId} as ${write.stage.slug}, conversation resolved`);
         }
     }
 

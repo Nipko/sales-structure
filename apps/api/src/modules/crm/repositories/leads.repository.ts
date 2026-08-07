@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { Lead } from '../interfaces/lead.interface';
 import { normalizePhoneE164 } from '../../../common/utils/phone.util';
+import { PipelineService } from '../../pipeline/pipeline.service';
 
 @Injectable()
 export class LeadsRepository {
@@ -11,6 +12,7 @@ export class LeadsRepository {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private pipelineService: PipelineService,
   ) {}
 
   private async getTenantSchema(tenantId: string): Promise<string | null> {
@@ -224,7 +226,9 @@ export class LeadsRepository {
     const schema = await this.getTenantSchema(tenantId);
     if (!schema) return null;
 
-    const record = data as Record<string, any>;
+    const record = { ...(data as Record<string, any>) };
+    const canonicalStage = await this.pipelineService.resolveTenantStage(tenantId, record.stage, { schemaName: schema });
+    record.stage = canonicalStage.slug;
     // Auto-normalize phone
     if (record.phone) {
       record.phone_normalized = normalizePhoneE164(record.phone) || record.phone;
@@ -254,7 +258,14 @@ export class LeadsRepository {
     const schema = await this.getTenantSchema(tenantId);
     if (!schema) return null;
 
-    const record = data as Record<string, any>;
+    const record = { ...(data as Record<string, any>) };
+    if (record.stage !== undefined) {
+      record.stage = (await this.pipelineService.resolveTenantStage(
+        tenantId,
+        String(record.stage),
+        { schemaName: schema },
+      )).slug;
+    }
     // Auto-normalize phone on update
     if (record.phone) {
       record.phone_normalized = normalizePhoneE164(record.phone) || record.phone;
@@ -291,9 +302,14 @@ export class LeadsRepository {
 
     switch (action) {
       case 'stage': {
+        const canonicalStage = await this.pipelineService.resolveTenantStage(
+          tenantId,
+          payload.stage,
+          { schemaName: schema },
+        );
         const result = await this.prisma.executeInTenantSchema<any[]>(schema,
           `UPDATE leads SET stage = $1, updated_at = NOW() WHERE id = ANY($2::uuid[]) RETURNING id`,
-          [payload.stage, idsParam],
+          [canonicalStage.slug, idsParam],
         );
         return { updated: result?.length || 0 };
       }

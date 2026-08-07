@@ -3,6 +3,12 @@ import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import * as crypto from 'crypto';
+import {
+    type PinnedHttpsTarget,
+    parseSafeHttpsUrl,
+    pinSafeHttpsUrl,
+    safeAxiosOptions,
+} from '../../common/utils/safe-outbound-url.util';
 
 export interface EcommerceConfig {
     provider: 'shopify' | 'woocommerce';
@@ -29,6 +35,22 @@ export class EcommerceService {
         private readonly redis: RedisService,
         private readonly http: HttpService,
     ) {}
+
+    private async prepareShopTarget(
+        provider: EcommerceConfig['provider'],
+        rawUrl: unknown,
+    ): Promise<{ baseUrl: string; target: PinnedHttpsTarget }> {
+        const parsed = parseSafeHttpsUrl(rawUrl, 'tienda');
+        if (parsed.search || parsed.hash || parsed.pathname !== '/') {
+            throw new BadRequestException('La URL de la tienda debe contener solo el origen HTTPS');
+        }
+        if (provider === 'shopify' && !/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(parsed.hostname)) {
+            throw new BadRequestException('Shopify requiere el dominio oficial de la tienda en myshopify.com');
+        }
+
+        const target = await pinSafeHttpsUrl(parsed, 'tienda');
+        return { baseUrl: target.url.origin, target };
+    }
 
     async getConfig(tenantId: string): Promise<EcommerceConfig | null> {
         const tenant = await this.prisma.tenant.findUnique({
@@ -57,6 +79,11 @@ export class EcommerceService {
             webhookSecret: config.webhookSecret ?? current.webhookSecret ?? crypto.randomBytes(32).toString('hex'),
             syncProducts: config.syncProducts ?? current.syncProducts ?? true,
         };
+
+        if (!['shopify', 'woocommerce'].includes(merged.provider)) {
+            throw new BadRequestException('Proveedor de e-commerce no soportado');
+        }
+        merged.shopUrl = (await this.prepareShopTarget(merged.provider, merged.shopUrl)).baseUrl;
 
         await this.prisma.tenant.update({
             where: { id: tenantId },
@@ -124,6 +151,7 @@ export class EcommerceService {
     async syncShopifyProducts(tenantId: string): Promise<{ synced: number }> {
         const config = await this.getConfig(tenantId);
         if (!config || config.provider !== 'shopify') throw new BadRequestException('Shopify not configured');
+        const { baseUrl, target } = await this.prepareShopTarget('shopify', config.shopUrl);
 
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
@@ -132,10 +160,10 @@ export class EcommerceService {
         if (!tenant) throw new NotFoundException('Tenant not found');
         await this.ensureTables(tenant.schemaName);
 
-        const url = `${config.shopUrl}/admin/api/2024-01/products.json?limit=250`;
+        const url = `${baseUrl}/admin/api/2024-01/products.json?limit=250`;
         const response = await this.http.axiosRef.get(url, {
+            ...safeAxiosOptions(target, 30000),
             headers: { 'X-Shopify-Access-Token': config.accessToken },
-            timeout: 30000,
         });
 
         const products = response.data?.products || [];
@@ -175,6 +203,7 @@ export class EcommerceService {
     async syncWooCommerceProducts(tenantId: string): Promise<{ synced: number }> {
         const config = await this.getConfig(tenantId);
         if (!config || config.provider !== 'woocommerce') throw new BadRequestException('WooCommerce not configured');
+        const { baseUrl, target } = await this.prepareShopTarget('woocommerce', config.shopUrl);
 
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
@@ -184,10 +213,10 @@ export class EcommerceService {
         await this.ensureTables(tenant.schemaName);
 
         const auth = Buffer.from(`${config.apiKey}:${config.apiSecret}`).toString('base64');
-        const url = `${config.shopUrl}/wp-json/wc/v3/products?per_page=100`;
+        const url = `${baseUrl}/wp-json/wc/v3/products?per_page=100`;
         const response = await this.http.axiosRef.get(url, {
+            ...safeAxiosOptions(target, 30000),
             headers: { Authorization: `Basic ${auth}` },
-            timeout: 30000,
         });
 
         const products = response.data || [];
@@ -272,8 +301,19 @@ export class EcommerceService {
 
     async searchProductsForAI(schemaName: string, query: {
         search?: string; maxPrice?: number; category?: string;
-    }): Promise<any[]> {
-        await this.ensureTables(schemaName);
+    }, options?: { createTablesIfMissing?: boolean }): Promise<any[]> {
+        if (options?.createTablesIfMissing === false) {
+            // Agent Test is read-only and runs against the real tenant schema. If
+            // ecommerce has never been provisioned, an empty result is safer than
+            // lazily creating tables from an introspection endpoint.
+            const exists: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'ecommerce_products'`,
+                schemaName,
+            );
+            if (exists.length === 0) return [];
+        } else {
+            await this.ensureTables(schemaName);
+        }
         const conditions: string[] = [`status = 'active'`];
         const params: any[] = [];
         let idx = 1;

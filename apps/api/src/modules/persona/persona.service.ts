@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
@@ -8,6 +8,9 @@ import * as yaml from 'js-yaml';
 import { TenantConfig } from '@parallext/shared';
 import { VERTICAL_REGISTRY } from '../verticals/vertical-definitions';
 import { PERSONA_CACHE_CHANNELS } from '../../common/utils/persona-cache.util';
+import { escapeXmlAttribute, escapeXmlText } from '../../common/utils/xml.util';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
+import { persistenceDisabled } from '../../common/types/execution-context';
 
 /**
  * Persona Configuration Engine
@@ -22,7 +25,7 @@ export class PersonaService {
     constructor(
         private prisma: PrismaService,
         private redis: RedisService,
-        private tenantsService: TenantsService,
+        @Inject(forwardRef(() => TenantsService)) private tenantsService: TenantsService,
         private throttleService: TenantThrottleService,
         private eventEmitter: EventEmitter2,
     ) { }
@@ -130,7 +133,7 @@ export class PersonaService {
         const customPrompt = config.customPrompt ?? (config as any)._customPrompt;
 
         if (editorMode === 'prompt' && typeof customPrompt === 'string' && customPrompt.trim().length > 0) {
-            return `<persona>\n${customPrompt.trim()}\n</persona>`;
+            return `<persona>\n${escapeXmlText(customPrompt.trim())}\n</persona>`;
         }
 
         return this.buildGuidedPersonaBlock(config, tenantBusinessHours);
@@ -148,20 +151,20 @@ export class PersonaService {
 
         // Identity
         lines.push('  <identity>');
-        lines.push(`    <name>${persona.name || ''}</name>`);
-        lines.push(`    <role>${persona.role || ''}</role>`);
-        if (persona.greeting) lines.push(`    <greeting>${persona.greeting}</greeting>`);
-        if (persona.fallbackMessage) lines.push(`    <fallback_message>${persona.fallbackMessage}</fallback_message>`);
+        lines.push(`    <name>${escapeXmlText(persona.name)}</name>`);
+        lines.push(`    <role>${escapeXmlText(persona.role)}</role>`);
+        if (persona.greeting) lines.push(`    <greeting>${escapeXmlText(persona.greeting)}</greeting>`);
+        if (persona.fallbackMessage) lines.push(`    <fallback_message>${escapeXmlText(persona.fallbackMessage)}</fallback_message>`);
         lines.push('  </identity>');
 
         // Personality
         const p = persona.personality;
         if (p) {
             lines.push('  <personality>');
-            if (p.tone) lines.push(`    <tone>${p.tone}</tone>`);
-            if (p.formality) lines.push(`    <formality>${p.formality}</formality>`);
-            if (p.emojiUsage) lines.push(`    <emoji_usage>${p.emojiUsage}</emoji_usage>`);
-            if (p.humor) lines.push(`    <humor>${p.humor}</humor>`);
+            if (p.tone) lines.push(`    <tone>${escapeXmlText(p.tone)}</tone>`);
+            if (p.formality) lines.push(`    <formality>${escapeXmlText(p.formality)}</formality>`);
+            if (p.emojiUsage) lines.push(`    <emoji_usage>${escapeXmlText(p.emojiUsage)}</emoji_usage>`);
+            if (p.humor) lines.push(`    <humor>${escapeXmlText(p.humor)}</humor>`);
             lines.push('  </personality>');
         }
 
@@ -169,7 +172,7 @@ export class PersonaService {
         if (behavior?.rules?.length > 0) {
             lines.push('  <rules>');
             behavior.rules.forEach((rule) => {
-                lines.push(`    <rule>${rule}</rule>`);
+                lines.push(`    <rule>${escapeXmlText(rule)}</rule>`);
             });
             lines.push('  </rules>');
         }
@@ -178,7 +181,7 @@ export class PersonaService {
         if (behavior?.forbiddenTopics?.length > 0) {
             lines.push('  <forbidden_topics>');
             behavior.forbiddenTopics.forEach((topic) => {
-                lines.push(`    <topic>${topic}</topic>`);
+                lines.push(`    <topic>${escapeXmlText(topic)}</topic>`);
             });
             lines.push('  </forbidden_topics>');
         }
@@ -187,7 +190,7 @@ export class PersonaService {
         if (behavior?.handoffTriggers?.length > 0) {
             lines.push('  <handoff_triggers>');
             behavior.handoffTriggers.forEach((trigger) => {
-                lines.push(`    <trigger>${trigger}</trigger>`);
+                lines.push(`    <trigger>${escapeXmlText(trigger)}</trigger>`);
             });
             lines.push('  </handoff_triggers>');
         }
@@ -199,9 +202,9 @@ export class PersonaService {
             lines.push('  <required_information>');
             for (const [context, fields] of Object.entries(behavior.requiredFields)) {
                 if (!Array.isArray(fields)) continue;
-                lines.push(`    <context name="${context}">`);
+                lines.push(`    <context name="${escapeXmlAttribute(context)}">`);
                 fields.forEach((f) => {
-                    lines.push(`      <field name="${f.field}">${f.question}</field>`);
+                    lines.push(`      <field name="${escapeXmlAttribute(f.field)}">${escapeXmlText(f.question)}</field>`);
                 });
                 lines.push('    </context>');
             }
@@ -214,38 +217,38 @@ export class PersonaService {
             if (tenantBusinessHours.is247) {
                 lines.push('    <mode>24/7</mode>');
             } else {
-                if (tenantBusinessHours.timezone) lines.push(`    <timezone>${tenantBusinessHours.timezone}</timezone>`);
+                if (tenantBusinessHours.timezone) lines.push(`    <timezone>${escapeXmlText(tenantBusinessHours.timezone)}</timezone>`);
                 const schedule = tenantBusinessHours.schedule || {};
                 for (const [day, value] of Object.entries(schedule)) {
                     if (!value || typeof value !== 'object') continue;
                     const v = value as any;
                     if (v.enabled === false) {
-                        lines.push(`    <day name="${day}">closed</day>`);
+                        lines.push(`    <day name="${escapeXmlAttribute(day)}">closed</day>`);
                     } else {
-                        lines.push(`    <day name="${day}" start="${v.open ?? v.start ?? ''}" end="${v.close ?? v.end ?? ''}" />`);
+                        lines.push(`    <day name="${escapeXmlAttribute(day)}" start="${escapeXmlAttribute(v.open ?? v.start)}" end="${escapeXmlAttribute(v.close ?? v.end)}" />`);
                     }
                 }
             }
             const afterMsg = hours?.afterHoursMessageOverride || tenantBusinessHours.afterHoursMessage || hours?.afterHoursMessage;
             if (afterMsg) {
-                lines.push(`    <after_hours_message>${afterMsg}</after_hours_message>`);
+                lines.push(`    <after_hours_message>${escapeXmlText(afterMsg)}</after_hours_message>`);
             }
             const aiOutside = hours?.aiOutsideHours ?? true;
-            lines.push(`    <ai_outside_hours>${aiOutside}</ai_outside_hours>`);
+            lines.push(`    <ai_outside_hours>${escapeXmlText(aiOutside)}</ai_outside_hours>`);
             lines.push('  </business_hours>');
         } else if (hours?.schedule && Object.keys(hours.schedule).length > 0) {
             lines.push('  <business_hours>');
-            if (hours.timezone) lines.push(`    <timezone>${hours.timezone}</timezone>`);
+            if (hours.timezone) lines.push(`    <timezone>${escapeXmlText(hours.timezone)}</timezone>`);
             for (const [day, value] of Object.entries(hours.schedule)) {
                 if (typeof value === 'string') {
-                    lines.push(`    <day name="${day}">${value}</day>`);
+                    lines.push(`    <day name="${escapeXmlAttribute(day)}">${escapeXmlText(value)}</day>`);
                 } else if (value && typeof value === 'object') {
                     const v = value as any;
-                    lines.push(`    <day name="${day}" start="${v.start ?? ''}" end="${v.end ?? ''}" />`);
+                    lines.push(`    <day name="${escapeXmlAttribute(day)}" start="${escapeXmlAttribute(v.start)}" end="${escapeXmlAttribute(v.end)}" />`);
                 }
             }
             if (hours.afterHoursMessage) {
-                lines.push(`    <after_hours_message>${hours.afterHoursMessage}</after_hours_message>`);
+                lines.push(`    <after_hours_message>${escapeXmlText(hours.afterHoursMessage)}</after_hours_message>`);
             }
             lines.push('  </business_hours>');
         }
@@ -254,24 +257,24 @@ export class PersonaService {
         const skillset = (config as any).skillset || 'both';
         const upsell = (config as any).upsell as { enabled?: boolean; intensity?: string; maxDiscountPercent?: number } | undefined;
         lines.push('  <skillset>');
-        lines.push(`    <mode>${skillset}</mode>`);
+        lines.push(`    <mode>${escapeXmlText(skillset)}</mode>`);
         if (skillset === 'sales' || skillset === 'both') {
-            lines.push('    <sales>Eres un vendedor consultivo: detecta la necesidad real del cliente, recomienda productos del catálogo (<turn><catalog> o la tool recommend_products) que encajen, resalta beneficios y guía hacia la compra/acción. Nunca inventes productos ni precios; usa solo los del catálogo real.</sales>');
+            lines.push(`    <sales>${escapeXmlText('Act as a consultative salesperson: identify the customer\'s real need, recommend only matching products present in the turn catalog or returned by recommend_products, explain relevant benefits, and guide toward an appropriate next action. Never invent products or prices.')}</sales>`);
         }
         if (skillset === 'support' || skillset === 'both') {
-            lines.push('    <support>Eres soporte experto: resuelve dudas, da seguimiento a pedidos (<turn><recent_orders> o la tool get_order_status) y problemas con precisión y empatía. Escala cuando corresponda.</support>');
+            lines.push(`    <support>${escapeXmlText('Act as an expert support agent: answer accurately and empathetically, use recent orders or get_order_status for order follow-up, and escalate when appropriate.')}</support>`);
         }
         if (skillset === 'both') {
-            lines.push('    <balance>Equilibra venta y soporte: primero resuelve lo que el cliente necesita; cuando sea natural y aporte valor, conecta con una recomendación o siguiente paso de compra. No fuerces la venta si el cliente solo busca ayuda.</balance>');
+            lines.push(`    <balance>${escapeXmlText('Balance sales and support: resolve the customer\'s need first, then connect it to a useful recommendation or purchase step only when natural. Never force a sale when the customer only needs help.')}</balance>`);
         }
         if (upsell?.enabled && (skillset === 'sales' || skillset === 'both')) {
             const intensity = upsell.intensity || 'subtle';
             const intensityText: Record<string, string> = {
-                subtle: 'Sugiere complementos solo cuando encajen de forma natural, sin insistir.',
-                moderate: 'Ofrece de forma proactiva un complemento o mejora relevante por conversación cuando aporte valor.',
-                aggressive: 'Busca activamente oportunidades de upsell y cross-sell en cada interacción, siempre con tacto.',
+                subtle: 'Suggest complementary items only when they fit naturally, without insisting.',
+                moderate: 'Proactively offer one relevant complement or upgrade per conversation when it adds value.',
+                aggressive: 'Actively look for relevant upsell and cross-sell opportunities while remaining tactful.',
             };
-            lines.push(`    <upsell intensity="${intensity}">${intensityText[intensity] || intensityText.subtle}</upsell>`);
+            lines.push(`    <upsell intensity="${escapeXmlAttribute(intensity)}">${escapeXmlText(intensityText[intensity] || intensityText.subtle)}</upsell>`);
             if (typeof upsell.maxDiscountPercent === 'number' && upsell.maxDiscountPercent > 0) {
                 lines.push(`    <max_discount_percent>${upsell.maxDiscountPercent}</max_discount_percent>`);
             }
@@ -586,9 +589,17 @@ export class PersonaService {
     /**
      * Get a single agent by ID
      */
-    async getAgent(tenantId: string, agentId: string): Promise<any> {
-        await this.ensureTablesForTenant(tenantId);
-        const schemaName = await this.tenantsService.getSchemaName(tenantId);
+    async getAgent(
+        tenantId: string,
+        agentId: string,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<any> {
+        // Agent Test points at an already-existing agent. Lazy DDL is useful for
+        // normal admin traffic but violates the introspection zero-write contract.
+        if (!persistenceDisabled(executionContext)) {
+            await this.ensureTablesForTenant(tenantId);
+        }
+        const schemaName = await this.tenantsService.getSchemaName(tenantId, executionContext);
         const rows = await this.prisma.$queryRawUnsafe(
             `SELECT * FROM "${schemaName}".agent_personas WHERE id = $1::uuid`,
             agentId,
@@ -2747,7 +2758,7 @@ export class PersonaService {
             if (Number(existing[0]?.cnt || 0) > 0) return;
         } catch (e: any) {
             this.logger.warn(`Could not check agent_personas for tenant ${tenantId}: ${e.message}`);
-            return;
+            throw e;
         }
 
         // Select template based on goals — use tenant language for template content
@@ -2848,8 +2859,8 @@ export class PersonaService {
         // Gate de prerrequisitos de agenda, versión BLANDA. Este método corre durante el
         // alta y ANTES del bootstrap vertical (auth.service: primero el agente, después
         // bootstrapVertical), así que el schema recién creado todavía no tiene servicios
-        // ni horarios: un throw acá dejaría al tenant sin ningún agente (el llamador
-        // traga la excepción), que es peor que el problema. Se apaga la herramienta y se
+        // ni horarios: los prerrequisitos vacíos son esperables en este punto, no
+        // un error de alta. Se apaga temporalmente la herramienta y se
         // deja rastro; el bootstrap vertical la vuelve a encender cuando siembra
         // servicios + disponibilidad.
         //
@@ -2883,6 +2894,7 @@ export class PersonaService {
             this.logger.log(`Default agent "${template.name}" created for tenant ${tenantId} (goals: ${goals.join(', ')})`);
         } catch (e: any) {
             this.logger.error(`Failed to create default agent for tenant ${tenantId}: ${e.message}`);
+            throw e;
         }
     }
 

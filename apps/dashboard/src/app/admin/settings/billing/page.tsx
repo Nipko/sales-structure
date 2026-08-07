@@ -108,6 +108,23 @@ const PLAN_ICON: Record<string, any> = {
     custom: Sparkles,
 };
 
+/**
+ * Códigos de error de cupón que tienen traducción en los 4 idiomas. next-intl
+ * lanza ante una clave inexistente, así que cualquier código nuevo del backend
+ * cae al mensaje del servidor en vez de romper la página.
+ */
+const KNOWN_COUPON_ERRORS = [
+    "not_found",
+    "inactive",
+    "expired",
+    "max_redemptions_reached",
+    "plan_not_eligible",
+    "already_redeemed",
+    "no_subscription",
+    "type_not_supported",
+    "active_provider_subscription",
+];
+
 function MpSecurityScript() {
     const loaded = useRef(false);
     useEffect(() => {
@@ -390,8 +407,16 @@ export default function BillingPage() {
         try {
             const res = await api.redeemCoupon(activeTenantId, couponCode.trim());
             if (!res?.success) {
-                const errKey = (res as any)?.error;
-                throw new Error(errKey ? t(`couponErrors.${errKey}`) : t("actionFailed"));
+                // El wrapper separa el código estable del backend en `errorCode`;
+                // `error` es el texto en inglés. Antes se usaba `error` como clave de
+                // i18n, así que las 6 traducciones nunca se veían y el usuario leía
+                // "billingPage.couponErrors.Invalid or already-used coupon." sin resolver.
+                const errKey = (res as any)?.errorCode;
+                throw new Error(
+                    errKey && KNOWN_COUPON_ERRORS.includes(errKey)
+                        ? t(`couponErrors.${errKey}`)
+                        : ((res as any)?.error || t("actionFailed")),
+                );
             }
             setToast(t("couponRedeemed"));
             setCouponCode("");

@@ -4036,10 +4036,21 @@
       "createTitle": "Nouveau tenant",
       "companyName": "Nom de l'entreprise",
       "language": "Langue",
-      "name": "Nom"
+      "name": "Nom",
+      "ownerTitle": "Propriétaire du tenant",
+      "ownerFirstName": "Prénom",
+      "ownerLastName": "Nom",
+      "ownerEmail": "E-mail du propriétaire",
+      "ownerEmailPlaceholder": "proprietaire@entreprise.com",
+      "provisioningHint": "La création configure et vérifie le propriétaire, le schéma, l'agent IA, l'identité et la verticale. Si l'adresse n'a pas encore de compte, une invitation est envoyée avant l'activation.",
+      "verticalChangeWarning": "La verticale et le sous-type sont verrouillés après le provisionnement. Leur modification exige une migration contrôlée du pipeline, des services, des connaissances, des outils et de l’agent."
     },
     "slugLabel": "Slug",
+    "slugPlaceholder": "mon-entreprise",
     "companyPlaceholder": "Ex: Mon Entreprise",
+    "catalogLoadError": "Impossible de charger le catalogue canonique des verticales et des forfaits.",
+    "createdToast": "{name} a été créé et provisionné",
+    "planUpdateError": "Les autres modifications ont été enregistrées, mais le forfait n'a pas pu être mis à jour.",
     "tenantLabel": "Tenant",
     "onboardingFunnelTitle": "Entonnoir d'integration",
     "industries": {
@@ -4071,12 +4082,13 @@
       "es-MX": "Espagnol (MX)",
       "es-ES": "Espagnol (ES)",
       "en-US": "English (US)",
-      "pt-BR": "Portugais (BR)"
+      "pt-BR": "Portugais (BR)",
+      "fr-FR": "Français (FR)"
     },
     "plans": {
       "emprendedor": "Entrepreneur",
       "starter": "Starter",
-      "professional": "Professional",
+      "pro": "Pro",
       "enterprise": "Enterprise",
       "custom": "Custom"
     },
@@ -4144,6 +4156,8 @@
     "tiktokUrl": "URL TikTok",
     "businessType": "Type d'activité",
     "businessTypeHint": "Un médecin prescrit-il le traitement ? Choisissez Santé. Sinon, Beauté et esthétique.",
+    "verticalCatalogLoading": "Chargement du catalogue des secteurs...",
+    "verticalCatalogError": "Impossible de charger le catalogue des secteurs. Rechargez la page pour réessayer.",
     "select": "Sélectionner...",
     "back": "Retour",
     "creating": "Création...",
@@ -4330,18 +4344,25 @@
       "hardware": "Matériel et réseaux",
       "peluqueria": "Toilettage canin / félin",
       "guarderia": "Garderie et pension",
+      "pet_hotel": "Hôtel pour animaux",
       "paseos": "Promenades et soins à domicile",
+      "adiestramiento": "Dressage",
       "entrenamiento": "Dressage et entraînement",
       "tienda": "Animalerie",
       "plomeria": "Plomberie",
       "electricidad": "Services électriques",
+      "fumigacion": "Désinsectisation",
       "cerrajeria": "Serrurerie",
       "limpieza": "Nettoyage professionnel",
+      "jardineria": "Jardinage",
       "pintura": "Peinture et rénovation",
       "multiservicio": "Multiservice / Général",
+      "estudio": "Studio photo",
       "bodas": "Mariages et événements",
+      "eventos": "Événements sociaux et professionnels",
       "retrato": "Portrait et book photo",
       "producto": "Photographie produit",
+      "wedding_planner": "Organisateur de mariages",
       "corporativo": "Corporate et entreprises",
       "inmobiliaria": "Photographie immobilière"
     },
@@ -4558,6 +4579,11 @@
       "servicios_hogar": "clients",
       "fotografia": "clients"
     },
+    "couponLabel": "Code promo (facultatif)",
+    "couponPlaceholder": "LANCEMENT1MOIS",
+    "couponHint": "Si vous avez un code, nous ajoutons des mois gratuits à votre essai. Vous pouvez le laisser vide.",
+    "couponApplied": "Code appliqué : {months} mois gratuit(s) ajouté(s) à votre essai",
+    "couponFailed": "Nous n'avons pas pu appliquer ce code. Votre compte a bien été créé : réessayez depuis Paramètres → Facturation.",
     "bridge": {
       "title": "Compte prêt !",
       "subtitle": "Préparation de la configuration de votre agent…"
@@ -5509,7 +5535,7 @@
     "pendingDowngradeCancel": "Garder mon plan",
     "downgradeCancelled": "Changement de plan annulé. Vous gardez votre plan actuel.",
     "couponTitle": "Code promo",
-    "couponHint": "Entrez un code promo pour une réduction ou des mois gratuits.",
+    "couponHint": "Entrez un code promo pour ajouter des mois gratuits à votre plan.",
     "redeem": "Appliquer",
     "couponRedeemed": "Code appliqué avec succès",
     "couponErrors": {
@@ -5518,7 +5544,10 @@
       "expired": "Ce code a expiré.",
       "max_redemptions_reached": "Ce code a atteint son maximum d'utilisations.",
       "plan_not_eligible": "Ce code ne s'applique pas à votre plan actuel.",
-      "already_redeemed": "Vous avez déjà utilisé ce code."
+      "already_redeemed": "Vous avez déjà utilisé ce code.",
+      "no_subscription": "Vous n'avez pas encore d'abonnement auquel appliquer ce code.",
+      "type_not_supported": "Ce code ne peut plus être utilisé. Contactez-nous et nous réglons ça.",
+      "active_provider_subscription": "Vous avez un abonnement à prélèvement automatique actif. Contactez-nous pour appliquer le code sans double facturation."
     },
     "limitReached": "Vous avez atteint la limite de {limit} {resource} de votre plan actuel ({current}/{limit}).",
     "upgradePlan": "Améliorer le plan",
@@ -5526,29 +5555,47 @@
   },
   "couponsPage": {
     "title": "Codes promo",
-    "subtitle": "Codes de réduction et mois gratuits pour campagnes marketing",
+    "subtitle": "Codes de mois gratuits pour campagnes marketing",
     "create": "Créer un code",
     "createTitle": "Nouveau code",
+    "createHint": "Le code ajoute des mois gratuits à la période d'essai du client. Il peut être utilisé à la création du compte ou depuis Paramètres → Facturation.",
+    "editTitle": "Modifier le code",
+    "editLocked": "Le code et les {months} mois gratuits ne sont pas modifiables : le code est déjà émis et compte {redemptions} utilisation(s). Pour les changer, désactivez celui-ci et créez-en un nouveau.",
+    "activeToggle": "Code actif (utilisable)",
     "deactivate": "Désactiver",
+    "reactivate": "Réactiver",
     "confirmDeactivate": "Désactiver ce code ? Il ne pourra plus être utilisé.",
     "description": "Description",
     "descriptionPlaceholder": "Ex. campagne Black Friday 2026",
     "codeHint": "3-40 caractères, lettres / chiffres / _ / -",
-    "percentLabel": "Pourcentage de réduction (1-100)",
-    "amountLabel": "Montant en centimes (USD)",
     "monthsLabel": "Mois gratuits (1-24)",
-    "cyclesLabel": "{n} cycles",
-    "cyclesLabel2": "Durée (cycles de facturation)",
-    "cyclesPlaceholder": "Vide = pour toujours",
     "maxRedemptions": "Utilisations max",
     "unlimited": "Illimité",
     "expiresAt": "Expire le",
     "months": "mois",
-    "forever": "pour toujours",
+    "legacyBadge": "Non utilisable",
+    "legacyHint": "Les codes en pourcentage et à montant fixe n'ont jamais réduit le prélèvement réel. Ils restent dans l'historique mais ne peuvent plus être utilisés.",
+    "statusExpired": "Expiré",
+    "statusExhausted": "Épuisé",
+    "viewRedemptions": "Voir les utilisations",
+    "redemptionsTitle": "Utilisations",
+    "redemptionsEmpty": "Personne n'a encore utilisé ce code.",
+    "tenantDeleted": "Compte supprimé",
     "type": {
       "percent_off": "% de réduction",
       "amount_off": "Montant fixe",
       "free_months": "Mois gratuits"
+    },
+    "source": {
+      "onboarding": "À la création du compte",
+      "billing_settings": "Depuis Facturation",
+      "admin": "Appliqué par le support"
+    },
+    "errors": {
+      "invalid_code": "Le code doit faire 3-40 caractères : lettres, chiffres, _ ou -.",
+      "invalid_months": "Les mois gratuits doivent être entre 1 et 24.",
+      "code_already_exists": "Un code avec cet identifiant existe déjà.",
+      "type_not_supported": "Seuls les codes de mois gratuits peuvent être émis."
     },
     "col": {
       "code": "Code",
@@ -5556,7 +5603,10 @@
       "value": "Valeur",
       "redemptions": "Utilisations",
       "expires": "Expire",
-      "status": "Statut"
+      "status": "Statut",
+      "tenant": "Compte",
+      "source": "Origine",
+      "redeemedAt": "Date"
     },
     "empty": {
       "title": "Aucun code créé",
@@ -6484,14 +6534,16 @@
       ]
     },
     "coupons": {
-      "title": "Comment créer et gérer des coupons de réduction ?",
-      "description": "Les coupons sont des codes de réduction que vous pouvez créer et distribuer à des clients ou partenaires pour réduire le prix des plans Parallly ; ils supportent trois types : pourcentage de réduction, montant fixe et mois gratuits. Cette section est réservée aux super administrateurs et vous permet de contrôler la validité, la limite d'utilisations et les plans auxquels chaque coupon s'applique.",
+      "title": "Comment créer et gérer des coupons de mois gratuits ?",
+      "description": "Les coupons sont des codes qui offrent des mois gratuits : ils prolongent la période d'essai du client sans facturation. Distribuez-les en campagne — le client les utilise à la création du compte ou depuis Paramètres → Facturation. Cette section est réservée aux super administrateurs et vous permet de contrôler la validité, la limite d'utilisations et de voir qui a utilisé chaque coupon.",
       "tips": [
-        "Cliquez sur 'Créer un coupon' et saisissez un code en majuscules sans espaces (par exemple, 'LAUNCH50') pour le rendre facile à partager et à mémoriser.",
-        "Choisissez le type de coupon selon votre stratégie : 'Pourcentage de réduction' pour des remises relatives (par exemple, 20 % off), 'Montant fixe' pour soustraire un montant exact (par exemple, $10), ou 'Mois gratuits' pour offrir des périodes d'abonnement complètes.",
-        "Utilisez le champ 'Maximum d'utilisations' pour limiter la disponibilité ; par exemple, entrez 50 si c'est une promotion de lancement ne devant pas dépasser ce nombre de rachats.",
+        "Cliquez sur 'Créer un coupon' et saisissez un code en majuscules sans espaces (par exemple, 'LANCEMENT1MOIS') pour le rendre facile à partager et à mémoriser.",
+        "Définissez les 'Mois gratuits' offerts par le code : 1 mois est le choix habituel pour les campagnes d'acquisition. Le client démarre avec 7 jours d'essai, donc un coupon d'1 mois lui laisse environ 37 jours sans payer.",
+        "Utilisez le champ 'Utilisations max' pour limiter la disponibilité ; par exemple, entrez 50 si c'est une promotion de lancement ne devant pas dépasser ce nombre d'utilisations.",
         "Définissez une 'Date d'expiration' pour les coupons de campagne limités dans le temps ; le code cessera de fonctionner automatiquement à la date choisie sans désactivation manuelle.",
-        "Quand un coupon ne doit plus accepter de nouveaux usages, cliquez sur l'icône 'Désactiver' (bouton rouge dans la ligne) pour le marquer comme inactif sans le supprimer ; cela conserve l'historique des rachats dans la colonne 'Utilisations'."
+        "Cliquez sur le nombre dans la colonne 'Utilisations' pour voir quels comptes ont utilisé le coupon, depuis où et quand.",
+        "Quand un coupon ne doit plus accepter de nouvelles utilisations, cliquez sur l'icône rouge 'Désactiver' pour le marquer comme inactif sans le supprimer ; l'historique est conservé et vous pouvez toujours le réactiver.",
+        "Un coupon ne peut pas être utilisé si le client a déjà un prélèvement automatique actif sur MercadoPago : prolonger sa date localement n'arrête pas ce prélèvement, il recevrait les deux. Annulez d'abord l'abonnement ou gérez le crédit manuellement."
       ]
     },
     "identity": {

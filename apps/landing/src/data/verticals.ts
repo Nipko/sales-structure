@@ -14,10 +14,11 @@ export interface VerticalDef {
   tier: VerticalTier;
   cluster: VerticalCluster;
   channel: "whatsapp" | "instagram" | "messenger" | "telegram";
+  demoMode: "illustrative";
   demoMessages: { from: "customer" | "ai"; text: string }[];
 }
 
-export const VERTICALS: VerticalDef[] = [
+export const VERTICALS: VerticalDef[] = ([
   // ── Tier 1 (8): Full industry pages with pipeline demos ──
   {
     slug: "salud",
@@ -59,9 +60,9 @@ export const VERTICALS: VerticalDef[] = [
     channel: "whatsapp",
     demoMessages: [
       { from: "customer", text: "Hola, busco apto en arriendo en Chapinero" },
-      { from: "ai", text: "¡Hola! Soy Carlos, tu asesor inmobiliario. Tenemos 12 opciones en Chapinero. ¿Cuál es tu presupuesto mensual?" },
+      { from: "ai", text: "¡Hola! Soy Carlos, tu asesor inmobiliario. Puedo filtrar las propiedades publicadas. ¿Cuál es tu presupuesto mensual?" },
       { from: "customer", text: "Entre 2 y 3 millones" },
-      { from: "ai", text: "Tengo 5 aptos en ese rango. Te paso las fichas con fotos. ¿Quieres agendar visita para este sábado?" },
+      { from: "ai", text: "Perfecto. Buscaré coincidencias en el inventario del negocio y te compartiré las fichas disponibles. ¿Quieres que revisemos horarios de visita?" },
     ],
   },
   {
@@ -136,7 +137,7 @@ export const VERTICALS: VerticalDef[] = [
       { from: "customer", text: "Necesito cotización de seguro auto" },
       { from: "ai", text: "¡Hola! Soy Roberto 🛡️ Con gusto te cotizo. ¿Marca, modelo y año del vehículo?" },
       { from: "customer", text: "Mazda CX-5 2023" },
-      { from: "ai", text: "Tengo 3 opciones: Básico $89k/mes, Completo $145k/mes, Premium $210k/mes (todo riesgo). ¿Cuál te interesa?" },
+      { from: "ai", text: "Con esos datos puedo consultar las opciones y coberturas cargadas por la agencia. La cotización final la confirma un asesor autorizado. ¿Continuamos?" },
     ],
   },
 
@@ -153,7 +154,7 @@ export const VERTICALS: VerticalDef[] = [
       { from: "customer", text: "Mi perrito necesita vacunas" },
       { from: "ai", text: "¡Hola! Soy Toby 🐾 ¿Qué raza y edad tiene? Así verifico el esquema de vacunación." },
       { from: "customer", text: "Golden Retriever, 3 meses" },
-      { from: "ai", text: "Le toca la triple y la parvovirus. Tenemos cupo mañana a las 11am. ¿Te agendo?" },
+      { from: "ai", text: "Gracias. El esquema debe validarlo el equipo veterinario según su historia clínica. Puedo ayudarte a solicitar una cita. ¿Quieres ver horarios?" },
     ],
   },
   {
@@ -181,9 +182,9 @@ export const VERTICALS: VerticalDef[] = [
     channel: "whatsapp",
     demoMessages: [
       { from: "customer", text: "Hola, necesito revisión de frenos" },
-      { from: "ai", text: "¡Hola! Soy Mech 🚗 La revisión de frenos cuesta $85k (incluye diagnóstico). ¿Qué vehículo tienes?" },
+      { from: "ai", text: "¡Hola! Soy Mech 🚗 Puedo registrar la solicitud y consultar los servicios configurados. ¿Qué vehículo tienes?" },
       { from: "customer", text: "Renault Sandero 2021" },
-      { from: "ai", text: "Tengo cupo mañana a las 2pm. Demora aprox 1h. ¿Te agendo?" },
+      { from: "ai", text: "Gracias. Puedo consultar los horarios disponibles para una revisión. ¿Qué día prefieres?" },
     ],
   },
   {
@@ -198,7 +199,7 @@ export const VERTICALS: VerticalDef[] = [
       { from: "customer", text: "Se me tapó el desagüe, urgente" },
       { from: "ai", text: "Entendido 🚨 Soy Iván. ¿Dirección para enviar técnico?" },
       { from: "customer", text: "Calle 50 #15-20" },
-      { from: "ai", text: "Carlos llega en 35min. Te aviso cuando salga. Costo estimado: $60k-$120k." },
+      { from: "ai", text: "Gracias. Registraré la urgencia y consultaré disponibilidad y tarifa con el equipo técnico antes de confirmar la visita. ¿Te parece?" },
     ],
   },
   {
@@ -213,7 +214,7 @@ export const VERTICALS: VerticalDef[] = [
       { from: "customer", text: "Hola, necesito asesoría para invertir" },
       { from: "ai", text: "¡Hola! Soy Alex 💰 ¿Cuál es tu perfil: conservador, moderado o agresivo? ¿Y monto aproximado?" },
       { from: "customer", text: "Moderado, unos 20 millones" },
-      { from: "ai", text: "Tengo 3 opciones para tu perfil. ¿Te agendo una llamada con un asesor certificado?" },
+      { from: "ai", text: "Puedo recopilar tus objetivos y coordinar una conversación con un asesor autorizado. Las recomendaciones las confirma el asesor. ¿Quieres agendar?" },
     ],
   },
 
@@ -245,7 +246,7 @@ export const VERTICALS: VerticalDef[] = [
       { from: "customer", text: "Hola, necesito soporte con mi software" },
       { from: "ai", text: "¡Hola! ¿Es un problema técnico o quieres info sobre planes y servicios?" },
       { from: "customer", text: "Problema técnico, no puedo iniciar sesión" },
-      { from: "ai", text: "Entendido. Te genero un ticket de soporte prioritario. Un técnico te contacta en 15min." },
+      { from: "ai", text: "Entendido. Puedo recopilar los datos para que el equipo de soporte continúe el caso. ¿Qué correo está asociado a tu cuenta?" },
     ],
   },
   {
@@ -275,7 +276,7 @@ export const VERTICALS: VerticalDef[] = [
       { from: "customer", text: "Hola, necesito guardería para mi perro" },
       { from: "ai", text: "¡Hola! ¿Para qué fechas y qué raza es tu peludo?" },
       { from: "customer", text: "Del viernes al domingo, es un Beagle" },
-      { from: "ai", text: "Tenemos cupo 🎉 $45k/noche incluye paseos y alimentación. ¿Te reservo?" },
+      { from: "ai", text: "Perfecto. Consultaré disponibilidad, condiciones y tarifa configuradas por la guardería antes de confirmar. ¿Tu perro necesita cuidados especiales?" },
     ],
   },
   {
@@ -293,7 +294,10 @@ export const VERTICALS: VerticalDef[] = [
       { from: "ai", text: "Perfecto. Te paso las opciones disponibles. ¿Prefieres que te agende una llamada?" },
     ],
   },
-];
+] satisfies Omit<VerticalDef, "demoMode">[]).map((vertical) => ({
+  ...vertical,
+  demoMode: "illustrative" as const,
+}));
 
 export const CLUSTER_LABELS: Record<VerticalCluster, string> = {
   "salud-bienestar": "clusterHealth",

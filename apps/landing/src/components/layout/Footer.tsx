@@ -14,9 +14,9 @@ export function Footer() {
           <div className="col-span-2 md:col-span-1">
             <img src="/parallly-logo.svg" alt="Parallly" className="h-9 w-auto mb-4" />
             <p className="text-text-muted text-sm leading-relaxed">{t("footerBrandDesc")}</p>
-            <div className="mt-5 space-y-3">
-              <img src="/logos/meta-tech-provider.svg" alt="Meta Tech Provider" className="h-7 w-auto" />
-              <img src="/logos/mercadopago.svg" alt="MercadoPago Partner" className="h-7 w-auto" />
+            <div className="mt-5 space-y-2 text-xs text-text-muted">
+              <p>{t("footerMetaIntegration")}</p>
+              <p>{t("footerPaymentIntegration")}</p>
             </div>
           </div>
 

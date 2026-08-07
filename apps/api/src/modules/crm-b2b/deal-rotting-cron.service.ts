@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CronLockService } from '../redis/cron-lock.service';
 
 const DEFAULT_ROTTING_DAYS = 14;
-const OPEN = `stage NOT IN ('ganado', 'perdido', 'no_interesado')`;
+const OPEN = `won_at IS NULL AND o.lost_at IS NULL`;
 
 /**
  * Deal rotting detector (T3.21). Every 6h, flags open opportunities with no

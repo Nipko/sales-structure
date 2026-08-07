@@ -28,9 +28,10 @@ export class PushController {
     @Post('unsubscribe')
     @ApiOperation({ summary: 'Remove push notification subscription' })
     async unsubscribe(
+        @CurrentUser() user: any,
         @Body() body: { endpoint: string },
     ) {
-        await this.pushService.unsubscribe(body.endpoint);
+        await this.pushService.unsubscribe(user.id || user.sub, user.tenantId, body.endpoint);
         return { success: true };
     }
 

@@ -4,13 +4,14 @@ import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { Section } from "../ui/Section";
 import { CountUp } from "../ui/CountUp";
+import { PRODUCT_CAPABILITY_COUNTS } from "../../data/product-capabilities";
 
 const STATS = [
-  { num: 2_000_000, suffix: "+", labelKey: "stat1Label" },
-  { num: 70, suffix: "%", labelKey: "stat5Label" },
-  { num: 4.9, suffix: "/5", labelKey: "stat2Label" },
-  { num: 45, suffix: "%", labelKey: "stat3Label" },
-  { num: 18, suffix: "", labelKey: "stat4Label" },
+  { num: PRODUCT_CAPABILITY_COUNTS.verticals, suffix: "", labelKey: "stat1Label" },
+  { num: PRODUCT_CAPABILITY_COUNTS.channels, suffix: "", labelKey: "stat2Label" },
+  { num: PRODUCT_CAPABILITY_COUNTS.interfaceLanguages, suffix: "", labelKey: "stat3Label" },
+  { num: PRODUCT_CAPABILITY_COUNTS.knowledgeTiers, suffix: "", labelKey: "stat4Label" },
+  { num: PRODUCT_CAPABILITY_COUNTS.promptLayers, suffix: "", labelKey: "stat5Label" },
 ] as const;
 
 export function StatsCounter() {

@@ -4,6 +4,8 @@ import { ModelTier, RoutingFactors, RoutingDecision } from '@parallext/shared';
 import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
 import { RedisService } from '../../redis/redis.service';
 import { LlmKeyService } from '../../settings/llm-key.service';
+import type { ServiceExecutionContext } from '../../../common/types/execution-context';
+import { persistenceDisabled } from '../../../common/types/execution-context';
 
 type TaskType = 'conversation' | 'tool_calling';
 
@@ -248,6 +250,7 @@ export class LLMRouterService {
     private async buildCandidates(
         task: TaskType,
         allowedTiers: ModelTier[],
+        executionContext?: ServiceExecutionContext,
     ): Promise<ModelConfig[]> {
         const chain = FALLBACK_CHAINS[task];
         const allConfigs = chain
@@ -263,7 +266,12 @@ export class LLMRouterService {
             if (await this.llmKeys.isConfigured(p)) configuredProviders.add(p);
         }
 
-        const unhealthy = await this.getUnhealthyProviders([...new Set(eligible.map(m => m.provider))]);
+        // Agent Test must not consult or mutate runtime Redis state. Provider
+        // failures still fall through within this one request, but they neither
+        // inherit nor affect production circuit-breaker/TTFT state.
+        const unhealthy = persistenceDisabled(executionContext)
+            ? new Set<string>()
+            : await this.getUnhealthyProviders([...new Set(eligible.map(m => m.provider))]);
         const available = eligible.filter(m =>
             configuredProviders.has(m.provider) && !unhealthy.has(m.provider),
         );
@@ -311,11 +319,14 @@ export class LLMRouterService {
         allowedTiers?: ModelTier[];
         tenantId?: string;
         traceContext?: { conversationId?: string; kbSources?: string[]; stage?: string };
+        executionContext?: ServiceExecutionContext;
     }): Promise<LLMResponse & { routingDecision?: RoutingDecision }> {
+
+        const noPersistence = persistenceDisabled(options.executionContext);
 
         if (options.task) {
             const allowedTiers = options.allowedTiers || ALL_TIERS;
-            let candidates = await this.buildCandidates(options.task, allowedTiers);
+            let candidates = await this.buildCandidates(options.task, allowedTiers, options.executionContext);
 
             if (candidates.length === 0) {
                 throw new Error('No LLM provider is configured — set at least one API key from the super admin dashboard');
@@ -358,7 +369,7 @@ export class LLMRouterService {
             // unconfigured, breaker open, or context too small) it's silently absent
             // and normal tier order applies. Never overrides the breaker.
             const convId = options.traceContext?.conversationId;
-            const affinity = await this.getAffinity(convId);
+            const affinity = noPersistence ? null : await this.getAffinity(convId);
             if (affinity) {
                 const stickyIdx = candidates.findIndex(c => c.provider === affinity.provider && c.id === affinity.model);
                 if (stickyIdx > 0) {
@@ -390,9 +401,11 @@ export class LLMRouterService {
                     // Remember this provider+model for the conversation's next turn (cache
                     // warmth) — but NOT when it was an out-of-plan escalation, or the sticky
                     // would keep pinning a premium model ahead of healthy in-plan ones.
-                    if (!escalated) this.setAffinity(convId, candidate.provider, candidate.id).catch(() => {});
-                    this.trackStats(options.tenantId, candidate, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
-                    this.emitTurnTrace(options, candidate, durationMs, response, escalated, options.task);
+                    if (!noPersistence) {
+                        if (!escalated) this.setAffinity(convId, candidate.provider, candidate.id).catch(() => {});
+                        this.trackStats(options.tenantId, candidate, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
+                        this.emitTurnTrace(options, candidate, durationMs, response, escalated, options.task);
+                    }
 
                     const decision: RoutingDecision = {
                         selectedTier: candidate.tier,
@@ -414,20 +427,24 @@ export class LLMRouterService {
                     return { ...response, routingDecision: decision };
                 } catch (err: any) {
                     const durationMs = Date.now() - startTime;
-                    this.trackStats(options.tenantId, candidate, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
-                    await this.markProviderFailure(candidate.provider, err);
+                    if (!noPersistence) {
+                        this.trackStats(options.tenantId, candidate, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
+                        await this.markProviderFailure(candidate.provider, err);
+                    }
                     lastError = err;
                     this.logger.warn(`[LLM] ${candidate.provider}/${candidate.id} failed: ${err.message} — trying next`);
                 }
             }
 
-            this.eventEmitter.emit('llm.provider.alert', {
-                provider: 'all',
-                severity: 'critical',
-                failures: candidates.length,
-                error: `All ${candidates.length} LLM providers failed. Last: ${lastError?.message}`,
-                timestamp: new Date().toISOString(),
-            });
+            if (!noPersistence) {
+                this.eventEmitter.emit('llm.provider.alert', {
+                    provider: 'all',
+                    severity: 'critical',
+                    failures: candidates.length,
+                    error: `All ${candidates.length} LLM providers failed. Last: ${lastError?.message}`,
+                    timestamp: new Date().toISOString(),
+                });
+            }
 
             throw lastError || new Error('All LLM providers failed');
         }
@@ -441,7 +458,11 @@ export class LLMRouterService {
             // Unknown/unspecified model — don't blindly pick the premium
             // MODEL_REGISTRY[0]. Use the best CONFIGURED + healthy model from the
             // conversation chain so we never dispatch to an unconfigured provider.
-            const fallbackCandidates = await this.buildCandidates('conversation', ALL_TIERS);
+            const fallbackCandidates = await this.buildCandidates(
+                'conversation',
+                ALL_TIERS,
+                options.executionContext,
+            );
             modelConfig = fallbackCandidates[0] || MODEL_REGISTRY[0];
             this.logger.warn(`Model ${options.model || '(none)'} not in registry, falling back to ${modelConfig.id}`);
         }
@@ -456,12 +477,16 @@ export class LLMRouterService {
             const response = await provider.generate(reqOptions);
             const durationMs = Date.now() - startTime;
             this.logger.log(`[LLM] Direct via ${provider.providerName} (${modelConfig.id}) in ${durationMs}ms`);
-            this.trackStats(options.tenantId, modelConfig, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
-            this.emitTurnTrace(options, modelConfig, durationMs, response, false, undefined);
+            if (!noPersistence) {
+                this.trackStats(options.tenantId, modelConfig, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
+                this.emitTurnTrace(options, modelConfig, durationMs, response, false, undefined);
+            }
             return { ...response };
         } catch (e: any) {
             const durationMs = Date.now() - startTime;
-            this.trackStats(options.tenantId, modelConfig, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
+            if (!noPersistence) {
+                this.trackStats(options.tenantId, modelConfig, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
+            }
             throw e;
         }
     }

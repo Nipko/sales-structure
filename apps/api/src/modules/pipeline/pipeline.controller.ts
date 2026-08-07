@@ -58,6 +58,7 @@ export class PipelineController {
         @Body() body: {
             name: string; color: string; defaultProbability?: number;
             slug?: string; slaHours?: number; isTerminal?: boolean;
+            terminalOutcome?: 'won' | 'lost';
         },
     ) {
         await this.pipelineService.createStage(tenantId, body);

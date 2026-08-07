@@ -1,9 +1,19 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { Cron } from '@nestjs/schedule';
 import { CronLockService } from '../redis/cron-lock.service';
+import {
+    OUTBOUND_MAX_REQUEST_BYTES,
+    OUTBOUND_MAX_RESPONSE_BYTES,
+    type PinnedHttpsTarget,
+    isUnsafeHostname,
+    parseSafeHttpsUrl,
+    pinSafeHttpsUrl,
+    safeAxiosOptions,
+} from '../../common/utils/safe-outbound-url.util';
 
 export type VerticalProvider = 'toast' | 'mindbody' | 'cliniko';
 
@@ -33,6 +43,16 @@ export type VerticalIntegrationConfig = ToastConfig | MindbodyConfig | ClinikoCo
 
 const PROVIDERS: VerticalProvider[] = ['toast', 'mindbody', 'cliniko'];
 const CONNECTED_CACHE_TTL = 300;
+const PROVIDER_ALLOWLIST_CONFIG: Partial<Record<VerticalProvider, string>> = {
+    toast: 'VERTICAL_INTEGRATIONS_TOAST_ALLOWED_HOSTS',
+    cliniko: 'VERTICAL_INTEGRATIONS_CLINIKO_ALLOWED_HOSTS',
+};
+const STATIC_PROVIDER_HTTP_LIMITS = {
+    maxRedirects: 0,
+    maxContentLength: OUTBOUND_MAX_RESPONSE_BYTES,
+    maxBodyLength: OUTBOUND_MAX_REQUEST_BYTES,
+    proxy: false as const,
+};
 
 /**
  * Real vertical integrations (T3.19) — "thin vertical, deep horizontal".
@@ -54,7 +74,84 @@ export class VerticalIntegrationsService {
         private readonly redis: RedisService,
         private readonly http: HttpService,
         private readonly cronLock: CronLockService,
+        private readonly appConfig: ConfigService,
     ) {}
+
+    /**
+     * Validates tenant-configurable provider endpoints before they are stored or
+     * used. The official provider namespace is the default allowlist; operators
+     * may add exact public hostnames through the provider-specific env vars.
+     * Wildcards, URLs and IP literals are deliberately not accepted there.
+     */
+    private normalizeProviderEndpoint(provider: 'toast' | 'cliniko', rawValue: unknown): URL {
+        const parsed = parseSafeHttpsUrl(rawValue, provider);
+        if (parsed.search || parsed.hash) {
+            throw new BadRequestException(`La URL de ${provider} no puede incluir query ni fragmento`);
+        }
+
+        const hostname = parsed.hostname.toLowerCase();
+        if (!this.isAllowedProviderHostname(provider, hostname)) {
+            throw new BadRequestException(`Hostname de ${provider} no permitido`);
+        }
+
+        if (provider === 'toast' && parsed.pathname !== '/') {
+            throw new BadRequestException('El hostname de Toast no puede incluir una ruta');
+        }
+        const normalizedPath = parsed.pathname.replace(/\/+$/, '') || '/';
+        if (provider === 'cliniko' && normalizedPath !== '/v1') {
+            throw new BadRequestException('La URL base de Cliniko debe terminar en /v1');
+        }
+
+        parsed.pathname = provider === 'toast' ? '/' : '/v1';
+        return parsed;
+    }
+
+    private providerBaseUrl(provider: 'toast' | 'cliniko', target: PinnedHttpsTarget): string {
+        return provider === 'toast' ? target.url.origin : `${target.url.origin}/v1`;
+    }
+
+    private async prepareProviderEndpoint(
+        provider: 'toast' | 'cliniko',
+        rawValue: unknown,
+    ): Promise<{ baseUrl: string; target: PinnedHttpsTarget }> {
+        const target = await pinSafeHttpsUrl(this.normalizeProviderEndpoint(provider, rawValue), provider);
+        return { baseUrl: this.providerBaseUrl(provider, target), target };
+    }
+
+    private async validateProviderEndpoint(provider: 'toast' | 'cliniko', rawValue: unknown): Promise<string> {
+        return (await this.prepareProviderEndpoint(provider, rawValue)).baseUrl;
+    }
+
+    private isAllowedProviderHostname(provider: 'toast' | 'cliniko', hostname: string): boolean {
+        const official = provider === 'toast'
+            ? hostname.endsWith('.toasttab.com')
+            : /^api\.[a-z]{2}\d{1,2}\.cliniko\.com$/i.test(hostname);
+        if (official) return true;
+
+        const configKey = PROVIDER_ALLOWLIST_CONFIG[provider];
+        const configured = configKey ? this.appConfig.get<string>(configKey, '') : '';
+        return configured
+            .split(',')
+            .map((entry) => entry.trim().toLowerCase())
+            .filter((entry) => this.isSafeConfiguredHostname(entry))
+            .includes(hostname);
+    }
+
+    private isSafeConfiguredHostname(hostname: string): boolean {
+        if (!hostname || hostname.includes('://') || hostname.includes('*')) return false;
+        if (!/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(hostname)) {
+            return false;
+        }
+        return !isUnsafeHostname(hostname);
+    }
+
+    private validateClinikoIdentifier(rawValue: unknown, label: string): string {
+        const value = typeof rawValue === 'string' ? rawValue.trim() : '';
+        if (!/^[a-zA-Z0-9_-]{1,128}$/.test(value)) {
+            throw new BadRequestException(`Identificador de ${label} invalido`);
+        }
+        return value;
+    }
 
     // ── Config (tenant.settings) ─────────────────────────────
     async getConfig(tenantId: string, provider: VerticalProvider): Promise<any | null> {
@@ -88,6 +185,17 @@ export class VerticalIntegrationsService {
         for (const secretKey of ['clientSecret', 'apiKey', 'password']) {
             if (cfgAny[secretKey] === '***' || cfgAny[secretKey] === undefined) {
                 merged[secretKey] = current[secretKey];
+            }
+        }
+        if (provider === 'toast') {
+            merged.hostname = await this.validateProviderEndpoint('toast', merged.hostname);
+        } else if (provider === 'cliniko') {
+            merged.baseUrl = await this.validateProviderEndpoint('cliniko', merged.baseUrl);
+            if (merged.businessId) {
+                merged.businessId = this.validateClinikoIdentifier(merged.businessId, 'negocio Cliniko');
+            }
+            if (merged.practitionerId) {
+                merged.practitionerId = this.validateClinikoIdentifier(merged.practitionerId, 'profesional Cliniko');
             }
         }
         await this.prisma.tenant.update({
@@ -264,13 +372,17 @@ export class VerticalIntegrationsService {
             if (provider === 'toast') { await this.toastToken(config); return { ok: true }; }
             if (provider === 'mindbody') {
                 await this.http.axiosRef.get('https://api.mindbodyonline.com/public/v6/site/sites', {
-                    headers: { 'Api-Key': config.apiKey, SiteId: config.siteId }, timeout: 15000,
+                    ...STATIC_PROVIDER_HTTP_LIMITS,
+                    headers: { 'Api-Key': config.apiKey, SiteId: config.siteId },
+                    timeout: 15000,
                 });
                 return { ok: true };
             }
             if (provider === 'cliniko') {
-                await this.http.axiosRef.get(`${config.baseUrl.replace(/\/$/, '')}/appointment_types?per_page=1`, {
-                    headers: this.clinikoHeaders(config), timeout: 15000,
+                const { baseUrl, target } = await this.prepareProviderEndpoint('cliniko', config.baseUrl);
+                await this.http.axiosRef.get(`${baseUrl}/appointment_types?per_page=1`, {
+                    ...safeAxiosOptions(target, 15000),
+                    headers: this.clinikoHeaders(config),
                 });
                 return { ok: true };
             }
@@ -282,10 +394,11 @@ export class VerticalIntegrationsService {
 
     // ── Toast (restaurantes) ─────────────────────────────────
     private async toastToken(config: ToastConfig): Promise<string> {
+        const { baseUrl: hostname, target } = await this.prepareProviderEndpoint('toast', config.hostname);
         const res = await this.http.axiosRef.post(
-            `${config.hostname.replace(/\/$/, '')}/authentication/v1/authentication/login`,
+            `${hostname}/authentication/v1/authentication/login`,
             { clientId: config.clientId, clientSecret: config.clientSecret, userAccessType: 'TOAST_MACHINE_CLIENT' },
-            { timeout: 15000 },
+            safeAxiosOptions(target, 15000),
         );
         const token = res.data?.token?.accessToken;
         if (!token) throw new Error('Toast no devolvió token');
@@ -294,9 +407,10 @@ export class VerticalIntegrationsService {
 
     private async syncToast(schemaName: string, config: ToastConfig): Promise<{ synced: number }> {
         const token = await this.toastToken(config);
-        const res = await this.http.axiosRef.get(`${config.hostname.replace(/\/$/, '')}/menus/v2/menus`, {
+        const { baseUrl: hostname, target } = await this.prepareProviderEndpoint('toast', config.hostname);
+        const res = await this.http.axiosRef.get(`${hostname}/menus/v2/menus`, {
+            ...safeAxiosOptions(target, 30000),
             headers: { Authorization: `Bearer ${token}`, 'Toast-Restaurant-External-ID': config.locationGuid },
-            timeout: 30000,
         });
         const menus = res.data?.menus || res.data || [];
         let synced = 0;
@@ -327,6 +441,7 @@ export class VerticalIntegrationsService {
         const now = new Date();
         const end = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
         const res = await this.http.axiosRef.get('https://api.mindbodyonline.com/public/v6/class/classes', {
+            ...STATIC_PROVIDER_HTTP_LIMITS,
             headers: this.mindbodyHeaders(config),
             params: { StartDateTime: now.toISOString(), EndDateTime: end.toISOString(), Limit: 200 },
             timeout: 30000,
@@ -359,8 +474,10 @@ export class VerticalIntegrationsService {
     }
 
     private async syncCliniko(schemaName: string, config: ClinikoConfig): Promise<{ synced: number }> {
-        const res = await this.http.axiosRef.get(`${config.baseUrl.replace(/\/$/, '')}/appointment_types?per_page=100`, {
-            headers: this.clinikoHeaders(config), timeout: 30000,
+        const { baseUrl, target } = await this.prepareProviderEndpoint('cliniko', config.baseUrl);
+        const res = await this.http.axiosRef.get(`${baseUrl}/appointment_types?per_page=100`, {
+            ...safeAxiosOptions(target, 30000),
+            headers: this.clinikoHeaders(config),
         });
         const types = res.data?.appointment_types || [];
         let synced = 0;
@@ -389,9 +506,15 @@ export class VerticalIntegrationsService {
         const fromDate = from || new Date().toISOString().split('T')[0];
         const toDate = to || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         try {
-            const url = `${config.baseUrl.replace(/\/$/, '')}/businesses/${config.businessId}/practitioners/${config.practitionerId}/appointment_types/${appointmentTypeId}/available_times`;
+            const businessId = encodeURIComponent(this.validateClinikoIdentifier(config.businessId, 'negocio Cliniko'));
+            const practitionerId = encodeURIComponent(this.validateClinikoIdentifier(config.practitionerId, 'profesional Cliniko'));
+            const safeAppointmentTypeId = encodeURIComponent(this.validateClinikoIdentifier(appointmentTypeId, 'tipo de cita Cliniko'));
+            const { baseUrl, target } = await this.prepareProviderEndpoint('cliniko', config.baseUrl);
+            const url = `${baseUrl}/businesses/${businessId}/practitioners/${practitionerId}/appointment_types/${safeAppointmentTypeId}/available_times`;
             const res = await this.http.axiosRef.get(url, {
-                headers: this.clinikoHeaders(config), params: { from: fromDate, to: toDate }, timeout: 20000,
+                ...safeAxiosOptions(target, 20000),
+                headers: this.clinikoHeaders(config),
+                params: { from: fromDate, to: toDate },
             });
             const times = (res.data?.available_times || []).slice(0, 20).map((t: any) => t.appointment_start);
             return { availableTimes: times };

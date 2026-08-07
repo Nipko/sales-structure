@@ -21,6 +21,7 @@ import { AIModule } from '../ai/ai.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { CrmModule } from '../crm/crm.module';
+import { PipelineModule } from '../pipeline/pipeline.module';
 
 @Module({
     imports: [
@@ -31,6 +32,7 @@ import { CrmModule } from '../crm/crm.module';
         forwardRef(() => ChannelsModule),
         AnalyticsModule,
         CrmModule,
+        PipelineModule,
         HttpModule.register({ timeout: 10_000 }),
         BullModule.registerQueue({ name: NURTURING_QUEUE }),
         BullModule.registerQueue({ name: AUTOMATION_JOBS_QUEUE }),

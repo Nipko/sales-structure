@@ -84,7 +84,7 @@ On the same **Billing** page, the **Invoice history** section shows your latest 
 
 ## Promotional coupons
 
-If you received a promo code, in **Billing** look for the **Coupon code** section, paste the code and click **Apply**. There are percentage-discount, fixed-amount and free-months coupons (which extend your trial). If the coupon doesn't go through, the message will tell you why (expired, already used, not valid for your plan, etc.).
+If you received a promo code you can use it at two moments: when **creating your account** ("Promo code" field in the first step) or later, in **Billing** → **Coupon code** section: paste the code and click **Apply**. Coupons add free months to your trial period. If the coupon doesn't go through, the message will tell you why (expired, already used, not valid for your plan, etc.).
 
 ## SMS credits (notifications to your customers)
 

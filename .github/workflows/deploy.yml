@@ -94,6 +94,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Marketing claims contract
+        run: cd apps/landing && npm run check:claims
+
       - name: TypeScript check (all apps)
         run: |
           (cd apps/api && npx tsc --noEmit)
@@ -105,16 +108,21 @@ jobs:
         continue-on-error: true
         run: cd apps/api && npx eslint "src/**/*.ts"
 
-      - name: MercadoPago collector and plan contract tests
+      # El gate de MercadoPago salió del deploy (ago 2026). MP rechazó al collector
+      # (`rejected_by_regulations_collector_non_compliant`), así que la integración no
+      # es viable por ahora y no tiene sentido que un deploy de cualquier parte del
+      # producto dependa de sus tests de contrato. Los specs de MP siguen en el repo
+      # —`mercadopago-config.service.spec.ts`, `mercadopago.adapter.spec.ts`,
+      # `diagnose-mp-collector.spec.ts` y `scripts/__tests__/sync-mp-plans.test.js`—
+      # y se corren a mano cuando se retome la pasarela (ver
+      # `docs/pasarela-wompi-research-2026-08.md` para la alternativa en evaluación).
+      # Los contratos de billing que NO dependen de MP sí siguen bloqueando el deploy.
+      - name: Billing contract tests (sin MercadoPago)
         run: |
           cd apps/api
           npm test -- --runInBand \
-            src/modules/billing/adapters/mercadopago-config.service.spec.ts \
-            src/modules/billing/adapters/mercadopago.adapter.spec.ts \
             src/modules/billing/billing-plan-display.util.spec.ts \
-            src/modules/billing/billing.service.spec.ts \
-            src/scripts/diagnose-mp-collector.spec.ts
-          node --test scripts/__tests__/sync-mp-plans.test.js
+            src/modules/billing/billing.service.spec.ts
 
       - name: Prisma generate + migrate (ephemeral DB)
         run: |
@@ -779,61 +787,29 @@ jobs:
             echo "===> [4/4] Ensuring tunnel is running..."
             $DC up -d tunnel
 
-            # External provider provisioning runs after the rolling restart.
-            # If Mercado Pago rejects a plan, the workflow stays red, but the
-            # long-lived API/worker still receive this SHA and any rotated
-            # webhook credential instead of remaining on stale runtime state.
-            echo "===> Runtime SHA ${GIT_SHA} is active; validating MercadoPago collector (Colombia / MCO)..."
-            # Read-only preflight against /users/me, user status/permissions,
-            # and preapproval plan search. The app infers production mode from
-            # APP_USR, but that prefix does not prove country or write eligibility.
-            # MP_EXPECTED_COLLECTOR_ID additionally pins the exact merchant when
-            # configured; when empty, the report emits a non-blocking warning.
-            # Never attempt a plan write for another site or while the account
-            # reports a global status blocker. Mercado Libre billing/sell/list
-            # flags are warnings: the plan sync POST is the authoritative write
-            # eligibility check for the Subscriptions product.
-            $DC \
-              run --rm api node scripts/diagnose-mp-collector.js --expected-site=MCO \
-              || { echo "::error::MercadoPago collector preflight FAILED — runtime is deployed, plan provisioning was not attempted"; exit 1; }
-
-            echo "===> Validating MercadoPago plan payloads from production DB (no network writes)..."
-            # Per-country sync. Colombia is the primary launch market. Before
-            # adding another country, extend the currently MCO-only preflight,
-            # then add an explicit sync with that merchant's credential + FX.
-            # Force + dry-run prints the exact DB-backed payloads for BOTH cycles
-            # before the first provider mutation.
-            $DC \
-              run --rm api node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" --force --dry-run \
-              || { echo "::error::MercadoPago monthly payload validation FAILED — runtime is deployed, no plan writes attempted"; exit 1; }
-            $DC \
-              run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual --derive-missing-annual=15 --force --dry-run \
-              || { echo "::error::MercadoPago annual payload validation FAILED — runtime is deployed, no plan writes attempted"; exit 1; }
-
-            echo "===> Clean MercadoPago production probe (Emprendedor monthly, fresh UUID v4)..."
-            # This single-plan gate invalidates the UUID v5 reuse from the prior
-            # regulatory 403s. It first searches/adopts an exact active match; if
-            # none exists, it sends the minimal production body with a fresh UUID
-            # v4, matching the official SDK behaviour that worked in sandbox.
-            $DC \
-              run --rm api node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" --only=emprendedor \
-              || { echo "::error::MercadoPago clean production probe FAILED — runtime is deployed; inspect the new request/correlation IDs"; exit 1; }
-
-            echo "===> Syncing monthly billing plans to MercadoPago (Colombia)..."
-            $DC \
-              run --rm api node scripts/sync-mp-plans.js --country=CO --fx="${PROD_MP_FX_CO:-4200}" \
-              || { echo "::error::MercadoPago monthly plan sync FAILED — runtime is deployed, catalog remains incomplete"; exit 1; }
-
-            echo "===> Syncing annual billing plans to MercadoPago (Colombia)..."
-            $DC \
-              run --rm api node scripts/sync-mp-plans.js --country=CO --cycle=annual --derive-missing-annual=15 \
-              || { echo "::error::MercadoPago annual plan sync FAILED — runtime is deployed, catalog remains incomplete"; exit 1; }
-
-            # Keep country syncs unrolled so each market remains independently
-            # visible and retryable in the deploy log.
-            # Add only after extending the collector preflight for that site:
-            # $DC run --rm api node scripts/sync-mp-plans.js --country=MX --fx="${PROD_MP_FX_MX:-18.5}"
-            # $DC run --rm api node scripts/sync-mp-plans.js --country=AR --fx="${PROD_MP_FX_AR:-1200}"
+            # ── Aprovisionamiento en MercadoPago: RETIRADO del deploy (ago 2026) ──
+            #
+            # Acá corrían, después del rolling-restart, el preflight del collector
+            # (`diagnose-mp-collector.js --expected-site=MCO`) y cinco `sync-mp-plans.js`
+            # —dry-run mensual y anual, la sonda de un plan, y los sync mensual y anual
+            # reales—, cada uno con `exit 1`. El propio comentario lo asumía: "if Mercado
+            # Pago rejects a plan, the workflow stays red".
+            #
+            # Eso dejó de ser un supuesto: MP rechazó al collector con
+            # `rejected_by_regulations_collector_non_compliant`, así que el preflight
+            # fallaba SIEMPRE y todo deploy —de cualquier parte del producto— terminaba
+            # en rojo aunque el runtime hubiera quedado sano y actualizado. Un pipeline
+            # que siempre falla no informa nada y entrena a ignorarlo.
+            #
+            # Los scripts siguen en el repo y se corren a mano contra producción cuando
+            # la pasarela vuelva a ser viable:
+            #   docker compose run --rm api node scripts/diagnose-mp-collector.js --expected-site=MCO
+            #   docker compose run --rm api node scripts/sync-mp-plans.js --country=CO --fx=4200
+            # Alternativa en evaluación: docs/pasarela-wompi-research-2026-08.md
+            #
+            # Al reponerlo, que NO sea bloqueante del deploy: el aprovisionamiento del
+            # proveedor es una tarea de operación, no una condición para publicar código.
+            echo "===> Runtime SHA ${GIT_SHA} activo. Sync de planes a MercadoPago: omitido (integración en pausa)."
 
             # ── Post-deploy cleanup: remove old images ──
             echo "===> Pruning old Docker images..."

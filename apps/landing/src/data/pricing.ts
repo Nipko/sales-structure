@@ -101,9 +101,15 @@ export const FEATURE_CATEGORIES: { key: FeatureCategory; labelKey: string }[] = 
   { key: "enterprise", labelKey: "catEnterprise" },
 ];
 
+/** Minimum capacity required by every canonical vertical bootstrap. */
+export const VERTICAL_BOOTSTRAP_PLAN_FLOORS = {
+  emprendedor: { pipelineStages: 7, appointmentsServices: 4 },
+  starter: { pipelineStages: 7, appointmentsServices: 4 },
+} as const;
+
 export const FEATURE_MATRIX: FeatureRow[] = [
   // Communication
-  { key: "channels", category: "communication", values: ["1 (WhatsApp)", "3 (WA+IG+Messenger)", "5 (Todos)", "5 (Todos)"] },
+  { key: "channels", category: "communication", values: ["1 (WhatsApp)", "4 (WA+IG+Messenger+Email)", "6 (Todos)", "6 (Todos)"] },
   { key: "aiMessages", category: "communication", values: ["1.000/mes", "5.000/mes", "25.000/mes", "100.000/mes"], src: "top:maxAiMessages", fmt: "perMonth" },
   { key: "audioMonth", category: "communication", values: ["30/mes", "150/mes", "500/mes", "2.000/mes"], src: "feat:mediaProcessing.audioPerMonth", fmt: "perMonth" },
   { key: "imageMonth", category: "communication", values: ["50/mes", "250/mes", "1.000/mes", "5.000/mes"], src: "feat:mediaProcessing.imagePerMonth", fmt: "perMonth" },
@@ -119,7 +125,7 @@ export const FEATURE_MATRIX: FeatureRow[] = [
 
   // CRM & Sales
   { key: "contacts", category: "crmSales", values: ["100", "500", "5.000", "50.000"], src: "feat:maxContacts", fmt: "num" },
-  { key: "pipelineStages", category: "crmSales", values: ["3", "5", "15", "unlimited"], src: "feat:pipelineStages", fmt: "num" },
+  { key: "pipelineStages", category: "crmSales", values: [String(VERTICAL_BOOTSTRAP_PLAN_FLOORS.emprendedor.pipelineStages), String(VERTICAL_BOOTSTRAP_PLAN_FLOORS.starter.pipelineStages), "15", "unlimited"], src: "feat:pipelineStages", fmt: "num" },
   { key: "automationRules", category: "crmSales", values: ["—", "5", "unlimited", "unlimited"], src: "feat:automationRules", fmt: "numDash" },
   { key: "broadcastCampaigns", category: "crmSales", values: ["—", "3", "unlimited", "unlimited"], src: "feat:broadcastCampaigns", fmt: "numDash" },
   { key: "segments", category: "crmSales", values: ["—", "3", "15", "unlimited"], src: "feat:segments", fmt: "numDash" },
@@ -129,7 +135,7 @@ export const FEATURE_MATRIX: FeatureRow[] = [
 
   // Booking
   { key: "calendars", category: "booking", values: ["1", "1", "3", "10"], src: "feat:maxCalendars", fmt: "num" },
-  { key: "services", category: "booking", values: ["1", "2", "unlimited", "unlimited"], src: "feat:appointmentsServices", fmt: "num" },
+  { key: "services", category: "booking", values: [String(VERTICAL_BOOTSTRAP_PLAN_FLOORS.emprendedor.appointmentsServices), String(VERTICAL_BOOTSTRAP_PLAN_FLOORS.starter.appointmentsServices), "unlimited", "unlimited"], src: "feat:appointmentsServices", fmt: "num" },
 
   // Analytics
   { key: "scheduledReports", category: "analytics", values: ["false", "false", "true", "true"], src: "feat:scheduledReports", fmt: "bool" },

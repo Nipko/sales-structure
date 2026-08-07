@@ -1,5 +1,11 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import axios from 'axios';
+import {
+    type PinnedHttpsTarget,
+    prepareSafeHttpsTarget,
+    safeAxiosOptions,
+} from '../../common/utils/safe-outbound-url.util';
 
 export interface SlackConfig {
     enabled: boolean;
@@ -46,11 +52,6 @@ export class SlackService {
         });
         if (!tenant) throw new BadRequestException('Tenant not found');
 
-        const webhookUrl = updates.webhookUrl ?? '';
-        if (updates.enabled && webhookUrl && !this.isValidSlackUrl(webhookUrl)) {
-            throw new BadRequestException('Invalid Slack webhook URL (must start with https://hooks.slack.com/)');
-        }
-
         const currentSettings = (tenant.settings as Record<string, any>) || {};
         const current: SlackConfig = currentSettings.slack || DEFAULT_CONFIG;
 
@@ -62,6 +63,11 @@ export class SlackService {
                 appointment: updates.events?.appointment ?? current.events?.appointment ?? true,
             },
         };
+        if (merged.webhookUrl) {
+            merged.webhookUrl = (await this.prepareSlackTarget(merged.webhookUrl)).url.toString();
+        } else if (merged.enabled) {
+            throw new BadRequestException('Configure a valid Slack webhook URL first');
+        }
 
         await this.prisma.tenant.update({
             where: { id: tenantId },
@@ -84,23 +90,26 @@ export class SlackService {
 
     async sendTest(tenantId: string): Promise<{ ok: boolean }> {
         const cfg = await this.getConfig(tenantId);
-        if (!cfg.webhookUrl || !this.isValidSlackUrl(cfg.webhookUrl)) {
+        if (!cfg.webhookUrl) {
             throw new BadRequestException('Configure a valid Slack webhook URL first');
         }
         await this.post(cfg.webhookUrl, ':white_check_mark: Parallly conectado a Slack — las notificaciones funcionarán aquí.');
         return { ok: true };
     }
 
-    private isValidSlackUrl(url: string): boolean {
-        return /^https:\/\/hooks\.slack\.com\//.test(url);
+    private async prepareSlackTarget(url: string): Promise<PinnedHttpsTarget> {
+        const target = await prepareSafeHttpsTarget(url, 'webhook de Slack');
+        if (target.hostname !== 'hooks.slack.com' || !target.url.pathname.startsWith('/services/')) {
+            throw new BadRequestException('Invalid Slack webhook URL (must use https://hooks.slack.com/services/)');
+        }
+        return target;
     }
 
     private async post(webhookUrl: string, text: string): Promise<void> {
-        // Node 18+ global fetch
-        await fetch(webhookUrl, {
-            method: 'POST',
+        const target = await this.prepareSlackTarget(webhookUrl);
+        await axios.post(target.url.toString(), { text }, {
+            ...safeAxiosOptions(target, 10_000),
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text }),
         });
     }
 }

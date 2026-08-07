@@ -31,10 +31,10 @@ export const CHANNEL_SCENARIOS: ChannelScenario[] = [
       { from: "customer", text: "Quiero agendar limpieza dental" },
       {
         from: "ai",
-        text: "¡Hola! Tengo jueves 10am o viernes 9am. ¿Cuál prefieres?",
+        text: "¡Hola! Puedo consultar los horarios cargados por la clínica. ¿Qué día prefieres?",
       },
-      { from: "customer", text: "Jueves 10am" },
-      { from: "ai", text: "Confirmado ✅ Te recuerdo el miércoles." },
+      { from: "customer", text: "Jueves" },
+      { from: "ai", text: "Perfecto. Revisaré disponibilidad antes de confirmar la cita." },
     ],
   },
   {
@@ -50,12 +50,12 @@ export const CHANNEL_SCENARIOS: ChannelScenario[] = [
       },
       {
         from: "ai",
-        text: "¡Gracias! Tenemos 3 paquetes. ¿Cuándo es la fecha?",
+        text: "¡Gracias! Puedo consultar los paquetes configurados. ¿Cuándo es la fecha?",
       },
       { from: "customer", text: "15 de junio" },
       {
         from: "ai",
-        text: "Disponible 🙌 Te paso opciones por aquí.",
+        text: "Revisaré disponibilidad y te compartiré las opciones vigentes.",
       },
     ],
   },
@@ -69,10 +69,10 @@ export const CHANNEL_SCENARIOS: ChannelScenario[] = [
       { from: "customer", text: "Hola, info sobre membresías" },
       {
         from: "ai",
-        text: "¡Hola! Mensual $89k, trimestral $240k (ahorras $27k). ¿Visitamos?",
+        text: "¡Hola! Puedo mostrarte los planes vigentes del gimnasio. ¿Quieres agendar una visita?",
       },
       { from: "customer", text: "Sí, mañana puedo" },
-      { from: "ai", text: "Te agendo a las 10am ✅" },
+      { from: "ai", text: "Claro. ¿Qué horario prefieres para que consulte disponibilidad?" },
     ],
   },
   {
@@ -85,31 +85,44 @@ export const CHANNEL_SCENARIOS: ChannelScenario[] = [
       { from: "customer", text: "Se me tapó el desagüe, urgente" },
       {
         from: "ai",
-        text: "Marco como prioridad alta 🚨 Dirección por favor",
+        text: "Registraré la urgencia. ¿Cuál es la dirección?",
       },
       { from: "customer", text: "Calle 50 #15-20" },
       {
         from: "ai",
-        text: "Carlos llega en 35min. Te aviso cuando salga.",
+        text: "El equipo confirmará disponibilidad, tarifa y hora de llegada.",
       },
     ],
   },
   {
     channel: "email",
-    key: "support",
+    key: "email",
     emoji: "✉️",
     agentName: "Clara",
-    business: "Soporte Parallly",
+    business: "Academia Nova",
     messages: [
-      { from: "customer", text: "Hola, ¿la IA se integra con mi CRM de HubSpot?" },
+      { from: "customer", text: "Quisiera información del curso de inglés" },
+      { from: "ai", text: "Con gusto. ¿Qué nivel tienes actualmente?" },
+      { from: "customer", text: "Básico" },
+      { from: "ai", text: "Gracias. Te compartiré las opciones cargadas por la academia." },
+    ],
+  },
+  {
+    channel: "sms",
+    key: "support",
+    emoji: "📱",
+    agentName: "Sofía",
+    business: "Clínica Central",
+    messages: [
+      { from: "ai", text: "Recordatorio: tu cita es mañana a las 9am. ¿Confirmas?" },
       {
-        from: "ai",
-        text: "¡Hola! Sí, nos integramos nativamente. Sincronizamos contactos y tratos en tiempo real.",
+        from: "customer",
+        text: "Sí, confirmo",
       },
-      { from: "customer", text: "Súper, me interesa una demo" },
+      { from: "ai", text: "Cita confirmada ✅" },
       {
-        from: "ai",
-        text: "Te envié el enlace a tu bandeja para el martes a las 3pm. ¡Nos vemos!",
+        from: "customer",
+        text: "Gracias",
       },
     ],
   },
@@ -264,7 +277,7 @@ export function MultiChannelShowcase() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {CHANNEL_SCENARIOS.map((s, i) => (
           <motion.div
             key={s.channel}
@@ -280,6 +293,9 @@ export function MultiChannelShowcase() {
 
       <p className="text-center text-xs text-text-muted mt-8 max-w-2xl mx-auto">
         {t("note")}
+      </p>
+      <p className="text-center text-[11px] text-text-muted mt-2 max-w-2xl mx-auto">
+        {t("demoDisclaimer")}
       </p>
     </Section>
   );

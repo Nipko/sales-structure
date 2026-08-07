@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     "Parallly",
     "IA conversacional",
     "automatización ventas LatAm",
-    "Meta Tech Provider",
+    "Meta Cloud API",
     "chatbot Instagram",
     "chatbot Messenger",
     "agendamiento por chat",
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Parallly — IA conversacional para tu negocio",
     description:
-      "Tu agente IA responde en segundos, agenda citas y vende 24/7. 18 industrias. Pagos seguros con MercadoPago. Hecho en LatAm.",
+      "Agente IA, agenda y CRM integrado para 18 industrias y 6 adaptadores de mensajería. Hecho en LatAm.",
     type: "website",
     locale: "es_CO",
     siteName: "Parallly",

@@ -4036,10 +4036,21 @@
       "createTitle": "Nuevo tenant",
       "companyName": "Nombre de empresa",
       "language": "Idioma",
-      "name": "Nombre"
+      "name": "Nombre",
+      "ownerTitle": "Propietario del tenant",
+      "ownerFirstName": "Nombre",
+      "ownerLastName": "Apellido",
+      "ownerEmail": "Correo del propietario",
+      "ownerEmailPlaceholder": "propietario@empresa.com",
+      "provisioningHint": "La creación configura y verifica el propietario, schema, agente IA, identidad y vertical. Si el correo aún no tiene cuenta, recibirá una invitación antes de activar el tenant.",
+      "verticalChangeWarning": "La vertical y el subtipo quedan bloqueados después del aprovisionamiento. Su cambio requiere una migración controlada de embudo, servicios, conocimiento, herramientas y agente."
     },
     "slugLabel": "Slug",
+    "slugPlaceholder": "mi-empresa",
     "companyPlaceholder": "Ej: Mi Empresa",
+    "catalogLoadError": "No se pudo cargar el catálogo canónico de verticales y planes.",
+    "createdToast": "{name} fue creado y aprovisionado",
+    "planUpdateError": "Los demás cambios se guardaron, pero no fue posible actualizar el plan.",
     "tenantLabel": "Tenant",
     "onboardingFunnelTitle": "Embudo de Onboarding",
     "industries": {
@@ -4071,12 +4082,13 @@
       "es-MX": "Español (MX)",
       "es-ES": "Español (ES)",
       "en-US": "English (US)",
-      "pt-BR": "Português (BR)"
+      "pt-BR": "Português (BR)",
+      "fr-FR": "Français (FR)"
     },
     "plans": {
       "emprendedor": "Emprendedor",
       "starter": "Starter",
-      "professional": "Professional",
+      "pro": "Pro",
       "enterprise": "Enterprise",
       "custom": "Custom"
     },
@@ -4144,6 +4156,8 @@
     "tiktokUrl": "URL de TikTok",
     "businessType": "Tipo de negocio",
     "businessTypeHint": "¿Hay un médico prescribiendo el tratamiento? Elegí Salud. Si no, Belleza y estética.",
+    "verticalCatalogLoading": "Cargando el catálogo de industrias...",
+    "verticalCatalogError": "No se pudo cargar el catálogo de industrias. Recarga la página para reintentar.",
     "select": "Seleccionar...",
     "back": "Atrás",
     "creating": "Creando...",
@@ -4330,18 +4344,25 @@
       "hardware": "Hardware y redes",
       "peluqueria": "Peluquería canina / felina",
       "guarderia": "Guardería y hotel",
+      "pet_hotel": "Hotel canino",
       "paseos": "Paseos y cuidado a domicilio",
+      "adiestramiento": "Adiestramiento",
       "entrenamiento": "Entrenamiento y adiestramiento",
       "tienda": "Tienda de mascotas",
       "plomeria": "Plomería",
       "electricidad": "Electricidad",
+      "fumigacion": "Fumigación",
       "cerrajeria": "Cerrajería",
       "limpieza": "Limpieza profesional",
+      "jardineria": "Jardinería",
       "pintura": "Pintura y remodelación",
       "multiservicio": "Multiservicio / General",
+      "estudio": "Estudio fotográfico",
       "bodas": "Bodas y eventos",
+      "eventos": "Eventos sociales y corporativos",
       "retrato": "Retrato y book",
       "producto": "Fotografía de producto",
+      "wedding_planner": "Wedding planner",
       "corporativo": "Corporativo y empresas",
       "inmobiliaria": "Fotografía inmobiliaria"
     },
@@ -4558,6 +4579,11 @@
       "servicios_hogar": "clientes",
       "fotografia": "clientes"
     },
+    "couponLabel": "Código promocional (opcional)",
+    "couponPlaceholder": "LANZAMIENTO1MES",
+    "couponHint": "Si tenés un código, sumamos meses gratis a tu prueba. Podés dejarlo vacío.",
+    "couponApplied": "Cupón aplicado: {months} mes(es) gratis sumados a tu prueba",
+    "couponFailed": "No pudimos aplicar el código. Tu cuenta quedó creada igual: probá de nuevo desde Configuración → Facturación.",
     "bridge": {
       "title": "¡Cuenta lista!",
       "subtitle": "Preparando la configuración de tu agente…"
@@ -5509,7 +5535,7 @@
     "pendingDowngradeCancel": "Mantener mi plan",
     "downgradeCancelled": "Cambio de plan cancelado. Mantenés tu plan actual.",
     "couponTitle": "Código de cupón",
-    "couponHint": "Ingresá un código promocional para descuento o meses gratis.",
+    "couponHint": "Ingresá un código promocional para sumar meses gratis a tu plan.",
     "redeem": "Aplicar",
     "couponRedeemed": "Cupón aplicado correctamente",
     "couponErrors": {
@@ -5518,7 +5544,10 @@
       "expired": "Este cupón está vencido.",
       "max_redemptions_reached": "Este cupón llegó al máximo de canjes.",
       "plan_not_eligible": "Este cupón no aplica a tu plan actual.",
-      "already_redeemed": "Ya canjeaste este cupón antes."
+      "already_redeemed": "Ya canjeaste este cupón antes.",
+      "no_subscription": "Todavía no tenés una suscripción a la cual aplicar el cupón.",
+      "type_not_supported": "Este cupón ya no se puede canjear. Escribinos y lo resolvemos.",
+      "active_provider_subscription": "Tenés una suscripción con cobro automático activo. Escribinos para aplicar el cupón sin que se te duplique el cobro."
     },
     "limitReached": "Has alcanzado el límite de {limit} {resource} en tu plan actual ({current}/{limit}).",
     "upgradePlan": "Mejorar plan",
@@ -5526,29 +5555,47 @@
   },
   "couponsPage": {
     "title": "Cupones promocionales",
-    "subtitle": "Códigos de descuento y meses gratis para campañas de marketing",
+    "subtitle": "Códigos de meses gratis para campañas de marketing",
     "create": "Crear cupón",
     "createTitle": "Nuevo cupón",
+    "createHint": "El cupón suma meses gratis al período de prueba del cliente. Se puede canjear al crear la cuenta o desde Configuración → Facturación.",
+    "editTitle": "Editar cupón",
+    "editLocked": "El código y los {months} meses gratis no se editan: el cupón ya se emitió y tiene {redemptions} canje(s). Para cambiarlos, desactivá este y creá uno nuevo.",
+    "activeToggle": "Cupón activo (se puede canjear)",
     "deactivate": "Desactivar",
+    "reactivate": "Reactivar",
     "confirmDeactivate": "¿Desactivar este cupón? No se podrá canjear más veces.",
     "description": "Descripción",
     "descriptionPlaceholder": "Ej. campaña Black Friday 2026",
     "codeHint": "3-40 caracteres, letras / números / _ / -",
-    "percentLabel": "Porcentaje de descuento (1-100)",
-    "amountLabel": "Monto en centavos (USD)",
     "monthsLabel": "Meses gratis (1-24)",
-    "cyclesLabel": "{n} ciclos",
-    "cyclesLabel2": "Duración (ciclos de cobro)",
-    "cyclesPlaceholder": "Vacío = para siempre",
     "maxRedemptions": "Máximo de canjes",
     "unlimited": "Ilimitado",
     "expiresAt": "Vence el",
     "months": "meses",
-    "forever": "para siempre",
+    "legacyBadge": "No canjeable",
+    "legacyHint": "Los cupones de porcentaje y monto fijo nunca descontaron del cobro real. Quedan como historial pero no se pueden canjear.",
+    "statusExpired": "Vencido",
+    "statusExhausted": "Agotado",
+    "viewRedemptions": "Ver canjes",
+    "redemptionsTitle": "Canjes",
+    "redemptionsEmpty": "Todavía nadie canjeó este cupón.",
+    "tenantDeleted": "Cuenta eliminada",
     "type": {
       "percent_off": "% Descuento",
       "amount_off": "Monto fijo",
       "free_months": "Meses gratis"
+    },
+    "source": {
+      "onboarding": "Al crear la cuenta",
+      "billing_settings": "Desde Facturación",
+      "admin": "Aplicado por soporte"
+    },
+    "errors": {
+      "invalid_code": "El código debe tener 3-40 caracteres: letras, números, _ o -.",
+      "invalid_months": "Los meses gratis deben estar entre 1 y 24.",
+      "code_already_exists": "Ya existe un cupón con ese código.",
+      "type_not_supported": "Solo se pueden emitir cupones de meses gratis."
     },
     "col": {
       "code": "Código",
@@ -5556,7 +5603,10 @@
       "value": "Valor",
       "redemptions": "Canjes",
       "expires": "Vence",
-      "status": "Estado"
+      "status": "Estado",
+      "tenant": "Cuenta",
+      "source": "Origen",
+      "redeemedAt": "Fecha"
     },
     "empty": {
       "title": "No hay cupones creados",
@@ -6484,14 +6534,16 @@
       ]
     },
     "coupons": {
-      "title": "¿Cómo crear y gestionar cupones de descuento?",
-      "description": "Los cupones son códigos de descuento que puedes crear y distribuir a clientes o partners para reducir el precio de los planes de Parallly; soportan tres tipos: porcentaje de descuento, monto fijo y meses gratis. Esta sección es exclusiva para super administradores y te permite controlar vigencia, límite de usos y los planes a los que aplica cada cupón.",
+      "title": "¿Cómo crear y gestionar cupones de meses gratis?",
+      "description": "Los cupones son códigos que regalan meses gratis: extienden el período de prueba del cliente sin cobrarle. Puedes distribuirlos en campañas y el cliente los canjea al crear su cuenta o desde Configuración → Facturación. Esta sección es exclusiva para super administradores y te permite controlar vigencia, límite de usos y ver quién canjeó cada cupón.",
       "tips": [
-        "Haz clic en 'Crear cupón' e ingresa un código en mayúsculas sin espacios (por ejemplo, 'LAUNCH50') para que sea fácil de compartir y recordar.",
-        "Elige el tipo de cupón según la estrategia: 'Porcentaje de descuento' para descuentos relativos (por ejemplo, 20 % off), 'Monto fijo' para restar una cantidad exacta (por ejemplo, $10), o 'Meses gratis' para regalar períodos completos.",
-        "Usa el campo 'Máximo de usos' para limitar la disponibilidad; por ejemplo, pon 50 si es una promoción de lanzamiento que no debe exceder ese número de redenciones.",
-        "Configura una 'Fecha de expiración' para cupones de campaña temporales; así el código deja de funcionar automáticamente el día que elijas sin que tengas que desactivarlo manualmente.",
-        "Cuando un cupón ya no debe aceptar nuevos usos, haz clic en el ícono de 'Desactivar' (botón rojo en la fila) para marcarlo como inactivo sin eliminarlo; esto conserva el historial de redenciones en la columna 'Usos'."
+        "Haz clic en 'Crear cupón' e ingresa un código en mayúsculas sin espacios (por ejemplo, 'LANZAMIENTO1MES') para que sea fácil de compartir y recordar.",
+        "Define los 'Meses gratis' que regala el código: 1 mes es lo habitual para campañas de adquisición. El cliente arranca con 7 días de prueba, así que un cupón de 1 mes le deja unos 37 días sin pagar.",
+        "Usa el campo 'Máximo de canjes' para limitar la disponibilidad; por ejemplo, pon 50 si es una promoción de lanzamiento que no debe exceder ese número de canjes.",
+        "Configura una 'Fecha de vencimiento' para cupones de campaña temporales; así el código deja de funcionar automáticamente el día que elijas sin que tengas que desactivarlo manualmente.",
+        "Haz clic en el número de la columna 'Canjes' para ver qué cuentas usaron el cupón, desde dónde lo canjearon y cuándo.",
+        "Cuando un cupón ya no debe aceptar nuevos canjes, usa el ícono rojo de 'Desactivar' para marcarlo como inactivo sin eliminarlo; conserva el historial y siempre puedes reactivarlo.",
+        "Un cupón no se puede canjear si el cliente ya tiene cobro automático activo en MercadoPago: extender su fecha localmente no frena ese cobro y le llegarían las dos cosas. En ese caso, cancela primero la suscripción o gestiona el crédito manualmente."
       ]
     },
     "identity": {

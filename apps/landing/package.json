@@ -5,8 +5,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3003",
-    "build": "next build",
-    "start": "next start"
+    "build": "npm run check:claims && next build",
+    "start": "next start",
+    "check:claims": "node scripts/validate-marketing-claims.cjs && node scripts/test-marketing-claim-regressions.cjs"
   },
   "keywords": [],
   "author": "",

@@ -5,6 +5,11 @@ import { RedisService } from '../redis/redis.service';
 import * as ical from 'node-ical';
 import ICalGenerator, { ICalCalendarMethod, ICalEventStatus } from 'ical-generator';
 import axios from 'axios';
+import {
+    type PinnedHttpsTarget,
+    prepareSafeHttpsTarget,
+    safeAxiosOptions,
+} from '../../common/utils/safe-outbound-url.util';
 
 export interface IcalSyncResult {
     imported: number;
@@ -146,34 +151,27 @@ export class IcalSyncService {
             let url = feed.import_url.trim().replace(/&amp;/g, '&');
             url = url.replace(/[\u200B-\u200D\uFEFF]/g, '');
 
-            // SSRF protection: validate URL before fetching
+            // Resolve once and pin the public address used by the socket. A
+            // syntactic hostname check is insufficient against DNS rebinding.
+            let target: PinnedHttpsTarget;
             try {
-                const parsed = new URL(url);
-                if (!['http:', 'https:'].includes(parsed.protocol)) {
-                    this.logger.warn(`Feed ${feedId}: blocked non-HTTP URL: ${parsed.protocol}`);
-                    return { ...EMPTY_RESULT };
-                }
-                const hostname = parsed.hostname.toLowerCase();
-                const blocked = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|::1|fd|fe80)/;
-                if (blocked.test(hostname)) {
-                    this.logger.warn(`Feed ${feedId}: blocked private/reserved IP: ${hostname}`);
-                    return { ...EMPTY_RESULT };
-                }
+                target = await prepareSafeHttpsTarget(url, 'feed iCal');
+                url = target.url.toString();
             } catch {
-                this.logger.warn(`Feed ${feedId}: invalid URL: ${url.substring(0, 80)}`);
+                this.logger.warn(`Feed ${feedId}: URL insegura o invalida: ${url.substring(0, 80)}`);
                 return { ...EMPTY_RESULT };
             }
 
             this.logger.log(`Fetching feed ${feedId} from ${url.substring(0, 50)}...`);
 
             const response = await axios.get(url, {
+                ...safeAxiosOptions(target, 20000),
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (compatible; Google-Calendar-Importer; +http://www.google.com/bot.html)',
                     'Accept': 'text/calendar, text/plain, */*',
                     'Accept-Encoding': 'gzip, deflate, br',
                     'Cache-Control': 'no-cache, no-store, must-revalidate'
                 },
-                timeout: 20000,
                 responseType: 'text',
                 // Default axios only rejects >=300, but a proxy/login wall can
                 // answer 2xx with HTML. The VCALENDAR check below is the real

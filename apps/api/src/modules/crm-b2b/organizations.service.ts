@@ -2,7 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
-const OPEN_STAGES_FILTER = `stage NOT IN ('ganado', 'perdido', 'no_interesado')`;
+const OPEN_STAGES_FILTER = `won_at IS NULL AND o.lost_at IS NULL`;
 
 /**
  * B2B Organizations (T3.21). Organizations map to the existing `companies`

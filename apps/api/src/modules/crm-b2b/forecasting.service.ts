@@ -7,9 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 // 18 verticales cierra en 'ganado' (cierran en cerrado, cerrado_ganado,
 // entregado, poliza_emitida, alta…), así que TODO deal ganado seguía contando
 // en el pipeline abierto ponderado al 100% — forecast inflado para siempre.
-// Los 3 slugs quedan como respaldo por si una oportunidad apunta a una etapa
-// sin fila en pipeline_stages (el LEFT JOIN daría NULL → se trataría abierta).
-const OPEN = `COALESCE(ps.is_terminal, false) = false AND o.stage NOT IN ('ganado', 'perdido', 'no_interesado')`;
+const OPEN = `o.won_at IS NULL AND o.lost_at IS NULL AND COALESCE(ps.is_terminal, false) = false`;
 const COMMITTED_THRESHOLD = 80; // stage probability ≥ this counts as "committed"
 
 /**
@@ -69,7 +67,7 @@ export class ForecastingService {
             `SELECT AVG(EXTRACT(EPOCH FROM (won_at - created_at)) / 86400) AS avg_days_to_win,
                     COUNT(*)::int AS won_last_90d
              FROM opportunities
-             WHERE stage = 'ganado' AND won_at IS NOT NULL AND won_at >= NOW() - INTERVAL '90 days'`,
+             WHERE won_at IS NOT NULL AND won_at >= NOW() - INTERVAL '90 days'`,
             [],
         );
 

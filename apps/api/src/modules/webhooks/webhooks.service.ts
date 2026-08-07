@@ -1,8 +1,13 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import * as crypto from 'crypto';
+import {
+    type PinnedHttpsTarget,
+    prepareSafeHttpsTarget,
+    safeAxiosOptions,
+} from '../../common/utils/safe-outbound-url.util';
 
 export const WEBHOOK_EVENTS = [
     'lead.created',
@@ -73,23 +78,8 @@ export class WebhooksService {
 
     // ── SSRF validation ──────────────────────────────────────────────────
 
-    private validateWebhookUrl(url: string): void {
-        let parsed: URL;
-        try {
-            parsed = new URL(url);
-        } catch {
-            throw new BadRequestException(`Invalid webhook URL: ${url.substring(0, 80)}`);
-        }
-
-        if (!['http:', 'https:'].includes(parsed.protocol)) {
-            throw new BadRequestException(`Webhook URL must use http or https protocol`);
-        }
-
-        const hostname = parsed.hostname.toLowerCase();
-        const blocked = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|::1|fd|fe80)/;
-        if (blocked.test(hostname)) {
-            throw new BadRequestException(`Webhook URL must not point to private/reserved IP ranges`);
-        }
+    private async validateWebhookUrl(url: string): Promise<PinnedHttpsTarget> {
+        return prepareSafeHttpsTarget(url, 'webhook');
     }
 
     // ── CRUD ─────────────────────────────────────────────────────────────
@@ -108,7 +98,7 @@ export class WebhooksService {
         tenantId: string,
         data: { url: string; events: WebhookEventType[]; description?: string },
     ): Promise<WebhookEndpoint> {
-        this.validateWebhookUrl(data.url);
+        const target = await this.validateWebhookUrl(data.url);
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         await this.ensureWebhookTables(schema);
         const secret = crypto.randomBytes(32).toString('hex');
@@ -117,7 +107,7 @@ export class WebhooksService {
             `INSERT INTO webhook_endpoints (url, events, secret, description)
              VALUES ($1, $2::text[], $3, $4)
              RETURNING *`,
-            [data.url, data.events, secret, data.description || null],
+            [target.url.toString(), data.events, secret, data.description || null],
         );
         await this.invalidateCache(tenantId);
         return rows[0];
@@ -128,15 +118,16 @@ export class WebhooksService {
         endpointId: string,
         data: { url?: string; events?: WebhookEventType[]; description?: string; is_active?: boolean },
     ): Promise<WebhookEndpoint> {
+        let normalizedUrl: string | undefined;
         if (data.url !== undefined) {
-            this.validateWebhookUrl(data.url);
+            normalizedUrl = (await this.validateWebhookUrl(data.url)).url.toString();
         }
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         const sets: string[] = [];
         const params: any[] = [];
         let idx = 1;
 
-        if (data.url !== undefined) { sets.push(`url = $${idx}::text`); params.push(data.url); idx++; }
+        if (normalizedUrl !== undefined) { sets.push(`url = $${idx}::text`); params.push(normalizedUrl); idx++; }
         if (data.events !== undefined) { sets.push(`events = $${idx}::text[]`); params.push(data.events); idx++; }
         if (data.description !== undefined) { sets.push(`description = $${idx}::text`); params.push(data.description); idx++; }
         if (data.is_active !== undefined) { sets.push(`is_active = $${idx}::boolean`); params.push(data.is_active); idx++; }
@@ -211,8 +202,9 @@ export class WebhooksService {
         maxAttempts = 3,
     ) {
         // Defense-in-depth: validate URL at delivery time for pre-existing endpoints
+        let target: PinnedHttpsTarget;
         try {
-            this.validateWebhookUrl(endpoint.url);
+            target = await this.validateWebhookUrl(endpoint.url);
         } catch {
             this.logger.warn(`Skipping webhook delivery to blocked URL: endpoint=${endpoint.id} url=${endpoint.url.substring(0, 80)}`);
             return;
@@ -225,13 +217,13 @@ export class WebhooksService {
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                const response = await this.httpService.axiosRef.post(endpoint.url, body, {
+                const response = await this.httpService.axiosRef.post(target.url.toString(), body, {
+                    ...safeAxiosOptions(target, 10_000),
                     headers: {
                         'Content-Type': 'application/json',
                         'X-Webhook-Signature': signature,
                         'X-Webhook-Event': event,
                     },
-                    timeout: 10_000,
                     validateStatus: () => true,
                 });
 

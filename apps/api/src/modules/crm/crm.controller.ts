@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards, ConflictException, ForbiddenException, Header } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards, ConflictException, ForbiddenException, Header } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { LeadsRepository } from './repositories/leads.repository';
 import { OpportunitiesRepository } from './repositories/opportunities.repository';
@@ -118,14 +118,26 @@ export class CrmController {
     ) {
         const schema = await this.getSchema(tenantId);
         const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT COUNT(*)::int AS c FROM leads WHERE stage NOT IN ('perdido', 'no_interesado')`);
+            `SELECT COUNT(*)::int AS c FROM leads WHERE archived_at IS NULL`);
         await this.throttle.enforcePlanLimit(tenantId, 'maxContacts', cnt?.[0]?.c || 0, 'contactos');
-        const lead = await this.leadsRepo.createLead(tenantId, body);
+        const stage = await this.pipelineService.resolveTenantStage(tenantId, body.stage, { schemaName: schema });
+        const lead = await this.leadsRepo.createLead(tenantId, { ...body, stage: stage.slug });
         if (lead?.id) {
-            await this.prisma.executeInTenantSchema(schema,
-                `INSERT INTO opportunities (lead_id, stage, score) VALUES ($1::uuid, 'nuevo', 10) ON CONFLICT DO NOTHING`,
-                [String(lead.id)],
+            const opportunities = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `INSERT INTO opportunities (lead_id, stage, score)
+                 VALUES ($1::uuid, $2, 10) ON CONFLICT DO NOTHING
+                 RETURNING id`,
+                [String(lead.id), stage.slug],
             );
+            const opportunityId = opportunities?.[0]?.id;
+            if (opportunityId) {
+                await this.pipelineService.syncOpportunityToDeal(
+                    tenantId,
+                    String(lead.id),
+                    stage.slug,
+                    String(opportunityId),
+                );
+            }
         }
         return { success: true, data: lead };
     }
@@ -137,9 +149,12 @@ export class CrmController {
         @Param('leadId') leadId: string,
         @Body() body: Record<string, any>,
     ) {
-        const { tags, ...leadData } = body;
+        const { tags, stage, ...leadData } = body;
         if (Object.keys(leadData).length > 0) {
             await this.leadsRepo.updateLead(tenantId, leadId, leadData);
+        }
+        if (stage !== undefined) {
+            await this.pipelineService.writeLeadStage(tenantId, leadId, String(stage));
         }
         if (Array.isArray(tags)) {
             await this.leadsRepo.updateLeadTags(tenantId, leadId, tags);
@@ -153,6 +168,16 @@ export class CrmController {
         @Param('tenantId') tenantId: string,
         @Body() body: { leadIds: string[]; action: string; payload: any },
     ) {
+        if (body.action === 'stage') {
+            const requestedStage = body.payload?.stage;
+            const canonical = await this.pipelineService.resolveTenantStage(tenantId, requestedStage);
+            let updated = 0;
+            for (const leadId of body.leadIds) {
+                await this.pipelineService.writeLeadStage(tenantId, leadId, canonical.slug);
+                updated++;
+            }
+            return { success: true, data: { updated } };
+        }
         const result = await this.leadsRepo.bulkUpdate(tenantId, body.leadIds, body.action, body.payload || {});
         return { success: true, data: result };
     }
@@ -681,19 +706,27 @@ export class CrmController {
     @Roles('tenant_admin', 'tenant_supervisor')
     async createPipelineStage(
         @Param('tenantId') tenantId: string,
-        @Body() body: { name: string; slug?: string; color?: string; position?: number; default_probability?: number; sla_hours?: number; is_terminal?: boolean; transition_rules?: any[] },
+        @Body() body: { name: string; slug?: string; color?: string; position?: number; default_probability?: number; sla_hours?: number; is_terminal?: boolean; terminal_outcome?: 'won' | 'lost'; transition_rules?: any[] },
     ) {
         const schema = await this.getSchema(tenantId);
         const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT COUNT(*)::int AS c FROM pipeline_stages WHERE tenant_id = $1::uuid`, [tenantId]);
         await this.throttle.enforcePlanLimit(tenantId, 'pipelineStages', cnt?.[0]?.c || 0, 'etapas de pipeline');
         const slug = body.slug || body.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+        const isTerminal = body.is_terminal ?? false;
+        if (isTerminal && body.terminal_outcome !== 'won' && body.terminal_outcome !== 'lost') {
+            throw new BadRequestException('Una etapa terminal requiere terminal_outcome: won o lost');
+        }
+        if (!isTerminal && body.terminal_outcome != null) {
+            throw new BadRequestException('Una etapa no terminal no admite terminal_outcome');
+        }
+        const terminalOutcome = isTerminal ? body.terminal_outcome! : null;
         let result: any[] | undefined;
         try {
             result = await this.prisma.executeInTenantSchema<any[]>(schema,
-                `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, transition_rules)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) RETURNING *`,
-                [tenantId, body.name, slug, body.color || '#3498db', body.position ?? 0, body.default_probability ?? 0, body.sla_hours || null, body.is_terminal ?? false, JSON.stringify(body.transition_rules || [])],
+                `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, terminal_outcome, transition_rules)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb) RETURNING *`,
+                [tenantId, body.name, slug, body.color || '#3498db', body.position ?? 0, body.default_probability ?? 0, body.sla_hours || null, isTerminal, terminalOutcome, JSON.stringify(body.transition_rules || [])],
             );
         } catch (e: any) {
             // uidx_pipeline_stages_pipeline_slug (tenant-schema.sql): el slug se deriva
@@ -715,7 +748,50 @@ export class CrmController {
         @Body() body: Record<string, any>,
     ) {
         const schema = await this.getSchema(tenantId);
-        const allowed = ['name', 'slug', 'color', 'position', 'default_probability', 'sla_hours', 'is_terminal', 'transition_rules'];
+        if (['slug', 'is_terminal', 'terminal_outcome', 'default_probability'].some((field) => body[field] !== undefined)) {
+            const currentRows = await this.prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT slug, is_terminal, terminal_outcome, default_probability
+                 FROM pipeline_stages WHERE id = $1::uuid AND tenant_id = $2::uuid`,
+                [stageId, tenantId],
+            );
+            const current = currentRows?.[0];
+            if (current) {
+                const isTerminal = body.is_terminal ?? current.is_terminal;
+                const outcome = body.terminal_outcome ?? current.terminal_outcome;
+                if (isTerminal && outcome !== 'won' && outcome !== 'lost') {
+                    throw new BadRequestException('Una etapa terminal requiere terminal_outcome: won o lost');
+                }
+                if (!isTerminal && body.terminal_outcome != null) {
+                    throw new BadRequestException('Una etapa no terminal no admite terminal_outcome');
+                }
+                body.terminal_outcome = isTerminal ? outcome : null;
+
+                const changesStageIdentity =
+                    (body.slug !== undefined && body.slug !== current.slug)
+                    || (body.is_terminal !== undefined && body.is_terminal !== current.is_terminal)
+                    || (body.terminal_outcome !== undefined && body.terminal_outcome !== current.terminal_outcome);
+                if (changesStageIdentity) {
+                    const usage = await this.prisma.executeInTenantSchema<any[]>(
+                        schema,
+                        `SELECT
+                            (SELECT COUNT(*)::int FROM opportunities WHERE stage = $1) AS opportunity_count,
+                            (SELECT COUNT(*)::int FROM deals WHERE stage_id = $2::uuid) AS deal_count`,
+                        [current.slug, stageId],
+                    );
+                    const opportunityCount = Number(usage?.[0]?.opportunity_count || 0);
+                    const dealCount = Number(usage?.[0]?.deal_count || 0);
+                    if (opportunityCount > 0 || dealCount > 0) {
+                        throw new ConflictException({
+                            error: 'pipeline_stage_in_use',
+                            message: 'No se puede cambiar el slug o resultado de una etapa que contiene oportunidades o negocios.',
+                            opportunityCount,
+                            dealCount,
+                        });
+                    }
+                }
+            }
+        }
+        const allowed = ['name', 'slug', 'color', 'position', 'default_probability', 'sla_hours', 'is_terminal', 'terminal_outcome', 'transition_rules'];
         const fields = Object.keys(body).filter(k => allowed.includes(k) && body[k] !== undefined);
         if (fields.length === 0) return { success: true };
 
@@ -723,8 +799,8 @@ export class CrmController {
         const values = [stageId, ...fields.map(k => k === 'transition_rules' ? JSON.stringify(body[k]) : body[k])];
 
         await this.prisma.executeInTenantSchema(schema,
-            `UPDATE pipeline_stages SET ${setClause} WHERE id = $1::uuid`,
-            values,
+            `UPDATE pipeline_stages SET ${setClause} WHERE id = $1::uuid AND tenant_id = $${values.length + 1}::uuid`,
+            [...values, tenantId],
         );
         return { success: true, message: 'Stage updated' };
     }

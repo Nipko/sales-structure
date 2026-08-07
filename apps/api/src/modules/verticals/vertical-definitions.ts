@@ -77,7 +77,7 @@ const SALUD: VerticalDefinition = {
             { name: { es: 'Primera visita', en: 'First visit', pt: 'Primeira visita', fr: 'Première visite' }, slug: 'primera_visita', color: '#e67e22', probability: 50, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
             { name: { es: 'Paciente activo', en: 'Active patient', pt: 'Paciente ativo', fr: 'Patient actif' }, slug: 'paciente_activo', color: '#2ecc71', probability: 80, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
             { name: { es: 'Seguimiento', en: 'Follow-up', pt: 'Acompanhamento', fr: 'Suivi' }, slug: 'seguimiento', color: '#27ae60', probability: 90, isTerminal: false, transitionRules: [] },
-            { name: { es: 'Alta', en: 'Discharged', pt: 'Alta', fr: 'Sorti' }, slug: 'alta', color: '#95a5a6', probability: 100, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Alta', en: 'Discharged', pt: 'Alta', fr: 'Sorti' }, slug: 'alta', color: '#95a5a6', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
         ],
     },
     faqs: [
@@ -164,7 +164,7 @@ const MODA_BELLEZA: VerticalDefinition = {
             { name: { es: 'Cita agendada', en: 'Booked', pt: 'Agendado', fr: 'Réservé' }, slug: 'cita_agendada', color: '#ff69b4', probability: 40, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
             { name: { es: 'En servicio', en: 'In service', pt: 'Em atendimento', fr: 'En service' }, slug: 'en_servicio', color: '#da70d6', probability: 70, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
             { name: { es: 'Cliente frecuente', en: 'Regular client', pt: 'Cliente frequente', fr: 'Client régulier' }, slug: 'frecuente', color: '#9b59b6', probability: 90, isTerminal: false, transitionRules: [] },
-            { name: { es: 'VIP', en: 'VIP', pt: 'VIP', fr: 'VIP' }, slug: 'vip', color: '#8e44ad', probability: 100, isTerminal: true, transitionRules: [{ type: 'min_score', value: 8 }] },
+            { name: { es: 'VIP', en: 'VIP', pt: 'VIP', fr: 'VIP' }, slug: 'vip', color: '#8e44ad', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [{ type: 'min_score', value: 8 }] },
         ],
     },
     faqs: [
@@ -237,8 +237,8 @@ const INMOBILIARIA: VerticalDefinition = {
             { name: { es: 'Visita agendada', en: 'Viewing scheduled', pt: 'Visita agendada', fr: 'Visite programmée' }, slug: 'visita_agendada', color: '#e67e22', probability: 30, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
             { name: { es: 'Propuesta enviada', en: 'Proposal sent', pt: 'Proposta enviada', fr: 'Proposition envoyée' }, slug: 'propuesta', color: '#9b59b6', probability: 50, isTerminal: false, transitionRules: [] },
             { name: { es: 'Negociación', en: 'Negotiation', pt: 'Negociação', fr: 'Négociation' }, slug: 'negociacion', color: '#e74c3c', probability: 70, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
-            { name: { es: 'Cerrado', en: 'Closed Won', pt: 'Fechado', fr: 'Conclu' }, slug: 'cerrado', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
-            { name: { es: 'Perdido', en: 'Lost', pt: 'Perdido', fr: 'Perdu' }, slug: 'perdido', color: '#95a5a6', probability: 0, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Cerrado', en: 'Closed Won', pt: 'Fechado', fr: 'Conclu' }, slug: 'cerrado', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
+            { name: { es: 'Perdido', en: 'Lost', pt: 'Perdido', fr: 'Perdu' }, slug: 'perdido', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ],
     },
     faqs: [
@@ -309,8 +309,8 @@ const RESTAURANTES: VerticalDefinition = {
             { name: { es: 'Consulta', en: 'Inquiry', pt: 'Consulta', fr: 'Demande' }, slug: 'consulta', color: '#e74c3c', probability: 10, isTerminal: false, transitionRules: [] },
             { name: { es: 'Reserva', en: 'Reserved', pt: 'Reserva', fr: 'Réservé' }, slug: 'reserva', color: '#f39c12', probability: 50, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
             { name: { es: 'Confirmada', en: 'Confirmed', pt: 'Confirmada', fr: 'Confirmée' }, slug: 'confirmada', color: '#2ecc71', probability: 80, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
-            { name: { es: 'Completada', en: 'Completed', pt: 'Completada', fr: 'Terminée' }, slug: 'completada', color: '#27ae60', probability: 100, isTerminal: true, transitionRules: [] },
-            { name: { es: 'No Show', en: 'No Show', pt: 'No Show', fr: 'Absent' }, slug: 'no_show', color: '#95a5a6', probability: 0, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Completada', en: 'Completed', pt: 'Completada', fr: 'Terminée' }, slug: 'completada', color: '#27ae60', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
+            { name: { es: 'No Show', en: 'No Show', pt: 'No Show', fr: 'Absent' }, slug: 'no_show', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ],
     },
     faqs: [
@@ -388,8 +388,8 @@ const AUTOMOTRIZ: VerticalDefinition = {
             { name: { es: 'Test Drive', en: 'Test Drive', pt: 'Test Drive', fr: 'Essai' }, slug: 'test_drive', color: '#e67e22', probability: 35, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
             { name: { es: 'Cotización', en: 'Quote', pt: 'Cotação', fr: 'Devis' }, slug: 'cotizacion', color: '#9b59b6', probability: 50, isTerminal: false, transitionRules: [] },
             { name: { es: 'Financiación', en: 'Financing', pt: 'Financiamento', fr: 'Financement' }, slug: 'financiacion', color: '#e74c3c', probability: 70, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
-            { name: { es: 'Entregado', en: 'Delivered', pt: 'Entregue', fr: 'Livré' }, slug: 'entregado', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
-            { name: { es: 'Perdido', en: 'Lost', pt: 'Perdido', fr: 'Perdu' }, slug: 'perdido', color: '#95a5a6', probability: 0, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Entregado', en: 'Delivered', pt: 'Entregue', fr: 'Livré' }, slug: 'entregado', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
+            { name: { es: 'Perdido', en: 'Lost', pt: 'Perdido', fr: 'Perdu' }, slug: 'perdido', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ],
     },
     faqs: [
@@ -446,8 +446,8 @@ const TURISMO: VerticalDefinition = {
         { name: { es: 'Cotización', en: 'Quote', pt: 'Cotação', fr: 'Devis' }, slug: 'cotizacion', color: '#3498db', probability: 30, isTerminal: false, transitionRules: [] },
         { name: { es: 'Reserva', en: 'Booked', pt: 'Reservado', fr: 'Réservé' }, slug: 'reserva', color: '#f39c12', probability: 60, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
         { name: { es: 'Confirmado', en: 'Confirmed', pt: 'Confirmado', fr: 'Confirmé' }, slug: 'confirmado', color: '#2ecc71', probability: 90, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
-        { name: { es: 'Completado', en: 'Traveled', pt: 'Viajou', fr: 'Voyage effectué' }, slug: 'completado', color: '#27ae60', probability: 100, isTerminal: true, transitionRules: [] },
-        { name: { es: 'Cancelado', en: 'Cancelled', pt: 'Cancelado', fr: 'Annulé' }, slug: 'cancelado', color: '#95a5a6', probability: 0, isTerminal: true, transitionRules: [] },
+        { name: { es: 'Completado', en: 'Traveled', pt: 'Viajou', fr: 'Voyage effectué' }, slug: 'completado', color: '#27ae60', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
+        { name: { es: 'Cancelado', en: 'Cancelled', pt: 'Cancelado', fr: 'Annulé' }, slug: 'cancelado', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
     ] },
     faqs: [
         { question: { es: '¿Qué destinos manejan?', en: 'What destinations do you cover?', pt: 'Quais destinos cobrem?', fr: 'Quelles destinations couvrez-vous?' }, answer: { es: 'Cuéntame a dónde te gustaría ir y te confirmo si trabajamos ese destino. Con eso armamos tu plan a medida.', en: 'Tell me where you would like to go and I will confirm whether we cover that destination. From there we build your plan.', pt: 'Me conte para onde gostaria de ir e confirmo se atendemos esse destino. A partir daí montamos seu plano.', fr: 'Dites-moi où vous aimeriez aller et je vous confirme si nous couvrons cette destination.' }, category: 'destinos' },
@@ -489,8 +489,8 @@ const EDUCATION: VerticalDefinition = {
         { name: { es: 'Info enviada', en: 'Info sent', pt: 'Info enviada', fr: 'Info envoyée' }, slug: 'info_enviada', color: '#f39c12', probability: 25, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
         { name: { es: 'Inscrito', en: 'Enrolled', pt: 'Inscrito', fr: 'Inscrit' }, slug: 'inscrito', color: '#e67e22', probability: 60, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
         { name: { es: 'Activo', en: 'Active', pt: 'Ativo', fr: 'Actif' }, slug: 'activo', color: '#2ecc71', probability: 90, isTerminal: false, transitionRules: [] },
-        { name: { es: 'Completado', en: 'Completed', pt: 'Completado', fr: 'Complété' }, slug: 'completado', color: '#27ae60', probability: 100, isTerminal: true, transitionRules: [] },
-        { name: { es: 'Deserción', en: 'Dropped', pt: 'Desistência', fr: 'Abandon' }, slug: 'desercion', color: '#95a5a6', probability: 0, isTerminal: true, transitionRules: [] },
+        { name: { es: 'Completado', en: 'Completed', pt: 'Completado', fr: 'Complété' }, slug: 'completado', color: '#27ae60', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
+        { name: { es: 'Deserción', en: 'Dropped', pt: 'Desistência', fr: 'Abandon' }, slug: 'desercion', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
     ] },
     faqs: [
         { question: { es: '¿Qué programas ofrecen?', en: 'What programs do you offer?', pt: 'Quais programas oferecem?', fr: 'Quels programmes proposez-vous?' }, answer: { es: 'Cuéntame qué área te interesa y te doy la información detallada de los programas disponibles.', en: 'Tell me your area of interest and I will give you detailed information on the available programs.', pt: 'Me conte qual área te interessa e passo a informação detalhada dos programas disponíveis.', fr: 'Dites-moi votre domaine d\'intérêt et je vous donnerai le détail des programmes disponibles.' }, category: 'programas' },
@@ -527,8 +527,8 @@ function createGenericVertical(industry: string, config: Partial<VerticalDefinit
             { name: { es: 'Contactado', en: 'Contacted', pt: 'Contatado', fr: 'Contacté' }, slug: 'contactado', color: '#f39c12', probability: 25, isTerminal: false, transitionRules: [{ type: 'phone_required' }] },
             { name: { es: 'Calificado', en: 'Qualified', pt: 'Qualificado', fr: 'Qualifié' }, slug: 'calificado', color: '#e67e22', probability: 40, isTerminal: false, transitionRules: [{ type: 'name_required' }] },
             { name: { es: 'Propuesta', en: 'Proposal', pt: 'Proposta', fr: 'Proposition' }, slug: 'propuesta', color: '#9b59b6', probability: 60, isTerminal: false, transitionRules: [] },
-            { name: { es: 'Cerrado ganado', en: 'Closed Won', pt: 'Fechado ganho', fr: 'Conclu gagné' }, slug: 'cerrado_ganado', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
-            { name: { es: 'Cerrado perdido', en: 'Closed Lost', pt: 'Fechado perdido', fr: 'Conclu perdu' }, slug: 'cerrado_perdido', color: '#95a5a6', probability: 0, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Cerrado ganado', en: 'Closed Won', pt: 'Fechado ganho', fr: 'Conclu gagné' }, slug: 'cerrado_ganado', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
+            { name: { es: 'Cerrado perdido', en: 'Closed Lost', pt: 'Fechado perdido', fr: 'Conclu perdu' }, slug: 'cerrado_perdido', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ] },
         faqs: [
             { question: { es: '¿Cuál es el horario de atención?', en: 'What are your hours?', pt: 'Qual é o horário?', fr: 'Quels sont vos horaires?' }, answer: { es: 'Cuéntame qué día te sirve y te confirmo nuestro horario de atención. Escríbenos y te respondemos.', en: 'Tell me which day works for you and I will confirm our opening hours. Write to us any time.', pt: 'Me diga qual dia lhe serve e confirmo nosso horário de atendimento.', fr: 'Dites-moi quel jour vous convient et je vous confirme nos horaires.' }, category: 'general' },
@@ -553,7 +553,6 @@ function createGenericVertical(industry: string, config: Partial<VerticalDefinit
 
 const FINANZAS = createGenericVertical('finanzas', {
     subTypes: [
-        { key: 'seguros', label: { es: 'Seguros', en: 'Insurance', pt: 'Seguros', fr: 'Assurances' } },
         { key: 'asesoria', label: { es: 'Asesoría financiera', en: 'Financial advisory', pt: 'Assessoria financeira', fr: 'Conseil financier' } },
         { key: 'fintech', label: { es: 'Fintech', en: 'Fintech', pt: 'Fintech', fr: 'Fintech' } },
         { key: 'creditos', label: { es: 'Créditos y préstamos', en: 'Loans & credit', pt: 'Créditos e empréstimos', fr: 'Crédits et prêts' } },
@@ -565,8 +564,8 @@ const FINANZAS = createGenericVertical('finanzas', {
         { name: { es: 'Pre-aprobación', en: 'Pre-approval', pt: 'Pré-aprovação', fr: 'Pré-approbation' }, slug: 'pre_aprobacion', color: '#3498db', probability: 30, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }, { type: 'agent_assigned' }] },
         { name: { es: 'Documentación', en: 'Documentation', pt: 'Documentação', fr: 'Documentation' }, slug: 'documentacion', color: '#f39c12', probability: 50, isTerminal: false, transitionRules: [{ type: 'email_required' }, { type: 'agent_assigned' }] },
         { name: { es: 'Evaluación', en: 'Evaluation', pt: 'Avaliação', fr: 'Évaluation' }, slug: 'evaluacion', color: '#e67e22', probability: 70, isTerminal: false, transitionRules: [{ type: 'agent_assigned' }] },
-        { name: { es: 'Aprobado', en: 'Approved', pt: 'Aprovado', fr: 'Approuvé' }, slug: 'aprobado', color: '#2ecc71', probability: 100, isTerminal: true },
-        { name: { es: 'Rechazado', en: 'Rejected', pt: 'Rejeitado', fr: 'Rejeté' }, slug: 'rechazado', color: '#e74c3c', probability: 0, isTerminal: true },
+        { name: { es: 'Aprobado', en: 'Approved', pt: 'Aprovado', fr: 'Approuvé' }, slug: 'aprobado', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won' },
+        { name: { es: 'Rechazado', en: 'Rejected', pt: 'Rejeitado', fr: 'Rejeté' }, slug: 'rechazado', color: '#e74c3c', probability: 0, isTerminal: true, terminalOutcome: 'lost' },
     ] },
     sidebar: { labelOverrides: { crm: { es: 'Clientes', en: 'Clients', pt: 'Clientes', fr: 'Clients' }, pipeline: { es: 'Solicitudes', en: 'Applications', pt: 'Solicitações', fr: 'Demandes' } }, hiddenItems: ['inventory', 'orders', 'catalog'] },
     bookingEnabled: true,
@@ -626,8 +625,8 @@ const SERVICIOS_PROFESIONALES = createGenericVertical('servicios_profesionales',
         { name: { es: 'Evaluación', en: 'Evaluation', pt: 'Avaliação', fr: 'Évaluation' }, slug: 'evaluacion', color: '#3498db', probability: 25, isTerminal: false, transitionRules: [{ type: 'agent_assigned' }] },
         { name: { es: 'Propuesta', en: 'Proposal', pt: 'Proposta', fr: 'Proposition' }, slug: 'propuesta', color: '#f39c12', probability: 50, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'email_required' }, { type: 'agent_assigned' }] },
         { name: { es: 'En proceso', en: 'In progress', pt: 'Em andamento', fr: 'En cours' }, slug: 'en_proceso', color: '#e67e22', probability: 75, isTerminal: false, transitionRules: [{ type: 'appointment_required' }, { type: 'agent_assigned' }] },
-        { name: { es: 'Completado', en: 'Completed', pt: 'Completado', fr: 'Terminé' }, slug: 'completado', color: '#2ecc71', probability: 100, isTerminal: true },
-        { name: { es: 'Declinado', en: 'Declined', pt: 'Recusado', fr: 'Décliné' }, slug: 'declinado', color: '#95a5a6', probability: 0, isTerminal: true },
+        { name: { es: 'Completado', en: 'Completed', pt: 'Completado', fr: 'Terminé' }, slug: 'completado', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won' },
+        { name: { es: 'Declinado', en: 'Declined', pt: 'Recusado', fr: 'Décliné' }, slug: 'declinado', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost' },
     ] },
     sidebar: { labelOverrides: { crm: { es: 'Clientes', en: 'Clients', pt: 'Clientes', fr: 'Clients' }, pipeline: { es: 'Casos', en: 'Cases', pt: 'Casos', fr: 'Dossiers' } }, hiddenItems: ['inventory', 'orders', 'catalog'] },
     bookingEnabled: true,
@@ -674,8 +673,8 @@ const RETAIL = createGenericVertical('retail', {
         { name: { es: 'Cotización', en: 'Quote', pt: 'Cotação', fr: 'Devis' }, slug: 'cotizacion', color: '#f39c12', probability: 30, isTerminal: false },
         { name: { es: 'Pedido', en: 'Ordered', pt: 'Pedido', fr: 'Commande' }, slug: 'pedido', color: '#e67e22', probability: 60, isTerminal: false },
         { name: { es: 'Enviado', en: 'Shipped', pt: 'Enviado', fr: 'Expédié' }, slug: 'enviado', color: '#9b59b6', probability: 80, isTerminal: false },
-        { name: { es: 'Entregado', en: 'Delivered', pt: 'Entregue', fr: 'Livré' }, slug: 'entregado', color: '#2ecc71', probability: 100, isTerminal: true },
-        { name: { es: 'Devolución', en: 'Return', pt: 'Devolução', fr: 'Retour' }, slug: 'devolucion', color: '#e74c3c', probability: 0, isTerminal: true },
+        { name: { es: 'Entregado', en: 'Delivered', pt: 'Entregue', fr: 'Livré' }, slug: 'entregado', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won' },
+        { name: { es: 'Devolución', en: 'Return', pt: 'Devolução', fr: 'Retour' }, slug: 'devolucion', color: '#e74c3c', probability: 0, isTerminal: true, terminalOutcome: 'lost' },
     ] },
     sidebar: { labelOverrides: { crm: { es: 'Clientes', en: 'Customers', pt: 'Clientes', fr: 'Clients' }, pipeline: { es: 'Ventas', en: 'Sales', pt: 'Vendas', fr: 'Ventes' }, catalog: { es: 'Productos', en: 'Products', pt: 'Produtos', fr: 'Produits' } }, hiddenItems: [] },
 });
@@ -702,8 +701,8 @@ const TECHNOLOGY = createGenericVertical('technology', {
         { name: { es: 'Demo', en: 'Demo', pt: 'Demo', fr: 'Démo' }, slug: 'demo', color: '#f39c12', probability: 35, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
         { name: { es: 'Propuesta', en: 'Proposal', pt: 'Proposta', fr: 'Proposition' }, slug: 'propuesta', color: '#e67e22', probability: 55, isTerminal: false },
         { name: { es: 'Negociación', en: 'Negotiation', pt: 'Negociação', fr: 'Négociation' }, slug: 'negociacion', color: '#9b59b6', probability: 75, isTerminal: false, transitionRules: [{ type: 'agent_assigned' }] },
-        { name: { es: 'Cerrado', en: 'Closed Won', pt: 'Fechado', fr: 'Conclu' }, slug: 'cerrado', color: '#2ecc71', probability: 100, isTerminal: true },
-        { name: { es: 'Perdido', en: 'Lost', pt: 'Perdido', fr: 'Perdu' }, slug: 'perdido', color: '#95a5a6', probability: 0, isTerminal: true },
+        { name: { es: 'Cerrado', en: 'Closed Won', pt: 'Fechado', fr: 'Conclu' }, slug: 'cerrado', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won' },
+        { name: { es: 'Perdido', en: 'Lost', pt: 'Perdido', fr: 'Perdu' }, slug: 'perdido', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost' },
     ] },
     // hiddenItems no hacía nada: el sidebar filtra 'inventory' por allow-list de
     // verticales (retail/restaurantes/otro) y technology no está en ella, así que
@@ -804,8 +803,8 @@ const SERVICIOS_HOGAR: VerticalDefinition = {
             { name: { es: 'Cotización', en: 'Quoted', pt: 'Cotada', fr: 'Devis' }, slug: 'cotizacion', color: '#f39c12', probability: 30, isTerminal: false, transitionRules: [] },
             { name: { es: 'Agendado', en: 'Scheduled', pt: 'Agendado', fr: 'Programmé' }, slug: 'agendado', color: '#e67e22', probability: 60, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
             { name: { es: 'En servicio', en: 'On site', pt: 'Em serviço', fr: 'Sur place' }, slug: 'en_servicio', color: '#9b59b6', probability: 80, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
-            { name: { es: 'Completado', en: 'Completed', pt: 'Concluído', fr: 'Terminé' }, slug: 'completado', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
-            { name: { es: 'Cancelado', en: 'Cancelled', pt: 'Cancelado', fr: 'Annulé' }, slug: 'cancelado', color: '#95a5a6', probability: 0, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Completado', en: 'Completed', pt: 'Concluído', fr: 'Terminé' }, slug: 'completado', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
+            { name: { es: 'Cancelado', en: 'Cancelled', pt: 'Cancelado', fr: 'Annulé' }, slug: 'cancelado', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ],
     },
     faqs: [
@@ -887,13 +886,13 @@ const PET_SERVICES: VerticalDefinition = {
             { name: { es: 'Consulta', en: 'Inquiry', pt: 'Consulta', fr: 'Demande' }, slug: 'consulta', color: '#3498db', probability: 10, isTerminal: false, transitionRules: [] },
             { name: { es: 'Reserva', en: 'Booked', pt: 'Reservada', fr: 'Réservée' }, slug: 'reserva', color: '#f39c12', probability: 50, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
             { name: { es: 'Servicio', en: 'In progress', pt: 'Em serviço', fr: 'En cours' }, slug: 'servicio', color: '#e67e22', probability: 80, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
-            { name: { es: 'Completado', en: 'Completed', pt: 'Concluído', fr: 'Terminé' }, slug: 'completado', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Completado', en: 'Completed', pt: 'Concluído', fr: 'Terminé' }, slug: 'completado', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
             { name: { es: 'Cliente recurrente', en: 'Repeat client', pt: 'Cliente recorrente', fr: 'Client fidèle' }, slug: 'recurrente', color: '#27ae60', probability: 95, isTerminal: false, transitionRules: [] },
             // Sin una terminal de PÉRDIDA, el embudo no tiene dónde poner al que
             // no vuelve: todo queda vivo para siempre, el win/loss no puede
             // calcularse y la fuga del negocio no existe como concepto.
             // servicios_hogar ya la tiene; ésta faltaba.
-            { name: { es: 'Cancelado', en: 'Cancelled', pt: 'Cancelado', fr: 'Annulé' }, slug: 'cancelado', color: '#e74c3c', probability: 0, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Cancelado', en: 'Cancelled', pt: 'Cancelado', fr: 'Annulé' }, slug: 'cancelado', color: '#e74c3c', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ],
     },
     faqs: [
@@ -987,7 +986,7 @@ const FOTOGRAFIA: VerticalDefinition = {
             { name: { es: 'Cotización', en: 'Quote sent', pt: 'Cotação', fr: 'Devis envoyé' }, slug: 'cotizacion', color: '#f39c12', probability: 30, isTerminal: false, transitionRules: [] },
             { name: { es: 'Anticipo', en: 'Deposit paid', pt: 'Sinal pago', fr: 'Acompte versé' }, slug: 'anticipo', color: '#e67e22', probability: 70, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
             { name: { es: 'Sesión agendada', en: 'Shoot booked', pt: 'Sessão agendada', fr: 'Séance réservée' }, slug: 'agendada', color: '#9b59b6', probability: 90, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
-            { name: { es: 'Entregada', en: 'Delivered', pt: 'Entregue', fr: 'Livré' }, slug: 'entregada', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Entregada', en: 'Delivered', pt: 'Entregue', fr: 'Livré' }, slug: 'entregada', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
             { name: { es: 'Reseña', en: 'Reviewed', pt: 'Avaliada', fr: 'Avis donné' }, slug: 'resena', color: '#27ae60', probability: 95, isTerminal: false, transitionRules: [] },
         ],
     },
@@ -1071,9 +1070,9 @@ const SEGUROS: VerticalDefinition = {
             { name: { es: 'Calificado', en: 'Qualified', pt: 'Qualificado', fr: 'Qualifié' }, slug: 'calificado', color: '#f39c12', probability: 25, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
             { name: { es: 'Cotizado', en: 'Quoted', pt: 'Cotado', fr: 'Devis envoyé' }, slug: 'cotizado', color: '#e67e22', probability: 50, isTerminal: false, transitionRules: [] },
             { name: { es: 'Propuesta enviada', en: 'Proposal sent', pt: 'Proposta enviada', fr: 'Proposition envoyée' }, slug: 'propuesta', color: '#9b59b6', probability: 70, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
-            { name: { es: 'Póliza emitida', en: 'Policy issued', pt: 'Apólice emitida', fr: 'Police émise' }, slug: 'poliza_emitida', color: '#2ecc71', probability: 100, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Póliza emitida', en: 'Policy issued', pt: 'Apólice emitida', fr: 'Police émise' }, slug: 'poliza_emitida', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
             { name: { es: 'Renovación', en: 'Renewal', pt: 'Renovação', fr: 'Renouvellement' }, slug: 'renovacion', color: '#27ae60', probability: 95, isTerminal: false, transitionRules: [] },
-            { name: { es: 'Perdido', en: 'Lost', pt: 'Perdido', fr: 'Perdu' }, slug: 'perdido', color: '#95a5a6', probability: 0, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Perdido', en: 'Lost', pt: 'Perdido', fr: 'Perdu' }, slug: 'perdido', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ],
     },
     faqs: [
@@ -1154,7 +1153,7 @@ const GIMNASIOS: VerticalDefinition = {
             { name: { es: 'Inscrito', en: 'Enrolled', pt: 'Matriculado', fr: 'Inscrit' }, slug: 'inscrito', color: '#e67e22', probability: 60, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
             { name: { es: 'Activo', en: 'Active member', pt: 'Membro ativo', fr: 'Membre actif' }, slug: 'activo', color: '#2ecc71', probability: 90, isTerminal: false, transitionRules: [] },
             { name: { es: 'Renovación', en: 'Renewal', pt: 'Renovação', fr: 'Renouvellement' }, slug: 'renovacion', color: '#27ae60', probability: 95, isTerminal: false, transitionRules: [] },
-            { name: { es: 'Inactivo', en: 'Lapsed', pt: 'Inativo', fr: 'Inactif' }, slug: 'inactivo', color: '#95a5a6', probability: 0, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Inactivo', en: 'Lapsed', pt: 'Inativo', fr: 'Inactif' }, slug: 'inactivo', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ],
     },
     faqs: [
@@ -1243,7 +1242,7 @@ const VETERINARIA: VerticalDefinition = {
             { name: { es: 'Primera visita', en: 'First visit', pt: 'Primeira visita', fr: 'Première visite' }, slug: 'primera_visita', color: '#e67e22', probability: 50, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
             { name: { es: 'Paciente activo', en: 'Active patient', pt: 'Paciente ativo', fr: 'Patient actif' }, slug: 'paciente_activo', color: '#2ecc71', probability: 80, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
             { name: { es: 'Plan de vacunación', en: 'Vaccination plan', pt: 'Plano de vacinação', fr: 'Plan de vaccination' }, slug: 'plan_vacunacion', color: '#27ae60', probability: 90, isTerminal: false, transitionRules: [] },
-            { name: { es: 'Alta', en: 'Discharged', pt: 'Alta', fr: 'Sorti' }, slug: 'alta', color: '#95a5a6', probability: 100, isTerminal: true, transitionRules: [] },
+            { name: { es: 'Alta', en: 'Discharged', pt: 'Alta', fr: 'Sorti' }, slug: 'alta', color: '#95a5a6', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
         ],
     },
     faqs: [
@@ -1310,5 +1309,9 @@ export const VERTICAL_REGISTRY: Record<string, VerticalDefinition> = {
 };
 
 export function getVerticalDefinition(industry: string): VerticalDefinition {
-    return VERTICAL_REGISTRY[industry] || VERTICAL_REGISTRY['otro'];
+    const definition = VERTICAL_REGISTRY[industry];
+    if (!definition) {
+        throw new Error(`Unknown vertical definition: ${industry}`);
+    }
+    return definition;
 }

@@ -12,7 +12,8 @@ import { GoogleAuthService } from './google-auth.service';
 import { PersonaService } from '../persona/persona.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { BillingService } from '../billing/billing.service';
-import { VerticalsService } from '../verticals/verticals.service';
+import { CouponsService } from '../billing/coupons.service';
+import { VerticalsService, VERTICAL_PROVISIONING_VERSION } from '../verticals/verticals.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PlatformSmsService } from './platform-sms.service';
 // Solo TIPOS desde @parallext/shared: ese paquete expone TypeScript crudo, así que
@@ -21,6 +22,13 @@ import { JwtPayload, UserRole } from '@parallext/shared';
 import { TIMEZONE_COUNTRY, SPANISH_SPEAKING_COUNTRIES } from '../../common/utils/billing-country.util';
 import { validateEmailDomain } from '../../common/utils/email.util';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
+import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
+import {
+    InvalidVerticalSelectionError,
+    resolveVerticalSelection,
+} from '../verticals/vertical-identifiers';
+import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
+import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import {
     verificationEmail, passwordResetEmail, twoFactorEmail,
     welcomeEmail, passwordChangedEmail, newTrustedDeviceEmail,
@@ -58,6 +66,7 @@ export class AuthService {
         private personaService: PersonaService,
         private businessInfoService: BusinessInfoService,
         private billingService: BillingService,
+        private couponsService: CouponsService,
         private verticalsService: VerticalsService,
         private throttleService: TenantThrottleService,
         private platformSms: PlatformSmsService,
@@ -1524,29 +1533,194 @@ export class AuthService {
 
     // ── Onboarding completion ─────────────────────────────────────
 
-    async completeOnboarding(userId: string, data: any) {
+    async completeOnboarding(userId: string, data: CompleteOnboardingDto): Promise<any> {
+        // El lock cubre TODO el alta, no solo la transacción que crea tenant/user.
+        // Sin él, dos requests que leen tenantId=null a la vez pueden crear dos
+        // tenants y la segunda termina dejando huérfano al primero. Redis permite
+        // coordinar también entre instancias del API y el token evita liberar el
+        // lock de otro proceso si el TTL llegara a vencer.
+        const lockKey = `lock:onboarding:${userId}`;
+        const lockTtlSeconds = 120;
+        const lockToken = await this.redis.acquireLockToken(lockKey, lockTtlSeconds);
+        if (!lockToken) {
+            throw new ConflictException({
+                error: 'onboarding_in_progress',
+                message: 'El alta de esta cuenta ya está en ejecución. Intenta nuevamente en unos segundos.',
+            });
+        }
+        const lease = new OwnedLockLease(
+            this.redis,
+            lockKey,
+            lockToken,
+            lockTtlSeconds,
+            this.logger,
+            `[Onboarding] Lock lost for user ${userId}`,
+        );
+        lease.start();
+
+        try {
+            await lease.assertOwned();
+            return await this.completeOnboardingLocked(userId, data, () => lease.assertOwned());
+        } catch (error: unknown) {
+            if (error instanceof LockOwnershipLostError || lease.hasLostOwnership()) {
+                throw new ConflictException({
+                    error: 'onboarding_lock_lost',
+                    message: 'El alta perdió su lock de ejecución y fue detenida antes del siguiente commit.',
+                });
+            }
+            throw error;
+        } finally {
+            lease.stop();
+            await this.redis.releaseLockToken(lockKey, lockToken)
+                .catch((error: any) => this.logger.warn(`[Onboarding] Lock release failed: ${error.message}`));
+        }
+    }
+
+    private async completeOnboardingLocked(
+        userId: string,
+        data: CompleteOnboardingDto,
+        assertLockOwned: () => Promise<void>,
+    ): Promise<any> {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
 
-        // Idempotencia. La transacción comitea el tenant ANTES de los pasos 4-7 (schema,
-        // agente, business info, bootstrap vertical, billing), que van cada uno en su
-        // try/catch. Si el usuario reintentaba —doble clic, red cortada después del
-        // commit, retry del cliente— el slug ya existía y el alta moría en un 409 en
-        // inglés: su cuenta ya estaba creada pero él seguía atrapado en el formulario.
+        // Idempotencia. La transacción comitea el tenant ANTES de los pasos críticos
+        // (schema, agente, Business Identity, vertical y billing). Si cualquiera
+        // falla, el usuario queda ligado con onboardingCompleted=false y esta rama
+        // repara/reanuda sin crear otro tenant ni emitir sesión prematuramente.
         if (user.tenantId) {
-            this.logger.log(`[Onboarding] Reintento sobre un tenant ya creado (${user.tenantId}) — devuelvo sesión en vez de recrear`);
+            this.logger.log(`[Onboarding] Reintento sobre tenant ${user.tenantId} — verificando y reparando provisioning`);
             const tenant = await this.prisma.tenant.findUnique({
                 where: { id: user.tenantId },
-                select: { name: true },
+                select: {
+                    name: true,
+                    industry: true,
+                    language: true,
+                    schemaName: true,
+                    settings: true,
+                    plan: true,
+                    billingEmail: true,
+                    billingCountry: true,
+                },
+            });
+            if (!tenant) throw new NotFoundException('Tenant not found');
+
+            const settings = (tenant.settings as any) || {};
+            const requestedSubType = settings.subType
+                ?? settings.verticalConfig?.subType
+                ?? data.subType
+                ?? data.company?.subType
+                ?? null;
+            let selection;
+            try {
+                selection = resolveVerticalSelection(tenant.industry, requestedSubType);
+            } catch (error) {
+                if (error instanceof InvalidVerticalSelectionError) {
+                    throw new BadRequestException({
+                        error: 'invalid_vertical_selection',
+                        message: error.message,
+                        industry: error.industry,
+                        subType: error.subType,
+                    });
+                }
+                throw error;
+            }
+
+            // Un draft legacy puede resolver a otra identidad canónica completa
+            // (finanzas/seguros -> seguros/broker). Persistir solo verticalConfig
+            // dejaría gates globales y sidebar leyendo `tenant.industry=finanzas`.
+            const canonicalSettings = {
+                ...settings,
+                subType: selection.subType,
+                businessInfoDraft: {
+                    ...(settings.businessInfoDraft || {}),
+                    companyName: settings.businessInfoDraft?.companyName || tenant.name,
+                    industry: selection.industry,
+                },
+            };
+            if (tenant.industry !== selection.industry || settings.subType !== selection.subType) {
+                await assertLockOwned();
+                await mergeTenantSettingsAtomic(this.prisma, user.tenantId, {
+                    subType: selection.subType,
+                    businessInfoDraft: canonicalSettings.businessInfoDraft,
+                }, {
+                    industry: selection.industry,
+                });
+            }
+
+            // DDL y bootstrap son pasos críticos y reanudables. createTenantSchema
+            // devuelve el nombre físico canónico (con UUID) y lo persiste; nunca
+            // seguimos usando el placeholder basado en slug.
+            await assertLockOwned();
+            const effectiveSchemaName = await this.prisma.createTenantSchema(tenant.schemaName);
+            await assertLockOwned();
+            await this.redis.del(`tenant:${user.tenantId}:schema`);
+            this.logger.log(`[Onboarding] Schema verificado/reparado: ${effectiveSchemaName}`);
+            const goals = Array.isArray(settings.chatReasons)
+                ? settings.chatReasons
+                : (Array.isArray(data.goals || data.chatReasons) ? (data.goals || data.chatReasons) : []);
+            await assertLockOwned();
+            await this.personaService.createDefaultAgentFromGoals(
+                user.tenantId,
+                goals,
+                user.email || 'onboarding-retry',
+                selection.industry,
+                selection.subType || undefined,
+            );
+            const businessDraft = canonicalSettings.businessInfoDraft || {};
+            await assertLockOwned();
+            await this.businessInfoService.upsertPrimary(user.tenantId, {
+                companyName: businessDraft.companyName || tenant.name,
+                industry: selection.industry,
+                website: businessDraft.website || settings.website || undefined,
+                phone: businessDraft.phone || undefined,
+                email: businessDraft.email || tenant.billingEmail || undefined,
+                about: businessDraft.about || undefined,
+                socialLinks: businessDraft.socialLinks || settings.socialLinks || undefined,
+            });
+            const tenantLang = (tenant.language || 'es-CO').split('-')[0];
+            await assertLockOwned();
+            await this.verticalsService.bootstrapVertical(
+                user.tenantId,
+                selection.industry,
+                selection.subType,
+                tenantLang,
+            );
+            await assertLockOwned();
+            await this.ensureOnboardingSubscription({
+                tenantId: user.tenantId,
+                planSlug: (tenant.plan || data.plan || data.planSlug || 'emprendedor') as string,
+                billingEmail: businessDraft.email || tenant.billingEmail || user.email,
+                billingCountry: tenant.billingCountry
+                    || data.company?.country
+                    || data.billingCountry
+                    || this.inferCountryFromTimezone(settings.timezone || 'America/Bogota'),
+                cardTokenId: data.cardTokenId,
+            });
+            // Mismo cupón que en el flujo normal: la rama de reparación reintenta el
+            // alta completa, y el UNIQUE (couponId, tenantId) hace que un segundo
+            // intento devuelva `already_redeemed` en vez de regalar el mes dos veces.
+            const couponResult = await this.applyOnboardingCoupon({
+                tenantId: user.tenantId,
+                userId: user.id,
+                couponCode: data.couponCode,
+            });
+            await assertLockOwned();
+            await mergeTenantSettingsAtomic(this.prisma, user.tenantId, {}, {
+                onboardingCompletedAt: new Date(),
+            });
+            await assertLockOwned();
+            await this.prisma.user.update({
+                where: { id: user.id },
+                data: { onboardingCompleted: true },
             });
 
-            let verticalConfig: any = null;
-            try {
-                verticalConfig = await this.verticalsService.getVerticalConfig(user.tenantId);
-            } catch { /* no crítico */ }
+            const verticalConfig = await this.verticalsService.getVerticalConfig(user.tenantId);
 
+            await assertLockOwned();
             const prevSession = await this.redis.getJson<SessionData>(`session:${user.id}`);
             const existingSid = prevSession?.sid || await this.createSession(user.id, user.tenantId);
+            await assertLockOwned();
             const { accessToken, refreshToken } = await this.generateTokens({
                 sub: user.id,
                 email: user.email,
@@ -1565,33 +1739,64 @@ export class AuthService {
                     role: user.role,
                     tenantId: user.tenantId,
                     tenantName: tenant?.name,
-                    onboardingCompleted: user.onboardingCompleted,
+                    onboardingCompleted: true,
                 },
                 verticalConfig,
+                coupon: couponResult,
             };
         }
 
         // Accept nested format from onboarding wizard
         const company = data.company || {};
-        const companyName = company.name || data.companyName;
+        const companyName = (company.name || data.companyName || '').trim();
+        if (!companyName) {
+            throw new BadRequestException({
+                error: 'company_name_required',
+                message: 'El nombre de la empresa es obligatorio',
+            });
+        }
         const website = company.website || data.website;
         const socialLinks = company.socialMedia || data.socialLinks;
         const rawIndustry = company.industry || data.industry;
         const rawSubType = data.subType || company.subType;
-        // El sub-tipo "seguros" dentro de finanzas es la vertical `seguros` completa:
-        // un broker que se declaraba así recibía persona y pipeline de CRÉDITO, sin
-        // las 6 INSURANCE_TOOLS (el bootstrap solo enciende el flag para la industria
-        // seguros) y sin /admin/insurance (ítem de sidebar gateado a verticals:
-        // ["seguros"]) — o sea, sin catálogo que poblar. Encender solo la tool no
-        // alcanzaba; se normaliza la industria en el único punto donde se resuelve.
-        // Lo respalda el mercado: el top-10 propio no lista finanzas pero sí
-        // "Insurance Brokers" #9 con WTP 9/10.
-        const industry = (rawIndustry === 'finanzas' && rawSubType === 'seguros') ? 'seguros' : rawIndustry;
+        let verticalSelection;
+        try {
+            verticalSelection = resolveVerticalSelection(rawIndustry, rawSubType);
+        } catch (error) {
+            if (error instanceof InvalidVerticalSelectionError) {
+                throw new BadRequestException({
+                    error: 'invalid_vertical_selection',
+                    message: error.message,
+                    industry: error.industry,
+                    subType: error.subType,
+                });
+            }
+            throw error;
+        }
+        const { industry, subType } = verticalSelection;
         const companySize = company.orgSize || data.companySize;
         const timezone = company.timezone || data.timezone || 'America/Bogota';
         const customerTypes = data.audiences || data.customerTypes;
         const chatReasons = data.goals || data.chatReasons;
         const referralSource = data.referral || data.referralSource;
+        const phone = company.phone || data.phone;
+        const businessEmail = company.email || data.businessEmail;
+        const about = company.about || data.about;
+        const selectedPlan = (data.plan || data.planSlug || 'emprendedor') as string;
+        const billingCountry = (company.country
+            || data.billingCountry
+            || this.inferCountryFromTimezone(timezone)) as string;
+        // Se persiste sin secretos/token de tarjeta: es el insumo durable que un
+        // retry necesita para reparar Business Identity y billing tras un corte.
+        const businessInfoDraft = {
+            companyName,
+            industry,
+            website: website || undefined,
+            phone: phone || undefined,
+            email: businessEmail || undefined,
+            about: about || undefined,
+            socialLinks: socialLinks || undefined,
+        };
 
         // Slug a partir del nombre. Los homónimos se desambiguan con sufijo en vez de
         // rechazarse: "Ferretería El Tornillo" es un nombre plausible en dos ciudades
@@ -1611,19 +1816,21 @@ export class AuthService {
         const tenantLanguage = `${tenantLangCode}-${this.inferCountryFromTimezone(timezone)}`;
 
         // Atomic transaction: create tenant + link user
+        await assertLockOwned();
         const result = await this.prisma.$transaction(async (tx: any) => {
             // 1. Create tenant with settings JSONB
+            await assertLockOwned();
             const tenant = await tx.tenant.create({
                 data: {
                     name: companyName,
                     slug,
-                    industry: industry || 'other',
+                    industry,
                     schemaName,
                     // El plan real lo fija createTrialSubscription más abajo, en esta
                     // misma request, a partir de lo que el usuario eligió. Sembrar
                     // 'starter' acá solo servía para que hubiera una ventana en la que
                     // el tenant decía un plan que nadie había pedido.
-                    plan: data.plan || data.planSlug || 'emprendedor',
+                    plan: selectedPlan,
                     language: tenantLanguage,
                     settings: {
                         website,
@@ -1633,20 +1840,24 @@ export class AuthService {
                         customerTypes,
                         chatReasons,
                         referralSource,
+                        // Persistir el input mínimo permite que un retry repare
+                        // schema/agente/bootstrap aunque el cliente se cierre.
+                        subType,
+                        businessInfoDraft,
                     },
-                    // Funnel stage stamp — onboarding complete = step 2 of the funnel
-                    onboardingCompletedAt: new Date(),
                     signupSource: data.signupSource || referralSource || null,
                 },
             });
 
-            // 2. Link user to tenant and mark onboarding complete
+            // 2. Claim the user for this tenant; readiness remains false.
+            await assertLockOwned();
             const updatedUser = await tx.user.update({
                 where: { id: userId },
                 data: {
                     tenantId: tenant.id,
                     role: 'tenant_admin',
-                    onboardingCompleted: true,
+                    // Se marca true solo después de schema + bootstrap verificados.
+                    onboardingCompleted: false,
                 },
                 select: {
                     id: true,
@@ -1660,111 +1871,117 @@ export class AuthService {
             });
 
             // 3. Audit log
+            await assertLockOwned();
             await tx.auditLog.create({
                 data: {
                     tenantId: tenant.id,
                     userId: user.id,
-                    action: 'onboarding_completed',
+                    action: 'onboarding_provisioning_started',
                     resource: 'tenant',
                     details: { companyName, slug, email: user.email },
                 },
             });
 
+            // Fencing check immediately before Prisma commits the callback.
+            await assertLockOwned();
             return { tenant, user: updatedUser };
         });
 
-        // 4. Create isolated DB schema (outside transaction — DDL cannot be rolled back)
-        try {
-            await this.prisma.createTenantSchema(result.tenant.schemaName);
-        } catch (error) {
-            console.error(`[Onboarding] Failed to create schema "${result.tenant.schemaName}":`, error);
-        }
+        // 4. Create/repair isolated DB schema (outside transaction — DDL cannot
+        // be rolled back). Es CRÍTICO: si falla, la request falla y el retry de
+        // arriba reanuda. El servicio retorna y persiste el nombre físico UUID;
+        // desde este punto no se reutiliza el placeholder basado en slug.
+        await assertLockOwned();
+        const effectiveSchemaName = await this.prisma.createTenantSchema(result.tenant.schemaName);
+        result.tenant.schemaName = effectiveSchemaName;
+        await assertLockOwned();
+        await this.redis.del(`tenant:${result.tenant.id}:schema`);
+        this.logger.log(`[Onboarding] Canonical tenant schema ready: ${effectiveSchemaName}`);
 
         // 5. Create default AI agent based on onboarding goals
         const goals: string[] = Array.isArray(chatReasons) ? chatReasons : [];
-        try {
-            await this.personaService.createDefaultAgentFromGoals(
-                result.tenant.id,
-                goals,
-                user.email || 'onboarding',
-                industry || undefined,
-                (data.subType || company.subType) || undefined,
-            );
-        } catch (error) {
-            console.error(`[Onboarding] Failed to create default agent for "${result.tenant.schemaName}":`, error);
-        }
+        await assertLockOwned();
+        await this.personaService.createDefaultAgentFromGoals(
+            result.tenant.id,
+            goals,
+            user.email || 'onboarding',
+            industry,
+            subType || undefined,
+        );
 
-        // 6. Persist Business Identity so the agent has company context from
-        // day one — otherwise <turn.business> would be empty until the user
-        // manually filled Settings → Business Info.
-        try {
-            const phone = company.phone || data.phone;
-            const email = company.email || data.businessEmail;
-            const about = company.about || data.about;
-            await this.businessInfoService.upsertPrimary(result.tenant.id, {
-                companyName,
-                industry: industry || undefined,
-                website: website || undefined,
-                phone: phone || undefined,
-                email: email || undefined,
-                about: about || undefined,
-                socialLinks: socialLinks || undefined,
-            });
-        } catch (error) {
-            console.error(`[Onboarding] Failed to persist business identity for "${result.tenant.schemaName}":`, error);
-        }
+        // 6. Business Identity es parte del readiness del agente: sin ella
+        // <turn.business> queda vacío. Es crítica y el draft durable permite
+        // que la rama de retry la repare idempotentemente.
+        await assertLockOwned();
+        await this.businessInfoService.upsertPrimary(result.tenant.id, businessInfoDraft);
 
-        // 6.5. Bootstrap vertical-specific defaults (pipeline stages, agent persona, FAQs, services)
-        let verticalConfig: any = null;
-        try {
-            const tenantLang = tenantLangCode;
-            const verticalIndustry = industry || 'otro';
-            const verticalSubType = data.subType || company.subType || null;
-            console.log(`[Onboarding] Starting vertical bootstrap: industry="${verticalIndustry}", subType="${verticalSubType}", lang="${tenantLang}", tenant="${result.tenant.id}"`);
-            await this.verticalsService.bootstrapVertical(
-                result.tenant.id,
-                verticalIndustry,
-                verticalSubType,
-                tenantLang,
-            );
-            verticalConfig = await this.verticalsService.getVerticalConfig(result.tenant.id);
-            console.log(`[Onboarding] Vertical bootstrap completed successfully for "${result.tenant.schemaName}"`);
-        } catch (error: any) {
-            console.error(`[Onboarding] Failed vertical bootstrap for "${result.tenant.schemaName}":`, error?.message || error);
-        }
+        // 6.5. Bootstrap vertical-specific defaults. También es CRÍTICO: el
+        // servicio persiste pending/failed/complete y solo retorna al cumplir
+        // cuotas e invariantes post-bootstrap.
+        const tenantLang = tenantLangCode;
+        console.log(`[Onboarding] Starting vertical bootstrap: industry="${industry}", subType="${subType}", lang="${tenantLang}", tenant="${result.tenant.id}"`);
+        await assertLockOwned();
+        await this.verticalsService.bootstrapVertical(
+            result.tenant.id,
+            industry,
+            subType,
+            tenantLang,
+        );
+        const verticalConfig = await this.verticalsService.getVerticalConfig(result.tenant.id);
+        console.log(`[Onboarding] Vertical bootstrap completed and verified for "${effectiveSchemaName}"`);
 
-        // 7. Create the trial subscription. The onboarding wizard may pass
-        // `plan` (slug) and `cardTokenId` — defaults to starter with no card
-        // so an empty body still produces a valid TRIALING subscription. Any
-        // failure here is logged but does NOT roll back the tenant — the
-        // founder can retry billing activation from the dashboard later.
-        try {
-            const planSlug = (data.plan || data.planSlug || 'starter') as string;
-            const cardTokenId = data.cardTokenId as string | undefined;
-            const billingEmail = company.email || data.businessEmail || user.email;
-            const billingCountry = (company.country || data.billingCountry || this.inferCountryFromTimezone(timezone)) as string;
-            await this.billingService.createTrialSubscription({
+        // 7. Billing también precede el flag de completitud. En particular,
+        // card_required_for_trial/plan_not_found nunca deben dejar un usuario
+        // marcado como listo sin suscripción; el retry consulta antes de crear.
+        await assertLockOwned();
+        await this.ensureOnboardingSubscription({
+            tenantId: result.tenant.id,
+            planSlug: selectedPlan,
+            billingEmail: businessEmail || user.email,
+            billingCountry,
+            cardTokenId: data.cardTokenId,
+        });
+
+        // 7.5. Código promocional del alta. Va DESPUÉS de la suscripción porque el
+        // canje la exige, y antes de cerrar el funnel para que el resultado viaje en
+        // la misma respuesta. No usa assertLockOwned ni corta el flujo: un código mal
+        // tipeado no puede tumbar un alta que ya provisionó schema, agente y vertical.
+        const couponResult = await this.applyOnboardingCoupon({
+            tenantId: result.tenant.id,
+            userId: result.user.id,
+            couponCode: data.couponCode,
+        });
+
+        // Solo ahora el funnel está completo. Si cualquiera de los pasos
+        // críticos anteriores falló, el usuario queda ligado al tenant pero con
+        // onboardingCompleted=false y la siguiente request repara/reanuda.
+        await assertLockOwned();
+        await mergeTenantSettingsAtomic(this.prisma, result.tenant.id, {}, {
+            onboardingCompletedAt: new Date(),
+        });
+        await assertLockOwned();
+        await this.prisma.user.update({
+            where: { id: result.user.id },
+            data: { onboardingCompleted: true },
+        });
+        result.user.onboardingCompleted = true;
+        await assertLockOwned();
+        await this.prisma.auditLog.create({
+            data: {
                 tenantId: result.tenant.id,
-                planSlug,
-                billingEmail,
-                billingCountry,
-                cardTokenId,
-            });
-        } catch (error: any) {
-            // If Pro/Enterprise was chosen without a card we intentionally
-            // throw upstream — the dashboard UI will have validated it, but
-            // if somebody hits the API directly, they should get a clear error.
-            // Re-throw so the onboarding reports it.
-            if (error?.response?.error === 'card_required_for_trial' || error?.response?.error === 'plan_not_found') {
-                throw error;
-            }
-            console.error(`[Onboarding] Failed to create billing subscription for "${result.tenant.schemaName}":`, error);
-        }
+                userId: result.user.id,
+                action: 'onboarding_completed',
+                resource: 'tenant',
+                details: { verticalProvisioningVersion: VERTICAL_PROVISIONING_VERSION, schemaName: effectiveSchemaName },
+            },
+        });
 
         // 8. Update session with tenantId + generate new JWT tokens
+        await assertLockOwned();
         const existingSession = await this.redis.getJson<SessionData>(`session:${result.user.id}`);
         const sid = existingSession?.sid || await this.createSession(result.user.id, result.user.tenantId || undefined);
         if (existingSession && result.user.tenantId) {
+            await assertLockOwned();
             existingSession.tenantId = result.user.tenantId;
             await this.redis.setJson(`session:${result.user.id}`, existingSession, SESSION_TTL);
             await this.redis.sadd(`tenant_sessions:${result.user.tenantId}`, result.user.id);
@@ -1777,6 +1994,7 @@ export class AuthService {
             tenantId: result.user.tenantId || undefined,
         };
 
+        await assertLockOwned();
         const { accessToken, refreshToken } = await this.generateTokens(payload, { sid });
 
         return {
@@ -1793,7 +2011,72 @@ export class AuthService {
                 onboardingCompleted: result.user.onboardingCompleted,
             },
             verticalConfig,
+            coupon: couponResult,
         };
+    }
+
+    /**
+     * Canjea el código promocional del alta, si vino uno.
+     *
+     * NUNCA lanza. El alta es cara (schema del tenant, agente por defecto, bootstrap
+     * vertical, suscripción) y ya está hecha para cuando se llama; hacerla fallar por
+     * un código vencido o mal tipeado sería regalarle al usuario un estado a medias.
+     * Se devuelve el resultado para que el frontend avise, y el usuario siempre puede
+     * reintentar desde Configuración → Facturación.
+     */
+    private async applyOnboardingCoupon(input: {
+        tenantId: string;
+        userId: string;
+        couponCode?: string;
+    }): Promise<{
+        applied: boolean;
+        code?: string;
+        freeMonths?: number;
+        trialEndsAt?: Date;
+        error?: string;
+    } | null> {
+        const raw = (input.couponCode || '').trim();
+        if (!raw) return null;
+
+        try {
+            const res = await this.couponsService.redeemForTenant({
+                code: raw,
+                tenantId: input.tenantId,
+                actorUserId: input.userId,
+                source: 'onboarding',
+            });
+            this.logger.log(
+                `[Onboarding] coupon ${res.code} applied to tenant ${input.tenantId} — +${res.freeMonths}m`,
+            );
+            return {
+                applied: true,
+                code: res.code,
+                freeMonths: res.freeMonths,
+                trialEndsAt: res.trialEndsAt,
+            };
+        } catch (err: any) {
+            // Las excepciones de Nest llevan el código estable en `response.error`.
+            const reason = err?.response?.error || err?.error || 'invalid';
+            this.logger.warn(
+                `[Onboarding] coupon "${raw.toUpperCase()}" NOT applied for tenant ${input.tenantId}: ${reason}`,
+            );
+            return { applied: false, error: reason };
+        }
+    }
+
+    private async ensureOnboardingSubscription(input: {
+        tenantId: string;
+        planSlug: string;
+        billingEmail?: string;
+        billingCountry?: string;
+        cardTokenId?: string;
+    }): Promise<void> {
+        const existing = await this.prisma.billingSubscription.findUnique({
+            where: { tenantId: input.tenantId },
+            select: { id: true },
+        });
+        if (existing) return;
+        await this.billingService.createTrialSubscription(input);
     }
 
     // ── Super Admin Impersonation ──────────────────────────────────

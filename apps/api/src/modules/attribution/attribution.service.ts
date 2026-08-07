@@ -115,8 +115,8 @@ export class AttributionService {
             `SELECT
                 COUNT(DISTINCT ca.contact_id)::int AS contacts,
                 COUNT(DISTINCT l.id)::int AS leads,
-                COUNT(DISTINCT CASE WHEN o.stage = 'ganado' THEN o.id END)::int AS won,
-                COALESCE(SUM(CASE WHEN o.stage = 'ganado' THEN o.estimated_value ELSE 0 END), 0) AS revenue
+                COUNT(DISTINCT CASE WHEN o.won_at IS NOT NULL THEN o.id END)::int AS won,
+                COALESCE(SUM(CASE WHEN o.won_at IS NOT NULL THEN o.estimated_value ELSE 0 END), 0) AS revenue
              FROM ctwa_attributions ca
              LEFT JOIN leads l ON l.contact_id = ca.contact_id
              LEFT JOIN opportunities o ON o.lead_id = l.id
@@ -152,8 +152,8 @@ export class AttributionService {
                     MAX(ca.source_url) AS source_url,
                     COUNT(DISTINCT ca.contact_id)::int AS clicks,
                     COUNT(DISTINCT l.id)::int AS leads,
-                    COUNT(DISTINCT CASE WHEN o.stage = 'ganado' THEN o.id END)::int AS won,
-                    COALESCE(SUM(CASE WHEN o.stage = 'ganado' THEN o.estimated_value ELSE 0 END), 0) AS revenue
+                    COUNT(DISTINCT CASE WHEN o.won_at IS NOT NULL THEN o.id END)::int AS won,
+                    COALESCE(SUM(CASE WHEN o.won_at IS NOT NULL THEN o.estimated_value ELSE 0 END), 0) AS revenue
              FROM ctwa_attributions ca
              LEFT JOIN leads l ON l.contact_id = ca.contact_id
              LEFT JOIN opportunities o ON o.lead_id = l.id
@@ -189,8 +189,8 @@ export class AttributionService {
                 `SELECT cr.campaign_id,
                         MAX(cam.name) AS campaign_name,
                         COUNT(DISTINCT cr.contact_id)::int AS recipients,
-                        COUNT(DISTINCT CASE WHEN o.stage = 'ganado' THEN o.id END)::int AS won,
-                        COALESCE(SUM(CASE WHEN o.stage = 'ganado' THEN o.estimated_value ELSE 0 END), 0) AS revenue
+                        COUNT(DISTINCT CASE WHEN o.won_at IS NOT NULL THEN o.id END)::int AS won,
+                        COALESCE(SUM(CASE WHEN o.won_at IS NOT NULL THEN o.estimated_value ELSE 0 END), 0) AS revenue
                  FROM campaign_recipients cr
                  LEFT JOIN campaigns cam ON cam.id = cr.campaign_id
                  LEFT JOIN leads l ON l.contact_id = cr.contact_id

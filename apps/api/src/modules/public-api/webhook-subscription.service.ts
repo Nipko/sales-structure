@@ -4,6 +4,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import * as crypto from 'crypto';
+import {
+    type PinnedHttpsTarget,
+    prepareSafeHttpsTarget,
+    safeAxiosOptions,
+} from '../../common/utils/safe-outbound-url.util';
 
 export const ZAPIER_HOOK_EVENTS = [
     'lead.created',
@@ -68,23 +73,8 @@ export class WebhookSubscriptionService {
 
     // ── SSRF validation ───────────────────────────────────────────────
 
-    private validateTargetUrl(url: string): void {
-        let parsed: URL;
-        try {
-            parsed = new URL(url);
-        } catch {
-            throw new BadRequestException(`Invalid target URL: ${url.substring(0, 80)}`);
-        }
-
-        if (parsed.protocol !== 'https:') {
-            throw new BadRequestException('Webhook target URL must use HTTPS');
-        }
-
-        const hostname = parsed.hostname.toLowerCase();
-        const blocked = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|::1|fd|fe80)/;
-        if (blocked.test(hostname)) {
-            throw new BadRequestException('Webhook target URL must not point to private/reserved IP ranges');
-        }
+    private async validateTargetUrl(url: string): Promise<PinnedHttpsTarget> {
+        return prepareSafeHttpsTarget(url, 'webhook publico');
     }
 
     // ── CRUD ──────────────────────────────────────────────────────────
@@ -94,7 +84,7 @@ export class WebhookSubscriptionService {
         targetUrl: string,
         event: string,
     ): Promise<WebhookSubscription> {
-        this.validateTargetUrl(targetUrl);
+        const target = await this.validateTargetUrl(targetUrl);
 
         if (!ZAPIER_HOOK_EVENTS.includes(event as ZapierHookEvent)) {
             throw new BadRequestException(
@@ -119,7 +109,7 @@ export class WebhookSubscriptionService {
              VALUES ($1::uuid, $2, $3, $4)
              RETURNING id, tenant_id, target_url, event, secret, is_active, created_at, last_triggered_at`,
             tenantId,
-            targetUrl,
+            target.url.toString(),
             event,
             secret,
         ) as any[];
@@ -189,8 +179,9 @@ export class WebhookSubscriptionService {
         payload: Record<string, any>,
     ): Promise<void> {
         // Defense-in-depth: validate URL at delivery time
+        let target: PinnedHttpsTarget;
         try {
-            this.validateTargetUrl(sub.target_url);
+            target = await this.validateTargetUrl(sub.target_url);
         } catch {
             this.logger.warn(
                 `Skipping hook delivery to blocked URL: hook=${sub.id} url=${sub.target_url.substring(0, 80)}`,
@@ -205,13 +196,13 @@ export class WebhookSubscriptionService {
             .digest('hex');
 
         try {
-            await this.httpService.axiosRef.post(sub.target_url, body, {
+            await this.httpService.axiosRef.post(target.url.toString(), body, {
+                ...safeAxiosOptions(target, 10_000),
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Hook-Signature': signature,
                     'X-Hook-Event': event,
                 },
-                timeout: 10_000,
                 validateStatus: () => true,
             });
 

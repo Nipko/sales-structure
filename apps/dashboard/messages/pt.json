@@ -4036,10 +4036,21 @@
       "createTitle": "Novo tenant",
       "companyName": "Nome da empresa",
       "language": "Idioma",
-      "name": "Nome"
+      "name": "Nome",
+      "ownerTitle": "Proprietário do tenant",
+      "ownerFirstName": "Nome",
+      "ownerLastName": "Sobrenome",
+      "ownerEmail": "E-mail do proprietário",
+      "ownerEmailPlaceholder": "proprietario@empresa.com",
+      "provisioningHint": "A criação configura e verifica o proprietário, schema, agente de IA, identidade e vertical. Se o e-mail ainda não tiver conta, um convite será enviado antes da ativação.",
+      "verticalChangeWarning": "A vertical e o subtipo ficam bloqueados após o provisionamento. A alteração exige uma migração controlada do funil, serviços, conhecimento, ferramentas e agente."
     },
     "slugLabel": "Slug",
+    "slugPlaceholder": "minha-empresa",
     "companyPlaceholder": "Ex: Minha Empresa",
+    "catalogLoadError": "Não foi possível carregar o catálogo canônico de verticais e planos.",
+    "createdToast": "{name} foi criado e provisionado",
+    "planUpdateError": "As outras alterações foram salvas, mas não foi possível atualizar o plano.",
     "tenantLabel": "Tenant",
     "onboardingFunnelTitle": "Funil de Onboarding",
     "industries": {
@@ -4071,12 +4082,13 @@
       "es-MX": "Espanhol (MX)",
       "es-ES": "Espanhol (ES)",
       "en-US": "English (US)",
-      "pt-BR": "Português (BR)"
+      "pt-BR": "Português (BR)",
+      "fr-FR": "Francês (FR)"
     },
     "plans": {
       "emprendedor": "Empreendedor",
       "starter": "Starter",
-      "professional": "Professional",
+      "pro": "Pro",
       "enterprise": "Enterprise",
       "custom": "Custom"
     },
@@ -4144,6 +4156,8 @@
     "tiktokUrl": "URL do TikTok",
     "businessType": "Tipo de negócio",
     "businessTypeHint": "Há um médico prescrevendo o tratamento? Escolha Saúde. Se não, Beleza e estética.",
+    "verticalCatalogLoading": "Carregando o catálogo de setores...",
+    "verticalCatalogError": "Não foi possível carregar o catálogo de setores. Recarregue a página para tentar novamente.",
     "select": "Selecionar...",
     "back": "Voltar",
     "creating": "Criando...",
@@ -4330,18 +4344,25 @@
       "hardware": "Hardware e redes",
       "peluqueria": "Banho e tosa canina / felina",
       "guarderia": "Creche e hotel para pets",
+      "pet_hotel": "Hotel para pets",
       "paseos": "Passeios e cuidados à domicílio",
+      "adiestramiento": "Adestramento",
       "entrenamiento": "Treinamento e adestramento",
       "tienda": "Pet shop",
       "plomeria": "Encanamento",
       "electricidad": "Serviços elétricos",
+      "fumigacion": "Dedetização",
       "cerrajeria": "Chaveiro",
       "limpieza": "Limpeza profissional",
+      "jardineria": "Jardinagem",
       "pintura": "Pintura e remodelação",
       "multiservicio": "Multiservico / Geral",
+      "estudio": "Estúdio fotográfico",
       "bodas": "Casamentos e eventos",
+      "eventos": "Eventos sociais e corporativos",
       "retrato": "Retrato e book fotográfico",
       "producto": "Fotografia de produto",
+      "wedding_planner": "Wedding planner",
       "corporativo": "Corporativo e empresas",
       "inmobiliaria": "Fotografia imobiliária"
     },
@@ -4558,6 +4579,11 @@
       "servicios_hogar": "clientes",
       "fotografia": "clientes"
     },
+    "couponLabel": "Código promocional (opcional)",
+    "couponPlaceholder": "LANCAMENTO1MES",
+    "couponHint": "Se você tem um código, somamos meses grátis ao seu teste. Pode deixar vazio.",
+    "couponApplied": "Cupom aplicado: {months} mês(es) grátis somados ao seu teste",
+    "couponFailed": "Não conseguimos aplicar esse código. Sua conta foi criada mesmo assim: tente de novo em Configurações → Faturamento.",
     "bridge": {
       "title": "Conta pronta!",
       "subtitle": "Preparando a configuração do seu agente…"
@@ -5509,7 +5535,7 @@
     "pendingDowngradeCancel": "Manter meu plano",
     "downgradeCancelled": "Mudança de plano cancelada. Você mantém seu plano atual.",
     "couponTitle": "Código de cupom",
-    "couponHint": "Insira um código promocional para desconto ou meses grátis.",
+    "couponHint": "Insira um código promocional para somar meses grátis ao seu plano.",
     "redeem": "Aplicar",
     "couponRedeemed": "Cupom aplicado com sucesso",
     "couponErrors": {
@@ -5518,7 +5544,10 @@
       "expired": "Este cupom expirou.",
       "max_redemptions_reached": "Este cupom atingiu o máximo de resgates.",
       "plan_not_eligible": "Este cupom não se aplica ao seu plano atual.",
-      "already_redeemed": "Você já resgatou este cupom antes."
+      "already_redeemed": "Você já resgatou este cupom antes.",
+      "no_subscription": "Você ainda não tem uma assinatura para aplicar o cupom.",
+      "type_not_supported": "Este cupom não pode mais ser resgatado. Fale com a gente e resolvemos.",
+      "active_provider_subscription": "Você tem uma assinatura com cobrança automática ativa. Fale com a gente para aplicar o cupom sem cobrança duplicada."
     },
     "limitReached": "Você atingiu o limite de {limit} {resource} no seu plano atual ({current}/{limit}).",
     "upgradePlan": "Melhorar plano",
@@ -5526,29 +5555,47 @@
   },
   "couponsPage": {
     "title": "Cupons promocionais",
-    "subtitle": "Códigos de desconto e meses grátis para campanhas de marketing",
+    "subtitle": "Códigos de meses grátis para campanhas de marketing",
     "create": "Criar cupom",
     "createTitle": "Novo cupom",
+    "createHint": "O cupom soma meses grátis ao período de teste do cliente. Pode ser resgatado ao criar a conta ou em Configurações → Faturamento.",
+    "editTitle": "Editar cupom",
+    "editLocked": "O código e os {months} meses grátis não são editáveis: o cupom já foi emitido e tem {redemptions} resgate(s). Para alterá-los, desative este e crie um novo.",
+    "activeToggle": "Cupom ativo (pode ser resgatado)",
     "deactivate": "Desativar",
+    "reactivate": "Reativar",
     "confirmDeactivate": "Desativar este cupom? Não poderá mais ser resgatado.",
     "description": "Descrição",
     "descriptionPlaceholder": "Ex. campanha Black Friday 2026",
     "codeHint": "3-40 caracteres, letras / números / _ / -",
-    "percentLabel": "Porcentagem de desconto (1-100)",
-    "amountLabel": "Valor em centavos (USD)",
     "monthsLabel": "Meses grátis (1-24)",
-    "cyclesLabel": "{n} ciclos",
-    "cyclesLabel2": "Duração (ciclos de cobrança)",
-    "cyclesPlaceholder": "Vazio = para sempre",
     "maxRedemptions": "Máximo de resgates",
     "unlimited": "Ilimitado",
     "expiresAt": "Vence em",
     "months": "meses",
-    "forever": "para sempre",
+    "legacyBadge": "Não resgatável",
+    "legacyHint": "Os cupons de porcentagem e valor fixo nunca descontaram da cobrança real. Ficam como histórico, mas não podem ser resgatados.",
+    "statusExpired": "Vencido",
+    "statusExhausted": "Esgotado",
+    "viewRedemptions": "Ver resgates",
+    "redemptionsTitle": "Resgates",
+    "redemptionsEmpty": "Ninguém resgatou este cupom ainda.",
+    "tenantDeleted": "Conta excluída",
     "type": {
       "percent_off": "% Desconto",
       "amount_off": "Valor fixo",
       "free_months": "Meses grátis"
+    },
+    "source": {
+      "onboarding": "Ao criar a conta",
+      "billing_settings": "Em Faturamento",
+      "admin": "Aplicado pelo suporte"
+    },
+    "errors": {
+      "invalid_code": "O código deve ter 3-40 caracteres: letras, números, _ ou -.",
+      "invalid_months": "Os meses grátis devem estar entre 1 e 24.",
+      "code_already_exists": "Já existe um cupom com esse código.",
+      "type_not_supported": "Só é possível emitir cupons de meses grátis."
     },
     "col": {
       "code": "Código",
@@ -5556,7 +5603,10 @@
       "value": "Valor",
       "redemptions": "Resgates",
       "expires": "Vence",
-      "status": "Estado"
+      "status": "Estado",
+      "tenant": "Conta",
+      "source": "Origem",
+      "redeemedAt": "Data"
     },
     "empty": {
       "title": "Sem cupons criados",
@@ -6484,14 +6534,16 @@
       ]
     },
     "coupons": {
-      "title": "Como criar e gerenciar cupons de desconto?",
-      "description": "Os cupons são códigos de desconto que você pode criar e distribuir para clientes ou parceiros para reduzir o preço dos planos do Parallly; eles suportam três tipos: porcentagem de desconto, valor fixo e meses grátis. Esta seção é exclusiva para super administradores e permite controlar validade, limite de usos e os planos aos quais cada cupom se aplica.",
+      "title": "Como criar e gerenciar cupons de meses grátis?",
+      "description": "Os cupons são códigos que presenteiam meses grátis: estendem o período de teste do cliente sem cobrança. Distribua-os em campanhas — o cliente resgata ao criar a conta ou em Configurações → Faturamento. Esta seção é exclusiva para super administradores e permite controlar validade, limite de resgates e ver quem resgatou cada cupom.",
       "tips": [
-        "Clique em 'Criar cupom' e insira um código em maiúsculas sem espaços (por exemplo, 'LAUNCH50') para facilitar o compartilhamento e a memorização.",
-        "Escolha o tipo de cupom conforme a estratégia: 'Porcentagem de desconto' para descontos relativos (por exemplo, 20% off), 'Valor fixo' para subtrair um valor exato (por exemplo, $10), ou 'Meses grátis' para presentear períodos completos de assinatura.",
-        "Use o campo 'Máximo de usos' para limitar a disponibilidade; por exemplo, defina 50 se for uma promoção de lançamento que não deve ultrapassar esse número de resgates.",
+        "Clique em 'Criar cupom' e insira um código em maiúsculas sem espaços (por exemplo, 'LANCAMENTO1MES') para facilitar o compartilhamento e a memorização.",
+        "Defina os 'Meses grátis' que o código presenteia: 1 mês é o padrão para campanhas de aquisição. O cliente começa com 7 dias de teste, então um cupom de 1 mês deixa cerca de 37 dias sem pagar.",
+        "Use o campo 'Máximo de resgates' para limitar a disponibilidade; por exemplo, defina 50 se for uma promoção de lançamento que não deve ultrapassar esse número de resgates.",
         "Configure uma 'Data de expiração' para cupons de campanha temporários; o código deixará de funcionar automaticamente na data escolhida sem precisar de desativação manual.",
-        "Quando um cupom não deve mais aceitar novos usos, clique no ícone 'Desativar' (botão vermelho na linha) para marcá-lo como inativo sem excluí-lo; isso preserva o histórico de resgates na coluna 'Usos'."
+        "Clique no número da coluna 'Resgates' para ver quais contas usaram o cupom, de onde resgataram e quando.",
+        "Quando um cupom não deve mais aceitar novos resgates, use o ícone vermelho 'Desativar' para marcá-lo como inativo sem excluí-lo; o histórico é preservado e você sempre pode reativá-lo.",
+        "Um cupom não pode ser resgatado se o cliente já tem cobrança automática ativa no MercadoPago: estender a data localmente não interrompe essa cobrança e ele receberia as duas. Nesse caso, cancele a assinatura primeiro ou trate o crédito manualmente."
       ]
     },
     "identity": {

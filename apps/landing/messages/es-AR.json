@@ -1,6 +1,6 @@
 {
   "hero": {
-    "subtitle": "Mientras vos atendés tu negocio (o dormís), tu asistente con IA contesta cada mensaje en segundos, agenda citas y guarda los datos de cada cliente para que ninguna venta se escape. Lo configurás una vez, sin saber de tecnología.",
+    "subtitle": "Mientras vos atendés tu negocio, tu asistente con IA gestiona mensajes, agenda citas y guarda los datos de cada cliente. La configuración guiada no requiere programar.",
     "ctaWhatsapp": "Hablá con nuestra IA"
   },
   "problem": {
@@ -21,7 +21,7 @@
     "subtitle": "Estas son algunas de las herramientas que vienen incluidas. Todas funcionan automáticamente — vos solo configurás una vez al inicio."
   },
   "solutions": {
-    "heroSubtitle": "18 verticales con agente IA, pipeline, FAQs y servicios pre-configurados. Elegí tu industria y empezá a vender en 10 minutos.",
+    "heroSubtitle": "18 verticales con agente IA, pipeline y FAQs adaptados; servicios reservables donde aplican. Elegí tu industria y completá la configuración guiada.",
     "ctaTitle": "¿No encontrás tu industria?"
   },
   "industryPage": {
@@ -44,10 +44,10 @@
     "quizQ3": "¿Necesitás automatización avanzada?",
     "enterpriseCtaTitle": "¿Necesitás más? Hablemos",
     "faqA1": "Sí. Podés subir o bajar de plan cuando quieras. El cambio se aplica inmediatamente y se prorratea.",
-    "faqA2": "Si no elegís un plan, tu cuenta se pausa automáticamente. Tus datos se mantienen 30 días. Podés reactivar cuando quieras.",
+    "faqA2": "Cuando termine la prueba, revisá en el panel las opciones de activación y los planes disponibles.",
     "faqA3": "No. El precio que ves incluye todo. Solo pagarías extra si excedés los límites de mensajes IA (te avisamos antes).",
-    "faqA6": "Sí. Podés pausar hasta 90 días sin perder tus datos. Ideal para negocios estacionales.",
-    "faqA7": "Ofrecemos reembolso completo dentro de los primeros 7 días después del pago. Después, podés cancelar y mantener acceso hasta fin del período."
+    "faqA6": "Los cambios de plan y la cancelación se gestionan desde las opciones disponibles en el panel de facturación.",
+    "faqA7": "Facturación muestra el historial y el estado de cada pago. Cualquier devolución se rige por los términos vigentes."
   },
   "pricing": {
     "subtitle": "Empezá con prueba gratis. Cancelá cuando quieras. Sin letra pequeña.",
@@ -62,17 +62,17 @@
   "features": {
     "title": "Todo lo que necesitás para vender más, en una plataforma",
     "f1Title": "Agente IA que suena como vos",
-    "f1Desc": "Configurá tono, estilo, reglas y horario. Tu IA responde como si fueras vos — pero 24/7 y sin pausas.",
+    "f1Desc": "Configurá tono, estilo, reglas y horario. Tu IA atiende con la identidad y la disponibilidad que definas.",
     "f5Desc": "Reglas trigger → condiciones → acciones. Secuencias de nurturing, recall, follow-ups. Configurás con clicks.",
     "f7Desc": "Cargá tu catálogo, FAQs, políticas y documentos. Tu agente busca con IA y responde con info real."
   },
   "faq": {
-    "a1": "Para nada. Todo se configura con clicks. Si sabés usar WhatsApp, sabés usar Parallly. El onboarding te lleva paso a paso en menos de 10 minutos.",
+    "a1": "Para nada. El onboarding guía la conexión de canales, la elección de industria y la configuración del agente sin necesidad de programar.",
     "a2": "Subís tu información (catálogo, FAQs, reglas) y elegís tu industria. La IA aprende y responde con tu tono. Usamos modelos avanzados (Claude, GPT-4, Gemini) entrenados con la info de tu negocio.",
-    "a5": "10 minutos para tu agente IA respondiendo con info real. En serio: conectás WhatsApp con OAuth oficial de Meta, elegís tu industria, cargás tu info básica y listo.",
-    "a7": "Sí, en cualquier momento. Pausás cuando te vas de viaje, cancelás al final del período (mantenés acceso hasta esa fecha), o cancelás inmediatamente. Todo desde un panel — sin llamadas a soporte.",
-    "a8": "Sí. API abierta + webhooks para integrar con tu ERP/CRM existente. Parallly trae su propio CRM completo, pero también podés conectarlo a HubSpot, Salesforce u otros.",
-    "ctaText": "¿Tenés otra pregunta? Escribinos y te respondemos en minutos.",
+    "a5": "La configuración es guiada: conectás un canal, elegís tu industria, revisás la información del negocio y probás el agente antes de activarlo. El tiempo depende de las conexiones y el contenido.",
+    "a7": "Podés gestionar las opciones disponibles desde facturación. La fecha efectiva y las condiciones aparecen antes de confirmar el cambio.",
+    "a8": "Parallly incluye CRM, API de BI y webhooks salientes según el plan. Otras integraciones requieren configuración específica.",
+    "ctaText": "¿Tenés otra pregunta? Escribinos por WhatsApp.",
     "ctaLink": "Escribinos por WhatsApp"
   },
   "cta": {
@@ -93,7 +93,7 @@
   "verticals": {
     "salud": { "demo4": "Perfecto ✅ Tu cita queda confirmada para jueves 9:00 AM. Te enviaré un recordatorio el miércoles. ¿Necesitás algo más?" },
     "restaurantes": { "demo2": "¡Hola! Soy Luca 🍽️ Te paso el menú del día. ¿Querés ver el menú completo o las promociones?" },
-    "inmobiliaria": { "demo4": "Tengo 5 aptos en ese rango. Te paso las fichas con fotos. ¿Querés agendar visita para este sábado?" },
+    "inmobiliaria": { "demo4": "Perfecto. Buscaré coincidencias en el inventario del negocio y te compartiré las fichas disponibles. ¿Querés revisar horarios de visita?" },
     "belleza": { "demo4": "Sábado tenemos 10am y 2pm con Camila (especialista en color). ¿Cuál preferís?" },
     "gimnasios": { "demo2": "¡Hola! Soy Coach 💪 Tenemos mensual $89k, trimestral $240k (ahorrás $27k). ¿Te agendo una visita?" },
     "educacion": { "demo2": "¡Hola! Soy Ana 📚 Tenemos cursos A1-C2, presencial y virtual. ¿Sabés tu nivel actual?" },

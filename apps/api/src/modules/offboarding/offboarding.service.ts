@@ -1,11 +1,28 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Queue } from 'bullmq';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { MediaService } from '../media/media.service';
 import { BillingService } from '../billing/billing.service';
+import { OwnedLockLease } from '../../common/utils/owned-lock.util';
+
+interface PurgeChannelCredential {
+    channelType: string;
+    accountId: string;
+    wabaId?: string;
+    encryptedCredential: string;
+}
+
+interface PurgeExternalPlan {
+    version: 1;
+    capturedAt: string;
+    channels: PurgeChannelCredential[];
+    googleOAuthTokens: string[];
+}
 
 @Injectable()
 export class OffboardingService {
@@ -202,7 +219,10 @@ export class OffboardingService {
      */
     async disconnectAllChannels(tenantId: string): Promise<void> {
         const accounts = await this.prisma.channelAccount.findMany({
-            where: { tenantId, isActive: true },
+            // Include inactive rows: normal offboarding marks the local route
+            // inactive even when the remote unlink failed, recording that fact
+            // in metadata.disconnected_at_provider=false.
+            where: { tenantId },
         });
 
         if (accounts.length === 0) {
@@ -439,6 +459,92 @@ export class OffboardingService {
     }
 
     /**
+     * Globally pause each relevant BullMQ queue for the short schema-drop
+     * critical section, remove every non-active job owned by the tenant, and
+     * prove that no active tenant job remains.  Unlike the normal offboarding
+     * drain, every queue error is fatal: dropping a schema while a worker may
+     * still be using it is never safe.
+     */
+    private async fenceQueuesForPurge(tenantId: string): Promise<() => Promise<void>> {
+        const queues = [
+            { queue: this.outboundQueue, name: 'outbound-messages' },
+            { queue: this.broadcastQueue, name: 'broadcast-messages' },
+            { queue: this.automationQueue, name: 'automation-jobs' },
+            { queue: this.nurturingQueue, name: 'nurturing' },
+            { queue: this.snoozeQueue, name: 'conversation-snooze' },
+        ];
+        const paused: Array<{ queue: Queue; name: string }> = [];
+        const belongsToTenant = (job: any) =>
+            (job?.data?.tenantId || job?.data?.outbound?.tenantId) === tenantId;
+
+        const resumeAll = async (): Promise<void> => {
+            const failures: string[] = [];
+            for (const item of [...paused].reverse()) {
+                try {
+                    await item.queue.resume();
+                } catch (error: any) {
+                    failures.push(`${item.name}: ${error.message}`);
+                }
+            }
+            if (failures.length > 0) {
+                throw new Error(`Failed to release purge queue fence (${failures.join('; ')})`);
+            }
+        };
+
+        try {
+            for (const item of queues) {
+                await item.queue.pause();
+                paused.push(item);
+            }
+
+            for (const { queue, name } of queues) {
+                const jobs = await queue.getJobs(
+                    ['active', 'wait', 'delayed', 'prioritized', 'paused', 'waiting-children', 'failed'],
+                    0,
+                    -1,
+                    true,
+                );
+                // Removal is intentional before DROP: the durable `purging`
+                // tenant checkpoint has already disabled new work, and these
+                // queued jobs must never be replayed for a tenant selected for
+                // deletion.  If a later gate fails, a retry simply observes an
+                // already-clean queue; no customer data mutation is replayed.
+                for (const job of jobs.filter(belongsToTenant)) {
+                    const state = await job.getState();
+                    if (state === 'active') {
+                        throw new ConflictException({
+                            error: 'tenant_purge_active_queue_job',
+                            queue: name,
+                            jobId: job.id,
+                        });
+                    }
+                    await job.remove();
+                }
+
+                const remaining = await queue.getJobs(
+                    ['active', 'wait', 'delayed', 'prioritized', 'paused', 'waiting-children', 'failed'],
+                    0,
+                    -1,
+                    true,
+                );
+                const tenantJob = remaining.find(belongsToTenant);
+                if (tenantJob) {
+                    throw new Error(`Queue ${name} still contains tenant job ${tenantJob.id}`);
+                }
+            }
+        } catch (error) {
+            try {
+                await resumeAll();
+            } catch (resumeError: any) {
+                this.logger.error(`[Purge ${tenantId}] Queue fence release also failed: ${resumeError.message}`);
+            }
+            throw error;
+        }
+
+        return resumeAll;
+    }
+
+    /**
      * Get current offboarding status for a tenant.
      */
     async getOffboardingStatus(tenantId: string) {
@@ -653,61 +759,153 @@ export class OffboardingService {
     /**
      * AES-256-GCM decryption — same pattern as ChannelTokenService.
      */
-    /**
-     * Best-effort revocation of external OAuth tokens on purge so access dies
-     * with the tenant. Must be invoked BEFORE DROP SCHEMA (the calendar tokens
-     * live inside the per-tenant schema). Never throws — every call is guarded.
-     *  - Google Calendar: POST oauth2.googleapis.com/revoke (Microsoft stores an
-     *    MSAL cache blob, not a raw refresh token, so there is no clean revoke —
-     *    that access simply expires).
-     *  - Google Business Profile: token in tenant.settings.googleBusiness.
-     */
-    private async revokeExternalOAuth(
+    /** Capture all schema-backed teardown credentials without external effects. */
+    private async capturePurgeExternalPlan(
         tenantId: string,
-        schemaName: string | null,
+        schemaName: string,
         settings: any,
-    ): Promise<void> {
-        const revokeGoogle = async (refreshToken: string): Promise<void> => {
-            await fetch('https://oauth2.googleapis.com/revoke', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ token: refreshToken }).toString(),
-            }).catch(() => null);
-        };
+    ): Promise<PurgeExternalPlan> {
+        const existing = settings?.purgeSaga?.externalPlan;
+        if (existing?.version === 1 && Array.isArray(existing.channels) && Array.isArray(existing.googleOAuthTokens)) {
+            return existing as PurgeExternalPlan;
+        }
 
-        // 1. Calendar OAuth tokens (per-tenant schema) — read before the drop.
-        if (schemaName) {
-            try {
+        const accounts = await this.prisma.channelAccount.findMany({
+            where: { tenantId, isActive: true },
+        });
+        const credentials = await this.prisma.whatsappCredential.findMany({
+            where: { tenantId },
+            orderBy: { createdAt: 'desc' },
+        });
+        const credentialFor = (type: string): string | undefined =>
+            credentials.find((credential: any) => credential.credentialType === type)?.encryptedValue;
+        const channels: PurgeChannelCredential[] = [];
+
+        for (const account of accounts) {
+            const alreadyDisconnected = (account.metadata as any)?.disconnected_at_provider === true;
+            if (alreadyDisconnected) continue;
+
+            let encryptedCredential: string | undefined;
+            let wabaId: string | undefined;
+            if (account.channelType === 'whatsapp') {
+                encryptedCredential = credentialFor('system_user_token') || account.accessToken;
                 const rows = await this.prisma.executeInTenantSchema<any[]>(
                     schemaName,
-                    `SELECT provider, encrypted_refresh_token FROM calendar_integrations`,
+                    `SELECT meta_waba_id FROM whatsapp_channels WHERE phone_number_id = $1 LIMIT 1`,
+                    [account.accountId],
                 );
-                let revoked = 0;
-                for (const r of rows || []) {
-                    if (String(r.provider || '').toLowerCase() !== 'google') continue;
-                    try {
-                        await revokeGoogle(this.decryptToken(r.encrypted_refresh_token));
-                        revoked++;
-                    } catch {
-                        /* decrypt/revoke best-effort */
-                    }
+                wabaId = rows?.[0]?.meta_waba_id;
+                if (!wabaId) {
+                    const onboarding = await this.prisma.whatsappOnboarding.findFirst({
+                        where: { tenantId, phoneNumberId: account.accountId },
+                        orderBy: { createdAt: 'desc' },
+                        select: { wabaId: true },
+                    });
+                    wabaId = onboarding?.wabaId || undefined;
                 }
-                this.logger.log(`[Purge ${tenantId}] Revoked ${revoked} Google Calendar OAuth tokens`);
-            } catch (err: any) {
-                this.logger.warn(`[Purge ${tenantId}] Calendar OAuth revoke partial: ${err.message}`);
+            } else if (account.channelType === 'telegram') {
+                encryptedCredential = credentialFor('telegram_token') || account.accessToken;
+            } else if (account.channelType === 'messenger') {
+                encryptedCredential = credentialFor('messenger_page_token') || account.accessToken;
+            } else if (account.channelType === 'instagram') {
+                encryptedCredential = credentialFor('instagram_token') || account.accessToken;
+            } else {
+                // Channels without a remote unlink API are removed from local
+                // routing by the atomic public purge.
+                continue;
+            }
+
+            if (!encryptedCredential || (account.channelType === 'whatsapp' && !wabaId)) {
+                throw new ConflictException({
+                    error: 'tenant_purge_missing_provider_credential',
+                    channelType: account.channelType,
+                    accountId: account.accountId,
+                });
+            }
+            channels.push({
+                channelType: account.channelType,
+                accountId: account.accountId,
+                wabaId,
+                encryptedCredential,
+            });
+        }
+
+        const googleOAuthTokens: string[] = [];
+        try {
+            const integrations = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT provider, encrypted_refresh_token FROM calendar_integrations`,
+            );
+            for (const integration of integrations || []) {
+                if (String(integration.provider || '').toLowerCase() === 'google' && integration.encrypted_refresh_token) {
+                    googleOAuthTokens.push(integration.encrypted_refresh_token);
+                }
+            }
+        } catch (error: any) {
+            // A legacy schema may predate calendar_integrations.  Any other
+            // read error blocks the purge so credentials are not lost unseen.
+            if (error?.code !== '42P01' && !String(error?.message).includes('does not exist')) throw error;
+        }
+        const gbpToken = settings?.googleBusiness?.encryptedRefreshToken;
+        if (gbpToken) googleOAuthTokens.push(gbpToken);
+
+        return {
+            version: 1,
+            capturedAt: new Date().toISOString(),
+            channels,
+            googleOAuthTokens: [...new Set(googleOAuthTokens)],
+        };
+    }
+
+    /** Execute the previously captured, idempotent provider teardown. */
+    private async executePurgeExternalPlan(tenantId: string, plan: PurgeExternalPlan): Promise<void> {
+        const failures: string[] = [];
+        for (const channel of plan.channels) {
+            try {
+                const credential = this.decryptToken(channel.encryptedCredential);
+                let url: string;
+                let method: 'DELETE' | 'POST';
+                if (channel.channelType === 'whatsapp') {
+                    url = `https://graph.facebook.com/v21.0/${channel.wabaId}/subscribed_apps?access_token=${credential}`;
+                    method = 'DELETE';
+                } else if (channel.channelType === 'telegram') {
+                    url = `https://api.telegram.org/bot${credential}/deleteWebhook?drop_pending_updates=true`;
+                    method = 'POST';
+                } else if (channel.channelType === 'messenger') {
+                    url = `https://graph.facebook.com/v21.0/${channel.accountId}/subscribed_apps?access_token=${credential}`;
+                    method = 'DELETE';
+                } else {
+                    url = `https://graph.instagram.com/me/permissions?access_token=${credential}`;
+                    method = 'DELETE';
+                }
+                const response = await fetch(url, { method });
+                if (!response.ok && response.status !== 404 && response.status !== 410) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error: any) {
+                failures.push(`${channel.channelType}/${channel.accountId}: ${error.message}`);
             }
         }
 
-        // 2. Google Business Profile (reviews) OAuth token in tenant.settings.
-        try {
-            const enc = settings?.googleBusiness?.encryptedRefreshToken;
-            if (enc) {
-                await revokeGoogle(this.decryptToken(enc));
-                this.logger.log(`[Purge ${tenantId}] Revoked Google Business Profile OAuth token`);
+        for (const encryptedToken of plan.googleOAuthTokens) {
+            try {
+                const response = await fetch('https://oauth2.googleapis.com/revoke', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ token: this.decryptToken(encryptedToken) }).toString(),
+                });
+                if (!response.ok && response.status !== 400) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error: any) {
+                failures.push(`google_oauth: ${error.message}`);
             }
-        } catch (err: any) {
-            this.logger.warn(`[Purge ${tenantId}] GBP OAuth revoke partial: ${err.message}`);
         }
+
+        if (failures.length > 0) {
+            throw new Error(`External teardown incomplete (${failures.join('; ')})`);
+        }
+        this.logger.log(`[Purge ${tenantId}] External provider teardown completed`);
     }
 
     private decryptToken(encryptedValue: string): string {
@@ -722,7 +920,6 @@ export class OffboardingService {
         const authTag = Buffer.from(parts[1], 'hex');
         const encrypted = Buffer.from(parts[2], 'hex');
 
-        const crypto = require('crypto');
         const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
         decipher.setAuthTag(authTag);
 
@@ -781,28 +978,39 @@ export class OffboardingService {
         return { restored: restored.length, needsReconnect };
     }
 
+    /** Strict Redis cleanup used only after the schema has been removed. */
+    private async cleanupPurgeRedis(tenantId: string, userIds: string[]): Promise<void> {
+        const client = this.redis.getClient();
+        const fenceKey = `tenant:purging:${tenantId}`;
+        const patterns = [
+            `tenant:${tenantId}:*`,
+            `vertical:${tenantId}*`,
+            `analytics:${tenantId}:*`,
+            `offboard:past_due:${tenantId}`,
+            `wa_token:${tenantId}`,
+            `instagram_token:${tenantId}`,
+            `messenger_token:${tenantId}`,
+            `telegram_token:${tenantId}`,
+            `sms_token:${tenantId}`,
+            ...userIds.map((userId) => `refresh:${userId}:*`),
+        ];
+
+        for (const pattern of patterns) {
+            let cursor = '0';
+            do {
+                const [nextCursor, keys] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 200);
+                cursor = nextCursor;
+                const deletable = keys.filter((key: string) => key !== fenceKey);
+                if (deletable.length > 0) await client.del(...deletable);
+            } while (cursor !== '0');
+        }
+    }
+
     /**
-     * Hard-delete a tenant: orchestrates the full purge in the correct order.
-     *  1. Provider unlink (Meta DELETE subscribed_apps, Telegram deleteWebhook,
-     *     Instagram revoke, Twilio webhook clear) — disconnectAllChannels.
-     *  2. Drain queues + revoke sessions (so no in-flight job touches the
-     *     schema while we're deleting it).
-     *  3. Delete public-schema rows that reference the tenant_id.
-     *  4. DROP SCHEMA tenant_X CASCADE (wipes contacts, conversations,
-     *     messages, properties, treatment_plans, real_estate_listings,
-     *     tour_packages, media_files, etc.).
-     *  5. Delete the tenants row itself.
-     *  6. Wipe /data/media/{tenantId}/ from disk (logos, photos, attachments).
-     *  7. Clear Redis: tenant:*, vertical:*, tenant_plan:*, refresh:*<userId>:*.
-     *  8. Audit log + emit event.
-     *
-     * RETAINED on purpose (NOT deleted): fiscal_invoices rows + the
-     * /data/invoices/{tenantId}/ XML/PDF artifacts — Colombian DIAN requires
-     * keeping issued electronic invoices for ~5 years. Their tenant identity is
-     * stamped into metadata before the tenants row is removed (step 6b).
-     *
-     * Use case: super_admin "delete tenant" button, or final step of long
-     * cancellation flow. Irreversible. Returns a summary to surface in the UI.
+     * Re-entrant tenant purge saga.  Read-only credential capture happens
+     * before DROP; every remote irreversible effect happens after the verified
+     * DROP.  Public data is then removed atomically with the tenant identity
+     * row last, so any failure is retryable without releasing slug/schema.
      */
     async purgeTenant(tenantId: string): Promise<{
         channelsDisconnected: number;
@@ -811,210 +1019,125 @@ export class OffboardingService {
         mediaFilesRemoved: number;
         usersRevoked: number;
     }> {
-        const tenant = await this.prisma.tenant.findUnique({
-            where: { id: tenantId },
-            select: { id: true, name: true, schemaName: true, settings: true },
-        });
-        if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
-
-        this.logger.log(`[Purge ${tenantId}] Starting — tenant=${tenant.name}, schema=${tenant.schemaName}`);
-
-        // 1. Detach providers + flag channel_accounts (reuse the existing flow)
-        const beforeChannels = await this.prisma.channelAccount.count({ where: { tenantId } });
-        try {
-            await this.disconnectAllChannels(tenantId);
-        } catch (err: any) {
-            this.logger.warn(`[Purge ${tenantId}] Provider disconnect partial: ${err.message}`);
-        }
-
-        // 2. Capture user IDs before delete to revoke their refresh tokens later
-        const users = await this.prisma.user.findMany({
-            where: { tenantId },
-            select: { id: true },
-        });
-        const userIds = users.map((u: { id: string }) => u.id);
-
-        // 3. Drain queues so nothing inflight touches the schema after drop
-        try {
-            await this.drainTenantQueues(tenantId);
-        } catch (err: any) {
-            this.logger.warn(`[Purge ${tenantId}] Queue drain partial: ${err.message}`);
-        }
-
-        // 3b. Cancel the subscription at the payment provider BEFORE deleting the
-        // billing rows, so we never orphan an active subscription on MercadoPago/
-        // Stripe. Best-effort: trials (no providerSubscriptionId) and already-
-        // cancelled subscriptions throw — we swallow and continue.
-        try {
-            await this.billing.cancelSubscription(tenantId, { immediate: true, reason: 'tenant_purge' });
-            this.logger.log(`[Purge ${tenantId}] Provider subscription cancelled`);
-        } catch (err: any) {
-            this.logger.warn(`[Purge ${tenantId}] Provider subscription cancel skipped: ${err.message}`);
-        }
-
-        // 3c. Revoke external OAuth tokens (Google/Microsoft Calendar in the tenant
-        // schema, Google Business Profile in tenant.settings) so external access
-        // dies with the tenant. MUST run before DROP SCHEMA — the calendar tokens
-        // live inside the per-tenant schema.
-        await this.revokeExternalOAuth(tenantId, tenant.schemaName, tenant.settings);
-
-        // 4. Delete public-schema rows in FK-safe order
-        const publicRowsDeleted: Record<string, number> = {};
-        const safeDelete = async (label: string, fn: () => Promise<{ count: number } | any>) => {
-            try {
-                const res = await fn();
-                publicRowsDeleted[label] = res.count ?? 0;
-            } catch (err: any) {
-                this.logger.warn(`[Purge ${tenantId}] Failed to delete ${label}: ${err.message}`);
-                publicRowsDeleted[label] = -1;
-            }
-        };
-
-        // billing_events depends on billing_subscriptions; do it first
-        try {
-            const subs = await this.prisma.billingSubscription.findMany({
-                where: { tenantId }, select: { id: true },
-            });
-            const subIds = subs.map((s: { id: string }) => s.id);
-            if (subIds.length > 0) {
-                const r = await this.prisma.billingEvent.deleteMany({ where: { subscriptionId: { in: subIds } } });
-                publicRowsDeleted['billing_events'] = r.count;
-            } else {
-                publicRowsDeleted['billing_events'] = 0;
-            }
-        } catch (err: any) {
-            this.logger.warn(`[Purge ${tenantId}] billing_events: ${err.message}`);
-        }
-
-        await safeDelete('billing_payments', () => this.prisma.billingPayment.deleteMany({ where: { tenantId } }));
-        await safeDelete('billing_subscriptions', () => this.prisma.billingSubscription.deleteMany({ where: { tenantId } }));
-        await safeDelete('billing_coupon_redemptions', () => this.prisma.billingCouponRedemption.deleteMany({ where: { tenantId } }));
-        await safeDelete('audit_logs', () => this.prisma.auditLog.deleteMany({ where: { tenantId } }));
-        await safeDelete('channel_accounts', () => this.prisma.channelAccount.deleteMany({ where: { tenantId } }));
-        await safeDelete('whatsapp_onboardings', () => this.prisma.whatsappOnboarding.deleteMany({ where: { tenantId } }));
-        await safeDelete('whatsapp_credentials', () => this.prisma.whatsappCredential.deleteMany({ where: { tenantId } }));
-        await safeDelete('tenant_financial_snapshots', () => this.prisma.tenantFinancialSnapshot.deleteMany({ where: { tenantId } }));
-        await safeDelete('crm_connections', () => this.prisma.crmConnection.deleteMany({ where: { tenantId } }));
-        await safeDelete('api_keys', () => this.prisma.apiKey.deleteMany({ where: { tenantId } }));
-        await safeDelete('feature_request_votes', () => this.prisma.featureRequestVote.deleteMany({ where: { tenantId } }));
-        await safeDelete('feature_request_comments', () => this.prisma.featureRequestComment.deleteMany({ where: { tenantId } }));
-        try {
-            // FeatureRequestSubscriber is keyed by userId, not tenantId
-            if (userIds.length > 0) {
-                const r = await this.prisma.featureRequestSubscriber.deleteMany({
-                    where: { userId: { in: userIds } },
-                });
-                publicRowsDeleted['feature_request_subscribers'] = r.count;
-            } else {
-                publicRowsDeleted['feature_request_subscribers'] = 0;
-            }
-        } catch { publicRowsDeleted['feature_request_subscribers'] = -1; }
-        await safeDelete('feature_requests', () => this.prisma.featureRequest.deleteMany({ where: { authorTenantId: tenantId } }));
-        await safeDelete('users', () => this.prisma.user.deleteMany({ where: { tenantId } }));
-
-        // 5. DROP SCHEMA — wipes everything per-tenant in one shot
-        let schemaDropped = false;
-        try {
-            // Sanitize: schemaName from DB but defense in depth
-            const safeName = tenant.schemaName.replace(/[^a-zA-Z0-9_]/g, '');
-            if (safeName === tenant.schemaName) {
-                await this.prisma.$queryRawUnsafe(`DROP SCHEMA IF EXISTS "${safeName}" CASCADE`);
-                schemaDropped = true;
-                this.logger.log(`[Purge ${tenantId}] Schema "${safeName}" dropped`);
-            } else {
-                this.logger.warn(`[Purge ${tenantId}] Refusing to drop suspicious schema name: ${tenant.schemaName}`);
-            }
-        } catch (err: any) {
-            this.logger.error(`[Purge ${tenantId}] DROP SCHEMA failed: ${err.message}`);
-        }
-
-        // 6. Wipe filesystem (uploads: logos, product photos, property photos, etc.)
-        const mediaResult = await this.mediaService.deleteAllTenantFiles(tenantId);
-
-        // 6b. RETAIN fiscal documents (DIAN legal retention, ~5 years). We do NOT
-        // delete fiscal_invoices rows, nor the /data/invoices/{tenantId}/ artifacts
-        // (mediaService.deleteAllTenantFiles only touches /data/media). Since the
-        // tenants row is about to disappear, stamp tenant identity into each
-        // invoice so the retained documents remain identifiable afterwards
-        // (tenant_id becomes a dangling reference once the tenant is gone).
-        try {
-            const purgedAt = new Date().toISOString();
-            // Single atomic jsonb merge (no per-row loop). The `||` operator
-            // preserves existing metadata keys; acquirer_snapshot is a separate
-            // column and is untouched. tenant_id::text cast is safe whether the
-            // column is text or uuid in this deployment.
-            const stamped: number = await this.prisma.$executeRawUnsafe(
-                `UPDATE fiscal_invoices
-                    SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
-                        'tenantPurgedAt', $2::text,
-                        'tenantNameSnapshot', $3::text,
-                        'tenantSchemaSnapshot', $4::text
-                    )
-                  WHERE tenant_id::text = $1::text`,
-                tenantId,
-                purgedAt,
-                tenant.name,
-                tenant.schemaName,
-            );
-            publicRowsDeleted['fiscal_invoices_retained'] = stamped;
-            this.logger.log(`[Purge ${tenantId}] Retained ${stamped} fiscal invoices (DIAN retention)`);
-        } catch (err: any) {
-            this.logger.warn(`[Purge ${tenantId}] Fiscal retention stamp failed: ${err.message}`);
-            publicRowsDeleted['fiscal_invoices_retained'] = -1;
-        }
-
-        // 7. Delete the tenant row itself
-        try {
-            await this.prisma.tenant.delete({ where: { id: tenantId } });
-            publicRowsDeleted['tenants'] = 1;
-        } catch (err: any) {
-            this.logger.warn(`[Purge ${tenantId}] tenants row delete failed (already gone?): ${err.message}`);
-            publicRowsDeleted['tenants'] = 0;
-        }
-
-        // 8. Redis: tenant-scoped keys + every user's refresh tokens
-        try {
-            await this.redis.del(`tenant:${tenantId}:config`);
-            await this.redis.del(`tenant:${tenantId}:schema`);
-            await this.redis.del(`tenant_plan:${tenantId}`);
-            await this.redis.del(`vertical:${tenantId}`);
-            await this.redis.del(`offboard:past_due:${tenantId}`);
-            // Wildcard cleanup for any tenant:<id>:* not covered above
-            const pattern = await (this.redis as any).keys?.(`tenant:${tenantId}:*`).catch(() => []);
-            if (Array.isArray(pattern)) {
-                for (const k of pattern) await this.redis.del(k);
-            }
-            // Refresh tokens are namespaced by userId
-            for (const uid of userIds) {
-                const userKeys = await (this.redis as any).keys?.(`refresh:${uid}:*`).catch(() => []);
-                if (Array.isArray(userKeys)) {
-                    for (const k of userKeys) await this.redis.del(k);
-                }
-            }
-        } catch (err: any) {
-            this.logger.warn(`[Purge ${tenantId}] Redis cleanup partial: ${err.message}`);
-        }
-
-        // 9. Final event so downstream listeners (analytics, BI, etc.) react
-        try {
-            this.eventEmitter.emit('tenant.purged', {
-                tenantId,
-                tenantName: tenant.name,
-                schemaName: tenant.schemaName,
-                purgedAt: new Date(),
-            });
-        } catch { /* non-blocking */ }
-
-        this.logger.log(
-            `[Purge ${tenantId}] Done — schema=${schemaDropped} media=${mediaResult.removed} users=${userIds.length}`,
+        const lockKey = `lock:tenant-purge:${tenantId}`;
+        const lockTtlSeconds = 120;
+        const lockToken = await this.redis.acquireLockToken(lockKey, lockTtlSeconds);
+        if (!lockToken) throw new ConflictException({ error: 'tenant_purge_in_progress' });
+        const lease = new OwnedLockLease(
+            this.redis,
+            lockKey,
+            lockToken,
+            lockTtlSeconds,
+            this.logger,
+            `Tenant purge lock lost for ${tenantId}`,
         );
+        lease.start();
 
-        return {
-            channelsDisconnected: beforeChannels,
-            publicRowsDeleted,
-            schemaDropped,
-            mediaFilesRemoved: mediaResult.removed,
-            usersRevoked: userIds.length,
-        };
+        try {
+            await lease.assertOwned();
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { id: true, name: true, schemaName: true, settings: true },
+            });
+            if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
+
+            const beforeChannels = await this.prisma.channelAccount.count({ where: { tenantId } });
+            const users = await this.prisma.user.findMany({ where: { tenantId }, select: { id: true } });
+            const userIds = users.map((user: { id: string }) => user.id);
+            const settings = (tenant.settings || {}) as any;
+            const externalPlan = await this.capturePurgeExternalPlan(
+                tenantId,
+                tenant.schemaName,
+                settings,
+            );
+
+            // Durable, encrypted saga checkpoint + hot-path access fence.
+            await lease.assertOwned();
+            await this.redis.set(`tenant:purging:${tenantId}`, '1', 7 * 24 * 60 * 60);
+            await this.prisma.$executeRawUnsafe(
+                `UPDATE public.tenants
+                    SET is_active = false,
+                        settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object(
+                            'purgeSaga', COALESCE(settings->'purgeSaga', '{}'::jsonb) || jsonb_build_object(
+                                'externalPlan', $2::jsonb,
+                                'startedAt', COALESCE(settings->'purgeSaga'->'startedAt', to_jsonb(NOW()::text))
+                            )
+                        ),
+                        updated_at = NOW()
+                  WHERE id = $1::uuid`,
+                tenantId,
+                JSON.stringify(externalPlan),
+            );
+
+            let releaseQueueFence: (() => Promise<void>) | null = null;
+            try {
+                await lease.assertOwned();
+                releaseQueueFence = await this.fenceQueuesForPurge(tenantId);
+                await lease.assertOwned();
+                await this.prisma.dropTenantSchema(tenant.schemaName);
+            } finally {
+                if (releaseQueueFence) await releaseQueueFence();
+            }
+            this.logger.log(`[Purge ${tenantId}] Schema "${tenant.schemaName}" dropped and verified`);
+
+            if (settings?.purgeSaga?.externalCompleted !== true) {
+                await lease.assertOwned();
+                await this.executePurgeExternalPlan(tenantId, externalPlan);
+                const subscription = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
+                if (subscription?.providerSubscriptionId && !['cancelled', 'expired'].includes(subscription.status)) {
+                    await lease.assertOwned();
+                    await this.billing.cancelSubscription(tenantId, { immediate: true, reason: 'tenant_purge' });
+                }
+                await lease.assertOwned();
+                await this.prisma.$executeRawUnsafe(
+                    `UPDATE public.tenants
+                        SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb),
+                            '{purgeSaga,externalCompleted}', 'true'::jsonb, true),
+                            updated_at = NOW()
+                      WHERE id = $1::uuid`,
+                    tenantId,
+                );
+            }
+
+            // All remaining irreversible local cleanup precedes the public DB
+            // commit; a failure therefore leaves the tenant identity barrier.
+            await lease.assertOwned();
+            const mediaResult = await this.mediaService.deleteAllTenantFiles(tenantId);
+            if (mediaResult.tenantDir && fs.existsSync(mediaResult.tenantDir)) {
+                throw new Error(`Tenant media directory still exists after wipe: ${mediaResult.tenantDir}`);
+            }
+            await lease.assertOwned();
+            await this.cleanupPurgeRedis(tenantId, userIds);
+            await lease.assertOwned();
+            const publicRowsDeleted = await this.prisma.purgeTenantPublicDataAtomic(
+                tenantId,
+                { name: tenant.name, schemaName: tenant.schemaName },
+            );
+
+            // The identity row is already committed away here, so no further
+            // ownership assertion may turn a completed purge into a false
+            // failure.  Notification is downstream/best-effort only.
+            try {
+                this.eventEmitter.emit('tenant.purged', {
+                    tenantId,
+                    tenantName: tenant.name,
+                    schemaName: tenant.schemaName,
+                    purgedAt: new Date(),
+                });
+            } catch (error: any) {
+                this.logger.error(`[Purge ${tenantId}] Post-commit event failed: ${error.message}`);
+            }
+            return {
+                channelsDisconnected: beforeChannels,
+                publicRowsDeleted,
+                schemaDropped: true,
+                mediaFilesRemoved: mediaResult.removed,
+                usersRevoked: userIds.length,
+            };
+        } finally {
+            lease.stop();
+            await this.redis.releaseLockToken(lockKey, lockToken)
+                .catch((error: any) => this.logger.warn(`Could not release tenant purge lock: ${error.message}`));
+        }
     }
 }

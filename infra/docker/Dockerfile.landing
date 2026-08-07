@@ -1,6 +1,6 @@
 FROM node:20-alpine AS builder
 
-WORKDIR /app
+WORKDIR /repo/apps/landing
 
 ENV COREPACK_ENABLE_STRICT=0
 RUN corepack disable 2>/dev/null || true
@@ -15,15 +15,22 @@ RUN npm install
 COPY apps/landing/public/ ./public/
 COPY apps/landing/src/ ./src/
 COPY apps/landing/messages/ ./messages/
+COPY apps/landing/scripts/ ./scripts/
 COPY apps/landing/next.config.ts apps/landing/tsconfig.json apps/landing/postcss.config.mjs ./
 
+# The Wave-0 marketing contract cross-checks visible capabilities and plan
+# quotas against backend source. Keep those inputs inside the build stage so a
+# direct Docker build cannot bypass the same fail-closed gate used by CI.
+COPY apps/api/prisma/seed-billing-plans.js /repo/apps/api/prisma/seed-billing-plans.js
+COPY apps/api/src/ /repo/apps/api/src/
+
 # Build static export
-RUN npx next build
+RUN npm run build
 
 # ---- Production image (nginx serves static files) ----
 FROM nginx:alpine
 
-COPY --from=builder /app/out /usr/share/nginx/html
+COPY --from=builder /repo/apps/landing/out /usr/share/nginx/html
 
 RUN echo 'server { \
     listen 80; \

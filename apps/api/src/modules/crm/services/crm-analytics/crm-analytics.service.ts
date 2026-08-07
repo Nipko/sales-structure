@@ -27,26 +27,39 @@ export class CrmAnalyticsService {
     async getConversionFunnel(tenantId: string, dateFrom?: string, dateTo?: string) {
         const schema = await this.getSchema(tenantId);
         let dateFilter = '';
-        const params: any[] = [];
+        const params: any[] = [tenantId];
         if (dateFrom) { params.push(dateFrom); dateFilter += ` AND l.created_at >= $${params.length}`; }
         if (dateTo) { params.push(dateTo); dateFilter += ` AND l.created_at <= $${params.length}`; }
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT l.stage, COUNT(*) as count
-             FROM leads l
-             WHERE l.archived_at IS NULL ${dateFilter}
-             GROUP BY l.stage
-             ORDER BY CASE l.stage
-                WHEN 'nuevo' THEN 1 WHEN 'contactado' THEN 2 WHEN 'respondio' THEN 3
-                WHEN 'calificado' THEN 4 WHEN 'tibio' THEN 5 WHEN 'caliente' THEN 6
-                WHEN 'listo_cierre' THEN 7 WHEN 'listo_para_cierre' THEN 7 WHEN 'ganado' THEN 8 WHEN 'perdido' THEN 9
-                WHEN 'no_interesado' THEN 10 ELSE 99 END`,
+            `WITH configured AS (
+                 SELECT slug, MAX(name) AS name, MIN(position) AS position,
+                        MAX(terminal_outcome) AS terminal_outcome
+                   FROM pipeline_stages
+                  WHERE tenant_id = $1::uuid
+                  GROUP BY slug
+             ), current_opportunities AS (
+                 SELECT DISTINCT ON (o.lead_id) o.stage
+                   FROM opportunities o
+                   JOIN leads l ON l.id = o.lead_id
+                  WHERE l.archived_at IS NULL ${dateFilter}
+                  ORDER BY o.lead_id, o.updated_at DESC
+             )
+             SELECT co.stage, COALESCE(c.name, co.stage) AS name,
+                    c.terminal_outcome, COUNT(*)::int AS count,
+                    c.position
+               FROM current_opportunities co
+               LEFT JOIN configured c ON c.slug = co.stage
+              GROUP BY co.stage, c.name, c.terminal_outcome, c.position
+              ORDER BY c.position NULLS LAST, co.stage`,
             params,
         );
 
         const total = rows.reduce((s: number, r: any) => s + Number(r.count), 0);
         return (rows || []).map((r: any) => ({
             stage: r.stage,
+            name: r.name,
+            outcome: r.terminal_outcome || null,
             count: Number(r.count),
             percentage: total > 0 ? Math.round((Number(r.count) / total) * 100) : 0,
         }));
@@ -58,26 +71,31 @@ export class CrmAnalyticsService {
     async getPipelineVelocity(tenantId: string, dateFrom?: string, dateTo?: string) {
         const schema = await this.getSchema(tenantId);
         let dateFilter = '';
-        const params: any[] = [];
+        const params: any[] = [tenantId];
         if (dateFrom) { params.push(dateFrom); dateFilter += ` AND sh.created_at >= $${params.length}`; }
         if (dateTo) { params.push(dateTo); dateFilter += ` AND sh.created_at <= $${params.length}`; }
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT sh.from_stage as stage,
+            `WITH configured AS (
+                 SELECT slug, MIN(position) AS position
+                   FROM pipeline_stages
+                  WHERE tenant_id = $1::uuid
+                  GROUP BY slug
+             )
+             SELECT sh.from_stage as stage,
                     AVG(EXTRACT(EPOCH FROM (next_sh.created_at - sh.created_at)) / 86400) as avg_days,
-                    COUNT(*) as transitions
+                    COUNT(*) as transitions,
+                    c.position
              FROM stage_history sh
+             LEFT JOIN configured c ON c.slug = sh.from_stage
              LEFT JOIN LATERAL (
                 SELECT created_at FROM stage_history sh2
                 WHERE sh2.lead_id = sh.lead_id AND sh2.created_at > sh.created_at
                 ORDER BY sh2.created_at ASC LIMIT 1
              ) next_sh ON true
              WHERE next_sh.created_at IS NOT NULL ${dateFilter}
-             GROUP BY sh.from_stage
-             ORDER BY CASE sh.from_stage
-                WHEN 'nuevo' THEN 1 WHEN 'contactado' THEN 2 WHEN 'respondio' THEN 3
-                WHEN 'calificado' THEN 4 WHEN 'tibio' THEN 5 WHEN 'caliente' THEN 6
-                WHEN 'listo_cierre' THEN 7 WHEN 'listo_para_cierre' THEN 7 ELSE 99 END`,
+             GROUP BY sh.from_stage, c.position
+             ORDER BY c.position NULLS LAST, sh.from_stage`,
             params,
         );
 
@@ -100,12 +118,12 @@ export class CrmAnalyticsService {
 
         const won = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT COUNT(*) as count, COALESCE(SUM(estimated_value), 0) as total_value
-             FROM opportunities WHERE stage = 'ganado' ${dateFilter}`, params);
+             FROM opportunities o WHERE won_at IS NOT NULL ${dateFilter}`, params);
         const lost = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT COUNT(*) as count FROM opportunities WHERE stage IN ('perdido', 'no_interesado') ${dateFilter}`, params);
+            `SELECT COUNT(*) as count FROM opportunities o WHERE lost_at IS NOT NULL ${dateFilter}`, params);
         const lossReasons = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT COALESCE(loss_reason, 'Sin razón') as reason, COUNT(*) as count
-             FROM opportunities WHERE stage IN ('perdido', 'no_interesado') ${dateFilter}
+             FROM opportunities o WHERE lost_at IS NOT NULL ${dateFilter}
              GROUP BY loss_reason ORDER BY count DESC LIMIT 10`, params);
 
         const wonCount = Number(won?.[0]?.count || 0);
@@ -139,7 +157,7 @@ export class CrmAnalyticsService {
                     COALESCE(AVG(o.estimated_value), 0) as avg_value
              FROM opportunities o
              LEFT JOIN public.users u ON u.id::text = o.assigned_to
-             WHERE o.stage = 'ganado' AND o.assigned_to IS NOT NULL ${dateFilter}
+             WHERE o.won_at IS NOT NULL AND o.assigned_to IS NOT NULL ${dateFilter}
              GROUP BY o.assigned_to, u.first_name, u.last_name
              ORDER BY total_value DESC
              LIMIT 20`,
@@ -191,14 +209,14 @@ export class CrmAnalyticsService {
             `SELECT COUNT(*) as count FROM leads WHERE archived_at IS NULL`, []);
         const activeOpps = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT COUNT(*) as count, COALESCE(SUM(estimated_value), 0) as total_value
-             FROM opportunities WHERE stage NOT IN ('ganado', 'perdido', 'no_interesado')`, []);
+             FROM opportunities WHERE won_at IS NULL AND lost_at IS NULL`, []);
         const avgScore = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT ROUND(AVG(score)::numeric, 1) as avg FROM leads WHERE archived_at IS NULL AND score > 0`, []);
         const convRate = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT
-                COUNT(*) FILTER (WHERE stage = 'ganado') as won,
-                COUNT(*) FILTER (WHERE stage IN ('ganado', 'perdido', 'no_interesado')) as closed
-             FROM leads WHERE archived_at IS NULL`, []);
+                COUNT(*) FILTER (WHERE won_at IS NOT NULL) as won,
+                COUNT(*) FILTER (WHERE won_at IS NOT NULL OR lost_at IS NOT NULL) as closed
+             FROM opportunities`, []);
 
         const wonCount = Number(convRate?.[0]?.won || 0);
         const closedCount = Number(convRate?.[0]?.closed || 0);

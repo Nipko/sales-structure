@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
 import type { Policy, PolicyType } from '@parallext/shared';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
+import { persistenceDisabled } from '../../common/types/execution-context';
 
 const VALID_TYPES: PolicyType[] = ['shipping', 'return', 'warranty', 'cancellation', 'terms', 'privacy'];
 
@@ -65,8 +67,24 @@ export class PoliciesService {
     }
 
     /** Get the current active policy for a given type. Returns null if none configured. */
-    async getActive(tenantId: string, type: PolicyType): Promise<Policy | null> {
+    async getActive(
+        tenantId: string,
+        type: PolicyType,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<Policy | null> {
         if (!VALID_TYPES.includes(type)) throw new BadRequestException(`Invalid policy type: ${type}`);
+        if (persistenceDisabled(executionContext)) {
+            const schemaName = await this.tenantsService.getSchemaName(tenantId, executionContext);
+            const rows = await this.prisma.$queryRawUnsafe(
+                `SELECT id, type, title, content, version, effective_from, effective_to, is_active, created_at, updated_at
+                   FROM "${schemaName}"."policies"
+                  WHERE type = $1 AND is_active = true
+                  LIMIT 1`,
+                type,
+            ) as any[];
+            return rows.length ? this.rowToPolicy(rows[0]) : null;
+        }
+
         const cacheKey = `policy:${tenantId}:${type}:active`;
         const cached = await this.redis.getJson<Policy>(cacheKey);
         if (cached) return cached;

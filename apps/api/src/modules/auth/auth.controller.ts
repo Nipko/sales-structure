@@ -12,6 +12,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { AuthThrottle } from '../../common/decorators/auth-throttle.decorator';
 import { AuthThrottleGuard } from '../../common/guards/auth-throttle.guard';
 import { auditActor } from '../../common/utils/audit-actor.util';
+import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 
 class LoginDto {
     @IsEmail()
@@ -542,7 +543,7 @@ export class AuthController {
     @ApiBearerAuth()
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Complete onboarding: create company and tenant' })
-    async completeOnboarding(@Request() req: any, @Body() body: any) {
+    async completeOnboarding(@Request() req: any, @Body() body: CompleteOnboardingDto) {
         const result = await this.authService.completeOnboarding(req.user.id, body);
         return { success: true, data: result };
     }

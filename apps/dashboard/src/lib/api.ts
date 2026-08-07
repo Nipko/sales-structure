@@ -5,6 +5,8 @@
  * Handles JWT auth headers, token refresh, and error handling.
  */
 
+import type { VerticalDefinitions } from "./vertical-catalog";
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
 export type MercadoPagoProviderStatus = {
@@ -179,6 +181,10 @@ export const api = {
     getTenants: (params?: { page?: number; limit?: number }) =>
         apiGet(`/tenants?page=${params?.page ?? 1}&limit=${params?.limit ?? 500}`),
     getTenant: (id: string) => apiGet(`/tenants/${id}`),
+    getTenantProvisioningPlans: () =>
+        apiGet<Array<'emprendedor' | 'starter' | 'pro' | 'enterprise' | 'custom'>>('/tenants/provisioning-plans'),
+    getVerticalDefinitions: () =>
+        apiGet<VerticalDefinitions>('/verticals/definitions/all'),
     getTenantUsers: (tenantId: string) => apiGet(`/tenants/${tenantId}/users`),
     adminResetPassword: (userId: string, newPassword: string) =>
         apiPost("/auth/admin/reset-password", { userId, newPassword }),
@@ -554,7 +560,7 @@ export const api = {
         apiPut(`/auth/users/${userId}/skills`, { skillTags }),
 
     // --- Tenant CRUD ---
-    createTenant: (data: { name: string; slug: string; industry: string; language?: string; plan?: string }) =>
+    createTenant: (data: { name: string; slug: string; industry: string; subType?: string | null; language?: string; plan?: string; ownerEmail: string; ownerFirstName: string; ownerLastName?: string }) =>
         apiPost("/tenants", data),
 
     updateTenant: (id: string, data: any) =>

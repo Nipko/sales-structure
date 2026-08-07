@@ -3,8 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
-import { useAuth } from "@/contexts/AuthContext";
-import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { TabNav } from "@/components/ui/tab-nav";
@@ -23,7 +21,16 @@ import EditTenantModal from "./_components/EditTenantModal";
 import SuspendModal from "./_components/SuspendModal";
 import ImpersonateModal from "./_components/ImpersonateModal";
 import { startImpersonation } from "@/lib/impersonation";
-import type { Tenant, PlatformStats, PlatformBilling, PlatformUsage, PlatformHealth } from "./_components/types";
+import { isCanonicalVerticalCatalog } from "@/lib/vertical-catalog";
+import type {
+  Tenant,
+  PlatformStats,
+  PlatformBilling,
+  PlatformUsage,
+  PlatformHealth,
+  TenantPlanSlug,
+  TenantVerticalDefinitions,
+} from "./_components/types";
 
 type TabId = "overview" | "onboarding" | "offboarding" | "billing" | "usage" | "platform";
 
@@ -31,8 +38,6 @@ export default function TenantsPage() {
   const t = useTranslations("tenants");
   const tc = useTranslations("common");
   const tHelp = useTranslations("help");
-  const { user } = useAuth();
-  const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -41,6 +46,9 @@ export default function TenantsPage() {
   const [billing, setBilling] = useState<PlatformBilling | null>(null);
   const [usage, setUsage] = useState<PlatformUsage | null>(null);
   const [health, setHealth] = useState<PlatformHealth | null>(null);
+  const [verticalDefinitions, setVerticalDefinitions] = useState<TenantVerticalDefinitions>({});
+  const [provisioningPlans, setProvisioningPlans] = useState<TenantPlanSlug[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
@@ -66,6 +74,7 @@ export default function TenantsPage() {
           name: t.name,
           slug: t.slug,
           industry: t.industry || "N/A",
+          subType: t.subType || null,
           language: t.language || "es-CO",
           plan: t.plan || "starter",
           isActive: t.isActive ?? true,
@@ -81,6 +90,26 @@ export default function TenantsPage() {
           suspendReason: t.suspendReason || null,
         }))
       );
+    }
+  }, []);
+
+  const loadProvisioningCatalog = useCallback(async () => {
+    setCatalogLoading(true);
+    try {
+      const [verticalsResult, plansResult] = await Promise.all([
+        api.getVerticalDefinitions(),
+        api.getTenantProvisioningPlans(),
+      ]);
+      setVerticalDefinitions(
+        verticalsResult.success && isCanonicalVerticalCatalog(verticalsResult.data)
+          ? verticalsResult.data
+          : {},
+      );
+      setProvisioningPlans(
+        plansResult.success && Array.isArray(plansResult.data) ? plansResult.data : [],
+      );
+    } finally {
+      setCatalogLoading(false);
     }
   }, []);
 
@@ -100,8 +129,8 @@ export default function TenantsPage() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadTenants(), loadPlatformData()]).finally(() => setLoading(false));
-  }, [loadTenants, loadPlatformData]);
+    Promise.all([loadTenants(), loadPlatformData(), loadProvisioningCatalog()]).finally(() => setLoading(false));
+  }, [loadTenants, loadPlatformData, loadProvisioningCatalog]);
 
   // Surface the confirmation when we arrive here right after purging a tenant
   // from its (now-deleted) detail page.
@@ -116,23 +145,47 @@ export default function TenantsPage() {
   }, [showToast, t]);
 
   // Actions
-  const handleCreate = async (data: { name: string; slug: string; industry: string; language: string; plan: string }) => {
+  const handleCreate = async (data: {
+    name: string;
+    slug: string;
+    industry: string;
+    subType: string | null;
+    language: string;
+    plan: TenantPlanSlug;
+    ownerEmail: string;
+    ownerFirstName: string;
+    ownerLastName: string;
+  }) => {
     const result = await api.createTenant(data);
     if (result.success) {
-      showToast(`${data.name} created`);
+      showToast(t("createdToast", { name: data.name }));
       setShowCreate(false);
-      loadTenants();
+      await loadTenants();
     } else {
       showToast(result.error || tc("errorSaving"));
     }
   };
 
-  const handleEdit = async (tenantId: string, data: { name: string; industry: string; language: string; plan: string }) => {
-    const result = await api.updateTenant(tenantId, data);
+  const handleEdit = async (tenantId: string, data: { name: string; industry: string; subType: string | null; language: string; plan: TenantPlanSlug }) => {
+    const previousPlan = tenants.find((tenant) => tenant.id === tenantId)?.plan;
+    const { plan, ...tenantPatch } = data;
+    const result = await api.updateTenant(tenantId, tenantPatch);
     if (result.success) {
+      if (previousPlan !== plan) {
+        const planResult = await api.setTenantPlan(tenantId, {
+          planSlug: plan,
+          reason: "superadmin_tenant_edit",
+        });
+        if (!planResult.success) {
+          showToast(t("planUpdateError"));
+          setEditTenant(null);
+          await loadTenants();
+          return;
+        }
+      }
       showToast(tc("saved"));
       setEditTenant(null);
-      loadTenants();
+      await loadTenants();
     } else {
       showToast(result.error || tc("errorSaving"));
     }
@@ -249,8 +302,22 @@ export default function TenantsPage() {
       )}
 
       {/* Modals */}
-      <CreateTenantModal open={showCreate} onClose={() => setShowCreate(false)} onCreate={handleCreate} />
-      <EditTenantModal tenant={editTenant} onClose={() => setEditTenant(null)} onSave={handleEdit} />
+      <CreateTenantModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreate={handleCreate}
+        verticalDefinitions={verticalDefinitions}
+        plans={provisioningPlans}
+        catalogLoading={catalogLoading}
+      />
+      <EditTenantModal
+        tenant={editTenant}
+        onClose={() => setEditTenant(null)}
+        onSave={handleEdit}
+        verticalDefinitions={verticalDefinitions}
+        plans={provisioningPlans}
+        catalogLoading={catalogLoading}
+      />
       <SuspendModal tenant={suspendTenant} onClose={() => setSuspendTenant(null)} onSuspend={handleSuspend} />
       {impersonateTarget && (
         <ImpersonateModal

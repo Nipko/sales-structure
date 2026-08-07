@@ -22,6 +22,9 @@ import { McpClientService } from '../mcp/mcp-client.service';
 import type { PolicyType } from '@parallext/shared';
 import { absoluteMediaUrl } from '../../common/utils/media-url.util';
 import { ChatIdentityService } from './chat-identity.service';
+import type { ServiceExecutionContext } from '../../common/types/execution-context';
+import { persistenceDisabled } from '../../common/types/execution-context';
+import { agentTestBlockedToolResult, isAgentTestSafeToolName } from './agent-test-tool-policy';
 
 /**
  * Executes AI tool calls against the appropriate services.
@@ -69,11 +72,23 @@ export class AIToolExecutorService {
         // LLM, asi que si el canal viniera por ahi el modelo podria decir que la
         // conversacion es por email para que el codigo salga por email — o sea,
         // por el mismo canal que estamos tratando de verificar.
-        opts?: { evalMode?: boolean; channelType?: string },
+        opts?: {
+            evalMode?: boolean;
+            channelType?: string;
+            readOnly?: boolean;
+            executionContext?: ServiceExecutionContext;
+        },
     ): Promise<any> {
         this.logger.log(`[Tool] Executing: ${toolName} args=${JSON.stringify(args)}`);
 
         try {
+            // Persistence-disabled execution is a capability boundary, not a
+            // hint. A future caller cannot reach a writer by skipping the
+            // AgentTestService advertisement filter.
+            if (persistenceDisabled(opts?.executionContext) && !isAgentTestSafeToolName(toolName)) {
+                return agentTestBlockedToolResult(toolName);
+            }
+
             // External MCP tools (T3.20) — namespaced mcp__{server}__{tool}.
             if (toolName.startsWith('mcp__')) {
                 return this.mcpClient.callRemoteTool(tenantId, toolName, args);
@@ -135,13 +150,13 @@ export class AIToolExecutorService {
                     return this.sendVehicleImage(schemaName, args.vehicleId);
 
                 case 'search_faqs':
-                    return this.searchFaqs(tenantId, args.query, args.limit);
+                    return this.searchFaqs(tenantId, args.query, args.limit, opts?.executionContext);
 
                 case 'get_policy':
-                    return this.getPolicy(tenantId, args.type as PolicyType);
+                    return this.getPolicy(tenantId, args.type as PolicyType, opts?.executionContext);
 
                 case 'search_knowledge_base':
-                    return this.searchKnowledgeBase(tenantId, args.query, args.limit);
+                    return this.searchKnowledgeBase(tenantId, args.query, args.limit, opts?.executionContext);
 
                 case 'list_customer_orders':
                     return this.listCustomerOrders(schemaName, contactId, args.limit, args.status);
@@ -154,7 +169,7 @@ export class AIToolExecutorService {
 
                 // ── E-commerce dual-skillset tools (T2.17) ──────────
                 case 'recommend_products':
-                    return this.recommendProducts(schemaName, args.search, args.maxPrice, args.category);
+                    return this.recommendProducts(schemaName, args.search, args.maxPrice, args.category, opts?.readOnly === true);
 
                 case 'get_order_status':
                     return this.getOrderStatus(schemaName, contactId, args.orderId);
@@ -734,10 +749,17 @@ export class AIToolExecutorService {
 
     // ── Knowledge tools ──────────────────────────────────────
 
-    private async searchFaqs(tenantId: string, query: string, limit = 3): Promise<any> {
-        const faqs = await this.faqsService.search(tenantId, query, limit);
-        // Fire-and-forget: track views
-        for (const f of faqs) this.faqsService.incrementViews(tenantId, f.id);
+    private async searchFaqs(
+        tenantId: string,
+        query: string,
+        limit = 3,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<any> {
+        const faqs = await this.faqsService.search(tenantId, query, limit, executionContext);
+        // View counts are analytics writes, so introspection skips them.
+        if (!persistenceDisabled(executionContext)) {
+            for (const f of faqs) this.faqsService.incrementViews(tenantId, f.id);
+        }
         return {
             faqs: faqs.map(f => ({
                 id: f.id,
@@ -748,8 +770,12 @@ export class AIToolExecutorService {
         };
     }
 
-    private async getPolicy(tenantId: string, type: PolicyType): Promise<any> {
-        const policy = await this.policiesService.getActive(tenantId, type);
+    private async getPolicy(
+        tenantId: string,
+        type: PolicyType,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<any> {
+        const policy = await this.policiesService.getActive(tenantId, type, executionContext);
         if (!policy) return { error: `No ${type} policy is configured for this business.` };
         return {
             type: policy.type,
@@ -863,7 +889,7 @@ export class AIToolExecutorService {
                 contactId,
             );
             lead = lRows[0] || null;
-        } catch {}
+        } catch { /* Leads are optional for a contact context response. */ }
 
         let opportunitiesCount = 0;
         try {
@@ -872,7 +898,7 @@ export class AIToolExecutorService {
                 contactId,
             );
             opportunitiesCount = Number(oRows[0]?.cnt || 0);
-        } catch {}
+        } catch { /* Opportunities are optional for a contact context response. */ }
 
         return {
             contact: contact ? {
@@ -901,13 +927,19 @@ export class AIToolExecutorService {
      * Falls back to the internal catalog `products` table if the store catalog
      * is empty/unavailable. Returns ONLY real products so the agent never invents.
      */
-    private async recommendProducts(schema: string, search?: string, maxPrice?: number, category?: string): Promise<any> {
+    private async recommendProducts(
+        schema: string,
+        search?: string,
+        maxPrice?: number,
+        category?: string,
+        readOnly = false,
+    ): Promise<any> {
         try {
             const rows = await this.ecommerceService.searchProductsForAI(schema, {
                 search: search || undefined,
                 maxPrice: typeof maxPrice === 'number' ? Math.round(maxPrice * 100) : undefined,
                 category: category || undefined,
-            });
+            }, { createTablesIfMissing: !readOnly });
             if (rows && rows.length > 0) {
                 return {
                     products: rows.map((p: any) => ({
@@ -996,11 +1028,21 @@ export class AIToolExecutorService {
 
     // ── Knowledge tools ─────────────────────────────
 
-    private async searchKnowledgeBase(tenantId: string, query: string, limit = 5): Promise<any> {
+    private async searchKnowledgeBase(
+        tenantId: string,
+        query: string,
+        limit = 5,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<any> {
         try {
-            const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId);
+            const hasKnowledge = await this.knowledgeService.tenantHasKnowledge(tenantId, executionContext);
             if (!hasKnowledge) return { chunks: [] };
-            const results = await this.knowledgeService.searchRelevant(tenantId, query, limit);
+            const results = await this.knowledgeService.searchRelevant(
+                tenantId,
+                query,
+                limit,
+                { executionContext },
+            );
             return {
                 chunks: (results || []).map((r: any) => ({
                     id: r.id ?? r.document_id,
@@ -1611,7 +1653,7 @@ export class AIToolExecutorService {
                     `UPDATE "${schema}".appointments SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
                     apt.id, JSON.stringify({ meetingUrl }),
                 );
-            } catch {}
+            } catch { /* The appointment remains valid if metadata enrichment fails. */ }
         }
 
         // Emit event so notifications (WhatsApp confirmation, email, calendar) are
@@ -1674,7 +1716,7 @@ export class AIToolExecutorService {
         //
         // Se ofrece a partir del día SIGUIENTE a la cita cancelada: quien
         // cancela el turno de mañana rara vez quiere el de mañana.
-        let alternatives: any[] = [];
+        const alternatives: any[] = [];
         if (rows[0].service_id) {
             const from = new Date(rows[0].start_at);
             from.setDate(from.getDate() + 1);

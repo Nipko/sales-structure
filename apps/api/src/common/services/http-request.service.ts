@@ -1,5 +1,10 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import {
+    parseSafeHttpsUrl,
+    prepareSafeHttpsTarget,
+    safeAxiosOptions,
+} from '../utils/safe-outbound-url.util';
 
 export interface HttpRequestConfig {
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -15,6 +20,22 @@ export interface HttpRequestResult {
     body: any;
 }
 
+const FORBIDDEN_OUTBOUND_HEADERS = new Set([
+    'host',
+    'connection',
+    'content-length',
+    'transfer-encoding',
+    'upgrade',
+    'proxy-authorization',
+    'proxy-connection',
+    'forwarded',
+    'x-forwarded-host',
+    'x-forwarded-proto',
+    'x-forwarded-port',
+    'x-original-url',
+    'x-rewrite-url',
+]);
+
 @Injectable()
 export class HttpRequestService {
     private readonly logger = new Logger(HttpRequestService.name);
@@ -22,32 +43,35 @@ export class HttpRequestService {
     constructor(private readonly httpService: HttpService) {}
 
     validateUrl(url: string): void {
-        let parsed: URL;
         try {
-            parsed = new URL(url);
-        } catch {
-            throw new BadRequestException(`Invalid URL: ${url.substring(0, 80)}`);
+            parseSafeHttpsUrl(url, 'solicitud HTTP');
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            throw new BadRequestException(`Invalid URL: ${String(url).substring(0, 80)}`);
         }
-        if (!['http:', 'https:'].includes(parsed.protocol)) {
-            throw new BadRequestException('URL must use http or https protocol');
+    }
+
+    private validateHeaders(headers: Record<string, string>): Record<string, string> {
+        for (const name of Object.keys(headers)) {
+            if (FORBIDDEN_OUTBOUND_HEADERS.has(name.toLowerCase())) {
+                throw new BadRequestException(`Outbound header is not allowed: ${name}`);
+            }
         }
-        const hostname = parsed.hostname.toLowerCase();
-        const blocked = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|::1|fd|fe80)/;
-        if (blocked.test(hostname)) {
-            throw new BadRequestException('URL must not point to private/reserved IP ranges');
-        }
+        return headers;
     }
 
     async execute(config: HttpRequestConfig): Promise<HttpRequestResult> {
         this.validateUrl(config.url);
         const timeout = Math.min(config.timeoutMs || 10_000, 10_000);
+        const headers = this.validateHeaders(config.headers || {});
+        const target = await prepareSafeHttpsTarget(config.url, 'solicitud HTTP');
 
         const response = await this.httpService.axiosRef.request({
+            ...safeAxiosOptions(target, timeout),
             method: config.method,
-            url: config.url,
-            headers: config.headers || {},
+            url: target.url.toString(),
+            headers,
             data: config.body,
-            timeout,
             validateStatus: () => true,
         });
 

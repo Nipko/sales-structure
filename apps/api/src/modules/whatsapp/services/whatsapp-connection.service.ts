@@ -184,6 +184,12 @@ export class WhatsappConnectionService {
         `SELECT id, phone_number_id, meta_waba_id FROM whatsapp_channels WHERE phone_number_id = $1 LIMIT 1`,
         [phoneNumberId],
       );
+      // Elección EXPLÍCITA del emisor: si ese número ya no está conectado, error
+      // claro — caer al más antiguo mandaría el mensaje desde OTRO número de
+      // negocio distinto al que el agente eligió, en silencio.
+      if (!channels || channels.length === 0) {
+        throw new NotFoundException('El número seleccionado ya no está conectado');
+      }
     }
     if (!channels || channels.length === 0) {
       channels = await this.prisma.executeInTenantSchema<any[]>(

@@ -413,11 +413,13 @@ export class WhatsappController {
     templateName: string;
     language: string;
     components?: any[];
+    // Multi-número: desde qué número sale (default: el más antiguo conectado)
+    phoneNumberId?: string;
   }) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendTemplate(
-      schemaName, body.toPhone, body.templateName, body.language, body.components || []
+      schemaName, body.toPhone, body.templateName, body.language, body.components || [], body.phoneNumberId
     );
   }
 
@@ -430,11 +432,13 @@ export class WhatsappController {
     toPhone: string;
     text: string;
     conversationId?: string;
+    // Multi-número: desde qué número sale (default: el más antiguo conectado)
+    phoneNumberId?: string;
   }) {
     const schemaName = await this.resolveSchema(req);
     if (!schemaName) throw new BadRequestException('User does not belong to a tenant');
     return this.messagingService.sendTextMessage(
-      schemaName, body.toPhone, body.text, body.conversationId
+      schemaName, body.toPhone, body.text, body.conversationId, body.phoneNumberId
     );
   }
 

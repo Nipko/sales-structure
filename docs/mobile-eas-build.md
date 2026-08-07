@@ -13,10 +13,11 @@
 
 ## Secretos de EAS (una sola vez por proyecto)
 
-Ya creados ✅ (Sentry):
+Ya creados ✅ (verificado con `eas secret:list`, ago 2026):
 - `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`
+- `GOOGLE_SERVICES_JSON` (FILE_BASE64, creado 05-jun) — el FCM client config SÍ viaja en los builds de EAS
 
-Falta crear (FCM client config como file-secret):
+Si alguna vez hay que recrearlo:
 ```bash
 cd apps/mobile
 eas secret:create --scope project --type file \

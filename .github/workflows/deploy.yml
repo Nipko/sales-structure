@@ -104,8 +104,11 @@ jobs:
           (cd apps/whatsapp && npx tsc --noEmit)
           (cd apps/landing && npx tsc --noEmit)
 
-      - name: Lint (API) — non-blocking until the codebase is lint-clean
-        continue-on-error: true
+      # Bloqueante desde ago 2026: el codebase quedó lint-clean (commit 64c46827,
+      # 28 errores → 0). Es el único gate automático que atrapa la clase de bug
+      # "emoji astral en character class sin flag u" (no-misleading-character-class)
+      # que corrompía mensajes del cliente — tsc no la ve porque la regex compila.
+      - name: Lint (API)
         run: cd apps/api && npx eslint "src/**/*.ts"
 
       # El gate de MercadoPago salió del deploy (ago 2026). MP rechazó al collector

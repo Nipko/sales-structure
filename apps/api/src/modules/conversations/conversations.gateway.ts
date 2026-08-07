@@ -4,6 +4,7 @@ import {
     SubscribeMessage,
     OnGatewayConnection,
     OnGatewayDisconnect,
+    OnGatewayInit,
     ConnectedSocket,
     MessageBody
 } from '@nestjs/websockets';
@@ -12,6 +13,11 @@ import { Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { WsRelayService } from '../redis/ws-relay.service';
+
+// Evento interno del relay: la alerta LLM se entrega por-socket según rol, así
+// que el suscriptor la resuelve con el fanout local en vez de un emit a room.
+const RELAY_LLM_ALERT = '__llm_alert';
 
 @WebSocketGateway({
     cors: {
@@ -20,7 +26,7 @@ import { ConfigService } from '@nestjs/config';
     },
     namespace: '/inbox'
 })
-export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class ConversationsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()
     server: Server;
 
@@ -31,7 +37,31 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
     constructor(
         private jwtService: JwtService,
         private configService: ConfigService,
+        private wsRelay: WsRelayService,
     ) { }
+
+    /**
+     * Solo corre donde existe un servidor WebSocket real (el contenedor API):
+     * el worker jamás llega acá, así que la suscripción no se duplica.
+     */
+    afterInit() {
+        this.wsRelay.subscribe('inbox', ({ room, event, payload }) => {
+            if (event === RELAY_LLM_ALERT) {
+                this.fanoutLlmAlert(payload);
+                return;
+            }
+            if (room) this.server?.to(room).emit(event, payload);
+        });
+    }
+
+    /**
+     * Emite al room si este proceso tiene servidor; si no (worker), delega en
+     * el API vía Redis. Sin esto, todo emit del pipeline encolado se perdía.
+     */
+    private relayEmit(room: string, event: string, payload: any) {
+        if (this.server) this.server.to(room).emit(event, payload);
+        else this.wsRelay.publish('inbox', { room, event, payload });
+    }
 
     async handleConnection(client: Socket) {
         try {
@@ -108,37 +138,31 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
 
     // --- Emit Events ---
     //
-    // Every emit below is optional-chained ON PURPOSE: these run inside the AI
-    // pipeline, which since the inbound queue executes in the WORKER container.
-    // The worker boots with NestFactory.createApplicationContext (no HTTP
-    // server), so @WebSocketServer() is never populated there and `this.server`
-    // is undefined. Dropping the `?.` makes the whole customer turn throw with
-    // "Cannot read properties of undefined (reading 'to')" — which is exactly
-    // how this was found in production, with replies silently failing.
-    //
-    // Consequence to be aware of: a turn processed by the worker cannot push
-    // real-time updates to the dashboard. The data is persisted correctly and
-    // shows on refresh/poll. Fixing it properly means a socket.io Redis adapter
-    // so any process can emit into the room.
+    // These run inside the AI pipeline, which since the inbound queue executes
+    // in the WORKER container (no HTTP server → @WebSocketServer() never
+    // populated). relayEmit() covers that: with a live server it emits direct;
+    // without one it publishes to Redis and the API-side subscriber (afterInit)
+    // re-emits into the room — so worker-processed turns reach the dashboard
+    // and the mobile inbox in real time instead of only on refresh.
 
     emitNewMessage(tenantId: string, message: any, conversationId: string) {
-        this.server?.to(tenantId).emit('newMessage', { conversationId, message });
+        this.relayEmit(tenantId, 'newMessage', { conversationId, message });
     }
 
     emitConversationUpdated(tenantId: string, conversation: any) {
-        this.server?.to(tenantId).emit('conversationUpdated', conversation);
+        this.relayEmit(tenantId, 'conversationUpdated', conversation);
     }
 
     emitAppointmentCreated(tenantId: string, appointment: any) {
-        this.server?.to(tenantId).emit('appointmentCreated', appointment);
+        this.relayEmit(tenantId, 'appointmentCreated', appointment);
     }
 
     emitAppointmentUpdated(tenantId: string, appointment: any) {
-        this.server?.to(tenantId).emit('appointmentUpdated', appointment);
+        this.relayEmit(tenantId, 'appointmentUpdated', appointment);
     }
 
     emitCalendarSynced(tenantId: string) {
-        this.server?.to(tenantId).emit('calendarSynced', {});
+        this.relayEmit(tenantId, 'calendarSynced', {});
     }
 
     /** Relay appointment WebSocket events from EventEmitter (avoids circular DI) */
@@ -159,6 +183,16 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
     @OnEvent('llm.provider.alert')
     onLlmProviderAlert(payload: { provider: string; severity: string; failures: number; error: string; timestamp: string }) {
         this.logger.warn(`[LLM Alert] ${payload.provider}: ${payload.error} (failures: ${payload.failures})`);
+        if (!this.server) {
+            // Worker: el fanout por-socket necesita los clientes del proceso
+            // con servidor — se relaya el evento entero.
+            this.wsRelay.publish('inbox', { room: null, event: RELAY_LLM_ALERT, payload });
+            return;
+        }
+        this.fanoutLlmAlert(payload);
+    }
+
+    private fanoutLlmAlert(payload: any) {
         // Emit to each admin's OWN socket, not the tenant room — emitting to the
         // room delivered the alert to every connected client (incl. agents); the
         // role check only gated whether to emit, not who received it.

@@ -49,7 +49,7 @@ La app exige login → el revisor de Google NO puede entrar sin credenciales.
 > Consola de agentes: responde WhatsApp, Instagram y más, con IA en el bolsillo.
 
 **Descripción completa (es):**
-> Parallly es la app del agente para atender y vender por WhatsApp, Instagram, Messenger, Telegram y SMS desde un solo lugar.
+> Parallly es la app del agente para atender y vender por WhatsApp, Instagram, Messenger y Telegram desde un solo lugar.
 >
 > • Bandeja unificada en tiempo real con notificaciones fiables (incluso con la app cerrada).
 > • Responde con texto, imágenes, documentos, video y notas de voz.

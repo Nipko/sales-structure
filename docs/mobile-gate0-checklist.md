@@ -13,7 +13,21 @@
 - ◐ **G0.6 — Offline**: ✅ **cola de envío saliente** (`src/lib/outbox.ts`) — los mensajes que fallan se encolan en memoria, se muestran como pendientes (reloj) / fallidos (alerta), y se **reintentan automáticamente al reconectar** el socket (`onInboxStatus`). Integrado en `ConversationScreen` (render de pendientes + toast "se enviará al reconectar"). Tests del outbox (envío OK / fallo). Pendiente: persistencia entre cierres de app (AsyncStorage) + caché del inbox para arranque offline.
 - ◐ **G0.9 — Seguridad**: ✅ logger dev-only (`src/lib/log.ts`) → sin fuga de tokens/socket IDs a logcat en release. **Cert pinning: OMITIDO a propósito** (la API está detrás de Cloudflare, que rota certs; leaf-pinning brickearía la app en cada rotación — se confía en TLS del sistema + Cloudflare). Pendiente/backend: sanitizar errores de auth (responsabilidad del API, no del cliente) y opción explícita "olvidar este dispositivo" (el device-trust NO se borra en logout a propósito — es por-dispositivo, no por-sesión).
 - Verificación de código: `tsc` exit 0 + `npm test` exit 0. App validada en dispositivo como build release standalone.
-- ⏳ Pendientes mayores: **G0.1 Sentry** (requiere DSN), **G0.4 i18n**, **G0.6 offline**, **G0.3** (fetch estado inicial), **G0.8 a11y**, **G0.9 seguridad**.
+
+## Actualización (ago 2026 — validación + ronda de correcciones)
+
+Auditoría adversarial (ago 7) confirmó que los commits post-checklist (494783c6..f546c3fa) ya habían cerrado: persistencia del outbox entre reinicios (G0.6), token stale del socket (G0.10), touch target de cancelar cita + labels a11y (G0.8), device-trust en logout (G0.9), estado real del agente con rollback (G0.3), paginación de inbox+timeline (G0.7) y source maps de Sentry (G0.1).
+
+Cerrado en la ronda ago 2026 (esta sesión):
+- ✅ **Falso-éxito eliminado**: `json()` en `api.ts` normaliza errores HTTP ({success:false}); mover deal maneja `TRANSITION_RULE_FAILED:*` con mensaje por regla (el motor de reglas se activó en julio, POST-freeze móvil); asignar deal usa el contrato real (`updateDeal {assignedAgentId}` — el moveDeal same-stage nunca asignaba y reseteaba SLA/probability).
+- ✅ **Filtro "Mías"**: ahora manda `agentId` (antes siempre devolvía vacío).
+- ✅ **G0.7 estados de error**: Citas y Pipeline muestran error+reintentar (antes un fallo se veía como "sin citas"/tablero vacío).
+- ✅ **G0.6 caché offline**: página 0 del inbox persistida en AsyncStorage; arranque en frío sin red muestra el último inbox.
+- ✅ **Multi-cuenta (jul 2026)**: fila de inbox y header de conversación muestran a qué conexión pertenece el chat; outbound con picker de número emisor + `phoneNumberId` en los endpoints de envío; plantillas atribuidas a su número.
+- ✅ **Backend — inbox vivo**: puente Redis (`WsRelayService`) para que los turnos procesados por el worker emitan `newMessage`/`inbox:handoff` etc. (desde la cola inbound de jul, el worker los perdía).
+- ✅ Deps: `socket.io-parser` 4.2.7 (única vuln bundleada), jest/jest-expo a devDependencies.
+
+⏳ Pendientes reales: **push con app CERRADA sin confirmar en runtime** (el secret EAS `GOOGLE_SERVICES_JSON` SÍ existe desde jun — verificado ago 2026 con `eas secret:list`; falta solo la prueba en dispositivo: matar la app, disparar un handoff y registrar acá el resultado), tests de socket/push + CI para la suite móvil, Detox E2E (diferido), migración expo-av→expo-audio (SDK 55).
 
 ---
 

@@ -24,9 +24,15 @@ export class WhatsappTemplateService {
     ) {}
 
     async getTemplates(schemaName: string) {
+        // phone_number_id: con multi-número, una plantilla pertenece al WABA de SU
+        // canal — enviarla desde otro número falla en Meta. El join permite al
+        // cliente filtrar/atribuir por número emisor.
         return this.prisma.executeInTenantSchema(
             schemaName,
-            `SELECT * FROM whatsapp_templates ORDER BY created_at DESC`
+            `SELECT t.*, wc.phone_number_id
+               FROM whatsapp_templates t
+               LEFT JOIN whatsapp_channels wc ON wc.id = t.channel_id
+              ORDER BY t.created_at DESC`
         );
     }
 

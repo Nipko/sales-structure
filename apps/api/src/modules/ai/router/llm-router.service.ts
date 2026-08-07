@@ -437,13 +437,19 @@ export class LLMRouterService {
             }
 
             if (!noPersistence) {
-                this.eventEmitter.emit('llm.provider.alert', {
-                    provider: 'all',
-                    severity: 'critical',
-                    failures: candidates.length,
-                    error: `All ${candidates.length} LLM providers failed. Last: ${lastError?.message}`,
-                    timestamp: new Date().toISOString(),
-                });
+                // Cooldown 5 min: sin él, drenar un backlog con todos los
+                // proveedores caídos emitía una alerta crítica POR TURNO a cada
+                // admin conectado (y el relay del worker ahora las entrega todas).
+                const alertAllowed = await this.redis.acquireLock('llm:alert:all', 300).catch(() => true);
+                if (alertAllowed) {
+                    this.eventEmitter.emit('llm.provider.alert', {
+                        provider: 'all',
+                        severity: 'critical',
+                        failures: candidates.length,
+                        error: `All ${candidates.length} LLM providers failed. Last: ${lastError?.message}`,
+                        timestamp: new Date().toISOString(),
+                    });
+                }
             }
 
             throw lastError || new Error('All LLM providers failed');

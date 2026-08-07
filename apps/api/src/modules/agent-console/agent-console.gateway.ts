@@ -4,6 +4,7 @@ import {
     SubscribeMessage,
     OnGatewayConnection,
     OnGatewayDisconnect,
+    OnGatewayInit,
     ConnectedSocket,
     MessageBody,
 } from '@nestjs/websockets';
@@ -16,13 +17,14 @@ import { CopilotService } from '../copilot/copilot.service';
 import { CollisionDetectionService } from './collision-detection.service';
 import { HandoffEscalatedEvent } from '../handoff/handoff.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { WsRelayService } from '../redis/ws-relay.service';
 import { JwtPayload } from '@parallext/shared';
 
 @WebSocketGateway({
     cors: { origin: '*' },
     namespace: '/agent',
 })
-export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()
     server: any;
 
@@ -37,7 +39,27 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
         private prisma: PrismaService,
         private jwtService: JwtService,
         private configService: ConfigService,
+        private wsRelay: WsRelayService,
     ) { }
+
+    /**
+     * Solo corre donde existe un servidor WebSocket real (el contenedor API):
+     * el worker jamás llega acá, así que la suscripción no se duplica.
+     */
+    afterInit() {
+        this.wsRelay.subscribe('agent', ({ room, event, payload }) => {
+            if (room) this.server?.to(room).emit(event, payload);
+        });
+    }
+
+    /**
+     * Emite al room si este proceso tiene servidor; si no (worker), delega en
+     * el API vía Redis. Sin esto, todo emit del pipeline encolado se perdía.
+     */
+    private relayEmit(room: string, event: string, payload: any) {
+        if (this.server) this.server.to(room).emit(event, payload);
+        else this.wsRelay.publish('agent', { room, event, payload });
+    }
 
     async handleConnection(client: any) {
         try {
@@ -366,13 +388,11 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
      * Called by the system when a new customer message arrives
      */
     notifyNewMessage(tenantId: string, conversationId: string, message: any) {
-        this.server?.to(`tenant:${tenantId}`).emit('inbox:new_message', {
+        this.relayEmit(`tenant:${tenantId}`, 'inbox:new_message', {
             conversationId,
             message,
         });
-        this.server
-            ?.to(`conversation:${conversationId}`)
-            .emit('conversation:message', message);
+        this.relayEmit(`conversation:${conversationId}`, 'conversation:message', message);
     }
 
     /**
@@ -389,7 +409,10 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
     @OnEvent('handoff.escalated')
     handleHandoffEscalated(event: HandoffEscalatedEvent) {
         this.logger.log(`Handoff event received for conversation ${event.conversationId} in tenant ${event.tenantId}`);
+        this.fanoutHandoffEscalated(event);
+    }
 
+    private fanoutHandoffEscalated(event: HandoffEscalatedEvent) {
         const payload = {
             conversationId: event.conversationId,
             reason: event.reason,
@@ -404,30 +427,23 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
         };
 
         // Broadcast to all agents in tenant
-        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:handoff', payload);
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:handoff', payload);
 
-        // Direct notification to the assigned agent (if any)
+        // Notificación directa al asignado, por su room `agent:{userId}` (se une
+        // en el register, mismo patrón que 'inbox:assigned'). El bloque anterior
+        // recorría sockets con 3 bugs acumulados (Namespace.sockets no tiene
+        // .adapter, el Map estaba destructurado al revés y meta nunca vivió en
+        // socket.data) — 'inbox:assigned_to_you' jamás llegó a nadie pese a que
+        // el móvil y el TopBar del dashboard lo escuchan.
         if (event.assignedTo) {
-            // Find the socket for this specific agent and send a direct alert
-            const rooms = this.server?.sockets?.adapter?.rooms;
-            if (rooms) {
-                for (const [socketId, tenantId] of this.connectedAgents) {
-                    if (tenantId === event.tenantId) {
-                        const socket = this.server?.sockets?.sockets?.get(socketId);
-                        const meta = socket?.data?.meta;
-                        if (meta?.userId === event.assignedTo) {
-                            socket?.emit('inbox:assigned_to_you', {
-                                ...payload,
-                                message: `${event.contactName || 'Un cliente'} ha sido asignado a ti: ${event.reason}`,
-                            });
-                        }
-                    }
-                }
-            }
+            this.relayEmit(`agent:${event.assignedTo}`, 'inbox:assigned_to_you', {
+                ...payload,
+                message: `${event.contactName || 'Un cliente'} ha sido asignado a ti: ${event.reason}`,
+            });
         }
 
         // Refresh inbox for all agents
-        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:refresh', {});
     }
 
     /**
@@ -437,18 +453,18 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
      */
     @OnEvent('draft.suggested')
     handleDraftSuggested(event: { tenantId: string; conversationId: string; text: string; contactName?: string }) {
-        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:draft_suggestion', {
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:draft_suggestion', {
             conversationId: event.conversationId,
             suggestedText: event.text,
             contactName: event.contactName,
         });
-        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:refresh', {});
     }
 
     @OnEvent('handoff.escalated_supervisor')
     handleSupervisorEscalation(event: { tenantId: string; conversationId: string; contactName: string; reason: string; waitMinutes: number }) {
         this.logger.warn(`[Escalation] Supervisor notified: ${event.contactName} waiting ${event.waitMinutes}min`);
-        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:escalation', {
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:escalation', {
             conversationId: event.conversationId,
             contactName: event.contactName,
             reason: event.reason,
@@ -462,10 +478,10 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
      */
     @OnEvent('handoff.completed')
     handleHandoffCompleted(event: { tenantId: string; conversationId: string }) {
-        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:handoff_completed', {
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:handoff_completed', {
             conversationId: event.conversationId,
         });
-        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:refresh', {});
     }
 
     /**
@@ -473,10 +489,10 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
      */
     @OnEvent('conversation.archived')
     handleConversationArchived(event: { tenantId: string; conversationId: string }) {
-        this.server?.to(`tenant:${event.tenantId}`).emit('conversation:archived', {
+        this.relayEmit(`tenant:${event.tenantId}`, 'conversation:archived', {
             conversationId: event.conversationId,
         });
-        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:refresh', {});
     }
 
     /**
@@ -484,9 +500,9 @@ export class AgentConsoleGateway implements OnGatewayConnection, OnGatewayDiscon
      */
     @OnEvent('conversation.deleted')
     handleConversationDeleted(event: { tenantId: string; conversationId: string }) {
-        this.server?.to(`tenant:${event.tenantId}`).emit('conversation:deleted', {
+        this.relayEmit(`tenant:${event.tenantId}`, 'conversation:deleted', {
             conversationId: event.conversationId,
         });
-        this.server?.to(`tenant:${event.tenantId}`).emit('inbox:refresh');
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:refresh', {});
     }
 }

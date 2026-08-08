@@ -117,6 +117,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 email: res.data.user?.email,
             };
         }
+        // Código propio del backend (p. ej. 'no_account' cuando alguien entra con
+        // Google desde el móvil sin tener cuenta): se propaga tal cual para que la
+        // pantalla muestre el mensaje correcto en vez del genérico.
+        if (typeof res?.error === 'string') return { ok: false, error: res.error };
         return { ok: false, error: res?.error?.message || res?.message || fallbackError };
     }, [loadVertical]);
 

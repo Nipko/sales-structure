@@ -473,14 +473,16 @@ const styles = StyleSheet.create({
     retryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
     searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginTop: 10, marginBottom: 4, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1 },
     search: { flex: 1, color: theme.text, fontSize: 15 },
-    // Sin maxHeight: con la escala de fuente del sistema los chips crecían más
-    // que la altura fija y las dos filas se dibujaban ENCIMADAS (recortadas).
-    // flexGrow 0 deja que cada fila mida lo que mide su contenido.
-    filters: { flexGrow: 0 },
+    // flexShrink 0 es LO QUE IMPORTA: el ScrollView horizontal de RN trae
+    // `flexShrink: 1` de fábrica (styles.baseHorizontal), así que en una columna
+    // sobre-suscrita —la FlatList pide el alto de todo su contenido— las dos
+    // filas de chips se comprimían y se dibujaban recortadas/encimadas. Un
+    // maxHeight fijo solo disimulaba el recorte, y flexGrow 0 no frena el shrink.
+    filters: { flexGrow: 0, flexShrink: 0 },
     filterChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgCard },
     filterChipOn: { backgroundColor: theme.accent, borderColor: theme.accent },
     filterText: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
-    subFilters: { flexGrow: 0, marginBottom: 2 },
+    subFilters: { flexGrow: 0, flexShrink: 0, marginBottom: 2 },
     miniChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgCard },
     miniChipOn: { backgroundColor: theme.accent, borderColor: theme.accent },
     miniText: { color: theme.textSecondary, fontSize: 12, fontWeight: '600' },

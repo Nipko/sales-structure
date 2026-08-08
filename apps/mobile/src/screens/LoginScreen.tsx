@@ -61,6 +61,9 @@ export function LoginScreen() {
             setCode(''); setUseBackup(false); setEmailSent(false); setError(null);
             return;
         }
+        // Caso propio del móvil: Google verificó la identidad pero no hay cuenta
+        // (el alta es web). No enumera nada — el usuario acaba de probar SU correo.
+        if (res.error === 'no_account') { setError(t('login.noAccountGoogle')); return; }
         // Seguridad (GATE 0): NO mostramos el mensaje crudo del backend (evita
         // enumeración de usuarios / info-disclosure). Mensaje genérico i18n.
         setError(fallback);
@@ -190,6 +193,14 @@ export function LoginScreen() {
                                 </TouchableOpacity>
                             </>
                         )}
+
+                        {/* El alta vive en la web (wizard de empresa): acá solo
+                            se abre el navegador, nunca se crea cuenta desde la app. */}
+                        <TouchableOpacity onPress={() => Linking.openURL(`${DASHBOARD_URL}/signup`)} style={styles.signupRow}
+                            accessibilityRole="link" accessibilityLabel={t('login.noAccountCta')}>
+                            <Text style={styles.signupMuted}>{t('login.noAccount')} </Text>
+                            <Text style={styles.signupLink}>{t('login.noAccountCta')}</Text>
+                        </TouchableOpacity>
                     </>
                 ) : (
                     <>
@@ -264,6 +275,9 @@ const styles = StyleSheet.create({
     checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, marginBottom: 4 },
     checkboxLabel: { color: theme.textSecondary, fontSize: 13, flex: 1 },
     linkBtn: { alignItems: 'center', paddingVertical: 12 },
+    signupRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', paddingVertical: 18 },
+    signupMuted: { color: theme.textSecondary, fontSize: 14 },
+    signupLink: { color: theme.accent, fontSize: 14, fontWeight: '700' },
     link: { color: theme.accent, fontSize: 14, fontWeight: '600' },
     linkMuted: { color: theme.textSecondary, fontSize: 14 },
 });

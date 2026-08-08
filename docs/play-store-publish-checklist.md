@@ -24,6 +24,27 @@ La app exige login → el revisor de Google NO puede entrar sin credenciales.
 - Provee: email, contraseña, e instrucciones (ej. "Login con estas credenciales; verás la bandeja de conversaciones").
 - ⚠️ Si el agente demo tiene 2FA, **desactívalo** para esa cuenta o el revisor se traba.
 
+### 1.b Qué ve quien instala SIN cuenta (implementado ago 2026)
+
+La app es la **consola del agente**, no el alta: crear la empresa exige el wizard
+web (rubro, canales, agente), así que el móvil nunca crea cuentas. El recorrido:
+
+| Situación | Qué ve | Salida |
+|---|---|---|
+| Primer arranque tras instalar | **Pantalla de bienvenida**: qué es Parallly (3 bullets) + "Ya tengo cuenta" + "Crear cuenta en la web" (abre `/signup` en el navegador). Se muestra una sola vez por dispositivo | Login o navegador |
+| Login | Enlace permanente "¿No tenés cuenta? Creála en la web" | Navegador → `/signup` |
+| Entra con Google sin tener cuenta | El backend **rechaza** (`no_account`) en vez de crear un usuario huérfano; mensaje: "No hay ninguna cuenta con ese correo…" | Se queda en login |
+| Cuenta válida pero sin empresa (abandonó el wizard) | **Pantalla "Falta terminar la configuración"** con botón a `/onboarding` y cerrar sesión | Navegador o logout |
+
+> Antes de esto, tocar "Continuar con Google" sin cuenta creaba un usuario **sin
+> tenant** que entraba a una consola permanentemente vacía y sin salida — exactamente
+> el escenario que un revisor de Google reporta como app rota / funcionalidad mínima.
+
+⚠️ **Política de pagos**: la app NO vende ni menciona precios; el alta y el pago
+ocurren en la web. Mantenerlo así evita Google Play Billing (la suscripción es a un
+servicio SaaS usado fuera de la app, pero cualquier CTA de compra dentro del APK
+cambiaría esa lectura).
+
 ### 2. Data safety (declarar exactamente esto)
 | Categoría | ¿Se recopila? | Propósito | ¿Compartida? | Cifrada en tránsito | Eliminable |
 |-----------|:---:|---|:---:|:---:|:---:|

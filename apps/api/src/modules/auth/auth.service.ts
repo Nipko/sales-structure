@@ -759,6 +759,17 @@ export class AuthService {
 
         const isNewUser = !user;
 
+        // El alta NO ocurre desde la app: crear la empresa exige el wizard web
+        // (vertical, canales, agente). Sin este guard, tocar "Continuar con
+        // Google" en el móvil creaba un usuario SIN tenant que entraba a una
+        // consola permanentemente vacía —y dejaba una cuenta huérfana en la DB—.
+        if (isNewUser && clientType === 'mobile') {
+            throw new UnauthorizedException({
+                error: 'no_account',
+                message: 'No encontramos una cuenta con este correo. Crea tu empresa desde la web y luego inicia sesión aquí.',
+            });
+        }
+
         if (!user) {
             user = await this.prisma.user.create({
                 data: {

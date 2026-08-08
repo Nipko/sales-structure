@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, ActivityIndicator, TouchableOpacity, AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNavigationContainerRef } from '@react-navigation/native';
@@ -13,6 +14,8 @@ import { subscribeUnread, getUnreadTotal } from '../lib/unread';
 import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
+import { WelcomeScreen } from '../screens/WelcomeScreen';
+import { NoWorkspaceScreen } from '../screens/NoWorkspaceScreen';
 import { InboxScreen } from '../screens/InboxScreen';
 import { ConversationScreen } from '../screens/ConversationScreen';
 import { CrmScreen } from '../screens/CrmScreen';
@@ -127,9 +130,23 @@ function MainTabs() {
     );
 }
 
+const WELCOME_KEY = 'welcome_seen';
+
 export function RootNavigator() {
     const { user, tenantId, loading } = useAuth();
     const { t } = useI18n();
+
+    // null = todavía leyendo el flag (el BootSplash cubre ese instante).
+    const [welcomeSeen, setWelcomeSeen] = useState<boolean | null>(null);
+    useEffect(() => {
+        AsyncStorage.getItem(WELCOME_KEY)
+            .then((v) => setWelcomeSeen(v === '1'))
+            .catch(() => setWelcomeSeen(true)); // ante la duda, no molestar
+    }, []);
+    const dismissWelcome = useCallback(() => {
+        setWelcomeSeen(true);
+        AsyncStorage.setItem(WELCOME_KEY, '1').catch(() => { /* best effort */ });
+    }, []);
 
     // Register native push + notification quick actions + deep-link taps.
     useEffect(() => {
@@ -211,6 +228,17 @@ export function RootNavigator() {
         return <View style={{ flex: 1, backgroundColor: theme.bg }} />;
     }
 
+    // Cuenta sin empresa (wizard web abandonado): la consola no tiene nada que
+    // mostrar — se explica y se manda a terminarlo, en vez de dejarlo dentro de
+    // pantallas vacías sin salida. super_admin no tiene tenant por diseño.
+    if (user && !tenantId && (user as any).role !== 'super_admin') {
+        return (
+            <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
+                <Stack.Screen name="NoWorkspace" component={NoWorkspaceScreen} />
+            </Stack.Navigator>
+        );
+    }
+
     return (
         <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', animationDuration: 250 }}>
             {user ? (
@@ -238,6 +266,12 @@ export function RootNavigator() {
                         })}
                     />
                 </>
+            ) : welcomeSeen === false ? (
+                // Primer arranque tras instalar desde Play Store: contexto de
+                // producto + alta en la web, antes del formulario de login.
+                <Stack.Screen name="Welcome">
+                    {() => <WelcomeScreen onContinue={dismissWelcome} />}
+                </Stack.Screen>
             ) : (
                 <Stack.Screen name="Login" component={LoginScreen} />
             )}

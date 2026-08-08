@@ -191,7 +191,7 @@ export function PipelineScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.bg }}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips} contentContainerStyle={{ paddingHorizontal: 12, gap: 8, alignItems: 'center' }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 8, alignItems: 'center' }}>
                 {stages.map((st) => {
                     const count = dealsFor(st).length;
                     const on = st.id === active;
@@ -320,7 +320,10 @@ const styles = StyleSheet.create({
     empty: { color: theme.textSecondary },
     retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, backgroundColor: theme.accent, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
     retryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-    chips: { maxHeight: 56, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
+    // Mismo caso que el inbox: sin flexShrink 0, el ScrollView horizontal de RN
+    // se comprime dentro de la columna (la FlatList pide todo el alto de su
+    // contenido) y los chips de etapa se recortan con fuentes grandes.
+    chips: { flexGrow: 0, flexShrink: 0, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgCard },
     chipText: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
     card: { flexDirection: 'row', alignItems: 'center', padding: 14, marginBottom: 8, borderRadius: 12, backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1 },

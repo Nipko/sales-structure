@@ -69,8 +69,8 @@ Si `SYSTEM_ALERT_WINDOW` aparece en el AAB → **no subir**, el plugin no se apl
 Antes del AAB, instalar el APK local nuevo por ADB inalámbrico y probar al menos un
 tenant representativo de cada modo operativo: agenda, estadías, tours, restaurante,
 pedidos, clases, matrículas, seguros, solicitudes de servicio, fotografía y pruebas de
-manejo. Verificar además que `automotriz/alquiler` y `pet_services/hotel` muestran el
-estado neutral, nunca una cita ficticia.
+manejo, alquiler vehicular y hospedaje de mascotas. Son **13 modos operativos** y deben
+recorrerse con datos reales; ninguna vertical debe caer en una cita ficticia.
 
 **Avance 8-ago-2026:** `assembleRelease` completó, el APK se instaló por ADB inalámbrico
 en un Samsung SM-S938B y `cloud.parallly.mobile/.MainActivity` inició sin errores fatales
@@ -167,7 +167,7 @@ Play Billing (15-30 % de comisión).
 > • Copiloto de IA: sugiere respuestas, reescribe en 6 tonos, resume la conversación, traduce y propone la próxima mejor acción de venta.
 > • CRM integrado: leads, pipeline, notas, tareas y escáner de tarjetas de visita.
 > • Toma el control del bot con un tap, asigna conversaciones y colabora con tu equipo.
-> • Gestiona la operación real de cada negocio: agenda, reservas, pedidos, clases, matrículas y solicitudes de servicio.
+> • Gestiona la operación real de cada negocio: agenda, reservas, pedidos, clases, matrículas, solicitudes de servicio, alquileres y hospedajes.
 >
 > Diseñada para equipos de ventas y atención en Latinoamérica. Requiere una cuenta de Parallly.
 
@@ -193,6 +193,10 @@ npx eas-cli submit --platform android --profile production
 
 ## 9. Notas de despliegue
 
+- **Operaciones verticales (ago-2026):** antes del smoke de los 13 modos hay que
+  desplegar la API del mismo commit y ejecutar la reconciliación del schema por tenant.
+  En particular, los tenants existentes necesitan la tabla `resource_rentals`; instalar
+  un APK nuevo no crea rutas ni tablas en el servidor.
 - **Sesiones (ago-2026):** al pasar a sesiones por dispositivo, los tokens emitidos antes
   del cambio no llevan el marcador de plataforma y se tratan como web (TTL 6 min). Quien
   ya tenía la app abierta debe **iniciar sesión una vez**; a partir de ahí su sesión

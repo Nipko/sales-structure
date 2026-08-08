@@ -233,7 +233,7 @@ CREATE INDEX IF NOT EXISTS "idx_stock_movements_product" ON "{{SCHEMA_NAME}}"."s
 -- ---- Orders ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."orders" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "contact_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"("id"),
+    "contact_id" UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"("id"),
     "conversation_id" UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"("id"),
     "items" JSONB NOT NULL DEFAULT '[]',
     "total_amount" DECIMAL(15, 2) NOT NULL DEFAULT 0,
@@ -246,6 +246,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."orders" (
     "created_at" TIMESTAMP DEFAULT NOW(),
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
+ALTER TABLE "{{SCHEMA_NAME}}"."orders" ALTER COLUMN "contact_id" DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS "idx_orders_contact_id" ON "{{SCHEMA_NAME}}"."orders" ("contact_id");
 CREATE INDEX IF NOT EXISTS "idx_orders_status" ON "{{SCHEMA_NAME}}"."orders" ("status");
 
@@ -2659,6 +2660,54 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."test_drives" (
     "assigned_to" UUID,
     "created_at" TIMESTAMPTZ DEFAULT now()
 );
+
+-- ---- Resource rentals -------------------------------------------------
+-- One half-open date-range contract for vertical resources that are not
+-- appointments: vehicle hire and pet hotel/day-care capacity.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."resource_rentals" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "rental_type" VARCHAR(30) NOT NULL,
+    "resource_id" UUID NOT NULL,
+    "service_id" UUID,
+    "contact_id" UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE SET NULL,
+    "customer_name" VARCHAR(255),
+    "customer_phone" VARCHAR(50),
+    "start_date" DATE NOT NULL,
+    "end_date" DATE NOT NULL,
+    "status" VARCHAR(30) NOT NULL DEFAULT 'reserved',
+    "notes" TEXT,
+    "metadata" JSONB NOT NULL DEFAULT '{}',
+    "created_by" UUID,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT "resource_rentals_date_range_check"
+        CHECK ("end_date" > "start_date"),
+    CONSTRAINT "resource_rentals_type_service_check"
+        CHECK (
+            ("rental_type" = 'vehicle_rental' AND "service_id" IS NULL)
+            OR
+            ("rental_type" = 'pet_boarding' AND "service_id" IS NOT NULL)
+        ),
+    CONSTRAINT "resource_rentals_status_check"
+        CHECK (
+            ("rental_type" = 'vehicle_rental'
+                AND "status" IN ('reserved', 'picked_up', 'returned', 'cancelled'))
+            OR
+            ("rental_type" = 'pet_boarding'
+                AND "status" IN ('reserved', 'checked_in', 'checked_out', 'cancelled'))
+        )
+);
+CREATE INDEX IF NOT EXISTS "idx_resource_rentals_resource_dates"
+    ON "{{SCHEMA_NAME}}"."resource_rentals"
+    ("rental_type", "resource_id", "start_date", "end_date")
+    WHERE "status" IN ('reserved', 'picked_up', 'checked_in');
+CREATE INDEX IF NOT EXISTS "idx_resource_rentals_service_dates"
+    ON "{{SCHEMA_NAME}}"."resource_rentals"
+    ("service_id", "start_date", "end_date")
+    WHERE "rental_type" = 'pet_boarding'
+      AND "status" IN ('reserved', 'checked_in');
+CREATE INDEX IF NOT EXISTS "idx_resource_rentals_status_start"
+    ON "{{SCHEMA_NAME}}"."resource_rentals" ("status", "start_date");
 
 -- ---- E-commerce ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."ecommerce_products" (

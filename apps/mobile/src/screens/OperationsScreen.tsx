@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     Modal,
     RefreshControl,
     SectionList,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
@@ -21,12 +23,21 @@ import {
     resolveVerticalWorkspace,
     type VerticalWorkspaceKind,
 } from '../lib/verticalWorkspace';
+import {
+    availableItemActions,
+    canCreateOperation,
+    getSafeNextStatus,
+    type VerticalOperationActionId,
+    type VerticalOperationItemType,
+} from '../lib/verticalOperationPolicy';
 import { theme } from '../theme';
 import { AppointmentsScreen } from './AppointmentsScreen';
 import { ReservationsScreen } from './ReservationsScreen';
+import { OperationCreateModal } from './OperationCreateModal';
 
 interface OperationItem {
     id: string;
+    entityType: VerticalOperationItemType;
     icon: string;
     title: string;
     subtitle?: string;
@@ -38,8 +49,7 @@ interface OperationItem {
     metaKey?: string;
     metaParams?: Record<string, string | number>;
     amount?: string;
-    source?: 'restaurant_order' | 'order';
-    nextStatus?: string;
+    primaryReferenceId?: string;
 }
 
 interface OperationSection {
@@ -66,6 +76,7 @@ const STATUS_COLORS: Record<string, string> = {
     dispatched: theme.accent,
     in_progress: theme.accent,
     preparing: theme.warning,
+    picked_up: theme.accent,
     processing: theme.warning,
     quoted: theme.warning,
     received: theme.warning,
@@ -76,6 +87,9 @@ const STATUS_COLORS: Record<string, string> = {
     draft: theme.textSecondary,
     open: theme.accent,
     full: theme.warning,
+    checked_in: theme.accent,
+    checked_out: theme.textSecondary,
+    returned: theme.textSecondary,
     cancelled: theme.danger,
     dropped: theme.danger,
     expired: theme.danger,
@@ -144,6 +158,7 @@ function activeStatus(value: unknown, terminal: string[]): boolean {
 function appointmentItem(row: any): OperationItem {
     return {
         id: 'appointment:' + row.id,
+        entityType: 'table_reservation',
         icon: 'calendar-outline',
         title: row.service_name || row.serviceName || row.title || '',
         subtitle: row.customer_name || row.contact_name || row.customerName || row.contactName || '',
@@ -183,6 +198,7 @@ async function loadOperationSections(
                 .sort((a, b) => String(a.departure_date || '').localeCompare(String(b.departure_date || '')))
                 .map((row) => ({
                     id: 'tour:' + row.id,
+                    entityType: 'tour_booking' as const,
                     icon: 'map-outline',
                     title: row.package_name || '',
                     subtitle: row.guest_name || '',
@@ -197,8 +213,9 @@ async function loadOperationSections(
     }
 
     if (kind === 'restaurant') {
+        const normalizedSubType = String(subType || '').trim().toLowerCase();
         const wantsReservations = bookingEnabled !== false
-            && (subType === 'casual_dining' || subType === 'cafeteria' || !subType);
+            && (normalizedSubType === 'casual_dining' || normalizedSubType === 'cafeteria' || !normalizedSubType);
         const appointmentParams = 'startDate=' + localDay(today) + 'T00:00:00&endDate=' + localDay(horizon) + 'T00:00:00';
         const [ordersRes, appointmentsRes]: [any, any] = await Promise.all([
             api.getRestaurantOrders(tenantId),
@@ -216,6 +233,7 @@ async function loadOperationSections(
                     .filter((row) => activeStatus(row.status, ['delivered', 'cancelled']))
                     .map((row) => ({
                         id: 'restaurant:' + row.id,
+                        entityType: 'restaurant_order' as const,
                         icon: 'restaurant-outline',
                         title: row.customer_name || '',
                         subtitleKey: row.order_type ? 'ops.orderType.' + row.order_type : undefined,
@@ -225,8 +243,6 @@ async function loadOperationSections(
                         metaKey: row.table_number ? 'ops.tableNumber' : undefined,
                         metaParams: row.table_number ? { number: row.table_number } : undefined,
                         amount: formatMoney(row.total, row.currency, locale),
-                        source: 'restaurant_order' as const,
-                        nextStatus: restaurantNext(row.status),
                     })),
             },
             {
@@ -246,6 +262,7 @@ async function loadOperationSections(
                 .filter((row) => activeStatus(row.status, ['paid', 'cancelled']))
                 .map((row) => ({
                     id: 'order:' + row.id,
+                    entityType: 'order' as const,
                     icon: 'bag-handle-outline',
                     title: row.contactName || '',
                     subtitle: list(row.items).map((item: any) => item.productName).filter(Boolean).slice(0, 2).join(', '),
@@ -254,8 +271,6 @@ async function loadOperationSections(
                     metaKey: list(row.items).length ? 'ops.itemsCount' : undefined,
                     metaParams: list(row.items).length ? { count: list(row.items).length } : undefined,
                     amount: formatMoney(row.totalAmount, row.currency, locale),
-                    source: 'order' as const,
-                    nextStatus: row.status === 'pending' ? 'confirmed' : undefined,
                 })),
         }];
     }
@@ -270,6 +285,7 @@ async function loadOperationSections(
             key: 'ops.section.classes',
             data: rows.map((row) => ({
                 id: 'class:' + row.id,
+                entityType: 'class' as const,
                 icon: 'barbell-outline',
                 title: row.name || '',
                 subtitle: row.instructor_name || row.room || '',
@@ -295,6 +311,7 @@ async function loadOperationSections(
                     .filter((row) => activeStatus(row.status, ['completed', 'dropped', 'refunded']))
                     .map((row) => ({
                         id: 'enrollment:' + row.id,
+                        entityType: 'enrollment' as const,
                         icon: 'person-add-outline',
                         title: row.student_name || '',
                         subtitle: row.course_name || row.cohort_code || '',
@@ -310,6 +327,7 @@ async function loadOperationSections(
                     .sort((a, b) => String(a.starts_at || '').localeCompare(String(b.starts_at || '')))
                     .map((row) => ({
                         id: 'cohort:' + row.id,
+                        entityType: 'cohort' as const,
                         icon: 'school-outline',
                         title: row.course_name || row.cohort_code || '',
                         subtitle: row.instructor_name || row.schedule || '',
@@ -332,19 +350,27 @@ async function loadOperationSections(
         const quotes = list(responseData(quotesRes));
         const policies = list(responseData(policiesRes));
         const claims = list(responseData(claimsRes));
+        const convertedQuoteIds = new Set(
+            policies
+                .map((row) => String(row.quote_id || row.quoteId || ''))
+                .filter(Boolean),
+        );
         return [
             {
                 key: 'ops.section.openQuotes',
                 data: quotes
-                    .filter((row) => activeStatus(row.status, ['accepted', 'rejected', 'expired']))
+                    .filter((row) => activeStatus(row.status, ['rejected', 'expired'])
+                        && !(String(row.status || '').toLowerCase() === 'accepted' && convertedQuoteIds.has(String(row.id))))
                     .map((row) => ({
                         id: 'quote:' + row.id,
+                        entityType: 'quote' as const,
                         icon: 'document-text-outline',
                         title: row.applicant_name || row.plan_name || '',
                         subtitle: row.plan_name || row.insurance_type || '',
                         status: row.status || 'draft',
                         when: row.created_at,
                         amount: formatMoney(row.monthly_premium || row.annual_premium, row.currency, locale),
+                        primaryReferenceId: row.plan_id || row.planId || undefined,
                     })),
             },
             {
@@ -353,6 +379,7 @@ async function loadOperationSections(
                     .filter((row) => activeStatus(row.status, ['paid', 'rejected']))
                     .map((row) => ({
                         id: 'claim:' + row.id,
+                        entityType: 'claim' as const,
                         icon: 'warning-outline',
                         title: row.claim_number || '',
                         subtitle: row.incident_type || row.description || '',
@@ -368,6 +395,7 @@ async function loadOperationSections(
                     .filter((row) => activeStatus(row.status, ['expired', 'cancelled']))
                     .map((row) => ({
                         id: 'policy:' + row.id,
+                        entityType: 'policy' as const,
                         icon: 'shield-checkmark-outline',
                         title: row.policyholder_name || row.policy_number || '',
                         subtitle: row.policy_number || '',
@@ -388,6 +416,7 @@ async function loadOperationSections(
                 .filter((row) => activeStatus(row.status, ['completed', 'cancelled']))
                 .map((row) => ({
                     id: 'request:' + row.id,
+                    entityType: 'service_request' as const,
                     icon: row.urgency === 'emergencia' ? 'alert-circle-outline' : 'construct-outline',
                     title: row.service_type || '',
                     subtitle: row.customer_name || row.issue_description || '',
@@ -409,6 +438,7 @@ async function loadOperationSections(
                 .filter((row) => activeStatus(row.status, ['delivered', 'cancelled']))
                 .map((row) => ({
                     id: 'photo:' + row.id,
+                    entityType: 'photo_session' as const,
                     icon: 'camera-outline',
                     title: row.client_name || row.contact_name || '',
                     subtitle: row.package_name || row.session_type || '',
@@ -430,6 +460,7 @@ async function loadOperationSections(
                 .sort((a, b) => String(a.scheduled_date || '').localeCompare(String(b.scheduled_date || '')))
                 .map((row) => ({
                     id: 'drive:' + row.id,
+                    entityType: 'test_drive' as const,
                     icon: 'car-sport-outline',
                     title: [row.make, row.model, row.year].filter(Boolean).join(' '),
                     subtitle: row.contact_name || '',
@@ -437,6 +468,32 @@ async function loadOperationSections(
                     when: row.scheduled_date,
                     dateOnly: true,
                     meta: row.scheduled_time || row.contact_phone || '',
+                })),
+        }];
+    }
+
+    if (kind === 'vehicle_rentals' || kind === 'pet_boarding') {
+        const rentalKind = kind === 'vehicle_rentals' ? 'vehicle_rental' : 'pet_boarding';
+        const rows = list(responseData(await api.getResourceRentals(tenantId, rentalKind)));
+        const entityType = kind === 'vehicle_rentals' ? 'vehicle_rental' as const : 'boarding' as const;
+        return [{
+            key: kind === 'vehicle_rentals' ? 'ops.section.vehicleRentals' : 'ops.section.petBoarding',
+            data: rows
+                .filter((row) => activeStatus(row.status, ['returned', 'checked_out', 'cancelled']))
+                .sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || '')))
+                .map((row) => ({
+                    id: 'rental:' + row.id,
+                    entityType,
+                    icon: kind === 'vehicle_rentals' ? 'key-outline' : 'paw-outline',
+                    title: row.resource_name
+                        || [row.make, row.model, row.year].filter(Boolean).join(' ')
+                        || row.pet_name
+                        || '',
+                    subtitle: row.customer_name || '',
+                    status: row.status || 'reserved',
+                    when: row.start_date,
+                    dateOnly: true,
+                    meta: row.end_date || '',
                 })),
         }];
     }
@@ -482,18 +539,29 @@ function UnavailableWorkspace() {
 }
 
 export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind }) {
-    const { tenantId, verticalConfig } = useAuth();
+    const { tenantId, user, verticalConfig } = useAuth();
     const { t, locale } = useI18n();
     const toast = useToast();
     const insets = useSafeAreaInsets();
     const [selected, setSelected] = useState<OperationItem | null>(null);
     const [busyId, setBusyId] = useState('');
     const [tableReservationsOpen, setTableReservationsOpen] = useState(false);
+    const [createOpen, setCreateOpen] = useState(false);
+    const [composerIntent, setComposerIntent] = useState<{
+        mode?: string;
+        primaryId?: string;
+        secondaryId?: string;
+        quoteId?: string;
+    }>({});
+    const [deliveryItem, setDeliveryItem] = useState<OperationItem | null>(null);
+    const [galleryUrl, setGalleryUrl] = useState('');
 
     const restaurantSubType = String(verticalConfig?.subType || '').trim().toLowerCase();
     const canManageTableReservations = kind === 'restaurant'
         && verticalConfig?.bookingEnabled !== false
         && (restaurantSubType === 'casual_dining' || restaurantSubType === 'cafeteria' || !restaurantSubType);
+    const canCreate = canCreateOperation(kind, user?.role)
+        && kind !== 'appointments' && kind !== 'stays' && kind !== 'none';
 
     const query = useQuery({
         queryKey: ['vertical-operations', tenantId, kind, verticalConfig?.subType, verticalConfig?.bookingEnabled, locale],
@@ -526,22 +594,113 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
         void query.refetch();
     };
 
-    const advance = async (item: OperationItem) => {
-        if (!tenantId || !item.nextStatus || !item.source || busyId) return;
+    const entityId = (item: OperationItem) => item.id.slice(item.id.indexOf(':') + 1);
+
+    const openComposer = (intent: { mode?: string; primaryId?: string; secondaryId?: string; quoteId?: string } = {}) => {
+        haptic.tap();
+        setSelected(null);
+        setComposerIntent(intent);
+        setCreateOpen(true);
+    };
+
+    const callStatusUpdate = async (item: OperationItem, status: string): Promise<any> => {
+        if (!tenantId) return null;
+        const id = entityId(item);
+        if (kind === 'restaurant' && item.entityType === 'restaurant_order') return api.updateRestaurantOrderStatus(tenantId, id, status);
+        if (kind === 'orders' && item.entityType === 'order') return api.updateOrderStatus(tenantId, id, status);
+        if (kind === 'service_requests' && item.entityType === 'service_request') return api.updateServiceRequest(tenantId, id, { status });
+        if (kind === 'education' && item.entityType === 'enrollment') return api.updateEducationEnrollment(tenantId, id, { status });
+        if (kind === 'photo_sessions' && item.entityType === 'photo_session') return api.updatePhotoSession(tenantId, id, { status });
+        if (kind === 'insurance' && item.entityType === 'quote') return api.updateInsuranceQuoteStatus(tenantId, id, status);
+        if ((kind === 'vehicle_rentals' && item.entityType === 'vehicle_rental') || (kind === 'pet_boarding' && item.entityType === 'boarding')) {
+            return api.updateResourceRentalStatus(tenantId, id, status);
+        }
+        return null;
+    };
+
+    const cancelItem = async (item: OperationItem): Promise<any> => {
+        if (!tenantId) return null;
+        const id = entityId(item);
+        if (kind === 'tours') return api.cancelTourBooking(tenantId, id);
+        if (kind === 'classes' && item.entityType === 'class') return api.cancelFitnessClass(tenantId, id);
+        if (kind === 'education' && item.entityType === 'cohort') return api.cancelEducationCohort(tenantId, id);
+        if (kind === 'education' && item.entityType === 'enrollment') return api.updateEducationEnrollment(tenantId, id, { status: 'dropped' });
+        return callStatusUpdate(item, 'cancelled');
+    };
+
+    const finishAction = async (item: OperationItem, task: () => Promise<any>) => {
+        if (busyId) return;
         setBusyId(item.id);
         try {
-            const res: any = item.source === 'restaurant_order'
-                ? await api.updateRestaurantOrderStatus(tenantId, item.id.replace('restaurant:', ''), item.nextStatus)
-                : await api.updateOrderStatus(tenantId, item.id.replace('order:', ''), item.nextStatus);
+            const res: any = await task();
             if (!res?.success) throw new Error(res?.error || 'update_failed');
             haptic.success();
             toast.success(t('ops.updated'));
+            setSelected(null);
             await query.refetch();
         } catch {
             toast.error(t('ops.updateError'));
         } finally {
             setBusyId('');
         }
+    };
+
+    const performAction = (action: VerticalOperationActionId, item: OperationItem) => {
+        if (!tenantId || busyId) return;
+        if (action === 'book_member') {
+            openComposer({ mode: 'book', primaryId: entityId(item) });
+            return;
+        }
+        if (action === 'enroll') {
+            openComposer({ primaryId: entityId(item) });
+            return;
+        }
+        if (action === 'claim') {
+            openComposer({ mode: 'claim', secondaryId: entityId(item) });
+            return;
+        }
+        if (action === 'create_policy') {
+            openComposer({
+                mode: 'policy',
+                primaryId: item.primaryReferenceId,
+                quoteId: entityId(item),
+            });
+            return;
+        }
+        if (action === 'deliver') {
+            setGalleryUrl('');
+            setDeliveryItem(item);
+            return;
+        }
+        if (action === 'cancel') {
+            Alert.alert(t('ops.action.cancelTitle'), t('ops.action.cancelBody'), [
+                { text: t('citas.no'), style: 'cancel' },
+                {
+                    text: t('ops.action.cancel'),
+                    style: 'destructive',
+                    onPress: () => void finishAction(item, () => cancelItem(item)),
+                },
+            ]);
+            return;
+        }
+        if (action === 'quote') {
+            void finishAction(item, () => callStatusUpdate(item, 'sent'));
+            return;
+        }
+        if (action === 'accept' || action === 'reject') {
+            void finishAction(item, () => callStatusUpdate(item, action === 'accept' ? 'accepted' : 'rejected'));
+            return;
+        }
+        const next = getSafeNextStatus(kind, item.entityType, item.status);
+        if (next) void finishAction(item, () => callStatusUpdate(item, next));
+    };
+
+    const deliverGallery = () => {
+        if (!tenantId || !deliveryItem || !/^https?:\/\//i.test(galleryUrl.trim())) return;
+        const item = deliveryItem;
+        const url = galleryUrl.trim();
+        setDeliveryItem(null);
+        void finishAction(item, () => api.deliverPhotoSession(tenantId, entityId(item), { galleryUrl: url }));
     };
 
     if (kind === 'none') return <UnavailableWorkspace />;
@@ -598,6 +757,12 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                 )}
                 renderItem={({ item }) => {
                     const color = STATUS_COLORS[String(item.status || '').toLowerCase()] || theme.textSecondary;
+                    const itemActions = availableItemActions(kind, user?.role, item.entityType, item.status)
+                        .filter((action) => action !== 'edit');
+                    const quickAction = itemActions.find((action) => [
+                        'advance', 'check_in', 'check_out', 'pick_up', 'return_vehicle',
+                    ].includes(action));
+                    const next = getSafeNextStatus(kind, item.entityType, item.status);
                     return (
                         <TouchableOpacity
                             style={styles.card}
@@ -631,17 +796,17 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                             </View>
                             <View style={styles.trailing}>
                                 {!!item.amount && <Text style={styles.amount}>{item.amount}</Text>}
-                                {!!item.nextStatus && (
+                                {!!quickAction && (
                                     <TouchableOpacity
                                         style={styles.advanceButton}
-                                        onPress={() => advance(item)}
+                                        onPress={() => performAction(quickAction, item)}
                                         disabled={busyId === item.id}
                                         accessibilityRole="button"
-                                        accessibilityLabel={actionLabel(t, item.nextStatus)}
+                                        accessibilityLabel={next ? actionLabel(t, next) : t(`ops.action.${quickAction}`)}
                                     >
                                         {busyId === item.id
                                             ? <ActivityIndicator size="small" color="#fff" />
-                                            : <Text style={styles.advanceText}>{actionLabel(t, item.nextStatus)}</Text>}
+                                            : <Text style={styles.advanceText}>{next ? actionLabel(t, next) : t(`ops.action.${quickAction}`)}</Text>}
                                     </TouchableOpacity>
                                 )}
                             </View>
@@ -649,6 +814,17 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                     );
                 }}
             />
+
+            {canCreate && (
+                <TouchableOpacity
+                    style={[styles.fab, { bottom: insets.bottom + 18 }]}
+                    onPress={() => openComposer()}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('ops.create.submit')}
+                >
+                    <Ionicons name="add" size={28} color="#fff" />
+                </TouchableOpacity>
+            )}
 
             <Modal visible={!!selected} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setSelected(null)}>
                 <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setSelected(null)}>
@@ -680,6 +856,33 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                                 <Text style={styles.detailValue}>{selected.amount}</Text>
                             </View>
                         )}
+                        {!!selected && availableItemActions(kind, user?.role, selected.entityType, selected.status)
+                            .filter((action) => action !== 'edit')
+                            .length > 0 && (
+                            <View style={styles.sheetActions}>
+                                {availableItemActions(kind, user?.role, selected.entityType, selected.status)
+                                    .filter((action) => action !== 'edit')
+                                    .map((action) => {
+                                        const next = getSafeNextStatus(kind, selected.entityType, selected.status);
+                                        const destructive = action === 'cancel' || action === 'reject';
+                                        return (
+                                            <TouchableOpacity
+                                                key={action}
+                                                style={[styles.sheetAction, destructive && styles.sheetActionDanger]}
+                                                onPress={() => performAction(action, selected)}
+                                                disabled={busyId === selected.id}
+                                                accessibilityRole="button"
+                                            >
+                                                {busyId === selected.id
+                                                    ? <ActivityIndicator color="#fff" size="small" />
+                                                    : <Text style={styles.sheetActionText}>
+                                                        {action === 'advance' && next ? actionLabel(t, next) : t(`ops.action.${action}`)}
+                                                    </Text>}
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                            </View>
+                        )}
                         <TouchableOpacity style={styles.closeButton} onPress={() => setSelected(null)} accessibilityRole="button">
                             <Text style={styles.closeText}>{t('common.close')}</Text>
                         </TouchableOpacity>
@@ -706,6 +909,53 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                         <Ionicons name="close" size={24} color={theme.text} />
                     </TouchableOpacity>
                 </View>
+            </Modal>
+
+            {tenantId && canCreate && (
+                <OperationCreateModal
+                    visible={createOpen}
+                    kind={kind as Exclude<VerticalWorkspaceKind, 'appointments' | 'stays' | 'none'>}
+                    tenantId={tenantId}
+                    role={user?.role}
+                    initialMode={composerIntent.mode}
+                    initialPrimaryId={composerIntent.primaryId}
+                    initialSecondaryId={composerIntent.secondaryId}
+                    initialQuoteId={composerIntent.quoteId}
+                    onClose={() => setCreateOpen(false)}
+                    onCreated={async () => { await query.refetch(); }}
+                />
+            )}
+
+            <Modal visible={!!deliveryItem} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDeliveryItem(null)}>
+                <TouchableOpacity style={styles.centerBackdrop} activeOpacity={1} onPress={() => setDeliveryItem(null)}>
+                    <View style={styles.dialog} onStartShouldSetResponder={() => true}>
+                        <Text style={styles.sheetTitle}>{t('ops.delivery.title')}</Text>
+                        <Text style={styles.dialogHint}>{t('ops.delivery.body')}</Text>
+                        <TextInput
+                            style={styles.dialogInput}
+                            value={galleryUrl}
+                            onChangeText={setGalleryUrl}
+                            placeholder="https://"
+                            placeholderTextColor={theme.textSecondary}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            keyboardType="url"
+                        />
+                        <View style={styles.dialogActions}>
+                            <TouchableOpacity style={styles.dialogSecondary} onPress={() => setDeliveryItem(null)} accessibilityRole="button">
+                                <Text style={styles.dialogSecondaryText}>{t('citas.no')}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.dialogPrimary, !/^https?:\/\//i.test(galleryUrl.trim()) && styles.disabled]}
+                                onPress={deliverGallery}
+                                disabled={!/^https?:\/\//i.test(galleryUrl.trim())}
+                                accessibilityRole="button"
+                            >
+                                <Text style={styles.sheetActionText}>{t('ops.action.deliver')}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </TouchableOpacity>
             </Modal>
         </SafeAreaView>
     );
@@ -743,6 +993,7 @@ const styles = StyleSheet.create({
     metaText: { color: theme.textSecondary, fontSize: 10, flexShrink: 1 },
     trailing: { alignItems: 'flex-end', gap: 8, maxWidth: 105 },
     amount: { color: theme.text, fontSize: 12, fontWeight: '700' },
+    fab: { position: 'absolute', right: 18, width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.accent, elevation: 6, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 5, shadowOffset: { width: 0, height: 3 } },
     advanceButton: { minHeight: 32, justifyContent: 'center', backgroundColor: theme.accent, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 9 },
     advanceText: { color: '#fff', fontSize: 10, fontWeight: '700', textAlign: 'center' },
     emptyBlock: { flex: 1, minHeight: 360, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 34 },
@@ -758,8 +1009,21 @@ const styles = StyleSheet.create({
     detailRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 16, borderTopWidth: 1, borderTopColor: theme.border, paddingVertical: 12 },
     detailLabel: { color: theme.textSecondary, fontSize: 12, fontWeight: '600' },
     detailValue: { color: theme.text, fontSize: 13, flex: 1, textAlign: 'right' },
+    sheetActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 12 },
+    sheetAction: { flexGrow: 1, minWidth: 112, minHeight: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.accent, borderRadius: 10, paddingHorizontal: 12 },
+    sheetActionDanger: { backgroundColor: theme.danger },
+    sheetActionText: { color: '#fff', fontSize: 13, fontWeight: '800', textAlign: 'center' },
     closeButton: { backgroundColor: theme.accent, alignItems: 'center', borderRadius: 11, paddingVertical: 12, marginTop: 10 },
     closeText: { color: '#fff', fontSize: 14, fontWeight: '700' },
     tableReservationsModal: { flex: 1, backgroundColor: theme.bg },
     tableReservationsClose: { position: 'absolute', right: 12, zIndex: 30, elevation: 8, width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
+    centerBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, backgroundColor: 'rgba(0,0,0,0.58)' },
+    dialog: { width: '100%', maxWidth: 420, borderRadius: 16, padding: 18, backgroundColor: theme.bgCard, borderWidth: 1, borderColor: theme.border },
+    dialogHint: { color: theme.textSecondary, fontSize: 13, lineHeight: 18, marginTop: 6 },
+    dialogInput: { minHeight: 46, borderWidth: 1, borderColor: theme.border, borderRadius: 10, color: theme.text, backgroundColor: theme.bg, paddingHorizontal: 12, marginTop: 14 },
+    dialogActions: { flexDirection: 'row', gap: 8, marginTop: 14 },
+    dialogSecondary: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: theme.border },
+    dialogSecondaryText: { color: theme.text, fontSize: 13, fontWeight: '700' },
+    dialogPrimary: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: theme.accent },
+    disabled: { opacity: 0.45 },
 });

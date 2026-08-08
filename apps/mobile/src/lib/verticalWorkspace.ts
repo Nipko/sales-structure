@@ -10,6 +10,8 @@ export type VerticalWorkspaceKind =
     | 'service_requests'
     | 'photo_sessions'
     | 'test_drives'
+    | 'vehicle_rentals'
+    | 'pet_boarding'
     | 'none';
 
 export type VerticalWorkspaceIconName =
@@ -24,6 +26,8 @@ export type VerticalWorkspaceIconName =
     | 'construct-outline'
     | 'camera-outline'
     | 'car-sport-outline'
+    | 'key-outline'
+    | 'paw-outline'
     | 'ban-outline';
 
 export type VerticalWorkspaceLabelKey =
@@ -38,6 +42,8 @@ export type VerticalWorkspaceLabelKey =
     | 'workspace.serviceRequests'
     | 'workspace.photoSessions'
     | 'workspace.testDrives'
+    | 'workspace.vehicleRentals'
+    | 'workspace.petBoarding'
     | 'workspace.none';
 
 export interface VerticalWorkspaceInput {
@@ -110,6 +116,16 @@ const WORKSPACES: Record<VerticalWorkspaceKind, VerticalWorkspaceResolution> = {
         iconName: 'car-sport-outline',
         labelKey: 'workspace.testDrives',
     },
+    vehicle_rentals: {
+        kind: 'vehicle_rentals',
+        iconName: 'key-outline',
+        labelKey: 'workspace.vehicleRentals',
+    },
+    pet_boarding: {
+        kind: 'pet_boarding',
+        iconName: 'paw-outline',
+        labelKey: 'workspace.petBoarding',
+    },
     none: {
         kind: 'none',
         iconName: 'ban-outline',
@@ -177,13 +193,13 @@ const AUTOMOTIVE_SUBTYPE_WORKSPACES: Readonly<Record<string, VerticalWorkspaceKi
     concesionario: 'test_drives',
     taller: 'appointments',
     repuestos: 'orders',
-    alquiler: 'none',
+    alquiler: 'vehicle_rentals',
 };
 
 const PET_SERVICES_SUBTYPE_WORKSPACES: Readonly<Record<string, VerticalWorkspaceKind>> = {
     peluqueria: 'appointments',
-    guarderia: 'appointments',
-    hotel: 'none',
+    guarderia: 'pet_boarding',
+    hotel: 'pet_boarding',
     paseos: 'appointments',
     adiestramiento: 'appointments',
 };

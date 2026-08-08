@@ -38,7 +38,7 @@ describe('resolveVerticalWorkspace', () => {
         { industry: 'moda_belleza', subtypes: ['salon_belleza', 'barberia', 'spa', 'estetica'], expected: 'appointments' },
         { industry: 'inmobiliaria', subtypes: ['venta', 'arriendo', 'comercial', 'construccion'], expected: 'appointments' },
         { industry: 'restaurantes', subtypes: ['casual_dining', 'comida_rapida', 'cafeteria', 'dark_kitchen'], expected: 'restaurant' },
-        { industry: 'automotriz', subtypes: ['concesionario', 'taller', 'repuestos', 'alquiler'], expected: (subtype) => ({ concesionario: 'test_drives', taller: 'appointments', repuestos: 'orders', alquiler: 'none' } as const)[subtype as 'concesionario' | 'taller' | 'repuestos' | 'alquiler'] },
+        { industry: 'automotriz', subtypes: ['concesionario', 'taller', 'repuestos', 'alquiler'], expected: (subtype) => ({ concesionario: 'test_drives', taller: 'appointments', repuestos: 'orders', alquiler: 'vehicle_rentals' } as const)[subtype as 'concesionario' | 'taller' | 'repuestos' | 'alquiler'] },
         { industry: 'turismo', subtypes: ['agencia_viajes', 'hotel', 'tours', 'alquiler_vacacional'], expected: (subtype) => subtype === 'hotel' || subtype === 'alquiler_vacacional' ? 'stays' : 'tours' },
         { industry: 'education', subtypes: ['idiomas', 'universitaria', 'online', 'capacitacion'], expected: 'education' },
         { industry: 'finanzas', subtypes: ['asesoria', 'fintech', 'creditos'], expected: 'appointments' },
@@ -49,7 +49,7 @@ describe('resolveVerticalWorkspace', () => {
         { industry: 'gimnasios', subtypes: ['gimnasio_general', 'crossfit', 'yoga_pilates', 'cycling', 'martial_arts'], expected: 'classes' },
         { industry: 'seguros', subtypes: ['broker', 'aseguradora', 'vida', 'auto', 'salud'], expected: 'insurance' },
         { industry: 'servicios_hogar', subtypes: ['plomeria', 'electricidad', 'fumigacion', 'limpieza', 'jardineria', 'cerrajeria', 'pintura'], expected: 'service_requests' },
-        { industry: 'pet_services', subtypes: ['peluqueria', 'guarderia', 'hotel', 'paseos', 'adiestramiento'], expected: (subtype) => subtype === 'hotel' ? 'none' : 'appointments' },
+        { industry: 'pet_services', subtypes: ['peluqueria', 'guarderia', 'hotel', 'paseos', 'adiestramiento'], expected: (subtype) => ['guarderia', 'hotel'].includes(subtype) ? 'pet_boarding' : 'appointments' },
         { industry: 'fotografia', subtypes: ['estudio', 'bodas', 'eventos', 'producto', 'wedding_planner'], expected: 'photo_sessions' },
     ];
 
@@ -96,7 +96,7 @@ describe('resolveVerticalWorkspace', () => {
         ['concesionario', 'test_drives'],
         ['taller', 'appointments'],
         ['repuestos', 'orders'],
-        ['alquiler', 'none'],
+        ['alquiler', 'vehicle_rentals'],
     ] as const)('resuelve automotriz/%s como %s', (subType, expected) => {
         expect(resolveVerticalWorkspace({
             industry: 'automotriz',
@@ -107,8 +107,8 @@ describe('resolveVerticalWorkspace', () => {
 
     it.each([
         ['peluqueria', 'appointments'],
-        ['guarderia', 'appointments'],
-        ['hotel', 'none'],
+        ['guarderia', 'pet_boarding'],
+        ['hotel', 'pet_boarding'],
         ['paseos', 'appointments'],
         ['adiestramiento', 'appointments'],
     ] as const)('resuelve pet_services/%s como %s', (subType, expected) => {
@@ -225,6 +225,7 @@ describe('resolveVerticalWorkspace', () => {
             { industry: 'automotriz', subType: 'concesionario' },
             { industry: 'automotriz', subType: 'repuestos' },
             { industry: 'automotriz', subType: 'alquiler' },
+            { industry: 'pet_services', subType: 'guarderia' },
             { industry: 'pet_services', subType: 'hotel' },
             { industry: 'technology', subType: 'hardware' },
         ];

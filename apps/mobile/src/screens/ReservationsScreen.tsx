@@ -75,6 +75,21 @@ function fmtDay(s: string | undefined, locale: string): string {
     return d ? d.toLocaleDateString(localeTag[locale] || 'es-CO', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
 }
 
+function fmtFullDay(s: string | undefined, locale: string): string {
+    const d = parseDay(s);
+    const localeTag: Record<string, string> = { es: 'es-CO', en: 'en-US', pt: 'pt-BR', fr: 'fr-FR' };
+    return d ? d.toLocaleDateString(localeTag[locale] || 'es-CO', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    }) : '—';
+}
+
+function nightsBetween(checkIn?: string, checkOut?: string): number {
+    const start = parseDay(checkIn);
+    const end = parseDay(checkOut);
+    if (!start || !end) return 0;
+    return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86_400_000));
+}
+
 function money(v: string | number | undefined, currency: string | undefined, locale: string): string {
     const n = Number(v ?? 0);
     if (!n) return '';
@@ -95,6 +110,8 @@ export function ReservationsScreen() {
     const insets = useSafeAreaInsets();
     const canCancel = user?.role === 'tenant_admin' || user?.role === 'tenant_supervisor' || user?.role === 'super_admin';
     const today = localDate(new Date());
+    const [selectedStay, setSelectedStay] = useState<Stay | null>(null);
+    const [cancellingId, setCancellingId] = useState('');
 
     const { data: stays, isLoading, isFetching, isError, refetch } = useQuery({
         queryKey: ['stays', tenantId],
@@ -115,10 +132,10 @@ export function ReservationsScreen() {
     const [createOpen, setCreateOpen] = useState(false);
     const [cPropertyId, setCPropertyId] = useState('');
     const [cCheckIn, setCCheckIn] = useState('');
-    const [cNights, setCNights] = useState(1);
+    const [cNights, setCNights] = useState('1');
     const [cGuestName, setCGuestName] = useState('');
     const [cGuestPhone, setCGuestPhone] = useState('');
-    const [cGuests, setCGuests] = useState(2);
+    const [cGuests, setCGuests] = useState('2');
     const [creating, setCreating] = useState(false);
     const propertiesQuery = useQuery<Property[]>({
         queryKey: ['stay-properties', tenantId],
@@ -141,9 +158,14 @@ export function ReservationsScreen() {
     );
     const minNights = Math.max(1, Number(selectedProperty?.min_nights || 1));
     const maxGuests = Math.max(1, Number(selectedProperty?.max_guests || 10));
+    const nightsValue = Number(cNights);
+    const guestsValue = Number(cGuests);
+    const validNights = /^\d+$/.test(cNights) && Number.isSafeInteger(nightsValue) && nightsValue >= minNights;
+    const validGuests = /^\d+$/.test(cGuests) && Number.isSafeInteger(guestsValue)
+        && guestsValue >= 1 && guestsValue <= maxGuests;
     const validCheckIn = !!parseDay(cCheckIn) && cCheckIn >= today;
     const canCreate = !!tenantId && !!cPropertyId && validCheckIn
-        && cNights >= minNights && cGuests <= maxGuests && !!cGuestName.trim();
+        && validNights && validGuests && !!cGuestName.trim();
 
     useEffect(() => {
         if (properties.length === 1 && !cPropertyId) setCPropertyId(properties[0].id);
@@ -151,13 +173,13 @@ export function ReservationsScreen() {
 
     useEffect(() => {
         if (!selectedProperty) return;
-        setCNights((current) => Math.max(current, minNights));
-        setCGuests((current) => Math.min(Math.max(1, current), maxGuests));
+        setCNights((current) => String(Math.max(Number(current) || 0, minNights)));
+        setCGuests((current) => String(Math.min(Math.max(1, Number(current) || 1), maxGuests)));
     }, [selectedProperty, minNights, maxGuests]);
 
     const openCreate = () => {
         haptic.tap();
-        setCCheckIn(''); setCNights(1); setCGuestName(''); setCGuestPhone(''); setCGuests(2);
+        setCCheckIn(''); setCNights('1'); setCGuestName(''); setCGuestPhone(''); setCGuests('2');
         setCreateOpen(true);
     };
 
@@ -174,10 +196,10 @@ export function ReservationsScreen() {
         try {
             const r: any = await api.createPropertyBooking(tenantId, cPropertyId, {
                 checkIn: cCheckIn,
-                checkOut: checkOutOf(cCheckIn, cNights),
+                checkOut: checkOutOf(cCheckIn, nightsValue),
                 guestName: cGuestName.trim(),
                 guestPhone: cGuestPhone.trim() || undefined,
-                guestsCount: cGuests,
+                guestsCount: guestsValue,
             });
             if (!r?.success) {
                 const unavailable = /not available|conflict|ocupad|disponib/i.test(String(r?.error || ''));
@@ -193,15 +215,19 @@ export function ReservationsScreen() {
     };
 
     const cancelStay = (s: Stay) => {
+        if (!canCancel || cancellingId) return;
         Alert.alert(t('stays.cancelTitle'), t('stays.cancelConfirm', { name: s.guest_name || t('stays.guest') }), [
             { text: t('citas.no'), style: 'cancel' },
             { text: t('citas.yesCancel'), style: 'destructive', onPress: async () => {
+                setCancellingId(s.id);
                 try {
                     const r: any = await api.cancelPropertyBooking(tenantId!, s.id);
                     if (!r?.success) throw new Error('fail');
                     toast.success(t('stays.cancelled'));
+                    setSelectedStay(null);
                     await refetch();
                 } catch { toast.error(t('stays.cancelError')); }
+                finally { setCancellingId(''); }
             } },
         ]);
     };
@@ -210,7 +236,9 @@ export function ReservationsScreen() {
     const nightChoices = Array.from(new Set([minNights, 1, 2, 3, 4, 5, 6, 7, 10, 14, 21, 30]))
         .filter((n) => n >= minNights)
         .sort((a, b) => a - b);
-    const guestChoices = Array.from({ length: Math.min(maxGuests, 20) }, (_, index) => index + 1);
+    const guestChoices = Array.from(new Set([1, 2, 3, 4, 5, 6, maxGuests]))
+        .filter((n) => n <= maxGuests)
+        .sort((a, b) => a - b);
 
     if (isLoading) return <SafeAreaView style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></SafeAreaView>;
 
@@ -242,7 +270,7 @@ export function ReservationsScreen() {
                             accessibilityRole="button"
                             accessibilityLabel={`${item.property_name || ''} · ${item.guest_name || ''}`}
                             onLongPress={canCancel ? () => cancelStay(item) : undefined}
-                            onPress={() => { haptic.tap(); }}>
+                            onPress={() => { haptic.tap(); setSelectedStay(item); }}>
                             <View style={styles.datesCol}>
                                 <Text style={[styles.day, inHouse && { color: theme.success }]}>{fmtDay(item.check_in, locale)}</Text>
                                 <Ionicons name="arrow-down" size={11} color={theme.textSecondary} style={{ marginVertical: 1 }} />
@@ -268,9 +296,13 @@ export function ReservationsScreen() {
                                 </View>
                             </View>
                             {canCancel && (
-                                <TouchableOpacity onPress={() => cancelStay(item)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                                <TouchableOpacity onPress={(event) => { event.stopPropagation(); cancelStay(item); }}
+                                    disabled={cancellingId === item.id}
+                                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                                     accessibilityRole="button" accessibilityLabel={t('stays.cancelA11y', { name: item.guest_name || '' })}>
-                                    <Ionicons name="close-circle-outline" size={24} color={theme.textSecondary} />
+                                    {cancellingId === item.id
+                                        ? <ActivityIndicator size="small" color={theme.textSecondary} />
+                                        : <Ionicons name="close-circle-outline" size={24} color={theme.textSecondary} />}
                                 </TouchableOpacity>
                             )}
                         </PressableScale>
@@ -282,6 +314,50 @@ export function ReservationsScreen() {
             <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 18 }]} onPress={openCreate} accessibilityRole="button" accessibilityLabel={t('stays.new')}>
                 <Ionicons name="add" size={28} color="#fff" />
             </TouchableOpacity>
+
+            {/* Detalle operativo de la estadía */}
+            <Modal visible={!!selectedStay} transparent animationType="slide" onRequestClose={() => setSelectedStay(null)} statusBarTranslucent>
+                <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setSelectedStay(null)}>
+                    <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} onStartShouldSetResponder={() => true}>
+                        {selectedStay && (
+                            <ScrollView>
+                                <Text style={styles.sheetTitle}>{selectedStay.property_name || t('stays.property')}</Text>
+                                <DetailRow label={t('stays.guest')} value={selectedStay.guest_name || '—'} />
+                                <DetailRow label={t('stays.guestPhone')} value={selectedStay.guest_phone || '—'} />
+                                <DetailRow label={t('stays.checkIn')} value={fmtFullDay(selectedStay.check_in, locale)} />
+                                <DetailRow label={t('stays.checkOut')} value={fmtFullDay(selectedStay.check_out, locale)} />
+                                <DetailRow
+                                    label={t('stays.nightsLabel')}
+                                    value={String(selectedStay.nights || nightsBetween(selectedStay.check_in, selectedStay.check_out) || '—')}
+                                />
+                                <DetailRow label={t('stays.paxLabel')} value={String(selectedStay.guests_count || '—')} />
+                                <DetailRow label={t('ops.detail.status')} value={t(`ops.status.${selectedStay.status || 'confirmed'}`)} />
+                                <DetailRow label={t('ops.detail.amount')} value={money(selectedStay.total_price, selectedStay.currency, locale) || '—'} />
+
+                                {canCancel && selectedStay.status !== 'cancelled' && (
+                                    <TouchableOpacity
+                                        style={[styles.cancelDetailButton, cancellingId === selectedStay.id && { opacity: 0.5 }]}
+                                        onPress={() => cancelStay(selectedStay)}
+                                        disabled={!!cancellingId}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={t('stays.cancelA11y', { name: selectedStay.guest_name || '' })}
+                                    >
+                                        {cancellingId === selectedStay.id
+                                            ? <ActivityIndicator color={theme.danger} />
+                                            : <>
+                                                <Ionicons name="close-circle-outline" size={19} color={theme.danger} />
+                                                <Text style={styles.cancelDetailText}>{t('citas.cancelBtn')}</Text>
+                                            </>}
+                                    </TouchableOpacity>
+                                )}
+                                <TouchableOpacity style={styles.closeDetailButton} onPress={() => setSelectedStay(null)} accessibilityRole="button">
+                                    <Text style={styles.closeDetailText}>{t('common.close')}</Text>
+                                </TouchableOpacity>
+                            </ScrollView>
+                        )}
+                    </View>
+                </TouchableOpacity>
+            </Modal>
 
             <Modal visible={createOpen} transparent animationType="slide" onRequestClose={() => setCreateOpen(false)} statusBarTranslucent>
                 <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -341,17 +417,25 @@ export function ReservationsScreen() {
                             </ScrollView>
 
                             <Text style={styles.sectionLabel}>{t('stays.nightsLabel')}</Text>
+                            <TextInput
+                                style={styles.input}
+                                keyboardType="number-pad"
+                                value={cNights}
+                                onChangeText={(value) => setCNights(value.replace(/\D/g, ''))}
+                                accessibilityLabel={t('stays.nightsLabel')}
+                            />
+                            {!!cNights && !validNights && <Text style={[styles.hint, { color: theme.danger }]}>{t('stays.nightsLabel')}: {minNights}+</Text>}
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
                                 {nightChoices.map((n) => (
-                                    <TouchableOpacity key={n} onPress={() => { haptic.tap(); setCNights(n); }}
-                                        accessibilityRole="button" accessibilityState={{ selected: cNights === n }}
-                                        style={[styles.chip, cNights === n && styles.chipOn]}>
-                                        <Text style={[styles.chipText, cNights === n && { color: '#fff' }]}>{n}</Text>
+                                    <TouchableOpacity key={n} onPress={() => { haptic.tap(); setCNights(String(n)); }}
+                                        accessibilityRole="button" accessibilityState={{ selected: nightsValue === n }}
+                                        style={[styles.chip, nightsValue === n && styles.chipOn]}>
+                                        <Text style={[styles.chipText, nightsValue === n && { color: '#fff' }]}>{n}</Text>
                                     </TouchableOpacity>
                                 ))}
                             </ScrollView>
-                            {!!cCheckIn && (
-                                <Text style={styles.hint}>{t('stays.checkOut')}: {fmtDay(checkOutOf(cCheckIn, cNights), locale)}</Text>
+                            {!!cCheckIn && validNights && (
+                                <Text style={styles.hint}>{t('stays.checkOut')}: {fmtDay(checkOutOf(cCheckIn, nightsValue), locale)}</Text>
                             )}
 
                             <Text style={styles.sectionLabel}>{t('stays.guest')}</Text>
@@ -361,12 +445,20 @@ export function ReservationsScreen() {
                                 keyboardType="phone-pad" value={cGuestPhone} onChangeText={setCGuestPhone} />
 
                             <Text style={styles.sectionLabel}>{t('stays.paxLabel')}</Text>
+                            <TextInput
+                                style={styles.input}
+                                keyboardType="number-pad"
+                                value={cGuests}
+                                onChangeText={(value) => setCGuests(value.replace(/\D/g, ''))}
+                                accessibilityLabel={t('stays.paxLabel')}
+                            />
+                            {!!cGuests && !validGuests && <Text style={[styles.hint, { color: theme.danger }]}>{t('stays.paxLabel')}: 1–{maxGuests}</Text>}
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
                                 {guestChoices.map((n) => (
-                                    <TouchableOpacity key={n} onPress={() => { haptic.tap(); setCGuests(n); }}
-                                        accessibilityRole="button" accessibilityState={{ selected: cGuests === n }}
-                                        style={[styles.chip, cGuests === n && styles.chipOn]}>
-                                        <Text style={[styles.chipText, cGuests === n && { color: '#fff' }]}>{n}</Text>
+                                    <TouchableOpacity key={n} onPress={() => { haptic.tap(); setCGuests(String(n)); }}
+                                        accessibilityRole="button" accessibilityState={{ selected: guestsValue === n }}
+                                        style={[styles.chip, guestsValue === n && styles.chipOn]}>
+                                        <Text style={[styles.chipText, guestsValue === n && { color: '#fff' }]}>{n}</Text>
                                     </TouchableOpacity>
                                 ))}
                             </ScrollView>
@@ -384,6 +476,15 @@ export function ReservationsScreen() {
                 </KeyboardAvoidingView>
             </Modal>
         </SafeAreaView>
+    );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+    return (
+        <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>{label}</Text>
+            <Text style={styles.detailValue}>{value}</Text>
+        </View>
     );
 }
 
@@ -416,4 +517,11 @@ const styles = StyleSheet.create({
     input: { backgroundColor: theme.bg, borderColor: theme.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, color: theme.text, fontSize: 14 },
     primaryBtn: { backgroundColor: theme.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
     primaryText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+    detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 18, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: theme.border },
+    detailLabel: { color: theme.textSecondary, fontSize: 13, flexShrink: 0 },
+    detailValue: { color: theme.text, fontSize: 13, fontWeight: '600', textAlign: 'right', flex: 1 },
+    cancelDetailButton: { marginTop: 18, minHeight: 46, borderWidth: 1, borderColor: theme.danger, borderRadius: 11, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
+    cancelDetailText: { color: theme.danger, fontSize: 14, fontWeight: '700' },
+    closeDetailButton: { marginTop: 10, minHeight: 46, borderRadius: 11, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' },
+    closeDetailText: { color: theme.text, fontSize: 14, fontWeight: '700' },
 });

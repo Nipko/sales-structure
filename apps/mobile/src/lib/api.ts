@@ -309,23 +309,88 @@ export const api = {
     // Vertical workspaces. The mobile "Operaciones" tab reads the domain's
     // real records instead of relabelling every business flow as an appointment.
     getTourBookings: (tenantId: string) => json(`/tours/${tenantId}/bookings`),
+    getTourPackages: (tenantId: string) => json(`/tours/${tenantId}/packages`),
+    getTourAvailability: (tenantId: string, packageId: string, date: string, partySize: number) =>
+        json(`/tours/${tenantId}/packages/${packageId}/availability?date=${encodeURIComponent(date)}&partySize=${encodeURIComponent(String(partySize))}`),
+    createTourBooking: (tenantId: string, data: Record<string, any>) =>
+        json(`/tours/${tenantId}/bookings`, { method: 'POST', body: JSON.stringify(data) }),
+    cancelTourBooking: (tenantId: string, bookingId: string) =>
+        json(`/tours/${tenantId}/bookings/${bookingId}/cancel`, { method: 'PUT', body: '{}' }),
     getRestaurantOrders: (tenantId: string, status?: string) =>
         json(`/restaurants/${tenantId}/orders${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+    getRestaurantItems: (tenantId: string, categoryId?: string) =>
+        json(`/restaurants/${tenantId}/items?availableOnly=true${categoryId ? `&categoryId=${encodeURIComponent(categoryId)}` : ''}`),
+    getRestaurantOrder: (tenantId: string, orderId: string) =>
+        json(`/restaurants/${tenantId}/orders/${orderId}`),
+    createRestaurantOrder: (tenantId: string, data: Record<string, any>) =>
+        json(`/restaurants/${tenantId}/orders`, { method: 'POST', body: JSON.stringify(data) }),
     updateRestaurantOrderStatus: (tenantId: string, orderId: string, status: string) =>
         json(`/restaurants/${tenantId}/orders/${orderId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    getInventoryProducts: (tenantId: string) => json(`/inventory/products/${tenantId}`),
     getOrdersOverview: (tenantId: string) => json(`/orders/overview/${tenantId}`),
+    getOrderContacts: (tenantId: string) => json(`/orders/contacts/${tenantId}`),
+    createOrder: (tenantId: string, data: Record<string, any>) =>
+        json(`/orders/${tenantId}`, { method: 'POST', body: JSON.stringify(data) }),
     updateOrderStatus: (tenantId: string, orderId: string, status: string) =>
         json(`/orders/${tenantId}/${orderId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
     getFitnessClasses: (tenantId: string, from: string, to: string) =>
         json(`/gyms/${tenantId}/classes?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=200`),
+    getGymMembers: (tenantId: string, search?: string) =>
+        json(`/gyms/${tenantId}/members?limit=200${search ? `&search=${encodeURIComponent(search)}` : ''}`),
+    createFitnessClass: (tenantId: string, data: Record<string, any>) =>
+        json(`/gyms/${tenantId}/classes`, { method: 'POST', body: JSON.stringify(data) }),
+    cancelFitnessClass: (tenantId: string, classId: string, data: Record<string, any> = {}) =>
+        json(`/gyms/${tenantId}/classes/${classId}/cancel`, { method: 'POST', body: JSON.stringify(data) }),
+    bookFitnessClass: (tenantId: string, classId: string, memberId: string) =>
+        json(`/gyms/${tenantId}/classes/${classId}/book`, { method: 'POST', body: JSON.stringify({ memberId }) }),
+    checkInGymMember: (tenantId: string, memberId: string, data: Record<string, any> = {}) =>
+        json(`/gyms/${tenantId}/members/${memberId}/check-in`, { method: 'POST', body: JSON.stringify(data) }),
+    getEducationCourses: (tenantId: string) => json(`/education/${tenantId}/courses`),
     getEducationEnrollments: (tenantId: string) => json(`/education/${tenantId}/enrollments`),
     getEducationCohorts: (tenantId: string) => json(`/education/${tenantId}/cohorts`),
+    createEducationEnrollment: (tenantId: string, data: Record<string, any>) =>
+        json(`/education/${tenantId}/enrollments`, { method: 'POST', body: JSON.stringify(data) }),
+    updateEducationEnrollment: (tenantId: string, enrollmentId: string, data: Record<string, any>) =>
+        json(`/education/${tenantId}/enrollments/${enrollmentId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    cancelEducationCohort: (tenantId: string, cohortId: string) =>
+        json(`/education/${tenantId}/cohorts/${cohortId}/cancel`, { method: 'POST', body: '{}' }),
+    getInsurancePlans: (tenantId: string) => json(`/insurance/${tenantId}/plans`),
     getInsuranceQuotes: (tenantId: string) => json(`/insurance/${tenantId}/quotes`),
     getInsurancePolicies: (tenantId: string) => json(`/insurance/${tenantId}/policies`),
     getInsuranceClaims: (tenantId: string) => json(`/insurance/${tenantId}/claims`),
+    createInsuranceQuote: (tenantId: string, data: Record<string, any>) =>
+        json(`/insurance/${tenantId}/quotes`, { method: 'POST', body: JSON.stringify(data) }),
+    updateInsuranceQuoteStatus: (tenantId: string, quoteId: string, status: string) =>
+        json(`/insurance/${tenantId}/quotes/${quoteId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    createInsurancePolicy: (tenantId: string, data: Record<string, any>) =>
+        json(`/insurance/${tenantId}/policies`, { method: 'POST', body: JSON.stringify(data) }),
+    createInsuranceClaim: (tenantId: string, data: Record<string, any>) =>
+        json(`/insurance/${tenantId}/claims`, { method: 'POST', body: JSON.stringify(data) }),
     getServiceRequests: (tenantId: string) => json(`/home-services/${tenantId}/requests`),
+    getServiceRequest: (tenantId: string, requestId: string) =>
+        json(`/home-services/${tenantId}/requests/${requestId}`),
+    createServiceRequest: (tenantId: string, data: Record<string, any>) =>
+        json(`/home-services/${tenantId}/requests`, { method: 'POST', body: JSON.stringify(data) }),
+    updateServiceRequest: (tenantId: string, requestId: string, data: Record<string, any>) =>
+        json(`/home-services/${tenantId}/requests/${requestId}`, { method: 'PUT', body: JSON.stringify(data) }),
     getPhotoSessions: (tenantId: string) => json(`/photography/${tenantId}/sessions`),
+    getPhotoSession: (tenantId: string, sessionId: string) =>
+        json(`/photography/${tenantId}/sessions/${sessionId}`),
+    createPhotoSession: (tenantId: string, data: Record<string, any>) =>
+        json(`/photography/${tenantId}/sessions`, { method: 'POST', body: JSON.stringify(data) }),
+    updatePhotoSession: (tenantId: string, sessionId: string, data: Record<string, any>) =>
+        json(`/photography/${tenantId}/sessions/${sessionId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deliverPhotoSession: (tenantId: string, sessionId: string, data: Record<string, any>) =>
+        json(`/photography/${tenantId}/sessions/${sessionId}/deliver`, { method: 'PUT', body: JSON.stringify(data) }),
     getTestDrives: (tenantId: string) => json(`/vehicles/${tenantId}/test-drives/list`),
+    createTestDrive: (tenantId: string, data: Record<string, any>) =>
+        json(`/vehicles/${tenantId}/test-drives`, { method: 'POST', body: JSON.stringify(data) }),
+    getResourceRentals: (tenantId: string, kind: string) =>
+        json(`/resource-rentals/${tenantId}?type=${encodeURIComponent(kind)}`),
+    createResourceRental: (tenantId: string, data: Record<string, any>) =>
+        json(`/resource-rentals/${tenantId}`, { method: 'POST', body: JSON.stringify(data) }),
+    updateResourceRentalStatus: (tenantId: string, rentalId: string, status: string) =>
+        json(`/resource-rentals/${tenantId}/${rentalId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
     // Appointment context selectors. Shapes differ by backend module:
     // listings/pets return arrays; vehicles returns { items, total }.
     getRealEstateListings: (tenantId: string) => json(`/listings/${tenantId}`),

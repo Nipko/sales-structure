@@ -1,6 +1,26 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+    BadRequestException,
+    ConflictException,
+    ForbiddenException,
+    Injectable,
+    Logger,
+    NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+
+function normalizeOrderCurrencyCode(value: unknown, fallback = 'COP'): string {
+    const candidate = typeof value === 'string' && value.trim()
+        ? value.trim().toUpperCase()
+        : fallback;
+    if (!/^[A-Z]{3}$/.test(candidate)) {
+        throw new BadRequestException('currency must be a three-letter uppercase code');
+    }
+    return candidate;
+}
+
+const ORDER_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const INITIAL_ORDER_STATUSES = new Set(['pending', 'confirmed', 'paid']);
 
 // ============================================
 // Types
@@ -143,84 +163,215 @@ export class OrdersService {
      */
     async createOrder(tenantId: string, data: {
         contactId?: string | null;
-        status?: 'pending' | 'confirmed' | 'paid' | 'cancelled';
+        status?: 'pending' | 'confirmed' | 'paid';
         paymentMethod?: string;
         notes?: string;
-        items: { productId: string; productName: string; quantity: number; unitPrice: number }[];
+        currency?: string;
+        items: { productId: string; productName: string; quantity: number; unitPrice: number; currency?: string }[];
     }): Promise<{ id: string }> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant schema not found');
 
         await this.ensureOrdersTables(schema);
-
-        let totalAmount = 0;
-        data.items.forEach(i => totalAmount += (i.quantity * i.unitPrice));
-
-        // Let's do this sequentially to allow the database to persist correctly
-        const orderRes = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `INSERT INTO orders (id, contact_id, status, total_amount, currency, notes, metadata, created_at, updated_at)
-             VALUES (gen_random_uuid(), $1::uuid, $2, $3, 'COP', $4, $5::jsonb, NOW(), NOW()) RETURNING id`,
-            [data.contactId || null, data.status || 'pending', totalAmount, data.notes || '', JSON.stringify({ payment_method: data.paymentMethod || 'cash' })]
-        );
-
-        const orderId = orderRes?.[0]?.id;
-        if (!orderId) throw new Error('Failed to create order');
-
-        // Insert items and adjust stock
-        for (const item of data.items) {
-            const totalPrice = item.quantity * item.unitPrice;
-            await this.prisma.executeInTenantSchema(
-                schema,
-                `INSERT INTO order_items (id, order_id, product_id, product_name, quantity, unit_price, total_price)
-                 VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, $4, $5, $6)`,
-                [orderId, item.productId, item.productName, item.quantity, item.unitPrice, totalPrice]
-            );
-
-            // Deduct stock if there is a matching product
-            try {
-                // Ensure inventory table exists to avoid crashes if it doesn't
-                const productCheck = await this.prisma.executeInTenantSchema<any[]>(
-                    schema, `SELECT stock FROM products WHERE id = $1::uuid LIMIT 1`, [item.productId]
-                );
-
-                if (productCheck && productCheck.length > 0) {
-                    const currentStock = parseInt(productCheck[0].stock) || 0;
-                    const newStock = Math.max(0, currentStock - item.quantity);
-
-                    await this.prisma.executeInTenantSchema(
-                        schema,
-                        `UPDATE products SET stock = $1, updated_at = NOW() WHERE id = $2::uuid`,
-                        [newStock, item.productId]
-                    );
-
-                    await this.prisma.executeInTenantSchema(
-                        schema,
-                        `INSERT INTO stock_movements (id, product_id, type, quantity, previous_stock, new_stock, reason, created_at)
-                          VALUES (gen_random_uuid(), $1::uuid, 'out', $2, $3, $4, $5, NOW())`,
-                        [item.productId, item.quantity, currentStock, newStock, `Orden ${orderId.slice(0, 8)}`]
-                    );
-                }
-            } catch (err) {
-                this.logger.warn(`Could not deduct stock for product ${item.productId} in tenant ${tenantId}. It might be deleted or not have inventory setup.`);
-            }
+        if (!data || typeof data !== 'object') {
+            throw new BadRequestException('Order payload is required');
         }
+        if (data.contactId != null
+            && (typeof data.contactId !== 'string' || !ORDER_UUID_PATTERN.test(data.contactId))) {
+            throw new BadRequestException('contactId must be a valid UUID when provided');
+        }
+        const initialStatus = String(data.status || 'pending').trim().toLowerCase();
+        if (!INITIAL_ORDER_STATUSES.has(initialStatus)) {
+            throw new BadRequestException('Initial order status must be pending, confirmed or paid');
+        }
+        if (!Array.isArray(data.items) || data.items.length < 1 || data.items.length > 100) {
+            throw new BadRequestException('Order must have between 1 and 100 items');
+        }
+        const requested = new Map<string, number>();
+        for (const item of data.items) {
+            if (!ORDER_UUID_PATTERN.test(String(item.productId || ''))) {
+                throw new BadRequestException('Each productId must be a valid UUID');
+            }
+            if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 10_000) {
+                throw new BadRequestException('Each quantity must be a positive integer');
+            }
+            if (requested.has(item.productId)) {
+                throw new BadRequestException('Duplicate productId in order');
+            }
+            requested.set(item.productId, item.quantity);
+        }
+        const productIds = [...requested.keys()];
 
-        return { id: orderId };
+        // One tenant-scoped transaction owns the catalog snapshots, header,
+        // lines and stock movements. Names, prices and currency come from the
+        // locked catalog, so a client cannot lower a price or invent stock.
+        return this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const products = await query<any[]>(
+                `SELECT id, name, price, currency, stock, is_available
+                   FROM products
+                  WHERE id = ANY($1::uuid[])
+                  FOR UPDATE`,
+                [productIds],
+            );
+            if (products.length !== productIds.length) {
+                throw new NotFoundException('One or more products do not exist');
+            }
+            const byId = new Map(products.map((product: any) => [product.id, product]));
+            const currencies = new Set<string>();
+            let totalAmount = 0;
+            for (const [productId, quantity] of requested) {
+                const product = byId.get(productId);
+                if (!product || product.is_available === false) {
+                    throw new ConflictException('One or more products are unavailable');
+                }
+                const stock = Number(product.stock || 0);
+                if (!Number.isInteger(stock) || stock < quantity) {
+                    throw new ConflictException(`Insufficient stock for ${product.name || productId}`);
+                }
+                const price = Number(product.price);
+                if (!Number.isFinite(price) || price < 0) {
+                    throw new ConflictException('A catalog product has an invalid price');
+                }
+                currencies.add(normalizeOrderCurrencyCode(product.currency));
+                totalAmount += price * quantity;
+            }
+            if (currencies.size !== 1) {
+                throw new BadRequestException('All order items must use the same currency');
+            }
+            const currency = [...currencies][0];
+            if (data.currency && normalizeOrderCurrencyCode(data.currency) !== currency) {
+                throw new BadRequestException('Order currency does not match the catalog');
+            }
+
+            const orderRows = await query<any[]>(
+                `INSERT INTO orders (
+                    id, contact_id, status, total_amount, currency, notes,
+                    metadata, created_at, updated_at
+                 ) VALUES (
+                    gen_random_uuid(), $1::uuid, $6, $2, $3, $4,
+                    $5::jsonb, NOW(), NOW()
+                 ) RETURNING id`,
+                [
+                    data.contactId || null,
+                    totalAmount,
+                    currency,
+                    data.notes || '',
+                    JSON.stringify({ payment_method: data.paymentMethod || 'cash' }),
+                    initialStatus,
+                ],
+            );
+            const orderId = orderRows?.[0]?.id;
+            if (!orderId) throw new Error('Failed to create order');
+
+            for (const [productId, quantity] of requested) {
+                const product = byId.get(productId);
+                const unitPrice = Number(product.price);
+                const previousStock = Number(product.stock);
+                const newStock = previousStock - quantity;
+                await query(
+                    `INSERT INTO order_items (
+                        id, order_id, product_id, product_name,
+                        quantity, unit_price, total_price
+                     ) VALUES (
+                        gen_random_uuid(), $1::uuid, $2::uuid, $3, $4, $5, $6
+                     )`,
+                    [orderId, productId, product.name, quantity, unitPrice, unitPrice * quantity],
+                );
+                const updated = await query<any[]>(
+                    `UPDATE products
+                        SET stock = stock - $2, updated_at = NOW()
+                      WHERE id = $1::uuid AND stock >= $2
+                    RETURNING stock`,
+                    [productId, quantity],
+                );
+                if (!updated.length) throw new ConflictException(`Insufficient stock for ${product.name}`);
+                await query(
+                    `INSERT INTO stock_movements (
+                        id, product_id, type, quantity, previous_stock,
+                        new_stock, reason, created_at
+                     ) VALUES (
+                        gen_random_uuid(), $1::uuid, 'out', $2, $3, $4, $5, NOW()
+                     )`,
+                    [productId, quantity, previousStock, newStock, `Orden ${orderId.slice(0, 8)}`],
+                );
+            }
+            return { id: orderId };
+        });
     }
 
     /**
      * Update order status
      */
-    async updateOrderStatus(tenantId: string, orderId: string, status: string): Promise<void> {
+    async updateOrderStatus(
+        tenantId: string,
+        orderId: string,
+        status: string,
+        actorRole?: string,
+    ): Promise<void> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant schema not found');
+        const next = String(status || '').trim().toLowerCase();
+        const allowed: Record<string, string[]> = {
+            pending: ['confirmed', 'cancelled'],
+            confirmed: ['paid', 'cancelled'],
+        };
+        if (!['confirmed', 'paid', 'cancelled'].includes(next)) {
+            throw new BadRequestException('Invalid order status');
+        }
+        if (next === 'cancelled' && !this.canCancelOrder(actorRole)) {
+            throw new ForbiddenException('Only tenant administrators and supervisors can cancel orders');
+        }
 
-        await this.prisma.executeInTenantSchema(
-            schema,
-            `UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2::uuid`,
-            [status, orderId]
-        );
+        await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const orders = await query<any[]>(
+                `SELECT id, status FROM orders WHERE id = $1::uuid FOR UPDATE`,
+                [orderId],
+            );
+            const order = orders[0];
+            if (!order) throw new NotFoundException('Order not found');
+            const current = String(order.status || '').toLowerCase();
+            if (!allowed[current]?.includes(next)) {
+                throw new ConflictException(`Order cannot transition from ${current} to ${next}`);
+            }
+
+            if (next === 'cancelled') {
+                const items = await query<any[]>(
+                    `SELECT product_id, product_name, quantity
+                       FROM order_items
+                      WHERE order_id = $1::uuid
+                      FOR UPDATE`,
+                    [orderId],
+                );
+                for (const item of items) {
+                    const locked = await query<any[]>(
+                        `SELECT stock FROM products WHERE id = $1::uuid FOR UPDATE`,
+                        [item.product_id],
+                    );
+                    if (!locked.length) continue;
+                    const previousStock = Number(locked[0].stock || 0);
+                    const quantity = Number(item.quantity || 0);
+                    const newStock = previousStock + quantity;
+                    await query(
+                        `UPDATE products SET stock = $2, updated_at = NOW() WHERE id = $1::uuid`,
+                        [item.product_id, newStock],
+                    );
+                    await query(
+                        `INSERT INTO stock_movements (
+                            id, product_id, type, quantity, previous_stock,
+                            new_stock, reason, created_at
+                         ) VALUES (
+                            gen_random_uuid(), $1::uuid, 'in', $2, $3, $4, $5, NOW()
+                         )`,
+                        [item.product_id, quantity, previousStock, newStock, `Cancelación orden ${orderId.slice(0, 8)}`],
+                    );
+                }
+            }
+
+            await query(
+                `UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2::uuid`,
+                [next, orderId],
+            );
+        });
     }
 
     /**
@@ -247,6 +398,10 @@ export class OrdersService {
                 totalPrice: parseFloat(i.total_price) || 0,
             }))
         };
+    }
+
+    private canCancelOrder(role?: string): boolean {
+        return role === 'tenant_admin' || role === 'tenant_supervisor' || role === 'super_admin';
     }
 
     /**

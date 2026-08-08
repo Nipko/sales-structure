@@ -33,10 +33,13 @@ const STATUS_COLOR: Record<string, string> = {
     confirmed: theme.success, pending: theme.warning, scheduled: theme.accent,
     completed: theme.textSecondary, cancelled: theme.danger, no_show: theme.danger,
 };
+const TERMINAL_STATUSES = new Set(['completed', 'no_show', 'cancelled']);
 
 function start(a: Appt): Date | null { const s = a.start_at || a.startAt; return s ? new Date(s) : null; }
 function customer(a: Appt, fallback: string): string { return a.customer_name || a.contact_name || a.contactName || a.customerName || fallback; }
 function service(a: Appt, fallback: string): string { return a.service_name || a.serviceName || fallback; }
+function normalizedStatus(a: Appt): string { return String(a.status || '').trim().toLowerCase(); }
+function isTerminal(a: Appt): boolean { return TERMINAL_STATUSES.has(normalizedStatus(a)); }
 const pad = (n: number) => String(n).padStart(2, '0');
 const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const LOCALE_TAG: Record<Locale, string> = { es: 'es-CO', en: 'en-US', pt: 'pt-BR', fr: 'fr-FR' };
@@ -99,12 +102,22 @@ function toIsoAt(dateStr: string, hhmm: string): string {
     return `${dateStr}T${pad(Number(h))}:${pad(Number(m || 0))}:00`;
 }
 
+function slotsFromResponse(response: any): Slot[] {
+    if (!response?.success) throw new Error(response?.error || 'slots_failed');
+    const candidate = Array.isArray(response.data) ? response.data : response.data?.slots;
+    if (!Array.isArray(candidate)) throw new Error('invalid_slots_response');
+    return candidate;
+}
+
 export function AppointmentsScreen() {
     const { tenantId, verticalConfig } = useAuth();
     const toast = useToast();
     const { t, locale } = useI18n();
     const insets = useSafeAreaInsets();
     const [services, setServices] = useState<any[]>([]);
+    const [servicesLoading, setServicesLoading] = useState(false);
+    const [servicesError, setServicesError] = useState(false);
+    const [servicesRetryKey, setServicesRetryKey] = useState(0);
     const [busy, setBusy] = useState('');
 
     const industry = String(verticalConfig?.industry || '').toLowerCase();
@@ -131,6 +144,7 @@ export function AppointmentsScreen() {
     const [rDateInput, setRDateInput] = useState('');
     const [slots, setSlots] = useState<Slot[]>([]);
     const [slotsLoading, setSlotsLoading] = useState(false);
+    const [slotsError, setSlotsError] = useState(false);
     const [rescheduling, setRescheduling] = useState(false);
 
     // Create-appointment sheet
@@ -140,6 +154,7 @@ export function AppointmentsScreen() {
     const [cDateInput, setCDateInput] = useState('');
     const [cSlots, setCSlots] = useState<Slot[]>([]);
     const [cSlotsLoading, setCSlotsLoading] = useState(false);
+    const [cSlotsError, setCSlotsError] = useState(false);
     const [cSlot, setCSlot] = useState<Slot | null>(null);
     const [cNotes, setCNotes] = useState('');
     const [cContactSearch, setCContactSearch] = useState('');
@@ -169,7 +184,7 @@ export function AppointmentsScreen() {
             if (!res?.success) throw new Error(res?.error || 'load_failed');
             const data = Array.isArray(res.data) ? res.data : res.data?.appointments || [];
             return data
-                .filter((a: Appt) => { const s = start(a); return s && s >= today && a.status !== 'cancelled'; })
+                .filter((a: Appt) => { const s = start(a); return s && s >= today && !isTerminal(a); })
                 .sort((a: Appt, b: Appt) => (start(a)!.getTime()) - (start(b)!.getTime())) as Appt[];
         },
         staleTime: 5 * 60 * 1000,
@@ -177,13 +192,35 @@ export function AppointmentsScreen() {
         throwOnError: false,
     });
 
-    const items: Appt[] = apptData || [];
+    // Filter again at render time as a cache-safety boundary: Fast Refresh or
+    // persisted React Query data may have been produced by an older queryFn.
+    const items: Appt[] = (apptData || []).filter((appointment: Appt) => !isTerminal(appointment));
     const refreshing = isFetching && !loading;
 
     useEffect(() => {
-        if (!tenantId) return;
-        api.getBookableServices(tenantId).then((r: any) => { if (r?.success && Array.isArray(r.data)) setServices(r.data); }).catch(() => {});
-    }, [tenantId]);
+        let active = true;
+        setServices([]);
+        setCServiceId('');
+        setServicesError(false);
+        setServicesLoading(false);
+        if (!tenantId) return () => { active = false; };
+
+        setServicesLoading(true);
+        api.getBookableServices(tenantId).then((response: any) => {
+            if (!active) return;
+            if (!response?.success || !Array.isArray(response.data)) {
+                throw new Error(response?.error || 'services_failed');
+            }
+            setServices(response.data);
+            setCServiceId(response.data[0]?.id || '');
+        }).catch(() => {
+            if (!active) return;
+            setServices([]);
+            setServicesError(true);
+        }).finally(() => { if (active) setServicesLoading(false); });
+
+        return () => { active = false; };
+    }, [tenantId, servicesRetryKey]);
 
     useEffect(() => {
         let active = true;
@@ -271,17 +308,20 @@ export function AppointmentsScreen() {
     }, [cContactSearch, tenantId, createOpen]);
 
     const confirm = async (a: Appt) => {
-        if (!tenantId) return;
+        if (!tenantId || isTerminal(a) || normalizedStatus(a) === 'confirmed') return;
         setBusy(a.id);
         try {
             const r: any = await api.updateAppointment(tenantId, a.id, { status: 'confirmed' });
             if (!r?.success) throw new Error('fail');
-            toast.success(t('citas.confirmed')); await refetch();
+            toast.success(t('citas.confirmed'));
+            setSelected((current) => current?.id === a.id ? { ...current, status: 'confirmed' } : current);
+            await refetch();
         }
         catch { toast.error(t('citas.confirmError')); }
         finally { setBusy(''); }
     };
     const cancel = (a: Appt) => {
+        if (isTerminal(a)) return;
         Alert.alert(t('citas.cancelTitle'), t('citas.cancelConfirm', { name: customerName(a) }), [
             { text: t('citas.no'), style: 'cancel' },
             { text: t('citas.yesCancel'), style: 'destructive', onPress: async () => {
@@ -312,25 +352,25 @@ export function AppointmentsScreen() {
         setRDate('');
         setRDateInput('');
         setSlots([]);
+        setSlotsError(false);
     };
 
     const pickDate = async (dateStr: string) => {
-        if (!tenantId || !selected) return;
+        if (!tenantId || !selected || isTerminal(selected)) return;
         if (!isValidFutureDate(dateStr)) { toast.error(t('citas.invalidDate')); return; }
         const sid = serviceIdFor(selected);
-        setRDate(dateStr); setRDateInput(dateStr); setSlots([]);
+        setRDate(dateStr); setRDateInput(dateStr); setSlots([]); setSlotsError(false);
         if (!sid) { toast.error(t('citas.serviceUnknown')); return; }
         setSlotsLoading(true);
         try {
             const r: any = await api.getBookableSlots(tenantId, dateStr, sid);
-            const list = r?.data?.slots || r?.data || [];
-            setSlots(Array.isArray(list) ? list : []);
-        } catch { toast.error(t('citas.slotsError')); }
+            setSlots(slotsFromResponse(r));
+        } catch { setSlots([]); setSlotsError(true); }
         finally { setSlotsLoading(false); }
     };
 
     const chooseSlot = async (slot: Slot) => {
-        if (!tenantId || !selected || !rDate) return;
+        if (!tenantId || !selected || !rDate || isTerminal(selected)) return;
         const startAt = toIsoAt(rDate, slot.time);
         const endAt = toIsoAt(rDate, slot.endTime || slot.time);
         setRescheduling(true);
@@ -351,7 +391,7 @@ export function AppointmentsScreen() {
 
     const openCreate = () => {
         haptic.tap();
-        setCServiceId(services[0]?.id || ''); setCDate(''); setCDateInput(''); setCSlots([]); setCSlot(null);
+        setCServiceId(services[0]?.id || ''); setCDate(''); setCDateInput(''); setCSlots([]); setCSlot(null); setCSlotsError(false);
         setCNotes(''); setCContactSearch(''); setCContactResults([]); setCContact(null);
         setCSubjectId('');
         setCreateOpen(true);
@@ -359,13 +399,12 @@ export function AppointmentsScreen() {
     const cPickDate = async (dateStr: string) => {
         if (!tenantId || !cServiceId) return;
         if (!isValidFutureDate(dateStr)) { toast.error(t('citas.invalidDate')); return; }
-        setCDate(dateStr); setCDateInput(dateStr); setCSlots([]); setCSlot(null);
+        setCDate(dateStr); setCDateInput(dateStr); setCSlots([]); setCSlot(null); setCSlotsError(false);
         setCSlotsLoading(true);
         try {
             const r: any = await api.getBookableSlots(tenantId, dateStr, cServiceId);
-            const list = r?.data?.slots || r?.data || [];
-            setCSlots(Array.isArray(list) ? list : []);
-        } catch { toast.error(t('citas.slotsError')); }
+            setCSlots(slotsFromResponse(r));
+        } catch { setCSlots([]); setCSlotsError(true); }
         finally { setCSlotsLoading(false); }
     };
     const createAppt = async () => {
@@ -407,6 +446,8 @@ export function AppointmentsScreen() {
 
     const todayStr = new Date().toDateString();
     const selectedSubject = selected ? linkedSubject(selected) : null;
+    const selectedManageable = !!selected && !isTerminal(selected);
+    const selectedHasServiceId = !!(selected?.service_id || selected?.serviceId);
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
@@ -423,8 +464,9 @@ export function AppointmentsScreen() {
                     const isToday = s && s.toDateString() === todayStr;
                     const time = s ? s.toLocaleTimeString(LOCALE_TAG[locale], { hour: '2-digit', minute: '2-digit' }) : '';
                     const day = s ? (isToday ? t('citas.today') : s.toLocaleDateString(LOCALE_TAG[locale], { weekday: 'short', day: 'numeric', month: 'short' })) : '';
-                    const normalizedStatus = String(item.status || '').toLowerCase();
-                    const statusColor = STATUS_COLOR[normalizedStatus] || theme.textSecondary;
+                    const itemStatus = normalizedStatus(item);
+                    const statusColor = STATUS_COLOR[itemStatus] || theme.textSecondary;
+                    const manageable = !isTerminal(item);
                     return (
                         <PressableScale style={styles.card} onPress={() => openDetail(item)}
                             accessibilityRole="button" accessibilityLabel={`${serviceName(item)} · ${customerName(item)}`} accessibilityHint={t('citas.tapToManage')}>
@@ -447,8 +489,8 @@ export function AppointmentsScreen() {
                                     </View>
                                 </View>
                             </View>
-                            <View style={styles.apptActions}>
-                                {item.status !== 'confirmed' && (
+                            {manageable && <View style={styles.apptActions}>
+                                {itemStatus !== 'confirmed' && (
                                     <TouchableOpacity onPress={() => confirm(item)} disabled={busy === item.id}
                                         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.apptBtn}
                                         accessibilityRole="button" accessibilityLabel={t('citas.confirmA11y', { name: customerName(item) })}>
@@ -460,7 +502,7 @@ export function AppointmentsScreen() {
                                     accessibilityRole="button" accessibilityLabel={t('citas.cancelA11y', { name: customerName(item) })}>
                                     <Ionicons name="close-circle-outline" size={26} color={theme.danger} />
                                 </TouchableOpacity>
-                            </View>
+                            </View>}
                         </PressableScale>
                     );
                 }}
@@ -486,52 +528,64 @@ export function AppointmentsScreen() {
                                 <Row label={t('citas.field.location')} value={selected.location} />
                                 <Row label={t('citas.field.notes')} value={selected.notes} />
 
-                                {/* Reschedule */}
-                                <Text style={styles.sectionLabel}>{t('citas.reschedule')}</Text>
-                                <Text style={styles.hint}>{t('citas.pickDate')}</Text>
-                                <DateSelector
-                                    value={rDateInput}
-                                    selectedValue={rDate}
-                                    onChange={(value) => {
-                                        setRDateInput(value);
-                                        if (value !== rDate) { setRDate(''); setSlots([]); }
-                                    }}
-                                    onSelect={pickDate}
-                                    t={t}
-                                />
+                                {selectedManageable && <>
+                                    {/* Reschedule */}
+                                    <Text style={styles.sectionLabel}>{t('citas.reschedule')}</Text>
+                                    {!selectedHasServiceId && servicesLoading ? (
+                                        <ActivityIndicator color={theme.accent} style={{ marginTop: 10 }} />
+                                    ) : !selectedHasServiceId && servicesError ? (
+                                        <InlineRetry onRetry={() => setServicesRetryKey((key) => key + 1)} t={t} />
+                                    ) : !selectedHasServiceId && services.length === 0 ? (
+                                        <Text style={[styles.empty, { marginTop: 8 }]}>{t('citas.noServices')}</Text>
+                                    ) : <>
+                                        <Text style={styles.hint}>{t('citas.pickDate')}</Text>
+                                        <DateSelector
+                                            value={rDateInput}
+                                            selectedValue={rDate}
+                                            onChange={(value) => {
+                                                setRDateInput(value);
+                                                if (value !== rDate) { setRDate(''); setSlots([]); setSlotsError(false); }
+                                            }}
+                                            onSelect={pickDate}
+                                            t={t}
+                                        />
+                                    </>}
 
-                                {!!rDate && (
-                                    <>
-                                        <Text style={styles.hint}>{t('citas.pickSlot')}</Text>
-                                        {slotsLoading ? (
-                                            <ActivityIndicator color={theme.accent} style={{ marginTop: 10 }} />
-                                        ) : slots.length === 0 ? (
-                                            <Text style={[styles.empty, { marginTop: 8 }]}>{t('citas.noSlots')}</Text>
-                                        ) : (
-                                            <View style={styles.slotGrid}>
-                                                {slots.map((sl, i) => (
-                                                    <TouchableOpacity key={i} style={styles.slotChip} disabled={rescheduling} onPress={() => chooseSlot(sl)}>
-                                                        <Text style={styles.slotText}>{sl.time}</Text>
-                                                    </TouchableOpacity>
-                                                ))}
-                                            </View>
-                                        )}
-                                    </>
-                                )}
-
-                                {/* Quick actions */}
-                                <View style={styles.sheetActions}>
-                                    {selected.status !== 'confirmed' && (
-                                        <TouchableOpacity style={[styles.sheetBtn, { borderColor: theme.success }]} onPress={() => confirm(selected)} disabled={!!busy}>
-                                            <Ionicons name="checkmark-circle-outline" size={18} color={theme.success} />
-                                            <Text style={[styles.sheetBtnText, { color: theme.success }]}>{t('citas.confirm')}</Text>
-                                        </TouchableOpacity>
+                                    {!!rDate && (
+                                        <>
+                                            <Text style={styles.hint}>{t('citas.pickSlot')}</Text>
+                                            {slotsLoading ? (
+                                                <ActivityIndicator color={theme.accent} style={{ marginTop: 10 }} />
+                                            ) : slotsError ? (
+                                                <InlineRetry onRetry={() => pickDate(rDate)} t={t} />
+                                            ) : slots.length === 0 ? (
+                                                <Text style={[styles.empty, { marginTop: 8 }]}>{t('citas.noSlots')}</Text>
+                                            ) : (
+                                                <View style={styles.slotGrid}>
+                                                    {slots.map((sl, i) => (
+                                                        <TouchableOpacity key={i} style={styles.slotChip} disabled={rescheduling} onPress={() => chooseSlot(sl)}>
+                                                            <Text style={styles.slotText}>{sl.time}</Text>
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </View>
+                                            )}
+                                        </>
                                     )}
-                                    <TouchableOpacity style={[styles.sheetBtn, { borderColor: theme.danger }]} onPress={() => cancel(selected)} disabled={!!busy}>
-                                        <Ionicons name="close-circle-outline" size={18} color={theme.danger} />
-                                        <Text style={[styles.sheetBtnText, { color: theme.danger }]}>{t('citas.cancelBtn')}</Text>
-                                    </TouchableOpacity>
-                                </View>
+
+                                    {/* Quick actions */}
+                                    <View style={styles.sheetActions}>
+                                        {normalizedStatus(selected) !== 'confirmed' && (
+                                            <TouchableOpacity style={[styles.sheetBtn, { borderColor: theme.success }]} onPress={() => confirm(selected)} disabled={!!busy}>
+                                                <Ionicons name="checkmark-circle-outline" size={18} color={theme.success} />
+                                                <Text style={[styles.sheetBtnText, { color: theme.success }]}>{t('citas.confirm')}</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                        <TouchableOpacity style={[styles.sheetBtn, { borderColor: theme.danger }]} onPress={() => cancel(selected)} disabled={!!busy}>
+                                            <Ionicons name="close-circle-outline" size={18} color={theme.danger} />
+                                            <Text style={[styles.sheetBtnText, { color: theme.danger }]}>{t('citas.cancelBtn')}</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </>}
                                 {rescheduling && <ActivityIndicator color={theme.accent} style={{ marginTop: 8 }} />}
                             </ScrollView>
                         )}
@@ -548,14 +602,18 @@ export function AppointmentsScreen() {
                                 <Text style={styles.sheetTitle}>{t('citas.new')}</Text>
 
                                 <Text style={styles.sectionLabel}>{t('citas.pickService')}</Text>
-                                {services.length === 0 ? (
+                                {servicesLoading ? (
+                                    <ActivityIndicator color={theme.accent} style={{ marginVertical: 8 }} />
+                                ) : servicesError ? (
+                                    <InlineRetry onRetry={() => setServicesRetryKey((key) => key + 1)} t={t} />
+                                ) : services.length === 0 ? (
                                     <Text style={styles.empty}>{t('citas.noServices')}</Text>
                                 ) : (
                                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
                                         {services.map((s) => {
                                             const on = s.id === cServiceId;
                                             return (
-                                                <TouchableOpacity key={s.id} onPress={() => { setCServiceId(s.id); setCDate(''); setCDateInput(''); setCSlots([]); setCSlot(null); }}
+                                                <TouchableOpacity key={s.id} onPress={() => { setCServiceId(s.id); setCDate(''); setCDateInput(''); setCSlots([]); setCSlot(null); setCSlotsError(false); }}
                                                     style={[styles.svcChip, on && { backgroundColor: (s.color || theme.accent) + '22', borderColor: s.color || theme.accent }]}>
                                                     <Text style={[styles.svcChipText, on && { color: theme.text }]}>{s.name}</Text>
                                                 </TouchableOpacity>
@@ -633,7 +691,7 @@ export function AppointmentsScreen() {
                                     selectedValue={cDate}
                                     onChange={(value) => {
                                         setCDateInput(value);
-                                        if (value !== cDate) { setCDate(''); setCSlots([]); setCSlot(null); }
+                                        if (value !== cDate) { setCDate(''); setCSlots([]); setCSlot(null); setCSlotsError(false); }
                                     }}
                                     onSelect={cPickDate}
                                     disabled={!cServiceId}
@@ -642,6 +700,8 @@ export function AppointmentsScreen() {
 
                                 {!!cDate && (cSlotsLoading ? (
                                     <ActivityIndicator color={theme.accent} style={{ marginTop: 8 }} />
+                                ) : cSlotsError ? (
+                                    <InlineRetry onRetry={() => cPickDate(cDate)} t={t} />
                                 ) : cSlots.length === 0 ? (
                                     <Text style={[styles.empty, { marginTop: 8 }]}>{t('citas.noSlots')}</Text>
                                 ) : (
@@ -668,6 +728,23 @@ export function AppointmentsScreen() {
                 </KeyboardAvoidingView>
             </Modal>
         </SafeAreaView>
+    );
+}
+
+function InlineRetry({ onRetry, t }: { onRetry: () => void; t: Translator }) {
+    return (
+        <View style={{ alignItems: 'flex-start', marginTop: 8 }}>
+            <Text style={styles.empty}>{t('citas.slotsError')}</Text>
+            <TouchableOpacity
+                style={styles.retryBtn}
+                onPress={onRetry}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.retry')}
+            >
+                <Ionicons name="refresh" size={16} color="#fff" />
+                <Text style={styles.retryText}>{t('common.retry')}</Text>
+            </TouchableOpacity>
+        </View>
     );
 }
 

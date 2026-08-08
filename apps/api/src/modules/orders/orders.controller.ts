@@ -5,6 +5,7 @@ import { OrdersService } from './orders.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { CurrentUser } from '../../common/decorators/tenant.decorator';
 
 @Controller('orders')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
@@ -39,9 +40,10 @@ export class OrdersController {
     async updateOrderStatus(
         @Param('tenantId') tenantId: string,
         @Param('orderId') orderId: string,
-        @Body() body: { status: string }
+        @Body() body: { status: string },
+        @CurrentUser() user: any,
     ) {
-        await this.ordersService.updateOrderStatus(tenantId, orderId, body.status);
+        await this.ordersService.updateOrderStatus(tenantId, orderId, body.status, user?.role);
         return { success: true, message: 'Status updated' };
     }
 

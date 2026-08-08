@@ -1772,6 +1772,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."ical_blocks" (
     "source" VARCHAR(50) NOT NULL,
     "check_in" DATE NOT NULL,
     "check_out" DATE NOT NULL,
+    "date_range_semantics" SMALLINT NOT NULL DEFAULT 2,
     "summary" TEXT,
     "last_seen_at" TIMESTAMP DEFAULT NOW(),
     "is_deleted" BOOLEAN DEFAULT false,
@@ -3152,6 +3153,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uidx_faqs_question" ON "{{SCHEMA_NAME}}"."faq
 -- sharing a source on one property made each sync tombstone the other's
 -- blocks. feed_id is the real owner.
 ALTER TABLE "{{SCHEMA_NAME}}"."ical_blocks" ADD COLUMN IF NOT EXISTS "feed_id" UUID;
+
+-- Version 1 stores check_out as the final occupied day (legacy/imported rows
+-- and the dashboard's inclusive manual range picker). Synced iCal rows use
+-- version 2 and retain DTEND as the exclusive checkout date. Keeping the
+-- version avoids freeing one occupied night while old feeds are refreshed.
+ALTER TABLE "{{SCHEMA_NAME}}"."ical_blocks"
+    ADD COLUMN IF NOT EXISTS "date_range_semantics" SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE "{{SCHEMA_NAME}}"."ical_blocks"
+    ALTER COLUMN "date_range_semantics" SET DEFAULT 2;
 
 -- When a feed first asks to free most of what it holds, the clock starts here
 -- instead of the sweep running. A poll count would be no protection at all

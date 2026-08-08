@@ -68,7 +68,8 @@ export class IcalSyncService {
     ) {}
 
     /**
-     * `feed_id` and `sweep_hold_since` landed after the tables shipped. The
+     * `feed_id`, `sweep_hold_since` and the range-semantics marker landed
+     * after the tables shipped. The
      * deploy re-applies tenant-schema.sql per tenant but swallows failures
      * (`|| true`), so one tenant can silently miss them and every later sync
      * would 42703. Reconcile lazily instead of trusting that pass.
@@ -83,6 +84,14 @@ export class IcalSyncService {
             await this.prisma.executeInTenantSchema(
                 schemaName,
                 `ALTER TABLE ical_blocks ADD COLUMN IF NOT EXISTS feed_id UUID`,
+            );
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `ALTER TABLE ical_blocks ADD COLUMN IF NOT EXISTS date_range_semantics SMALLINT NOT NULL DEFAULT 1`,
+            );
+            await this.prisma.executeInTenantSchema(
+                schemaName,
+                `ALTER TABLE ical_blocks ALTER COLUMN date_range_semantics SET DEFAULT 2`,
             );
             await this.prisma.executeInTenantSchema(
                 schemaName,
@@ -213,20 +222,7 @@ export class IcalSyncService {
 
                 seenUids.add(uid);
 
-                // DTEND is exclusive in iCal — subtract 1 day for our inclusive check_out
-                let checkIn: string;
-                let checkOut: string;
-
-                if (vevent.datetype === 'date' || !vevent.start.getHours) {
-                    // All-day event (VALUE=DATE) — Airbnb/Booking style
-                    checkIn = vevent.start.toISOString().split('T')[0];
-                    const endDate = new Date(vevent.end);
-                    endDate.setDate(endDate.getDate() - 1); // DTEND exclusive → inclusive
-                    checkOut = endDate.toISOString().split('T')[0];
-                } else {
-                    checkIn = vevent.start.toISOString().split('T')[0];
-                    checkOut = vevent.end ? vevent.end.toISOString().split('T')[0] : checkIn;
-                }
+                const { checkIn, checkOut } = this.getEventDateRange(vevent);
 
                 // We import all events provided by the feed (including past ones) 
                 // so the user can see historical blocks and recent checkouts in their calendar.
@@ -234,11 +230,14 @@ export class IcalSyncService {
                 // 3. UPSERT into ical_blocks
                 await this.prisma.executeInTenantSchema(
                     schemaName,
-                    `INSERT INTO ical_blocks (property_id, external_uid, source, check_in, check_out, summary, last_seen_at, is_deleted, feed_id)
-                     VALUES ($1::uuid, $2, $3, $4::date, $5::date, $6, NOW(), false, $7::uuid)
+                    `INSERT INTO ical_blocks
+                     (property_id, external_uid, source, check_in, check_out, date_range_semantics,
+                      summary, last_seen_at, is_deleted, feed_id)
+                     VALUES ($1::uuid, $2, $3, $4::date, $5::date, 2, $6, NOW(), false, $7::uuid)
                      ON CONFLICT (property_id, external_uid) DO UPDATE SET
                        check_in = EXCLUDED.check_in,
                        check_out = EXCLUDED.check_out,
+                       date_range_semantics = 2,
                        summary = EXCLUDED.summary,
                        last_seen_at = NOW(),
                        is_deleted = false,
@@ -376,6 +375,28 @@ export class IcalSyncService {
         }
     }
 
+    private nextDate(date: string): string {
+        const value = new Date(`${date}T00:00:00.000Z`);
+        value.setUTCDate(value.getUTCDate() + 1);
+        return value.toISOString().slice(0, 10);
+    }
+
+    private getEventDateRange(vevent: any): { checkIn: string; checkOut: string } {
+        // DTEND is exclusive in iCal, exactly like our hotel range
+        // [check_in, check_out). Keep it exclusive end-to-end so an OTA
+        // checkout on D allows a new arrival on D.
+        const checkIn = vevent.start.toISOString().split('T')[0];
+        let checkOut = vevent.end
+            ? vevent.end.toISOString().split('T')[0]
+            : this.nextDate(checkIn);
+
+        // A same-day timed event still blocks that calendar day. All-day OTA
+        // feeds normally carry an exclusive DTEND already, but the fallback
+        // also protects malformed/missing-end events from zero-night ranges.
+        if (checkOut <= checkIn) checkOut = this.nextDate(checkIn);
+        return { checkIn, checkOut };
+    }
+
     /**
      * Cron: sync all active feeds across all tenants every 30 minutes
      */
@@ -442,7 +463,7 @@ export class IcalSyncService {
         // Load all blocks + bookings
         const blocks = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT id, check_in, check_out, source, summary FROM ical_blocks
+            `SELECT id, check_in, check_out, source, summary, date_range_semantics FROM ical_blocks
              WHERE property_id = $1::uuid AND is_deleted = false`,
             [propertyId],
         );
@@ -464,8 +485,9 @@ export class IcalSyncService {
         // Add blocks from external sources
         for (const block of blocks || []) {
             const endDate = new Date(block.check_out);
-            endDate.setDate(endDate.getDate() + 1); // Convert inclusive → exclusive DTEND
-
+            if (Number(block.date_range_semantics ?? 1) < 2) {
+                endDate.setUTCDate(endDate.getUTCDate() + 1);
+            }
             const evt = calendar.createEvent({
                 start: new Date(block.check_in),
                 end: endDate,
@@ -478,12 +500,9 @@ export class IcalSyncService {
 
         // Add direct bookings
         for (const booking of bookings || []) {
-            const endDate = new Date(booking.check_out);
-            endDate.setDate(endDate.getDate() + 1);
-
             const evt = calendar.createEvent({
                 start: new Date(booking.check_in),
-                end: endDate,
+                end: new Date(booking.check_out),
                 allDay: true,
                 summary: 'BLOCKED',
                 status: ICalEventStatus.CONFIRMED,

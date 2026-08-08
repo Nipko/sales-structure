@@ -296,6 +296,44 @@ export const api = {
     // Business identity (empresa primaria: nombre, logo_url…) — para el BrandHeader.
     getBusinessInfo: (tenantId: string) => json(`/business-info/${tenantId}`),
 
+    // Vacation rental (vertical turismo): la pestaña de agenda muestra ESTADÍAS
+    // de propiedades, no citas de servicios.
+    getProperties: (tenantId: string) => json(`/vacation-rental/${tenantId}/properties`),
+    getUpcomingStays: (tenantId: string, from?: string) =>
+        json(`/vacation-rental/${tenantId}/bookings${from ? `?from=${encodeURIComponent(from)}` : ''}`),
+    createPropertyBooking: (tenantId: string, propertyId: string, data: Record<string, any>) =>
+        json(`/vacation-rental/${tenantId}/properties/${propertyId}/bookings`, { method: 'POST', body: JSON.stringify(data) }),
+    cancelPropertyBooking: (tenantId: string, bookingId: string) =>
+        json(`/vacation-rental/${tenantId}/bookings/${bookingId}/cancel`, { method: 'PUT', body: '{}' }),
+
+    // Vertical workspaces. The mobile "Operaciones" tab reads the domain's
+    // real records instead of relabelling every business flow as an appointment.
+    getTourBookings: (tenantId: string) => json(`/tours/${tenantId}/bookings`),
+    getRestaurantOrders: (tenantId: string, status?: string) =>
+        json(`/restaurants/${tenantId}/orders${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+    updateRestaurantOrderStatus: (tenantId: string, orderId: string, status: string) =>
+        json(`/restaurants/${tenantId}/orders/${orderId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    getOrdersOverview: (tenantId: string) => json(`/orders/overview/${tenantId}`),
+    updateOrderStatus: (tenantId: string, orderId: string, status: string) =>
+        json(`/orders/${tenantId}/${orderId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    getFitnessClasses: (tenantId: string, from: string, to: string) =>
+        json(`/gyms/${tenantId}/classes?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=200`),
+    getEducationEnrollments: (tenantId: string) => json(`/education/${tenantId}/enrollments`),
+    getEducationCohorts: (tenantId: string) => json(`/education/${tenantId}/cohorts`),
+    getInsuranceQuotes: (tenantId: string) => json(`/insurance/${tenantId}/quotes`),
+    getInsurancePolicies: (tenantId: string) => json(`/insurance/${tenantId}/policies`),
+    getInsuranceClaims: (tenantId: string) => json(`/insurance/${tenantId}/claims`),
+    getServiceRequests: (tenantId: string) => json(`/home-services/${tenantId}/requests`),
+    getPhotoSessions: (tenantId: string) => json(`/photography/${tenantId}/sessions`),
+    getTestDrives: (tenantId: string) => json(`/vehicles/${tenantId}/test-drives/list`),
+    // Appointment context selectors. Shapes differ by backend module:
+    // listings/pets return arrays; vehicles returns { items, total }.
+    getRealEstateListings: (tenantId: string) => json(`/listings/${tenantId}`),
+    getPets: (tenantId: string, params?: string) =>
+        json(`/pets/${tenantId}/all${params ? `?${params}` : ''}`),
+    getVehicles: (tenantId: string, params?: string) =>
+        json(`/vehicles/${tenantId}${params ? `?${params}` : ''}`),
+
     // CRM
     getLeads: (tenantId: string, params?: string) =>
         json(`/crm/leads/${tenantId}${params ? `?${params}` : ''}`),

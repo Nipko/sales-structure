@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Alert, Modal, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
-import { useI18n } from '../i18n';
+import { useI18n, type Locale } from '../i18n';
 import { PressableScale } from '../components/PressableScale';
 import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
@@ -21,8 +21,13 @@ interface Appt {
     customer_name?: string; contact_name?: string; customerName?: string; contactName?: string;
     location?: string; notes?: string;
     assigned_name?: string; assignedName?: string;
+    metadata?: Record<string, unknown>;
 }
 interface Slot { time: string; endTime: string; agentId?: string; agentName?: string }
+type SubjectKind = 'listing' | 'pet' | 'vehicle';
+type CreateSubjectKind = Exclude<SubjectKind, 'vehicle'>;
+interface SubjectOption { id: string; name: string; detail?: string; contactId?: string; contactName?: string }
+type Translator = (key: string, params?: Record<string, string | number>) => string;
 
 const STATUS_COLOR: Record<string, string> = {
     confirmed: theme.success, pending: theme.warning, scheduled: theme.accent,
@@ -30,10 +35,60 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 function start(a: Appt): Date | null { const s = a.start_at || a.startAt; return s ? new Date(s) : null; }
-function customer(a: Appt): string { return a.customer_name || a.contact_name || a.contactName || a.customerName || 'Cliente'; }
-function service(a: Appt): string { return a.service_name || a.serviceName || 'Cita'; }
+function customer(a: Appt, fallback: string): string { return a.customer_name || a.contact_name || a.contactName || a.customerName || fallback; }
+function service(a: Appt, fallback: string): string { return a.service_name || a.serviceName || fallback; }
 const pad = (n: number) => String(n).padStart(2, '0');
 const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const LOCALE_TAG: Record<Locale, string> = { es: 'es-CO', en: 'en-US', pt: 'pt-BR', fr: 'fr-FR' };
+const SUBJECT_META_KEY: Record<SubjectKind, 'listingId' | 'petId' | 'vehicleId'> = {
+    listing: 'listingId', pet: 'petId', vehicle: 'vehicleId',
+};
+const SUBJECT_LABEL_KEY: Record<SubjectKind, string> = {
+    listing: 'citas.subject.listing', pet: 'citas.subject.pet', vehicle: 'citas.subject.vehicle',
+};
+
+function localized(value: unknown, locale: Locale): string {
+    if (typeof value === 'string') return value;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+    const map = value as Record<string, unknown>;
+    const candidate = map[locale] || map.es || map.en || map.pt || map.fr;
+    return typeof candidate === 'string' ? candidate : '';
+}
+
+function capitalize(value: string, locale: Locale): string {
+    return value ? value.charAt(0).toLocaleUpperCase(LOCALE_TAG[locale]) + value.slice(1) : '';
+}
+
+function statusLabel(t: Translator, status?: string): string {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (!normalized) return t('ops.status.unknown');
+    const key = `ops.status.${normalized}`;
+    const translated = t(key);
+    return translated === key ? t('ops.status.unknown') : translated;
+}
+
+function isValidFutureDate(value: string): boolean {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return false;
+    const [, year, month, day] = match;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    if (
+        parsed.getFullYear() !== Number(year)
+        || parsed.getMonth() !== Number(month) - 1
+        || parsed.getDate() !== Number(day)
+    ) return false;
+    parsed.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return parsed >= today;
+}
+
+function quickDate(days: number): string {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + days);
+    return localDate(date);
+}
 // Build a NAIVE tenant-local timestamp from a YYYY-MM-DD date + "H:MM" slot.
 // El backend guarda hora-pared local SIN zona (normalizeNaive descarta el
 // offset): el round-trip por Date.toISOString() convertía a UTC y cada cita
@@ -45,16 +100,35 @@ function toIsoAt(dateStr: string, hhmm: string): string {
 }
 
 export function AppointmentsScreen() {
-    const { tenantId } = useAuth();
+    const { tenantId, verticalConfig } = useAuth();
     const toast = useToast();
-    const { t } = useI18n();
+    const { t, locale } = useI18n();
     const insets = useSafeAreaInsets();
     const [services, setServices] = useState<any[]>([]);
     const [busy, setBusy] = useState('');
 
+    const industry = String(verticalConfig?.industry || '').toLowerCase();
+    const subType = String(verticalConfig?.subType || '').toLowerCase();
+    const subjectKind = useMemo<CreateSubjectKind | null>(() => {
+        if (industry === 'inmobiliaria') return 'listing';
+        if (industry === 'veterinaria' || industry === 'pet_services') return 'pet';
+        // Taller has no customer-vehicle model. /vehicles is dealership stock,
+        // so presenting it as the customer's car would create false metadata.
+        if (industry === 'automotriz' && subType === 'taller') return null;
+        return null;
+    }, [industry, subType]);
+    const [subjectOptions, setSubjectOptions] = useState<SubjectOption[]>([]);
+    const [subjectsLoading, setSubjectsLoading] = useState(false);
+
+    const verticalTitle = capitalize(
+        localized(verticalConfig?.sidebar?.labelOverrides?.appointments, locale),
+        locale,
+    ) || t('citas.title');
+
     // Detail / reschedule sheet
     const [selected, setSelected] = useState<Appt | null>(null);
     const [rDate, setRDate] = useState('');
+    const [rDateInput, setRDateInput] = useState('');
     const [slots, setSlots] = useState<Slot[]>([]);
     const [slotsLoading, setSlotsLoading] = useState(false);
     const [rescheduling, setRescheduling] = useState(false);
@@ -63,6 +137,7 @@ export function AppointmentsScreen() {
     const [createOpen, setCreateOpen] = useState(false);
     const [cServiceId, setCServiceId] = useState('');
     const [cDate, setCDate] = useState('');
+    const [cDateInput, setCDateInput] = useState('');
     const [cSlots, setCSlots] = useState<Slot[]>([]);
     const [cSlotsLoading, setCSlotsLoading] = useState(false);
     const [cSlot, setCSlot] = useState<Slot | null>(null);
@@ -70,21 +145,24 @@ export function AppointmentsScreen() {
     const [cContactSearch, setCContactSearch] = useState('');
     const [cContactResults, setCContactResults] = useState<any[]>([]);
     const [cContact, setCContact] = useState<{ id: string; name: string } | null>(null);
+    const [cSubjectId, setCSubjectId] = useState('');
     const [creating, setCreating] = useState(false);
 
-    // React Query — 14-day appointment window (5 min stale, refetch on focus).
+    // Keep the list bounded for large tenants, but wide enough that it no
+    // longer hides day 15 onward. Creation/rescheduling accepts any future date.
     const { data: apptData, isLoading: loading, isFetching, isError, refetch } = useQuery({
         queryKey: ['appointments', tenantId],
         queryFn: async () => {
             if (!tenantId) return [];
             const today = new Date(); today.setHours(0, 0, 0, 0);
-            const horizon = new Date(today.getTime() + 14 * 86400000);
+            const horizon = new Date(today);
+            horizon.setDate(horizon.getDate() + 180);
             // El endpoint filtra por startDate/endDate — 'start'/'end' se ignoraban
             // en silencio y la lista venía SIN filtrar (toda la historia del tenant).
             // Hora-pared local SIN zona (mismo contrato que toIsoAt): toISOString()
             // mandaba medianoche Bogotá como 05:00Z y el cast naive excluía las
             // citas de 00:00-05:00 de hoy en todo huso negativo.
-            const params = `startDate=${localDate(today)}T00:00:00&endDate=${localDate(horizon)}T00:00:00`;
+            const params = `startDate=${localDate(today)}T00:00:00&endDate=${localDate(horizon)}T23:59:59`;
             const res: any = await api.getAppointments(tenantId, params);
             // Throw on failure so isError renders the error+retry state — returning []
             // here made a failed request indistinguishable from a clear calendar.
@@ -106,6 +184,77 @@ export function AppointmentsScreen() {
         if (!tenantId) return;
         api.getBookableServices(tenantId).then((r: any) => { if (r?.success && Array.isArray(r.data)) setServices(r.data); }).catch(() => {});
     }, [tenantId]);
+
+    useEffect(() => {
+        let active = true;
+        setSubjectOptions([]);
+        setCSubjectId('');
+        if (!tenantId || !subjectKind) return () => { active = false; };
+
+        setSubjectsLoading(true);
+        const request = subjectKind === 'listing'
+            ? api.getRealEstateListings(tenantId)
+            : api.getPets(tenantId);
+
+        request.then((response: any) => {
+            if (!active || !response?.success) return;
+            const raw = response.data;
+            const rows = Array.isArray(raw) ? raw : [];
+            const options = rows.map((row: any): SubjectOption | null => {
+                if (!row?.id) return null;
+                if (subjectKind === 'listing') {
+                    return {
+                        id: String(row.id),
+                        name: String(row.name || row.address || row.id),
+                        detail: [row.neighborhood, row.city].filter(Boolean).join(' · '),
+                    };
+                }
+                if (subjectKind === 'pet') {
+                    return {
+                        id: String(row.id),
+                        name: String(row.name || row.id),
+                        detail: [row.species, row.contact_name || row.contactName].filter(Boolean).join(' · '),
+                        contactId: row.contact_id || row.contactId || undefined,
+                        contactName: row.contact_name || row.contactName || undefined,
+                    };
+                }
+                return null;
+            }).filter((option: SubjectOption | null): option is SubjectOption => !!option);
+            setSubjectOptions(options);
+        }).catch(() => {
+            // Optional context: appointment creation stays available if a
+            // vertical catalog is unavailable or gated for this tenant.
+        }).finally(() => { if (active) setSubjectsLoading(false); });
+
+        return () => { active = false; };
+    }, [tenantId, subjectKind]);
+
+    const customerName = (appointment: Appt) => customer(appointment, t('citas.customer'));
+    const serviceName = (appointment: Appt) => service(appointment, t('citas.service'));
+    const subjectTypeLabel = (kind: SubjectKind) => {
+        const key = SUBJECT_LABEL_KEY[kind];
+        const translated = t(key);
+        return translated === key ? t('citas.service') : translated;
+    };
+    const linkedSubject = (appointment: Appt): { kind: SubjectKind; id: string; name: string } | null => {
+        const metadata = appointment.metadata || {};
+        const candidates: Array<{ kind: SubjectKind; value: unknown }> = [
+            { kind: 'listing', value: metadata.listingId || metadata.listing_id },
+            { kind: 'pet', value: metadata.petId || metadata.pet_id },
+            { kind: 'vehicle', value: metadata.vehicleId || metadata.vehicle_id },
+        ];
+        const linked = candidates.find((candidate) => typeof candidate.value === 'string' && candidate.value);
+        if (!linked) return null;
+        const id = String(linked.value);
+        const option = subjectOptions.find((candidate) => candidate.id === id);
+        return { kind: linked.kind, id, name: option?.name || `#${id.slice(0, 8)}` };
+    };
+    const selectableSubjectOptions = useMemo(
+        () => subjectKind === 'pet' && cContact?.id
+            ? subjectOptions.filter((option) => !option.contactId || option.contactId === cContact.id)
+            : subjectOptions,
+        [subjectKind, subjectOptions, cContact?.id],
+    );
 
     // Debounced lead search for the (optional) contact picker when creating.
     useEffect(() => {
@@ -133,7 +282,7 @@ export function AppointmentsScreen() {
         finally { setBusy(''); }
     };
     const cancel = (a: Appt) => {
-        Alert.alert(t('citas.cancelTitle'), t('citas.cancelConfirm', { name: customer(a) }), [
+        Alert.alert(t('citas.cancelTitle'), t('citas.cancelConfirm', { name: customerName(a) }), [
             { text: t('citas.no'), style: 'cancel' },
             { text: t('citas.yesCancel'), style: 'destructive', onPress: async () => {
                 if (!tenantId) return;
@@ -152,17 +301,24 @@ export function AppointmentsScreen() {
     // Resolve the appointment's service id (needed for slot lookup).
     const serviceIdFor = (a: Appt): string | null => {
         if (a.service_id || a.serviceId) return a.service_id || a.serviceId!;
-        const name = service(a).toLowerCase();
+        const name = serviceName(a).toLowerCase();
         const match = services.find((s) => String(s.name || '').toLowerCase() === name);
         return match?.id || null;
     };
 
-    const openDetail = (a: Appt) => { haptic.tap(); setSelected(a); setRDate(''); setSlots([]); };
+    const openDetail = (a: Appt) => {
+        haptic.tap();
+        setSelected(a);
+        setRDate('');
+        setRDateInput('');
+        setSlots([]);
+    };
 
     const pickDate = async (dateStr: string) => {
         if (!tenantId || !selected) return;
+        if (!isValidFutureDate(dateStr)) { toast.error(t('citas.invalidDate')); return; }
         const sid = serviceIdFor(selected);
-        setRDate(dateStr); setSlots([]);
+        setRDate(dateStr); setRDateInput(dateStr); setSlots([]);
         if (!sid) { toast.error(t('citas.serviceUnknown')); return; }
         setSlotsLoading(true);
         try {
@@ -195,13 +351,15 @@ export function AppointmentsScreen() {
 
     const openCreate = () => {
         haptic.tap();
-        setCServiceId(services[0]?.id || ''); setCDate(''); setCSlots([]); setCSlot(null);
+        setCServiceId(services[0]?.id || ''); setCDate(''); setCDateInput(''); setCSlots([]); setCSlot(null);
         setCNotes(''); setCContactSearch(''); setCContactResults([]); setCContact(null);
+        setCSubjectId('');
         setCreateOpen(true);
     };
     const cPickDate = async (dateStr: string) => {
         if (!tenantId || !cServiceId) return;
-        setCDate(dateStr); setCSlots([]); setCSlot(null);
+        if (!isValidFutureDate(dateStr)) { toast.error(t('citas.invalidDate')); return; }
+        setCDate(dateStr); setCDateInput(dateStr); setCSlots([]); setCSlot(null);
         setCSlotsLoading(true);
         try {
             const r: any = await api.getBookableSlots(tenantId, dateStr, cServiceId);
@@ -221,6 +379,9 @@ export function AppointmentsScreen() {
             if (cSlot.agentId) payload.assignedTo = cSlot.agentId;
             if (cContact?.id) payload.contactId = cContact.id;
             if (cNotes.trim()) payload.notes = cNotes.trim();
+            if (subjectKind && cSubjectId) {
+                payload.metadata = { [SUBJECT_META_KEY[subjectKind]]: cSubjectId };
+            }
             const r: any = await api.createAppointment(tenantId, payload);
             if (!r?.success) throw new Error('fail');
             toast.success(t('citas.created'));
@@ -245,11 +406,11 @@ export function AppointmentsScreen() {
     );
 
     const todayStr = new Date().toDateString();
-    const dateChips = Array.from({ length: 14 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + i); return d; });
+    const selectedSubject = selected ? linkedSubject(selected) : null;
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
-            <Text style={styles.h1}>{t('citas.title')}</Text>
+            <Text style={styles.h1}>{verticalTitle}</Text>
             <FlatList
                 data={items}
                 keyExtractor={(a) => a.id}
@@ -258,22 +419,31 @@ export function AppointmentsScreen() {
                 ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{t('citas.empty')}</Text></View>}
                 renderItem={({ item }) => {
                     const s = start(item);
+                    const subject = linkedSubject(item);
                     const isToday = s && s.toDateString() === todayStr;
-                    const time = s ? s.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                    const day = s ? (isToday ? t('citas.today') : s.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })) : '';
+                    const time = s ? s.toLocaleTimeString(LOCALE_TAG[locale], { hour: '2-digit', minute: '2-digit' }) : '';
+                    const day = s ? (isToday ? t('citas.today') : s.toLocaleDateString(LOCALE_TAG[locale], { weekday: 'short', day: 'numeric', month: 'short' })) : '';
+                    const normalizedStatus = String(item.status || '').toLowerCase();
+                    const statusColor = STATUS_COLOR[normalizedStatus] || theme.textSecondary;
                     return (
                         <PressableScale style={styles.card} onPress={() => openDetail(item)}
-                            accessibilityRole="button" accessibilityLabel={`${service(item)} · ${customer(item)}`} accessibilityHint={t('citas.tapToManage')}>
+                            accessibilityRole="button" accessibilityLabel={`${serviceName(item)} · ${customerName(item)}`} accessibilityHint={t('citas.tapToManage')}>
                             <View style={styles.timeCol}>
                                 <Text style={[styles.day, isToday && { color: theme.accent }]}>{day}</Text>
                                 <Text style={styles.time}>{time}</Text>
                             </View>
                             <View style={{ flex: 1 }}>
-                                <Text style={styles.svc}>{service(item)}</Text>
-                                <Text style={styles.cust}>{customer(item)}</Text>
+                                <Text style={styles.svc}>{serviceName(item)}</Text>
+                                <Text style={styles.cust}>{customerName(item)}</Text>
+                                {!!subject && (
+                                    <View style={styles.subjectLine}>
+                                        <Ionicons name={subject.kind === 'listing' ? 'home-outline' : subject.kind === 'pet' ? 'paw-outline' : 'car-outline'} size={12} color={theme.accent} />
+                                        <Text style={styles.subjectText} numberOfLines={1}>{subjectTypeLabel(subject.kind)}: {subject.name}</Text>
+                                    </View>
+                                )}
                                 <View style={styles.badgeRow}>
-                                    <View style={[styles.badge, { backgroundColor: (STATUS_COLOR[item.status || ''] || theme.textSecondary) + '22' }]}>
-                                        <Text style={[styles.badgeText, { color: STATUS_COLOR[item.status || ''] || theme.textSecondary }]}>{item.status || '—'}</Text>
+                                    <View style={[styles.badge, { backgroundColor: statusColor + '22' }]}>
+                                        <Text style={[styles.badgeText, { color: statusColor }]}>{statusLabel(t, item.status)}</Text>
                                     </View>
                                 </View>
                             </View>
@@ -281,13 +451,13 @@ export function AppointmentsScreen() {
                                 {item.status !== 'confirmed' && (
                                     <TouchableOpacity onPress={() => confirm(item)} disabled={busy === item.id}
                                         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.apptBtn}
-                                        accessibilityRole="button" accessibilityLabel={t('citas.confirmA11y', { name: customer(item) })}>
+                                        accessibilityRole="button" accessibilityLabel={t('citas.confirmA11y', { name: customerName(item) })}>
                                         <Ionicons name="checkmark-circle-outline" size={26} color={theme.success} />
                                     </TouchableOpacity>
                                 )}
                                 <TouchableOpacity onPress={() => cancel(item)} disabled={busy === item.id}
                                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.apptBtn}
-                                    accessibilityRole="button" accessibilityLabel={t('citas.cancelA11y', { name: customer(item) })}>
+                                    accessibilityRole="button" accessibilityLabel={t('citas.cancelA11y', { name: customerName(item) })}>
                                     <Ionicons name="close-circle-outline" size={26} color={theme.danger} />
                                 </TouchableOpacity>
                             </View>
@@ -307,10 +477,11 @@ export function AppointmentsScreen() {
                     <View style={styles.sheet} onStartShouldSetResponder={() => true}>
                         {selected && (
                             <ScrollView>
-                                <Text style={styles.sheetTitle}>{service(selected)}</Text>
-                                <Row label={t('citas.field.customer')} value={customer(selected)} />
-                                <Row label={t('citas.field.when')} value={start(selected)?.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} />
-                                <Row label={t('citas.field.status')} value={selected.status} />
+                                <Text style={styles.sheetTitle}>{serviceName(selected)}</Text>
+                                <Row label={t('citas.field.customer')} value={customerName(selected)} />
+                                <Row label={t('citas.field.when')} value={start(selected)?.toLocaleString(LOCALE_TAG[locale], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} />
+                                <Row label={t('citas.field.status')} value={statusLabel(t, selected.status)} />
+                                {!!selectedSubject && <Row label={subjectTypeLabel(selectedSubject.kind)} value={selectedSubject.name} />}
                                 <Row label={t('citas.field.assigned')} value={selected.assigned_name || selected.assignedName} />
                                 <Row label={t('citas.field.location')} value={selected.location} />
                                 <Row label={t('citas.field.notes')} value={selected.notes} />
@@ -318,19 +489,16 @@ export function AppointmentsScreen() {
                                 {/* Reschedule */}
                                 <Text style={styles.sectionLabel}>{t('citas.reschedule')}</Text>
                                 <Text style={styles.hint}>{t('citas.pickDate')}</Text>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }} contentContainerStyle={{ gap: 8 }}>
-                                    {dateChips.map((d) => {
-                                        const ds = localDate(d);
-                                        const on = ds === rDate;
-                                        return (
-                                            <TouchableOpacity key={ds} onPress={() => pickDate(ds)}
-                                                style={[styles.dateChip, on && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
-                                                <Text style={[styles.dateChipTop, on && { color: '#fff' }]}>{d.toLocaleDateString([], { weekday: 'short' })}</Text>
-                                                <Text style={[styles.dateChipDay, on && { color: '#fff' }]}>{d.getDate()}</Text>
-                                            </TouchableOpacity>
-                                        );
-                                    })}
-                                </ScrollView>
+                                <DateSelector
+                                    value={rDateInput}
+                                    selectedValue={rDate}
+                                    onChange={(value) => {
+                                        setRDateInput(value);
+                                        if (value !== rDate) { setRDate(''); setSlots([]); }
+                                    }}
+                                    onSelect={pickDate}
+                                    t={t}
+                                />
 
                                 {!!rDate && (
                                     <>
@@ -387,7 +555,7 @@ export function AppointmentsScreen() {
                                         {services.map((s) => {
                                             const on = s.id === cServiceId;
                                             return (
-                                                <TouchableOpacity key={s.id} onPress={() => { setCServiceId(s.id); setCDate(''); setCSlots([]); setCSlot(null); }}
+                                                <TouchableOpacity key={s.id} onPress={() => { setCServiceId(s.id); setCDate(''); setCDateInput(''); setCSlots([]); setCSlot(null); }}
                                                     style={[styles.svcChip, on && { backgroundColor: (s.color || theme.accent) + '22', borderColor: s.color || theme.accent }]}>
                                                     <Text style={[styles.svcChipText, on && { color: theme.text }]}>{s.name}</Text>
                                                 </TouchableOpacity>
@@ -406,12 +574,16 @@ export function AppointmentsScreen() {
                                     <>
                                         <TextInput style={styles.input} placeholder={t('citas.searchContact')} placeholderTextColor={theme.textSecondary} value={cContactSearch} onChangeText={setCContactSearch} />
                                         {cContactResults.map((l) => {
-                                            const nm = `${l.first_name || ''} ${l.last_name || ''}`.trim() || l.name || l.phone || 'Lead';
+                                            const nm = `${l.first_name || ''} ${l.last_name || ''}`.trim() || l.name || l.phone || t('citas.customer');
                                             // Solo contact_id vale para appointments.contact_id (FK a contacts):
                                             // el id del LEAD o del perfil violaba la FK con un 500. Un lead sin
                                             // contacto vinculado crea la cita sin contactId (columna nullable).
                                             return (
-                                                <TouchableOpacity key={l.id} style={styles.contactRow} onPress={() => { setCContact({ id: l.contact_id || '', name: nm }); setCContactResults([]); }}>
+                                                <TouchableOpacity key={l.id} style={styles.contactRow} onPress={() => {
+                                                    setCContact({ id: l.contact_id || '', name: nm });
+                                                    if (subjectKind === 'pet') setCSubjectId('');
+                                                    setCContactResults([]);
+                                                }}>
                                                     <Text style={styles.contactName}>{nm}</Text>
                                                     {!!l.phone && <Text style={styles.contactSub}>{l.phone}</Text>}
                                                 </TouchableOpacity>
@@ -420,19 +592,53 @@ export function AppointmentsScreen() {
                                     </>
                                 )}
 
+                                {!!subjectKind && (subjectsLoading || selectableSubjectOptions.length > 0) && (
+                                    <>
+                                        <Text style={styles.sectionLabel}>{t('citas.subjectOptional')}</Text>
+                                        {subjectsLoading ? (
+                                            <ActivityIndicator color={theme.accent} style={{ marginVertical: 8 }} />
+                                        ) : (
+                                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                                                {selectableSubjectOptions.map((option) => {
+                                                    const on = option.id === cSubjectId;
+                                                    return (
+                                                        <TouchableOpacity
+                                                            key={option.id}
+                                                            onPress={() => {
+                                                                setCSubjectId(on ? '' : option.id);
+                                                                if (!on && subjectKind === 'pet' && !cContact && option.contactId) {
+                                                                    setCContact({
+                                                                        id: option.contactId,
+                                                                        name: option.contactName || t('citas.customer'),
+                                                                    });
+                                                                }
+                                                            }}
+                                                            style={[styles.subjectChip, on && styles.subjectChipSelected]}
+                                                            accessibilityRole="button"
+                                                            accessibilityState={{ selected: on }}
+                                                        >
+                                                            <Text style={[styles.subjectChipName, on && { color: theme.text }]} numberOfLines={1}>{option.name}</Text>
+                                                            {!!option.detail && <Text style={styles.subjectChipDetail} numberOfLines={1}>{option.detail}</Text>}
+                                                        </TouchableOpacity>
+                                                    );
+                                                })}
+                                            </ScrollView>
+                                        )}
+                                    </>
+                                )}
+
                                 <Text style={styles.sectionLabel}>{t('citas.pickDate')}</Text>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }} contentContainerStyle={{ gap: 8 }}>
-                                    {dateChips.map((d) => {
-                                        const ds = localDate(d); const on = ds === cDate;
-                                        return (
-                                            <TouchableOpacity key={ds} onPress={() => cPickDate(ds)} disabled={!cServiceId}
-                                                style={[styles.dateChip, on && { backgroundColor: theme.accent, borderColor: theme.accent }, !cServiceId && { opacity: 0.4 }]}>
-                                                <Text style={[styles.dateChipTop, on && { color: '#fff' }]}>{d.toLocaleDateString([], { weekday: 'short' })}</Text>
-                                                <Text style={[styles.dateChipDay, on && { color: '#fff' }]}>{d.getDate()}</Text>
-                                            </TouchableOpacity>
-                                        );
-                                    })}
-                                </ScrollView>
+                                <DateSelector
+                                    value={cDateInput}
+                                    selectedValue={cDate}
+                                    onChange={(value) => {
+                                        setCDateInput(value);
+                                        if (value !== cDate) { setCDate(''); setCSlots([]); setCSlot(null); }
+                                    }}
+                                    onSelect={cPickDate}
+                                    disabled={!cServiceId}
+                                    t={t}
+                                />
 
                                 {!!cDate && (cSlotsLoading ? (
                                     <ActivityIndicator color={theme.accent} style={{ marginTop: 8 }} />
@@ -465,6 +671,78 @@ export function AppointmentsScreen() {
     );
 }
 
+function DateSelector({
+    value,
+    selectedValue,
+    onChange,
+    onSelect,
+    disabled = false,
+    t,
+}: {
+    value: string;
+    selectedValue: string;
+    onChange: (value: string) => void;
+    onSelect: (value: string) => void;
+    disabled?: boolean;
+    t: Translator;
+}) {
+    const shortcuts = [
+        { days: 0, label: t('citas.today') },
+        { days: 1, label: '+1' },
+        { days: 7, label: '+7' },
+        { days: 30, label: '+30' },
+    ];
+
+    return (
+        <View style={[styles.dateSelector, disabled && { opacity: 0.45 }]}>
+            <View style={styles.dateInputRow}>
+                <TextInput
+                    style={[styles.input, styles.dateInput]}
+                    value={value}
+                    onChangeText={onChange}
+                    onSubmitEditing={() => onSelect(value)}
+                    editable={!disabled}
+                    placeholder={t('stays.datePlaceholder')}
+                    placeholderTextColor={theme.textSecondary}
+                    keyboardType="numbers-and-punctuation"
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    maxLength={10}
+                    returnKeyType="done"
+                    accessibilityLabel={t('citas.pickDate')}
+                />
+                <TouchableOpacity
+                    style={styles.dateApplyButton}
+                    onPress={() => onSelect(value)}
+                    disabled={disabled}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('citas.applyDate')}
+                >
+                    <Ionicons name="arrow-forward" size={18} color="#fff" />
+                </TouchableOpacity>
+            </View>
+            <View style={styles.quickDateRow}>
+                {shortcuts.map(({ days, label }) => {
+                    const date = quickDate(days);
+                    const on = selectedValue === date;
+                    return (
+                        <TouchableOpacity
+                            key={days}
+                            style={[styles.quickDateChip, on && styles.quickDateChipSelected]}
+                            onPress={() => onSelect(date)}
+                            disabled={disabled}
+                            accessibilityRole="button"
+                            accessibilityLabel={days === 0 ? t('citas.today') : t('citas.quickDateA11y', { days })}
+                        >
+                            <Text style={[styles.quickDateText, on && { color: '#fff' }]}>{label}</Text>
+                        </TouchableOpacity>
+                    );
+                })}
+            </View>
+        </View>
+    );
+}
+
 function Row({ label, value }: { label: string; value?: string }) {
     if (!value) return null;
     return (
@@ -487,6 +765,8 @@ const styles = StyleSheet.create({
     time: { color: theme.text, fontSize: 16, fontWeight: '700', marginTop: 2 },
     svc: { color: theme.text, fontSize: 15, fontWeight: '600' },
     cust: { color: theme.textSecondary, fontSize: 13, marginTop: 1 },
+    subjectLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+    subjectText: { color: theme.accent, fontSize: 11, flexShrink: 1 },
     badgeRow: { flexDirection: 'row', marginTop: 6 },
     badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 7 },
     badgeText: { fontSize: 11, fontWeight: '600' },
@@ -500,9 +780,14 @@ const styles = StyleSheet.create({
     v: { color: theme.text, fontSize: 14, fontWeight: '500', maxWidth: '62%', textAlign: 'right' },
     sectionLabel: { color: theme.textSecondary, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 18, marginBottom: 4 },
     hint: { color: theme.textSecondary, fontSize: 13, marginTop: 6 },
-    dateChip: { width: 52, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bg, alignItems: 'center' },
-    dateChipTop: { color: theme.textSecondary, fontSize: 11 },
-    dateChipDay: { color: theme.text, fontSize: 16, fontWeight: '700', marginTop: 2 },
+    dateSelector: { marginTop: 8 },
+    dateInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    dateInput: { flex: 1 },
+    dateApplyButton: { width: 44, height: 44, borderRadius: 10, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },
+    quickDateRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+    quickDateChip: { minWidth: 48, alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bg },
+    quickDateChipSelected: { backgroundColor: theme.accent, borderColor: theme.accent },
+    quickDateText: { color: theme.textSecondary, fontSize: 12, fontWeight: '700' },
     slotGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
     slotChip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: theme.accent, backgroundColor: theme.accent + '14' },
     slotText: { color: theme.accent, fontSize: 14, fontWeight: '700' },
@@ -515,6 +800,10 @@ const styles = StyleSheet.create({
     svcChipText: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
     selectedContact: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.accent + '1a', borderColor: theme.accent, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
     selectedContactText: { color: theme.text, fontSize: 14, fontWeight: '600' },
+    subjectChip: { width: 150, minHeight: 58, justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bg },
+    subjectChipSelected: { borderColor: theme.accent, backgroundColor: theme.accent + '1a' },
+    subjectChipName: { color: theme.textSecondary, fontSize: 13, fontWeight: '700' },
+    subjectChipDetail: { color: theme.textSecondary, fontSize: 10, marginTop: 3 },
     contactRow: { paddingVertical: 10, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     contactName: { color: theme.text, fontSize: 14, fontWeight: '500' },
     contactSub: { color: theme.textSecondary, fontSize: 12, marginTop: 2 },

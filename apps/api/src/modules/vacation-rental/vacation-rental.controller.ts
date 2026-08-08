@@ -142,6 +142,20 @@ export class VacationRentalController {
 
     // ── Bookings ────────────────────────────────────────────────
 
+    @Get(':tenantId/bookings')
+    @ApiOperation({ summary: 'List upcoming bookings across all properties (agent agenda)' })
+    async listUpcomingBookings(
+        @Param('tenantId') tenantId: string,
+        @Query('from') from?: string,
+    ) {
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        // Date-only business data must use the tenant's calendar day, not UTC.
+        // Explicit values are strictly validated by the service (no fallback).
+        const fromDate = from ?? await this.propertiesService.getTenantLocalDate(tenantId);
+        const data = await this.propertiesService.listUpcomingBookings(schemaName, fromDate);
+        return { success: true, data };
+    }
+
     @Get(':tenantId/properties/:propertyId/bookings')
     @ApiOperation({ summary: 'List bookings for a property' })
     async listBookings(

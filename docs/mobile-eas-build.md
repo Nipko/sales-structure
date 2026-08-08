@@ -1,8 +1,9 @@
 # Build de la app móvil con EAS (distribución)
 
-> Estado: **listo para buildear**. La config de Expo evalúa limpio y todos los
-> plugins resuelven. Falta solo ejecutar el build (consume créditos de EAS +
-> requiere login de Expo) y crear 1 file-secret (`google-services.json`).
+> Estado: **APK local generado, instalado y con arranque verificado; AAB aún no
+> generado**. La config de Expo evalúa limpio, los plugins resuelven y los secretos
+> ya existen. Falta ejecutar el build de producción (consume créditos de EAS y
+> requiere una sesión de Expo).
 
 ## Por qué EAS y no solo el APK local
 

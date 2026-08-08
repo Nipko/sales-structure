@@ -6,12 +6,13 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNavigationContainerRef } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { useI18n } from '../i18n';
+import { useI18n, type Locale } from '../i18n';
 import { registerForPush, registerNotificationCategories, onNotificationTap, getColdStartData, presentLocalNotification } from '../lib/push';
 import { api } from '../lib/api';
 import { getAgentSocket, connectRealtime } from '../lib/socket';
 import { subscribeUnread, getUnreadTotal } from '../lib/unread';
 import { haptic } from '../lib/haptics';
+import { resolveVerticalWorkspace } from '../lib/verticalWorkspace';
 import { theme } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
 import { WelcomeScreen } from '../screens/WelcomeScreen';
@@ -21,7 +22,7 @@ import { ConversationScreen } from '../screens/ConversationScreen';
 import { CrmScreen } from '../screens/CrmScreen';
 import { LeadDetailScreen } from '../screens/LeadDetailScreen';
 import { PipelineScreen } from '../screens/PipelineScreen';
-import { AppointmentsScreen } from '../screens/AppointmentsScreen';
+import { OperationsScreen } from '../screens/OperationsScreen';
 import { MoreScreen } from '../screens/MoreScreen';
 import { NotificationPrefsScreen } from '../screens/NotificationPrefsScreen';
 import { OutboundScreen } from '../screens/OutboundScreen';
@@ -81,19 +82,29 @@ function CrmStackNavigator() {
     );
 }
 
-function loc(v: any): string {
+function loc(v: any, locale: Locale): string {
     if (!v) return '';
-    const s = typeof v === 'string' ? v : (v.es || v.en || '');
-    return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+    const s = typeof v === 'string'
+        ? v
+        : (v[locale] || v.es || v.en || v.pt || v.fr || '');
+    return s ? s.charAt(0).toLocaleUpperCase(locale) + s.slice(1) : '';
 }
 
 function MainTabs() {
     const { verticalConfig } = useAuth();
-    const { t } = useI18n();
+    const { t, locale } = useI18n();
     const term = verticalConfig?.terminology || {};
-    // Vertical-aware label only for the bookings tab (turismo → "Reservas",
-    // restaurantes → "Pedidos"). Falls back to the i18n label. CRM stays "CRM".
-    const citasLabel = loc(term.transactionNoun) || t('nav.citas');
+    const workspace = resolveVerticalWorkspace(verticalConfig || {});
+    const translatedWorkspaceLabel = t(workspace.labelKey);
+    const appointmentLabel = loc(verticalConfig?.sidebar?.labelOverrides?.appointments, locale)
+        || loc(term.transactionNoun, locale);
+    // Keep the tenant terminology as a compatibility fallback while older
+    // translation catalogs catch up with newly introduced workspace kinds.
+    const citasLabel = workspace.kind === 'appointments' && appointmentLabel
+        ? appointmentLabel
+        : translatedWorkspaceLabel !== workspace.labelKey
+        ? translatedWorkspaceLabel
+        : loc(term.transactionNoun, locale) || t('nav.citas');
 
     // Unread badge on the Inbox tab (QW5) — fed by the unread store from InboxScreen.
     const [unread, setUnread] = useState(getUnreadTotal());
@@ -116,7 +127,7 @@ function MainTabs() {
                 tabBarInactiveTintColor: theme.textSecondary,
                 tabBarIcon: ({ color, size }) => {
                     const icons: Record<string, any> = {
-                        Inbox: 'chatbubbles-outline', CRM: 'people-outline', Citas: 'calendar-outline', 'Más': 'ellipsis-horizontal',
+                        Inbox: 'chatbubbles-outline', CRM: 'people-outline', Citas: workspace.iconName, 'Más': 'ellipsis-horizontal',
                     };
                     return <Ionicons name={icons[route.name] || 'ellipse-outline'} size={size} color={color} />;
                 },
@@ -124,7 +135,7 @@ function MainTabs() {
         >
             <Tabs.Screen name="Inbox" component={InboxStackNavigator} options={{ tabBarLabel: t('nav.inbox'), tabBarBadge: inboxBadge, tabBarBadgeStyle: { backgroundColor: theme.danger, fontSize: 10 } }} />
             <Tabs.Screen name="CRM" component={CrmStackNavigator} options={{ tabBarLabel: t('nav.crm') }} />
-            <Tabs.Screen name="Citas" component={AppointmentsScreen} options={{ tabBarLabel: citasLabel }} />
+            <Tabs.Screen name="Citas" component={OperationsScreen} options={{ tabBarLabel: citasLabel }} />
             <Tabs.Screen name="Más" component={MoreScreen} options={{ tabBarLabel: t('nav.mas') }} />
         </Tabs.Navigator>
     );

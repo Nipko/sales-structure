@@ -12,12 +12,13 @@
 | # | Bloqueante | Quién | Estado |
 |---|---|---|---|
 | 1 | **Generar el AAB con EAS** y verificar sus permisos | Comando abajo | ⏳ nunca se ha generado |
-| 2 | **Tenant + agente DEMO** con datos de ejemplo (App access) | Tú (en la web) | ⏳ pendiente |
-| 3 | **Capturas de pantalla** del tenant demo (mín. 2) | Regenerar con el demo | ◐ hay borradores |
-| 4 | Declaración **Data safety** | Play Console | ⏳ tabla lista abajo |
-| 5 | Cuestionario **Content rating** (IARC) | Play Console | ⏳ respuestas abajo |
-| 6 | **Target audience** + resto de "App content" | Play Console | ⏳ |
-| 7 | Ficha de tienda (textos + gráficos) | Textos y gráficos listos | ◐ solo pegar |
+| 2 | **Smoke test del APK nuevo por vertical** (matriz abajo) | Dispositivo real | ◐ APK instalado y arranque OK; recorrido por vertical pendiente |
+| 3 | **Tenant + agente DEMO** con datos de ejemplo (App access) | Tú (en la web) | ⏳ pendiente |
+| 4 | **Capturas de pantalla** del tenant demo (mín. 2) | Regenerar con el demo | ◐ hay borradores inseguros |
+| 5 | Declaración **Data safety** | Play Console | ⏳ tabla lista abajo |
+| 6 | Cuestionario **Content rating** (IARC) | Play Console | ⏳ respuestas abajo |
+| 7 | **Target audience** + resto de "App content" | Play Console | ⏳ |
+| 8 | Ficha de tienda (textos + gráficos) | Textos y gráficos listos | ◐ solo pegar |
 
 ---
 
@@ -65,6 +66,17 @@ aapt2 dump xmltree --file AndroidManifest.xml app-release.aab | grep -A2 permiss
 
 Si `SYSTEM_ALERT_WINDOW` aparece en el AAB → **no subir**, el plugin no se aplicó.
 
+Antes del AAB, instalar el APK local nuevo por ADB inalámbrico y probar al menos un
+tenant representativo de cada modo operativo: agenda, estadías, tours, restaurante,
+pedidos, clases, matrículas, seguros, solicitudes de servicio, fotografía y pruebas de
+manejo. Verificar además que `automotriz/alquiler` y `pet_services/hotel` muestran el
+estado neutral, nunca una cita ficticia.
+
+**Avance 8-ago-2026:** `assembleRelease` completó, el APK se instaló por ADB inalámbrico
+en un Samsung SM-S938B y `cloud.parallly.mobile/.MainActivity` inició sin errores fatales
+Android/React Native. Falta el recorrido manual con tenants representativos; no marcar
+este bloqueante como cerrado solo por haber validado el arranque.
+
 ## 2. App access — la causa #1 de rechazo
 
 La app exige login: sin credenciales el revisor no ve nada y rechaza.
@@ -86,7 +98,8 @@ Hay borradores en `apps/mobile/store-assets/` tomados del dispositivo real.
 > es PII de terceros y contraviene la política de datos sensibles. **Regenerarlas
 > logueado en el tenant DEMO.**
 
-Sugeridas: Inbox · Conversación con copiloto de IA · CRM/lead · Reserva/agenda.
+Sugeridas: Inbox · Conversación con copiloto de IA · CRM/lead · Operación vertical
+(por ejemplo pedidos, estadías o agenda).
 
 Para capturar con el teléfono conectado por ADB:
 ```bash
@@ -97,13 +110,17 @@ adb exec-out screencap -p > screen-1-inbox.png
 
 | Categoría | ¿Se recopila? | Propósito | ¿Compartida? | Cifrada en tránsito | Eliminable |
 |-----------|:---:|---|:---:|:---:|:---:|
-| Nombre, email (cuenta de agente) | Sí | Gestión de cuenta / funcionalidad | No | Sí | Sí |
+| Nombre y email (agentes, leads y huéspedes) | Sí | Gestión de cuenta, CRM y funcionalidad | No | Sí | Sí |
+| Número de teléfono | Sí | CRM, contacto con clientes y reservas | No | Sí | Sí |
+| Otra información personal (empresa/cargo de tarjeta escaneada) | Sí | CRM | No | Sí | Sí |
 | Mensajes (in-app) | Sí | Funcionalidad de mensajería | No | Sí | Sí |
 | Fotos y vídeos | Sí | El agente adjunta media | No | Sí | Sí |
 | Archivos de audio (notas de voz) | Sí | Mensajería | No | Sí | Sí |
+| Archivos y documentos | Sí | Adjuntos de conversaciones | No | Sí | Sí |
 | ID de dispositivo / push token | Sí | Notificaciones | No (Expo/FCM como proveedor) | Sí | Sí |
 | Crash logs + diagnósticos | Sí | Estabilidad (Sentry) | No | Sí | N/A |
-| Ubicación / Datos financieros | **No** | — | — | — | — |
+| Ubicación precisa o aproximada | **No** | — | — | — | — |
+| Datos de pago (tarjetas/cuentas bancarias) | **No** | — | — | — | — |
 
 - Método de eliminación: **URL** → `https://parallly-chat.cloud/data-deletion`
 - Cámara: se usa para adjuntar fotos y escanear tarjetas de visita → declarar como Fotos/Vídeos.
@@ -145,12 +162,12 @@ Play Billing (15-30 % de comisión).
 **Descripción completa (es):**
 > Parallly es la app del agente para atender y vender por WhatsApp, Instagram, Messenger y Telegram desde un solo lugar.
 >
-> • Bandeja unificada en tiempo real con notificaciones fiables (incluso con la app cerrada).
+> • Bandeja unificada en tiempo real con alertas para el equipo.
 > • Responde con texto, imágenes, documentos, video y notas de voz.
 > • Copiloto de IA: sugiere respuestas, reescribe en 6 tonos, resume la conversación, traduce y propone la próxima mejor acción de venta.
 > • CRM integrado: leads, pipeline, notas, tareas y escáner de tarjetas de visita.
 > • Toma el control del bot con un tap, asigna conversaciones y colabora con tu equipo.
-> • Agenda citas y gestiona reservas desde el chat.
+> • Gestiona la operación real de cada negocio: agenda, reservas, pedidos, clases, matrículas y solicitudes de servicio.
 >
 > Diseñada para equipos de ventas y atención en Latinoamérica. Requiere una cuenta de Parallly.
 

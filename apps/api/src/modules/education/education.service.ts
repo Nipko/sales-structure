@@ -1,5 +1,9 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+    normalizeCurrencyCode,
+    optionalPositiveIntegerUnit,
+} from '../../common/utils/commercial-units.util';
 
 /**
  * Education service — courses, cohorts, enrollments, placement tests.
@@ -47,6 +51,9 @@ export class EducationService {
 
     async createCourse(schemaName: string, data: any): Promise<any> {
         if (!data.name) throw new BadRequestException('name is required');
+        const durationHours = optionalPositiveIntegerUnit(data.durationHours, 'durationHours');
+        const durationWeeks = optionalPositiveIntegerUnit(data.durationWeeks, 'durationWeeks');
+        const currency = normalizeCurrencyCode(data.currency);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO courses (
@@ -58,8 +65,8 @@ export class EducationService {
             [
                 data.name, data.description || null, data.subject || null,
                 data.level || null, data.modality || 'presencial',
-                data.durationHours ?? null, data.durationWeeks ?? null,
-                data.price ?? 0, data.currency || 'COP',
+                durationHours, durationWeeks,
+                data.price ?? 0, currency,
                 data.certification || null, data.prerequisites || null,
                 data.syllabusUrl || null, data.imageUrl || null,
             ],
@@ -68,6 +75,15 @@ export class EducationService {
     }
 
     async updateCourse(schemaName: string, id: string, data: any): Promise<any> {
+        if (data.durationHours !== undefined && data.durationHours !== null) {
+            data = { ...data, durationHours: optionalPositiveIntegerUnit(data.durationHours, 'durationHours') };
+        }
+        if (data.durationWeeks !== undefined && data.durationWeeks !== null) {
+            data = { ...data, durationWeeks: optionalPositiveIntegerUnit(data.durationWeeks, 'durationWeeks') };
+        }
+        if (data.currency !== undefined) {
+            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+        }
         const fields: string[] = [];
         const values: any[] = [];
         let i = 1;

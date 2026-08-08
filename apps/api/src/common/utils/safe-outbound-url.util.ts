@@ -5,6 +5,7 @@ import { isIP, type LookupFunction } from 'node:net';
 
 export const OUTBOUND_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 export const OUTBOUND_MAX_REQUEST_BYTES = 1024 * 1024;
+export const OUTBOUND_DNS_TIMEOUT_MS = 5_000;
 
 export interface PinnedHttpsTarget {
     url: URL;
@@ -160,7 +161,21 @@ export async function pinSafeHttpsUrl(parsed: URL, label = 'destino'): Promise<P
     const hostname = normalizedHostname(parsed.hostname);
     let addresses: Array<{ address: string; family: number }>;
     try {
-        addresses = await dns.lookup(hostname, { all: true, verbatim: true });
+        let timer: NodeJS.Timeout | undefined;
+        try {
+            addresses = await Promise.race([
+                dns.lookup(hostname, { all: true, verbatim: true }),
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(
+                        () => reject(new Error('DNS lookup deadline exceeded')),
+                        OUTBOUND_DNS_TIMEOUT_MS,
+                    );
+                    timer.unref?.();
+                }),
+            ]);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
     } catch {
         throw new BadRequestException(`No se pudo resolver de forma segura el hostname de ${label}`);
     }
@@ -208,6 +223,10 @@ export async function prepareSafeHttpsTarget(rawValue: unknown, label = 'destino
 export function safeAxiosOptions(target: PinnedHttpsTarget, timeout: number) {
     return {
         timeout,
+        // Axios' `timeout` is a socket-inactivity timeout. A peer can keep the
+        // socket alive indefinitely by dripping bytes below that threshold, so
+        // enforce the same value as an absolute wall-clock deadline as well.
+        signal: AbortSignal.timeout(timeout),
         maxRedirects: 0,
         maxContentLength: OUTBOUND_MAX_RESPONSE_BYTES,
         maxBodyLength: OUTBOUND_MAX_REQUEST_BYTES,

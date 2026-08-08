@@ -18,7 +18,9 @@ import { CollisionDetectionService } from './collision-detection.service';
 import { HandoffEscalatedEvent } from '../handoff/handoff.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WsRelayService } from '../redis/ws-relay.service';
+import { RedisService } from '../redis/redis.service';
 import { JwtPayload } from '@parallext/shared';
+import { resolveReadyUserTenantContext } from '../../common/utils/tenant-lifecycle.util';
 
 @WebSocketGateway({
     cors: { origin: '*' },
@@ -37,6 +39,7 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
         private copilotService: CopilotService,
         private collisionDetectionService: CollisionDetectionService,
         private prisma: PrismaService,
+        private redis: RedisService,
         private jwtService: JwtService,
         private configService: ConfigService,
         private wsRelay: WsRelayService,
@@ -82,8 +85,21 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
                 return;
             }
 
+            const readyContext = await resolveReadyUserTenantContext(
+                this.prisma,
+                this.redis,
+                payload.sub,
+                payload.tenantId,
+            );
+            if (!readyContext) {
+                this.logger.warn(`Connection rejected (tenant not ready): ${client.id}`);
+                client.emit('error', { message: 'Tenant is inactive or still provisioning' });
+                client.disconnect(true);
+                return;
+            }
+
             // Store verified JWT data on the socket for later use
-            (client as any).jwtPayload = payload;
+            (client as any).jwtPayload = { ...payload, tenantId: readyContext.tenantId };
             this.logger.log(`Agent authenticated: ${payload.sub} (tenant: ${payload.tenantId}) socket: ${client.id}`);
         } catch (error: any) {
             const reason = error?.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token';
@@ -417,6 +433,8 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
             conversationId: event.conversationId,
             reason: event.reason,
             summary: event.summary,
+            structuredSummary: event.structuredSummary,
+            traceId: event.traceId,
             assignedTo: event.assignedTo,
             assignedAgentName: event.assignedAgentName,
             contactName: event.contactName,

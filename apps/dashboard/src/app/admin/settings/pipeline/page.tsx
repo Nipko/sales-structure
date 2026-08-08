@@ -22,20 +22,21 @@ interface PipelineStage {
     default_probability: number;
     sla_hours: number | null;
     is_terminal: boolean;
+    terminal_outcome: 'won' | 'lost' | null;
     transition_rules?: any[];
 }
 
 const DEFAULT_STAGES: PipelineStage[] = [
-    { name: 'Nuevo', slug: 'nuevo', color: '#95a5a6', position: 0, default_probability: 10, sla_hours: null, is_terminal: false, transition_rules: [] },
-    { name: 'Contactado', slug: 'contactado', color: '#3498db', position: 1, default_probability: 20, sla_hours: null, is_terminal: false, transition_rules: [] },
-    { name: 'Respondió', slug: 'respondio', color: '#9b59b6', position: 2, default_probability: 30, sla_hours: null, is_terminal: false, transition_rules: [] },
-    { name: 'Calificado', slug: 'calificado', color: '#e67e22', position: 3, default_probability: 50, sla_hours: null, is_terminal: false, transition_rules: [] },
-    { name: 'Tibio', slug: 'tibio', color: '#f39c12', position: 4, default_probability: 60, sla_hours: null, is_terminal: false, transition_rules: [] },
-    { name: 'Caliente', slug: 'caliente', color: '#e74c3c', position: 5, default_probability: 80, sla_hours: null, is_terminal: false, transition_rules: [] },
-    { name: 'Listo para cierre', slug: 'listo_cierre', color: '#27ae60', position: 6, default_probability: 95, sla_hours: null, is_terminal: false, transition_rules: [] },
-    { name: 'Ganado', slug: 'ganado', color: '#2ecc71', position: 7, default_probability: 100, sla_hours: null, is_terminal: true, transition_rules: [] },
-    { name: 'Perdido', slug: 'perdido', color: '#7f8c8d', position: 8, default_probability: 0, sla_hours: null, is_terminal: true, transition_rules: [] },
-    { name: 'No interesado', slug: 'no_interesado', color: '#bdc3c7', position: 9, default_probability: 0, sla_hours: null, is_terminal: true, transition_rules: [] },
+    { name: 'Nuevo', slug: 'nuevo', color: '#95a5a6', position: 0, default_probability: 10, sla_hours: null, is_terminal: false, terminal_outcome: null, transition_rules: [] },
+    { name: 'Contactado', slug: 'contactado', color: '#3498db', position: 1, default_probability: 20, sla_hours: null, is_terminal: false, terminal_outcome: null, transition_rules: [] },
+    { name: 'Respondió', slug: 'respondio', color: '#9b59b6', position: 2, default_probability: 30, sla_hours: null, is_terminal: false, terminal_outcome: null, transition_rules: [] },
+    { name: 'Calificado', slug: 'calificado', color: '#e67e22', position: 3, default_probability: 50, sla_hours: null, is_terminal: false, terminal_outcome: null, transition_rules: [] },
+    { name: 'Tibio', slug: 'tibio', color: '#f39c12', position: 4, default_probability: 60, sla_hours: null, is_terminal: false, terminal_outcome: null, transition_rules: [] },
+    { name: 'Caliente', slug: 'caliente', color: '#e74c3c', position: 5, default_probability: 80, sla_hours: null, is_terminal: false, terminal_outcome: null, transition_rules: [] },
+    { name: 'Listo para cierre', slug: 'listo_para_cierre', color: '#27ae60', position: 6, default_probability: 95, sla_hours: null, is_terminal: false, terminal_outcome: null, transition_rules: [] },
+    { name: 'Ganado', slug: 'ganado', color: '#2ecc71', position: 7, default_probability: 100, sla_hours: null, is_terminal: true, terminal_outcome: 'won', transition_rules: [] },
+    { name: 'Perdido', slug: 'perdido', color: '#7f8c8d', position: 8, default_probability: 0, sla_hours: null, is_terminal: true, terminal_outcome: 'lost', transition_rules: [] },
+    { name: 'No interesado', slug: 'no_interesado', color: '#bdc3c7', position: 9, default_probability: 0, sla_hours: null, is_terminal: true, terminal_outcome: 'lost', transition_rules: [] },
 ];
 
 export default function PipelineSettingsPage() {
@@ -57,6 +58,7 @@ export default function PipelineSettingsPage() {
     const [savingAuto, setSavingAuto] = useState(false);
     const [resyncing, setResyncing] = useState(false);
     const [resyncMsg, setResyncMsg] = useState<string | null>(null);
+    const [saveMsg, setSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     const handleLoadPresets = async () => {
         if (!activeTenantId) return;
@@ -74,6 +76,7 @@ export default function PipelineSettingsPage() {
                     default_probability: p.probability,
                     sla_hours: p.slaHours || null,
                     is_terminal: p.isTerminal,
+                    terminal_outcome: p.isTerminal ? (p.terminalOutcome || null) : null,
                     transition_rules: p.transitionRules || [],
                 }));
                 setStages(mappedStages);
@@ -96,7 +99,12 @@ export default function PipelineSettingsPage() {
             .then((res: any) => {
                 const data = res?.data || [];
                 if (data.length > 0) {
-                    setStages(data.map((s: any, i: number) => ({ ...s, position: s.position ?? i })));
+                    setStages(data.map((s: any, i: number) => ({
+                        ...s,
+                        slug: s.slug === 'listo_cierre' ? 'listo_para_cierre' : s.slug,
+                        position: s.position ?? i,
+                        terminal_outcome: s.is_terminal ? (s.terminal_outcome || null) : null,
+                    })));
                 } else {
                     setStages(DEFAULT_STAGES);
                 }
@@ -133,35 +141,27 @@ export default function PipelineSettingsPage() {
 
     const handleSave = async () => {
         if (!activeTenantId) return;
+        const ambiguous = stages.find((stage) => stage.is_terminal && !stage.terminal_outcome);
+        if (ambiguous) {
+            setSaveMsg({ type: 'error', text: t('terminalOutcomeRequired', { stage: ambiguous.name || t('stageName') }) });
+            return;
+        }
         setSaving(true);
+        setSaveMsg(null);
         try {
-            // Delete all existing stages and recreate
-            const existingRes = await api.fetch(`/crm/pipeline-stages/${activeTenantId}`);
-            const existing = existingRes?.data || [];
-            for (const s of existing) {
-                await api.fetch(`/crm/pipeline-stages/${activeTenantId}/${s.id}`, { method: 'DELETE' });
-            }
-
-            // Create all stages in order
-            for (let i = 0; i < stages.length; i++) {
-                const s = stages[i];
-                await api.fetch(`/crm/pipeline-stages/${activeTenantId}`, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        name: s.name,
-                        slug: s.slug,
-                        color: s.color,
-                        position: i,
-                        default_probability: s.default_probability,
-                        sla_hours: s.sla_hours,
-                        is_terminal: s.is_terminal,
-                        transition_rules: s.transition_rules || [],
-                    }),
-                });
-            }
+            const response = await api.fetch(`/crm/pipeline-stages/${activeTenantId}/bulk`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    stages: stages.map((stage, position) => ({ ...stage, position })),
+                }),
+            });
+            const saved = response?.data || [];
+            setStages(saved.map((stage: any, position: number) => ({ ...stage, position })));
             setDirty(false);
+            setSaveMsg({ type: 'success', text: t('saveSuccess') });
         } catch (err) {
             console.error('Failed to save pipeline stages:', err);
+            setSaveMsg({ type: 'error', text: t('saveError') });
         } finally {
             setSaving(false);
         }
@@ -177,6 +177,7 @@ export default function PipelineSettingsPage() {
             default_probability: 0,
             sla_hours: null,
             is_terminal: false,
+            terminal_outcome: null,
             transition_rules: [],
         }]);
         setDirty(true);
@@ -191,6 +192,7 @@ export default function PipelineSettingsPage() {
         setStages(stages.map((s, i) => {
             if (i !== idx) return s;
             const updated = { ...s, [field]: value };
+            if (field === 'is_terminal') updated.terminal_outcome = value ? null : null;
             if (field === 'name' && !s.id) {
                 updated.slug = value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
             }
@@ -334,7 +336,7 @@ export default function PipelineSettingsPage() {
                                 />
                                 <span className="text-xs text-muted-foreground">%</span>
                             </div>
-                            <div className="flex justify-center">
+                            <div className="flex flex-col items-center justify-center gap-1">
                                 <button
                                     onClick={() => updateStage(idx, 'is_terminal', !stage.is_terminal)}
                                     className={cn(
@@ -347,6 +349,18 @@ export default function PipelineSettingsPage() {
                                 >
                                     {stage.is_terminal ? <EyeOff size={14} /> : <Eye size={14} />}
                                 </button>
+                                {stage.is_terminal && (
+                                    <select
+                                        aria-label={t("terminalOutcome")}
+                                        value={stage.terminal_outcome || ''}
+                                        onChange={(e) => updateStage(idx, 'terminal_outcome', e.target.value || null)}
+                                        className="w-[76px] rounded border border-border bg-background px-1 py-0.5 text-[10px] outline-none focus:border-indigo-500/50"
+                                    >
+                                        <option value="">{t("outcomePlaceholder")}</option>
+                                        <option value="won">{t("outcomeWon")}</option>
+                                        <option value="lost">{t("outcomeLost")}</option>
+                                    </select>
+                                )}
                             </div>
                             <div className="flex justify-center">
                                 <button
@@ -528,7 +542,12 @@ export default function PipelineSettingsPage() {
             {/* Sticky save bar */}
             {dirty && (
                 <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-sm px-6 py-3 flex items-center justify-end gap-3">
-                    <span className="text-xs text-muted-foreground mr-auto">{t("unsavedChanges")}</span>
+                    <span className={cn(
+                        "text-xs mr-auto",
+                        saveMsg?.type === 'error' ? "text-red-600 dark:text-red-400" : "text-muted-foreground",
+                    )}>
+                        {saveMsg?.text || t("unsavedChanges")}
+                    </span>
                     <button
                         onClick={() => { setStages(DEFAULT_STAGES); setDirty(false); }}
                         className="px-4 py-2 rounded-lg border border-border bg-transparent text-sm text-muted-foreground cursor-pointer hover:bg-muted transition-colors"
@@ -544,6 +563,14 @@ export default function PipelineSettingsPage() {
                         {saving ? tc("saving") : tc("saveChanges")}
                     </button>
                 </div>
+            )}
+            {!dirty && saveMsg && (
+                <p className={cn(
+                    "mt-3 text-sm",
+                    saveMsg.type === 'success' ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400",
+                )}>
+                    {saveMsg.text}
+                </p>
             )}
         </div>
     );

@@ -29,9 +29,9 @@ describe('TenantsService administrative provisioning', () => {
                 }),
                 create: jest.fn(async ({ data }: any) => {
                     storedTenant = {
-                        id: tenantId,
                         subscriptionStatus: 'trialing',
                         ...data,
+                        id: tenantId,
                     };
                     return { ...storedTenant };
                 }),
@@ -86,7 +86,7 @@ describe('TenantsService administrative provisioning', () => {
                 hasOnboardingCompletedAt: boolean,
                 onboardingCompletedAt: string | null,
             ) => {
-                if (!sql.includes('UPDATE public.tenants') || id !== tenantId || !storedTenant) return 0;
+                if (!sql.includes('UPDATE public.tenants') || id !== storedTenant?.id || !storedTenant) return 0;
                 storedTenant = {
                     ...storedTenant,
                     settings: { ...(storedTenant.settings || {}), ...JSON.parse(patch) },
@@ -132,7 +132,7 @@ describe('TenantsService administrative provisioning', () => {
             bootstrapVertical: jest.fn(async (_id: string, industry: string, subType: string | null) => {
                 if (!storedOwner?.isActive
                     || storedOwner.role !== 'tenant_admin'
-                    || storedOwner.tenantId !== tenantId) {
+                    || storedOwner.tenantId !== storedTenant?.id) {
                     throw new Error('booking owner missing');
                 }
                 verticalConfig = { industry, subType };
@@ -220,7 +220,13 @@ describe('TenantsService administrative provisioning', () => {
         expect(ctx.businessInfo.upsertPrimary)
             .toHaveBeenCalledWith(tenantId, { companyName: 'Clínica Norte', industry: 'salud' });
         expect(ctx.verticals.bootstrapVertical)
-            .toHaveBeenCalledWith(tenantId, 'salud', 'dental', 'es');
+            .toHaveBeenCalledWith(
+                tenantId,
+                'salud',
+                'dental',
+                'es',
+                expect.objectContaining({ assertLifecycleOwned: expect.any(Function) }),
+            );
         expect(ctx.prisma.user.create.mock.invocationCallOrder[0])
             .toBeLessThan(ctx.verticals.bootstrapVertical.mock.invocationCallOrder[0]);
         expect(ctx.invitations.create).toHaveBeenCalledWith({

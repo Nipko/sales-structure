@@ -35,33 +35,6 @@ const ITEMS: ChecklistItem[] = [
     { key: "customizeTemplates", level: 3, href: "/admin/settings/email-templates", actionKey: "edit", timeMin: 3, check: (d) => d.hasTemplates },
 ];
 
-/**
- * A dónde manda de verdad el paso del catálogo, por industria.
- *
- * El texto del paso ya se relabelaba por vertical ("Carga tu menú", "Carga tu
- * portafolio de propiedades", "Carga tus cursos"), pero los tres llevaban a
- * `/admin/knowledge` y se daban por cumplidos con el mismo flag `hasKnowledge`.
- * El dueño de un restaurante leía "Carga tu menú", subía el PDF a la base de
- * conocimiento, se ganaba el tilde verde... y `place_order` seguía sin
- * funcionar, porque lee filas de `menu_items`. El checklist enseñaba lo
- * incorrecto y después lo certificaba como hecho — que es peor que no decir
- * nada, porque el dueño se queda sin motivo para seguir buscando.
- *
- * Las verticales sin catálogo propio (salud, belleza, veterinaria…) no están en
- * este mapa: para ellas el paso sigue siendo la base de conocimiento, y ahí sí
- * la etiqueta y el destino coinciden.
- */
-const CATALOG_STEP: Record<string, string> = {
-    restaurantes: "/admin/menu",
-    inmobiliaria: "/admin/listings",
-    automotriz: "/admin/vehicles",
-    education: "/admin/courses",
-    gimnasios: "/admin/memberships",
-    turismo: "/admin/tours",
-    seguros: "/admin/insurance",
-    retail: "/admin/inventory",
-};
-
 export default function OnboardingChecklist() {
     const t = useTranslations("checklist");
     const tChecklist = useTranslations("verticalChecklist");
@@ -104,6 +77,9 @@ export default function OnboardingChecklist() {
                 // null cuando la vertical no tiene catálogo propio; el paso
                 // sigue siendo la KB en ese caso.
                 hasVerticalCatalog: data.hasVerticalCatalog ?? null,
+                // Ruta resuelta server-side por (vertical, subtipo). Así hotel
+                // apunta a propiedades, tours a paquetes y farmacia a inventario.
+                verticalCatalogRoute: data.verticalCatalogRoute || null,
                 hasTeam: data.hasTeam || false,
                 hasAutomation: data.hasAutomation || false,
                 hasTemplates: data.hasTemplates || false,
@@ -145,12 +121,17 @@ export default function OnboardingChecklist() {
 
     if (!loaded || !user?.tenantId) return null;
 
-    // El paso del catálogo apunta a la tabla que las herramientas leen de verdad,
-    // no a la base de conocimiento. Ver CATALOG_STEP.
-    const catalogHref = CATALOG_STEP[verticalConfig?.industry || ""];
+    // El backend devuelve la ruta del mismo catálogo que acaba de contar. Esto
+    // evita certificar `tour_packages` y enviar luego a un hotel a esa pantalla.
+    const catalogHref = checkData.verticalCatalogRoute as string | null;
     const items: ChecklistItem[] = catalogHref
         ? ITEMS.map(item => item.key === "addKnowledgeBase"
-            ? { ...item, href: catalogHref, check: (d: any) => d.hasVerticalCatalog === true }
+            ? {
+                ...item,
+                key: "configureVerticalCatalog",
+                href: catalogHref,
+                check: (d: any) => d.hasVerticalCatalog === true,
+            }
             : item)
         : ITEMS;
 

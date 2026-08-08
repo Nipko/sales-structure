@@ -3,6 +3,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { getVerticalCatalog } from '../../common/utils/vertical-catalog.util';
 
+type StatsStatus = 'ok' | 'no_data' | 'query_error' | 'unsupported';
+
+interface StatsExecution {
+    stats: Record<string, any> | null;
+    statsStatus: StatsStatus;
+    statsError: { code?: string; message: string } | null;
+}
+
 /**
  * Cross-tenant analytics aggregator for super_admin. Iterates per-tenant
  * schemas to build platform-wide metrics for every vertical, plus
@@ -97,7 +105,8 @@ export class VerticalAnalyticsService {
             generatedAt: new Date().toISOString(),
             totals,
             byIndustry: Array.from(byIndustry.values()).sort((a, b) => b.count - a.count),
-            activationGaps: gapsResult,
+            activationGaps: gapsResult.gaps,
+            activationGapErrors: gapsResult.errors,
         };
 
         await this.redis.setJson(cacheKey, result, this.OVERVIEW_TTL);
@@ -109,13 +118,23 @@ export class VerticalAnalyticsService {
      * have zero rows in that table (a strong signal that they signed up
      * but never finished setup). Used by ops to nudge stuck tenants.
      */
-    private async detectActivationGaps(tenants: any[]): Promise<Array<{
-        industry: string;
-        tenantId: string;
-        tenantName: string;
-        missing: string;
-    }>> {
+    private async detectActivationGaps(tenants: any[]): Promise<{
+        gaps: Array<{
+            industry: string;
+            tenantId: string;
+            tenantName: string;
+            missing: string;
+        }>;
+        errors: Array<{
+            industry: string;
+            tenantId: string;
+            tenantName: string;
+            code?: string;
+            message: string;
+        }>;
+    }> {
         const gaps: any[] = [];
+        const errors: any[] = [];
         // Una sola definicion del catalogo por vertical, compartida con el
         // checklist del tenant (persona.controller). Estaban duplicadas y ya
         // habian divergido: aca turismo contaba tour_packages y reportaba
@@ -123,7 +142,9 @@ export class VerticalAnalyticsService {
         // faltaban propiedades mirando tours. Ademas faltaban automotriz,
         // retail y otro — verticales cuyo negocio ES el catalogo.
         for (const t of tenants) {
-            const check = getVerticalCatalog(t.industry);
+            const settings = (t.settings || {}) as any;
+            const subType = settings.subType || settings.verticalConfig?.subType || null;
+            const check = getVerticalCatalog(t.industry, subType);
             if (!check || !t.schemaName) continue;
             try {
                 const filter = check.activeFilter ? `WHERE ${check.activeFilter}` : '';
@@ -140,11 +161,18 @@ export class VerticalAnalyticsService {
                         missing: check.missingKey,
                     });
                 }
-            } catch {
-                // Schema probably hasn't been migrated for this vertical yet
+            } catch (error: any) {
+                // Missing/outdated schema is not the same as an empty catalog.
+                // Expose it to super-admin instead of silently certifying setup.
+                errors.push({
+                    industry: t.industry,
+                    tenantId: t.id,
+                    tenantName: t.name,
+                    ...queryErrorDetails(error),
+                });
             }
         }
-        return gaps.slice(0, 50);
+        return { gaps: gaps.slice(0, 50), errors: errors.slice(0, 50) };
     }
 
     // ── Per-vertical drilldown ────────────────────────────────────
@@ -164,29 +192,44 @@ export class VerticalAnalyticsService {
         const aggregator: AggregatorFn | undefined = INDUSTRY_AGGREGATORS[industry];
         const tenantsData = await Promise.all(
             (tenants as any[]).map(async (t) => {
-                const stats = aggregator
-                    ? await aggregator(this.prisma, t.schemaName).catch(() => null)
-                    : null;
+                const execution = aggregator
+                    ? await executeAggregator(aggregator, this.prisma, t.schemaName)
+                    : unsupportedStats();
                 return {
                     tenantId: t.id,
                     tenantName: t.name,
                     plan: t.plan,
                     createdAt: t.createdAt,
                     firstMessageAt: t.firstMessageAt,
-                    stats,
+                    ...execution,
                 };
             }),
         );
 
         // Aggregate platform totals for this industry
         const hasAggregator = !!INDUSTRY_AGGREGATORS[industry];
-        const totals = hasAggregator ? aggregateIndustryTotals(industry, tenantsData) : null;
+        const successfulTenants = tenantsData.filter((t) => t.statsStatus === 'ok' || t.statsStatus === 'no_data');
+        const queryErrorCount = tenantsData.filter((t) => t.statsStatus === 'query_error').length;
+        const totals = hasAggregator && successfulTenants.length
+            ? aggregateIndustryTotals(industry, successfulTenants)
+            : null;
+        const totalsStatus: StatsStatus | 'partial_error' = !hasAggregator
+            ? 'unsupported'
+            : successfulTenants.length === 0 && queryErrorCount > 0
+                ? 'query_error'
+                : queryErrorCount > 0
+                    ? 'partial_error'
+                    : successfulTenants.some((t) => t.statsStatus === 'ok')
+                        ? 'ok'
+                        : 'no_data';
 
         const result = {
             industry,
             generatedAt: new Date().toISOString(),
             tenantCount: tenants.length,
             totals,
+            totalsStatus,
+            queryErrorCount,
             tenants: tenantsData.sort((a: any, b: any) => {
                 // Sort by primary metric (e.g. orders for restaurants, members for gyms)
                 const aVal = a.stats ? primaryMetricValue(industry, a.stats) : 0;
@@ -216,15 +259,15 @@ export class VerticalAnalyticsService {
 
         const industry = tenant.industry;
         const aggregator: AggregatorFn | undefined = INDUSTRY_AGGREGATORS[industry];
-        const stats = aggregator
-            ? await aggregator(this.prisma, tenant.schemaName).catch(() => null)
-            : null;
+        const execution = aggregator
+            ? await executeAggregator(aggregator, this.prisma, tenant.schemaName)
+            : unsupportedStats();
 
         const result = {
             tenantId,
             industry,
             subType: (tenant.settings as any)?.subType || null,
-            stats,
+            ...execution,
             generatedAt: new Date().toISOString(),
         };
         await this.redis.setJson(cacheKey, result, this.TENANT_TTL);
@@ -238,26 +281,420 @@ export class VerticalAnalyticsService {
 
 type AggregatorFn = (prisma: PrismaService, schemaName: string) => Promise<Record<string, any>>;
 
-const INDUSTRY_AGGREGATORS: Record<string, AggregatorFn> = {
-    restaurantes: async (prisma, schema) => {
-        const safe = async <T>(q: () => Promise<T>, fallback: T): Promise<T> => {
-            try { return await q(); } catch { return fallback; }
+function queryErrorDetails(error: any): { code?: string; message: string } {
+    const code = typeof error?.code === 'string' ? error.code : undefined;
+    const message = typeof error?.message === 'string' && error.message.trim()
+        ? error.message
+        : 'Unknown vertical analytics query error';
+    return code ? { code, message } : { message };
+}
+
+function unsupportedStats(): StatsExecution {
+    return { stats: null, statsStatus: 'unsupported', statsError: null };
+}
+
+function hasMetricData(stats: Record<string, any>): boolean {
+    return Object.values(stats).some((value) => typeof value === 'number' && Number.isFinite(value) && value > 0);
+}
+
+async function executeAggregator(
+    aggregator: AggregatorFn,
+    prisma: PrismaService,
+    schemaName: string,
+): Promise<StatsExecution> {
+    try {
+        const stats = await aggregator(prisma, schemaName);
+        return {
+            stats,
+            statsStatus: hasMetricData(stats) ? 'ok' : 'no_data',
+            statsError: null,
         };
+    } catch (error: any) {
+        return {
+            stats: null,
+            statsStatus: 'query_error',
+            statsError: queryErrorDetails(error),
+        };
+    }
+}
+
+// The second argument is retained as a type witness for the heterogeneous
+// Promise.all tuples below. It is deliberately never returned: a failed query
+// must surface as `query_error`, never masquerade as a successful zero.
+async function requiredQuery<T>(query: () => Promise<T>, _typeWitness: T): Promise<T> {
+    return query();
+}
+
+const INDUSTRY_AGGREGATORS: Record<string, AggregatorFn> = {
+    moda_belleza: async (prisma, schema) => {
+        const [services, appointments] = await Promise.all([
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS cnt FROM services WHERE is_active = true`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*) FILTER (
+                        WHERE start_at >= NOW() - INTERVAL '30 days'
+                          AND status <> 'cancelled'
+                    )::int AS appointments_30d,
+                    COUNT(*) FILTER (
+                        WHERE start_at >= NOW() - INTERVAL '30 days'
+                          AND status = 'completed'
+                    )::int AS completed_30d,
+                    COUNT(*) FILTER (
+                        WHERE start_at >= NOW() - INTERVAL '30 days'
+                          AND status = 'no_show'
+                    )::int AS no_shows_30d,
+                    COUNT(*) FILTER (
+                        WHERE start_at >= NOW()
+                          AND start_at < NOW() + INTERVAL '7 days'
+                          AND status <> 'cancelled'
+                    )::int AS upcoming_7d,
+                    COUNT(DISTINCT contact_id) FILTER (
+                        WHERE start_at >= NOW() - INTERVAL '30 days'
+                          AND status <> 'cancelled'
+                          AND contact_id IS NOT NULL
+                    )::int AS customers_30d,
+                    (
+                        SELECT COUNT(*)::int
+                        FROM (
+                            SELECT contact_id
+                            FROM appointments
+                            WHERE start_at >= NOW() - INTERVAL '30 days'
+                              AND status <> 'cancelled'
+                              AND contact_id IS NOT NULL
+                            GROUP BY contact_id
+                            HAVING COUNT(*) >= 2
+                        ) returning_customers
+                    ) AS repeat_customers_30d
+                 FROM appointments`),
+        ]);
+        const row = appointments[0] || {};
+        const customers = Number(row.customers_30d || 0);
+        const repeatCustomers = Number(row.repeat_customers_30d || 0);
+        return {
+            activeServices: Number(services[0]?.cnt || 0),
+            appointments30d: Number(row.appointments_30d || 0),
+            completedAppointments30d: Number(row.completed_30d || 0),
+            noShows30d: Number(row.no_shows_30d || 0),
+            appointmentsNext7d: Number(row.upcoming_7d || 0),
+            uniqueCustomers30d: customers,
+            repeatCustomers30d: repeatCustomers,
+            repeatCustomerRatePct: customers > 0
+                ? Math.round((repeatCustomers / customers) * 100)
+                : 0,
+        };
+    },
+
+    automotriz: async (prisma, schema) => {
+        const [inventory, testDrives] = await Promise.all([
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE status = 'available')::int AS available,
+                    COUNT(*) FILTER (WHERE status = 'reserved')::int AS reserved,
+                    COUNT(*) FILTER (WHERE status = 'maintenance')::int AS maintenance,
+                    COUNT(*) FILTER (
+                        WHERE status = 'sold'
+                          AND sold_at >= DATE_TRUNC('month', CURRENT_DATE)
+                    )::int AS sold_this_month,
+                    COALESCE(SUM(sold_price_cents) FILTER (
+                        WHERE status = 'sold'
+                          AND sold_at >= DATE_TRUNC('month', CURRENT_DATE)
+                    ), 0)::bigint AS sold_revenue_cents_month,
+                    COALESCE(AVG(price_cents) FILTER (WHERE status = 'available'), 0)::numeric AS avg_available_price_cents
+                 FROM vehicles`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*) FILTER (
+                        WHERE start_at >= DATE_TRUNC('month', CURRENT_DATE)
+                          AND start_at < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+                          AND status <> 'cancelled'
+                    )::int AS this_month,
+                    COUNT(*) FILTER (
+                        WHERE start_at >= NOW()
+                          AND start_at < NOW() + INTERVAL '7 days'
+                          AND status <> 'cancelled'
+                    )::int AS next_7d
+                 FROM appointments
+                 WHERE metadata->>'vehicleId' IS NOT NULL`),
+        ]);
+        const stock = inventory[0] || {};
+        const drives = testDrives[0] || {};
+        return {
+            vehiclesTotal: Number(stock.total || 0),
+            vehiclesAvailable: Number(stock.available || 0),
+            vehiclesReserved: Number(stock.reserved || 0),
+            vehiclesMaintenance: Number(stock.maintenance || 0),
+            vehiclesSoldThisMonth: Number(stock.sold_this_month || 0),
+            soldRevenueCentsThisMonth: Number(stock.sold_revenue_cents_month || 0),
+            avgAvailablePriceCents: Number(stock.avg_available_price_cents || 0),
+            testDrivesThisMonth: Number(drives.this_month || 0),
+            testDrivesNext7d: Number(drives.next_7d || 0),
+        };
+    },
+
+    finanzas: async (prisma, schema) => {
+        const [applications, appointments] = await Promise.all([
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*) FILTER (WHERE won_at IS NULL AND lost_at IS NULL)::int AS open_applications,
+                    COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::int AS applications_30d,
+                    COUNT(*) FILTER (WHERE won_at >= NOW() - INTERVAL '30 days')::int AS approved_30d,
+                    COUNT(*) FILTER (WHERE lost_at >= NOW() - INTERVAL '30 days')::int AS rejected_30d,
+                    COALESCE(SUM(estimated_value) FILTER (
+                        WHERE won_at IS NULL AND lost_at IS NULL
+                    ), 0)::numeric AS open_estimated_value
+                 FROM opportunities`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS cnt
+                 FROM appointments
+                 WHERE start_at >= NOW()
+                   AND start_at < NOW() + INTERVAL '7 days'
+                   AND status <> 'cancelled'`),
+        ]);
+        const row = applications[0] || {};
+        const approved = Number(row.approved_30d || 0);
+        const rejected = Number(row.rejected_30d || 0);
+        const decided = approved + rejected;
+        return {
+            applicationsOpen: Number(row.open_applications || 0),
+            applications30d: Number(row.applications_30d || 0),
+            applicationsApproved30d: approved,
+            applicationsRejected30d: rejected,
+            approvalRatePct: decided > 0 ? Math.round((approved / decided) * 100) : 0,
+            openEstimatedValue: Number(row.open_estimated_value || 0),
+            consultationsNext7d: Number(appointments[0]?.cnt || 0),
+        };
+    },
+
+    servicios_profesionales: async (prisma, schema) => {
+        const [deals, appointments] = await Promise.all([
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*) FILTER (WHERE status = 'open')::int AS open_deals,
+                    COUNT(*) FILTER (
+                        WHERE status = 'won' AND updated_at >= NOW() - INTERVAL '30 days'
+                    )::int AS won_30d,
+                    COUNT(*) FILTER (
+                        WHERE status = 'lost' AND updated_at >= NOW() - INTERVAL '30 days'
+                    )::int AS lost_30d,
+                    COALESCE(SUM(value) FILTER (WHERE status = 'open'), 0)::numeric AS pipeline_value,
+                    COALESCE(SUM(value * probability / 100.0) FILTER (WHERE status = 'open'), 0)::numeric AS weighted_pipeline_value
+                 FROM deals`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*) FILTER (
+                        WHERE start_at >= NOW()
+                          AND start_at < NOW() + INTERVAL '7 days'
+                          AND status <> 'cancelled'
+                    )::int AS next_7d,
+                    COUNT(*) FILTER (
+                        WHERE completed_at >= NOW() - INTERVAL '30 days'
+                          AND status = 'completed'
+                    )::int AS completed_30d
+                 FROM appointments`),
+        ]);
+        const pipeline = deals[0] || {};
+        const won = Number(pipeline.won_30d || 0);
+        const lost = Number(pipeline.lost_30d || 0);
+        return {
+            openDeals: Number(pipeline.open_deals || 0),
+            wonDeals30d: won,
+            lostDeals30d: lost,
+            winRate30d: won + lost > 0 ? Math.round((won / (won + lost)) * 100) : 0,
+            pipelineValue: Number(pipeline.pipeline_value || 0),
+            weightedPipelineValue: Number(pipeline.weighted_pipeline_value || 0),
+            consultationsNext7d: Number(appointments[0]?.next_7d || 0),
+            consultationsCompleted30d: Number(appointments[0]?.completed_30d || 0),
+        };
+    },
+
+    retail: async (prisma, schema) => {
+        const [products, orders] = await Promise.all([
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE is_available = true)::int AS available,
+                    COUNT(*) FILTER (WHERE is_available = true AND stock = 0)::int AS out_of_stock,
+                    COALESCE(SUM(stock) FILTER (WHERE is_available = true AND stock IS NOT NULL), 0)::bigint AS stock_units
+                 FROM products`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*) FILTER (
+                        WHERE status NOT IN ('cancelled', 'refunded')
+                    )::int AS orders_30d,
+                    COUNT(*) FILTER (
+                        WHERE status NOT IN ('cancelled', 'refunded')
+                          AND payment_status = 'paid'
+                    )::int AS paid_orders_30d,
+                    COUNT(*) FILTER (
+                        WHERE status IN ('pending', 'confirmed', 'processing')
+                    )::int AS pending_orders_30d,
+                    COALESCE(SUM(total_amount) FILTER (
+                        WHERE status NOT IN ('cancelled', 'refunded')
+                    ), 0)::numeric AS gmv_30d
+                 FROM orders
+                 WHERE created_at >= NOW() - INTERVAL '30 days'`),
+        ]);
+        const catalog = products[0] || {};
+        const sales = orders[0] || {};
+        const orderCount = Number(sales.orders_30d || 0);
+        const gmv = Number(sales.gmv_30d || 0);
+        return {
+            productsTotal: Number(catalog.total || 0),
+            productsAvailable: Number(catalog.available || 0),
+            productsOutOfStock: Number(catalog.out_of_stock || 0),
+            stockUnits: Number(catalog.stock_units || 0),
+            orders30d: orderCount,
+            paidOrders30d: Number(sales.paid_orders_30d || 0),
+            pendingOrders30d: Number(sales.pending_orders_30d || 0),
+            gmv30d: gmv,
+            averageOrderValue30d: orderCount > 0 ? Math.round((gmv / orderCount) * 100) / 100 : 0,
+        };
+    },
+
+    technology: async (prisma, schema) => {
+        const [companies, deals, cycle, demos] = await Promise.all([
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS cnt FROM companies`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*) FILTER (WHERE status = 'open')::int AS open_deals,
+                    COUNT(*) FILTER (
+                        WHERE status = 'won' AND updated_at >= NOW() - INTERVAL '30 days'
+                    )::int AS won_30d,
+                    COUNT(*) FILTER (
+                        WHERE status = 'lost' AND updated_at >= NOW() - INTERVAL '30 days'
+                    )::int AS lost_30d,
+                    COALESCE(SUM(value) FILTER (WHERE status = 'open'), 0)::numeric AS pipeline_value,
+                    COALESCE(SUM(value * probability / 100.0) FILTER (WHERE status = 'open'), 0)::numeric AS weighted_pipeline_value
+                 FROM deals`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (won_at - created_at)) / 86400.0), 0)::numeric AS avg_days
+                 FROM opportunities
+                 WHERE won_at >= NOW() - INTERVAL '30 days'`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS cnt
+                 FROM appointments
+                 WHERE start_at >= NOW()
+                   AND start_at < NOW() + INTERVAL '7 days'
+                   AND status <> 'cancelled'`),
+        ]);
+        const pipeline = deals[0] || {};
+        const won = Number(pipeline.won_30d || 0);
+        const lost = Number(pipeline.lost_30d || 0);
+        return {
+            companies: Number(companies[0]?.cnt || 0),
+            openDeals: Number(pipeline.open_deals || 0),
+            wonDeals30d: won,
+            lostDeals30d: lost,
+            winRate30d: won + lost > 0 ? Math.round((won / (won + lost)) * 100) : 0,
+            pipelineValue: Number(pipeline.pipeline_value || 0),
+            weightedPipelineValue: Number(pipeline.weighted_pipeline_value || 0),
+            avgSalesCycleDays30d: Math.round(Number(cycle[0]?.avg_days || 0) * 10) / 10,
+            demosNext7d: Number(demos[0]?.cnt || 0),
+        };
+    },
+
+    pet_services: async (prisma, schema) => {
+        const [pets, services, appointments] = await Promise.all([
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS cnt FROM pets WHERE is_active = true`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS cnt FROM services WHERE is_active = true`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*) FILTER (
+                        WHERE start_at >= NOW() - INTERVAL '30 days'
+                          AND status <> 'cancelled'
+                    )::int AS bookings_30d,
+                    COUNT(*) FILTER (
+                        WHERE start_at >= NOW() - INTERVAL '30 days'
+                          AND status = 'completed'
+                    )::int AS completed_30d,
+                    COUNT(*) FILTER (
+                        WHERE start_at >= NOW() - INTERVAL '30 days'
+                          AND status = 'no_show'
+                    )::int AS no_shows_30d,
+                    COUNT(*) FILTER (
+                        WHERE start_at >= NOW()
+                          AND start_at < NOW() + INTERVAL '7 days'
+                          AND status <> 'cancelled'
+                    )::int AS next_7d,
+                    COUNT(DISTINCT metadata->>'petId') FILTER (
+                        WHERE start_at >= NOW() - INTERVAL '30 days'
+                          AND status <> 'cancelled'
+                          AND metadata->>'petId' IS NOT NULL
+                    )::int AS pets_served_30d
+                 FROM appointments`),
+        ]);
+        const bookings = appointments[0] || {};
+        return {
+            pets: Number(pets[0]?.cnt || 0),
+            activeServices: Number(services[0]?.cnt || 0),
+            bookings30d: Number(bookings.bookings_30d || 0),
+            completedBookings30d: Number(bookings.completed_30d || 0),
+            noShows30d: Number(bookings.no_shows_30d || 0),
+            bookingsNext7d: Number(bookings.next_7d || 0),
+            petsServed30d: Number(bookings.pets_served_30d || 0),
+        };
+    },
+
+    otro: async (prisma, schema) => {
+        const [contacts, conversations, deals, products, orders] = await Promise.all([
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::int AS new_30d
+                 FROM contacts`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*)::int AS cnt
+                 FROM conversations WHERE created_at >= NOW() - INTERVAL '30 days'`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*) FILTER (WHERE status = 'open')::int AS open_deals,
+                    COALESCE(SUM(value) FILTER (WHERE status = 'open'), 0)::numeric AS pipeline_value
+                 FROM deals`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT COUNT(*) FILTER (WHERE is_available = true)::int AS cnt FROM products`),
+            prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT
+                    COUNT(*) FILTER (WHERE status NOT IN ('cancelled', 'refunded'))::int AS orders_30d,
+                    COALESCE(SUM(total_amount) FILTER (
+                        WHERE status NOT IN ('cancelled', 'refunded')
+                    ), 0)::numeric AS gmv_30d
+                 FROM orders
+                 WHERE created_at >= NOW() - INTERVAL '30 days'`),
+        ]);
+        return {
+            contactsTotal: Number(contacts[0]?.total || 0),
+            newContacts30d: Number(contacts[0]?.new_30d || 0),
+            conversations30d: Number(conversations[0]?.cnt || 0),
+            openDeals: Number(deals[0]?.open_deals || 0),
+            pipelineValue: Number(deals[0]?.pipeline_value || 0),
+            catalogProducts: Number(products[0]?.cnt || 0),
+            orders30d: Number(orders[0]?.orders_30d || 0),
+            gmv30d: Number(orders[0]?.gmv_30d || 0),
+        };
+    },
+
+    restaurantes: async (prisma, schema) => {
         const [items, ordersAll, ordersWeek, promotions, kitchenStates] = await Promise.all([
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt FROM menu_items WHERE is_active = true`),
                 [{ cnt: 0 }] as any),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(total), 0)::numeric AS gmv FROM food_orders`),
                 [{ cnt: 0, gmv: 0 }] as any),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(total), 0)::numeric AS gmv FROM food_orders WHERE created_at >= NOW() - INTERVAL '7 days'`),
                 [{ cnt: 0, gmv: 0 }] as any),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt FROM menu_promotions WHERE is_active = true AND (valid_to IS NULL OR valid_to >= NOW())`),
                 [{ cnt: 0 }] as any),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT status, COUNT(*)::int AS cnt FROM food_orders WHERE status NOT IN ('completed','cancelled') GROUP BY status`),
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
+                `SELECT status, COUNT(*)::int AS cnt FROM food_orders
+                 WHERE status NOT IN ('delivered', 'cancelled') GROUP BY status`),
                 [] as any[]),
         ]);
         return {
@@ -272,22 +709,19 @@ const INDUSTRY_AGGREGATORS: Record<string, AggregatorFn> = {
     },
 
     gimnasios: async (prisma, schema) => {
-        const safe = async <T>(q: () => Promise<T>, fallback: T): Promise<T> => {
-            try { return await q(); } catch { return fallback; }
-        };
         const [plans, members, classesUpcoming, checkIns7d] = await Promise.all([
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt FROM membership_plans WHERE is_active = true`),
                 [{ cnt: 0 }] as any),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT status, COUNT(*)::int AS cnt FROM members GROUP BY status`),
                 [] as any[]),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(max_capacity - available_spots), 0)::int AS booked, COALESCE(SUM(max_capacity), 0)::int AS capacity
                  FROM fitness_classes
                  WHERE is_cancelled = false AND scheduled_at >= NOW() AND scheduled_at <= NOW() + INTERVAL '7 days'`),
                 [{ cnt: 0, booked: 0, capacity: 0 }] as any),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt FROM member_check_ins WHERE checked_in_at >= NOW() - INTERVAL '7 days'`),
                 [{ cnt: 0 }] as any),
         ]);
@@ -310,17 +744,14 @@ const INDUSTRY_AGGREGATORS: Record<string, AggregatorFn> = {
     },
 
     education: async (prisma, schema) => {
-        const safe = async <T>(q: () => Promise<T>, fallback: T): Promise<T> => {
-            try { return await q(); } catch { return fallback; }
-        };
         const [courses, cohorts, enrollments] = await Promise.all([
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt FROM courses WHERE is_active = true`),
                 [{ cnt: 0 }] as any),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT status, COUNT(*)::int AS cnt FROM course_cohorts GROUP BY status`),
                 [] as any[]),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT status, payment_status, COUNT(*)::int AS cnt FROM enrollments GROUP BY status, payment_status`),
                 [] as any[]),
         ]);
@@ -340,21 +771,18 @@ const INDUSTRY_AGGREGATORS: Record<string, AggregatorFn> = {
     },
 
     seguros: async (prisma, schema) => {
-        const safe = async <T>(q: () => Promise<T>, fallback: T): Promise<T> => {
-            try { return await q(); } catch { return fallback; }
-        };
         const [plans, quotes, policies, claims] = await Promise.all([
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt FROM insurance_plans WHERE is_active = true`),
                 [{ cnt: 0 }] as any),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT status, COUNT(*)::int AS cnt FROM insurance_quotes GROUP BY status`),
                 [] as any[]),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT status, COUNT(*)::int AS cnt, COALESCE(SUM(monthly_premium), 0)::numeric AS mrr
                  FROM insurance_policies GROUP BY status`),
                 [] as any[]),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT status, COUNT(*)::int AS cnt FROM insurance_claims GROUP BY status`),
                 [] as any[]),
         ]);
@@ -379,18 +807,15 @@ const INDUSTRY_AGGREGATORS: Record<string, AggregatorFn> = {
     },
 
     veterinaria: async (prisma, schema) => {
-        const safe = async <T>(q: () => Promise<T>, fallback: T): Promise<T> => {
-            try { return await q(); } catch { return fallback; }
-        };
         const [pets, vacUpcoming, vacOverdue] = await Promise.all([
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt FROM pets WHERE is_active = true`),
                 [{ cnt: 0 }] as any),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt FROM pet_vaccinations
                  WHERE next_due_at IS NOT NULL AND next_due_at >= CURRENT_DATE AND next_due_at <= CURRENT_DATE + INTERVAL '30 days'`),
                 [{ cnt: 0 }] as any),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt FROM pet_vaccinations
                  WHERE next_due_at IS NOT NULL AND next_due_at < CURRENT_DATE`),
                 [{ cnt: 0 }] as any),
@@ -403,13 +828,14 @@ const INDUSTRY_AGGREGATORS: Record<string, AggregatorFn> = {
     },
 
     inmobiliaria: async (prisma, schema) => {
-        const safe = async <T>(q: () => Promise<T>, fallback: T): Promise<T> => {
-            try { return await q(); } catch { return fallback; }
-        };
         const [listings] = await Promise.all([
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT transaction_type, status, COUNT(*)::int AS cnt, COALESCE(AVG(price), 0)::numeric AS avg_price
-                 FROM real_estate_listings WHERE is_active = true GROUP BY transaction_type, status`),
+                 FROM real_estate_listings
+                 WHERE is_active = true
+                   AND (status NOT IN ('sold', 'rented')
+                        OR updated_at >= DATE_TRUNC('month', CURRENT_DATE))
+                 GROUP BY transaction_type, status`),
                 [] as any[]),
         ]);
         const buckets: any = { sale: { available: 0, sold: 0, avgPrice: 0 }, rent: { available: 0, rented: 0, avgPrice: 0 } };
@@ -430,18 +856,18 @@ const INDUSTRY_AGGREGATORS: Record<string, AggregatorFn> = {
     },
 
     turismo: async (prisma, schema) => {
-        const safe = async <T>(q: () => Promise<T>, fallback: T): Promise<T> => {
-            try { return await q(); } catch { return fallback; }
-        };
         const [packages, bookings, properties] = await Promise.all([
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt FROM tour_packages WHERE is_active = true`),
                 [{ cnt: 0 }] as any),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT status, COUNT(*)::int AS cnt, COALESCE(SUM(total_price), 0)::numeric AS gmv
-                 FROM tour_bookings WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY status`),
+                 FROM tour_bookings
+                 WHERE created_at >= NOW() - INTERVAL '30 days'
+                   AND status <> 'cancelled'
+                 GROUP BY status`),
                 [] as any[]),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt FROM properties WHERE is_active = true`),
                 [{ cnt: 0 }] as any),
         ]);
@@ -460,11 +886,8 @@ const INDUSTRY_AGGREGATORS: Record<string, AggregatorFn> = {
     },
 
     servicios_hogar: async (prisma, schema) => {
-        const safe = async <T>(q: () => Promise<T>, fallback: T): Promise<T> => {
-            try { return await q(); } catch { return fallback; }
-        };
         const [requests] = await Promise.all([
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT urgency, status, COUNT(*)::int AS cnt FROM service_requests
                  WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY urgency, status`),
                 [] as any[]),
@@ -484,14 +907,11 @@ const INDUSTRY_AGGREGATORS: Record<string, AggregatorFn> = {
     },
 
     salud: async (prisma, schema) => {
-        const safe = async <T>(q: () => Promise<T>, fallback: T): Promise<T> => {
-            try { return await q(); } catch { return fallback; }
-        };
         const [treatments, sessions7d] = await Promise.all([
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT status, COUNT(*)::int AS cnt FROM treatment_plans GROUP BY status`),
                 [] as any[]),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT status, COUNT(*)::int AS cnt FROM treatment_sessions
                  WHERE scheduled_at >= NOW() - INTERVAL '7 days' GROUP BY status`),
                 [] as any[]),
@@ -507,18 +927,15 @@ const INDUSTRY_AGGREGATORS: Record<string, AggregatorFn> = {
     },
 
     fotografia: async (prisma, schema) => {
-        const safe = async <T>(q: () => Promise<T>, fallback: T): Promise<T> => {
-            try { return await q(); } catch { return fallback; }
-        };
         const [byStatus, last30d, deliveryDue] = await Promise.all([
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT status, COUNT(*)::int AS cnt FROM photo_sessions GROUP BY status`),
                 [] as any[]),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(price), 0)::numeric AS revenue
                  FROM photo_sessions WHERE created_at >= NOW() - INTERVAL '30 days'`),
                 [{ cnt: 0, revenue: 0 }] as any),
-            safe(() => prisma.executeInTenantSchema<any[]>(schema,
+            requiredQuery(() => prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT COUNT(*)::int AS cnt FROM photo_sessions
                  WHERE status IN ('scheduled', 'in_progress')
                    AND delivery_due_at IS NOT NULL
@@ -549,8 +966,100 @@ function aggregateIndustryTotals(industry: string, tenantsData: any[]): Record<s
         const vals = stats.map(s => Number(s[key]) || 0).filter(v => v > 0);
         return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
     };
+    const ratioPct = (numeratorKey: string, denominatorKeys: string | string[]) => {
+        const keys = Array.isArray(denominatorKeys) ? denominatorKeys : [denominatorKeys];
+        const denominator = keys.reduce((total, key) => total + sum(key), 0);
+        return denominator > 0 ? Math.round((sum(numeratorKey) / denominator) * 100) : 0;
+    };
+    const ratioAmount = (amountKey: string, countKey: string) => {
+        const count = sum(countKey);
+        return count > 0 ? Math.round((sum(amountKey) / count) * 100) / 100 : 0;
+    };
 
     switch (industry) {
+        case 'moda_belleza': return {
+            activeServices: sum('activeServices'),
+            appointments30d: sum('appointments30d'),
+            completedAppointments30d: sum('completedAppointments30d'),
+            noShows30d: sum('noShows30d'),
+            appointmentsNext7d: sum('appointmentsNext7d'),
+            uniqueCustomers30d: sum('uniqueCustomers30d'),
+            repeatCustomers30d: sum('repeatCustomers30d'),
+            repeatCustomerRatePct: ratioPct('repeatCustomers30d', 'uniqueCustomers30d'),
+        };
+        case 'automotriz': return {
+            vehiclesTotal: sum('vehiclesTotal'),
+            vehiclesAvailable: sum('vehiclesAvailable'),
+            vehiclesReserved: sum('vehiclesReserved'),
+            vehiclesMaintenance: sum('vehiclesMaintenance'),
+            vehiclesSoldThisMonth: sum('vehiclesSoldThisMonth'),
+            soldRevenueCentsThisMonth: sum('soldRevenueCentsThisMonth'),
+            testDrivesThisMonth: sum('testDrivesThisMonth'),
+            testDrivesNext7d: sum('testDrivesNext7d'),
+        };
+        case 'finanzas': return {
+            applicationsOpen: sum('applicationsOpen'),
+            applications30d: sum('applications30d'),
+            applicationsApproved30d: sum('applicationsApproved30d'),
+            applicationsRejected30d: sum('applicationsRejected30d'),
+            approvalRatePct: ratioPct('applicationsApproved30d', [
+                'applicationsApproved30d',
+                'applicationsRejected30d',
+            ]),
+            openEstimatedValue: sum('openEstimatedValue'),
+            consultationsNext7d: sum('consultationsNext7d'),
+        };
+        case 'servicios_profesionales': return {
+            openDeals: sum('openDeals'),
+            wonDeals30d: sum('wonDeals30d'),
+            lostDeals30d: sum('lostDeals30d'),
+            winRate30d: ratioPct('wonDeals30d', ['wonDeals30d', 'lostDeals30d']),
+            pipelineValue: sum('pipelineValue'),
+            weightedPipelineValue: sum('weightedPipelineValue'),
+            consultationsNext7d: sum('consultationsNext7d'),
+            consultationsCompleted30d: sum('consultationsCompleted30d'),
+        };
+        case 'retail': return {
+            productsTotal: sum('productsTotal'),
+            productsAvailable: sum('productsAvailable'),
+            productsOutOfStock: sum('productsOutOfStock'),
+            stockUnits: sum('stockUnits'),
+            orders30d: sum('orders30d'),
+            paidOrders30d: sum('paidOrders30d'),
+            pendingOrders30d: sum('pendingOrders30d'),
+            gmv30d: sum('gmv30d'),
+            averageOrderValue30d: ratioAmount('gmv30d', 'orders30d'),
+        };
+        case 'technology': return {
+            companies: sum('companies'),
+            openDeals: sum('openDeals'),
+            wonDeals30d: sum('wonDeals30d'),
+            lostDeals30d: sum('lostDeals30d'),
+            winRate30d: ratioPct('wonDeals30d', ['wonDeals30d', 'lostDeals30d']),
+            pipelineValue: sum('pipelineValue'),
+            weightedPipelineValue: sum('weightedPipelineValue'),
+            demosNext7d: sum('demosNext7d'),
+            avgSalesCycleDays30d: avgRate('avgSalesCycleDays30d'),
+        };
+        case 'pet_services': return {
+            pets: sum('pets'),
+            activeServices: sum('activeServices'),
+            bookings30d: sum('bookings30d'),
+            completedBookings30d: sum('completedBookings30d'),
+            noShows30d: sum('noShows30d'),
+            bookingsNext7d: sum('bookingsNext7d'),
+            petsServed30d: sum('petsServed30d'),
+        };
+        case 'otro': return {
+            contactsTotal: sum('contactsTotal'),
+            newContacts30d: sum('newContacts30d'),
+            conversations30d: sum('conversations30d'),
+            openDeals: sum('openDeals'),
+            pipelineValue: sum('pipelineValue'),
+            catalogProducts: sum('catalogProducts'),
+            orders30d: sum('orders30d'),
+            gmv30d: sum('gmv30d'),
+        };
         case 'restaurantes': return {
             menuItems: sum('menuItems'),
             ordersTotal: sum('ordersTotal'),
@@ -622,6 +1131,14 @@ function aggregateIndustryTotals(industry: string, tenantsData: any[]): Record<s
 /** Pick the headline metric per vertical for ranking tenants. */
 function primaryMetricValue(industry: string, stats: Record<string, any>): number {
     switch (industry) {
+        case 'moda_belleza': return Number(stats.appointments30d || 0);
+        case 'automotriz': return Number(stats.vehiclesAvailable || 0);
+        case 'finanzas': return Number(stats.applicationsOpen || 0);
+        case 'servicios_profesionales': return Number(stats.openDeals || 0);
+        case 'retail': return Number(stats.orders30d || 0);
+        case 'technology': return Number(stats.openDeals || 0);
+        case 'pet_services': return Number(stats.bookings30d || 0);
+        case 'otro': return Number(stats.conversations30d || 0);
         case 'restaurantes': return Number(stats.ordersWeek || 0);
         case 'gimnasios': return Number(stats.membersActive || 0);
         case 'education': return Number(stats.enrollmentsTotal || 0);

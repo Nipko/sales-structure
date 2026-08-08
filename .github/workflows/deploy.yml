@@ -97,6 +97,12 @@ jobs:
       - name: Marketing claims contract
         run: cd apps/landing && npm run check:claims
 
+      # Deterministic contract gate: 76 canonical vertical configurations x
+      # 4 locales x 5 plans. This validates the manifest/resolver contract only;
+      # database bootstrap and end-to-end certification remain separate gates.
+      - name: Vertical contract matrix (1,520 configurations)
+        run: node apps/api/scripts/run-vertical-contract-matrix.cjs
+
       - name: TypeScript check (all apps)
         run: |
           (cd apps/api && npx tsc --noEmit)

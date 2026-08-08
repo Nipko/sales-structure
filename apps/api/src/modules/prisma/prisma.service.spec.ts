@@ -158,5 +158,60 @@ describe('PrismaService tenant schema lifecycle', () => {
             expect(h.executeRaw).not.toHaveBeenCalled();
             expect(h.tenantDelete).not.toHaveBeenCalled();
         });
+
+        it('takes the tenant row lock before the retention scan and fiscal stamp', async () => {
+            const h = makePublicPurgeService(['fiscal_invoices', 'users']);
+
+            await h.service.purgeTenantPublicDataAtomic(
+                tenantIdA,
+                { name: 'Acme', schemaName: 'tenant_acme' },
+            );
+
+            expect(String(h.queryRaw.mock.calls[0][0])).toContain('FOR UPDATE');
+            expect(String(h.queryRaw.mock.calls[1][0])).toContain('information_schema.columns');
+        });
+    });
+
+    describe('read-only public purge preflight', () => {
+        function makePreflightService(
+            tables: string[],
+            featureState: { subscribers: string | null; requests: string | null } = {
+                subscribers: null,
+                requests: null,
+            },
+        ) {
+            const service = Object.create(PrismaService.prototype) as PrismaService;
+            const queryRaw = jest.fn().mockImplementation(async (sql: string) => {
+                if (sql.includes('information_schema.columns')) {
+                    return tables.map((table_name) => ({ table_name }));
+                }
+                return [featureState];
+            });
+            Object.defineProperty(service, '$queryRawUnsafe', { value: queryRaw, configurable: true });
+            return { service, queryRaw };
+        }
+
+        it('rejects an unknown tenant-owned table before the destructive saga starts', async () => {
+            const h = makePreflightService(['users', 'future_tenant_secrets']);
+
+            await expect(h.service.preflightTenantPublicPurge()).rejects.toMatchObject({
+                response: {
+                    error: 'tenant_purge_unclassified_public_data',
+                    tables: ['future_tenant_secrets'],
+                },
+            });
+            expect(h.queryRaw).toHaveBeenCalledTimes(1);
+        });
+
+        it('rejects an asymmetric feature-request schema before DROP', async () => {
+            const h = makePreflightService(
+                ['users'],
+                { subscribers: 'feature_request_subscribers', requests: null },
+            );
+
+            await expect(h.service.preflightTenantPublicPurge()).rejects.toMatchObject({
+                response: { error: 'tenant_purge_incomplete_feature_request_schema' },
+            });
+        });
     });
 });

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -42,6 +42,27 @@ export class VerticalsController {
                 configurationCount,
                 aliases: VERTICAL_INDUSTRY_ALIASES,
             },
+        };
+    }
+
+    @Get('capability-manifest')
+    @ApiOperation({ summary: 'Get the versioned operational manifest for all vertical configurations' })
+    getCapabilityManifest() {
+        return {
+            success: true,
+            data: this.verticalsService.getCapabilityManifest(),
+        };
+    }
+
+    @Get('capability-manifest/:industry')
+    @ApiOperation({ summary: 'Resolve the operational manifest for an industry and optional subtype' })
+    resolveCapabilityManifest(
+        @Param('industry') industry: string,
+        @Query('subType') subType?: string,
+    ) {
+        return {
+            success: true,
+            data: this.verticalsService.resolveCapabilityManifest(industry, subType || null),
         };
     }
 

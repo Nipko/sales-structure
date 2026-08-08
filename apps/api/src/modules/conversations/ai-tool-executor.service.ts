@@ -25,6 +25,7 @@ import { ChatIdentityService } from './chat-identity.service';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
 import { agentTestBlockedToolResult, isAgentTestSafeToolName } from './agent-test-tool-policy';
+import { isRegisteredStaticTool } from './tool-policy-registry';
 
 /**
  * Executes AI tool calls against the appropriate services.
@@ -82,6 +83,13 @@ export class AIToolExecutorService {
         this.logger.log(`[Tool] Executing: ${toolName} args=${JSON.stringify(args)}`);
 
         try {
+            // Static tools must have a reviewed policy entry before they can
+            // reach a handler. Dynamic MCP names use their separate opaque
+            // boundary below; every other unknown name fails closed here.
+            if (!toolName.startsWith('mcp__') && !isRegisteredStaticTool(toolName)) {
+                return { error: 'unknown_tool', tool: toolName };
+            }
+
             // Persistence-disabled execution is a capability boundary, not a
             // hint. A future caller cannot reach a writer by skipping the
             // AgentTestService advertisement filter.
@@ -169,7 +177,13 @@ export class AIToolExecutorService {
 
                 // ── E-commerce dual-skillset tools (T2.17) ──────────
                 case 'recommend_products':
-                    return this.recommendProducts(schemaName, args.search, args.maxPrice, args.category, opts?.readOnly === true);
+                    return this.recommendProducts(
+                        schemaName,
+                        args.search,
+                        args.maxPrice,
+                        args.category,
+                        opts?.readOnly === true || persistenceDisabled(opts?.executionContext),
+                    );
 
                 case 'get_order_status':
                     return this.getOrderStatus(schemaName, contactId, args.orderId);
@@ -179,13 +193,13 @@ export class AIToolExecutorService {
 
                 // ── Vertical integrations (T3.19): Toast / Mindbody / Cliniko ──
                 case 'get_restaurant_menu':
-                    return this.verticalIntegrations.getMenuForAI(schemaName);
+                    return this.verticalIntegrations.getMenuForAI(tenantId, schemaName);
 
                 case 'get_fitness_schedule':
-                    return this.verticalIntegrations.getScheduleForAI(schemaName);
+                    return this.verticalIntegrations.getScheduleForAI(tenantId, schemaName);
 
                 case 'list_clinic_services':
-                    return this.verticalIntegrations.getClinicServicesForAI(schemaName);
+                    return this.verticalIntegrations.getClinicServicesForAI(tenantId, schemaName);
 
                 case 'check_clinic_availability':
                     return this.verticalIntegrations.checkClinikoAvailability(tenantId, args.appointmentTypeId, args.from, args.to);
@@ -342,11 +356,17 @@ export class AIToolExecutorService {
                 case 'verify_identity_code':
                     return this.verifyIdentityCodeTool(conversationId, args?.code);
 
-                case 'file_claim':
+                case 'file_claim': {
+                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType);
+                    if (gate) return gate;
                     return this.fileInsuranceClaimTool(schemaName, contactId, args);
+                }
 
-                case 'list_my_claims':
+                case 'list_my_claims': {
+                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType);
+                    if (gate) return gate;
                     return this.listMyClaimsTool(schemaName, contactId, args.policyNumber);
+                }
 
                 case 'cancel_quote':
                     return this.cancelQuoteTool(schemaName, contactId, args.quoteId);
@@ -872,7 +892,7 @@ export class AIToolExecutorService {
         let contact: any = null;
         try {
             const cRows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, name, email, phone, tags, first_contact_at, last_contact_at, metadata
+                `SELECT id, name, tags, first_contact_at, last_contact_at
                  FROM "${schema}".contacts WHERE id = $1::uuid LIMIT 1`,
                 contactId,
             );
@@ -904,8 +924,6 @@ export class AIToolExecutorService {
             contact: contact ? {
                 id: contact.id,
                 name: contact.name,
-                email: contact.email,
-                phone: contact.phone,
                 tags: Array.isArray(contact.tags) ? contact.tags : [],
                 firstContactAt: contact.first_contact_at,
                 lastContactAt: contact.last_contact_at,
@@ -1464,18 +1482,23 @@ export class AIToolExecutorService {
 
     /**
      * Acquire a short-lived per-(resource,date) lock so the conflict re-check
-     * and the INSERT/UPDATE run atomically against concurrent bookings. Held for
+     * and the INSERT/UPDATE are serialized against concurrent bookings. Held for
      * a couple of DB queries only (TTL 10s is a safety net, not the expected
-     * hold time). Best-effort: after a brief retry budget it proceeds without
-     * the lock so a Redis hiccup never blocks a legitimate booking.
+     * hold time). Callers fail closed when ownership cannot be obtained: a
+     * transient retry is safer than creating an overlapping reservation.
      */
-    private async acquireSlotLock(schema: string, assignedTo: string | null, date: string): Promise<string | null> {
+    private async acquireSlotLock(
+        schema: string,
+        assignedTo: string | null,
+        date: string,
+    ): Promise<{ key: string; token: string } | null> {
         const lockKey = `lock:slot:${schema}:${assignedTo || 'any'}:${date}`;
         for (let i = 0; i < 5; i++) {
-            if (await this.redis.acquireLock(lockKey, 10)) return lockKey;
-            await new Promise(r => setTimeout(r, 200));
+            const token = await this.redis.acquireLockToken(lockKey, 10);
+            if (token) return { key: lockKey, token };
+            if (i < 4) await new Promise(r => setTimeout(r, 200));
         }
-        this.logger.warn(`[Tool] Slot lock ${lockKey} busy after retries — proceeding best-effort`);
+        this.logger.warn(`[Tool] Slot lock ${lockKey} busy after retries — booking write rejected`);
         return null;
     }
 
@@ -1534,7 +1557,13 @@ export class AIToolExecutorService {
         // cambio viene justamente a levantar.
         const subject = await this.resolveAppointmentSubject(schema, args);
         const assignedTo = args.staffId || subject.suggestedStaffId || null;
-        const lockKey = await this.acquireSlotLock(schema, assignedTo, args.date);
+        const slotLock = await this.acquireSlotLock(schema, assignedTo, args.date);
+        if (!slotLock) {
+            return {
+                error: 'The booking slot is being updated by another request. Please check availability again and retry.',
+                retryable: true,
+            };
+        }
         let rows: any[];
         try {
             if (await this.findAppointmentConflict(schema, startAt, endAt, assignedTo, undefined, args.serviceId)) {
@@ -1553,7 +1582,7 @@ export class AIToolExecutorService {
                 JSON.stringify(subject.metadata),
             );
         } finally {
-            if (lockKey) await this.redis.releaseLock(lockKey);
+            await this.redis.releaseLockToken(slotLock.key, slotLock.token);
         }
 
         const apt = rows[0];
@@ -1692,18 +1721,46 @@ export class AIToolExecutorService {
     private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string): Promise<any> {
         // Verify ownership — only cancel if it belongs to this contact
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, contact_id, service_id, service_name, start_at FROM "${schema}".appointments WHERE id = $1::uuid`,
+            `SELECT id, contact_id, service_id, service_name, start_at, end_at, status
+             FROM "${schema}".appointments WHERE id = $1::uuid`,
             appointmentId,
         );
 
         if (!rows.length) return { error: 'Appointment not found' };
         if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own appointments' };
+        if (rows[0].status === 'cancelled') {
+            return { success: true, alreadyCancelled: true, message: 'Appointment was already cancelled.', alternatives: [] };
+        }
 
-        await this.prisma.$queryRawUnsafe(
-            `UPDATE "${schema}".appointments SET status = 'cancelled', notes = COALESCE(notes, '') || $1, updated_at = NOW() WHERE id = $2::uuid`,
+        const updated: any[] = await this.prisma.$queryRawUnsafe(
+            `UPDATE "${schema}".appointments
+             SET status = 'cancelled', cancellation_reason = $1,
+                 notes = COALESCE(notes, '') || $2, updated_at = NOW()
+             WHERE id = $3::uuid AND status <> 'cancelled'
+             RETURNING id`,
+            reason || null,
             reason ? `\n[Cancelado: ${reason}]` : '\n[Cancelado por el cliente]',
             appointmentId,
         );
+        // A concurrent retry may have won after our SELECT. Treat it as the same
+        // successful cancellation, but do not repeat notes, events or messages.
+        if (!updated.length) {
+            return { success: true, alreadyCancelled: true, message: 'Appointment was already cancelled.', alternatives: [] };
+        }
+
+        this.eventEmitter.emit('appointment.cancelled', {
+            schemaName: schema,
+            appointment: {
+                id: rows[0].id,
+                contactId: rows[0].contact_id,
+                serviceId: rows[0].service_id,
+                serviceName: rows[0].service_name,
+                startAt: rows[0].start_at,
+                endAt: rows[0].end_at,
+                status: 'cancelled',
+            },
+            reason,
+        });
 
         // Recuperar la franja en el mismo turno.
         //
@@ -2006,6 +2063,7 @@ export class AIToolExecutorService {
                 `SELECT 1 FROM "${schema}".property_bookings
                  WHERE property_id = $1::uuid AND contact_id = $2::uuid
                    AND status NOT IN ('cancelled', 'rejected')
+                   AND check_in <= CURRENT_DATE
                    AND check_out >= CURRENT_DATE
                  LIMIT 1`,
                 propertyId, contactId,
@@ -2571,17 +2629,39 @@ export class AIToolExecutorService {
             const validIds = [...new Set(
                 args.items.map((it: any) => it.menuItemId).filter((id: any) => typeof id === 'string' && uuidRe.test(id)),
             )] as string[];
-            const priceMap: Record<string, { price: number; name: string }> = {};
+            const priceMap: Record<string, {
+                price: number;
+                name: string;
+                currency: string;
+                prepTimeMinutes?: number;
+            }> = {};
             if (validIds.length) {
                 const rows: any[] = await this.prisma.$queryRawUnsafe(
-                    `SELECT id, name, price FROM "${schemaName}".menu_items
+                    `SELECT id, name, price, currency, prep_time_minutes FROM "${schemaName}".menu_items
                      WHERE id = ANY($1::uuid[]) AND is_active = true AND is_available = true`,
                     validIds,
                 );
-                for (const r of rows) priceMap[r.id] = { price: Number(r.price), name: r.name };
+                for (const r of rows) {
+                    priceMap[r.id] = {
+                        price: Number(r.price),
+                        name: r.name,
+                        currency: r.currency || 'COP',
+                        prepTimeMinutes: r.prep_time_minutes == null
+                            ? undefined
+                            : Number(r.prep_time_minutes),
+                    };
+                }
             }
 
-            const resolvedItems: Array<{ menuItemId: string; name: string; quantity: number; unitPrice: number; specialInstructions?: string }> = [];
+            const resolvedItems: Array<{
+                menuItemId: string;
+                name: string;
+                quantity: number;
+                unitPrice: number;
+                currency: string;
+                prepTimeMinutes?: number;
+                specialInstructions?: string;
+            }> = [];
             for (const it of args.items) {
                 const menuItem = it.menuItemId ? priceMap[it.menuItemId] : undefined;
                 if (!menuItem) {
@@ -2593,6 +2673,8 @@ export class AIToolExecutorService {
                     name: menuItem.name,        // snapshot the real catalog name
                     quantity: qty,
                     unitPrice: menuItem.price,  // authoritative price — overrides the arg
+                    currency: menuItem.currency,
+                    prepTimeMinutes: menuItem.prepTimeMinutes,
                     specialInstructions: it.specialInstructions,
                 });
             }
@@ -2606,6 +2688,7 @@ export class AIToolExecutorService {
                 deliveryAddress: args.deliveryAddress,
                 deliveryNotes: args.deliveryNotes,
                 tableNumber: args.tableNumber,
+                currency: resolvedItems[0].currency,
                 items: resolvedItems,
                 paymentMethod: args.paymentMethod,
                 notes: args.notes,
@@ -2633,7 +2716,10 @@ export class AIToolExecutorService {
                 total: Number(order.total || 0),
                 currency: order.currency,
                 itemsCount: (order.items || []).length,
-                estimatedDelivery: order.order_type === 'delivery' ? '30-45 minutos' : '15-25 minutos',
+                estimatedDelivery: order.estimated_delivery_minutes == null
+                    ? null
+                    : `${Number(order.estimated_delivery_minutes)} minutos`,
+                estimatedDeliveryAt: order.estimated_delivery_at || null,
                 message: `Order created successfully. Total: ${Number(order.total || 0).toLocaleString()} ${order.currency}`,
             };
         } catch (e: any) {
@@ -2985,18 +3071,30 @@ export class AIToolExecutorService {
         conversationId: string | undefined,
         channelType?: string,
     ): Promise<any | null> {
-        if (!conversationId) return null; // sin conversación (eval/test) no se gatea
-        if (await this.chatIdentity.isVerified(conversationId)) return null;
+        if (!conversationId) {
+            return {
+                error: 'identity_context_required',
+                message: 'Esta gestión sensible requiere una conversación vinculada y una verificación de identidad válida. No reveles información ni ejecutes la acción.',
+                shouldHandoff: false,
+            };
+        }
+        if (await this.chatIdentity.isVerified(conversationId, contactId)) return null;
 
         const started = await this.chatIdentity.startVerification(
             tenantId, schemaName, contactId, conversationId, channelType || '',
         );
 
         if (started.status === 'already_verified') return null;
+        if (started.status === 'pending') {
+            return {
+                needsVerification: true,
+                message: 'Ya hay una verificación en curso. No envíes otro código; pedile al cliente que espere el mensaje y comparta el código recibido.',
+            };
+        }
         if (started.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
-                message: 'No hay forma de verificar la identidad de este cliente por otro canal. NO reveles ningún dato de la póliza: ofrecé pasarlo con un asesor humano.',
+                message: 'No hay forma de verificar la identidad de este cliente por otro canal. NO reveles información ni ejecutes gestiones sensibles de seguros: ofrecé pasarlo con un asesor humano.',
                 shouldHandoff: true,
             };
         }
@@ -3004,7 +3102,7 @@ export class AIToolExecutorService {
             needsVerification: true,
             sentVia: started.via,
             sentTo: started.hint,
-            message: `Antes de dar información de la póliza hay que verificar identidad. Se envió un código de 6 dígitos ${started.via === 'email' ? 'al correo' : 'por SMS'} ${started.hint}. Pedile al cliente ese código y llamá a verify_identity_code. NO reveles ningún dato de la póliza hasta que la verificación sea exitosa.`,
+            message: `Antes de dar información o ejecutar gestiones sensibles de seguros hay que verificar identidad. Se envió un código de 6 dígitos ${started.via === 'email' ? 'al correo' : 'por SMS'} ${started.hint}. Pedile al cliente ese código y llamá a verify_identity_code. NO reveles datos ni radiques siniestros hasta que la verificación sea exitosa.`,
         };
     }
 
@@ -3018,6 +3116,7 @@ export class AIToolExecutorService {
         if (!conversationId) return { error: 'no_conversation' };
         const res = await this.chatIdentity.startVerification(tenantId, schemaName, contactId, conversationId, channelType || '');
         if (res.status === 'already_verified') return { alreadyVerified: true };
+        if (res.status === 'pending') return { pending: true, message: 'Ya hay una verificación en curso. No envíes otro código.' };
         if (res.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
@@ -3481,7 +3580,8 @@ export class AIToolExecutorService {
         newDate: string, newTime: string, reason?: string,
     ): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, contact_id, service_id, service_name, start_at, status, assigned_to
+            `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, assigned_to,
+                    google_event_id, outlook_event_id
              FROM "${schema}".appointments WHERE id = $1::uuid`,
             appointmentId,
         );
@@ -3494,11 +3594,19 @@ export class AIToolExecutorService {
             `SELECT duration_minutes FROM "${schema}".services WHERE id = $1::uuid`,
             apt.service_id,
         );
-        const duration = svcRows[0]?.duration_minutes || 30;
+        const duration = Math.max(1, Number(svcRows[0]?.duration_minutes) || 30);
+
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(newTime)) {
+            return { error: 'newDate must use YYYY-MM-DD and newTime must use HH:MM (24-hour)' };
+        }
+        const startBase = new Date(`${newDate}T${newTime}:00Z`);
+        if (Number.isNaN(startBase.getTime()) || startBase.toISOString().slice(0, 16) !== `${newDate}T${newTime}`) {
+            return { error: 'The requested date or time is not a valid calendar value' };
+        }
 
         const newStartAt = `${newDate}T${newTime}:00`;
-        const endMinutes = parseInt(newTime.split(':')[0]) * 60 + parseInt(newTime.split(':')[1]) + duration;
-        const newEndAt = `${newDate}T${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}:00`;
+        const endBase = new Date(startBase.getTime() + duration * 60_000);
+        const newEndAt = endBase.toISOString().slice(0, 19);
 
         const noteAppend = reason
             ? `\n[Rescheduled: ${reason}]`
@@ -3507,43 +3615,122 @@ export class AIToolExecutorService {
         // Double-booking guard for the new slot (excludes the appointment itself),
         // mirroring createAppointment.
         const assignedTo = apt.assigned_to || null;
-        const lockKey = await this.acquireSlotLock(schema, assignedTo, newDate);
+        const slotLock = await this.acquireSlotLock(schema, assignedTo, newDate);
+        if (!slotLock) {
+            return {
+                error: 'The booking slot is being updated by another request. Please check availability again and retry.',
+                retryable: true,
+            };
+        }
+        let changed = false;
         try {
             if (await this.findAppointmentConflict(schema, newStartAt, newEndAt, assignedTo, appointmentId, apt.service_id)) {
                 this.logger.warn(`[Tool] Reschedule conflict prevented: ${newDate} ${newTime} (staff=${assignedTo || 'any'})`);
                 return { error: 'That new time slot is already taken. Offer the customer another available time (call check_availability).' };
             }
-            await this.prisma.$queryRawUnsafe(
+            const updated: any[] = await this.prisma.$queryRawUnsafe(
                 `UPDATE "${schema}".appointments
                  SET start_at = $1::timestamp, end_at = $2::timestamp,
                      notes = COALESCE(notes, '') || $3,
                      updated_at = NOW()
-                 WHERE id = $4::uuid`,
-                newStartAt, newEndAt, noteAppend, appointmentId,
+                 WHERE id = $4::uuid
+                   AND contact_id = $5::uuid
+                   AND status <> 'cancelled'
+                   AND start_at = $6::timestamp
+                   AND end_at = $7::timestamp
+                   AND (start_at IS DISTINCT FROM $1::timestamp OR end_at IS DISTINCT FROM $2::timestamp)
+                 RETURNING id`,
+                newStartAt, newEndAt, noteAppend, appointmentId, contactId,
+                apt.start_at, apt.end_at,
             );
+            changed = updated.length > 0;
+
+            if (!changed) {
+                const current: any[] = await this.prisma.$queryRawUnsafe(
+                    `SELECT id FROM "${schema}".appointments
+                     WHERE id = $1::uuid
+                       AND contact_id = $2::uuid
+                       AND status <> 'cancelled'
+                       AND start_at = $3::timestamp
+                       AND end_at = $4::timestamp
+                     LIMIT 1`,
+                    appointmentId, contactId, newStartAt, newEndAt,
+                );
+                if (!current.length) {
+                    return { error: 'Appointment changed concurrently. Reload it before retrying.' };
+                }
+            }
         } finally {
-            if (lockKey) await this.redis.releaseLock(lockKey);
+            await this.redis.releaseLockToken(slotLock.key, slotLock.token);
         }
 
-        // Re-create calendar event for the new time (no patch API available)
+        // An exact retry observes the already-applied state but must not append
+        // another note, recreate the provider event or emit a duplicate event.
+        if (!changed) {
+            return {
+                success: true,
+                alreadyRescheduled: true,
+                message: 'Appointment was already rescheduled to this time',
+                appointment: {
+                    id: appointmentId,
+                    service: apt.service_name,
+                    date: newDate,
+                    time: newTime,
+                },
+            };
+        }
+
+        // Patch the original provider event when it exists. Creating a second
+        // event on every reschedule leaves the old time active and causes both
+        // calendar clutter and false busy windows.
+        let calendarSynced = true;
         try {
+            const provider = apt.google_event_id
+                ? 'google'
+                : apt.outlook_event_id
+                    ? 'microsoft'
+                    : null;
             const calUsers: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT user_id FROM "${schema}".calendar_integrations WHERE is_active = true LIMIT 1`,
+                `SELECT user_id, provider FROM "${schema}".calendar_integrations
+                 WHERE is_active = true
+                   AND ($1::text IS NULL OR provider = $1)
+                 ORDER BY connected_at ASC, id ASC LIMIT 1`,
+                provider,
             );
             if (calUsers.length > 0) {
-                const calResult = await this.calendarIntegration.createEvent(schema, calUsers[0].user_id, {
-                    summary: `${apt.service_name} — Reprogramado`,
-                    startAt: newStartAt,
-                    endAt: newEndAt,
-                });
-                if (calResult.eventId) {
-                    await this.prisma.$queryRawUnsafe(
-                        `UPDATE "${schema}".appointments SET google_event_id = $2 WHERE id = $1::uuid`,
-                        appointmentId, calResult.eventId,
+                const eventId = apt.google_event_id || apt.outlook_event_id || null;
+                if (eventId) {
+                    calendarSynced = await this.calendarIntegration.updateEvent(
+                        schema,
+                        calUsers[0].user_id,
+                        eventId,
+                        {
+                            summary: `${apt.service_name} — Reprogramado`,
+                            startAt: newStartAt,
+                            endAt: newEndAt,
+                        },
+                        provider || undefined,
                     );
+                } else {
+                    const calResult = await this.calendarIntegration.createEvent(schema, calUsers[0].user_id, {
+                        summary: `${apt.service_name} — Reprogramado`,
+                        startAt: newStartAt,
+                        endAt: newEndAt,
+                    });
+                    calendarSynced = !!calResult.eventId;
+                    if (calResult.eventId) {
+                        const eventIdColumn = calUsers[0].provider === 'microsoft'
+                            ? 'outlook_event_id'
+                            : 'google_event_id';
+                        await this.prisma.$queryRawUnsafe(
+                            `UPDATE "${schema}".appointments SET ${eventIdColumn} = $2 WHERE id = $1::uuid`,
+                            appointmentId, calResult.eventId,
+                        );
+                    }
                 }
             }
         } catch (e: any) {
+            calendarSynced = false;
             this.logger.warn(`[Tool] Calendar re-create failed for rescheduled appointment: ${e.message}`);
         }
 
@@ -3558,6 +3745,7 @@ export class AIToolExecutorService {
         return {
             success: true,
             message: 'Appointment rescheduled successfully',
+            calendarSynced,
             appointment: {
                 id: appointmentId,
                 service: apt.service_name,
@@ -3749,7 +3937,8 @@ export class AIToolExecutorService {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT id, contact_id, status, order_type, total, currency,
-                        customer_name, delivery_address, created_at, updated_at
+                        customer_name, delivery_address, estimated_delivery_at,
+                        created_at, updated_at
                  FROM "${schema}".food_orders WHERE id = $1::uuid`,
                 orderId,
             );
@@ -3771,6 +3960,7 @@ export class AIToolExecutorService {
                 items: items.map(i => ({ name: i.name_snapshot, quantity: i.quantity, unitPrice: Number(i.unit_price || 0) })),
                 customerName: o.customer_name,
                 deliveryAddress: o.delivery_address,
+                estimatedDeliveryAt: o.estimated_delivery_at || null,
                 createdAt: o.created_at,
                 updatedAt: o.updated_at,
             };
@@ -4079,10 +4269,17 @@ export class AIToolExecutorService {
 
     private async requestPhotoQuoteTool(schemaName: string, contactId: string, args: any): Promise<any> {
         try {
-            // Persist the booking request as a photo_sessions row so the
-            // studio can track it and see delivery progress. Status starts
-            // as 'scheduled' if a date was provided, otherwise the team
-            // can confirm a date later.
+            if (!args?.date || !args?.customerName) {
+                return {
+                    error: 'invalid_photo_session_request',
+                    received: false,
+                    message: 'A date and customer name are required before registering the photography request.',
+                };
+            }
+
+            // Persist exactly the fields advertised by the tool contract. The
+            // contract requires a date, so every accepted request starts in the
+            // existing `scheduled` state; this tool does not calculate a quote.
             const rows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
                 `INSERT INTO photo_sessions (
@@ -4100,27 +4297,39 @@ export class AIToolExecutorService {
                     args.date || null,
                     args.location || null,
                     args.specialRequests || null,
-                    args.date ? 'scheduled' : 'scheduled',
+                    'scheduled',
                 ],
-            ).catch((err: any) => {
-                this.logger.warn(`Photo session insert failed (table may not exist yet): ${err.message}`);
-                return [];
-            });
+            );
+            const sessionId = rows?.[0]?.id;
+            if (!sessionId) {
+                this.logger.warn('Photo session insert returned no id');
+                return {
+                    error: 'photo_session_not_created',
+                    received: false,
+                    message: 'The photography request could not be registered. Do not promise follow-up; offer to connect the customer with the team.',
+                };
+            }
             this.eventEmitter.emit('photo_session.requested', {
                 tenantSchemaName: schemaName,
                 contactId,
-                sessionId: rows?.[0]?.id,
+                sessionId,
                 ...args,
             });
             return {
                 received: true,
-                sessionId: rows?.[0]?.id,
+                sessionId,
+                sessionType: args.sessionType || 'other',
                 date: args.date,
                 package: args.packageName,
                 message: 'Session registered — the team will send a personalized proposal within the next few hours.',
             };
         } catch (e: any) {
-            return { error: e.message };
+            this.logger.warn(`Photo session insert failed: ${e.message}`);
+            return {
+                error: 'photo_session_not_created',
+                received: false,
+                message: 'The photography request could not be registered. Do not promise follow-up; offer to connect the customer with the team.',
+            };
         }
     }
 }

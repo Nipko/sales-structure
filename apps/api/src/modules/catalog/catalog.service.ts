@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+    normalizeCurrencyCode,
+    optionalPositiveIntegerUnit,
+} from '../../common/utils/commercial-units.util';
 
 @Injectable()
 export class CatalogService {
@@ -26,6 +30,11 @@ export class CatalogService {
     }
 
     async createCourse(schemaName: string, data: any) {
+        const durationHours = optionalPositiveIntegerUnit(
+            data.duration_hours ?? data.durationHours,
+            'durationHours',
+        );
+        const currency = normalizeCurrencyCode(data.currency);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO courses (code, name, slug, description, price, currency, duration_hours, modality, brochure_url, is_active)
@@ -36,8 +45,8 @@ export class CatalogService {
                 data.slug || data.name.toLowerCase().replace(/\s+/g, '-'),
                 data.description || '',
                 data.price || 0,
-                data.currency || 'COP',
-                data.duration_hours || null,
+                currency,
+                durationHours,
                 data.modality || 'presencial',
                 data.brochure_url || null,
                 data.is_active ?? true
@@ -47,6 +56,13 @@ export class CatalogService {
     }
 
     async updateCourse(schemaName: string, id: string, data: any) {
+        const durationInput = data.duration_hours ?? data.durationHours;
+        const durationHours = durationInput === undefined
+            ? undefined
+            : optionalPositiveIntegerUnit(durationInput, 'durationHours');
+        const currency = data.currency === undefined
+            ? undefined
+            : normalizeCurrencyCode(data.currency);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `UPDATE courses
@@ -56,9 +72,14 @@ export class CatalogService {
                  modality = COALESCE($5, modality),
                  brochure_url = COALESCE($6, brochure_url),
                  is_active = COALESCE($7, is_active),
+                 currency = COALESCE($8, currency),
+                 duration_hours = COALESCE($9, duration_hours),
                  updated_at = NOW()
              WHERE id = $1::uuid RETURNING *`,
-            [id, data.name, data.description, data.price, data.modality, data.brochure_url, data.is_active]
+            [
+                id, data.name, data.description, data.price, data.modality,
+                data.brochure_url, data.is_active, currency, durationHours,
+            ]
         );
         return rows[0];
     }

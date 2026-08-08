@@ -8,7 +8,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { MediaService } from '../media/media.service';
 import { BillingService } from '../billing/billing.service';
-import { OwnedLockLease } from '../../common/utils/owned-lock.util';
+import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
+import {
+    TENANT_LIFECYCLE_LOCK_TTL_SECONDS,
+    tenantLifecycleLockKey,
+    tenantPurgingFenceKey,
+} from '../../common/utils/tenant-lifecycle.util';
 
 interface PurgeChannelCredential {
     channelType: string;
@@ -39,18 +44,130 @@ export class OffboardingService {
         @InjectQueue('automation-jobs') private automationQueue: Queue,
         @InjectQueue('nurturing') private nurturingQueue: Queue,
         @InjectQueue('conversation-snooze') private snoozeQueue: Queue,
+        @InjectQueue('inbound-messages') private inboundQueue: Queue,
+        @InjectQueue('fiscal-invoice') private fiscalQueue: Queue,
+        @InjectQueue('crm-sync') private crmSyncQueue: Queue,
+        @InjectQueue('crm-import') private crmImportQueue: Queue,
+        @InjectQueue('quality-scoring') private qualityQueue: Queue,
+        @InjectQueue('agent-simulation') private simulationQueue: Queue,
+        @InjectQueue('eval-gate') private evalGateQueue: Queue,
     ) {}
+
+    private tenantQueues(): Array<{ queue: Queue; name: string }> {
+        return [
+            { queue: this.outboundQueue, name: 'outbound-messages' },
+            { queue: this.broadcastQueue, name: 'broadcast-messages' },
+            { queue: this.automationQueue, name: 'automation-jobs' },
+            { queue: this.nurturingQueue, name: 'nurturing' },
+            { queue: this.snoozeQueue, name: 'conversation-snooze' },
+            { queue: this.inboundQueue, name: 'inbound-messages' },
+            { queue: this.fiscalQueue, name: 'fiscal-invoice' },
+            { queue: this.crmSyncQueue, name: 'crm-sync' },
+            { queue: this.crmImportQueue, name: 'crm-import' },
+            { queue: this.qualityQueue, name: 'quality-scoring' },
+            { queue: this.simulationQueue, name: 'agent-simulation' },
+            { queue: this.evalGateQueue, name: 'eval-gate' },
+        ];
+    }
+
+    private containsTenantId(value: unknown, tenantId: string, depth = 0): boolean {
+        if (!value || typeof value !== 'object' || depth > 6) return false;
+        const record = value as Record<string, unknown>;
+        const direct = record.tenantId ?? record.tenant_id;
+        if (direct === tenantId) return true;
+        for (const nested of Object.values(record)) {
+            if (this.containsTenantId(nested, tenantId, depth + 1)) return true;
+        }
+        return false;
+    }
+
+    private async jobBelongsToTenant(job: any, queueName: string, tenantId: string): Promise<boolean> {
+        if (this.containsTenantId(job?.data, tenantId)) return true;
+        if (queueName !== 'fiscal-invoice' || !job?.data?.fiscalInvoiceId) return false;
+        const invoice = await this.prisma.fiscalInvoice.findUnique({
+            where: { id: String(job.data.fiscalInvoiceId) },
+            select: { tenantId: true },
+        });
+        return invoice?.tenantId === tenantId;
+    }
+
+    private async fetchWithDeadline(
+        url: string,
+        init: RequestInit,
+        timeoutMs = 10_000,
+    ): Promise<Response> {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        timer.unref?.();
+        try {
+            return await fetch(url, { ...init, signal: controller.signal });
+        } catch (error) {
+            if (controller.signal.aborted) {
+                throw new Error(`HTTP deadline exceeded after ${timeoutMs}ms`);
+            }
+            throw error;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    private async withTenantLifecycleLease<T>(
+        tenantId: string,
+        action: string,
+        work: (assertOwned: () => Promise<void>) => Promise<T>,
+    ): Promise<T> {
+        const lockKey = tenantLifecycleLockKey(tenantId);
+        const token = await this.redis.acquireLockToken(lockKey, TENANT_LIFECYCLE_LOCK_TTL_SECONDS);
+        if (!token) {
+            throw new ConflictException({ error: 'tenant_lifecycle_in_progress', tenantId, action });
+        }
+        const lease = new OwnedLockLease(
+            this.redis,
+            lockKey,
+            token,
+            TENANT_LIFECYCLE_LOCK_TTL_SECONDS,
+            this.logger,
+            `Tenant lifecycle lock lost during ${action} for ${tenantId}`,
+        );
+        lease.start();
+        try {
+            await lease.assertOwned();
+            if (await this.redis.get(tenantPurgingFenceKey(tenantId))) {
+                throw new ConflictException({ error: 'tenant_purge_in_progress', tenantId });
+            }
+            return await work(() => lease.assertOwned());
+        } catch (error: unknown) {
+            if (error instanceof LockOwnershipLostError || lease.hasLostOwnership()) {
+                throw new ConflictException({ error: 'tenant_lifecycle_lock_lost', tenantId, action });
+            }
+            throw error;
+        } finally {
+            lease.stop();
+            await this.redis.releaseLockToken(lockKey, token)
+                .catch((error: any) => this.logger.warn(`Could not release ${action} lifecycle lock: ${error.message}`));
+        }
+    }
 
     /**
      * Voluntary cancellation — marks subscription as cancelled but keeps
      * the tenant active until the current billing period ends.
      */
     async voluntaryCancel(tenantId: string, reason?: string): Promise<{ cancelledAt: Date; periodEnd: Date | null }> {
+        return this.withTenantLifecycleLease(tenantId, 'voluntary_cancel', (assertOwned) =>
+            this.voluntaryCancelLocked(tenantId, reason, assertOwned));
+    }
+
+    private async voluntaryCancelLocked(
+        tenantId: string,
+        reason: string | undefined,
+        assertOwned: () => Promise<void>,
+    ): Promise<{ cancelledAt: Date; periodEnd: Date | null }> {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
         if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
 
         const now = new Date();
 
+        await assertOwned();
         await this.prisma.tenant.update({
             where: { id: tenantId },
             data: { subscriptionStatus: 'cancelled' },
@@ -60,6 +177,7 @@ export class OffboardingService {
         try {
             const sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
             if (sub) {
+                await assertOwned();
                 await this.prisma.billingSubscription.update({
                     where: { id: sub.id },
                     data: {
@@ -110,9 +228,20 @@ export class OffboardingService {
      * don't prevent subsequent steps from executing.
      */
     async executeOffboarding(tenantId: string, trigger: string, reason?: string): Promise<void> {
+        return this.withTenantLifecycleLease(tenantId, 'offboarding', (assertOwned) =>
+            this.executeOffboardingLocked(tenantId, trigger, reason, assertOwned));
+    }
+
+    private async executeOffboardingLocked(
+        tenantId: string,
+        trigger: string,
+        reason: string | undefined,
+        assertOwned: () => Promise<void>,
+    ): Promise<void> {
         this.logger.log(`Starting offboarding for tenant ${tenantId} (trigger: ${trigger}, reason: ${reason || 'none'})`);
 
         // Step 1: Disconnect all channels
+        await assertOwned();
         try {
             await this.disconnectAllChannels(tenantId);
             this.logger.log(`[Offboarding ${tenantId}] Step 1: Channels disconnected`);
@@ -121,6 +250,7 @@ export class OffboardingService {
         }
 
         // Step 2: Revoke all user sessions
+        await assertOwned();
         try {
             await this.revokeAllSessions(tenantId);
             this.logger.log(`[Offboarding ${tenantId}] Step 2: Sessions revoked`);
@@ -129,6 +259,7 @@ export class OffboardingService {
         }
 
         // Step 3: Drain tenant queues
+        await assertOwned();
         try {
             await this.drainTenantQueues(tenantId);
             this.logger.log(`[Offboarding ${tenantId}] Step 3: Queues drained`);
@@ -137,6 +268,7 @@ export class OffboardingService {
         }
 
         // Step 4: Deactivate tenant and all users
+        await assertOwned();
         try {
             await this.prisma.tenant.update({
                 where: { id: tenantId },
@@ -267,7 +399,7 @@ export class OffboardingService {
                         if (cred?.encryptedValue) {
                             const accessToken = this.decryptToken(cred.encryptedValue);
                             // Meta wants access_token as query param, not body
-                            const res = await fetch(
+                            const res = await this.fetchWithDeadline(
                                 `https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps?access_token=${accessToken}`,
                                 { method: 'DELETE' },
                             ).catch(() => null);
@@ -292,7 +424,7 @@ export class OffboardingService {
                     });
                     if (cred?.encryptedValue) {
                         const botToken = this.decryptToken(cred.encryptedValue);
-                        const res = await fetch(
+                        const res = await this.fetchWithDeadline(
                             `https://api.telegram.org/bot${botToken}/deleteWebhook?drop_pending_updates=true`,
                             { method: 'POST' },
                         ).catch(() => null);
@@ -313,7 +445,7 @@ export class OffboardingService {
                     });
                     if (cred?.encryptedValue) {
                         const pageToken = this.decryptToken(cred.encryptedValue);
-                        const res = await fetch(
+                        const res = await this.fetchWithDeadline(
                             `https://graph.facebook.com/v21.0/${account.accountId}/subscribed_apps?access_token=${pageToken}`,
                             { method: 'DELETE' },
                         ).catch(() => null);
@@ -334,7 +466,7 @@ export class OffboardingService {
                     });
                     if (cred?.encryptedValue) {
                         const igToken = this.decryptToken(cred.encryptedValue);
-                        const res = await fetch(
+                        const res = await this.fetchWithDeadline(
                             `https://graph.instagram.com/me/permissions?access_token=${igToken}`,
                             { method: 'DELETE' },
                         ).catch(() => null);
@@ -426,15 +558,7 @@ export class OffboardingService {
      * Drain BullMQ jobs belonging to this tenant from all queues.
      */
     async drainTenantQueues(tenantId: string): Promise<void> {
-        const queues = [
-            { queue: this.outboundQueue, name: 'outbound-messages' },
-            { queue: this.broadcastQueue, name: 'broadcast-messages' },
-            { queue: this.automationQueue, name: 'automation-jobs' },
-            { queue: this.nurturingQueue, name: 'nurturing' },
-            { queue: this.snoozeQueue, name: 'conversation-snooze' },
-        ];
-
-        for (const { queue, name } of queues) {
+        for (const { queue, name } of this.tenantQueues()) {
             try {
                 let removed = 0;
                 const waiting = await queue.getWaiting();
@@ -442,8 +566,7 @@ export class OffboardingService {
                 const jobs = [...waiting, ...delayed];
 
                 for (const job of jobs) {
-                    const jobTenantId = job.data?.tenantId || job.data?.outbound?.tenantId;
-                    if (jobTenantId === tenantId) {
+                    if (await this.jobBelongsToTenant(job, name, tenantId)) {
                         await job.remove();
                         removed++;
                     }
@@ -466,18 +589,11 @@ export class OffboardingService {
      * still be using it is never safe.
      */
     private async fenceQueuesForPurge(tenantId: string): Promise<() => Promise<void>> {
-        const queues = [
-            { queue: this.outboundQueue, name: 'outbound-messages' },
-            { queue: this.broadcastQueue, name: 'broadcast-messages' },
-            { queue: this.automationQueue, name: 'automation-jobs' },
-            { queue: this.nurturingQueue, name: 'nurturing' },
-            { queue: this.snoozeQueue, name: 'conversation-snooze' },
-        ];
+        const queues = this.tenantQueues();
         const paused: Array<{ queue: Queue; name: string }> = [];
-        const belongsToTenant = (job: any) =>
-            (job?.data?.tenantId || job?.data?.outbound?.tenantId) === tenantId;
+        const states = ['active', 'wait', 'delayed', 'prioritized', 'paused', 'waiting-children', 'failed'] as any;
 
-        const resumeAll = async (): Promise<void> => {
+        const resumePaused = async (): Promise<void> => {
             const failures: string[] = [];
             for (const item of [...paused].reverse()) {
                 try {
@@ -491,25 +607,11 @@ export class OffboardingService {
             }
         };
 
-        try {
-            for (const item of queues) {
-                await item.queue.pause();
-                paused.push(item);
-            }
-
+        const verifyAndDrain = async (): Promise<void> => {
             for (const { queue, name } of queues) {
-                const jobs = await queue.getJobs(
-                    ['active', 'wait', 'delayed', 'prioritized', 'paused', 'waiting-children', 'failed'],
-                    0,
-                    -1,
-                    true,
-                );
-                // Removal is intentional before DROP: the durable `purging`
-                // tenant checkpoint has already disabled new work, and these
-                // queued jobs must never be replayed for a tenant selected for
-                // deletion.  If a later gate fails, a retry simply observes an
-                // already-clean queue; no customer data mutation is replayed.
-                for (const job of jobs.filter(belongsToTenant)) {
+                const jobs = await queue.getJobs(states, 0, -1, true);
+                for (const job of jobs) {
+                    if (!(await this.jobBelongsToTenant(job, name, tenantId))) continue;
                     const state = await job.getState();
                     if (state === 'active') {
                         throw new ConflictException({
@@ -521,27 +623,47 @@ export class OffboardingService {
                     await job.remove();
                 }
 
-                const remaining = await queue.getJobs(
-                    ['active', 'wait', 'delayed', 'prioritized', 'paused', 'waiting-children', 'failed'],
-                    0,
-                    -1,
-                    true,
-                );
-                const tenantJob = remaining.find(belongsToTenant);
-                if (tenantJob) {
-                    throw new Error(`Queue ${name} still contains tenant job ${tenantJob.id}`);
+                const remaining = await queue.getJobs(states, 0, -1, true);
+                for (const job of remaining) {
+                    if (await this.jobBelongsToTenant(job, name, tenantId)) {
+                        throw new Error(`Queue ${name} still contains tenant job ${job.id}`);
+                    }
                 }
             }
+        };
+
+        try {
+            for (const item of queues) {
+                await item.queue.pause();
+                paused.push(item);
+            }
+            await verifyAndDrain();
         } catch (error) {
             try {
-                await resumeAll();
+                // Even the abort path observes queue state immediately before
+                // resume; the original fencing error remains authoritative.
+                await verifyAndDrain();
+            } catch { /* expected when the first scan found an active job */ }
+            try {
+                await resumePaused();
             } catch (resumeError: any) {
                 this.logger.error(`[Purge ${tenantId}] Queue fence release also failed: ${resumeError.message}`);
             }
             throw error;
         }
 
-        return resumeAll;
+        // Queue pause is global, so release immediately after the public commit.
+        // A mandatory second scan closes the enqueue-between-scan-and-resume gap.
+        return async () => {
+            let scanError: unknown;
+            try {
+                await verifyAndDrain();
+            } catch (error) {
+                scanError = error;
+            }
+            await resumePaused();
+            if (scanError) throw scanError;
+        };
     }
 
     /**
@@ -590,16 +712,24 @@ export class OffboardingService {
      * Reactivate a suspended or cancelled tenant — restores access.
      */
     async reactivate(tenantId: string) {
+        return this.withTenantLifecycleLease(tenantId, 'reactivate', (assertOwned) =>
+            this.reactivateLocked(tenantId, assertOwned));
+    }
+
+    private async reactivateLocked(tenantId: string, assertOwned: () => Promise<void>) {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
         if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
+        if (!tenant.onboardingCompletedAt) {
+            throw new ConflictException({
+                error: 'tenant_provisioning_incomplete',
+                message: 'El tenant debe terminar su provisioning antes de reactivarse.',
+                tenantId,
+            });
+        }
 
-        // Re-enable tenant
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: { isActive: true, subscriptionStatus: 'active' },
-        });
-
-        // Re-enable all users
+        // Restore dependent state while the tenant remains inactive. The
+        // tenant row is the final runtime-ready commit below.
+        await assertOwned();
         await this.prisma.user.updateMany({
             where: { tenantId },
             data: { isActive: true },
@@ -610,6 +740,7 @@ export class OffboardingService {
         // Telegram). Those need a fresh OAuth reconnect; flipping is_active
         // back to true would leave the dashboard saying "connected" while
         // Meta has already detached the webhook subscription.
+        await assertOwned();
         const channelsRestored = (await this.prisma.$queryRawUnsafe(
             `UPDATE channel_accounts
                SET is_active = true,
@@ -663,6 +794,12 @@ export class OffboardingService {
         await this.redis.del(`tenant:${tenantId}:schema`);
         await this.redis.del(`tenant_plan:${tenantId}`);
 
+        await assertOwned();
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: { isActive: true, subscriptionStatus: 'active' },
+        });
+
         // Audit log
         try {
             await this.prisma.auditLog.create({
@@ -691,27 +828,31 @@ export class OffboardingService {
      * Extend trial period for a tenant by the given number of days.
      */
     async extendTrial(tenantId: string, days: number) {
+        return this.withTenantLifecycleLease(tenantId, 'extend_trial', (assertOwned) =>
+            this.extendTrialLocked(tenantId, days, assertOwned));
+    }
+
+    private async extendTrialLocked(tenantId: string, days: number, assertOwned: () => Promise<void>) {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
         if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
+        if (!tenant.onboardingCompletedAt) {
+            throw new ConflictException({
+                error: 'tenant_provisioning_incomplete',
+                message: 'El tenant debe terminar su provisioning antes de extender el trial.',
+                tenantId,
+            });
+        }
 
         const currentTrialEnd = tenant.trialEndsAt || new Date();
         const baseDate = currentTrialEnd > new Date() ? currentTrialEnd : new Date();
         const newTrialEndsAt = new Date(baseDate.getTime() + days * 86_400_000);
 
-        // Update tenant
-        await this.prisma.tenant.update({
-            where: { id: tenantId },
-            data: {
-                trialEndsAt: newTrialEndsAt,
-                subscriptionStatus: 'trialing',
-                isActive: true,
-            },
-        });
-
-        // Update billing subscription if exists
+        // Update dependent billing state first; tenant activation is the final
+        // runtime-ready commit after this best-effort synchronization.
         try {
             const sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
             if (sub) {
+                await assertOwned();
                 await this.prisma.billingSubscription.update({
                     where: { id: sub.id },
                     data: {
@@ -723,6 +864,16 @@ export class OffboardingService {
         } catch (error) {
             this.logger.warn(`Failed to update billing subscription trial extension for tenant ${tenantId}: ${error}`);
         }
+
+        await assertOwned();
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: {
+                trialEndsAt: newTrialEndsAt,
+                subscriptionStatus: 'trialing',
+                isActive: true,
+            },
+        });
 
         // Invalidate caches
         await this.redis.del(`tenant:${tenantId}:config`);
@@ -771,7 +922,9 @@ export class OffboardingService {
         }
 
         const accounts = await this.prisma.channelAccount.findMany({
-            where: { tenantId, isActive: true },
+            // An inactive local route may still be subscribed at the provider
+            // when a previous best-effort offboarding call failed remotely.
+            where: { tenantId },
         });
         const credentials = await this.prisma.whatsappCredential.findMany({
             where: { tenantId },
@@ -806,7 +959,9 @@ export class OffboardingService {
             } else if (account.channelType === 'telegram') {
                 encryptedCredential = credentialFor('telegram_token') || account.accessToken;
             } else if (account.channelType === 'messenger') {
-                encryptedCredential = credentialFor('messenger_page_token') || account.accessToken;
+                encryptedCredential = credentialFor('messenger_page_token')
+                    || credentialFor('messenger_token')
+                    || account.accessToken;
             } else if (account.channelType === 'instagram') {
                 encryptedCredential = credentialFor('instagram_token') || account.accessToken;
             } else {
@@ -857,6 +1012,33 @@ export class OffboardingService {
         };
     }
 
+    /** Prove every credential can be decrypted before DROP makes it unrecoverable. */
+    private preflightPurgeExternalPlan(plan: PurgeExternalPlan): void {
+        const failures: string[] = [];
+        for (const channel of plan.channels) {
+            try {
+                if (!this.decryptToken(channel.encryptedCredential).trim()) {
+                    throw new Error('empty credential');
+                }
+            } catch (error: any) {
+                failures.push(`${channel.channelType}/${channel.accountId}: ${error.message}`);
+            }
+        }
+        plan.googleOAuthTokens.forEach((token, index) => {
+            try {
+                if (!this.decryptToken(token).trim()) throw new Error('empty credential');
+            } catch (error: any) {
+                failures.push(`google_oauth/${index}: ${error.message}`);
+            }
+        });
+        if (failures.length > 0) {
+            throw new ConflictException({
+                error: 'tenant_purge_undecryptable_credential',
+                failures,
+            });
+        }
+    }
+
     /** Execute the previously captured, idempotent provider teardown. */
     private async executePurgeExternalPlan(tenantId: string, plan: PurgeExternalPlan): Promise<void> {
         const failures: string[] = [];
@@ -878,7 +1060,7 @@ export class OffboardingService {
                     url = `https://graph.instagram.com/me/permissions?access_token=${credential}`;
                     method = 'DELETE';
                 }
-                const response = await fetch(url, { method });
+                const response = await this.fetchWithDeadline(url, { method });
                 if (!response.ok && response.status !== 404 && response.status !== 410) {
                     throw new Error(`HTTP ${response.status}`);
                 }
@@ -889,7 +1071,7 @@ export class OffboardingService {
 
         for (const encryptedToken of plan.googleOAuthTokens) {
             try {
-                const response = await fetch('https://oauth2.googleapis.com/revoke', {
+                const response = await this.fetchWithDeadline('https://oauth2.googleapis.com/revoke', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: new URLSearchParams({ token: this.decryptToken(encryptedToken) }).toString(),
@@ -938,6 +1120,22 @@ export class OffboardingService {
      * require a fresh OAuth reconnect.
      */
     async reactivateChannels(tenantId: string): Promise<{ restored: number; needsReconnect: number }> {
+        return this.withTenantLifecycleLease(tenantId, 'reactivate_channels', (assertOwned) =>
+            this.reactivateChannelsLocked(tenantId, assertOwned));
+    }
+
+    private async reactivateChannelsLocked(
+        tenantId: string,
+        assertOwned: () => Promise<void>,
+    ): Promise<{ restored: number; needsReconnect: number }> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { onboardingCompletedAt: true, isActive: true },
+        });
+        if (!tenant?.isActive || !tenant.onboardingCompletedAt) {
+            throw new ConflictException({ error: 'tenant_not_ready', tenantId });
+        }
+        await assertOwned();
         const restored = (await this.prisma.$queryRawUnsafe(
             `UPDATE channel_accounts
                SET is_active = true,
@@ -978,24 +1176,10 @@ export class OffboardingService {
         return { restored: restored.length, needsReconnect };
     }
 
-    /** Strict Redis cleanup used only after the schema has been removed. */
-    private async cleanupPurgeRedis(tenantId: string, userIds: string[]): Promise<void> {
+    private async deletePurgeRedisPatterns(tenantId: string, patterns: string[]): Promise<void> {
         const client = this.redis.getClient();
-        const fenceKey = `tenant:purging:${tenantId}`;
-        const patterns = [
-            `tenant:${tenantId}:*`,
-            `vertical:${tenantId}*`,
-            `analytics:${tenantId}:*`,
-            `offboard:past_due:${tenantId}`,
-            `wa_token:${tenantId}`,
-            `instagram_token:${tenantId}`,
-            `messenger_token:${tenantId}`,
-            `telegram_token:${tenantId}`,
-            `sms_token:${tenantId}`,
-            ...userIds.map((userId) => `refresh:${userId}:*`),
-        ];
-
-        for (const pattern of patterns) {
+        const fenceKey = tenantPurgingFenceKey(tenantId);
+        for (const pattern of [...new Set(patterns)]) {
             let cursor = '0';
             do {
                 const [nextCursor, keys] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 200);
@@ -1003,6 +1187,104 @@ export class OffboardingService {
                 const deletable = keys.filter((key: string) => key !== fenceKey);
                 if (deletable.length > 0) await client.del(...deletable);
             } while (cursor !== '0');
+        }
+    }
+
+    private async assertPurgeAccessGate(
+        tenantId: string,
+        userIds: string[],
+        trustedTokenHashes: string[],
+        conversationIds: string[],
+        assertOwned: () => Promise<void>,
+    ): Promise<void> {
+        await assertOwned();
+        if (!await this.redis.get(tenantPurgingFenceKey(tenantId))) {
+            throw new ConflictException({ error: 'tenant_purge_fence_lost', tenantId });
+        }
+        await this.prisma.user.updateMany({
+            where: { tenantId },
+            data: { isActive: false },
+        });
+        if (userIds.length > 0) {
+            await this.prisma.trustedDevice.updateMany({
+                where: { userId: { in: userIds } },
+                data: { isRevoked: true },
+            });
+        }
+        await this.deletePurgeRedisPatterns(tenantId, [
+            `tenant_sessions:${tenantId}`,
+            `handoff:${tenantId}:*`,
+            ...userIds.flatMap((userId) => [
+                `refresh:${userId}:*`,
+                `session:${userId}`,
+                `session:${userId}:*`,
+                `trusted_device:${userId}:*`,
+                `device_trust:${userId}:*`,
+            ]),
+            ...trustedTokenHashes.map((hash) => `trust:${hash}`),
+            ...conversationIds.flatMap((conversationId) => [
+                `booking:${conversationId}`,
+                `lock:conv:${conversationId}`,
+            ]),
+        ]);
+        await assertOwned();
+        const activeUsers = await this.prisma.user.count({ where: { tenantId, isActive: true } });
+        if (activeUsers !== 0 || !await this.redis.get(tenantPurgingFenceKey(tenantId))) {
+            throw new ConflictException({
+                error: 'tenant_purge_access_gate_failed',
+                tenantId,
+                activeUsers,
+            });
+        }
+    }
+
+    /** Strict Redis cleanup used only after the schema has been removed. */
+    private async cleanupPurgeRedis(
+        tenantId: string,
+        userIds: string[],
+        conversationIds: string[],
+        trustedTokenHashes: string[],
+    ): Promise<void> {
+        const tokenPrefixes = ['wa_token', 'instagram_token', 'messenger_token', 'telegram_token', 'sms_token'];
+        await this.deletePurgeRedisPatterns(tenantId, [
+            `tenant:${tenantId}:*`,
+            `vertical:${tenantId}*`,
+            `analytics:${tenantId}:*`,
+            `offboard:past_due:${tenantId}`,
+            `tenant_sessions:${tenantId}`,
+            `handoff:${tenantId}:*`,
+            `booking:services:${tenantId}`,
+            ...tokenPrefixes.flatMap((prefix) => [
+                `${prefix}:${tenantId}`,
+                `${prefix}:${tenantId}:*`,
+            ]),
+            ...userIds.flatMap((userId) => [
+                `refresh:${userId}:*`,
+                `session:${userId}`,
+                `session:${userId}:*`,
+                `trusted_device:${userId}:*`,
+                `device_trust:${userId}:*`,
+            ]),
+            ...trustedTokenHashes.map((hash) => `trust:${hash}`),
+            ...conversationIds.flatMap((conversationId) => [
+                `booking:${conversationId}`,
+                `lock:conv:${conversationId}`,
+            ]),
+        ]);
+    }
+
+    private async capturePurgeConversationIds(schemaName: string): Promise<string[]> {
+        try {
+            const conversations = await this.prisma.executeInTenantSchema<Array<{ id: string }>>(
+                schemaName,
+                `SELECT id::text AS id FROM conversations`,
+            );
+            return (conversations || []).map((row) => row.id);
+        } catch (error: any) {
+            const missingSchemaOrTable = ['3F000', '42P01'].includes(error?.code)
+                || /does not exist/i.test(String(error?.message));
+            if (!missingSchemaOrTable) throw error;
+            return [];
         }
     }
 
@@ -1019,8 +1301,8 @@ export class OffboardingService {
         mediaFilesRemoved: number;
         usersRevoked: number;
     }> {
-        const lockKey = `lock:tenant-purge:${tenantId}`;
-        const lockTtlSeconds = 120;
+        const lockKey = tenantLifecycleLockKey(tenantId);
+        const lockTtlSeconds = TENANT_LIFECYCLE_LOCK_TTL_SECONDS;
         const lockToken = await this.redis.acquireLockToken(lockKey, lockTtlSeconds);
         if (!lockToken) throw new ConflictException({ error: 'tenant_purge_in_progress' });
         const lease = new OwnedLockLease(
@@ -1041,20 +1323,42 @@ export class OffboardingService {
             });
             if (!tenant) throw new NotFoundException(`Tenant ${tenantId} not found`);
 
+            // Publish the hot-path fence immediately after winning the common
+            // lifecycle lease. New HTTP/WS contexts now fail closed before any
+            // credential capture or destructive work begins.
+            await lease.assertOwned();
+            await this.redis.set(tenantPurgingFenceKey(tenantId), '1', 7 * 24 * 60 * 60);
+
+            // This classification must pass before DROP or any remote effect.
+            // It is repeated transactionally by purgeTenantPublicDataAtomic.
+            await lease.assertOwned();
+            await this.prisma.preflightTenantPublicPurge();
+
             const beforeChannels = await this.prisma.channelAccount.count({ where: { tenantId } });
             const users = await this.prisma.user.findMany({ where: { tenantId }, select: { id: true } });
-            const userIds = users.map((user: { id: string }) => user.id);
+            let userIds = users.map((user: { id: string }) => user.id);
+            const trustedDevices = userIds.length > 0
+                ? await this.prisma.trustedDevice.findMany({
+                    where: { userId: { in: userIds } },
+                    select: { tokenHash: true },
+                })
+                : [];
+            let trustedTokenHashes = trustedDevices.map((device: { tokenHash: string }) => device.tokenHash);
             const settings = (tenant.settings || {}) as any;
             const externalPlan = await this.capturePurgeExternalPlan(
                 tenantId,
                 tenant.schemaName,
                 settings,
             );
+            if (settings?.purgeSaga?.externalCompleted !== true) {
+                this.preflightPurgeExternalPlan(externalPlan);
+            }
+
+            let conversationIds = await this.capturePurgeConversationIds(tenant.schemaName);
 
             // Durable, encrypted saga checkpoint + hot-path access fence.
             await lease.assertOwned();
-            await this.redis.set(`tenant:purging:${tenantId}`, '1', 7 * 24 * 60 * 60);
-            await this.prisma.$executeRawUnsafe(
+            const checkpointed = await this.prisma.$executeRawUnsafe(
                 `UPDATE public.tenants
                     SET is_active = false,
                         settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object(
@@ -1068,51 +1372,111 @@ export class OffboardingService {
                 tenantId,
                 JSON.stringify(externalPlan),
             );
+            if (checkpointed !== 1) {
+                throw new ConflictException({ error: 'tenant_purge_checkpoint_failed', tenantId });
+            }
+            await this.assertPurgeAccessGate(
+                tenantId,
+                userIds,
+                trustedTokenHashes,
+                conversationIds,
+                () => lease.assertOwned(),
+            );
 
             let releaseQueueFence: (() => Promise<void>) | null = null;
+            let publicCommitted = false;
+            let publicRowsDeleted: Record<string, number>;
+            let mediaResult: { removed: number; tenantDir: string; archiveDir?: string };
             try {
                 await lease.assertOwned();
                 releaseQueueFence = await this.fenceQueuesForPurge(tenantId);
                 await lease.assertOwned();
-                await this.prisma.dropTenantSchema(tenant.schemaName);
-            } finally {
-                if (releaseQueueFence) await releaseQueueFence();
-            }
-            this.logger.log(`[Purge ${tenantId}] Schema "${tenant.schemaName}" dropped and verified`);
-
-            if (settings?.purgeSaga?.externalCompleted !== true) {
+                // Close races from work that was already active when the hot
+                // fence was published but completed before queues were paused.
+                const latestUsers = await this.prisma.user.findMany({
+                    where: { tenantId },
+                    select: { id: true },
+                });
+                userIds = [...new Set([...userIds, ...latestUsers.map((user: { id: string }) => user.id)])];
+                const latestTrusted = userIds.length > 0
+                    ? await this.prisma.trustedDevice.findMany({
+                        where: { userId: { in: userIds } },
+                        select: { tokenHash: true },
+                    })
+                    : [];
+                trustedTokenHashes = [...new Set([
+                    ...trustedTokenHashes,
+                    ...latestTrusted.map((device: { tokenHash: string }) => device.tokenHash),
+                ])];
+                conversationIds = [...new Set([
+                    ...conversationIds,
+                    ...await this.capturePurgeConversationIds(tenant.schemaName),
+                ])];
+                await this.assertPurgeAccessGate(
+                    tenantId,
+                    userIds,
+                    trustedTokenHashes,
+                    conversationIds,
+                    () => lease.assertOwned(),
+                );
                 await lease.assertOwned();
-                await this.executePurgeExternalPlan(tenantId, externalPlan);
-                const subscription = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
-                if (subscription?.providerSubscriptionId && !['cancelled', 'expired'].includes(subscription.status)) {
+                await this.prisma.preflightTenantPublicPurge();
+                await lease.assertOwned();
+                await this.prisma.dropTenantSchema(tenant.schemaName);
+                this.logger.log(`[Purge ${tenantId}] Schema "${tenant.schemaName}" dropped and verified`);
+
+                if (settings?.purgeSaga?.externalCompleted !== true) {
                     await lease.assertOwned();
-                    await this.billing.cancelSubscription(tenantId, { immediate: true, reason: 'tenant_purge' });
+                    await this.executePurgeExternalPlan(tenantId, externalPlan);
+                    const subscription = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
+                    if (subscription?.providerSubscriptionId && !['cancelled', 'expired'].includes(subscription.status)) {
+                        await lease.assertOwned();
+                        await this.billing.cancelSubscription(tenantId, { immediate: true, reason: 'tenant_purge' });
+                    }
+                    await lease.assertOwned();
+                    await this.prisma.$executeRawUnsafe(
+                        `UPDATE public.tenants
+                            SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb),
+                                '{purgeSaga,externalCompleted}', 'true'::jsonb, true),
+                                updated_at = NOW()
+                          WHERE id = $1::uuid`,
+                        tenantId,
+                    );
+                }
+
+                // All remaining irreversible local cleanup precedes the public
+                // DB commit; the queue fence and Redis purge fence remain held.
+                await lease.assertOwned();
+                mediaResult = await this.mediaService.deleteAllTenantFiles(tenantId);
+                if (mediaResult.tenantDir && fs.existsSync(mediaResult.tenantDir)) {
+                    throw new Error(`Tenant media directory still exists after wipe: ${mediaResult.tenantDir}`);
+                }
+                if (mediaResult.archiveDir && fs.existsSync(mediaResult.archiveDir)) {
+                    throw new Error(`Tenant cold archive still exists after wipe: ${mediaResult.archiveDir}`);
                 }
                 await lease.assertOwned();
-                await this.prisma.$executeRawUnsafe(
-                    `UPDATE public.tenants
-                        SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb),
-                            '{purgeSaga,externalCompleted}', 'true'::jsonb, true),
-                            updated_at = NOW()
-                      WHERE id = $1::uuid`,
+                await this.cleanupPurgeRedis(
                     tenantId,
+                    userIds,
+                    conversationIds,
+                    trustedTokenHashes,
                 );
+                await lease.assertOwned();
+                publicRowsDeleted = await this.prisma.purgeTenantPublicDataAtomic(
+                    tenantId,
+                    { name: tenant.name, schemaName: tenant.schemaName },
+                );
+                publicCommitted = true;
+            } finally {
+                if (releaseQueueFence) {
+                    try {
+                        await releaseQueueFence();
+                    } catch (error: any) {
+                        if (!publicCommitted) throw error;
+                        this.logger.error(`[Purge ${tenantId}] Post-commit queue release failed: ${error.message}`);
+                    }
+                }
             }
-
-            // All remaining irreversible local cleanup precedes the public DB
-            // commit; a failure therefore leaves the tenant identity barrier.
-            await lease.assertOwned();
-            const mediaResult = await this.mediaService.deleteAllTenantFiles(tenantId);
-            if (mediaResult.tenantDir && fs.existsSync(mediaResult.tenantDir)) {
-                throw new Error(`Tenant media directory still exists after wipe: ${mediaResult.tenantDir}`);
-            }
-            await lease.assertOwned();
-            await this.cleanupPurgeRedis(tenantId, userIds);
-            await lease.assertOwned();
-            const publicRowsDeleted = await this.prisma.purgeTenantPublicDataAtomic(
-                tenantId,
-                { name: tenant.name, schemaName: tenant.schemaName },
-            );
 
             // The identity row is already committed away here, so no further
             // ownership assertion may turn a completed purge into a false

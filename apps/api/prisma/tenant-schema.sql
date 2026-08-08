@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."conversations" (
     "stage" VARCHAR(50) DEFAULT 'greeting', -- greeting, discovery, negotiation, closing, support, complaint
     "assigned_to" VARCHAR(255),
     "summary" TEXT,
+    "handoff_summary" JSONB,
+    "handoff_trace_id" VARCHAR(128),
+    "handoff_summary_generated_at" TIMESTAMPTZ,
     "estimated_ticket_value" DECIMAL(15, 2) DEFAULT 0,
     "metadata" JSONB DEFAULT '{}',
     "resolved_at" TIMESTAMP,
@@ -568,10 +571,28 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."stage_history" (
 );
 CREATE INDEX IF NOT EXISTS "idx_stage_history_lead_id_created_at" ON "{{SCHEMA_NAME}}"."stage_history" ("lead_id", "created_at");
 
+-- ---- Pipelines (multi-pipeline ownership) ----
+-- Created in the canonical template so fresh tenants never depend on lazy DDL
+-- from a request path. Legacy schemas are repaired by PipelineService/startup.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pipelines" (
+    "id"          UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id"   UUID NOT NULL,
+    "name"        VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "is_default"  BOOLEAN DEFAULT false,
+    "is_active"   BOOLEAN DEFAULT true,
+    "created_at"  TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at"  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_pipelines_tenant" ON "{{SCHEMA_NAME}}"."pipelines" ("tenant_id", "is_active");
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_pipelines_default_per_tenant"
+    ON "{{SCHEMA_NAME}}"."pipelines" ("tenant_id") WHERE "is_default" = true;
+
 -- ---- Pipeline Stages (configurable per tenant) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pipeline_stages" (
     "id"                  UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "tenant_id"           UUID NOT NULL,
+    "pipeline_id"         UUID REFERENCES "{{SCHEMA_NAME}}"."pipelines"("id") ON DELETE RESTRICT,
     "name"                VARCHAR(100) NOT NULL,
     "slug"                VARCHAR(100),
     "color"               VARCHAR(20) DEFAULT '#3498db',
@@ -593,22 +614,10 @@ ALTER TABLE "{{SCHEMA_NAME}}"."pipeline_stages" ADD COLUMN IF NOT EXISTS "termin
 UPDATE "{{SCHEMA_NAME}}"."pipeline_stages"
 SET "terminal_outcome" = NULL
 WHERE COALESCE("is_terminal", false) = false AND "terminal_outcome" IS NOT NULL;
--- Backfill de las etapas que existen desde antes de la columna. Sin esto, todo
--- tenant ya creado se queda con sus etapas terminales en NULL, y como
--- resolveTerminalOutcome() falla cerrado, getStages y getKanban
--- (pipeline.service.ts:615 y :750) responden 500: el embudo entero deja de
--- abrir. El CHECK de abajo entra NOT VALID, así que la migración pasaría igual
--- y el daño solo aparecería en runtime, tenant por tenant.
---
--- Se reconstruye la intención con dos señales, en orden de confianza:
---   1. el slug terminal canónico —los de las 18 verticales más el embudo
---      genérico—, que es la fuente de verdad de lo que se sembró;
---   2. para etapas terminales que el dueño creó a mano y no están en esa lista,
---      la probabilidad: en TODO el catálogo canónico 'won' es 100 y 'lost' es 0.
---
--- Que quede claro por qué esto no contradice el cambio: la probabilidad ya no
--- decide nada en runtime. Acá es reparación de datos históricos, donde es la
--- única señal de intención que sobrevivió.
+-- Backfill únicamente para slugs cuya semántica es canónica y, por tanto,
+-- inequívoca. Una etapa terminal personalizada antigua sin outcome queda en
+-- NULL y se bloquea para revisión explícita: la probabilidad es una métrica de
+-- forecast, no evidencia suficiente para inventar un resultado de negocio.
 UPDATE "{{SCHEMA_NAME}}"."pipeline_stages"
 SET "terminal_outcome" = CASE
     WHEN "slug" IN (
@@ -619,10 +628,15 @@ SET "terminal_outcome" = CASE
         'perdido', 'no_interesado', 'cerrado_perdido', 'cancelado', 'declinado',
         'desercion', 'devolucion', 'no_show', 'rechazado', 'inactivo'
     ) THEN 'lost'
-    WHEN COALESCE("default_probability", 0) >= 50 THEN 'won'
-    ELSE 'lost'
 END
-WHERE "is_terminal" = true AND "terminal_outcome" IS NULL;
+WHERE "is_terminal" = true
+  AND "terminal_outcome" IS NULL
+  AND "slug" IN (
+      'ganado', 'cerrado', 'cerrado_ganado', 'completado', 'completada',
+      'entregado', 'entregada', 'alta', 'vip', 'aprobado', 'poliza_emitida',
+      'perdido', 'no_interesado', 'cerrado_perdido', 'cancelado', 'declinado',
+      'desercion', 'devolucion', 'no_show', 'rechazado', 'inactivo'
+  );
 ALTER TABLE "{{SCHEMA_NAME}}"."pipeline_stages" DROP CONSTRAINT IF EXISTS "pipeline_stages_terminal_outcome_check";
 ALTER TABLE "{{SCHEMA_NAME}}"."pipeline_stages" ADD CONSTRAINT "pipeline_stages_terminal_outcome_check" CHECK (
     (COALESCE("is_terminal", false) = false AND "terminal_outcome" IS NULL)
@@ -646,6 +660,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."deals" (
     "title"               VARCHAR(255) NOT NULL,
     "value"               DECIMAL(14,2) DEFAULT 0,
     "currency"            VARCHAR(10) DEFAULT 'COP',
+    "pipeline_id"         UUID REFERENCES "{{SCHEMA_NAME}}"."pipelines"("id") ON DELETE RESTRICT,
     "stage_id"            UUID REFERENCES "{{SCHEMA_NAME}}"."pipeline_stages"("id"),
     "probability"         INTEGER DEFAULT 0,
     "expected_close_date" DATE,
@@ -669,6 +684,9 @@ CREATE INDEX IF NOT EXISTS "idx_deals_sla_deadline" ON "{{SCHEMA_NAME}}"."deals"
 ALTER TABLE "{{SCHEMA_NAME}}"."opportunities"
     ADD COLUMN IF NOT EXISTS "deal_id" UUID REFERENCES "{{SCHEMA_NAME}}"."deals"("id") ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS "idx_opportunities_deal_id" ON "{{SCHEMA_NAME}}"."opportunities" ("deal_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_opportunities_deal_id"
+    ON "{{SCHEMA_NAME}}"."opportunities" ("deal_id")
+    WHERE "deal_id" IS NOT NULL;
 
 -- Keep the B2B Deal mirror aligned with the canonical stage outcome. This is
 -- deliberately slug-independent so every vertical and language behaves alike.
@@ -3118,6 +3136,9 @@ ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "sa
 ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "feedback_count" INTEGER DEFAULT 0;
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "was_handed_off" BOOLEAN DEFAULT false;
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "handoff_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "handoff_summary" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "handoff_trace_id" VARCHAR(128);
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "handoff_summary_generated_at" TIMESTAMPTZ;
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "ai_message_count" INTEGER DEFAULT 0;
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "resolution_type" VARCHAR(50);
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "resolution_verified" BOOLEAN;

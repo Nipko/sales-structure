@@ -29,10 +29,25 @@ function buildRedis() {
         set: writerTrap('redis.set'),
         setJson: writerTrap('redis.setJson'),
         del: writerTrap('redis.del'),
-        incrBy: writerTrap('redis.incrBy'),
-        expire: writerTrap('redis.expire'),
-        sadd: writerTrap('redis.sadd'),
+        incrBy: jest.fn().mockResolvedValue(1),
+        expire: jest.fn().mockResolvedValue(1),
+        sadd: jest.fn().mockResolvedValue(1),
     };
+}
+
+function assertOnlyOperationalRedisWrites(redis: ReturnType<typeof buildRedis>) {
+    expect(redis.set).not.toHaveBeenCalled();
+    expect(redis.setJson).not.toHaveBeenCalled();
+    expect(redis.del).not.toHaveBeenCalled();
+    for (const [key] of redis.incrBy.mock.calls) {
+        expect(key).toMatch(/^llm:(?:stats|cost):/);
+    }
+    for (const [key] of redis.expire.mock.calls) {
+        expect(key).toMatch(/^llm:(?:stats|cost):/);
+    }
+    for (const [key] of redis.sadd.mock.calls) {
+        expect(key).toMatch(/^llm:stats:/);
+    }
 }
 
 function assertNoRedisWrites(redis: ReturnType<typeof buildRedis>) {
@@ -53,7 +68,7 @@ function assertNoRedisAccess(redis: ReturnType<typeof buildRedis>) {
     assertNoRedisWrites(redis);
 }
 
-describe('Agent Test hard zero-write execution', () => {
+describe('Agent Test no-business-write execution', () => {
     it('resolves the tenant schema from Postgres without warming Redis', async () => {
         const redis = buildRedis();
         const prisma = {
@@ -77,7 +92,7 @@ describe('Agent Test hard zero-write execution', () => {
         assertNoRedisAccess(redis);
     });
 
-    it('runs the real Persona, Business Info, Knowledge and LLM Router read paths without DDL, cache, analytics or events', async () => {
+    it('runs real read paths without DDL/cache/events while accounting provider cost and quota', async () => {
         const redis = buildRedis();
         const config = {
             language: 'es-CO',
@@ -188,6 +203,12 @@ describe('Agent Test hard zero-write execution', () => {
         const affinityWriter = jest.spyOn(router as any, 'setAffinity');
         const breakerWriter = jest.spyOn(router as any, 'markProviderFailure');
         const traceWriter = jest.spyOn(router as any, 'emitTurnTrace');
+        const throttle = {
+            hasAiMessageQuota: jest.fn().mockResolvedValue(true),
+            getPlanFeatures: jest.fn().mockResolvedValue({ llmTier: 'tier_2' }),
+            getLlmSpendUsdCents: jest.fn().mockResolvedValue(0),
+            incrementAiMessageCount: jest.fn().mockResolvedValue(1),
+        };
 
         const service = new AgentTestService(
             persona,
@@ -201,9 +222,12 @@ describe('Agent Test hard zero-write execution', () => {
             { detect: jest.fn().mockReturnValue('es') } as any,
             { execute: jest.fn() } as any,
             tenants as any,
+            throttle as any,
+            { populateTurnContext: jest.fn().mockResolvedValue({ failures: [] }) } as any,
         );
 
         const result = await service.test(TENANT_ID, AGENT_ID, { message: '¿Cuál es el horario?' });
+        await new Promise(resolve => setImmediate(resolve));
 
         expect(result.reply).toBe('Respuesta de prueba');
         expect(result.debug.ragHits).toHaveLength(1);
@@ -212,16 +236,17 @@ describe('Agent Test hard zero-write execution', () => {
         expect(ensureBusiness).not.toHaveBeenCalled();
         expect(ensureKnowledge).not.toHaveBeenCalled();
         expect(retrievalWriter).not.toHaveBeenCalled();
-        expect(statsWriter).not.toHaveBeenCalled();
+        expect(statsWriter).toHaveBeenCalledTimes(1);
+        expect(throttle.incrementAiMessageCount).toHaveBeenCalledWith(TENANT_ID);
         expect(affinityWriter).not.toHaveBeenCalled();
         expect(breakerWriter).not.toHaveBeenCalled();
         expect(traceWriter).not.toHaveBeenCalled();
         expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
         expect(eventEmitter.emit).not.toHaveBeenCalled();
-        assertNoRedisAccess(redis);
+        assertOnlyOperationalRedisWrites(redis);
     });
 
-    it('does not persist breaker/error telemetry when every provider fails', async () => {
+    it('accounts failed provider attempts but does not mutate breaker state or emit alerts', async () => {
         const redis = buildRedis();
         const eventEmitter = { emit: writerTrap('eventEmitter.emit') };
         const router = new LLMRouterService(
@@ -242,11 +267,12 @@ describe('Agent Test hard zero-write execution', () => {
             tenantId: TENANT_ID,
             executionContext: AGENT_TEST_EXECUTION_CONTEXT,
         })).rejects.toThrow('provider down');
+        await new Promise(resolve => setImmediate(resolve));
 
         expect(breakerWriter).not.toHaveBeenCalled();
-        expect(statsWriter).not.toHaveBeenCalled();
+        expect(statsWriter).toHaveBeenCalled();
         expect(eventEmitter.emit).not.toHaveBeenCalled();
-        assertNoRedisAccess(redis);
+        assertOnlyOperationalRedisWrites(redis);
     });
 
     it('keeps FAQ and policy tools read-only and rejects a writer at the real executor boundary', async () => {

@@ -386,18 +386,20 @@ export class MediaService {
      * /data/media/{tenantId}/ directory; the DB rows in media_files live
      * in the tenant schema and are dropped with DROP SCHEMA CASCADE.
      */
-    async deleteAllTenantFiles(tenantId: string): Promise<{ removed: number; tenantDir: string }> {
+    async deleteAllTenantFiles(tenantId: string): Promise<{
+        removed: number;
+        tenantDir: string;
+        archiveDir: string;
+    }> {
         // Defensive: never let path traversal through the tenantId param
         const safeTenantId = tenantId.replace(/[^a-zA-Z0-9_-]/g, '');
-        if (!safeTenantId || safeTenantId !== tenantId) {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantId);
+        if (!safeTenantId || safeTenantId !== tenantId || !isUuid) {
             this.logger.warn(`Refusing to wipe media for suspicious tenantId: ${tenantId}`);
-            return { removed: 0, tenantDir: '' };
+            throw new BadRequestException('Invalid tenantId for media purge');
         }
         const tenantDir = path.join(this.storagePath, safeTenantId);
-        if (!fs.existsSync(tenantDir)) {
-            this.logger.log(`No media dir to wipe for tenant ${tenantId} (${tenantDir})`);
-            return { removed: 0, tenantDir };
-        }
+        const archiveDir = path.join(this.storagePath, 'archives', safeTenantId);
         let removed = 0;
         try {
             // Count files first (one pass)
@@ -409,13 +411,16 @@ export class MediaService {
                 }
                 return n;
             };
-            removed = countFiles(tenantDir);
-            fs.rmSync(tenantDir, { recursive: true, force: true });
-            this.logger.log(`Wiped ${removed} file(s) for tenant ${tenantId} (${tenantDir})`);
+            for (const target of [tenantDir, archiveDir]) {
+                if (!fs.existsSync(target)) continue;
+                removed += countFiles(target);
+                fs.rmSync(target, { recursive: true, force: true });
+            }
+            this.logger.log(`Wiped ${removed} hot/cold file(s) for tenant ${tenantId}`);
         } catch (err: any) {
             this.logger.error(`Failed to wipe media dir for tenant ${tenantId}: ${err.message}`);
         }
-        return { removed, tenantDir };
+        return { removed, tenantDir, archiveDir };
     }
 
     /**

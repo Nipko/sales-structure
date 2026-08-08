@@ -32,7 +32,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 
 const formatCurrency = (n: number) => `$${n.toLocaleString()}`;
-const KNOWN_STAGE_KEYS = ['nuevo','contactado','respondio','calificado','tibio','caliente','listo_cierre','ganado','perdido','no_interesado'];
+const KNOWN_STAGE_KEYS = ['nuevo','contactado','respondio','calificado','tibio','caliente','listo_para_cierre','listo_cierre','ganado','perdido','no_interesado'];
 
 export default function PipelinePage() {
     const t = useTranslations('pipeline');

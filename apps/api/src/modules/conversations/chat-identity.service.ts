@@ -4,15 +4,18 @@ import { RedisService } from '../redis/redis.service';
 import { EmailService } from '../email/email.service';
 import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
+import { randomInt } from 'crypto';
 
 /** Cuánto dura la verificación una vez lograda, dentro de la misma conversación. */
 const VERIFIED_TTL_SEC = 30 * 60;
 /** Vida del código. */
 const CODE_TTL_SEC = 10 * 60;
 const MAX_ATTEMPTS = 5;
+const SEND_LOCK_TTL_SEC = 30;
 
 export type StartResult =
     | { status: 'sent'; via: 'email' | 'sms'; hint: string }
+    | { status: 'pending' }
     | { status: 'no_channel' }
     | { status: 'already_verified' };
 
@@ -49,15 +52,20 @@ export class ChatIdentityService {
 
     private verifiedKey(conversationId: string) { return `chat:verified:${conversationId}`; }
     private codeKey(conversationId: string) { return `chat:idcode:${conversationId}`; }
+    private sendLockKey(conversationId: string) { return `lock:chat:idcode:${conversationId}`; }
 
     /** ¿Esta conversación ya verificó identidad hace poco? */
-    async isVerified(conversationId: string): Promise<boolean> {
+    async isVerified(conversationId: string, contactId?: string): Promise<boolean> {
         if (!conversationId) return false;
         // Falla CERRADO: si Redis no contesta, no se da por verificado a nadie.
         // Es lo contrario del criterio de las alertas, y a propósito — acá lo que
         // está del otro lado son datos de una póliza o una historia clínica.
         try {
-            return !!(await this.redis.get(this.verifiedKey(conversationId)));
+            const verifiedContactId = await this.redis.get(this.verifiedKey(conversationId));
+            if (!verifiedContactId) return false;
+            // Verification belongs to the contact, not merely to a reusable
+            // conversation id. A contact merge/reassignment must step up again.
+            return contactId ? String(verifiedContactId) === contactId : true;
         } catch {
             return false;
         }
@@ -75,55 +83,90 @@ export class ChatIdentityService {
         conversationId: string,
         conversationChannel: string,
     ): Promise<StartResult> {
-        if (await this.isVerified(conversationId)) return { status: 'already_verified' };
+        if (await this.isVerified(conversationId, contactId)) return { status: 'already_verified' };
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT email, phone, phone_normalized FROM contacts WHERE id = $1::uuid LIMIT 1`,
-            [contactId],
-        ).catch(() => []);
-        const contact = rows?.[0];
-        if (!contact) return { status: 'no_channel' };
+        // One sender per conversation. Without this fence, a repeated tool call
+        // could deliver several different codes and invalidate the one the user
+        // is currently typing. Losing/being unable to acquire the lock fails
+        // closed and asks the caller to wait rather than sending again.
+        const lockToken = await this.redis
+            .acquireLockToken(this.sendLockKey(conversationId), SEND_LOCK_TTL_SEC)
+            .catch(() => null);
+        if (!lockToken) return { status: 'pending' };
 
-        const code = String(Math.floor(100000 + Math.random() * 900000));
-        const body = `Tu código de verificación es ${code}. Vence en 10 minutos. Si no lo pediste, ignorá este mensaje.`;
-
-        // El correo es el preferido: casi nunca es el mismo medio por el que
-        // llega la conversación, y no cuesta créditos.
-        if (contact.email) {
-            const ok = await this.email
-                .send({
-                    to: contact.email,
-                    subject: 'Código de verificación',
-                    html: `<p style="font-size:16px;font-family:sans-serif">${body}</p>`,
-                })
-                .then(() => true)
-                .catch(() => false);
-            if (ok) {
-                await this.storeCode(conversationId, contactId, code);
-                return { status: 'sent', via: 'email', hint: this.maskEmail(contact.email) };
+        try {
+            const existingRaw = await this.redis.get(this.codeKey(conversationId)).catch(() => null);
+            if (existingRaw) {
+                try {
+                    const existing = JSON.parse(String(existingRaw)) as {
+                        contactId?: string;
+                        via?: 'email' | 'sms';
+                        hint?: string;
+                    };
+                    if (existing.contactId === contactId && existing.via && existing.hint) {
+                        return { status: 'sent', via: existing.via, hint: existing.hint };
+                    }
+                } catch { /* Replace malformed/legacy pending payload below. */ }
+                await this.redis.del(this.codeKey(conversationId)).catch(() => {});
             }
-        }
 
-        // Segundo canal: SMS. Hoy no sale nunca porque el SMS está apagado en
-        // toda la plataforma (SmsKillSwitchService, decisión de agosto 2026:
-        // el costo por mensaje estaba por encima del precio). Se deja el camino
-        // porque el interruptor es un ajuste, no una amputación: si mañana se
-        // enciende, la verificación gana un segundo canal sin tocar nada.
-        //
-        // Mientras tanto, un contacto sin correo cae en `no_channel` y la tool
-        // escala a un humano — que es lo correcto: sin canal fuera de banda no
-        // hay verificación posible, y fingir que sí la hay sería peor.
-        const phone = contact.phone_normalized || normalizePhoneE164(contact.phone || '') || contact.phone;
-        if (phone && conversationChannel !== 'sms') {
-            const res = await this.sms.send(tenantId, phone, body, { reason: 'identity_verification' }).catch(() => null);
-            if (res?.sent) {
-                await this.storeCode(conversationId, contactId, code);
-                return { status: 'sent', via: 'sms', hint: this.maskPhone(phone) };
+            const rows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT email, phone, phone_normalized FROM contacts WHERE id = $1::uuid LIMIT 1`,
+                [contactId],
+            ).catch(() => []);
+            const contact = rows?.[0];
+            if (!contact) return { status: 'no_channel' };
+
+            const code = String(randomInt(100000, 1_000_000));
+            const body = `Tu código de verificación es ${code}. Vence en 10 minutos. Si no lo pediste, ignorá este mensaje.`;
+
+            // El correo es el preferido: casi nunca es el mismo medio por el que
+            // llega la conversación, y no cuesta créditos.
+            if (contact.email) {
+                const hint = this.maskEmail(contact.email);
+                // Persist before sending: a delivered but unverifiable code is
+                // worse than a safe failure. If delivery fails, remove it before
+                // trying a different channel.
+                await this.storeCode(conversationId, contactId, code, 'email', hint);
+                const ok = await this.email
+                    .send({
+                        to: contact.email,
+                        subject: 'Código de verificación',
+                        html: `<p style="font-size:16px;font-family:sans-serif">${body}</p>`,
+                    })
+                    .then(() => true)
+                    .catch(() => false);
+                if (ok) {
+                    return { status: 'sent', via: 'email', hint };
+                }
+                await this.redis.del(this.codeKey(conversationId)).catch(() => {});
             }
-        }
 
-        return { status: 'no_channel' };
+            // Segundo canal: SMS. Hoy no sale nunca porque el SMS está apagado en
+            // toda la plataforma (SmsKillSwitchService, decisión de agosto 2026:
+            // el costo por mensaje estaba por encima del precio). Se deja el camino
+            // porque el interruptor es un ajuste, no una amputación: si mañana se
+            // enciende, la verificación gana un segundo canal sin tocar nada.
+            //
+            // Mientras tanto, un contacto sin correo cae en `no_channel` y la tool
+            // escala a un humano — que es lo correcto: sin canal fuera de banda no
+            // hay verificación posible, y fingir que sí la hay sería peor.
+            const phone = contact.phone_normalized || normalizePhoneE164(contact.phone || '') || contact.phone;
+            if (phone && conversationChannel !== 'sms') {
+                const hint = this.maskPhone(phone);
+                await this.storeCode(conversationId, contactId, code, 'sms', hint);
+                const res = await this.sms.send(tenantId, phone, body, { reason: 'identity_verification' }).catch(() => null);
+                if (res?.sent) {
+                    return { status: 'sent', via: 'sms', hint };
+                }
+                await this.redis.del(this.codeKey(conversationId)).catch(() => {});
+            }
+
+            return { status: 'no_channel' };
+        } finally {
+            await this.redis.releaseLockToken(this.sendLockKey(conversationId), lockToken).catch(() => {});
+        }
     }
 
     /** Valida el código y, si es correcto, marca la conversación como verificada. */
@@ -150,10 +193,15 @@ export class ChatIdentityService {
         return { ok: true };
     }
 
-    private async storeCode(conversationId: string, contactId: string, code: string): Promise<void> {
+    private async storeCode(
+        conversationId: string,
+        contactId: string,
+        code: string,
+        via: 'email' | 'sms',
+        hint: string,
+    ): Promise<void> {
         await this.redis
-            .set(this.codeKey(conversationId), JSON.stringify({ code, contactId, attempts: 0 }), CODE_TTL_SEC)
-            .catch(() => {});
+            .set(this.codeKey(conversationId), JSON.stringify({ code, contactId, attempts: 0, via, hint }), CODE_TTL_SEC);
     }
 
     /** j***@gmail.com — suficiente para que lo reconozca, inútil para un tercero. */

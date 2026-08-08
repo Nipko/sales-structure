@@ -78,6 +78,7 @@ const SALUD: VerticalDefinition = {
             { name: { es: 'Paciente activo', en: 'Active patient', pt: 'Paciente ativo', fr: 'Patient actif' }, slug: 'paciente_activo', color: '#2ecc71', probability: 80, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
             { name: { es: 'Seguimiento', en: 'Follow-up', pt: 'Acompanhamento', fr: 'Suivi' }, slug: 'seguimiento', color: '#27ae60', probability: 90, isTerminal: false, transitionRules: [] },
             { name: { es: 'Alta', en: 'Discharged', pt: 'Alta', fr: 'Sorti' }, slug: 'alta', color: '#95a5a6', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
+            { name: { es: 'No continuó', en: 'Did not continue', pt: 'Não continuou', fr: 'N’a pas poursuivi' }, slug: 'no_continuo', color: '#e74c3c', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ],
     },
     faqs: [
@@ -165,6 +166,7 @@ const MODA_BELLEZA: VerticalDefinition = {
             { name: { es: 'En servicio', en: 'In service', pt: 'Em atendimento', fr: 'En service' }, slug: 'en_servicio', color: '#da70d6', probability: 70, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
             { name: { es: 'Cliente frecuente', en: 'Regular client', pt: 'Cliente frequente', fr: 'Client régulier' }, slug: 'frecuente', color: '#9b59b6', probability: 90, isTerminal: false, transitionRules: [] },
             { name: { es: 'VIP', en: 'VIP', pt: 'VIP', fr: 'VIP' }, slug: 'vip', color: '#8e44ad', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [{ type: 'min_score', value: 8 }] },
+            { name: { es: 'No concretada', en: 'Not booked', pt: 'Não concretizado', fr: 'Non concrétisé' }, slug: 'no_concretada', color: '#e74c3c', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ],
     },
     faqs: [
@@ -458,7 +460,7 @@ const TURISMO: VerticalDefinition = {
     ],
     services: [
         { name: { es: 'Tour día completo', en: 'Full day tour', pt: 'Tour dia inteiro', fr: 'Tour journée complète' }, description: { es: 'Tour guiado de día completo', en: 'Full day guided tour', pt: 'Tour guiado de dia inteiro', fr: 'Tour guidé journée complète' }, durationMinutes: 480, price: 300000, currency: 'COP', category: 'tours' },
-        { name: { es: 'Paquete fin de semana', en: 'Weekend package', pt: 'Pacote fim de semana', fr: 'Forfait week-end' }, description: { es: 'Paquete todo incluido fin de semana', en: 'All-inclusive weekend package', pt: 'Pacote tudo incluído fim de semana', fr: 'Forfait tout inclus week-end' }, durationMinutes: 0, price: 800000, currency: 'COP', category: 'paquetes' },
+        { name: { es: 'Paquete fin de semana', en: 'Weekend package', pt: 'Pacote fim de semana', fr: 'Forfait week-end' }, description: { es: 'Paquete todo incluido fin de semana', en: 'All-inclusive weekend package', pt: 'Pacote tudo incluído fim de semana', fr: 'Forfait tout inclus week-end' }, durationMinutes: 60, price: 800000, currency: 'COP', category: 'paquetes' },
         { name: { es: 'Excursión medio día', en: 'Half day excursion', pt: 'Excursão meio dia', fr: 'Excursion demi-journée' }, description: { es: 'Excursión de medio día con transporte', en: 'Half day excursion with transport', pt: 'Excursão meio dia com transporte', fr: 'Excursion demi-journée avec transport' }, durationMinutes: 240, price: 150000, currency: 'COP', category: 'tours' },
     ],
     businessHours: { schedule: { mon: '08:00-19:00', tue: '08:00-19:00', wed: '08:00-19:00', thu: '08:00-19:00', fri: '08:00-19:00', sat: '09:00-16:00' }, afterHoursMessage: { es: 'Estamos fuera de horario. Te responderemos al iniciar la jornada.', en: 'We are closed. We\'ll respond when we open.', pt: 'Estamos fora do horário.', fr: 'Nous sommes fermés.' } },
@@ -521,7 +523,7 @@ function createGenericVertical(industry: string, config: Partial<VerticalDefinit
         industry,
         subTypes: [],
         terminology: { customerNoun: { es: 'cliente', en: 'customer', pt: 'cliente', fr: 'client' }, customerNounPlural: { es: 'clientes', en: 'customers', pt: 'clientes', fr: 'clients' }, transactionNoun: { es: 'venta', en: 'sale', pt: 'venda', fr: 'vente' }, serviceNoun: { es: 'servicio', en: 'service', pt: 'serviço', fr: 'service' }, pipelineNoun: { es: 'ventas', en: 'sales', pt: 'vendas', fr: 'ventes' } },
-        agent: { name: { es: 'Asistente', en: 'Assistant', pt: 'Assistente', fr: 'Assistant' }, role: { es: 'Asistente virtual de atención al cliente', en: 'Virtual customer service assistant', pt: 'Assistente virtual de atendimento', fr: 'Assistant virtuel service client' }, tone: 'professional', formality: 'semi-formal', greeting: { es: '¡Hola! ¿En qué puedo ayudarte hoy?', en: 'Hello! How can I help you today?', pt: 'Olá! Como posso ajudar?', fr: 'Bonjour! Comment puis-je vous aider?' }, rules: { es: 'Responde de forma profesional y concisa. Si el cliente quiere una reunión, tomá sus datos y avisá que alguien del equipo la coordina.', en: 'Respond professionally and concisely. If the customer wants a meeting, take their details and say someone from the team will arrange it.', pt: 'Responda profissionalmente. Se o cliente quiser uma reunião, colete os dados e avise que alguém da equipe vai agendar.', fr: 'Répondez professionnellement. Si le client veut un rendez-vous, prenez ses coordonnées et indiquez qu\'un membre de l\'équipe le fixera.' }, forbiddenTopics: { es: '', en: '', pt: '', fr: '' }, handoffTriggers: { es: 'queja formal|reclamo formal|solicitud de reembolso|quiero mi dinero|hablar con un humano|hablar con una persona', en: 'formal complaint|refund request|speak to a human|talk to a person|want my money back', pt: 'reclamacao formal|reembolso|falar com um humano|falar com uma pessoa', fr: 'plainte formelle|remboursement|parler a un humain|parler a une personne' } },
+        agent: { name: { es: 'Asistente', en: 'Assistant', pt: 'Assistente', fr: 'Assistant' }, role: { es: 'Asistente virtual de atención al cliente', en: 'Virtual customer service assistant', pt: 'Assistente virtual de atendimento', fr: 'Assistant virtuel service client' }, tone: 'professional', formality: 'semi-formal', greeting: { es: '¡Hola! ¿En qué puedo ayudarte hoy?', en: 'Hello! How can I help you today?', pt: 'Olá! Como posso ajudar?', fr: 'Bonjour! Comment puis-je vous aider?' }, rules: { es: 'Responde de forma profesional y concisa. Si el cliente quiere una reunión, tomá sus datos y avisá que alguien del equipo la coordina.', en: 'Respond professionally and concisely. If the customer wants a meeting, take their details and say someone from the team will arrange it.', pt: 'Responda profissionalmente. Se o cliente quiser uma reunião, colete os dados e avise que alguém da equipe vai agendar.', fr: 'Répondez professionnellement. Si le client veut un rendez-vous, prenez ses coordonnées et indiquez qu\'un membre de l\'équipe le fixera.' }, forbiddenTopics: { es: 'Información confidencial|Datos personales de terceros|Garantías no autorizadas', en: 'Confidential information|Third-party personal data|Unauthorized guarantees', pt: 'Informações confidenciais|Dados pessoais de terceiros|Garantias não autorizadas', fr: 'Informations confidentielles|Données personnelles de tiers|Garanties non autorisées' }, handoffTriggers: { es: 'queja formal|reclamo formal|solicitud de reembolso|quiero mi dinero|hablar con un humano|hablar con una persona', en: 'formal complaint|refund request|speak to a human|talk to a person|want my money back', pt: 'reclamacao formal|reembolso|falar com um humano|falar com uma pessoa', fr: 'plainte formelle|remboursement|parler a un humain|parler a une personne' } },
         pipeline: { stages: [
             { name: { es: 'Nuevo', en: 'New', pt: 'Novo', fr: 'Nouveau' }, slug: 'nuevo', color: '#3498db', probability: 10, isTerminal: false, transitionRules: [] },
             { name: { es: 'Contactado', en: 'Contacted', pt: 'Contatado', fr: 'Contacté' }, slug: 'contactado', color: '#f39c12', probability: 25, isTerminal: false, transitionRules: [{ type: 'phone_required' }] },
@@ -988,6 +990,7 @@ const FOTOGRAFIA: VerticalDefinition = {
             { name: { es: 'Sesión agendada', en: 'Shoot booked', pt: 'Sessão agendada', fr: 'Séance réservée' }, slug: 'agendada', color: '#9b59b6', probability: 90, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
             { name: { es: 'Entregada', en: 'Delivered', pt: 'Entregue', fr: 'Livré' }, slug: 'entregada', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
             { name: { es: 'Reseña', en: 'Reviewed', pt: 'Avaliada', fr: 'Avis donné' }, slug: 'resena', color: '#27ae60', probability: 95, isTerminal: false, transitionRules: [] },
+            { name: { es: 'No concretada', en: 'Not booked', pt: 'Não concretizado', fr: 'Non concrétisé' }, slug: 'no_concretada', color: '#e74c3c', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ],
     },
     faqs: [
@@ -1153,6 +1156,7 @@ const GIMNASIOS: VerticalDefinition = {
             { name: { es: 'Inscrito', en: 'Enrolled', pt: 'Matriculado', fr: 'Inscrit' }, slug: 'inscrito', color: '#e67e22', probability: 60, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
             { name: { es: 'Activo', en: 'Active member', pt: 'Membro ativo', fr: 'Membre actif' }, slug: 'activo', color: '#2ecc71', probability: 90, isTerminal: false, transitionRules: [] },
             { name: { es: 'Renovación', en: 'Renewal', pt: 'Renovação', fr: 'Renouvellement' }, slug: 'renovacion', color: '#27ae60', probability: 95, isTerminal: false, transitionRules: [] },
+            { name: { es: 'Membresía activada', en: 'Membership activated', pt: 'Matrícula ativada', fr: 'Adhésion activée' }, slug: 'membresia_activada', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
             { name: { es: 'Inactivo', en: 'Lapsed', pt: 'Inativo', fr: 'Inactif' }, slug: 'inactivo', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ],
     },
@@ -1243,6 +1247,7 @@ const VETERINARIA: VerticalDefinition = {
             { name: { es: 'Paciente activo', en: 'Active patient', pt: 'Paciente ativo', fr: 'Patient actif' }, slug: 'paciente_activo', color: '#2ecc71', probability: 80, isTerminal: false, transitionRules: [{ type: 'email_required' }] },
             { name: { es: 'Plan de vacunación', en: 'Vaccination plan', pt: 'Plano de vacinação', fr: 'Plan de vaccination' }, slug: 'plan_vacunacion', color: '#27ae60', probability: 90, isTerminal: false, transitionRules: [] },
             { name: { es: 'Alta', en: 'Discharged', pt: 'Alta', fr: 'Sorti' }, slug: 'alta', color: '#95a5a6', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
+            { name: { es: 'No continuó', en: 'Did not continue', pt: 'Não continuou', fr: 'N’a pas poursuivi' }, slug: 'no_continuo', color: '#e74c3c', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
         ],
     },
     faqs: [

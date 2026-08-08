@@ -14,8 +14,18 @@ import {
     pinSafeHttpsUrl,
     safeAxiosOptions,
 } from '../../common/utils/safe-outbound-url.util';
+import {
+    initialIntegrationHealth,
+    materializeIntegrationHealth,
+    reduceIntegrationHealth,
+    requiredScopesForProvider,
+    type IntegrationHealth,
+    type IntegrationHealthObservation,
+    type StoredIntegrationHealth,
+    type VerticalProvider,
+} from './integration-health';
 
-export type VerticalProvider = 'toast' | 'mindbody' | 'cliniko';
+export type { VerticalProvider } from './integration-health';
 
 export interface ToastConfig {
     provider: 'toast';
@@ -42,7 +52,6 @@ export interface ClinikoConfig {
 export type VerticalIntegrationConfig = ToastConfig | MindbodyConfig | ClinikoConfig;
 
 const PROVIDERS: VerticalProvider[] = ['toast', 'mindbody', 'cliniko'];
-const CONNECTED_CACHE_TTL = 300;
 const PROVIDER_ALLOWLIST_CONFIG: Partial<Record<VerticalProvider, string>> = {
     toast: 'VERTICAL_INTEGRATIONS_TOAST_ALLOWED_HOSTS',
     cliniko: 'VERTICAL_INTEGRATIONS_CLINIKO_ALLOWED_HOSTS',
@@ -161,12 +170,23 @@ export class VerticalIntegrationsService {
 
     async getAllConfigs(tenantId: string): Promise<Record<string, any>> {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        const vi = (tenant?.settings as any)?.verticalIntegrations || {};
+        const settings = (tenant?.settings as any) || {};
+        const vi = settings.verticalIntegrations || {};
+        const storedHealth = settings.verticalIntegrationHealth || {};
         // Mask secrets
         const out: Record<string, any> = {};
         for (const p of PROVIDERS) {
             if (vi[p]) {
-                out[p] = { ...vi[p], clientSecret: vi[p].clientSecret ? '***' : undefined, apiKey: vi[p].apiKey ? '***' : undefined, password: vi[p].password ? '***' : undefined, connected: true };
+                const health = materializeIntegrationHealth(p, true, storedHealth[p]);
+                out[p] = {
+                    ...vi[p],
+                    clientSecret: vi[p].clientSecret ? '***' : undefined,
+                    apiKey: vi[p].apiKey ? '***' : undefined,
+                    password: vi[p].password ? '***' : undefined,
+                    connected: health.connected,
+                    status: health.status,
+                    health,
+                };
             }
         }
         return out;
@@ -178,6 +198,7 @@ export class VerticalIntegrationsService {
         if (!tenant) throw new NotFoundException('Tenant not found');
         const settings = (tenant.settings as any) || {};
         const vi = settings.verticalIntegrations || {};
+        const healthStore = settings.verticalIntegrationHealth || {};
         const current = vi[provider] || {};
         // Merge — keep existing secrets if masked/omitted
         const merged: any = { ...current, ...config, provider };
@@ -200,9 +221,20 @@ export class VerticalIntegrationsService {
         }
         await this.prisma.tenant.update({
             where: { id: tenantId },
-            data: { settings: { ...settings, verticalIntegrations: { ...vi, [provider]: merged } } as any },
+            data: {
+                settings: {
+                    ...settings,
+                    verticalIntegrations: { ...vi, [provider]: merged },
+                    // Saving credentials never means they were validated. Reset
+                    // health and require an explicit check/sync before tools exist.
+                    verticalIntegrationHealth: {
+                        ...healthStore,
+                        [provider]: initialIntegrationHealth(provider),
+                    },
+                } as any,
+            },
         });
-        await this.redis.del(`vi:connected:${tenantId}`).catch(() => {});
+        await this.invalidateHealthCache(tenantId);
         return merged;
     }
 
@@ -210,25 +242,124 @@ export class VerticalIntegrationsService {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
         if (!tenant) return;
         const settings = (tenant.settings as any) || {};
-        const vi = settings.verticalIntegrations || {};
+        const vi = { ...(settings.verticalIntegrations || {}) };
+        const healthStore = { ...(settings.verticalIntegrationHealth || {}) };
         delete vi[provider];
-        await this.prisma.tenant.update({ where: { id: tenantId }, data: { settings: { ...settings, verticalIntegrations: vi } as any } });
+        delete healthStore[provider];
+        await this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: {
+                settings: {
+                    ...settings,
+                    verticalIntegrations: vi,
+                    verticalIntegrationHealth: healthStore,
+                } as any,
+            },
+        });
+        await this.invalidateHealthCache(tenantId);
+    }
+
+    private async invalidateHealthCache(tenantId: string): Promise<void> {
         await this.redis.del(`vi:connected:${tenantId}`).catch(() => {});
     }
 
-    /** Which providers are connected (cached). Used to gate AI tool registration. */
+    async getProviderHealth(tenantId: string, provider: VerticalProvider): Promise<IntegrationHealth> {
+        if (!PROVIDERS.includes(provider)) throw new BadRequestException('Proveedor no soportado');
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        const settings = (tenant?.settings as any) || {};
+        return materializeIntegrationHealth(
+            provider,
+            !!settings.verticalIntegrations?.[provider],
+            settings.verticalIntegrationHealth?.[provider],
+        );
+    }
+
+    async getAllHealth(tenantId: string): Promise<Record<VerticalProvider, IntegrationHealth>> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        const settings = (tenant?.settings as any) || {};
+        const configured = settings.verticalIntegrations || {};
+        const stored = settings.verticalIntegrationHealth || {};
+        return Object.fromEntries(PROVIDERS.map(provider => [
+            provider,
+            materializeIntegrationHealth(provider, !!configured[provider], stored[provider]),
+        ])) as Record<VerticalProvider, IntegrationHealth>;
+    }
+
+    /**
+     * Durable, provider-scoped and retry-idempotent health update. The JSONB
+     * update merges only one provider, preserving concurrent tenant settings.
+     */
+    async updateHealth(
+        tenantId: string,
+        provider: VerticalProvider,
+        observation: IntegrationHealthObservation,
+    ): Promise<IntegrationHealth> {
+        if (!PROVIDERS.includes(provider)) throw new BadRequestException('Proveedor no soportado');
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        if (!tenant) throw new NotFoundException('Tenant not found');
+        const settings = (tenant.settings as any) || {};
+        const current = settings.verticalIntegrationHealth?.[provider] as StoredIntegrationHealth | undefined;
+        const next = reduceIntegrationHealth(current, provider, observation);
+        if (next !== current) {
+            const affected = await this.prisma.$executeRawUnsafe(
+                `UPDATE public.tenants
+                    SET settings = jsonb_set(
+                        COALESCE(settings, '{}'::jsonb),
+                        '{verticalIntegrationHealth}',
+                        COALESCE(settings->'verticalIntegrationHealth', '{}'::jsonb)
+                            || jsonb_build_object($2::text, $3::jsonb),
+                        true
+                    ),
+                    updated_at = NOW()
+                  WHERE id = $1::uuid`,
+                tenantId,
+                provider,
+                JSON.stringify(next),
+            );
+            if (Number(affected) !== 1) throw new NotFoundException('Tenant not found');
+            await this.invalidateHealthCache(tenantId);
+        }
+        return materializeIntegrationHealth(
+            provider,
+            !!settings.verticalIntegrations?.[provider],
+            next,
+        );
+    }
+
+    async getToolGate(
+        tenantId: string,
+        provider: VerticalProvider,
+    ): Promise<{ allowed: boolean; health: IntegrationHealth }> {
+        const health = await this.getProviderHealth(tenantId, provider);
+        const allowed = health.status === 'healthy';
+        if (!allowed) {
+            this.logger.warn(
+                `[VI health] tool blocked tenant=${tenantId} provider=${provider} `
+                + `status=${health.status} circuit=${health.circuitState}`,
+            );
+        }
+        return { allowed, health };
+    }
+
+    /** Which providers are healthy. Used to gate AI tool registration. */
     async getConnectedProviders(tenantId: string): Promise<Record<VerticalProvider, boolean>> {
-        const cacheKey = `vi:connected:${tenantId}`;
-        const cached = await this.redis.getJson<Record<VerticalProvider, boolean>>(cacheKey);
-        if (cached) return cached;
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        const vi = (tenant?.settings as any)?.verticalIntegrations || {};
+        // Deliberately read durable health on every turn. A five-minute boolean
+        // cache could keep registering a provider after it crossed staleAt.
+        const health = await this.getAllHealth(tenantId);
         const result = {
-            toast: !!vi.toast?.clientId,
-            mindbody: !!vi.mindbody?.apiKey,
-            cliniko: !!vi.cliniko?.apiKey,
+            toast: health.toast.status === 'healthy',
+            mindbody: health.mindbody.status === 'healthy',
+            cliniko: health.cliniko.status === 'healthy',
         } as Record<VerticalProvider, boolean>;
-        await this.redis.setJson(cacheKey, result, CONNECTED_CACHE_TTL);
         return result;
     }
 
@@ -301,15 +432,43 @@ export class VerticalIntegrationsService {
     async sync(tenantId: string, provider: VerticalProvider): Promise<{ synced: number }> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) throw new NotFoundException('Tenant not found');
-        await this.ensureTables(schemaName);
         const config = await this.getConfig(tenantId, provider);
         if (!config) throw new BadRequestException(`${provider} no está configurado`);
 
-        switch (provider) {
-            case 'toast': return this.syncToast(schemaName, config);
-            case 'mindbody': return this.syncMindbody(schemaName, config);
-            case 'cliniko': return this.syncCliniko(schemaName, config);
+        await this.ensureTables(schemaName);
+        let result: { synced: number };
+        try {
+            switch (provider) {
+                case 'toast': result = await this.syncToast(schemaName, config); break;
+                case 'mindbody': result = await this.syncMindbody(schemaName, config); break;
+                case 'cliniko': result = await this.syncCliniko(schemaName, config); break;
+            }
+        } catch (error: any) {
+            const health = await this.updateHealth(
+                tenantId,
+                provider,
+                this.failureObservation(provider, error),
+            ).catch(() => null);
+            this.logger.warn(
+                `[VI health] sync failed tenant=${tenantId} provider=${provider} `
+                + `status=${health?.status || 'unavailable'} code=${health?.lastError?.code || 'health_store_failed'}`,
+            );
+            throw error;
         }
+        // Persisting health is part of completing the sync contract. If this
+        // fails, leave the previous state fail-closed; do not misclassify the
+        // successful provider call as another provider failure.
+        const health = await this.updateHealth(tenantId, provider, {
+            outcome: 'success',
+            syncSucceeded: true,
+            credentialValidated: true,
+            grantedScopes: requiredScopesForProvider(provider),
+        });
+        this.logger.log(
+            `[VI health] tenant=${tenantId} provider=${provider} status=${health.status} `
+            + `synced=${result.synced}`,
+        );
+        return result;
     }
 
     /**
@@ -347,36 +506,68 @@ export class VerticalIntegrationsService {
         let ok = 0;
         let failed = 0;
         for (const tenant of tenants) {
-            const connected = await this.getConnectedProviders(tenant.id).catch(() => null);
-            if (!connected) continue;
+            // Configured is not the same as connected. The cron is allowed to
+            // probe/sync legacy configs so they can earn a healthy state; tool
+            // registration remains fail-closed until that succeeds.
+            const configured = await this.getAllConfigs(tenant.id).catch(() => null);
+            if (!configured) continue;
             for (const provider of ['toast', 'mindbody', 'cliniko'] as VerticalProvider[]) {
-                if (!connected[provider]) continue;
+                if (!configured[provider]) continue;
                 try {
                     const res = await this.sync(tenant.id, provider);
                     ok++;
                     this.logger.log(`[VI] ${provider} re-sincronizado para ${tenant.id}: ${res.synced} ítems`);
-                } catch (e: any) {
+                } catch {
                     // Que una credencial vencida de un tenant no frene al resto.
                     failed++;
-                    this.logger.warn(`[VI] ${provider} falló para ${tenant.id}: ${e.message}`);
+                    const health = await this.getProviderHealth(tenant.id, provider).catch(() => null);
+                    this.logger.warn(
+                        `[VI] re-sync tenant=${tenant.id} provider=${provider} `
+                        + `status=${health?.status || 'unavailable'} `
+                        + `code=${health?.lastError?.code || 'sync_failed'}`,
+                    );
                 }
             }
         }
         if (ok || failed) this.logger.log(`[VI] Re-sync diario: ${ok} ok, ${failed} con error`);
     }
 
-    async testConnection(tenantId: string, provider: VerticalProvider): Promise<{ ok: boolean; message?: string }> {
+    private failureObservation(
+        provider: VerticalProvider,
+        error: any,
+    ): IntegrationHealthObservation {
+        const status = Number(error?.response?.status ?? error?.status ?? error?.statusCode);
+        return {
+            outcome: 'failure',
+            credentialValidated: status === 401 ? false : undefined,
+            missingScopes: status === 403 ? requiredScopesForProvider(provider) : undefined,
+            error,
+        };
+    }
+
+    async testConnection(
+        tenantId: string,
+        provider: VerticalProvider,
+    ): Promise<{ ok: boolean; message?: string; health: IntegrationHealth }> {
         const config = await this.getConfig(tenantId, provider);
-        if (!config) return { ok: false, message: 'No configurado' };
+        if (!config) {
+            return {
+                ok: false,
+                message: 'No configurado',
+                health: await this.getProviderHealth(tenantId, provider),
+            };
+        }
+        let grantedScopes: string[] | undefined;
         try {
-            if (provider === 'toast') { await this.toastToken(config); return { ok: true }; }
+            if (provider === 'toast') {
+                await this.toastToken(config);
+            }
             if (provider === 'mindbody') {
                 await this.http.axiosRef.get('https://api.mindbodyonline.com/public/v6/site/sites', {
                     ...STATIC_PROVIDER_HTTP_LIMITS,
                     headers: { 'Api-Key': config.apiKey, SiteId: config.siteId },
                     timeout: 15000,
                 });
-                return { ok: true };
             }
             if (provider === 'cliniko') {
                 const { baseUrl, target } = await this.prepareProviderEndpoint('cliniko', config.baseUrl);
@@ -384,12 +575,48 @@ export class VerticalIntegrationsService {
                     ...safeAxiosOptions(target, 15000),
                     headers: this.clinikoHeaders(config),
                 });
-                return { ok: true };
+                // This exact probe proves appointment_types:read.
+                grantedScopes = requiredScopesForProvider('cliniko');
             }
         } catch (e: any) {
-            return { ok: false, message: e?.response?.status ? `HTTP ${e.response.status}` : e.message };
+            const health = await this.updateHealth(
+                tenantId,
+                provider,
+                this.failureObservation(provider, e),
+            ).catch(() => materializeIntegrationHealth(provider, true, undefined));
+            this.logger.warn(
+                `[VI health] check failed tenant=${tenantId} provider=${provider} `
+                + `status=${health.status} code=${health.lastError?.code || 'health_store_failed'}`,
+            );
+            return {
+                ok: false,
+                message: health.lastError?.message || 'No se pudo comprobar la integración.',
+                health,
+            };
         }
-        return { ok: false, message: 'Proveedor desconocido' };
+        try {
+            const health = await this.updateHealth(tenantId, provider, {
+                outcome: 'success',
+                credentialValidated: true,
+                grantedScopes,
+            });
+            this.logger.log(
+                `[VI health] check tenant=${tenantId} provider=${provider} status=${health.status}`,
+            );
+            return { ok: true, health };
+        } catch {
+            const health = await this.getProviderHealth(tenantId, provider)
+                .catch(() => materializeIntegrationHealth(provider, true, undefined));
+            this.logger.warn(
+                `[VI health] check persistence failed tenant=${tenantId} provider=${provider} `
+                + `status=${health.status}`,
+            );
+            return {
+                ok: false,
+                message: 'La credencial respondió, pero no se pudo guardar el estado de salud.',
+                health,
+            };
+        }
     }
 
     // ── Toast (restaurantes) ─────────────────────────────────
@@ -498,6 +725,8 @@ export class VerticalIntegrationsService {
 
     /** Live availability lookup for Cliniko (availability is dynamic, not synced). */
     async checkClinikoAvailability(tenantId: string, appointmentTypeId: string, from?: string, to?: string): Promise<any> {
+        const gate = await this.getToolGate(tenantId, 'cliniko');
+        if (!gate.allowed) return this.blockedToolResult(gate.health);
         const config: ClinikoConfig = await this.getConfig(tenantId, 'cliniko');
         if (!config) return { error: 'Cliniko no está configurado' };
         if (!config.businessId || !config.practitionerId) {
@@ -517,15 +746,49 @@ export class VerticalIntegrationsService {
                 params: { from: fromDate, to: toDate },
             });
             const times = (res.data?.available_times || []).slice(0, 20).map((t: any) => t.appointment_start);
+            await this.updateHealth(tenantId, 'cliniko', {
+                outcome: 'success',
+                credentialValidated: true,
+                grantedScopes: requiredScopesForProvider('cliniko'),
+            });
             return { availableTimes: times };
         } catch (e: any) {
-            this.logger.warn(`[Cliniko] availability failed: ${e.message}`);
-            return { availableTimes: [], error: 'No se pudo obtener disponibilidad' };
+            const health = e instanceof BadRequestException
+                ? gate.health
+                : await this.updateHealth(
+                    tenantId,
+                    'cliniko',
+                    this.failureObservation('cliniko', e),
+                ).catch(() => gate.health);
+            this.logger.warn(
+                `[VI health] availability failed tenant=${tenantId} provider=cliniko `
+                + `status=${health.status} code=${health.lastError?.code || 'invalid_request'}`,
+            );
+            return {
+                availableTimes: [],
+                error: e instanceof BadRequestException
+                    ? 'Identificador de disponibilidad inválido'
+                    : 'No se pudo obtener disponibilidad',
+                integrationStatus: health.status,
+            };
         }
     }
 
     // ── AI-facing read methods (used by tool executor) ───────
-    async getMenuForAI(schemaName: string): Promise<any> {
+    private blockedToolResult(health: IntegrationHealth): Record<string, unknown> {
+        return {
+            error: 'integration_unavailable',
+            provider: health.provider,
+            integrationStatus: health.status,
+            connected: health.connected,
+            retryable: health.status === 'stale' || health.status === 'degraded',
+            message: 'La integración externa no está saludable; no uses ni inventes sus datos.',
+        };
+    }
+
+    async getMenuForAI(tenantId: string, schemaName: string): Promise<any> {
+        const gate = await this.getToolGate(tenantId, 'toast');
+        if (!gate.allowed) return this.blockedToolResult(gate.health);
         const rows = await this.listItems(schemaName, 'toast', 'menu_item', 80);
         return {
             items: rows.map((r) => ({
@@ -538,7 +801,9 @@ export class VerticalIntegrationsService {
         };
     }
 
-    async getScheduleForAI(schemaName: string): Promise<any> {
+    async getScheduleForAI(tenantId: string, schemaName: string): Promise<any> {
+        const gate = await this.getToolGate(tenantId, 'mindbody');
+        if (!gate.allowed) return this.blockedToolResult(gate.health);
         const rows = await this.listItems(schemaName, 'mindbody', 'class', 80);
         // El sync de Mindbody trae una ventana de ~14 días que caduca sola: sin
         // este filtro, a la semana de conectar la IA ofrecía clases que ya
@@ -561,7 +826,9 @@ export class VerticalIntegrationsService {
         };
     }
 
-    async getClinicServicesForAI(schemaName: string): Promise<any> {
+    async getClinicServicesForAI(tenantId: string, schemaName: string): Promise<any> {
+        const gate = await this.getToolGate(tenantId, 'cliniko');
+        if (!gate.allowed) return this.blockedToolResult(gate.health);
         const rows = await this.listItems(schemaName, 'cliniko', 'appointment_type', 80);
         return {
             services: rows.map((r) => ({

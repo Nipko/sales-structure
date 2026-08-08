@@ -1,5 +1,9 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+    normalizeCurrencyCode,
+    optionalPositiveIntegerUnit,
+} from '../../common/utils/commercial-units.util';
 
 /**
  * Photography sessions service. Differentiates fotografia tenants from
@@ -81,6 +85,8 @@ export class PhotographyService {
 
     async create(schemaName: string, data: any): Promise<any> {
         if (!data.sessionType) throw new BadRequestException('sessionType is required');
+        const durationMinutes = optionalPositiveIntegerUnit(data.durationMinutes, 'durationMinutes');
+        const currency = normalizeCurrencyCode(data.currency);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO photo_sessions (
@@ -101,13 +107,13 @@ export class PhotographyService {
                 data.clientName || null,
                 data.clientPhone || null,
                 data.scheduledAt || null,
-                data.durationMinutes ?? null,
+                durationMinutes,
                 data.location || null,
                 JSON.stringify(data.deliverables || []),
                 data.deliverableCount ?? null,
                 data.deliveryDueAt || null,
                 data.price ?? null,
-                data.currency || 'COP',
+                currency,
                 data.depositPaid ?? 0,
                 data.notes || null,
                 data.status || 'scheduled',
@@ -117,6 +123,15 @@ export class PhotographyService {
     }
 
     async update(schemaName: string, id: string, data: any): Promise<any> {
+        if (data.durationMinutes !== undefined && data.durationMinutes !== null) {
+            data = {
+                ...data,
+                durationMinutes: optionalPositiveIntegerUnit(data.durationMinutes, 'durationMinutes'),
+            };
+        }
+        if (data.currency !== undefined) {
+            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+        }
         const fields: string[] = [];
         const values: any[] = [];
         let i = 1;

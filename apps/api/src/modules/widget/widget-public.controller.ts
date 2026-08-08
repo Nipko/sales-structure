@@ -1,21 +1,46 @@
-import { Controller, Get, Post, Body, Param, Headers, Logger, ForbiddenException, Res, Header } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    ForbiddenException,
+    Get,
+    Header,
+    Headers,
+    HttpException,
+    HttpStatus,
+    Param,
+    Post,
+    Req,
+    Res,
+    UsePipes,
+    ValidationPipe,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { WidgetService } from './widget.service';
 import { WidgetTriggersService } from './widget-triggers.service';
-import { RedisService } from '../redis/redis.service';
 import { getLoaderScript } from './widget-loader';
+import {
+    CreateWidgetSessionDto,
+    RefreshWidgetSessionDto,
+    WidgetIdParamDto,
+} from './dto/widget-public.dto';
+import { isWidgetOriginAllowed, resolveWidgetHttpIp } from './widget-security';
+import { WidgetRateLimitService } from './widget-rate-limit.service';
 
 @ApiTags('widget-public')
 @Controller('widget')
+@UsePipes(new ValidationPipe({
+    transform: true,
+    whitelist: true,
+    forbidNonWhitelisted: true,
+}))
 export class WidgetPublicController {
-    private readonly logger = new Logger(WidgetPublicController.name);
     private cachedLoader: string | null = null;
 
     constructor(
         private readonly widgetService: WidgetService,
         private readonly triggersService: WidgetTriggersService,
-        private readonly redis: RedisService,
+        private readonly rateLimit: WidgetRateLimitService,
     ) {}
 
     @Get('loader.js')
@@ -36,9 +61,13 @@ export class WidgetPublicController {
 
     @Get('config/:widgetId')
     @ApiOperation({ summary: 'Get widget config (public)' })
-    async getConfig(@Param('widgetId') widgetId: string) {
-        const config = await this.widgetService.getConfig(widgetId);
+    async getConfig(
+        @Param() params: WidgetIdParamDto,
+        @Headers('origin') origin?: string,
+    ) {
+        const config = await this.widgetService.getConfig(params.widgetId);
         if (!config) return { success: false, error: 'Widget not found' };
+        this.assertOrigin(origin, config.allowed_domains);
 
         let triggers: any[] = [];
         try {
@@ -68,32 +97,21 @@ export class WidgetPublicController {
     @Post('sessions')
     @ApiOperation({ summary: 'Create or resume a widget session (public)' })
     async createSession(
-        @Body() body: { widgetId: string; visitorId: string; name?: string; email?: string; phone?: string; page?: string },
-        @Headers('origin') origin: string,
+        @Body() body: CreateWidgetSessionDto,
+        @Headers('origin') origin: string | undefined,
+        @Req() request: Request,
     ) {
         const config = await this.widgetService.getConfig(body.widgetId);
         if (!config) return { success: false, error: 'Widget not found' };
+        this.assertOrigin(origin, config.allowed_domains);
 
-        if (config.allowed_domains?.length > 0 && origin) {
-            let originHostname: string;
-            try {
-                originHostname = new URL(origin).hostname.toLowerCase();
-            } catch {
-                throw new ForbiddenException('Origin not allowed');
-            }
-            const allowed = config.allowed_domains.some((d: string) => {
-                const domain = d.toLowerCase().replace(/^\./, '');
-                return originHostname === domain || originHostname.endsWith(`.${domain}`);
-            });
-            if (!allowed) throw new ForbiddenException('Origin not allowed');
-        }
-
-        const rateLimitKey = `widget:rate:${body.visitorId}:${body.widgetId}`;
-        const current = await this.redis.get(rateLimitKey);
-        if (current && parseInt(current) >= 5) {
-            return { success: false, error: 'Rate limit exceeded' };
-        }
-        await this.redis.set(rateLimitKey, String((parseInt(current || '0')) + 1), 3600);
+        const limit = await this.rateLimit.consumeSession({
+            ip: resolveWidgetHttpIp(request),
+            visitorId: body.visitorId,
+            widgetId: config.widget_id,
+            tenantId: config.tenant_id,
+        });
+        if (!limit.allowed) this.throwRateLimited(limit.retryAfterSeconds);
 
         const session = await this.widgetService.createSession(config, {
             visitorId: body.visitorId,
@@ -108,9 +126,22 @@ export class WidgetPublicController {
 
     @Post('sessions/refresh')
     @ApiOperation({ summary: 'Refresh a widget session token' })
-    async refreshSession(@Body() body: { token: string }) {
+    async refreshSession(
+        @Body() body: RefreshWidgetSessionDto,
+        @Headers('origin') origin: string | undefined,
+        @Req() request: Request,
+    ) {
         const session = await this.widgetService.getSessionByToken(body.token);
         if (!session) return { success: false, error: 'Invalid session' };
+        this.assertOrigin(origin, session.allowed_domains);
+
+        const limit = await this.rateLimit.consumeSession({
+            ip: resolveWidgetHttpIp(request),
+            visitorId: session.visitor_id,
+            widgetId: session.widget_id,
+            tenantId: session.tenant_id,
+        });
+        if (!limit.allowed) this.throwRateLimited(limit.retryAfterSeconds);
 
         return {
             success: true,
@@ -119,5 +150,18 @@ export class WidgetPublicController {
                 conversationId: session.conversation_id,
             },
         };
+    }
+
+    private assertOrigin(origin: string | undefined, allowedDomains: unknown): void {
+        if (!isWidgetOriginAllowed(origin, allowedDomains)) {
+            throw new ForbiddenException('Origin not allowed');
+        }
+    }
+
+    private throwRateLimited(retryAfterSeconds: number): never {
+        throw new HttpException(
+            { statusCode: HttpStatus.TOO_MANY_REQUESTS, error: 'Rate limit exceeded', retryAfterSeconds },
+            HttpStatus.TOO_MANY_REQUESTS,
+        );
     }
 }

@@ -20,7 +20,7 @@ import { NormalizedMessage, OutboundMessage, TenantConfig, TurnContext, Retrieve
 import { outboundDedupeId, providerMessageId } from '../../common/utils/provider-message-id.util';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
-import { ResponseValidatorService } from './response-validator.service';
+import { buildUnverifiedPriceReply, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
 import { CustomerMemoryService } from './customer-memory.service';
 import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
 import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
@@ -54,6 +54,8 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MediaProcessingService } from '../media-processing/media-processing.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
+import { toolRequiresSequentialExecution } from './tool-policy-registry';
+import { ActiveOperationsContextService } from './active-operations-context.service';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 // History budget in TOKENS (not chars), measured against the smallest context window
@@ -161,34 +163,10 @@ const apptReplies = (lang?: string) => APPOINTMENT_REPLIES[(lang || 'es').slice(
 // Per-tool execution ceiling — a single tool (esp. an external MCP server) must
 // never hang the whole conversational turn.
 const TOOL_TIMEOUT_MS = 25_000;
-// Tools with write side-effects. When the LLM requests more than one of these in
-// the SAME turn we fall back to sequential execution: two writers can race on the
-// same resource (e.g. two create_appointment / create_*_booking on the same slot →
-// double booking, or two place_order). Read-only tools (everything not listed
-// here, incl. checks/searches/list_*) are always safe to run concurrently.
-// External MCP tools (mcp__*) are treated as writers (unknown side-effects).
-const WRITE_TOOLS = new Set<string>([
-    // appointments / calendar
-    'create_appointment', 'cancel_appointment', 'reschedule_appointment',
-    // vacation rental
-    'create_property_booking', 'cancel_property_booking',
-    // tours
-    'create_tour_booking', 'cancel_tour_booking',
-    // restaurants / ecommerce orders
-    'place_order', 'cancel_order',
-    // gyms
-    'book_class', 'freeze_membership', 'cancel_class_booking',
-    // education
-    'enroll_student', 'cancel_enrollment',
-    // insurance
-    'file_claim', 'cancel_quote',
-    // home services
-    'create_service_request', 'cancel_service_request',
-    // pets / photography
-    'register_pet', 'update_pet', 'request_photo_quote', 'cancel_photo_session',
-]);
-/** A tool call mutates state (or is an opaque external MCP tool) → must not run concurrently with other writers. */
-const isWriteTool = (name: string): boolean => name.startsWith('mcp__') || WRITE_TOOLS.has(name);
+// Tool concurrency comes from the canonical registry. This includes writers that
+// the former name-based list missed (quotes, placement tests, identity codes and
+// outbound media), while unknown/MCP tools remain serialized fail-safe.
+const isWriteTool = (name: string): boolean => toolRequiresSequentialExecution(name);
 // Burst debounce window: WhatsApp users send a thought across several quick
 // messages. We wait this long for follow-ups and process the batch as one turn.
 const DEBOUNCE_MS = 800;
@@ -240,6 +218,7 @@ export class ConversationsService {
         private verticalIntegrations: VerticalIntegrationsService,
         private mcpClient: McpClientService,
         private attributionService: AttributionService,
+        private activeOperationsContext: ActiveOperationsContextService,
     ) {}
 
     /**
@@ -1539,82 +1518,16 @@ export class ConversationsService {
                 knownSince: contact.first_contact_at || contact.created_at,
             };
 
-            // Fetch customer's active bookings and appointments across all verticals
-            try {
-                const activeBookings: any[] = [];
-                const contactId = contact.id;
-
-                // 1. Appointments (future and confirmed)
-                const appointments = await this.prisma.executeInTenantSchema<any[]>(
-                    schemaName,
-                    `SELECT id, service_name, start_at, location, status
-                     FROM appointments
-                     WHERE contact_id = $1::uuid AND start_at >= NOW() AND status != 'cancelled'
-                     ORDER BY start_at ASC LIMIT 5`,
-                    [contactId],
-                );
-                for (const apt of appointments || []) {
-                    const dateObj = new Date(apt.start_at);
-                    activeBookings.push({
-                        id: apt.id,
-                        type: 'appointment',
-                        name: apt.service_name,
-                        status: apt.status,
-                        dateLabel: dateObj.toLocaleString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
-                        details: apt.location ? `Ubicación: ${apt.location}` : undefined,
-                    });
-                }
-
-                // 2. Property Bookings (future and confirmed)
-                const propBookings = await this.prisma.executeInTenantSchema<any[]>(
-                    schemaName,
-                    `SELECT b.id, b.check_in, b.check_out, b.status, b.total_price, b.currency, p.name as property_name
-                     FROM property_bookings b
-                     JOIN properties p ON p.id = b.property_id
-                     WHERE b.contact_id = $1::uuid AND b.check_out >= CURRENT_DATE AND b.status != 'cancelled'
-                     ORDER BY b.check_in ASC LIMIT 5`,
-                    [contactId],
-                );
-                for (const pb of propBookings || []) {
-                    activeBookings.push({
-                        id: pb.id,
-                        type: 'property',
-                        name: pb.property_name,
-                        status: pb.status,
-                        dateLabel: `Desde ${pb.check_in} hasta ${pb.check_out}`,
-                        priceLabel: `${Number(pb.total_price).toLocaleString()} ${pb.currency || 'COP'}`,
-                    });
-                }
-
-                // 3. Tour Bookings (future and confirmed)
-                const tourBookings = await this.prisma.executeInTenantSchema<any[]>(
-                    schemaName,
-                    `SELECT b.id, b.departure_date, b.departure_time, b.status, b.total_price, b.currency, b.party_size, p.name as package_name
-                     FROM tour_bookings b
-                     JOIN tour_packages p ON p.id = b.package_id
-                     WHERE b.contact_id = $1::uuid AND b.departure_date >= CURRENT_DATE AND b.status != 'cancelled'
-                     ORDER BY b.departure_date ASC LIMIT 5`,
-                    [contactId],
-                );
-                for (const tb of tourBookings || []) {
-                    const timeLabel = tb.departure_time ? ` a las ${tb.departure_time}` : '';
-                    activeBookings.push({
-                        id: tb.id,
-                        type: 'tour',
-                        name: tb.package_name,
-                        status: tb.status,
-                        dateLabel: `${tb.departure_date}${timeLabel}`,
-                        priceLabel: `${Number(tb.total_price).toLocaleString()} ${tb.currency || 'COP'}`,
-                        details: `Grupo: ${tb.party_size} personas`,
-                    });
-                }
-
-                if (activeBookings.length > 0) {
-                    turnContext.activeBookings = activeBookings;
-                }
-            } catch (err: any) {
-                this.logger.warn(`Failed to populate activeBookings for contact (non-fatal): ${err.message}`);
-            }
+            // One capability-driven, ownership-scoped loader now feeds both the
+            // canonical activeObjects contract and its temporary legacy views.
+            await this.activeOperationsContext.populateTurnContext(turnContext, {
+                tenantId,
+                schemaName,
+                contactId: contact.id,
+                config: config as any,
+                timezone: tz,
+                now,
+            });
         }
 
         // Business identity — the "who we are" data the agent uses to answer
@@ -2087,28 +2000,6 @@ export class ConversationsService {
                 this.logger.debug(`[T2.17] catalog injection skipped: ${e.message}`);
             }
         }
-        if ((cfgTools?.ecommerce?.enabled === true || cfgTools?.orders?.enabled === true) && conversation.contact_id) {
-            try {
-                const orders = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                    `SELECT id, status, total_amount, currency, created_at
-                     FROM orders WHERE contact_id = $1::uuid
-                     ORDER BY created_at DESC LIMIT 3`,
-                    [conversation.contact_id],
-                );
-                if (orders?.length) {
-                    turnContext.recentOrders = orders.map((o: any) => ({
-                        id: String(o.id),
-                        status: o.status,
-                        total: o.total_amount != null ? Number(o.total_amount) : undefined,
-                        currency: o.currency || undefined,
-                        date: o.created_at ? new Date(o.created_at).toISOString() : undefined,
-                    }));
-                }
-            } catch (e: any) {
-                this.logger.debug(`[T2.17] recent orders injection skipped: ${e.message}`);
-            }
-        }
-
         // 6. Assemble system prompt.
         // ALWAYS use full 3-layer prompt (contract + persona + turn context).
         // When engine handled: add a directive to the turn context so the LLM
@@ -2586,8 +2477,9 @@ export class ConversationsService {
     /**
      * Output guardrail: if the response states a price the model wasn't given this
      * turn, do ONE corrective re-generation constrained to context prices. Never
-     * blocks the customer — if it still can't be fixed, emits an event for
-     * monitoring and sends the best attempt. Regex-cheap unless a mismatch is found.
+     * If the corrective pass is still unsafe, emit an event and replace it with a
+     * deterministic localized abstention. An unverified price must never leave the
+     * platform merely because the corrective provider failed.
      */
     private async applyOutputGuardrails(
         response: string,
@@ -2621,18 +2513,18 @@ export class ConversationsService {
             });
             const fixed = corrected.content?.trim();
             if (fixed) {
-                const recheck = this.responseValidator.validatePrices(fixed, corpus);
-                if (!recheck.ok) {
-                    this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: recheck.hallucinatedPrices });
+                const enforced = enforceVerifiedPriceReply(fixed, corpus, systemPrompt, this.responseValidator);
+                if (enforced.blocked) {
+                    this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: enforced.validation.hallucinatedPrices });
                 }
-                return fixed;
+                return enforced.reply;
             }
         } catch (e: any) {
             this.logger.warn(`[Guardrail] corrective retry failed: ${e.message}`);
         }
-        // Couldn't correct — surface for monitoring but never drop the customer reply.
+        // Couldn't correct: surface for monitoring and fail closed on the price.
         this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: check.hallucinatedPrices });
-        return response;
+        return buildUnverifiedPriceReply(systemPrompt);
     }
 
     /**
@@ -2944,29 +2836,49 @@ export class ConversationsService {
         conversationId: string,
         contactId: string,
         text: string,
+        inboundMessageId?: string,
     ): AsyncGenerator<string, void, unknown> {
         const config = await this.personaService.getPersonaForChannel(tenantId, 'web_widget');
         if (!config) return;
 
         const lockKey = `lock:conv:${conversationId}`;
-        let lockToken = await this.redis.acquireLockToken(lockKey, 30);
-        for (let i = 0; i < 4 && !lockToken; i++) {
-            await new Promise(r => setTimeout(r, 500));
+        let lockToken: string | null = null;
+        try {
             lockToken = await this.redis.acquireLockToken(lockKey, 30);
+            for (let i = 0; i < 4 && !lockToken; i++) {
+                await new Promise(r => setTimeout(r, 500));
+                lockToken = await this.redis.acquireLockToken(lockKey, 30);
+            }
+        } catch (e: any) {
+            this.logger.warn(`[Widget] Conversation lock unavailable: ${e?.message || 'redis_error'}`);
+        }
+        if (!lockToken) {
+            // Never fail open. The former path continued without ownership after 2s,
+            // allowing concurrent paid turns and out-of-order replies.
+            const lang = (config.language || 'es').slice(0, 2).toLowerCase();
+            const busy: Record<string, string> = {
+                es: 'Estoy procesando tu mensaje anterior. Inténtalo de nuevo en un momento.',
+                en: 'I am still processing your previous message. Please try again in a moment.',
+                pt: 'Ainda estou processando sua mensagem anterior. Tente novamente em instantes.',
+                fr: 'Je traite encore votre message précédent. Réessayez dans un instant.',
+            };
+            yield busy[lang] || busy.es;
+            return;
         }
         let lockHeartbeat: ReturnType<typeof setInterval> | undefined;
-        if (lockToken) {
-            const tk = lockToken;
-            lockHeartbeat = setInterval(() => { this.redis.renewLockToken(lockKey, tk, 30).catch(() => {}); }, 10_000);
-            lockHeartbeat.unref?.();
-        }
+        const tk = lockToken;
+        lockHeartbeat = setInterval(() => { this.redis.renewLockToken(lockKey, tk, 30).catch(() => {}); }, 10_000);
+        lockHeartbeat.unref?.();
 
         try {
-            const history = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT direction, content_text FROM messages
-                 WHERE conversation_id = $1::uuid ORDER BY created_at ASC LIMIT 20`,
-                [conversationId],
+            const historyDesc = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT id, direction, content_text FROM messages
+                 WHERE conversation_id = $1::uuid
+                   AND ($2::uuid IS NULL OR id <> $2::uuid)
+                 ORDER BY created_at DESC, id DESC LIMIT 20`,
+                [conversationId, inboundMessageId || null],
             );
+            const history = (historyDesc || []).reverse();
             const conversation = await this.prisma.executeInTenantSchema<any[]>(schemaName,
                 `SELECT * FROM conversations WHERE id = $1::uuid LIMIT 1`,
                 [conversationId],
@@ -2983,6 +2895,25 @@ export class ConversationsService {
             }
             if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {
                 return;
+            }
+
+            // Resolve entitlement, allowed model tiers and cost circuit before any
+            // provider request. Direct model selection bypassed provider health and
+            // plan limits; the task-based router path keeps normal fallback behavior.
+            const planFeatures = await this.throttle.getPlanFeatures(tenantId);
+            if (planFeatures.widget !== true) return;
+            let allowedTiers = this.mapLlmTierToAllowed(planFeatures.llmTier);
+            const budgetUsdCents = typeof planFeatures.llmCostBudgetUsdCents === 'number'
+                ? planFeatures.llmCostBudgetUsdCents : -1;
+            if (budgetUsdCents > 0) {
+                const spentUsdCents = await this.throttle.getLlmSpendUsdCents(tenantId);
+                if (spentUsdCents >= budgetUsdCents) {
+                    const economical = allowedTiers.filter(
+                        tier => tier === 'tier_3_efficient' || tier === 'tier_4_budget',
+                    );
+                    allowedTiers = economical.length ? economical : ['tier_4_budget'];
+                    this.logger.warn(`[Widget LLM budget] tenant ${tenantId} over budget; clamped to ${allowedTiers.join(',')}`);
+                }
             }
 
             const now = new Date();
@@ -3003,11 +2934,32 @@ export class ConversationsService {
             }));
             chatMessages.push({ role: 'user' as const, content: text });
 
+            // Atomically reserve this monthly AI message immediately before the
+            // provider. A concurrent conversation that crosses the limit rolls its
+            // reservation back and receives the deterministic fallback.
+            const usage = await this.throttle.getAiMessageUsage(tenantId);
+            if (Number.isFinite(usage.limit) && usage.used >= (usage.limit as number)) {
+                yield await this.buildQuotaFallbackMessage(tenantId);
+                return;
+            }
+            const reserved = await this.throttle.incrementAiMessageCount(tenantId);
+            if (Number.isFinite(usage.limit) && reserved > (usage.limit as number)) {
+                await this.throttle.incrementAiMessageCount(tenantId, -1).catch(() => {});
+                yield await this.buildQuotaFallbackMessage(tenantId);
+                return;
+            }
+
+            const personaMaxTokens = typeof config.llm?.maxTokens === 'number' && config.llm.maxTokens > 0
+                ? config.llm.maxTokens : undefined;
+            const personaTemperature = typeof config.llm?.temperature === 'number'
+                ? config.llm.temperature : 0.8;
             for await (const chunk of this.llmRouter.executeStream({
-                model: 'grok-4-1-fast-non-reasoning',
+                task: 'conversation',
                 messages: chatMessages,
                 systemPrompt,
-                temperature: 0.8,
+                temperature: personaTemperature,
+                maxTokens: personaMaxTokens,
+                allowedTiers,
                 tenantId,
             })) {
                 yield chunk;

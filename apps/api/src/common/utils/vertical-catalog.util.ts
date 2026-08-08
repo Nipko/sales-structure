@@ -20,31 +20,51 @@ export interface VerticalCatalog {
     missingKey: string;
     /** Filtro de "vivo", cuando la tabla tiene borrado lógico. */
     activeFilter?: string;
+    /** Dashboard route that manages the same canonical object. */
+    route: string;
 }
 
 export const VERTICAL_CATALOG: Record<string, VerticalCatalog> = {
-    restaurantes: { table: 'menu_items', missingKey: 'menu_items', activeFilter: 'is_active = true' },
-    gimnasios: { table: 'membership_plans', missingKey: 'membership_plans', activeFilter: 'is_active = true' },
-    education: { table: 'courses', missingKey: 'courses', activeFilter: 'is_active = true' },
-    seguros: { table: 'insurance_plans', missingKey: 'insurance_plans', activeFilter: 'is_active = true' },
-    inmobiliaria: { table: 'real_estate_listings', missingKey: 'listings', activeFilter: 'is_active = true' },
+    restaurantes: { table: 'menu_items', missingKey: 'menu_items', activeFilter: 'is_active = true', route: '/admin/menu' },
+    gimnasios: { table: 'membership_plans', missingKey: 'membership_plans', activeFilter: 'is_active = true', route: '/admin/memberships' },
+    education: { table: 'courses', missingKey: 'courses', activeFilter: 'is_active = true', route: '/admin/courses' },
+    seguros: { table: 'insurance_plans', missingKey: 'insurance_plans', activeFilter: 'is_active = true', route: '/admin/insurance' },
+    inmobiliaria: { table: 'real_estate_listings', missingKey: 'listings', activeFilter: 'is_active = true', route: '/admin/listings' },
     // Antes decía missingKey 'properties' contando tour_packages. Turismo tiene
     // DOS objetos según el sub-tipo (tours y alojamiento); el catálogo base que
     // decide si el tenant está activado son los paquetes.
-    turismo: { table: 'tour_packages', missingKey: 'tour_packages', activeFilter: 'is_active = true' },
-    servicios_hogar: { table: 'services', missingKey: 'services', activeFilter: 'is_active = true' },
-    veterinaria: { table: 'pets', missingKey: 'pets', activeFilter: 'is_active = true' },
-    pet_services: { table: 'pets', missingKey: 'pets', activeFilter: 'is_active = true' },
-    fotografia: { table: 'photo_sessions', missingKey: 'photo_sessions' },
+    turismo: { table: 'tour_packages', missingKey: 'tour_packages', activeFilter: 'is_active = true', route: '/admin/tours' },
+    servicios_hogar: { table: 'services', missingKey: 'services', activeFilter: 'is_active = true', route: '/admin/appointments' },
+    veterinaria: { table: 'pets', missingKey: 'pets', activeFilter: 'is_active = true', route: '/admin/pets' },
+    pet_services: { table: 'pets', missingKey: 'pets', activeFilter: 'is_active = true', route: '/admin/pets' },
+    fotografia: { table: 'photo_sessions', missingKey: 'photo_sessions', route: '/admin/photo-sessions' },
     // Faltaban las tres. Automotriz y retail son las que más pesa: su vertical
     // entera es el catálogo, y el detector no las miraba.
-    automotriz: { table: 'vehicles', missingKey: 'vehicles' },
-    retail: { table: 'products', missingKey: 'products', activeFilter: 'is_active = true' },
-    otro: { table: 'products', missingKey: 'products', activeFilter: 'is_active = true' },
+    automotriz: { table: 'vehicles', missingKey: 'vehicles', route: '/admin/vehicles' },
+    retail: { table: 'products', missingKey: 'products', activeFilter: 'is_active = true', route: '/admin/inventory' },
+    otro: { table: 'products', missingKey: 'products', activeFilter: 'is_active = true', route: '/admin/inventory' },
 };
 
-/** La tabla de catálogo de una industria, o null si esa vertical no tiene una propia. */
-export function getVerticalCatalog(industry?: string | null): VerticalCatalog | null {
+const SUBTYPE_CATALOG: Record<string, VerticalCatalog> = {
+    'turismo/hotel': { table: 'properties', missingKey: 'properties', activeFilter: 'is_active = true', route: '/admin/properties' },
+    'turismo/alquiler_vacacional': { table: 'properties', missingKey: 'properties', activeFilter: 'is_active = true', route: '/admin/properties' },
+    'salud/farmacia': { table: 'products', missingKey: 'products', activeFilter: 'is_active = true', route: '/admin/inventory' },
+    // Read-only compatibility for tenants provisioned before boutique moved out
+    // of the selectable beauty subtypes.
+    'moda_belleza/boutique': { table: 'products', missingKey: 'products', activeFilter: 'is_active = true', route: '/admin/inventory' },
+};
+
+/** La tabla de catálogo efectiva de una industria/subtipo, o null si no aplica. */
+export function getVerticalCatalog(
+    industry?: string | null,
+    subType?: string | null,
+): VerticalCatalog | null {
     if (!industry) return null;
-    return VERTICAL_CATALOG[industry.toLowerCase()] || null;
+    const canonicalIndustry = industry.toLowerCase();
+    const canonicalSubtype = subType?.toLowerCase() || null;
+    if (canonicalSubtype) {
+        const subtypeCatalog = SUBTYPE_CATALOG[`${canonicalIndustry}/${canonicalSubtype}`];
+        if (subtypeCatalog) return subtypeCatalog;
+    }
+    return VERTICAL_CATALOG[canonicalIndustry] || null;
 }

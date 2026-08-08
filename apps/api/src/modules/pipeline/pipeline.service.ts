@@ -59,10 +59,19 @@ export type TenantStageMapping = {
     terminal_outcome: 'won' | 'lost' | null;
     prob: number;
     sla_hours?: number | null;
+    transition_rules?: any[];
 };
 
 export type UnknownStagePolicy = 'error' | 'first_non_terminal';
 type TenantTxQuery = <R = any[]>(sql: string, params?: any[]) => Promise<R>;
+
+export interface OpportunityStagePatch {
+    estimated_value?: number;
+    currency?: string;
+    assigned_to?: string | null;
+    metadata?: Record<string, unknown>;
+    loss_reason?: string | null;
+}
 
 const STAGE_SEMANTIC_ALIASES: Record<string, string> = {
     nuevo: 'nuevo',
@@ -301,6 +310,7 @@ export class PipelineService {
         const stages = await this.prisma.executeInTenantSchema<TenantStageMapping[]>(
             schema,
             `SELECT id, pipeline_id, name, slug, position, is_terminal, terminal_outcome, sla_hours,
+                    transition_rules,
                     COALESCE(default_probability, 0) AS prob
              FROM pipeline_stages
              WHERE tenant_id = $1::uuid${pipelineFilter}
@@ -351,6 +361,8 @@ export class PipelineService {
             onlyActiveOpportunities?: boolean;
             unknownPolicy?: UnknownStagePolicy;
             triggeredBy?: string;
+            opportunityPatch?: OpportunityStagePatch;
+            enforceTransitionRules?: boolean;
         },
     ): Promise<{ stage: TenantStageMapping; updatedOpportunities: number }> {
         const schema = options?.schemaName || await this.getTenantSchema(tenantId);
@@ -389,6 +401,15 @@ export class PipelineService {
                 throw new BadRequestException(`Opportunity not found: ${options.opportunityId}`);
             }
 
+            if (options?.enforceTransitionRules && (stage.transition_rules?.length || 0) > 0) {
+                await this.evaluateRulesForLeadTx(
+                    query,
+                    tenantId,
+                    leadId,
+                    stage.transition_rules || [],
+                );
+            }
+
             for (const opportunity of scoped) {
                 const current = resolveTenantNativeStage(stageCatalog, opportunity.stage);
                 if (current.is_terminal) resolveTerminalOutcome(current);
@@ -424,6 +445,33 @@ export class PipelineService {
                     );
                 }
                 updatedOpportunities++;
+            }
+
+            if (options?.opportunityPatch) {
+                if (!options.opportunityId) {
+                    throw new BadRequestException('opportunityPatch requires an exact opportunityId');
+                }
+                const patch = options.opportunityPatch;
+                const sets: string[] = [];
+                const values: any[] = [options.opportunityId];
+                const add = (sql: string, value: any) => {
+                    values.push(value);
+                    sets.push(sql.replace('?', `$${values.length}`));
+                };
+                if (patch.estimated_value !== undefined) add('estimated_value = ?', patch.estimated_value);
+                if (patch.currency !== undefined) add('currency = ?', patch.currency);
+                if (patch.assigned_to !== undefined) add('assigned_to = ?::uuid', patch.assigned_to);
+                if (patch.loss_reason !== undefined) add('loss_reason = ?', patch.loss_reason);
+                if (patch.metadata !== undefined) {
+                    add(`metadata = COALESCE(metadata, '{}'::jsonb) || ?::jsonb`, JSON.stringify(patch.metadata));
+                }
+                if (sets.length > 0) {
+                    await query(
+                        `UPDATE opportunities SET ${sets.join(', ')}, updated_at = NOW()
+                          WHERE id = $1::uuid`,
+                        values,
+                    );
+                }
             }
 
             // Idempotent terminal retry: no candidate is active, but its exact linked
@@ -466,6 +514,12 @@ export class PipelineService {
             )`);
 
         await this.prisma.executeInTenantSchema(schemaName,
+            `CREATE INDEX IF NOT EXISTS idx_pipelines_tenant ON pipelines(tenant_id, is_active)`);
+        await this.prisma.executeInTenantSchema(schemaName,
+            `CREATE UNIQUE INDEX IF NOT EXISTS uidx_pipelines_default_per_tenant
+                ON pipelines(tenant_id) WHERE is_default = true`);
+
+        await this.prisma.executeInTenantSchema(schemaName,
             `ALTER TABLE pipeline_stages ADD COLUMN IF NOT EXISTS pipeline_id UUID`);
 
         await this.prisma.executeInTenantSchema(schemaName,
@@ -477,31 +531,50 @@ export class PipelineService {
         await this.prisma.executeInTenantSchema(schemaName,
             `CREATE INDEX IF NOT EXISTS idx_opportunities_deal_id ON opportunities(deal_id)`);
 
+        const duplicateDealLinks = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT deal_id, COUNT(*)::int AS opportunity_count
+               FROM opportunities
+              WHERE deal_id IS NOT NULL
+              GROUP BY deal_id
+             HAVING COUNT(*) > 1
+              LIMIT 1`);
+        if (duplicateDealLinks?.length) {
+            throw new ConflictException({
+                error: 'duplicate_opportunity_deal_link_requires_repair',
+                dealId: duplicateDealLinks[0].deal_id,
+                opportunityCount: Number(duplicateDealLinks[0].opportunity_count),
+            });
+        }
+        await this.prisma.executeInTenantSchema(schemaName,
+            `CREATE UNIQUE INDEX IF NOT EXISTS uidx_opportunities_deal_id
+                ON opportunities(deal_id) WHERE deal_id IS NOT NULL`);
+
         await this.redis.set(cacheKey, '1', 86400);
     }
 
     private async migrateToMultiPipeline(schemaName: string, tenantId: string): Promise<string> {
-        const existing = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT id FROM pipelines WHERE tenant_id = $1::uuid LIMIT 1`,
-            [tenantId]);
-
-        if (existing?.[0]) return existing[0].id;
-
-        const created = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `INSERT INTO pipelines (tenant_id, name, is_default, is_active)
-             VALUES ($1::uuid, 'Pipeline Principal', true, true) RETURNING id`,
-            [tenantId]);
-        const defaultId = created[0].id;
-
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE pipeline_stages SET pipeline_id = $1::uuid WHERE pipeline_id IS NULL`,
-            [defaultId]);
-
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE deals SET pipeline_id = $1::uuid WHERE pipeline_id IS NULL`,
-            [defaultId]);
-
-        return defaultId;
+        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            // Serializes first-use migration for the tenant across API replicas.
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [tenantId]);
+            const existing = await query<any[]>(
+                `SELECT id FROM pipelines WHERE tenant_id = $1::uuid
+                  ORDER BY is_default DESC, created_at ASC LIMIT 1`,
+                [tenantId],
+            );
+            let defaultId = existing?.[0]?.id;
+            if (!defaultId) {
+                const created = await query<any[]>(
+                    `INSERT INTO pipelines (tenant_id, name, is_default, is_active)
+                     VALUES ($1::uuid, 'Pipeline Principal', true, true) RETURNING id`,
+                    [tenantId],
+                );
+                defaultId = created?.[0]?.id;
+            }
+            if (!defaultId) throw new Error('Default pipeline could not be created');
+            await query(`UPDATE pipeline_stages SET pipeline_id = $1::uuid WHERE pipeline_id IS NULL`, [defaultId]);
+            await query(`UPDATE deals SET pipeline_id = $1::uuid WHERE pipeline_id IS NULL`, [defaultId]);
+            return defaultId;
+        });
     }
 
     private async ensureMultiPipeline(tenantId: string): Promise<{ schema: string; defaultPipelineId: string }> {
@@ -964,7 +1037,7 @@ export class PipelineService {
      * Transactional mirror for one exact Opportunity. It never searches a Deal by
      * contact: an existing mirror must be referenced by opportunities.deal_id.
      */
-    private async syncExactOpportunityDealTx(
+    async syncExactOpportunityDealTx(
         query: TenantTxQuery,
         tenantId: string,
         leadId: string,
@@ -1113,12 +1186,19 @@ export class PipelineService {
     }
 
     /** Evaluate all transition rules for a stage before allowing a move (deal path) */
-    async evaluateTransitionRules(schema: string, dealId: string, rules: any[]): Promise<void> {
+    async evaluateTransitionRules(
+        schema: string,
+        dealId: string,
+        rules: any[],
+        txQuery?: TenantTxQuery,
+    ): Promise<void> {
         if (!rules || rules.length === 0) return;
+        const execute = <R = any[]>(sql: string, params: any[] = []): Promise<R> => txQuery
+            ? txQuery<R>(sql, params)
+            : this.prisma.executeInTenantSchema<R>(schema, sql, params);
 
         // Lead + contact + assigned agent for this deal
-        const dealData = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
+        const dealData = await execute<any[]>(
             `SELECT d.contact_id, l.id as lead_id, l.email as lead_email, l.phone as lead_phone,
                     l.first_name, l.last_name, l.score, d.assigned_agent_id,
                     ct.email as contact_email, ct.phone as contact_phone
@@ -1142,7 +1222,7 @@ export class PipelineService {
             assignedAgentId: dealData.assigned_agent_id || null,
             contactId: dealData.contact_id,
             leadId: dealData.lead_id || null,
-        });
+        }, txQuery);
     }
 
     /**
@@ -1185,6 +1265,37 @@ export class PipelineService {
         });
     }
 
+    /** Same rule contract, evaluated on the transaction's locked lead snapshot. */
+    private async evaluateRulesForLeadTx(
+        query: TenantTxQuery,
+        tenantId: string,
+        leadId: string,
+        rules: any[],
+    ): Promise<void> {
+        if (!rules.length) return;
+        const rows = await query<any[]>(
+            `SELECT l.id AS lead_id, l.contact_id, l.email AS lead_email, l.phone AS lead_phone,
+                    l.first_name, l.last_name, l.score, l.assigned_to,
+                    ct.email AS contact_email, ct.phone AS contact_phone
+               FROM leads l
+               LEFT JOIN contacts ct ON ct.id = l.contact_id
+              WHERE l.id = $1::uuid
+              FOR UPDATE OF l`,
+            [leadId],
+        );
+        const d = rows?.[0];
+        if (!d) throw new BadRequestException('Lead not found during transition');
+        await this.runRuleChecks('', rules, {
+            email: (d.lead_email || d.contact_email || '').trim(),
+            phone: (d.lead_phone || d.contact_phone || '').trim(),
+            name: `${d.first_name || ''} ${d.last_name || ''}`.trim(),
+            score: d.score || 0,
+            assignedAgentId: d.assigned_to || null,
+            contactId: d.contact_id,
+            leadId: d.lead_id || null,
+        }, query);
+    }
+
     /**
      * Guard a manual opportunity stage move (the CRM board / kanban path). Enforces the
      * target stage's transition rules — the same governance the deal board's moveToStage
@@ -1211,7 +1322,11 @@ export class PipelineService {
         schema: string,
         rules: any[],
         ctx: { email: string; phone: string; name: string; score: number; assignedAgentId: string | null; contactId: string; leadId: string | null },
+        txQuery?: TenantTxQuery,
     ): Promise<void> {
+        const execute = <R = any[]>(sql: string, params: any[] = []): Promise<R> => txQuery
+            ? txQuery<R>(sql, params)
+            : this.prisma.executeInTenantSchema<R>(schema, sql, params);
         // Custom-attribute values are only needed when a custom_attribute rule is present.
         // The table stores TYPED values (value_text/number/boolean/date/json) and the
         // definition key column is `attribute_key` — the old `def.key, val.value` SELECT
@@ -1222,8 +1337,7 @@ export class PipelineService {
         const needsAttrs = rules.some((r) => r.type === 'custom_attribute_required' || r.type === 'custom_attribute_equals');
         if (needsAttrs) {
             try {
-                const customAttributes = await this.prisma.executeInTenantSchema<any[]>(
-                    schema,
+                const customAttributes = await execute<any[]>(
                     `SELECT def.attribute_key AS key,
                             COALESCE(val.value_text, val.value_number::text, val.value_boolean::text,
                                      to_char(val.value_date, 'YYYY-MM-DD'), val.value_json::text) AS value
@@ -1280,7 +1394,7 @@ export class PipelineService {
                         // Las tablas verticales son lazy: si el tenant no tiene la
                         // vertical, la tabla no existe y la consulta falla — eso NO es
                         // un fallo de la regla, es una tabla que no aplica.
-                        const rows = await this.prisma.executeInTenantSchema<any[]>(schema, sql, [ctx.contactId])
+                        const rows = await execute<any[]>(sql, [ctx.contactId])
                             .catch(() => [] as any[]);
                         if (rows?.length) { tieneReserva = true; break; }
                     }
@@ -1298,7 +1412,7 @@ export class PipelineService {
                     ];
                     let tienePedido = false;
                     for (const sql of pedidoSql) {
-                        const rows = await this.prisma.executeInTenantSchema<any[]>(schema, sql, [ctx.contactId])
+                        const rows = await execute<any[]>(sql, [ctx.contactId])
                             .catch(() => [] as any[]);
                         if (rows?.length) { tienePedido = true; break; }
                     }
@@ -1309,8 +1423,7 @@ export class PipelineService {
                     // An offer is "available" when the lead's course has an active commercial
                     // offer (commercial_offers links to course_id + active, not lead_id/status).
                     const offers = ctx.leadId
-                        ? await this.prisma.executeInTenantSchema<any[]>(
-                            schema,
+                        ? await execute<any[]>(
                             `SELECT 1 FROM commercial_offers co
                              JOIN leads l ON l.course_id = co.course_id
                              WHERE l.id = $1::uuid AND co.active = true
@@ -1362,9 +1475,7 @@ export class PipelineService {
         }
         const newStage = newStageRows[0];
 
-        // Evaluate stage transition rules
         const transitionRules = newStage.transition_rules || [];
-        await this.evaluateTransitionRules(schema, dealId, transitionRules);
 
         const probability = Number(newStage.default_probability || 0);
         const terminalOutcome = resolveTerminalOutcome(newStage);
@@ -1383,6 +1494,7 @@ export class PipelineService {
             );
             if (!dealRows?.length) throw new BadRequestException('Deal not found');
             const currentDeal = dealRows[0];
+            await this.evaluateTransitionRules(schema, dealId, transitionRules, query);
             if (currentDeal.current_is_terminal) {
                 resolveTerminalOutcome({
                     is_terminal: true,
@@ -1492,9 +1604,12 @@ export class PipelineService {
 
     /** Update a deal */
     async updateDeal(tenantId: string, dealId: string, data: Partial<{
-        title: string; value: number; probability: number; expectedCloseDate: string;
-        assignedAgentId: string; notes: string; status: string;
+        title: string; value: number; probability: number; expectedCloseDate: string | null;
+        assignedAgentId: string | null; notes: string;
     }>): Promise<void> {
+        if ((data as any).status !== undefined || (data as any).stageId !== undefined || (data as any).stage_id !== undefined) {
+            throw new BadRequestException('Deal stage/status is managed only by moveToStage');
+        }
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return;
 
@@ -1505,10 +1620,9 @@ export class PipelineService {
         if (data.title) { sets.push(`title = $${i++}`); params.push(data.title); }
         if (data.value !== undefined) { sets.push(`value = $${i++}`); params.push(data.value); }
         if (data.probability !== undefined) { sets.push(`probability = $${i++}`); params.push(data.probability); }
-        if (data.expectedCloseDate) { sets.push(`expected_close_date = $${i++}`); params.push(data.expectedCloseDate); }
-        if (data.assignedAgentId) { sets.push(`assigned_agent_id = $${i++}::uuid`); params.push(data.assignedAgentId); }
+        if (data.expectedCloseDate !== undefined) { sets.push(`expected_close_date = $${i++}`); params.push(data.expectedCloseDate); }
+        if (data.assignedAgentId !== undefined) { sets.push(`assigned_agent_id = $${i++}::uuid`); params.push(data.assignedAgentId); }
         if (data.notes !== undefined) { sets.push(`notes = $${i++}`); params.push(data.notes); }
-        if (data.status) { sets.push(`status = $${i++}`); params.push(data.status); }
 
         await this.prisma.executeInTenantSchema(
             schema,
@@ -1835,11 +1949,20 @@ export class PipelineService {
         }
 
         if (opp.lead_id) {
-            await this.writeLeadStage(tenantId, opp.lead_id, writeSlug, {
-                schemaName: schema,
-                opportunityId: opp.opp_id,
-                triggeredBy: 'auto_progress',
-            });
+            try {
+                await this.writeLeadStage(tenantId, opp.lead_id, writeSlug, {
+                    schemaName: schema,
+                    opportunityId: opp.opp_id,
+                    triggeredBy: 'auto_progress',
+                    enforceTransitionRules: true,
+                });
+            } catch (ruleErr: any) {
+                if (String(ruleErr?.message || '').includes('TRANSITION_RULE_FAILED')) {
+                    this.logger.log(`Auto-progress transaction held conv ${conversationId} at "${currentSlug}"`);
+                    return;
+                }
+                throw ruleErr;
+            }
         }
 
         this.logger.log(`Auto-progressed conversation ${conversationId} to stage "${writeSlug}": ${reason}`);
@@ -2007,6 +2130,7 @@ export class PipelineService {
         opportunityId: string,
         requestedStage: string,
         triggeredBy = 'agent',
+        opportunityPatch?: OpportunityStagePatch,
     ): Promise<TenantStageMapping> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new BadRequestException('Tenant not found');
@@ -2018,12 +2142,13 @@ export class PipelineService {
         const leadId = rows?.[0]?.lead_id;
         if (!leadId) throw new BadRequestException('Opportunity not found');
         const target = await this.resolveTenantStage(tenantId, requestedStage, { schemaName: schema });
-        await this.evaluateRulesForLead(schema, tenantId, leadId, target.slug);
         const result = await this.writeLeadStage(tenantId, leadId, target.slug, {
             schemaName: schema,
             opportunityId,
             onlyActiveOpportunities: true,
             triggeredBy,
+            opportunityPatch,
+            enforceTransitionRules: true,
         });
         return result.stage;
     }

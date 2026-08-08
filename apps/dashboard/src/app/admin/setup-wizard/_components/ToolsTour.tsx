@@ -4,8 +4,12 @@ import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+    resolveVerticalDashboard,
+    type VerticalDashboardItem,
+} from "@/lib/vertical-dashboard-resolver";
+import {
     BookOpen, HelpCircle, Building2, Clock, Bot, ListChecks,
-    Calendar, ShoppingCart, UtensilsCrossed, Home, Car,
+    Calendar, UtensilsCrossed, Home, Car,
     Users, BarChart3, Megaphone, Workflow, Inbox, UserPlus,
     Sparkles, ArrowRight, MessageCircle,
     Stethoscope, Dumbbell, CreditCard, PawPrint, Plane,
@@ -23,73 +27,24 @@ const A_TRANSVERSAL: Tool[] = [
     { key: "procedures", icon: ListChecks, href: "/admin/procedures" },
 ];
 
-const A_BY_VERTICAL: Record<string, Tool[]> = {
-    salud: [
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-        { key: "treatments", icon: Stethoscope, href: "/admin/treatment-plans" },
-    ],
-    moda_belleza: [
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-    ],
-    gimnasios: [
-        { key: "classes", icon: Dumbbell, href: "/admin/classes" },
-        { key: "memberships", icon: CreditCard, href: "/admin/memberships" },
-    ],
-    veterinaria: [
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-        { key: "pets", icon: PawPrint, href: "/admin/pets" },
-    ],
-    pet_services: [
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-        { key: "pets", icon: PawPrint, href: "/admin/pets" },
-    ],
-    turismo: [
-        { key: "tours", icon: Plane, href: "/admin/tours" },
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-    ],
-    restaurantes: [
-        { key: "menu", icon: UtensilsCrossed, href: "/admin/menu" },
-        { key: "orders", icon: ShoppingBag, href: "/admin/food-orders" },
-    ],
-    inmobiliaria: [
-        // /admin/properties es el CRUD de alquiler vacacional (turismo); el
-        // inventario inmobiliario vive en /admin/listings.
-        { key: "properties", icon: Home, href: "/admin/listings" },
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-    ],
-    automotriz: [
-        { key: "inventory", icon: Car, href: "/admin/inventory" },
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-    ],
-    retail: [
-        { key: "catalog", icon: ShoppingCart, href: "/admin/catalog" },
-        { key: "inventory", icon: Package, href: "/admin/inventory" },
-        { key: "orders", icon: ShoppingBag, href: "/admin/orders" },
-    ],
-    education: [
-        { key: "courses", icon: GraduationCap, href: "/admin/courses" },
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-    ],
-    seguros: [
-        { key: "insurance", icon: Shield, href: "/admin/insurance" },
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-    ],
-    servicios_hogar: [
-        { key: "serviceRequests", icon: Wrench, href: "/admin/service-requests" },
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-    ],
-    servicios_profesionales: [
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-    ],
-    finanzas: [
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-    ],
-    fotografia: [
-        { key: "photoSessions", icon: Camera, href: "/admin/photo-sessions" },
-        { key: "appointments", icon: Calendar, href: "/admin/appointments" },
-    ],
-    technology: [],
-    otro: [],
+const A_BY_ITEM: Readonly<Partial<Record<VerticalDashboardItem, Tool>>> = {
+    appointments: { key: "appointments", icon: Calendar, href: "/admin/appointments" },
+    properties: { key: "properties", icon: Home, href: "/admin/properties" },
+    tours: { key: "tours", icon: Plane, href: "/admin/tours" },
+    listings: { key: "listings", icon: Home, href: "/admin/listings" },
+    vehicles: { key: "vehicles", icon: Car, href: "/admin/vehicles" },
+    menu: { key: "menu", icon: UtensilsCrossed, href: "/admin/menu" },
+    foodOrders: { key: "orders", icon: ShoppingBag, href: "/admin/food-orders" },
+    memberships: { key: "memberships", icon: CreditCard, href: "/admin/memberships" },
+    classes: { key: "classes", icon: Dumbbell, href: "/admin/classes" },
+    courses: { key: "courses", icon: GraduationCap, href: "/admin/courses" },
+    insurance: { key: "insurance", icon: Shield, href: "/admin/insurance" },
+    serviceRequests: { key: "serviceRequests", icon: Wrench, href: "/admin/service-requests" },
+    treatmentPlans: { key: "treatments", icon: Stethoscope, href: "/admin/treatment-plans" },
+    pets: { key: "pets", icon: PawPrint, href: "/admin/pets" },
+    photoSessions: { key: "photoSessions", icon: Camera, href: "/admin/photo-sessions" },
+    inventory: { key: "inventory", icon: Package, href: "/admin/inventory" },
+    orders: { key: "orders", icon: ShoppingBag, href: "/admin/orders" },
 };
 
 const B_TRANSVERSAL: Tool[] = [
@@ -105,8 +60,12 @@ export default function ToolsTour() {
     const t = useTranslations("setupWizard.discover");
     const router = useRouter();
     const { verticalConfig } = useAuth();
-    const industry = ((verticalConfig as any)?.industry as string) || "otro";
-    const blockA = [...A_TRANSVERSAL, ...(A_BY_VERTICAL[industry] || [])];
+    const verticalDashboard = resolveVerticalDashboard(verticalConfig);
+    const verticalTools = verticalDashboard.discoveryItems
+        .map((item) => A_BY_ITEM[item])
+        .filter((tool): tool is Tool => !!tool)
+        .filter((tool, index, tools) => tools.findIndex((candidate) => candidate.key === tool.key) === index);
+    const blockA = [...A_TRANSVERSAL, ...verticalTools];
 
     const renderTool = (tool: Tool, primary: boolean) => {
         const Icon = tool.icon;

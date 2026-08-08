@@ -2,6 +2,10 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import {
+    normalizeCurrencyCode,
+    requirePositiveIntegerUnit,
+} from '../../common/utils/commercial-units.util';
 
 /**
  * Tours / travel packages module — supports both same-day experiences
@@ -51,7 +55,12 @@ export class ToursService {
         await this.throttle.enforcePlanLimit(tenantId, 'maxProperties', used?.[0]?.cnt || 0, 'propiedades + tours');
 
         if (!data.name) throw new BadRequestException('name is required');
-        const durationType = data.durationType === 'days' ? 'days' : 'hours';
+        if (data.durationType !== undefined && !['hours', 'days'].includes(data.durationType)) {
+            throw new BadRequestException('durationType must be hours or days');
+        }
+        const durationType = data.durationType || 'hours';
+        const durationValue = requirePositiveIntegerUnit(data.durationValue ?? 1, 'durationValue');
+        const currency = normalizeCurrencyCode(data.currency);
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -65,8 +74,8 @@ export class ToursService {
                 $11::jsonb, $12::jsonb, $13::jsonb, $14, $15, $16, $17::jsonb, $18::jsonb, $19, $20::jsonb
              ) RETURNING *`,
             [
-                data.name, data.description || null, durationType, data.durationValue || 1,
-                data.price || 0, data.currency || 'COP',
+                data.name, data.description || null, durationType, durationValue,
+                data.price || 0, currency,
                 data.maxCapacity || 10, data.minPartySize || 1,
                 data.departureLocation || null, data.destination || null,
                 JSON.stringify(data.languages || []),
@@ -84,6 +93,15 @@ export class ToursService {
     }
 
     async updatePackage(schemaName: string, packageId: string, data: any): Promise<any> {
+        if (data.durationType !== undefined && !['hours', 'days'].includes(data.durationType)) {
+            throw new BadRequestException('durationType must be hours or days');
+        }
+        if (data.durationValue !== undefined) {
+            data = { ...data, durationValue: requirePositiveIntegerUnit(data.durationValue, 'durationValue') };
+        }
+        if (data.currency !== undefined) {
+            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+        }
         const sets: string[] = [];
         const params: any[] = [];
         let idx = 1;

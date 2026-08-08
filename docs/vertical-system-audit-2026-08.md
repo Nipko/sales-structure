@@ -6,7 +6,7 @@
 **Alcance oficial:** 18 verticales, 75 subtipos canónicos y el caso genérico `otro` (76 configuraciones)  
 **Documento de pruebas asociado:** [`vertical-master-test-plan-2026-08.md`](./vertical-master-test-plan-2026-08.md)
 
-> **Actualización de ejecución:** los hallazgos de este documento conservan la línea base del corte. La remediación implementada, su evidencia y los gates todavía pendientes se mantienen en [`wave-0-execution-2026-08.md`](./wave-0-execution-2026-08.md). No interpretar la tabla P0 original como estado actual del worktree.
+> **Documento baseline, no estado actual:** el veredicto, la madurez, los P0/P1, los hallazgos de IA y la evidencia de este archivo describen el commit auditado del 6 de agosto. La fuente vigente del worktree es [`vertical-waves-execution-2026-08.md`](./vertical-waves-execution-2026-08.md); el detalle de contención está en [`wave-0-execution-2026-08.md`](./wave-0-execution-2026-08.md). Conservar estas tablas permite medir el cambio, pero no deben citarse como defectos aún abiertos sin reconciliarlas contra el consolidado.
 
 ## 1. Veredicto ejecutivo
 
@@ -301,7 +301,7 @@ Los referentes horizontales actuales ya combinan conocimiento, acciones y prueba
 - [Zoho CRM/Zia](https://www.zoho.com/crm/ai-features-in-zoho-crm.html).
 - [Shopify Inbox](https://apps.shopify.com/inbox).
 
-Paridad horizontal mínima:
+Objetivos internos de paridad horizontal:
 
 1. Datos vivos con procedencia y frescura.
 2. Acciones tipadas, idempotentes y con permisos mínimos.
@@ -312,7 +312,11 @@ Paridad horizontal mínima:
 7. Consentimiento, opt-out, retención y auditoría.
 8. Observabilidad de tool calls, abstenciones, errores y reintentos.
 
+Estos ocho puntos son el contrato objetivo de Parallly, no una afirmación de que cada competidor los implemente todos de forma tipada, idempotente y auditable. Las fuentes oficiales verifican piezas —conocimiento, acciones, pruebas, handoff, fuentes y logs—; la separación universal read/write/sensitive, consentimiento/retención end-to-end y observabilidad completa deben demostrarse con evidencia propia.
+
 ## 9. Benchmark y objetivo por vertical
+
+Los objetivos siguientes son **benchmarks compuestos**. En varios dominios combinan dos o más suites y requisitos propios de seguridad; no implican que una sola plataforma ofrezca toda la lista ni que Parallly ya haya alcanzado esa paridad.
 
 ### 9.1 Salud
 
@@ -328,7 +332,7 @@ Paridad horizontal mínima:
 
 ### 9.3 Inmobiliaria
 
-**Referentes:** [Lofty](https://lofty.com/), [Follow Up Boss](https://www.followupboss.com/), [Structurely](https://www.structurely.com/call/).
+**Referentes:** [Lofty](https://lofty.com/), [Follow Up Boss](https://www.followupboss.com/), [Structurely](https://www.structurely.com/how-it-works).
 
 **Objetivo de paridad:** inventario vivo, filtros geográficos, perfiles comprador/arrendatario/propietario, favoritos, búsquedas guardadas, alertas, routing, visitas coordinadas, timeline y dedupe cross-channel. No prometer precio, disponibilidad o crédito sin fuente.
 
@@ -346,7 +350,7 @@ Paridad horizontal mínima:
 
 ### 9.6 Turismo
 
-**Referentes:** [Cloudbeds](https://www.cloudbeds.com/), [Travefy CRM](https://go.travefy.com/crm), [Rezdy](https://rezdy.com/pricing/).
+**Referentes:** [Cloudbeds](https://www.cloudbeds.com/channel-manager/), [Travefy CRM](https://travefy.com/products/crm), [Rezdy Resources](https://support.rezdy.com/hc/en-us/articles/19867793699612-What-Is-a-Resource-and-How-To-Set-Them-Up).
 
 **Objetivo de paridad:** hotel/alquiler con PMS, noches, rate plans, impuestos, depósitos y channel manager; tours con sesiones, cupos, recursos, waivers y vouchers; agencia con propuestas, itinerarios, proveedores, comisiones y pagos.
 
@@ -370,7 +374,7 @@ Paridad horizontal mínima:
 
 ### 9.10 Retail
 
-**Referentes:** [Shopify Inbox](https://apps.shopify.com/inbox), [Shopify Sidekick](https://help.shopify.com/en/manual/shopify-admin/productivity-tools/sidekick).
+**Referentes:** [Shopify Inbox](https://apps.shopify.com/inbox), [Shopify Sidekick](https://help.shopify.com/en/manual/ai-powered-tools/sidekick).
 
 **Objetivo de paridad:** variantes, stock y precios vivos; carrito/checkout/payment link; shipping, tracking, devoluciones, loyalty, recovery y atribución de pedidos asistidos por IA. Descuentos/reembolsos requieren autorización.
 
@@ -408,7 +412,7 @@ Paridad horizontal mínima:
 
 **Referente:** [MoeGo](https://www.moego.pet/), [boarding/daycare](https://help.moego.pet/en/articles/14085066-how-your-clients-book-boarding-daycare-online) y [membresías](https://help.moego.pet/en/articles/11380526-set-up-membership).
 
-**Objetivo de paridad:** mascota, vacunas, comportamiento, medicación y dieta; boarding por noches, daycare por días, capacidad de kennels, add-ons, paquetes, membresías, créditos, acuerdos y tareas de cuidado.
+**Objetivo de paridad:** mascota, vacunas, comportamiento, medicación y dieta; boarding por noches, daycare por días, capacidad de kennels, add-ons, paquetes, membresías, créditos, acuerdos y tareas de cuidado. Algunas capacidades de MoeGo —incluidas membresías/créditos en determinados cortes— se documentan como beta o disponibilidad limitada; se usan como dirección competitiva, no como disponibilidad universal.
 
 ### 9.17 Fotografía
 
@@ -418,9 +422,9 @@ Paridad horizontal mínima:
 
 ### 9.18 Otro
 
-**Referentes:** [Kommo](https://www.kommo.com/), [Respond.io](https://respond.io/ai-agents), [Zoho Zia](https://www.zoho.com/crm/ai-features-in-zoho-crm.html).
+**Referentes:** [Kommo](https://www.kommo.com/), [Respond.io](https://respond.io/ai-agents), [Zoho Custom Modules](https://help.zoho.com/portal/en/kb/crm/customize-crm-account/customizing-modules/articles/customize-modules).
 
-**Objetivo recomendado:** convertirlo en “vertical builder”: objetos/relaciones, modo cita/pedido/proyecto/membresía/caso, calificación, pipeline, SLA, tool schema, políticas, KPIs y escenarios de prueba generados.
+**Objetivo recomendado:** convertirlo en “vertical builder”: objetos/relaciones, modo cita/pedido/proyecto/membresía/caso, calificación, pipeline, SLA, tool schema, políticas, KPIs y escenarios de prueba generados. Es una visión de producto propia; las referencias demuestran componentes configurables, no generación completa de tools, políticas, KPIs y pruebas.
 
 ## 10. Coherencia comercial y confianza
 
@@ -501,7 +505,7 @@ Una corrección vertical no se considera terminada hasta que:
 - Dashboard TypeScript no pudo completarse en este checkout porque `node_modules/onborda` no está instalado, aunque la dependencia figura declarada. Es una limitación del entorno local, no evidencia suficiente de un error de código.
 - No existe cobertura automática específica para registro, bootstrap, subtipos, aliases, tools verticales, Agent Test, vehicle routes, staff ni matriz de 18 verticales.
 
-## 15. Decisiones de producto pendientes
+## 15. Decisiones de producto del baseline
 
 Las decisiones 1–3 quedaron resueltas por la Ola 0: los defaults consumen cuota con pisos compatibles; `finanzas/seguros` redirige a `seguros/broker`; y el cambio directo de vertical queda bloqueado hasta disponer de migración transaccional con preview/rollback. Se conservan abajo para trazabilidad del corte.
 
@@ -516,4 +520,4 @@ Las decisiones 1–3 quedaron resueltas por la Ola 0: los defaults consumen cuot
 
 ---
 
-Este documento reemplaza como diagnóstico vigente las conclusiones numéricas de julio. Los deep-dives históricos siguen siendo insumo de detalle, pero cualquier corrección debe partir de los IDs y criterios de cierre aquí definidos.
+Este documento reemplazó las conclusiones numéricas de julio como **baseline del 6 de agosto**. El diagnóstico vigente, los cierres y las decisiones residuales deben leerse en el consolidado de Olas 0–5 y su registro final; los deep-dives históricos siguen siendo insumo de trazabilidad.

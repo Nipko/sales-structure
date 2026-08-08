@@ -516,6 +516,69 @@ export class CalendarIntegrationService {
         return this.createEventForIntegration(schemaName, integrations[0].id, data);
     }
 
+    /**
+     * Update an existing provider event on the same deterministic calendar that
+     * the legacy createEvent(userId) wrapper resolves. Rescheduling must patch
+     * the original event instead of inserting a second one and leaving the old
+     * time visible to staff and customers.
+     */
+    async updateEvent(schemaName: string, userId: string, eventId: string, data: {
+        summary: string; startAt: string; endAt: string;
+        location?: string; description?: string;
+    }, provider?: CalendarProvider): Promise<boolean> {
+        const providerFilter = provider ? ' AND provider = $2' : '';
+        const params: any[] = provider ? [userId, provider] : [userId];
+        const integrations = await this.queryIntegrations(schemaName,
+            `SELECT id, user_id, provider, calendar_id, account_email, label, assignment_type, assignment_id, is_active, connected_at
+             FROM calendar_integrations
+             WHERE user_id = $1::uuid AND is_active = true${providerFilter}
+             ORDER BY connected_at ASC LIMIT 1`,
+            params,
+        );
+        if (integrations.length === 0) return false;
+
+        const integration = integrations[0];
+        try {
+            if (integration.provider === 'google') {
+                const client = await this.getGoogleClient(schemaName, integration.id);
+                const cal = google.calendar({ version: 'v3', auth: client });
+                await cal.events.patch({
+                    calendarId: integration.calendarId || 'primary',
+                    eventId,
+                    requestBody: {
+                        summary: data.summary,
+                        start: { dateTime: data.startAt },
+                        end: { dateTime: data.endAt },
+                        location: data.location,
+                        description: data.description,
+                    },
+                    sendUpdates: 'all',
+                });
+                return true;
+            }
+
+            if (integration.provider === 'microsoft') {
+                const client = await this.getMicrosoftClient(schemaName, integration.id);
+                const timezone = await this.getTimezoneFromSchema(schemaName);
+                await client.api(`/me/events/${encodeURIComponent(eventId)}`).patch({
+                    subject: data.summary,
+                    start: { dateTime: data.startAt, timeZone: timezone },
+                    end: { dateTime: data.endAt, timeZone: timezone },
+                    location: data.location ? { displayName: data.location } : undefined,
+                    body: data.description
+                        ? { content: data.description, contentType: 'text' }
+                        : undefined,
+                });
+                return true;
+            }
+        } catch (error: any) {
+            this.logger.error(
+                `Update event failed for integration ${integration.id}: ${error.message}`,
+            );
+        }
+        return false;
+    }
+
     // ── List integrations ────────────────────────────────────────
 
     async listIntegrations(schemaName: string, userId?: string): Promise<CalendarIntegration[]> {

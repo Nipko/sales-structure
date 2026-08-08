@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Query, Req, Res, UseGuards, HttpCode, HttpStatus, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Query, Req, Res, UseGuards, HttpCode, HttpStatus, Param, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -79,16 +79,18 @@ export class SamlController {
                 data: { lastLoginAt: new Date() },
             });
 
-            const sid = await (this.authService as any).createSession(user.id, user.tenantId || undefined);
+            const readyTenantId = await this.authService.resolveReadyTenantIdForUser(user.id, user.tenantId);
+            if (!readyTenantId) throw new UnauthorizedException('Tenant is inactive or still provisioning');
+            const sid = await (this.authService as any).createSession(user.id, readyTenantId);
             const payload: JwtPayload = {
                 sub: user.id,
                 email: user.email,
                 role: user.role as UserRole,
-                tenantId: user.tenantId || undefined,
+                tenantId: readyTenantId,
             };
 
             const { accessToken, refreshToken } = await (this.authService as any).generateTokens(payload, { rememberMe: true, sid });
-            const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
+            const effectiveOnboarding = user.role === 'super_admin' || !!readyTenantId;
 
             const exchangeCode = await this.authService.createExchangeCode({
                 accessToken,
@@ -99,8 +101,8 @@ export class SamlController {
                     firstName: user.firstName,
                     lastName: user.lastName,
                     role: user.role,
-                    tenantId: user.tenantId,
-                    tenantName: user.tenant?.name,
+                    tenantId: readyTenantId,
+                    tenantName: readyTenantId ? user.tenant?.name : undefined,
                     picture: user.picture,
                     hasPassword: !!user.password,
                     emailVerified: user.emailVerified,

@@ -19,6 +19,30 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 
+interface ReplacePipelineStageInput {
+    id?: string;
+    name: string;
+    slug?: string;
+    color?: string;
+    position?: number;
+    default_probability?: number;
+    sla_hours?: number | null;
+    is_terminal?: boolean;
+    terminal_outcome?: 'won' | 'lost' | null;
+    transition_rules?: any[];
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function canonicalPipelineStageSlug(value: string): string {
+    const normalized = value.trim().toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '_')
+        .replace(/[^a-z0-9_]/g, '');
+    return normalized === 'listo_cierre' ? 'listo_para_cierre' : normalized;
+}
+
 @Controller('crm')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class CrmController {
@@ -692,6 +716,69 @@ export class CrmController {
         return tenant[0].schema_name;
     }
 
+    private normalizePipelineStages(stages: ReplacePipelineStageInput[]) {
+        if (!Array.isArray(stages) || stages.length === 0) {
+            throw new BadRequestException('El pipeline requiere al menos una etapa');
+        }
+
+        const seenIds = new Set<string>();
+        const seenSlugs = new Set<string>();
+        return stages.map((stage, index) => {
+            const name = String(stage?.name || '').trim();
+            if (!name || name.length > 120) {
+                throw new BadRequestException(`Nombre inválido en la etapa ${index + 1}`);
+            }
+            if (stage.id && !UUID_PATTERN.test(stage.id)) {
+                throw new BadRequestException(`ID inválido en la etapa ${index + 1}`);
+            }
+            if (stage.id && seenIds.has(stage.id)) {
+                throw new BadRequestException(`ID de etapa duplicado: ${stage.id}`);
+            }
+            if (stage.id) seenIds.add(stage.id);
+
+            const slug = canonicalPipelineStageSlug(stage.slug || name);
+            if (!slug || slug.length > 120) {
+                throw new BadRequestException(`Slug inválido en la etapa ${index + 1}`);
+            }
+            if (seenSlugs.has(slug)) {
+                throw new BadRequestException(`Slug de etapa duplicado: ${slug}`);
+            }
+            seenSlugs.add(slug);
+
+            const probability = Number(stage.default_probability ?? 0);
+            if (!Number.isFinite(probability) || probability < 0 || probability > 100) {
+                throw new BadRequestException(`Probabilidad inválida en la etapa "${name}"`);
+            }
+            const slaHours = stage.sla_hours == null ? null : Number(stage.sla_hours);
+            if (slaHours != null && (!Number.isInteger(slaHours) || slaHours <= 0)) {
+                throw new BadRequestException(`SLA inválido en la etapa "${name}"`);
+            }
+            const isTerminal = stage.is_terminal === true;
+            if (isTerminal && stage.terminal_outcome !== 'won' && stage.terminal_outcome !== 'lost') {
+                throw new BadRequestException(`La etapa terminal "${name}" requiere terminal_outcome: won o lost`);
+            }
+            if (!isTerminal && stage.terminal_outcome != null) {
+                throw new BadRequestException(`La etapa no terminal "${name}" no admite terminal_outcome`);
+            }
+            if (stage.transition_rules != null && !Array.isArray(stage.transition_rules)) {
+                throw new BadRequestException(`Reglas inválidas en la etapa "${name}"`);
+            }
+
+            return {
+                id: stage.id,
+                name,
+                slug,
+                color: /^#[0-9a-f]{6}$/i.test(String(stage.color || '')) ? stage.color! : '#3498db',
+                position: index,
+                default_probability: probability,
+                sla_hours: slaHours,
+                is_terminal: isTerminal,
+                terminal_outcome: isTerminal ? stage.terminal_outcome! : null,
+                transition_rules: stage.transition_rules || [],
+            };
+        });
+    }
+
     @Get('pipeline-stages/:tenantId')
     async getPipelineStages(@Param('tenantId') tenantId: string) {
         const schema = await this.getSchema(tenantId);
@@ -712,7 +799,7 @@ export class CrmController {
         const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT COUNT(*)::int AS c FROM pipeline_stages WHERE tenant_id = $1::uuid`, [tenantId]);
         await this.throttle.enforcePlanLimit(tenantId, 'pipelineStages', cnt?.[0]?.c || 0, 'etapas de pipeline');
-        const slug = body.slug || body.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+        const slug = canonicalPipelineStageSlug(body.slug || body.name);
         const isTerminal = body.is_terminal ?? false;
         if (isTerminal && body.terminal_outcome !== 'won' && body.terminal_outcome !== 'lost') {
             throw new BadRequestException('Una etapa terminal requiere terminal_outcome: won o lost');
@@ -740,6 +827,182 @@ export class CrmController {
         return { success: true, data: result?.[0] };
     }
 
+    /**
+     * Replace the editable stage set as one transaction. Existing stages are
+     * matched by ID (or canonical slug for presets), so references remain
+     * stable and a failed validation/update cannot leave a half-empty funnel.
+     */
+    @Put('pipeline-stages/:tenantId/bulk')
+    @Roles('tenant_admin', 'tenant_supervisor')
+    async replacePipelineStages(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { stages: ReplacePipelineStageInput[] },
+    ) {
+        const stages = this.normalizePipelineStages(body?.stages);
+        const limit = await this.throttle.getPlanLimit(tenantId, 'pipelineStages');
+        if (limit !== -1 && stages.length > limit) {
+            throw new BadRequestException(`El plan permite un máximo de ${limit} etapas de pipeline`);
+        }
+        const schema = await this.getSchema(tenantId);
+
+        const data = await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            type ExistingStage = {
+                id: string;
+                slug: string;
+                is_terminal: boolean;
+                terminal_outcome: 'won' | 'lost' | null;
+            };
+            const existing = await query<ExistingStage[]>(
+                `SELECT id, slug, is_terminal, terminal_outcome
+                   FROM pipeline_stages
+                  WHERE tenant_id = $1::uuid
+                  ORDER BY position ASC
+                  FOR UPDATE`,
+                [tenantId],
+            );
+            const byId = new Map(existing.map((stage) => [stage.id, stage]));
+            const bySlug = new Map<string, ExistingStage>();
+            for (const stage of existing) {
+                const canonical = canonicalPipelineStageSlug(stage.slug);
+                if (bySlug.has(canonical)) {
+                    throw new ConflictException({
+                        error: 'pipeline_stage_alias_collision',
+                        slug: canonical,
+                    });
+                }
+                bySlug.set(canonical, stage);
+            }
+
+            const resolved = stages.map((stage) => {
+                const current = stage.id ? byId.get(stage.id) : bySlug.get(stage.slug);
+                if (stage.id && !current) {
+                    throw new BadRequestException(`La etapa ${stage.id} no pertenece a este tenant`);
+                }
+                return { ...stage, current };
+            });
+            const resolvedIds = new Set<string>();
+            for (const stage of resolved) {
+                if (!stage.current) continue;
+                if (resolvedIds.has(stage.current.id)) {
+                    throw new BadRequestException(`La etapa ${stage.current.id} fue enviada más de una vez`);
+                }
+                resolvedIds.add(stage.current.id);
+            }
+
+            const usageFor = async (stage: ExistingStage) => {
+                const rows = await query<Array<{ opportunity_count: number; deal_count: number }>>(
+                    `SELECT
+                        (SELECT COUNT(*)::int FROM opportunities WHERE stage = $1) AS opportunity_count,
+                        (SELECT COUNT(*)::int FROM deals WHERE stage_id = $2::uuid) AS deal_count`,
+                    [stage.slug, stage.id],
+                );
+                return {
+                    opportunityCount: Number(rows?.[0]?.opportunity_count || 0),
+                    dealCount: Number(rows?.[0]?.deal_count || 0),
+                };
+            };
+
+            for (const stage of resolved) {
+                const current = stage.current;
+                if (!current) continue;
+                const slugChanged = current.slug !== stage.slug;
+                const outcomeChanged = current.is_terminal !== stage.is_terminal
+                    || current.terminal_outcome !== stage.terminal_outcome;
+                if (!slugChanged && !outcomeChanged) continue;
+
+                const usage = await usageFor(current);
+                const canonicalizesLegacyAlias = current.slug === 'listo_cierre'
+                    && stage.slug === 'listo_para_cierre'
+                    && !outcomeChanged;
+                if ((usage.opportunityCount > 0 || usage.dealCount > 0) && !canonicalizesLegacyAlias) {
+                    throw new ConflictException({
+                        error: 'pipeline_stage_in_use',
+                        message: 'No se puede cambiar el slug o resultado de una etapa que contiene oportunidades o negocios.',
+                        stageId: current.id,
+                        opportunityCount: usage.opportunityCount,
+                        dealCount: usage.dealCount,
+                    });
+                }
+                if (canonicalizesLegacyAlias && usage.opportunityCount > 0) {
+                    await query(
+                        `UPDATE opportunities SET stage = 'listo_para_cierre', updated_at = NOW()
+                          WHERE stage = 'listo_cierre'`,
+                    );
+                }
+            }
+
+            const removed = existing.filter((stage) => !resolvedIds.has(stage.id));
+            for (const stage of removed) {
+                const usage = await usageFor(stage);
+                if (usage.opportunityCount > 0 || usage.dealCount > 0) {
+                    throw new ConflictException({
+                        error: 'pipeline_stage_in_use',
+                        message: 'No se puede eliminar una etapa que contiene oportunidades o negocios.',
+                        stageId: stage.id,
+                        opportunityCount: usage.opportunityCount,
+                        dealCount: usage.dealCount,
+                    });
+                }
+            }
+
+            // Remove unused stages before final slugs are written. For retained
+            // stages whose slug changes, a temporary unique slug also permits A/B
+            // swaps without violating the unique index mid-transaction.
+            for (const stage of removed) {
+                await query(`DELETE FROM pipeline_stages WHERE id = $1::uuid AND tenant_id = $2::uuid`, [stage.id, tenantId]);
+            }
+            for (const stage of resolved) {
+                if (stage.current && stage.current.slug !== stage.slug) {
+                    await query(
+                        `UPDATE pipeline_stages SET slug = $1 WHERE id = $2::uuid AND tenant_id = $3::uuid`,
+                        [`__bulk_${stage.current.id.replace(/-/g, '')}`, stage.current.id, tenantId],
+                    );
+                }
+            }
+
+            for (const stage of resolved) {
+                const params = [
+                    stage.name,
+                    stage.slug,
+                    stage.color,
+                    stage.position,
+                    stage.default_probability,
+                    stage.sla_hours,
+                    stage.is_terminal,
+                    stage.terminal_outcome,
+                    JSON.stringify(stage.transition_rules),
+                    tenantId,
+                ];
+                if (stage.current) {
+                    await query(
+                        `UPDATE pipeline_stages
+                            SET name = $1, slug = $2, color = $3, position = $4,
+                                default_probability = $5, sla_hours = $6,
+                                is_terminal = $7, terminal_outcome = $8,
+                                transition_rules = $9::jsonb
+                          WHERE id = $11::uuid AND tenant_id = $10::uuid`,
+                        [...params, stage.current.id],
+                    );
+                } else {
+                    await query(
+                        `INSERT INTO pipeline_stages
+                            (tenant_id, name, slug, color, position, default_probability,
+                             sla_hours, is_terminal, terminal_outcome, transition_rules)
+                         VALUES ($10::uuid, $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
+                        params,
+                    );
+                }
+            }
+
+            return query<any[]>(
+                `SELECT * FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC`,
+                [tenantId],
+            );
+        });
+
+        return { success: true, data };
+    }
+
     @Put('pipeline-stages/:tenantId/:stageId')
     @Roles('tenant_admin', 'tenant_supervisor')
     async updatePipelineStage(
@@ -748,6 +1011,7 @@ export class CrmController {
         @Body() body: Record<string, any>,
     ) {
         const schema = await this.getSchema(tenantId);
+        if (body.slug !== undefined) body.slug = canonicalPipelineStageSlug(String(body.slug));
         if (['slug', 'is_terminal', 'terminal_outcome', 'default_probability'].some((field) => body[field] !== undefined)) {
             const currentRows = await this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT slug, is_terminal, terminal_outcome, default_probability
@@ -812,10 +1076,35 @@ export class CrmController {
         @Param('stageId') stageId: string,
     ) {
         const schema = await this.getSchema(tenantId);
-        await this.prisma.executeInTenantSchema(schema,
-            `DELETE FROM pipeline_stages WHERE id = $1::uuid AND tenant_id = $2::uuid`,
-            [stageId, tenantId],
-        );
+        await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const stages = await query<any[]>(
+                `SELECT id, slug FROM pipeline_stages
+                  WHERE id = $1::uuid AND tenant_id = $2::uuid
+                  FOR UPDATE`,
+                [stageId, tenantId],
+            );
+            if (!stages?.[0]) throw new BadRequestException('Stage not found');
+            const usage = await query<any[]>(
+                `SELECT
+                    (SELECT COUNT(*)::int FROM opportunities WHERE stage = $1) AS opportunity_count,
+                    (SELECT COUNT(*)::int FROM deals WHERE stage_id = $2::uuid) AS deal_count`,
+                [stages[0].slug, stageId],
+            );
+            const opportunityCount = Number(usage?.[0]?.opportunity_count || 0);
+            const dealCount = Number(usage?.[0]?.deal_count || 0);
+            if (opportunityCount > 0 || dealCount > 0) {
+                throw new ConflictException({
+                    error: 'pipeline_stage_in_use',
+                    message: 'No se puede eliminar una etapa que contiene oportunidades o negocios.',
+                    opportunityCount,
+                    dealCount,
+                });
+            }
+            await query(
+                `DELETE FROM pipeline_stages WHERE id = $1::uuid AND tenant_id = $2::uuid`,
+                [stageId, tenantId],
+            );
+        });
         return { success: true, message: 'Stage deleted' };
     }
 
@@ -826,12 +1115,27 @@ export class CrmController {
         @Body() body: { stageIds: string[] },
     ) {
         const schema = await this.getSchema(tenantId);
-        for (let i = 0; i < body.stageIds.length; i++) {
-            await this.prisma.executeInTenantSchema(schema,
-                `UPDATE pipeline_stages SET position = $1 WHERE id = $2::uuid AND tenant_id = $3::uuid`,
-                [i, body.stageIds[i], tenantId],
-            );
+        if (!Array.isArray(body.stageIds) || body.stageIds.length === 0
+            || body.stageIds.some((id) => !UUID_PATTERN.test(id))
+            || new Set(body.stageIds).size !== body.stageIds.length) {
+            throw new BadRequestException('stageIds inválidos');
         }
+        await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const locked = await query<any[]>(
+                `SELECT id FROM pipeline_stages WHERE tenant_id = $1::uuid FOR UPDATE`,
+                [tenantId],
+            );
+            const existing = new Set((locked || []).map((stage: any) => stage.id));
+            if (body.stageIds.length !== existing.size || body.stageIds.some((id) => !existing.has(id))) {
+                throw new BadRequestException('La lista de orden debe contener exactamente todas las etapas del pipeline');
+            }
+            for (let i = 0; i < body.stageIds.length; i++) {
+                await query(
+                    `UPDATE pipeline_stages SET position = $1 WHERE id = $2::uuid AND tenant_id = $3::uuid`,
+                    [i, body.stageIds[i], tenantId],
+                );
+            }
+        });
         return { success: true, message: 'Stages reordered' };
     }
 }

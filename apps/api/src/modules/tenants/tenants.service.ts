@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -26,6 +27,11 @@ import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned
 import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
+import {
+    TENANT_LIFECYCLE_LOCK_TTL_SECONDS,
+    tenantLifecycleLockKey,
+    tenantPurgingFenceKey,
+} from '../../common/utils/tenant-lifecycle.util';
 
 export const TENANT_PLAN_SLUGS = ['emprendedor', 'starter', 'pro', 'enterprise', 'custom'] as const;
 export type TenantPlanSlug = typeof TENANT_PLAN_SLUGS[number];
@@ -150,7 +156,13 @@ export class TenantsService {
             `Administrative tenant provisioning lock lost for slug ${slug}`,
         );
         lease.start();
-        const assertLockOwned = () => lease.assertOwned();
+        let lifecycleLease: OwnedLockLease | null = null;
+        let lifecycleToken: string | null = null;
+        let lifecycleTenantId: string | null = null;
+        const assertLockOwned = async () => {
+            await lease.assertOwned();
+            if (lifecycleLease) await lifecycleLease.assertOwned();
+        };
 
         try {
         await assertLockOwned();
@@ -159,6 +171,29 @@ export class TenantsService {
 
         let tenant = await this.prisma.tenant.findUnique({ where: { slug } });
         let schemaName = tenant?.schemaName || requestedSchemaName;
+        lifecycleTenantId = tenant?.id || randomUUID();
+        const lifecycleKey = tenantLifecycleLockKey(lifecycleTenantId);
+        lifecycleToken = await this.redis.acquireLockToken(lifecycleKey, TENANT_LIFECYCLE_LOCK_TTL_SECONDS);
+        if (!lifecycleToken) {
+            throw new ConflictException({
+                error: 'tenant_lifecycle_in_progress',
+                message: 'El ciclo de vida de este tenant ya está siendo modificado',
+                tenantId: lifecycleTenantId,
+            });
+        }
+        lifecycleLease = new OwnedLockLease(
+            this.redis,
+            lifecycleKey,
+            lifecycleToken,
+            TENANT_LIFECYCLE_LOCK_TTL_SECONDS,
+            this.logger,
+            `Administrative tenant lifecycle lock lost for ${lifecycleTenantId}`,
+        );
+        lifecycleLease.start();
+        await assertLockOwned();
+        if (await this.redis.get(tenantPurgingFenceKey(lifecycleTenantId))) {
+            throw new ConflictException({ error: 'tenant_purge_in_progress', tenantId: lifecycleTenantId });
+        }
         let provisioning: TenantProvisioningState;
         let provisioningWasComplete = false;
 
@@ -222,6 +257,7 @@ export class TenantsService {
                 await assertLockOwned();
                 tenant = await this.prisma.tenant.create({
                     data: {
+                        id: lifecycleTenantId,
                         name,
                         slug,
                         industry,
@@ -407,6 +443,7 @@ export class TenantsService {
                 industry,
                 subType,
                 language.split('-')[0] || 'es',
+                { assertLifecycleOwned: () => lifecycleLease!.assertOwned() },
             );
             const config = await this.verticalsService.getVerticalConfig(tenant!.id);
             if (config?.industry !== industry || (config?.subType || null) !== subType) {
@@ -472,7 +509,7 @@ export class TenantsService {
 
         return tenant;
         } catch (error: unknown) {
-            if (error instanceof LockOwnershipLostError || lease.hasLostOwnership()) {
+            if (error instanceof LockOwnershipLostError || lease.hasLostOwnership() || lifecycleLease?.hasLostOwnership()) {
                 throw new ConflictException({
                     error: 'tenant_provisioning_lock_lost',
                     message: 'El alta perdió su lock y fue detenida antes del siguiente commit.',
@@ -481,6 +518,11 @@ export class TenantsService {
             }
             throw error;
         } finally {
+            if (lifecycleLease && lifecycleToken && lifecycleTenantId) {
+                lifecycleLease.stop();
+                await this.redis.releaseLockToken(tenantLifecycleLockKey(lifecycleTenantId), lifecycleToken)
+                    .catch((error: any) => this.logger.warn(`Could not release lifecycle lock for ${lifecycleTenantId}: ${error.message}`));
+            }
             lease.stop();
             await this.redis.releaseLockToken(lockKey, lockToken).catch((error: any) => {
                 this.logger.warn(`Could not release provisioning lock for ${slug}: ${error.message}`);

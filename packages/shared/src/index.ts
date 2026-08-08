@@ -5,6 +5,10 @@
 // ---- Timezones (worldwide curated IANA list) ----
 export * from './timezones';
 
+// ---- Versioned vertical operational contract ----
+export * from './vertical-capability-manifest';
+export * from './automation-trigger-contract';
+
 // ---- Channel Types ----
 export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email';
 
@@ -114,6 +118,48 @@ export interface Conversation {
     metadata: Record<string, unknown>;
     createdAt: Date;
     updatedAt: Date;
+}
+
+// ---- Structured human handoff contract ----
+export interface HandoffSourceCitation {
+    type: 'message' | 'knowledge' | 'trace' | 'system';
+    id: string;
+    label: string;
+    citation: string;
+}
+
+export interface HandoffToolOutcome {
+    tool: string;
+    status: 'success' | 'failed' | 'unknown';
+    outcome: string;
+    occurredAt?: string;
+}
+
+export interface StructuredHandoffSummary {
+    version: 1;
+    reason: string;
+    customerIntent: string;
+    knownFacts: string[];
+    sources: HandoffSourceCitation[];
+    lastToolOutcomes: HandoffToolOutcome[];
+    pendingActions: string[];
+    confidence: number;
+    uncertainty: string[];
+    language: string;
+    traceId: string;
+    generatedAt: string;
+    generatedBy: 'llm' | 'deterministic_fallback';
+}
+
+export interface ConversationAssignedEvent {
+    tenantId: string;
+    schemaName: string;
+    conversationId: string;
+    agentId: string;
+    contactId?: string;
+    phone?: string;
+    assignmentSource: 'manual' | 'auto';
+    assignedAt: string;
 }
 
 // ---- Tenant / Persona Types ----
@@ -575,6 +621,127 @@ export interface RetrievedKnowledgeItem {
     metadata?: Record<string, unknown>;
 }
 
+// ---- Versioned active domain-object context ----
+// This is an intentionally narrow, allow-listed projection for the LLM prompt.
+// It is not a generic record and must never grow free-form fields such as notes,
+// addresses, access codes, clinical descriptions or other domain payloads.
+export const ACTIVE_OBJECT_CONTEXT_VERSION = 1 as const;
+export const ACTIVE_OBJECT_CONTEXT_MAX_ITEMS = 20 as const;
+export const ACTIVE_OBJECT_CONTEXT_MAX_XML_CHARS = 12_000 as const;
+
+export const ACTIVE_OBJECT_KINDS = [
+    'appointment',
+    'order',
+    'food_order',
+    'property_booking',
+    'tour_booking',
+    'treatment_plan',
+    'treatment_session',
+    'catalog_item',
+    'real_estate_listing',
+    'vehicle',
+    'tour_package',
+    'course',
+    'enrollment',
+    'professional_case',
+    'pet',
+    'membership',
+    'class_booking',
+    'insurance_policy',
+    'insurance_claim',
+    'insurance_quote',
+    'service_request',
+    'photo_session',
+] as const;
+export type ActiveObjectKind = typeof ACTIVE_OBJECT_KINDS[number];
+
+export const ACTIVE_OBJECT_SOURCES = [
+    'appointments',
+    'orders',
+    'food_orders',
+    'property_bookings',
+    'tour_bookings',
+    'treatment_plans',
+    'treatment_sessions',
+    'products',
+    'ecommerce_products',
+    'real_estate_listings',
+    'vehicles',
+    'tour_packages',
+    'courses',
+    'enrollments',
+    'opportunities',
+    'pets',
+    'members',
+    'class_bookings',
+    'insurance_policies',
+    'insurance_claims',
+    'insurance_quotes',
+    'service_requests',
+    'photo_sessions',
+    'external_integration',
+    'legacy_active_bookings',
+    'legacy_recent_orders',
+] as const;
+export type ActiveObjectSource = typeof ACTIVE_OBJECT_SOURCES[number];
+
+export const ACTIVE_OBJECT_STATUS_CLASSES = [
+    'pending',
+    'active',
+    'paused',
+    'completed',
+    'cancelled',
+    'failed',
+    'unknown',
+] as const;
+export type ActiveObjectStatusClass = typeof ACTIVE_OBJECT_STATUS_CLASSES[number];
+
+export interface ActiveObjectSubject {
+    kind: ActiveObjectKind;
+    id: string;
+    label?: string;
+}
+
+export interface ActiveObjectProgress {
+    current: number;
+    total: number;
+}
+
+export interface ActiveObjectContextItemV1 {
+    kind: ActiveObjectKind;
+    id: string;
+    /** Exact source status, bounded at render time. */
+    status: string;
+    /** Cross-domain status used by prompt rules; loaders own the mapping. */
+    statusClass: ActiveObjectStatusClass;
+    /** Auditable authoritative source. Arbitrary source strings are not allowed. */
+    source: ActiveObjectSource;
+    reference?: string;
+    label?: string;
+    /** Full ISO-8601 timestamps with Z or an explicit offset. */
+    startsAt?: string;
+    endsAt?: string;
+    updatedAt?: string;
+    /** Null means the source explicitly has no amount; absence means not applicable. */
+    amount?: number | null;
+    /** ISO-4217 code. */
+    currency?: string;
+    subject?: ActiveObjectSubject;
+    progress?: ActiveObjectProgress;
+    /** Reviewed read tool for details that are deliberately absent from the prompt. */
+    detailsTool?: string;
+}
+
+export interface ActiveObjectsContextV1 {
+    version: typeof ACTIVE_OBJECT_CONTEXT_VERSION;
+    /** Full ISO-8601 timestamp describing snapshot freshness. */
+    asOf: string;
+    items: ActiveObjectContextItemV1[];
+}
+
+/** Versioned union: append V2 here instead of mutating the V1 wire contract. */
+export type ActiveObjectsContext = ActiveObjectsContextV1;
+
 export interface TurnContext {
     language: string;
     timezone: string;
@@ -634,7 +801,9 @@ export interface TurnContext {
     messageCount?: number;
     /** Vertical-specific context injected based on tenant industry */
     verticalContext?: VerticalContext;
-    /** Customer's active bookings across all verticals */
+    /** Authoritative, bounded domain-object snapshot for this turn. */
+    activeObjects?: ActiveObjectsContext;
+    /** @deprecated Compatibility input while loaders migrate to activeObjects. */
     activeBookings?: Array<{
         id: string;
         type: 'property' | 'tour' | 'appointment';
@@ -666,7 +835,10 @@ export interface VerticalContext {
 export interface TestAgentRequest {
     message: string;
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
-    channelType?: ChannelType;
+    options?: {
+        /** Public endpoint control. Internal eval/sandbox controls are not exposed. */
+        disableTools?: boolean;
+    };
 }
 
 export interface TestAgentToolCall {
@@ -806,6 +978,10 @@ export interface TenantVerticalConfig {
     sidebar: VerticalSidebarConfig;
     dashboard: { kpis: VerticalKpiDefinition[] };
     bookingEnabled: boolean;
+    /** Operational manifest used to resolve this tenant's current capabilities. */
+    manifestVersion?: number;
+    /** Plan/provisioning-adjusted capabilities, persisted for runtime consumers. */
+    effectiveCapabilities?: import('./vertical-capability-manifest').VerticalCapability[];
 }
 
 // ---- Procedures (AOP/SOP) — T2.12 ----

@@ -272,7 +272,7 @@ export class PersonaController {
     async getSetupStatus(@Param('tenantId') tenantId: string) {
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { settings: true, schemaName: true },
+            select: { settings: true, schemaName: true, industry: true },
         });
         const settings = (tenant?.settings as any) || {};
         const schema = tenant?.schemaName;
@@ -295,6 +295,7 @@ export class PersonaController {
         // seguía sin funcionar, porque lee filas de `menu_items`. El checklist
         // enseñaba lo incorrecto y después lo certificaba como hecho.
         let hasVerticalCatalog: boolean | null = null;
+        let verticalCatalogRoute: string | null = null;
         // El alta ya derivó un agente a partir de industria + objetivos
         // (createDefaultAgentFromGoals) y guardó con qué plantilla. Exponerlo permite
         // que el setup-wizard lo CONFIRME en vez de volver a preguntar lo mismo y
@@ -345,8 +346,12 @@ export class PersonaController {
                 // el paso sigue siendo la KB y esto queda en null.
                 // Una sola definicion, compartida con el detector de activacion
                 // del super admin. Ver vertical-catalog.util.ts.
-                const catalog = getVerticalCatalog(settings.verticalConfig?.industry || settings.industry);
+                const catalog = getVerticalCatalog(
+                    settings.verticalConfig?.industry || settings.industry || tenant?.industry,
+                    settings.verticalConfig?.subType || settings.subType || null,
+                );
                 if (catalog) {
+                    verticalCatalogRoute = catalog.route;
                     const filter = catalog.activeFilter ? `WHERE ${catalog.activeFilter}` : '';
                     const rows = (await this.prisma.$queryRawUnsafe(
                         `SELECT COUNT(*)::int AS c FROM "${schema}".${catalog.table} ${filter} LIMIT 1`,
@@ -381,6 +386,7 @@ export class PersonaController {
                 // null = esta vertical no tiene catálogo propio y el paso sigue
                 // siendo la base de conocimiento.
                 hasVerticalCatalog,
+                verticalCatalogRoute,
                 defaultAgentTemplateId,
                 defaultAgentName,
             },

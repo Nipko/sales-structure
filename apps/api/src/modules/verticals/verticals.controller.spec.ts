@@ -22,6 +22,8 @@ describe('VerticalsController tenant isolation', () => {
 
     it('keeps the global definitions endpoint independent of tenant context', () => {
         expect(methodGuards('getDefinitions')).not.toContain(TenantGuard);
+        expect(methodGuards('getCapabilityManifest')).not.toContain(TenantGuard);
+        expect(methodGuards('resolveCapabilityManifest')).not.toContain(TenantGuard);
     });
 
     it('publishes every canonical vertical, including entries with no subtypes', async () => {
@@ -42,6 +44,23 @@ describe('VerticalsController tenant isolation', () => {
         });
         expect(result.meta.aliases.educacion).toBe('education');
         expect(result.meta.aliases.professional_services).toBe('servicios_profesionales');
+    });
+
+    it('publishes and resolves the read-only operational manifest through the service', () => {
+        const manifest = { manifestVersion: 1, industryCount: 18, configurationCount: 76 };
+        const resolved = { manifestVersion: 1, industry: 'turismo', subtype: 'hotel' };
+        const service = {
+            getCapabilityManifest: jest.fn().mockReturnValue(manifest),
+            resolveCapabilityManifest: jest.fn().mockReturnValue(resolved),
+        };
+        const controller = new VerticalsController(service as any);
+
+        expect(controller.getCapabilityManifest()).toEqual({ success: true, data: manifest });
+        expect(controller.resolveCapabilityManifest('turismo', 'hotel')).toEqual({
+            success: true,
+            data: resolved,
+        });
+        expect(service.resolveCapabilityManifest).toHaveBeenCalledWith('turismo', 'hotel');
     });
 
     it('keeps content reseeding restricted to tenant administrators', () => {

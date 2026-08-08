@@ -114,6 +114,7 @@
       "tibio": "Warm",
       "caliente": "Hot",
       "listo_cierre": "Ready to close",
+      "listo_para_cierre": "Ready to close",
       "ganado": "Won",
       "perdido": "Lost",
       "no_interesado": "Not interested"
@@ -550,7 +551,7 @@
       "phoneCol": "Phone (Required)",
       "phoneColDesc": "Phone is the primary unique identifier for the contact. Spacings are auto-removed and it is normalized to E.164 international format. E.g. +15551234567 or 15551234567.",
       "stageCol": "Stage (Optional)",
-      "stageColDesc": "Valid stage values: nuevo (new), contactado (contacted), respondio (replied), calificado (qualified), tibio (warm), caliente (hot), listo_cierre (ready_to_close), ganado (won), perdido (lost), no_interesado (not_interested).",
+      "stageColDesc": "Valid stage values: nuevo (new), contactado (contacted), respondio (replied), calificado (qualified), tibio (warm), caliente (hot), listo_para_cierre (ready_to_close), ganado (won), perdido (lost), no_interesado (not_interested).",
       "exampleHeader": "Direct paste example (semicolon delimited):",
       "exampleBody": "name;phone;email;stage;company;is_vip\nJohn Smith;15551234567;john@smith.com;hot;Acme S.A.;si\nMaria Gomez;+15557654321;maria@gomez.com;new;;no",
       "dropzoneTitle": "Drag your Excel (.xlsx, .xls) or CSV file here",
@@ -719,7 +720,7 @@
         "firstName": "First name of the contact.",
         "lastName": "Last name of the contact.",
         "email": "Contact email address.",
-        "stage": "CRM stage. Valid values: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
+        "stage": "CRM stage. Valid values: nuevo, contactado, respondio, calificado, tibio, caliente, listo_para_cierre, ganado, perdido, no_interesado.",
         "company": "Company name. It will be created automatically if it does not exist in the system.",
         "source": "Acquisition channel or source of the lead (e.g. whatsapp, facebook, instagram).",
         "vip": "Indicate whether it is VIP. Valid values: sí, no, verdadero, falso, true, false.",
@@ -2330,6 +2331,13 @@
     "stageName": "Stage name",
     "terminalYes": "Terminal stage (closed)",
     "terminalNo": "Active stage",
+    "terminalOutcome": "Final-stage outcome",
+    "outcomePlaceholder": "Outcome",
+    "outcomeWon": "Won",
+    "outcomeLost": "Lost",
+    "terminalOutcomeRequired": "Choose whether the final stage \"{stage}\" means won or lost.",
+    "saveSuccess": "Pipeline saved atomically.",
+    "saveError": "No changes were saved. Check stages in use and final outcomes.",
     "addStage": "Add stage",
     "unsavedChanges": "You have unsaved changes",
     "reset": "Reset to defaults",
@@ -3362,7 +3370,8 @@
     },
     "test": {
       "title": "Test agent",
-      "subtitle": "Simulate a conversation and see the full prompt the LLM receives",
+      "subtitle": "Preview a conversation and the prompt the LLM receives",
+      "limitations": "Safe preview: it uses real AI and consumes quota, but does not run bookings, writes, MCP, integrations, or channel delivery.",
       "reset": "Reset",
       "startHint": "Type a message to start",
       "inputPlaceholder": "Type as if you were a customer...",
@@ -4878,6 +4887,7 @@
       "title": "Try it",
       "subtitle": "Chat with your agent and watch it answer using your business info.",
       "tryExamples": "Try: “What are your prices?” or “Do you have availability?”",
+      "limitations": "Safe preview with real AI: it consumes quota and does not create bookings or other operations.",
       "placeholder": "Type as if you were a customer…",
       "send": "Send",
       "error": "Couldn't send the message. Please try again."
@@ -4935,6 +4945,10 @@
         "inventory": {
           "name": "Inventory",
           "desc": "Upload your stock so the agent reports availability and prices."
+        },
+        "vehicles": {
+          "name": "Vehicles",
+          "desc": "Add your vehicles so the agent can explain availability, pricing and options."
         },
         "treatments": {
           "name": "Treatments & plans",
@@ -5123,6 +5137,7 @@
       "connectChannel": "Connect a messaging channel",
       "sendTestMessage": "Send a test message",
       "addKnowledgeBase": "Add Knowledge Base (FAQs)",
+      "configureVerticalCatalog": "Configure the operational catalog",
       "inviteTeam": "Invite team",
       "connectInstagram": "Connect Instagram",
       "createAutomation": "Create automation rules",
@@ -9548,9 +9563,11 @@
       "salud": "Healthcare",
       "inmobiliaria": "Real estate",
       "restaurante": "Restaurant",
+      "restaurantes": "Restaurants",
       "automotriz": "Automotive",
       "turismo": "Tourism",
       "educacion": "Education",
+      "education": "Education",
       "seguros": "Insurance",
       "legal": "Legal",
       "retail": "Retail",

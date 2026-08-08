@@ -68,6 +68,9 @@ export class OpportunitiesRepository {
     // manually-created opportunity still renders on the board (getKanban reads
     // metadata.title). Inserting non-existent columns previously failed the INSERT.
     const d = { ...(data as Record<string, any>) };
+    if (d.deal_id !== undefined || d.dealId !== undefined) {
+      throw new BadRequestException('deal_id is assigned only by the canonical pipeline');
+    }
     if (d.lead_id == null && (d.leadId ?? d.contactId) != null) d.lead_id = d.leadId ?? d.contactId;
     if (d.estimated_value == null && d.value != null) d.estimated_value = d.value;
     if (!d.lead_id) return null;
@@ -75,11 +78,16 @@ export class OpportunitiesRepository {
     const canonicalStage = await this.pipelineService.resolveTenantStage(tenantId, d.stage, { schemaName: schema });
     d.stage = canonicalStage.slug;
     if (canonicalStage.terminal_outcome === 'won') {
-      d.won_at = d.won_at || new Date();
+      d.won_at = new Date();
       d.lost_at = null;
     } else if (canonicalStage.terminal_outcome === 'lost') {
-      d.lost_at = d.lost_at || new Date();
+      d.lost_at = new Date();
       d.won_at = null;
+    } else {
+      // Outcome timestamps are derived exclusively from the canonical stage.
+      // Callers cannot smuggle a won/lost state into an open opportunity.
+      d.won_at = null;
+      d.lost_at = null;
     }
     const metadata = { ...(d.metadata || {}) };
     if (d.title) metadata.title = d.title;
@@ -90,9 +98,9 @@ export class OpportunitiesRepository {
       'lead_id', 'course_id', 'campaign_id', 'conversation_id', 'stage', 'score',
       'estimated_value', 'currency', 'sla_deadline', 'won_at', 'lost_at',
       'loss_reason', 'assigned_to', 'approval_status', 'approval_stage', 'approved_by',
-      'metadata', 'deal_id',
+      'metadata',
     ];
-    const UUID_COLUMNS = new Set(['lead_id', 'course_id', 'campaign_id', 'conversation_id', 'deal_id']);
+    const UUID_COLUMNS = new Set(['lead_id', 'course_id', 'campaign_id', 'conversation_id']);
     const JSON_COLUMNS = new Set(['metadata']);
 
     const fields = REAL_COLUMNS.filter(k => d[k] !== undefined);
@@ -102,21 +110,22 @@ export class OpportunitiesRepository {
       return `$${i + 1}${suffix}`;
     }).join(', ');
 
-    const results = await this.prisma.executeInTenantSchema<Opportunity[]>(
-      schema,
-      `INSERT INTO opportunities (${fields.join(', ')}) VALUES (${placeholders}) RETURNING *`,
-      values
-    );
-    const created = results && results.length > 0 ? results[0] : null;
-    if (created) {
-      await this.pipelineService.syncOpportunityToDeal(
+    return this.prisma.transactionInTenantSchema(schema, async (query) => {
+      const results = await query<Opportunity[]>(
+        `INSERT INTO opportunities (${fields.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+        values,
+      );
+      const created = results?.[0] || null;
+      if (!created) return null;
+      await this.pipelineService.syncExactOpportunityDealTx(
+        query,
         tenantId,
         String(d.lead_id),
-        canonicalStage.slug,
         String((created as any).id),
+        canonicalStage,
       );
-    }
-    return created;
+      return created;
+    });
   }
 
   async updateOpportunity(tenantId: string, id: string, data: Partial<Opportunity>): Promise<Opportunity | null> {
@@ -124,23 +133,46 @@ export class OpportunitiesRepository {
     if (!schema) return null;
 
     const record = { ...(data as Record<string, any>) };
-    if (record.stage !== undefined) {
-      await this.moveOpportunity(tenantId, id, String(record.stage));
-      delete record.stage;
+    const forbidden = ['deal_id', 'dealId', 'lead_id', 'leadId', 'won_at', 'lost_at', 'won_date', 'lost_date'];
+    const forbiddenField = forbidden.find((field) => record[field] !== undefined);
+    if (forbiddenField) {
+      throw new BadRequestException(`Field is managed by the canonical pipeline: ${forbiddenField}`);
     }
-    const ALLOWED_FIELDS = [
-      'lead_id', 'title', 'value', 'currency', 'probability',
-      'expected_close_date', 'assigned_to', 'notes', 'metadata',
-      'source', 'lost_reason', 'won_date', 'lost_date',
-    ];
-    const fields = Object.keys(record).filter(k => record[k] !== undefined && ALLOWED_FIELDS.includes(k));
+
+    if (record.estimated_value === undefined && record.value !== undefined) {
+      record.estimated_value = record.value;
+    }
+    if (record.loss_reason === undefined && record.lost_reason !== undefined) {
+      record.loss_reason = record.lost_reason;
+    }
+    const metadataPatch: Record<string, unknown> = { ...(record.metadata || {}) };
+    if (record.title !== undefined) metadataPatch.title = record.title;
+    if (record.notes !== undefined) metadataPatch.notes = record.notes;
+    if (Object.keys(metadataPatch).length > 0) record.metadata = metadataPatch;
+
+    const patch: Record<string, any> = {};
+    for (const field of ['estimated_value', 'currency', 'assigned_to', 'metadata', 'loss_reason']) {
+      if (record[field] !== undefined) patch[field] = record[field];
+    }
+    if (record.stage !== undefined) {
+      await this.pipelineService.moveOpportunityStage(
+        tenantId,
+        id,
+        String(record.stage),
+        'agent',
+        patch,
+      );
+      return this.getOpportunityById(tenantId, id);
+    }
+    const fields = Object.keys(patch);
     if (fields.length === 0) return this.getOpportunityById(tenantId, id);
 
     const setClause = fields.map((k, i) => {
-      const isUuid = ['lead_id', 'assigned_to'].includes(k);
-      return `${k} = $${i + 2}${isUuid ? '::uuid' : ''}`;
+      if (k === 'assigned_to') return `${k} = $${i + 2}::uuid`;
+      if (k === 'metadata') return `${k} = COALESCE(${k}, '{}'::jsonb) || $${i + 2}::jsonb`;
+      return `${k} = $${i + 2}`;
     }).join(', ');
-    const values = [id, ...fields.map(k => record[k])];
+    const values = [id, ...fields.map(k => k === 'metadata' ? JSON.stringify(patch[k]) : patch[k])];
 
     const results = await this.prisma.executeInTenantSchema<Opportunity[]>(
       schema,

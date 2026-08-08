@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PipelineService } from './pipeline.service';
@@ -120,8 +120,21 @@ export class PipelineController {
     async updateDeal(
         @Param('tenantId') tenantId: string,
         @Param('dealId') dealId: string,
-        @Body() body: any,
+        @Body() body: {
+            title?: string;
+            value?: number;
+            probability?: number;
+            expectedCloseDate?: string | null;
+            assignedAgentId?: string | null;
+            notes?: string;
+            status?: string;
+            stageId?: string;
+            stage_id?: string;
+        },
     ) {
+        if (body.status !== undefined || body.stageId !== undefined || body.stage_id !== undefined) {
+            throw new BadRequestException('Deal stage/status is managed only by the canonical move endpoint');
+        }
         await this.pipelineService.updateDeal(tenantId, dealId, body);
         return { success: true, message: 'Deal updated' };
     }

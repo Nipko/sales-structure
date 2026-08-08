@@ -14,6 +14,12 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { WsRelayService } from '../redis/ws-relay.service';
+import { RedisService } from '../redis/redis.service';
+import { PrismaService } from '../prisma/prisma.service';
+import {
+    resolveReadyTenantContext,
+    resolveReadyUserTenantContext,
+} from '../../common/utils/tenant-lifecycle.util';
 
 // Evento interno del relay: la alerta LLM se entrega por-socket según rol, así
 // que el suscriptor la resuelve con el fanout local en vez de un emit a room.
@@ -38,6 +44,8 @@ export class ConversationsGateway implements OnGatewayInit, OnGatewayConnection,
         private jwtService: JwtService,
         private configService: ConfigService,
         private wsRelay: WsRelayService,
+        private prisma: PrismaService,
+        private redis: RedisService,
     ) { }
 
     /**
@@ -91,6 +99,17 @@ export class ConversationsGateway implements OnGatewayInit, OnGatewayConnection,
                 return;
             }
 
+            const readyContext = role === 'super_admin'
+                ? await resolveReadyTenantContext(this.prisma, this.redis, tenantId)
+                : await resolveReadyUserTenantContext(this.prisma, this.redis, payload.sub, tenantId);
+            if (!readyContext) {
+                this.logger.warn(`Connection rejected — tenant inactive, provisioning or purging (client: ${client.id})`);
+                client.emit('error', { message: 'Tenant is inactive or still provisioning.' });
+                client.disconnect();
+                return;
+            }
+            tenantId = readyContext.tenantId;
+
             client.join(tenantId);
             this.connectedClients.set(client.id, { tenantId, role });
             // Store on socket data for use in message handlers
@@ -114,7 +133,7 @@ export class ConversationsGateway implements OnGatewayInit, OnGatewayConnection,
      * the tenant dropdown in the dashboard). Regular users are rejected.
      */
     @SubscribeMessage('switchTenant')
-    handleSwitchTenant(
+    async handleSwitchTenant(
         @ConnectedSocket() client: Socket,
         @MessageBody() data: { tenantId: string },
     ) {
@@ -127,13 +146,18 @@ export class ConversationsGateway implements OnGatewayInit, OnGatewayConnection,
             client.emit('error', { message: 'tenantId is required' });
             return;
         }
+        const readyContext = await resolveReadyTenantContext(this.prisma, this.redis, data.tenantId);
+        if (!readyContext) {
+            client.emit('error', { message: 'Tenant is inactive or still provisioning.' });
+            return;
+        }
         // Leave old room, join new one
         client.leave(meta.tenantId);
-        client.join(data.tenantId);
-        this.connectedClients.set(client.id, { ...meta, tenantId: data.tenantId });
-        (client as any).tenantId = data.tenantId;
-        this.logger.log(`[AUDIT] super_admin switched tenant room: ${meta.tenantId} → ${data.tenantId} (client: ${client.id})`);
-        client.emit('tenantSwitched', { tenantId: data.tenantId });
+        client.join(readyContext.tenantId);
+        this.connectedClients.set(client.id, { ...meta, tenantId: readyContext.tenantId });
+        (client as any).tenantId = readyContext.tenantId;
+        this.logger.log(`[AUDIT] super_admin switched tenant room: ${meta.tenantId} → ${readyContext.tenantId} (client: ${client.id})`);
+        client.emit('tenantSwitched', { tenantId: readyContext.tenantId });
     }
 
     // --- Emit Events ---

@@ -116,6 +116,34 @@ const frozenClaimPatterns = [
   { label: "unsupported direct CRM integration", pattern: /\b(?:HubSpot|Salesforce)\b/i },
   { label: "no-ban guarantee", pattern: /\b(?:no ban risk|sin riesgo de baneo|sem risco de banimento|sans risque de bannissement)\b/i },
   {
+    label: "hard-coded 17% annual discount",
+    pattern: /(?:17\s*%.{0,55}(?:annual|anual|annuel)|(?:annual|anual|annuel).{0,55}17\s*%)/i,
+  },
+  {
+    label: "unsupported bidirectional calendar sync",
+    pattern: /\b(?:syncs? bidirectionally|two-way sync|sincroniza(?:ci[oó]n)? bidireccional(?:mente)?|sincroniza(?:ç[aã]o)? bidirecional(?:mente)?|synchronisation bidirectionnelle)\b/i,
+  },
+  {
+    label: "absolute no-price-hallucination promise",
+    pattern: /\b(?:never (?:invents?|makes? up).{0,24}prices?|nunca inventa.{0,24}precios?|nunca inventa.{0,24}preços?|n['’]invente jamais.{0,24}prix)\b/i,
+  },
+  {
+    label: "absolute no-hallucination promise",
+    pattern: /\b(?:never makes? it up|never makes? things up|no inventa(?:da)?|n[aã]o inventa(?:da)?|n['’]invente rien|pas invent[eé]e?)\b/i,
+  },
+  {
+    label: "absolute double-booking guarantee",
+    pattern: /(?:\batomic slot lock|bloqueo at[oó]mico.{0,80}\bnunca|bloqueio at[oô]mico.{0,80}\bnunca|blocage atomique.{0,80}\bjamais|(?:guarantees?|garantiza|garante|garantit).{0,60}(?:never|nunca|jam[aá]s|jamais).{0,60}(?:book|reserv|agend))/i,
+  },
+  {
+    label: "unsupported AI overage charge",
+    pattern: /(?:pay extra.{0,70}(?:exceed|over).{0,40}AI|pagar[ií]as? extra.{0,70}exced.{0,40}(?:IA|AI)|pagaria extra.{0,70}exced.{0,40}(?:IA|AI)|suppl[eé]ment.{0,70}d[eé]pass.{0,40}IA)/i,
+  },
+  {
+    label: "unsupported Instagram public-comment automation",
+    pattern: /(?:reply to comments.{0,80}(?:Instagram|DM)|responde comentarios.{0,80}(?:Instagram|DM)|responde coment[aá]rios.{0,80}(?:Instagram|DM)|r[eé]pond aux commentaires.{0,80}(?:Instagram|DM))/i,
+  },
+  {
     label: "unsupported automated ticket management",
     pattern: /\b(?:automated support tickets?|tickets? de soporte automatizados?|tickets? de suporte automatizados?|tickets? de support automatisés?)\b/i,
   },
@@ -147,6 +175,13 @@ const frozenClaimRegressionSamples = [
   ["unsupported subscription pause/refund/retention promise", "Full refund"],
   ["unsupported direct CRM integration", "Native HubSpot integration"],
   ["no-ban guarantee", "No ban risk"],
+  ["hard-coded 17% annual discount", "Save 17% with the annual plan"],
+  ["unsupported bidirectional calendar sync", "Two-way sync with Google Calendar"],
+  ["absolute no-price-hallucination promise", "Your agent never invents prices"],
+  ["absolute no-hallucination promise", "Answers with your information, never makes it up"],
+  ["absolute double-booking guarantee", "Atomic slot lock so customers never book the same time"],
+  ["unsupported AI overage charge", "You only pay extra if you exceed AI limits"],
+  ["unsupported Instagram public-comment automation", "Reply to comments and DMs on Instagram"],
   ["unsupported automated ticket management", "Automated support tickets"],
   ["unsupported automotive diagnosis or repair tracking", "Ongoing repair tracking"],
   ["unsupported financial quotes or portfolio tracking", "Portfolio tracking"],

@@ -13,7 +13,7 @@ import {
     X, Archive, MessageSquare, ExternalLink,
 } from "lucide-react";
 
-const KNOWN_STAGE_KEYS = ['nuevo','contactado','respondio','calificado','tibio','caliente','listo_cierre','ganado','perdido','no_interesado'];
+const KNOWN_STAGE_KEYS = ['nuevo','contactado','respondio','calificado','tibio','caliente','listo_para_cierre','listo_cierre','ganado','perdido','no_interesado'];
 const formatCurrency = (n: number) => `$${n.toLocaleString()}`;
 
 export default function DealDetailPage() {

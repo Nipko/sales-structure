@@ -2,6 +2,7 @@ import { Injectable, Logger, ForbiddenException, NotFoundException, BadRequestEx
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { resolveReadyTenantContext } from '../../common/utils/tenant-lifecycle.util';
 
 export interface SamlConfig {
     enabled: boolean;
@@ -103,6 +104,7 @@ export class SamlService {
 
         const tenantId = domainMap[domain];
         if (!tenantId) return null;
+        if (!await resolveReadyTenantContext(this.prisma, this.redis, tenantId)) return null;
 
         const config = await this.getSamlConfig(tenantId);
         if (!config?.enabled) return null;
@@ -112,7 +114,7 @@ export class SamlService {
 
     private async buildDomainMap(): Promise<Record<string, string>> {
         const tenants = await this.prisma.tenant.findMany({
-            where: { isActive: true },
+            where: { isActive: true, onboardingCompletedAt: { not: null } },
             select: { id: true, settings: true },
         });
 
@@ -135,6 +137,9 @@ export class SamlService {
         config: SamlConfig,
     ) {
         const email = samlProfile.email.toLowerCase();
+        if (!await resolveReadyTenantContext(this.prisma, this.redis, tenantId)) {
+            throw new ForbiddenException('Tenant is inactive or still provisioning');
+        }
 
         if (config.emailDomains?.length) {
             const emailDomain = email.split('@')[1];

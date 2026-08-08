@@ -45,7 +45,7 @@
     "enterpriseCtaTitle": "¿Necesitás más? Hablemos",
     "faqA1": "Sí. Podés subir o bajar de plan cuando quieras. El cambio se aplica inmediatamente y se prorratea.",
     "faqA2": "Cuando termine la prueba, revisá en el panel las opciones de activación y los planes disponibles.",
-    "faqA3": "No. El precio que ves incluye todo. Solo pagarías extra si excedés los límites de mensajes IA (te avisamos antes).",
+    "faqA3": "Los límites de IA no generan cobros automáticos: al alcanzarlos se pausa esa automatización y te mostramos opciones de ampliación. Servicios de terceros o paquetes opcionales, como SMS cuando estén habilitados, se informan por separado.",
     "faqA6": "Los cambios de plan y la cancelación se gestionan desde las opciones disponibles en el panel de facturación.",
     "faqA7": "Facturación muestra el historial y el estado de cada pago. Cualquier devolución se rige por los términos vigentes."
   },
@@ -86,7 +86,7 @@
     "hubBenefit1Desc": "Sin código, sin IT. Conectás tus canales, elegís tu industria y tu agente IA empieza a trabajar.",
     "agentFeaturesSubtitle": "Configurá una vez, dejá que la IA se encargue del resto.",
     "agentDemoTitle": "Mirá al agente en acción",
-    "agentFeature4Desc": "Cargá catálogos, PDFs, FAQs y documentos. La IA busca con vectores + keywords y responde con info real, no inventada.",
+    "agentFeature4Desc": "Cargá catálogos, PDFs, FAQs y documentos. La IA recupera fragmentos relevantes y puede citar la fuente; revisá los flujos sensibles.",
     "crmFeaturesSubtitle": "Todo lo que necesitás para convertir leads en clientes, sin perder ninguno.",
     "demoTitle": "Mirá cómo funciona"
   },

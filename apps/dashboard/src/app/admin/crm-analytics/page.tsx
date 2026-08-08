@@ -21,7 +21,7 @@ import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#14b8a6'];
 const STAGE_COLORS: Record<string, string> = {
     nuevo: '#95a5a6', contactado: '#3498db', respondio: '#9b59b6', calificado: '#f39c12',
-    tibio: '#e67e22', caliente: '#e74c3c', listo_cierre: '#27ae60', ganado: '#2ecc71',
+    tibio: '#e67e22', caliente: '#e74c3c', listo_cierre: '#27ae60', listo_para_cierre: '#27ae60', ganado: '#2ecc71',
     perdido: '#7f8c8d', no_interesado: '#bdc3c7',
 };
 

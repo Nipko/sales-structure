@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { normalizeCurrencyCode } from '../../common/utils/commercial-units.util';
 
 // ============================================
 // Types (exported for controller return type visibility)
@@ -145,20 +146,21 @@ export class InventoryService {
     async createProduct(tenantId: string, data: {
         name: string; sku: string; description?: string; categoryId?: string;
         price: number; cost?: number; stock: number; minStock?: number; maxStock?: number;
-        unit?: string; imageUrl?: string; tags?: string[];
+        currency?: string; unit?: string; imageUrl?: string; tags?: string[];
     }): Promise<{ id: string }> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant schema not found');
 
         await this.ensureInventoryTables(schema);
+        const currency = normalizeCurrencyCode(data.currency);
 
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `INSERT INTO products (id, name, description, category, price, currency, is_available, stock, images, metadata, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, 'COP', true, $5, $6::text[], $7::jsonb, NOW(), NOW())
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, true, $6, $7::text[], $8::jsonb, NOW(), NOW())
        RETURNING id`,
             [data.name, data.description || '', data.categoryId || null,
-            data.price, data.stock,
+            data.price, currency, data.stock,
             data.imageUrl ? `{${data.imageUrl}}` : '{}',
             JSON.stringify({ sku: data.sku, cost: data.cost || 0, min_stock: data.minStock || 5, max_stock: data.maxStock || 1000, unit: data.unit || 'unidad', tags: data.tags || [] })],
         );
@@ -173,7 +175,7 @@ export class InventoryService {
     async updateProduct(tenantId: string, productId: string, data: Partial<{
         name: string; sku: string; description: string; categoryId: string;
         price: number; cost: number; minStock: number; maxStock: number;
-        unit: string; imageUrl: string; isActive: boolean; tags: string[];
+        currency: string; unit: string; imageUrl: string; isActive: boolean; tags: string[];
     }>): Promise<void> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) throw new Error('Tenant schema not found');
@@ -185,6 +187,10 @@ export class InventoryService {
         if (data.name !== undefined) { setClauses.push(`name = $${paramIndex++}`); values.push(data.name); }
         if (data.description !== undefined) { setClauses.push(`description = $${paramIndex++}`); values.push(data.description); }
         if (data.price !== undefined) { setClauses.push(`price = $${paramIndex++}`); values.push(data.price); }
+        if (data.currency !== undefined) {
+            setClauses.push(`currency = $${paramIndex++}`);
+            values.push(normalizeCurrencyCode(data.currency));
+        }
         if (data.isActive !== undefined) { setClauses.push(`is_available = $${paramIndex++}`); values.push(data.isActive); }
         setClauses.push('updated_at = NOW()');
 

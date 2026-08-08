@@ -1,0 +1,250 @@
+export type VerticalProvider = 'toast' | 'mindbody' | 'cliniko';
+
+export const INTEGRATION_HEALTH_VERSION = 1 as const;
+export const INTEGRATION_FRESHNESS_MAX_AGE_SECONDS = 36 * 60 * 60;
+export const INTEGRATION_CIRCUIT_FAILURE_THRESHOLD = 3;
+
+export type IntegrationHealthStatus =
+    | 'healthy'
+    | 'stale'
+    | 'degraded'
+    | 'unhealthy'
+    | 'unavailable';
+export type IntegrationScopeStatus = 'unknown' | 'satisfied' | 'missing' | 'not_applicable';
+export type IntegrationCircuitState = 'closed' | 'open' | 'half_open';
+
+export interface SanitizedIntegrationError {
+    code: string;
+    message: string;
+    at: string;
+}
+
+export interface StoredIntegrationHealth {
+    version: typeof INTEGRATION_HEALTH_VERSION;
+    provider: VerticalProvider;
+    credentialValidated: boolean;
+    requiredScopes: string[];
+    grantedScopes: string[];
+    scopeStatus: IntegrationScopeStatus;
+    lastCheckedAt: string | null;
+    lastSuccessfulSyncAt: string | null;
+    consecutiveFailures: number;
+    circuitState: IntegrationCircuitState;
+    lastError: SanitizedIntegrationError | null;
+    /** Internal dedupe token. Never returned by the public health contract. */
+    lastUpdateId?: string;
+}
+
+export interface IntegrationHealth {
+    version: typeof INTEGRATION_HEALTH_VERSION;
+    provider: VerticalProvider;
+    status: IntegrationHealthStatus;
+    connected: boolean;
+    credentialValidated: boolean;
+    requiredScopes: string[];
+    grantedScopes: string[];
+    scopeStatus: IntegrationScopeStatus;
+    lastCheckedAt: string | null;
+    lastSuccessfulSyncAt: string | null;
+    freshness: {
+        maxAgeSeconds: number;
+        ageSeconds: number | null;
+        stale: boolean;
+    };
+    consecutiveFailures: number;
+    circuitState: IntegrationCircuitState;
+    lastError: SanitizedIntegrationError | null;
+}
+
+export interface IntegrationHealthObservation {
+    outcome: 'success' | 'failure';
+    /** Stable operation id makes retries of the same observation idempotent. */
+    updateId?: string;
+    checkedAt?: string;
+    syncSucceeded?: boolean;
+    credentialValidated?: boolean;
+    grantedScopes?: readonly string[];
+    missingScopes?: readonly string[];
+    error?: unknown;
+}
+
+const REQUIRED_SCOPES: Record<VerticalProvider, readonly string[]> = {
+    toast: ['menus:read'],
+    mindbody: ['classes:read'],
+    cliniko: ['appointment_types:read'],
+};
+
+export function requiredScopesForProvider(provider: VerticalProvider): string[] {
+    return [...REQUIRED_SCOPES[provider]];
+}
+
+export function initialIntegrationHealth(provider: VerticalProvider): StoredIntegrationHealth {
+    return {
+        version: INTEGRATION_HEALTH_VERSION,
+        provider,
+        credentialValidated: false,
+        requiredScopes: requiredScopesForProvider(provider),
+        grantedScopes: [],
+        scopeStatus: 'unknown',
+        lastCheckedAt: null,
+        lastSuccessfulSyncAt: null,
+        consecutiveFailures: 0,
+        circuitState: 'closed',
+        lastError: null,
+    };
+}
+
+function uniqueStrings(values: readonly string[] | undefined): string[] {
+    return [...new Set((values || []).filter((value): value is string => (
+        typeof value === 'string' && value.length > 0 && value.length <= 128
+    )))];
+}
+
+function httpStatus(error: any): number | null {
+    const raw = error?.response?.status ?? error?.status ?? error?.statusCode;
+    const status = Number(raw);
+    return Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
+}
+
+/** Never persists provider payloads, URLs, credentials or raw exception text. */
+export function sanitizeIntegrationError(error: unknown, at: string): SanitizedIntegrationError {
+    const status = httpStatus(error);
+    if (status === 401) {
+        return { code: 'http_401', message: 'Credenciales rechazadas por el proveedor.', at };
+    }
+    if (status === 403) {
+        return { code: 'http_403', message: 'Permisos insuficientes en el proveedor.', at };
+    }
+    if (status === 429) {
+        return { code: 'http_429', message: 'Límite de solicitudes del proveedor alcanzado.', at };
+    }
+    if (status && status >= 500) {
+        return { code: `http_${status}`, message: 'Proveedor temporalmente no disponible.', at };
+    }
+    const rawCode = typeof (error as any)?.code === 'string' ? (error as any).code : '';
+    const safeCode = /^[A-Za-z0-9_-]{1,64}$/.test(rawCode) ? rawCode.toLowerCase() : 'integration_check_failed';
+    return { code: safeCode, message: 'No se pudo comprobar la integración.', at };
+}
+
+export function reduceIntegrationHealth(
+    current: StoredIntegrationHealth | null | undefined,
+    provider: VerticalProvider,
+    observation: IntegrationHealthObservation,
+    now = new Date(),
+): StoredIntegrationHealth {
+    const previous = current?.provider === provider ? current : initialIntegrationHealth(provider);
+    if (observation.updateId && previous.lastUpdateId === observation.updateId) {
+        return previous;
+    }
+
+    const checkedAt = observation.checkedAt || now.toISOString();
+    const requiredScopes = requiredScopesForProvider(provider);
+    const explicitGranted = observation.grantedScopes === undefined
+        ? null
+        : uniqueStrings(observation.grantedScopes);
+    const missingScopes = uniqueStrings(observation.missingScopes);
+
+    if (observation.outcome === 'success') {
+        const grantedScopes = observation.syncSucceeded
+            ? requiredScopes
+            : (explicitGranted ?? previous.grantedScopes);
+        const allScopesGranted = requiredScopes.every(scope => grantedScopes.includes(scope));
+        const scopeStatus: IntegrationScopeStatus = missingScopes.length > 0
+            ? 'missing'
+            : allScopesGranted
+                ? 'satisfied'
+                : (previous.scopeStatus === 'satisfied' && explicitGranted === null
+                    ? 'satisfied'
+                    : 'unknown');
+        return {
+            ...previous,
+            version: INTEGRATION_HEALTH_VERSION,
+            provider,
+            credentialValidated: observation.credentialValidated ?? true,
+            requiredScopes,
+            grantedScopes,
+            scopeStatus,
+            lastCheckedAt: checkedAt,
+            lastSuccessfulSyncAt: observation.syncSucceeded
+                ? checkedAt
+                : previous.lastSuccessfulSyncAt,
+            consecutiveFailures: 0,
+            circuitState: 'closed',
+            lastError: null,
+            lastUpdateId: observation.updateId,
+        };
+    }
+
+    const consecutiveFailures = previous.consecutiveFailures + 1;
+    return {
+        ...previous,
+        version: INTEGRATION_HEALTH_VERSION,
+        provider,
+        credentialValidated: observation.credentialValidated ?? previous.credentialValidated,
+        requiredScopes,
+        grantedScopes: explicitGranted ?? previous.grantedScopes,
+        scopeStatus: missingScopes.length > 0 ? 'missing' : previous.scopeStatus,
+        lastCheckedAt: checkedAt,
+        consecutiveFailures,
+        circuitState: consecutiveFailures >= INTEGRATION_CIRCUIT_FAILURE_THRESHOLD
+            ? 'open'
+            : previous.circuitState,
+        lastError: sanitizeIntegrationError(observation.error, checkedAt),
+        lastUpdateId: observation.updateId,
+    };
+}
+
+export function materializeIntegrationHealth(
+    provider: VerticalProvider,
+    configured: boolean,
+    stored?: StoredIntegrationHealth | null,
+    now = new Date(),
+): IntegrationHealth {
+    const state = stored?.provider === provider ? stored : initialIntegrationHealth(provider);
+    const syncMs = state.lastSuccessfulSyncAt ? Date.parse(state.lastSuccessfulSyncAt) : NaN;
+    const ageSeconds = Number.isFinite(syncMs)
+        ? Math.max(0, Math.floor((now.getTime() - syncMs) / 1000))
+        : null;
+    const stale = ageSeconds === null || ageSeconds > INTEGRATION_FRESHNESS_MAX_AGE_SECONDS;
+    const connected = configured
+        && state.credentialValidated
+        && state.scopeStatus !== 'missing';
+
+    let status: IntegrationHealthStatus;
+    if (!configured || !stored || !state.lastCheckedAt) {
+        status = 'unavailable';
+    } else if (!connected || state.circuitState === 'open' || state.scopeStatus === 'missing') {
+        status = 'unhealthy';
+    } else if (stale) {
+        status = 'stale';
+    } else if (
+        state.consecutiveFailures > 0
+        || state.circuitState === 'half_open'
+        || state.scopeStatus === 'unknown'
+    ) {
+        status = 'degraded';
+    } else {
+        status = 'healthy';
+    }
+
+    return {
+        version: INTEGRATION_HEALTH_VERSION,
+        provider,
+        status,
+        connected,
+        credentialValidated: state.credentialValidated,
+        requiredScopes: [...state.requiredScopes],
+        grantedScopes: [...state.grantedScopes],
+        scopeStatus: state.scopeStatus,
+        lastCheckedAt: state.lastCheckedAt,
+        lastSuccessfulSyncAt: state.lastSuccessfulSyncAt,
+        freshness: {
+            maxAgeSeconds: INTEGRATION_FRESHNESS_MAX_AGE_SECONDS,
+            ageSeconds,
+            stale,
+        },
+        consecutiveFailures: state.consecutiveFailures,
+        circuitState: state.circuitState,
+        lastError: state.lastError ? { ...state.lastError } : null,
+    };
+}

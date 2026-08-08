@@ -39,12 +39,18 @@ describe('AuthService onboarding provisioning retry', () => {
             createTenantSchema: jest.fn().mockResolvedValue(canonicalSchema),
             $executeRawUnsafe: jest.fn().mockResolvedValue(1),
         };
+        const readinessTx = {
+            tenant: { update: jest.fn().mockResolvedValue({}) },
+            user: { update: jest.fn().mockResolvedValue({}) },
+        };
+        prisma.$transaction = jest.fn().mockImplementation((run: any) => run(readinessTx));
         const redis: any = {
             acquireLockToken: jest.fn().mockResolvedValue('onboarding-lock'),
             renewLockToken: jest.fn().mockResolvedValue(true),
             releaseLockToken: jest.fn().mockResolvedValue(undefined),
             del: jest.fn().mockResolvedValue(undefined),
             getJson: jest.fn().mockResolvedValue(null),
+            get: jest.fn().mockResolvedValue(null),
         };
         const persona: any = {
             createDefaultAgentFromGoals: jest.fn().mockResolvedValue(undefined),
@@ -110,17 +116,27 @@ describe('AuthService onboarding provisioning retry', () => {
         expect(prisma.createTenantSchema).toHaveBeenLastCalledWith(canonicalSchema);
         expect(redis.del).toHaveBeenCalledWith(`tenant:${tenantId}:schema`);
         expect(persona.createDefaultAgentFromGoals).toHaveBeenCalledTimes(3);
+        expect(persona.createDefaultAgentFromGoals).toHaveBeenNthCalledWith(
+            1,
+            tenantId,
+            ['sales'],
+            'owner@example.com',
+            'seguros',
+            'broker',
+        );
         expect(verticals.bootstrapVertical).toHaveBeenCalledTimes(3);
-        expect(verticals.bootstrapVertical).toHaveBeenLastCalledWith(tenantId, 'seguros', 'broker', 'es');
+        expect(verticals.bootstrapVertical).toHaveBeenLastCalledWith(
+            tenantId, 'seguros', 'broker', 'es', expect.objectContaining({ assertLifecycleOwned: expect.any(Function) }),
+        );
         expect(businessInfo.upsertPrimary).toHaveBeenCalledTimes(3);
         expect(billing.createTrialSubscription).toHaveBeenCalledTimes(2);
-        expect(prisma.user.update).toHaveBeenCalledWith({
+        expect(readinessTx.user.update).toHaveBeenCalledWith({
             where: { id: userId },
             data: { onboardingCompleted: true },
         });
         expect(result.user.onboardingCompleted).toBe(true);
         expect(result.verticalConfig).toEqual({ industry: 'seguros', subType: 'broker' });
-        expect(redis.releaseLockToken).toHaveBeenCalledTimes(3);
+        expect(redis.releaseLockToken).toHaveBeenCalledTimes(6);
 
         // If the outer lease is lost while the nested vertical work runs, the
         // next fencing boundary must stop billing/readiness/session writes.
@@ -154,7 +170,10 @@ describe('AuthService onboarding provisioning retry', () => {
             schemaName: 'tenant_race_store',
         };
         const tx = {
-            tenant: { create: jest.fn().mockResolvedValue(createdTenant) },
+            tenant: {
+                create: jest.fn().mockResolvedValue(createdTenant),
+                update: jest.fn().mockResolvedValue(createdTenant),
+            },
             user: { update: jest.fn().mockResolvedValue(linkedUser) },
             auditLog: { create: jest.fn().mockResolvedValue({}) },
         };
@@ -177,12 +196,14 @@ describe('AuthService onboarding provisioning retry', () => {
         };
         const redis: any = {
             acquireLockToken: jest.fn()
-                .mockResolvedValueOnce('race-lock')
+                .mockResolvedValueOnce('race-onboarding-lock')
+                .mockResolvedValueOnce('race-lifecycle-lock')
                 .mockResolvedValueOnce(null),
             renewLockToken: jest.fn().mockResolvedValue(true),
             releaseLockToken: jest.fn().mockResolvedValue(undefined),
             del: jest.fn().mockResolvedValue(undefined),
             getJson: jest.fn().mockResolvedValue(null),
+            get: jest.fn().mockResolvedValue(null),
             setJson: jest.fn().mockResolvedValue(undefined),
             sadd: jest.fn().mockResolvedValue(undefined),
         };
@@ -197,6 +218,7 @@ describe('AuthService onboarding provisioning retry', () => {
             }),
             getVerticalConfig: jest.fn().mockResolvedValue({ industry: 'retail', subType: 'marketplace' }),
         };
+        const persona: any = { createDefaultAgentFromGoals: jest.fn().mockResolvedValue(undefined) };
         const service = new AuthService(
             prisma,
             {} as any,
@@ -204,7 +226,7 @@ describe('AuthService onboarding provisioning retry', () => {
             {} as any,
             {} as any,
             redis,
-            { createDefaultAgentFromGoals: jest.fn().mockResolvedValue(undefined) } as any,
+            persona,
             { upsertPrimary: jest.fn().mockResolvedValue({}) } as any,
             { createTrialSubscription: jest.fn().mockResolvedValue({}) } as any,
             {} as any, // coupons — el alta sin couponCode nunca lo toca
@@ -221,6 +243,7 @@ describe('AuthService onboarding provisioning retry', () => {
         const data = {
             company: { name: 'Race Store', industry: 'retail', subType: 'marketplace' },
             plan: 'starter',
+            goals: ['support'],
         } as any;
         const first = service.completeOnboarding(userId, data);
         await bootstrapStarted;
@@ -234,6 +257,13 @@ describe('AuthService onboarding provisioning retry', () => {
 
         unblockBootstrap();
         await first;
-        expect(redis.releaseLockToken).toHaveBeenCalledTimes(1);
+        expect(persona.createDefaultAgentFromGoals).toHaveBeenCalledWith(
+            tenantId,
+            ['support'],
+            'race@example.com',
+            'retail',
+            'marketplace',
+        );
+        expect(redis.releaseLockToken).toHaveBeenCalledTimes(2);
     });
 });

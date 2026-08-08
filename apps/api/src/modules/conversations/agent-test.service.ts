@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type {
     TenantConfig,
     TurnContext,
@@ -6,7 +6,6 @@ import type {
     TestAgentResponse,
     TestAgentToolCall,
     RetrievedKnowledgeItem,
-    ChannelType,
 } from '@parallext/shared';
 import { PersonaService } from '../persona/persona.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
@@ -43,11 +42,17 @@ import {
     resolveAgentTestContactId,
 } from './agent-test-tool-policy';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import {
+    allowedModelTiersForPlan,
+    clampModelTiersToBudget,
+} from './agent-test-plan-policy';
+import { ActiveOperationsContextService } from './active-operations-context.service';
 
 /**
- * AgentTestService — runs the full prompt pipeline for a single test message
- * without persisting anything. Used by the dashboard Test Agent UI so a user
- * can see exactly what the LLM sees before going live.
+ * AgentTestService — runs the bounded prompt/read-only-tool preview for one
+ * message without persisting business state. It is not a delivery-channel or
+ * writer sandbox. Real provider usage and the monthly AI quota are accounted.
  */
 @Injectable()
 export class AgentTestService {
@@ -62,6 +67,8 @@ export class AgentTestService {
         private readonly languageDetector: LanguageDetectorService,
         private readonly toolExecutor: AIToolExecutorService,
         private readonly tenantsService: TenantsService,
+        private readonly throttle: TenantThrottleService,
+        private readonly activeOperationsContext: ActiveOperationsContextService,
     ) {}
 
     async test(
@@ -77,8 +84,11 @@ export class AgentTestService {
         const agent = await this.personaService.getAgent(tenantId, agentId, executionContext);
         if (!agent) throw new NotFoundException('Agent not found');
         const config = agent.config_json as TenantConfig;
+        const schemaName = await this.tenantsService.getSchemaName(tenantId, executionContext);
+        const testContactId = resolveAgentTestContactId(options?.sandboxContactId);
 
-        // 2. Build turn context (same structure as production pipeline).
+        // 2. Build the shared safe turn-context shape. This is intentionally a
+        // subset of live runtime state, not a claim of full production parity.
         const configuredLanguage = config.language || 'es-CO';
         const detectedLanguage = this.languageDetector.detect(req.message, configuredLanguage);
         const tz = config.hours?.timezone || 'America/Bogota';
@@ -95,6 +105,16 @@ export class AgentTestService {
                 name: 'Test User',
             },
         };
+
+        // Same read-only, ownership-scoped operational context as production.
+        await this.activeOperationsContext.populateTurnContext(turnContext, {
+            tenantId,
+            schemaName,
+            contactId: testContactId,
+            config: config as any,
+            timezone: tz,
+            now,
+        });
 
         // Business identity
         try {
@@ -199,75 +219,119 @@ export class AgentTestService {
         messages.push({ role: 'user', content: req.message });
 
         // 7. Run the LLM with tool loop (max 3 iterations in test mode to keep it bounded).
-        const schemaName = await this.tenantsService.getSchemaName(tenantId, executionContext);
+        if (!(await this.throttle.hasAiMessageQuota(tenantId))) {
+            throw new HttpException(
+                {
+                    statusCode: HttpStatus.TOO_MANY_REQUESTS,
+                    error: 'ai_message_quota_exhausted',
+                    message: 'La cuota mensual de mensajes de IA del plan está agotada.',
+                },
+                HttpStatus.TOO_MANY_REQUESTS,
+            );
+        }
+
+        const planFeatures = await this.throttle.getPlanFeatures(tenantId);
+        let allowedTiers = allowedModelTiersForPlan(planFeatures.llmTier);
+        const budgetUsdCents = typeof planFeatures.llmCostBudgetUsdCents === 'number'
+            ? planFeatures.llmCostBudgetUsdCents
+            : -1;
+        if (budgetUsdCents > 0) {
+            const spentUsdCents = await this.throttle.getLlmSpendUsdCents(tenantId);
+            const budgetTiers = clampModelTiersToBudget(
+                allowedTiers,
+                spentUsdCents,
+                budgetUsdCents,
+            );
+            if (budgetTiers.join(',') !== allowedTiers.join(',')) {
+                this.logger.warn(
+                    `[Test] tenant ${tenantId} over monthly LLM budget; `
+                    + `clamping tiers to ${budgetTiers.join(',')}`,
+                );
+            }
+            allowedTiers = budgetTiers;
+        }
+
         const toolCalls: TestAgentToolCall[] = [];
-        const testContactId = resolveAgentTestContactId(options?.sandboxContactId);
         const currentMessages = [...messages] as any[];
         let finalResponse = '';
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
         let totalCost = 0;
         let model = 'gpt-4.1-mini';
+        let successfulProviderCalls = 0;
 
         const MAX_ITERATIONS = 3;
-        for (let i = 0; i < MAX_ITERATIONS; i++) {
-            const hasTools = tools.length > 0;
-            const response = await this.llmRouter.execute({
-                task: hasTools ? 'tool_calling' : 'conversation',
-                messages: currentMessages,
-                systemPrompt,
-                temperature: config.llm?.temperature ?? 0.7,
-                tools: hasTools ? tools : undefined,
-                tenantId,
-                executionContext,
-            });
-
-            totalInputTokens += (response as any).usage?.inputTokens ?? (response as any).usage?.prompt_tokens ?? 0;
-            totalOutputTokens += (response as any).usage?.outputTokens ?? (response as any).usage?.completion_tokens ?? 0;
-            totalCost += (response as any).cost ?? 0;
-            model = (response as any).model ?? model;
-
-            if (response.toolCalls?.length) {
-                currentMessages.push({
-                    role: 'assistant',
-                    content: response.content || '',
-                    toolCalls: response.toolCalls,
+        try {
+            for (let i = 0; i < MAX_ITERATIONS; i++) {
+                const hasTools = tools.length > 0;
+                const response = await this.llmRouter.execute({
+                    task: hasTools ? 'tool_calling' : 'conversation',
+                    messages: currentMessages,
+                    systemPrompt,
+                    temperature: hasTools ? 0.3 : (config.llm?.temperature ?? 0.7),
+                    tools: hasTools ? tools : undefined,
+                    allowedTiers,
+                    tenantId,
+                    executionContext,
                 });
-                for (const tc of response.toolCalls) {
-                    const args = this.safeJsonParse(tc.function.arguments);
-                    const tStart = Date.now();
-                    // Do not trust toolCalls merely because the provider returned
-                    // them: a model can emit an unadvertised writer or mcp__* name.
-                    // Enforce the same default-deny policy at the execution boundary.
-                    const result = isAgentTestSafeToolName(tc.function.name)
-                        ? await this.toolExecutor.execute(
-                            schemaName,
-                            tenantId,
-                            testContactId,
-                            tc.function.name,
-                            args,
-                            undefined,
-                            { evalMode: false, readOnly: true, executionContext },
-                        )
-                        : agentTestBlockedToolResult(tc.function.name);
-                    const dur = Date.now() - tStart;
-                    toolCalls.push({
-                        name: tc.function.name,
-                        args,
-                        result,
-                        durationMs: dur,
-                    });
-                    currentMessages.push({
-                        role: 'tool',
-                        toolCallId: tc.id,
-                        content: JSON.stringify(result),
-                    });
-                }
-                continue;
-            }
+                successfulProviderCalls++;
 
-            finalResponse = response.content || '';
-            break;
+                totalInputTokens += (response as any).usage?.inputTokens ?? (response as any).usage?.prompt_tokens ?? 0;
+                totalOutputTokens += (response as any).usage?.outputTokens ?? (response as any).usage?.completion_tokens ?? 0;
+                totalCost += (response as any).cost ?? 0;
+                model = (response as any).model ?? model;
+
+                if (response.toolCalls?.length) {
+                    currentMessages.push({
+                        role: 'assistant',
+                        content: response.content || '',
+                        toolCalls: response.toolCalls,
+                    });
+                    for (const tc of response.toolCalls) {
+                        const args = this.safeJsonParse(tc.function.arguments);
+                        const tStart = Date.now();
+                        // Do not trust toolCalls merely because the provider returned
+                        // them: a model can emit an unadvertised writer or mcp__* name.
+                        // Enforce the same default-deny policy at the execution boundary.
+                        const result = isAgentTestSafeToolName(tc.function.name)
+                            ? await this.toolExecutor.execute(
+                                schemaName,
+                                tenantId,
+                                testContactId,
+                                tc.function.name,
+                                args,
+                                undefined,
+                                { evalMode: false, readOnly: true, executionContext },
+                            )
+                            : agentTestBlockedToolResult(tc.function.name);
+                        const dur = Date.now() - tStart;
+                        toolCalls.push({
+                            name: tc.function.name,
+                            args,
+                            result,
+                            durationMs: dur,
+                        });
+                        currentMessages.push({
+                            role: 'tool',
+                            toolCallId: tc.id,
+                            content: JSON.stringify(result),
+                        });
+                    }
+                    continue;
+                }
+
+                finalResponse = response.content || '';
+                break;
+            }
+        } finally {
+            // Quota is per tested turn (not per internal tool-loop call), but a
+            // turn that already consumed a provider call remains billable even
+            // if a later tool-loop call fails.
+            if (successfulProviderCalls > 0) {
+                await this.throttle.incrementAiMessageCount(tenantId).catch((error: any) => {
+                    this.logger.warn(`[Test] AI quota accounting failed: ${error.message}`);
+                });
+            }
         }
 
         const latencyMs = Date.now() - startedAt;

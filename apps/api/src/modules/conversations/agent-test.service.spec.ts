@@ -4,6 +4,10 @@ import {
     AGENT_TEST_SANDBOX_CONTACT_ID,
 } from './agent-test-tool-policy';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
+import {
+    allowedModelTiersForPlan,
+    clampModelTiersToBudget,
+} from './agent-test-plan-policy';
 
 const ALL_TOOL_FLAGS = {
     appointments: { enabled: true },
@@ -55,6 +59,25 @@ function buildSubject() {
     const languageDetector = { detect: jest.fn().mockReturnValue('es') };
     const toolExecutor = { execute: jest.fn().mockResolvedValue({ ok: true }) };
     const tenantsService = { getSchemaName: jest.fn().mockResolvedValue('tenant_test') };
+    const throttle = {
+        hasAiMessageQuota: jest.fn().mockResolvedValue(true),
+        getPlanFeatures: jest.fn().mockResolvedValue({
+            llmTier: 'tier_2',
+            llmCostBudgetUsdCents: -1,
+        }),
+        getLlmSpendUsdCents: jest.fn().mockResolvedValue(0),
+        incrementAiMessageCount: jest.fn().mockResolvedValue(1),
+    };
+    const activeOperationsContext = {
+        populateTurnContext: jest.fn(async (turnContext: any) => {
+            turnContext.activeObjects = {
+                version: 1,
+                asOf: '2026-08-08T12:00:00.000Z',
+                items: [],
+            };
+            return { failures: [] };
+        }),
+    };
 
     const service = new AgentTestService(
         personaService as any,
@@ -65,12 +88,38 @@ function buildSubject() {
         languageDetector as any,
         toolExecutor as any,
         tenantsService as any,
+        throttle as any,
+        activeOperationsContext as any,
     );
 
-    return { service, llmRouter, toolExecutor };
+    return {
+        service, llmRouter, toolExecutor, throttle, activeOperationsContext,
+        promptAssembler,
+    };
 }
 
 describe('AgentTestService read-only tool policy', () => {
+    it('uses the shared operational-context projection before assembling the prompt', async () => {
+        const { service, llmRouter, activeOperationsContext, promptAssembler } = buildSubject();
+        llmRouter.execute.mockResolvedValue({ content: 'ok', model: 'test-model' });
+
+        await service.test('tenant-id', 'agent-id', { message: 'hola' });
+
+        expect(activeOperationsContext.populateTurnContext).toHaveBeenCalledWith(
+            expect.any(Object),
+            expect.objectContaining({
+                tenantId: 'tenant-id',
+                schemaName: 'tenant_test',
+                contactId: AGENT_TEST_SANDBOX_CONTACT_ID,
+            }),
+        );
+        expect(promptAssembler.assemble.mock.calls[0][1]).toMatchObject({
+            activeObjects: { version: 1, items: [] },
+        });
+        expect(activeOperationsContext.populateTurnContext.mock.invocationCallOrder[0])
+            .toBeLessThan(promptAssembler.assemble.mock.invocationCallOrder[0]);
+    });
+
     it('advertises the audited real tool names, including professional services and safe ecommerce parity', async () => {
         const { service, llmRouter } = buildSubject();
         llmRouter.execute.mockResolvedValue({ content: 'ok', model: 'test-model' });
@@ -94,6 +143,9 @@ describe('AgentTestService read-only tool policy', () => {
             'get_policies',
             'list_offers',
             // Writers and action-like tools.
+            // Availability can consult an external calendar provider, so it is
+            // intentionally absent until a local-only preview exists.
+            'check_availability',
             'create_appointment',
             'calculate_quote',
             'get_placement_test_link',
@@ -167,7 +219,7 @@ describe('AgentTestService read-only tool policy', () => {
     });
 
     it('executes only allowlisted reads with a valid non-customer UUID', async () => {
-        const { service, llmRouter, toolExecutor } = buildSubject();
+        const { service, llmRouter, toolExecutor, throttle } = buildSubject();
         llmRouter.execute
             .mockResolvedValueOnce({
                 content: '',
@@ -188,6 +240,7 @@ describe('AgentTestService read-only tool policy', () => {
         );
 
         expect(toolExecutor.execute).toHaveBeenCalledTimes(2);
+        expect(throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
         for (const call of toolExecutor.execute.mock.calls) {
             expect(call[2]).toBe(AGENT_TEST_SANDBOX_CONTACT_ID);
             expect(call[2]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
@@ -220,6 +273,12 @@ describe('AgentTestService read-only tool policy', () => {
             assemble: jest.fn().mockReturnValue('system prompt'),
         };
         const tenantsService = { getSchemaName: jest.fn().mockResolvedValue('tenant_test') };
+        const throttle = {
+            hasAiMessageQuota: jest.fn().mockResolvedValue(true),
+            getPlanFeatures: jest.fn().mockResolvedValue({ llmTier: 'tier_3' }),
+            getLlmSpendUsdCents: jest.fn().mockResolvedValue(0),
+            incrementAiMessageCount: jest.fn().mockResolvedValue(1),
+        };
         const service = new AgentTestService(
             personaService as any,
             llmRouter as any,
@@ -229,6 +288,8 @@ describe('AgentTestService read-only tool policy', () => {
             { detect: jest.fn().mockReturnValue('es') } as any,
             { execute: jest.fn() } as any,
             tenantsService as any,
+            throttle as any,
+            { populateTurnContext: jest.fn().mockResolvedValue({ failures: [] }) } as any,
         );
 
         await service.test('tenant-id', 'agent-id', { message: 'hola' });
@@ -253,6 +314,57 @@ describe('AgentTestService read-only tool policy', () => {
         );
         expect(llmRouter.execute).toHaveBeenCalledWith(expect.objectContaining({
             executionContext: AGENT_TEST_EXECUTION_CONTEXT,
+            allowedTiers: ['tier_3_efficient', 'tier_4_budget'],
         }));
+        expect(throttle.incrementAiMessageCount).toHaveBeenCalledWith('tenant-id');
+    });
+
+    it('uses the plan tiers and production cost clamp, then accounts one tested turn', async () => {
+        const { service, llmRouter, throttle } = buildSubject();
+        throttle.getPlanFeatures.mockResolvedValue({
+            llmTier: 'tier_1',
+            llmCostBudgetUsdCents: 500,
+        });
+        throttle.getLlmSpendUsdCents.mockResolvedValue(500);
+        llmRouter.execute.mockResolvedValue({ content: 'ok', model: 'budget-model' });
+
+        await service.test('tenant-id', 'agent-id', { message: 'hola' });
+
+        expect(llmRouter.execute).toHaveBeenCalledWith(expect.objectContaining({
+            allowedTiers: ['tier_3_efficient', 'tier_4_budget'],
+        }));
+        expect(throttle.hasAiMessageQuota).toHaveBeenCalledWith('tenant-id');
+        expect(throttle.getLlmSpendUsdCents).toHaveBeenCalledWith('tenant-id');
+        expect(throttle.incrementAiMessageCount).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects before the provider when the monthly AI quota is exhausted', async () => {
+        const { service, llmRouter, throttle } = buildSubject();
+        throttle.hasAiMessageQuota.mockResolvedValue(false);
+
+        await expect(service.test('tenant-id', 'agent-id', { message: 'hola' }))
+            .rejects.toMatchObject({ status: 429 });
+
+        expect(llmRouter.execute).not.toHaveBeenCalled();
+        expect(throttle.incrementAiMessageCount).not.toHaveBeenCalled();
+    });
+});
+
+describe('Agent Test production plan routing parity', () => {
+    it.each([
+        ['tier_1', ['tier_1_premium', 'tier_2_standard', 'tier_3_efficient', 'tier_4_budget']],
+        ['tier_2', ['tier_2_standard', 'tier_3_efficient', 'tier_4_budget']],
+        ['tier_3', ['tier_3_efficient', 'tier_4_budget']],
+        ['tier_4', ['tier_4_budget']],
+        [undefined, ['tier_3_efficient', 'tier_4_budget']],
+    ] as const)('maps plan %s to the production tier allowlist', (planTier, expected) => {
+        expect(allowedModelTiersForPlan(planTier)).toEqual(expected);
+    });
+
+    it('does not clamp before budget exhaustion and clamps premium-only access after it', () => {
+        expect(clampModelTiersToBudget(['tier_1_premium'], 99, 100))
+            .toEqual(['tier_1_premium']);
+        expect(clampModelTiersToBudget(['tier_1_premium'], 100, 100))
+            .toEqual(['tier_4_budget']);
     });
 });

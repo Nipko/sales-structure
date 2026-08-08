@@ -65,7 +65,7 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'send_booking_link',
-        description: 'Send the customer a link to book their appointment online (with their preferred date/time). Use when the customer wants to self-serve, or when scheduling by chat is taking too long. Returns the URL to share.',
+        description: 'Return the tenant\'s public self-service booking URL for the agent to share with the customer. The link does not prefill a preferred date or time. Use when the customer wants to self-serve, or when scheduling by chat is taking too long.',
         parameters: { type: 'object', properties: {}, required: [] },
     },
     {

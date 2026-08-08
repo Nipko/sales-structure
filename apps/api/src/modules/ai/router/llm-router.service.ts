@@ -5,7 +5,10 @@ import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm
 import { RedisService } from '../../redis/redis.service';
 import { LlmKeyService } from '../../settings/llm-key.service';
 import type { ServiceExecutionContext } from '../../../common/types/execution-context';
-import { persistenceDisabled } from '../../../common/types/execution-context';
+import {
+    operationalUsageAccountingEnabled,
+    persistenceDisabled,
+} from '../../../common/types/execution-context';
 
 type TaskType = 'conversation' | 'tool_calling';
 
@@ -323,6 +326,10 @@ export class LLMRouterService {
     }): Promise<LLMResponse & { routingDecision?: RoutingDecision }> {
 
         const noPersistence = persistenceDisabled(options.executionContext);
+        // Agent Test must not mutate business state, affinity, breaker health or
+        // traces, but its real provider calls still count toward tenant spend.
+        const accountOperationalUsage = !noPersistence
+            || operationalUsageAccountingEnabled(options.executionContext);
 
         if (options.task) {
             const allowedTiers = options.allowedTiers || ALL_TIERS;
@@ -401,9 +408,13 @@ export class LLMRouterService {
                     // Remember this provider+model for the conversation's next turn (cache
                     // warmth) — but NOT when it was an out-of-plan escalation, or the sticky
                     // would keep pinning a premium model ahead of healthy in-plan ones.
-                    if (!noPersistence) {
-                        if (!escalated) this.setAffinity(convId, candidate.provider, candidate.id).catch(() => {});
+                    if (!noPersistence && !escalated) {
+                        this.setAffinity(convId, candidate.provider, candidate.id).catch(() => {});
+                    }
+                    if (accountOperationalUsage) {
                         this.trackStats(options.tenantId, candidate, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
+                    }
+                    if (!noPersistence) {
                         this.emitTurnTrace(options, candidate, durationMs, response, escalated, options.task);
                     }
 
@@ -427,8 +438,10 @@ export class LLMRouterService {
                     return { ...response, routingDecision: decision };
                 } catch (err: any) {
                     const durationMs = Date.now() - startTime;
-                    if (!noPersistence) {
+                    if (accountOperationalUsage) {
                         this.trackStats(options.tenantId, candidate, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
+                    }
+                    if (!noPersistence) {
                         await this.markProviderFailure(candidate.provider, err);
                     }
                     lastError = err;
@@ -483,14 +496,16 @@ export class LLMRouterService {
             const response = await provider.generate(reqOptions);
             const durationMs = Date.now() - startTime;
             this.logger.log(`[LLM] Direct via ${provider.providerName} (${modelConfig.id}) in ${durationMs}ms`);
-            if (!noPersistence) {
+            if (accountOperationalUsage) {
                 this.trackStats(options.tenantId, modelConfig, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
+            }
+            if (!noPersistence) {
                 this.emitTurnTrace(options, modelConfig, durationMs, response, false, undefined);
             }
             return { ...response };
         } catch (e: any) {
             const durationMs = Date.now() - startTime;
-            if (!noPersistence) {
+            if (accountOperationalUsage) {
                 this.trackStats(options.tenantId, modelConfig, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
             }
             throw e;

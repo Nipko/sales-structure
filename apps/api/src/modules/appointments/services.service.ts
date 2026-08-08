@@ -1,7 +1,12 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { randomUUID } from 'crypto';
+import {
+    normalizeCurrencyCode,
+    optionalPositiveIntegerUnit,
+    requirePositiveIntegerUnit,
+} from '../../common/utils/commercial-units.util';
 
 export type DurationType = 'fixed' | 'flexible' | 'open';
 
@@ -57,15 +62,28 @@ export class ServicesService {
     async create(schemaName: string, data: any, tenantId?: string): Promise<BookableService> {
         const id = randomUUID();
         const durationType: DurationType = data.durationType || 'fixed';
-        const duration = durationType === 'open' ? 0 : (data.durationMinutes || data.duration || 30);
+        if (!['fixed', 'flexible', 'open'].includes(durationType)) {
+            throw new BadRequestException('durationType must be fixed, flexible, or open');
+        }
+        // `open` deliberately uses 0 as the persisted sentinel for day-level
+        // availability. Fixed/flexible services always have a real minute unit.
+        const duration = durationType === 'open'
+            ? 0
+            : requirePositiveIntegerUnit(data.durationMinutes ?? data.duration ?? 30, 'durationMinutes');
         const buffer = data.bufferMinutes || data.buffer || 0;
-        const durationMax = durationType === 'flexible' ? (data.durationMinutesMax || null) : null;
+        const durationMax = durationType === 'flexible'
+            ? optionalPositiveIntegerUnit(data.durationMinutesMax, 'durationMinutesMax')
+            : null;
+        if (durationMax !== null && durationMax < duration) {
+            throw new BadRequestException('durationMinutesMax must be greater than or equal to durationMinutes');
+        }
+        const currency = normalizeCurrencyCode(data.currency);
         try {
             await this.prisma.executeInTenantSchema(schemaName,
                 `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, rebook_after_days, created_at, updated_at)
                  VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, NOW(), NOW())`,
                 [id, data.name, data.description || null, duration,
-                 buffer, data.price || 0, data.currency || 'COP', data.color || '#6c5ce7',
+                 buffer, data.price || 0, currency, data.color || '#6c5ce7',
                  data.category || null, data.maxConcurrent || 1,
                  JSON.stringify(data.requiredFields || []),
                  durationType, durationMax, data.rebookAfterDays ?? null],
@@ -85,18 +103,44 @@ export class ServicesService {
     }
 
     async update(schemaName: string, serviceId: string, data: any, tenantId?: string): Promise<BookableService> {
+        const current = await this.getById(schemaName, serviceId);
+        const nextDurationType = (data.durationType ?? current.durationType) as DurationType;
+        if (!['fixed', 'flexible', 'open'].includes(nextDurationType)) {
+            throw new BadRequestException('durationType must be fixed, flexible, or open');
+        }
+        const requestedDuration = data.durationMinutes ?? data.duration;
+        const nextDuration = nextDurationType === 'open'
+            ? 0
+            : requirePositiveIntegerUnit(requestedDuration ?? current.durationMinutes, 'durationMinutes');
+        const nextDurationMax = nextDurationType === 'flexible'
+            ? optionalPositiveIntegerUnit(
+                data.durationMinutesMax !== undefined
+                    ? data.durationMinutesMax
+                    : current.durationMinutesMax,
+                'durationMinutesMax',
+            )
+            : null;
+        if (nextDurationMax !== null && nextDurationMax < nextDuration) {
+            throw new BadRequestException('durationMinutesMax must be greater than or equal to durationMinutes');
+        }
+
         const sets: string[] = [];
         const params: any[] = [];
         let idx = 1;
 
         if (data.name !== undefined) { sets.push(`name = $${idx++}`); params.push(data.name); }
         if (data.description !== undefined) { sets.push(`description = $${idx++}`); params.push(data.description); }
-        const dur = data.durationMinutes ?? data.duration;
-        if (dur !== undefined) { sets.push(`duration_minutes = $${idx++}`); params.push(dur); }
+        if (requestedDuration !== undefined || data.durationType !== undefined) {
+            sets.push(`duration_minutes = $${idx++}`);
+            params.push(nextDuration);
+        }
         const buf = data.bufferMinutes ?? data.buffer;
         if (buf !== undefined) { sets.push(`buffer_minutes = $${idx++}`); params.push(buf); }
         if (data.price !== undefined) { sets.push(`price = $${idx++}`); params.push(data.price); }
-        if (data.currency !== undefined) { sets.push(`currency = $${idx++}`); params.push(data.currency); }
+        if (data.currency !== undefined) {
+            sets.push(`currency = $${idx++}`);
+            params.push(normalizeCurrencyCode(data.currency));
+        }
         if (data.color !== undefined) { sets.push(`color = $${idx++}`); params.push(data.color); }
         const active = data.isActive ?? data.active;
         if (active !== undefined) { sets.push(`is_active = $${idx++}`); params.push(active); }
@@ -104,11 +148,14 @@ export class ServicesService {
         if (data.category !== undefined) { sets.push(`category = $${idx++}`); params.push(data.category || null); }
         if (data.maxConcurrent !== undefined) { sets.push(`max_concurrent = $${idx++}`); params.push(data.maxConcurrent); }
         if (data.requiredFields !== undefined) { sets.push(`required_fields = $${idx++}::jsonb`); params.push(JSON.stringify(data.requiredFields)); }
-        if (data.durationType !== undefined) { sets.push(`duration_type = $${idx++}`); params.push(data.durationType); }
+        if (data.durationType !== undefined) { sets.push(`duration_type = $${idx++}`); params.push(nextDurationType); }
         // `$` obligatorio: sin él se interpolaba el ÍNDICE del parámetro como
         // literal SQL y duration_minutes_max quedaba en 2 o 3 (el índice) en vez
         // del valor real — corrompía las duraciones flexibles del booking engine.
-        if (data.durationMinutesMax !== undefined) { sets.push(`duration_minutes_max = $${idx++}`); params.push(data.durationMinutesMax || null); }
+        if (data.durationMinutesMax !== undefined || data.durationType !== undefined) {
+            sets.push(`duration_minutes_max = $${idx++}`);
+            params.push(nextDurationMax);
+        }
         // 0 o vacio = "no aplica" y se guarda NULL, no 0: un 0 haria que el
         // evaluador temporal reclame la re-reserva el mismo dia de la cita.
         if (data.rebookAfterDays !== undefined) { sets.push(`rebook_after_days = $${idx++}`); params.push(Number(data.rebookAfterDays) > 0 ? Number(data.rebookAfterDays) : null); }

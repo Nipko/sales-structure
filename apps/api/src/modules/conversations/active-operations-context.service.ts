@@ -1,0 +1,565 @@
+import { Injectable, Logger } from '@nestjs/common';
+import {
+    ACTIVE_OBJECT_CONTEXT_MAX_ITEMS,
+    ACTIVE_OBJECT_CONTEXT_VERSION,
+} from '@parallext/shared';
+import type {
+    ActiveObjectContextItemV1,
+    ActiveObjectSource,
+    ActiveObjectStatusClass,
+    ActiveObjectSubject,
+    ActiveObjectsContextV1,
+    TenantConfig,
+    TurnContext,
+    VerticalCapability,
+} from '@parallext/shared';
+import { PrismaService } from '../prisma/prisma.service';
+
+export type ActiveOperationsLoaderName =
+    | 'appointments'
+    | 'property_bookings'
+    | 'tour_bookings'
+    | 'orders'
+    | 'food_orders';
+
+export interface ActiveOperationsContextInput {
+    tenantId: string;
+    schemaName: string;
+    contactId: string | null | undefined;
+    config: Partial<TenantConfig> & Record<string, any>;
+    timezone?: string;
+    now?: Date;
+    maxItems?: number;
+}
+
+export interface ActiveOperationsLoaderFailure {
+    loader: ActiveOperationsLoaderName;
+    message: string;
+}
+
+export interface ActiveOperationsContextResult {
+    activeObjects?: ActiveObjectsContextV1;
+    activeBookings?: TurnContext['activeBookings'];
+    recentOrders?: TurnContext['recentOrders'];
+    failures: ActiveOperationsLoaderFailure[];
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_WITH_ZONE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+const STATUS_MAP: Readonly<Record<ActiveObjectStatusClass, ReadonlySet<string>>> = {
+    pending: new Set(['pending', 'received', 'requested', 'new', 'draft', 'created']),
+    active: new Set([
+        'active', 'confirmed', 'processing', 'preparing', 'ready', 'reserved',
+        'approved', 'in_progress', 'checked_in', 'shipped',
+    ]),
+    paused: new Set(['paused', 'on_hold']),
+    completed: new Set(['completed', 'delivered', 'fulfilled', 'closed', 'checked_out']),
+    cancelled: new Set(['cancelled', 'canceled', 'refunded', 'rejected', 'voided']),
+    failed: new Set(['failed', 'payment_failed', 'no_show']),
+    unknown: new Set(),
+};
+
+/** Cross-domain status mapping owned by the context loader, not by the prompt. */
+export function classifyActiveObjectStatus(
+    _source: ActiveObjectSource,
+    status: unknown,
+): ActiveObjectStatusClass {
+    const normalized = String(status ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_');
+    for (const statusClass of [
+        'pending', 'active', 'paused', 'completed', 'cancelled', 'failed',
+    ] as const) {
+        if (STATUS_MAP[statusClass].has(normalized)) return statusClass;
+    }
+    return 'unknown';
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function firstStringArray(...values: unknown[]): string[] {
+    const match = values.find(Array.isArray);
+    return Array.isArray(match)
+        ? match.filter((value): value is string => typeof value === 'string')
+        : [];
+}
+
+function hasOwn(record: Record<string, any>, key: string): boolean {
+    return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+/**
+ * Loader activation is capability/tool based. An explicit tool configuration
+ * wins over inherited manifest metadata, including `enabled: false`.
+ */
+export function resolveActiveOperationsLoaders(
+    config: Partial<TenantConfig> & Record<string, any>,
+): ActiveOperationsLoaderName[] {
+    const capabilityManifest = isRecord(config.capabilityManifest)
+        ? config.capabilityManifest
+        : {};
+    const capabilities = new Set(firstStringArray(
+        config.effectiveCapabilities,
+        config.capabilities,
+        capabilityManifest.effectiveCapabilities,
+        capabilityManifest.capabilities,
+    ) as VerticalCapability[]);
+    const declaredToolGroups = new Set(firstStringArray(
+        config.effectiveToolGroups,
+        config.toolGroups,
+        capabilityManifest.effectiveToolGroups,
+        capabilityManifest.toolGroups,
+    ));
+    const tools: Record<string, any> = isRecord(config.tools) ? config.tools : {};
+
+    const enabled = (
+        toolKeys: string[],
+        capability?: VerticalCapability,
+        manifestToolGroup?: string,
+    ): boolean => {
+        const explicit = toolKeys.filter((key) => hasOwn(tools, key));
+        if (explicit.length > 0) {
+            return explicit.some((key) => isRecord(tools[key]) && tools[key].enabled === true);
+        }
+        return (!!capability && capabilities.has(capability))
+            || (!!manifestToolGroup && declaredToolGroups.has(manifestToolGroup));
+    };
+
+    const loaders: ActiveOperationsLoaderName[] = [];
+    if (enabled(['appointments'], 'appointment_booking', 'appointments')) loaders.push('appointments');
+    if (enabled(['properties'], 'nightly_booking', 'properties')) loaders.push('property_bookings');
+    if (enabled(['tours'], 'tour_booking', 'tours')) loaders.push('tour_bookings');
+    // Generic orders/ecommerce are current config tool groups but do not yet
+    // have their own manifest capability. Preserve the existing activation.
+    if (enabled(['orders', 'ecommerce'])) loaders.push('orders');
+    if (enabled(['restaurants'], 'restaurant_ordering', 'restaurants')) loaders.push('food_orders');
+    return loaders;
+}
+
+function boundedLimit(value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return ACTIVE_OBJECT_CONTEXT_MAX_ITEMS;
+    }
+    return Math.max(1, Math.min(ACTIVE_OBJECT_CONTEXT_MAX_ITEMS, Math.floor(value)));
+}
+
+function safeTimezone(value: unknown): string {
+    if (typeof value !== 'string' || !value.trim()) return 'UTC';
+    try {
+        new Intl.DateTimeFormat('en', { timeZone: value }).format(new Date(0));
+        return value;
+    } catch {
+        return 'UTC';
+    }
+}
+
+function asIso(value: unknown): string | undefined {
+    if (value === null || value === undefined || value === '') return undefined;
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+    }
+    const raw = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return `${raw}T00:00:00.000Z`;
+    const candidate = ISO_WITH_ZONE_RE.test(raw)
+        ? raw
+        : `${raw.replace(' ', 'T')}Z`;
+    const parsed = new Date(candidate);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+function nullableNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') return null;
+    const result = Number(value);
+    return Number.isFinite(result) ? result : null;
+}
+
+function currency(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const normalized = value.trim().toUpperCase();
+    return /^[A-Z]{3}$/.test(normalized) ? normalized : undefined;
+}
+
+function safeText(value: unknown, max = 500): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const normalized = value.trim();
+    return normalized ? normalized.slice(0, max) : undefined;
+}
+
+@Injectable()
+export class ActiveOperationsContextService {
+    private readonly logger = new Logger(ActiveOperationsContextService.name);
+
+    constructor(private readonly prisma: PrismaService) {}
+
+    /** Populate the exact same TurnContext contract in production and Agent Test. */
+    async populateTurnContext(
+        turnContext: TurnContext,
+        input: ActiveOperationsContextInput,
+    ): Promise<ActiveOperationsContextResult> {
+        const result = await this.load(input);
+        if (result.activeObjects) turnContext.activeObjects = result.activeObjects;
+        if (result.activeBookings?.length) turnContext.activeBookings = result.activeBookings;
+        if (result.recentOrders?.length) turnContext.recentOrders = result.recentOrders;
+        return result;
+    }
+
+    async load(input: ActiveOperationsContextInput): Promise<ActiveOperationsContextResult> {
+        const contactId = input.contactId;
+        if (!contactId || !UUID_RE.test(contactId)) return { failures: [] };
+
+        const maxItems = boundedLimit(input.maxItems);
+        const timezone = safeTimezone(input.timezone);
+        const loaderNames = resolveActiveOperationsLoaders(input.config);
+        const loaderPromises = loaderNames.map((loader) => this.runLoader(
+            loader,
+            input.schemaName,
+            contactId,
+            timezone,
+            maxItems,
+            this.detailsToolFor(loader, input.config),
+        ));
+        const settled = await Promise.allSettled(loaderPromises);
+        const failures: ActiveOperationsLoaderFailure[] = [];
+        const items: ActiveObjectContextItemV1[] = [];
+
+        settled.forEach((result, index) => {
+            const loader = loaderNames[index];
+            if (result.status === 'fulfilled') {
+                items.push(...result.value);
+                return;
+            }
+            const message = safeText(result.reason?.message || result.reason, 240) || 'loader_unavailable';
+            failures.push({ loader, message });
+            this.logger.warn(
+                `[ActiveOperations] ${loader} unavailable for tenant ${input.tenantId}: ${message}`,
+            );
+        });
+
+        const boundedItems = items.slice(0, maxItems);
+        if (boundedItems.length === 0) return { failures };
+
+        const activeObjects: ActiveObjectsContextV1 = {
+            version: ACTIVE_OBJECT_CONTEXT_VERSION,
+            asOf: (input.now || new Date()).toISOString(),
+            items: boundedItems,
+        };
+        return {
+            activeObjects,
+            activeBookings: this.deriveActiveBookings(boundedItems),
+            recentOrders: this.deriveRecentOrders(boundedItems),
+            failures,
+        };
+    }
+
+    private runLoader(
+        loader: ActiveOperationsLoaderName,
+        schemaName: string,
+        contactId: string,
+        timezone: string,
+        maxItems: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        switch (loader) {
+            case 'appointments':
+                return this.loadAppointments(schemaName, contactId, timezone, Math.min(5, maxItems), detailsTool);
+            case 'property_bookings':
+                return this.loadPropertyBookings(schemaName, contactId, timezone, Math.min(5, maxItems), detailsTool);
+            case 'tour_bookings':
+                return this.loadTourBookings(schemaName, contactId, timezone, Math.min(5, maxItems), detailsTool);
+            case 'orders':
+                return this.loadOrders(schemaName, contactId, Math.min(3, maxItems), detailsTool);
+            case 'food_orders':
+                return this.loadFoodOrders(schemaName, contactId, Math.min(3, maxItems), detailsTool);
+        }
+    }
+
+    private detailsToolFor(
+        loader: ActiveOperationsLoaderName,
+        config: ActiveOperationsContextInput['config'],
+    ): string | undefined {
+        const tools: Record<string, any> = isRecord(config.tools) ? config.tools : {};
+        switch (loader) {
+            case 'appointments':
+                return tools.appointments?.enabled === true ? 'list_customer_appointments' : undefined;
+            case 'property_bookings':
+                return tools.properties?.enabled === true ? 'list_my_property_bookings' : undefined;
+            case 'tour_bookings':
+                return tools.tours?.enabled === true ? 'list_my_tour_bookings' : undefined;
+            case 'orders':
+                if (tools.ecommerce?.enabled === true) return 'get_order_status';
+                return tools.orders?.enabled === true ? 'list_customer_orders' : undefined;
+            case 'food_orders':
+                return tools.restaurants?.enabled === true ? 'list_my_orders' : undefined;
+        }
+    }
+
+    private async loadAppointments(
+        schemaName: string,
+        contactId: string,
+        timezone: string,
+        limit: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, service_name, service_id, status,
+                    to_char((start_at AT TIME ZONE $2) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at_iso,
+                    to_char((end_at AT TIME ZONE $2) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ends_at_iso,
+                    to_char((updated_at AT TIME ZONE $2) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso,
+                    COALESCE(metadata->>'listingId', metadata->>'listing_id') AS listing_id,
+                    COALESCE(metadata->>'vehicleId', metadata->>'vehicle_id') AS vehicle_id,
+                    COALESCE(metadata->>'petId', metadata->>'pet_id') AS pet_id
+             FROM appointments
+             WHERE contact_id = $1::uuid
+               AND start_at >= (NOW() AT TIME ZONE $2)
+               AND LOWER(COALESCE(status, '')) NOT IN ('cancelled', 'canceled')
+             ORDER BY start_at ASC LIMIT ${limit}`,
+            [contactId, timezone],
+        );
+
+        return Promise.all((rows || []).map(async (row: any) => ({
+            kind: 'appointment' as const,
+            id: String(row.id),
+            source: 'appointments' as const,
+            status: safeText(row.status, 80) || 'unknown',
+            statusClass: classifyActiveObjectStatus('appointments', row.status),
+            label: safeText(row.service_name),
+            startsAt: asIso(row.starts_at_iso ?? row.start_at),
+            endsAt: asIso(row.ends_at_iso ?? row.end_at),
+            updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
+            subject: await this.resolveAppointmentSubject(schemaName, contactId, row),
+            detailsTool,
+        })));
+    }
+
+    private async resolveAppointmentSubject(
+        schemaName: string,
+        contactId: string,
+        row: Record<string, any>,
+    ): Promise<ActiveObjectSubject | undefined> {
+        const candidates: Array<{
+            id: unknown;
+            kind: ActiveObjectSubject['kind'];
+            sql: string;
+            params: any[];
+        }> = [
+            {
+                id: row.listing_id,
+                kind: 'real_estate_listing',
+                sql: 'SELECT id, name AS label FROM real_estate_listings WHERE id = $1::uuid LIMIT 1',
+                params: [row.listing_id],
+            },
+            {
+                id: row.vehicle_id,
+                kind: 'vehicle',
+                sql: `SELECT id, CONCAT_WS(' ', make, model, year::text) AS label
+                      FROM vehicles WHERE id = $1::uuid LIMIT 1`,
+                params: [row.vehicle_id],
+            },
+            {
+                id: row.pet_id,
+                kind: 'pet',
+                sql: `SELECT id, CONCAT_WS(' ', name, NULLIF(CONCAT('(', species, ')'), '()')) AS label
+                      FROM pets WHERE id = $1::uuid AND contact_id = $2::uuid LIMIT 1`,
+                params: [row.pet_id, contactId],
+            },
+        ];
+
+        for (const candidate of candidates) {
+            if (typeof candidate.id !== 'string' || !UUID_RE.test(candidate.id)) continue;
+            try {
+                const found = await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    candidate.sql,
+                    candidate.params,
+                );
+                if (found?.[0]?.id) {
+                    return {
+                        kind: candidate.kind,
+                        id: String(found[0].id),
+                        label: safeText(found[0].label),
+                    };
+                }
+            } catch {
+                // Subject enrichment is optional. A lazy/missing vertical table
+                // must not discard the already-owned appointment itself.
+            }
+        }
+        return undefined;
+    }
+
+    private async loadPropertyBookings(
+        schemaName: string,
+        contactId: string,
+        timezone: string,
+        limit: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT b.id, b.status, b.total_price, b.currency, p.name AS property_name,
+                    to_char(b.check_in::timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at_iso,
+                    to_char(b.check_out::timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ends_at_iso,
+                    to_char((b.updated_at AT TIME ZONE $2) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
+             FROM property_bookings b
+             JOIN properties p ON p.id = b.property_id
+             WHERE b.contact_id = $1::uuid
+               AND b.check_out >= (NOW() AT TIME ZONE $2)::date
+               AND LOWER(COALESCE(b.status, '')) NOT IN ('cancelled', 'canceled')
+             ORDER BY b.check_in ASC LIMIT ${limit}`,
+            [contactId, timezone],
+        );
+        return (rows || []).map((row: any) => ({
+            kind: 'property_booking',
+            id: String(row.id),
+            source: 'property_bookings',
+            status: safeText(row.status, 80) || 'unknown',
+            statusClass: classifyActiveObjectStatus('property_bookings', row.status),
+            label: safeText(row.property_name),
+            startsAt: asIso(row.starts_at_iso ?? row.check_in),
+            endsAt: asIso(row.ends_at_iso ?? row.check_out),
+            updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
+            amount: nullableNumber(row.total_price),
+            currency: currency(row.currency),
+            detailsTool,
+        }));
+    }
+
+    private async loadTourBookings(
+        schemaName: string,
+        contactId: string,
+        timezone: string,
+        limit: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT b.id, b.status, b.total_price, b.currency, p.name AS package_name,
+                    to_char(((b.departure_date + COALESCE(b.departure_time, TIME '00:00')) AT TIME ZONE $2) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at_iso,
+                    to_char((b.updated_at AT TIME ZONE $2) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
+             FROM tour_bookings b
+             JOIN tour_packages p ON p.id = b.package_id
+             WHERE b.contact_id = $1::uuid
+               AND b.departure_date >= (NOW() AT TIME ZONE $2)::date
+               AND LOWER(COALESCE(b.status, '')) NOT IN ('cancelled', 'canceled')
+             ORDER BY b.departure_date ASC, b.departure_time ASC NULLS FIRST LIMIT ${limit}`,
+            [contactId, timezone],
+        );
+        return (rows || []).map((row: any) => ({
+            kind: 'tour_booking',
+            id: String(row.id),
+            source: 'tour_bookings',
+            status: safeText(row.status, 80) || 'unknown',
+            statusClass: classifyActiveObjectStatus('tour_bookings', row.status),
+            label: safeText(row.package_name),
+            startsAt: asIso(row.starts_at_iso ?? row.departure_at ?? row.departure_date),
+            updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
+            amount: nullableNumber(row.total_price),
+            currency: currency(row.currency),
+            detailsTool,
+        }));
+    }
+
+    private async loadOrders(
+        schemaName: string,
+        contactId: string,
+        limit: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, status, total_amount, currency,
+                    to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at_iso,
+                    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
+             FROM orders
+             WHERE contact_id = $1::uuid
+             ORDER BY created_at DESC LIMIT ${limit}`,
+            [contactId],
+        );
+        return (rows || []).map((row: any) => ({
+            kind: 'order',
+            id: String(row.id),
+            source: 'orders',
+            status: safeText(row.status, 80) || 'unknown',
+            statusClass: classifyActiveObjectStatus('orders', row.status),
+            startsAt: asIso(row.starts_at_iso ?? row.created_at),
+            updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
+            amount: nullableNumber(row.total_amount),
+            currency: currency(row.currency),
+            detailsTool,
+        }));
+    }
+
+    private async loadFoodOrders(
+        schemaName: string,
+        contactId: string,
+        limit: number,
+        detailsTool: string | undefined,
+    ): Promise<ActiveObjectContextItemV1[]> {
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, status, total, currency,
+                    to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at_iso,
+                    to_char(estimated_delivery_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ends_at_iso,
+                    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
+             FROM food_orders
+             WHERE contact_id = $1::uuid
+             ORDER BY created_at DESC LIMIT ${limit}`,
+            [contactId],
+        );
+        return (rows || []).map((row: any) => ({
+            kind: 'food_order',
+            id: String(row.id),
+            source: 'food_orders',
+            status: safeText(row.status, 80) || 'unknown',
+            statusClass: classifyActiveObjectStatus('food_orders', row.status),
+            startsAt: asIso(row.starts_at_iso ?? row.created_at),
+            endsAt: asIso(row.ends_at_iso ?? row.estimated_delivery_at),
+            updatedAt: asIso(row.updated_at_iso ?? row.updated_at),
+            amount: nullableNumber(row.total),
+            currency: currency(row.currency),
+            detailsTool,
+        }));
+    }
+
+    private deriveActiveBookings(items: ActiveObjectContextItemV1[]): TurnContext['activeBookings'] {
+        const typeByKind = {
+            appointment: 'appointment',
+            property_booking: 'property',
+            tour_booking: 'tour',
+        } as const;
+        return items.flatMap((item) => {
+            const type = typeByKind[item.kind as keyof typeof typeByKind];
+            if (!type) return [];
+            return [{
+                id: item.id,
+                type,
+                name: item.label || item.reference || item.id,
+                status: item.status,
+                dateLabel: item.endsAt
+                    ? `${item.startsAt || ''}/${item.endsAt}`
+                    : (item.startsAt || ''),
+                priceLabel: item.amount !== null && item.amount !== undefined
+                    ? `${item.amount}${item.currency ? ` ${item.currency}` : ''}`
+                    : undefined,
+                details: item.subject?.label,
+            }];
+        });
+    }
+
+    private deriveRecentOrders(items: ActiveObjectContextItemV1[]): TurnContext['recentOrders'] {
+        // Preserve the legacy generic-orders semantics; food orders are exposed
+        // through their canonical active object and are not duplicated here.
+        return items.flatMap((item) => item.kind === 'order' ? [{
+            id: item.id,
+            status: item.status,
+            total: item.amount === null ? undefined : item.amount,
+            currency: item.currency,
+            date: item.startsAt,
+        }] : []);
+    }
+}

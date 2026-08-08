@@ -7,12 +7,17 @@ import {
     MessageBody,
     ConnectedSocket,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Logger, UsePipes, ValidationPipe } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Server, Socket } from 'socket.io';
 import { WidgetService } from './widget.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConversationsService } from '../conversations/conversations.service';
+import { RedisService } from '../redis/redis.service';
+import { resolveReadyTenantContext } from '../../common/utils/tenant-lifecycle.util';
+import { WidgetMessageDto } from './dto/widget-public.dto';
+import { isWidgetOriginAllowed, resolveWidgetSocketIp } from './widget-security';
+import { WidgetRateLimitService } from './widget-rate-limit.service';
 
 @WebSocketGateway({
     namespace: '/widget',
@@ -25,24 +30,34 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
     constructor(
         private readonly widgetService: WidgetService,
         private readonly prisma: PrismaService,
+        private readonly redis: RedisService,
         private readonly conversations: ConversationsService,
+        private readonly rateLimit: WidgetRateLimitService,
     ) {}
 
     async handleConnection(client: Socket) {
         const token = client.handshake.auth?.token || client.handshake.query?.token as string;
         if (!token) {
-            client.disconnect();
+            this.rejectClient(client, 'Invalid session');
             return;
         }
 
         const session = await this.widgetService.getSessionByToken(token);
         if (!session) {
-            client.emit('widget:error', { message: 'Invalid session' });
-            client.disconnect();
+            this.rejectClient(client, 'Invalid session');
+            return;
+        }
+        if (!isWidgetOriginAllowed(client.handshake.headers.origin, session.allowed_domains)) {
+            this.rejectClient(client, 'Origin not allowed');
+            return;
+        }
+        if (!await resolveReadyTenantContext(this.prisma, this.redis, session.tenant_id)) {
+            this.rejectClient(client, 'Tenant unavailable');
             return;
         }
 
         (client as any).widgetSession = session;
+        (client as any).widgetToken = token;
         client.join(`session:${session.id}`);
 
         if (session.conversation_id) {
@@ -64,7 +79,7 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 this.logger.warn(
                     `[Widget] Conversation ${session.conversation_id} reconnected with an unanswered message - regenerating`,
                 );
-                this.regenerateReply(client, session, newest.content_text).catch((err) =>
+                this.regenerateReply(client, session, newest.content_text, newest.id).catch((err) =>
                     this.logger.error(`[Widget] Regeneration failed: ${err?.message}`),
                 );
             }
@@ -77,10 +92,16 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
      * Re-run the AI turn for a message left unanswered by a restart. Streams
      * through the same path as a live message so the visitor sees a normal reply.
      */
-    private async regenerateReply(client: Socket, session: any, text: string): Promise<void> {
+    private async regenerateReply(
+        client: Socket,
+        session: any,
+        text: string,
+        inboundMessageId?: string,
+    ): Promise<void> {
         const schemaName = await this.prisma.getTenantSchemaName(session.tenant_id);
         await this.streamAssistantReply(
             client, session.tenant_id, schemaName, session.conversation_id, session.contact_id, text,
+            inboundMessageId,
         );
     }
 
@@ -89,15 +110,55 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     @SubscribeMessage('widget:message')
+    @UsePipes(new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+    }))
     async handleMessage(
         @ConnectedSocket() client: Socket,
-        @MessageBody() data: { content: string; type?: string },
+        @MessageBody() data: WidgetMessageDto,
     ) {
-        const session = (client as any).widgetSession;
-        if (!session || !data.content?.trim()) return;
+        const token = (client as any).widgetToken as string | undefined;
+        if (!token || !data.content?.trim()) return;
+
+        // Re-read the token, widget config, tenant lifecycle and plan entitlement
+        // for every message. A socket opened before suspension, plan downgrade,
+        // widget disable or token rotation must stop immediately.
+        const session = await this.widgetService.getSessionByToken(token);
+        if (!session) {
+            this.rejectClient(client, 'Invalid session');
+            return;
+        }
+        if (!isWidgetOriginAllowed(client.handshake.headers.origin, session.allowed_domains)) {
+            this.rejectClient(client, 'Origin not allowed');
+            return;
+        }
+        (client as any).widgetSession = session;
 
         const tenantId = session.tenant_id;
-        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const ready = await resolveReadyTenantContext(this.prisma, this.redis, tenantId);
+        if (!ready) {
+            this.rejectClient(client, 'Tenant unavailable');
+            return;
+        }
+        const messageLimit = await this.rateLimit.consumeMessage({
+            ip: resolveWidgetSocketIp(client),
+            visitorId: session.visitor_id,
+            sessionId: session.id,
+            widgetId: session.widget_id,
+            tenantId,
+        });
+        if (!messageLimit.allowed) {
+            client.emit('widget:error', {
+                message: 'Rate limit exceeded',
+                code: 'rate_limited',
+                retryAfterSeconds: messageLimit.retryAfterSeconds,
+            });
+            client.disconnect();
+            return;
+        }
+        const schemaName = ready.schemaName;
 
         let conversationId = session.conversation_id;
         let contactId = session.contact_id;
@@ -152,7 +213,10 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
             [conversationId],
         );
 
-        await this.streamAssistantReply(client, tenantId, schemaName, conversationId, contactId, data.content);
+        await this.streamAssistantReply(
+            client, tenantId, schemaName, conversationId, contactId, data.content,
+            inboundRows?.[0]?.id,
+        );
     }
 
     /**
@@ -169,6 +233,7 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         conversationId: string,
         contactId: string,
         text: string,
+        inboundMessageId?: string,
     ): Promise<void> {
         client.emit('widget:typing', { isTyping: true });
         const messageId = randomUUID();
@@ -177,7 +242,7 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         try {
             for await (const chunk of this.conversations.streamWidgetMessage(
-                tenantId, schemaName, conversationId, contactId, text,
+                tenantId, schemaName, conversationId, contactId, text, inboundMessageId,
             )) {
                 if (!chunk) continue;
                 if (!started) {
@@ -227,5 +292,10 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     emitToSession(sessionId: string, event: string, data: any) {
         this.server?.to(`session:${sessionId}`).emit(event, data);
+    }
+
+    private rejectClient(client: Socket, message: string): void {
+        client.emit('widget:error', { message });
+        client.disconnect();
     }
 }

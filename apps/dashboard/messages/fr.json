@@ -114,6 +114,7 @@
       "tibio": "Tiède",
       "caliente": "Chaud",
       "listo_cierre": "Prêt à conclure",
+      "listo_para_cierre": "Prêt à conclure",
       "ganado": "Gagné",
       "perdido": "Perdu",
       "no_interesado": "Pas intéressé"
@@ -550,7 +551,7 @@
       "phoneCol": "Téléphone (Requis)",
       "phoneColDesc": "Le téléphone est l'identifiant unique et obligatoire du contact. Les espaces sont supprimés et le numéro est normalisé au format international E.164. Exemple: +33612345678 ou 0612345678.",
       "stageCol": "Étape (Optionnel)",
-      "stageColDesc": "Étapes valides: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
+      "stageColDesc": "Étapes valides: nuevo, contactado, respondio, calificado, tibio, caliente, listo_para_cierre, ganado, perdido, no_interesado.",
       "exampleHeader": "Exemple de collage direct (délimiteur point-virgule):",
       "exampleBody": "nom;telephone;email;etape;entreprise;es_vip\nJean Dupont;0612345678;jean@dupont.com;caliente;Acme S.A.;sí\nMaria Gomez;+33611223344;maria@gomez.com;nuevo;;no",
       "dropzoneTitle": "Glissez votre fichier Excel (.xlsx, .xls) ou CSV ici",
@@ -719,7 +720,7 @@
         "firstName": "Prénom du contact.",
         "lastName": "Nom de famille du contact.",
         "email": "Adresse e-mail du contact.",
-        "stage": "Étape du CRM. Valeurs valides : nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
+        "stage": "Étape du CRM. Valeurs valides : nuevo, contactado, respondio, calificado, tibio, caliente, listo_para_cierre, ganado, perdido, no_interesado.",
         "company": "Nom de l'entreprise. Elle sera créée automatiquement si elle n'existe pas dans le système.",
         "source": "Canal ou source d'acquisition du prospect (ex. whatsapp, facebook, instagram).",
         "vip": "Indiquer s'il est VIP. Valeurs valides : sí, no, verdadero, falso, true, false.",
@@ -2330,6 +2331,13 @@
     "stageName": "Nom de l'étape",
     "terminalYes": "Étape finale (fermée)",
     "terminalNo": "Étape active",
+    "terminalOutcome": "Résultat de l’étape finale",
+    "outcomePlaceholder": "Résultat",
+    "outcomeWon": "Gagnée",
+    "outcomeLost": "Perdue",
+    "terminalOutcomeRequired": "Indiquez si l’étape finale \"{stage}\" correspond à une opportunité gagnée ou perdue.",
+    "saveSuccess": "Pipeline enregistré de manière atomique.",
+    "saveError": "Aucune modification n’a été enregistrée. Vérifiez les étapes utilisées et les résultats finaux.",
     "addStage": "Ajouter une étape",
     "unsavedChanges": "Vous avez des modifications non enregistrées",
     "reset": "Réinitialiser par défaut",
@@ -3362,7 +3370,8 @@
     },
     "test": {
       "title": "Tester l'agent",
-      "subtitle": "Simulez une conversation et voyez le prompt complet que le LLM reçoit",
+      "subtitle": "Prévisualisez une conversation et le prompt reçu par le LLM",
+      "limitations": "Aperçu sécurisé : il utilise l’IA réelle et consomme le quota, mais n’exécute ni réservation, ni écriture, ni MCP, ni intégration, ni livraison par canal.",
       "reset": "Réinitialiser",
       "startHint": "Saisissez un message pour commencer",
       "inputPlaceholder": "Saisissez comme si vous étiez un client...",
@@ -4878,6 +4887,7 @@
       "title": "Testez",
       "subtitle": "Discutez avec votre agent et voyez-le répondre avec les infos de votre entreprise.",
       "tryExamples": "Essayez : « Quels sont vos tarifs ? » ou « Avez-vous des disponibilités ? »",
+      "limitations": "Aperçu sécurisé avec IA réelle : il consomme le quota et ne crée aucune réservation ni autre opération.",
       "placeholder": "Écrivez comme si vous étiez un client…",
       "send": "Envoyer",
       "error": "Impossible d'envoyer le message. Réessayez."
@@ -4935,6 +4945,10 @@
         "inventory": {
           "name": "Inventaire",
           "desc": "Importez votre stock pour que l'agent indique disponibilité et prix."
+        },
+        "vehicles": {
+          "name": "Véhicules",
+          "desc": "Ajoutez vos véhicules afin que l’agent présente les disponibilités, les prix et les options."
         },
         "treatments": {
           "name": "Traitements et forfaits",
@@ -5123,6 +5137,7 @@
       "connectChannel": "Connecter un canal de messagerie",
       "sendTestMessage": "Envoyer un message test",
       "addKnowledgeBase": "Ajouter une base de connaissances",
+      "configureVerticalCatalog": "Configurer le catalogue opérationnel",
       "inviteTeam": "Inviter l'équipe",
       "connectInstagram": "Connecter Instagram",
       "createAutomation": "Créer des règles d'automatisation",
@@ -9548,9 +9563,11 @@
       "salud": "Santé",
       "inmobiliaria": "Immobilier",
       "restaurante": "Restaurant",
+      "restaurantes": "Restaurants",
       "automotriz": "Automobile",
       "turismo": "Tourisme",
       "educacion": "Éducation",
+      "education": "Éducation",
       "seguros": "Assurances",
       "legal": "Juridique",
       "retail": "Commerce",

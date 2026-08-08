@@ -91,6 +91,9 @@ export default function TestAgentPage() {
                             {t("title")}
                         </h1>
                         <p className="text-xs text-neutral-500">{t("subtitle")}</p>
+                        <p className="mt-1 max-w-3xl text-[11px] text-amber-700 dark:text-amber-300">
+                            {t("limitations")}
+                        </p>
                     </div>
                 </div>
                 <button

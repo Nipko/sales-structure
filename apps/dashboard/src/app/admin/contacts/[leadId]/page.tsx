@@ -34,7 +34,7 @@ function resolveMediaUrl(url: string): string {
 const STAGE_COLORS: Record<string, string> = {
     nuevo: "#95a5a6", contactado: "#3498db", respondio: "#9b59b6",
     calificado: "#f39c12", tibio: "#e67e22", caliente: "#e74c3c",
-    listo_cierre: "#27ae60", ganado: "#2ecc71", perdido: "#7f8c8d",
+    listo_cierre: "#27ae60", listo_para_cierre: "#27ae60", ganado: "#2ecc71", perdido: "#7f8c8d",
     no_interesado: "#bdc3c7",
 };
 const STAGE_KEYS = Object.keys(STAGE_COLORS);

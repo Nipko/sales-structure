@@ -12,6 +12,7 @@ export interface PlanFeatures {
   maxProperties: number;
   seats: number;
   automationRules: number;
+  maxDripSequences: number;
   broadcastCampaigns: number;
   appointmentsServices: number;
   knowledgeArticles: number;
@@ -49,9 +50,9 @@ export interface PlanFeatures {
 
 const STARTER_DEFAULTS: PlanFeatures = {
   maxAgents: 1, maxAiMessages: 5000, maxCalendars: 1, maxContacts: 500,
-  maxProperties: 2, seats: 3, automationRules: 5, broadcastCampaigns: 3,
-  appointmentsServices: 2, knowledgeArticles: 20, customAttributes: 5,
-  emailTemplates: 4, maxPipelines: 1, pipelineStages: 5, segments: 3, mediaStorageMb: 100,
+  maxProperties: 2, seats: 3, automationRules: 5, maxDripSequences: 3, broadcastCampaigns: 3,
+  appointmentsServices: 4, knowledgeArticles: 20, customAttributes: 5,
+  emailTemplates: 4, maxPipelines: 1, pipelineStages: 7, segments: 3, mediaStorageMb: 100,
   externalCrm: 0, outboundWebhooks: 0, llmTier: "tier_3",
   customPrompt: false, customTemplates: false, aiInsights: false,
   recall: false, scheduledReports: false, sso: false, auditLog: false,

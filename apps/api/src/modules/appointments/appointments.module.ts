@@ -7,6 +7,7 @@ import { ServicesService } from './services.service';
 import { CalendarIntegrationService } from './calendar-integration.service';
 import { AppointmentRemindersService } from './appointment-reminders.service';
 import { AppointmentNotificationsService } from './appointment-notifications.service';
+import { CalendarSyncOutboxService } from './calendar-sync-outbox.service';
 import { ChannelsModule } from '../channels/channels.module';
 import { EmailTemplatesModule } from '../email-templates/email-templates.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
@@ -20,8 +21,8 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
     controllers: [AppointmentsController, CalendarCallbackController, PublicBookingController],
     providers: [
         AppointmentsService, ServicesService, CalendarIntegrationService,
-        AppointmentRemindersService, AppointmentNotificationsService,
+        CalendarSyncOutboxService, AppointmentRemindersService, AppointmentNotificationsService,
     ],
-    exports: [AppointmentsService, ServicesService, CalendarIntegrationService],
+    exports: [AppointmentsService, ServicesService, CalendarIntegrationService, CalendarSyncOutboxService],
 })
 export class AppointmentsModule {}

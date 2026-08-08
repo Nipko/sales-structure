@@ -1,0 +1,257 @@
+name: Vertical Quality Evidence
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'apps/dashboard/**'
+      - 'apps/landing/**'
+      - 'packages/shared/**'
+      - 'docs/vertical-**'
+      - '.github/workflows/vertical-quality.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'apps/dashboard/**'
+      - 'apps/landing/**'
+      - 'packages/shared/**'
+      - '.github/workflows/vertical-quality.yml'
+  schedule:
+    - cron: '17 5 * * *'
+    - cron: '31 6 * * 0'
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: Evidence tier to execute
+        required: true
+        default: contract
+        type: choice
+        options: [contract, integration, weekly, release]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vertical-quality-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_OPTIONS: --max-old-space-size=8192
+
+jobs:
+  contract:
+    name: PR contract and unit evidence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: mkdir -p artifacts
+      - name: Claims and competitive evidence
+        run: npm run check:claims --prefix apps/landing
+      - name: Static 1,520-scenario matrix
+        run: node apps/api/scripts/run-vertical-contract-matrix.cjs > artifacts/vertical-contract-matrix.json
+      - name: TypeScript contracts
+        run: |
+          npx tsc -p packages/shared/tsconfig.json --noEmit --pretty false
+          npx tsc -p apps/api/tsconfig.json --noEmit --pretty false
+          npx tsc -p apps/dashboard/tsconfig.json --noEmit --pretty false
+      - name: Vertical focal suites
+        run: >-
+          npx jest --config apps/api/jest.config.js --runInBand
+          apps/api/src/modules/verticals/vertical-capability-manifest.spec.ts
+          apps/api/src/modules/verticals/vertical-product-policy.spec.ts
+          apps/api/src/modules/verticals/verticals.controller.spec.ts
+          apps/api/src/modules/verticals/vertical-builder-contract.spec.ts
+          apps/api/src/modules/verticals/vertical-operating-decisions-schema.spec.ts
+          apps/api/src/modules/verticals/operating-currency.service.spec.ts
+          apps/api/src/modules/verticals/temporal-capacity-contract.service.spec.ts
+          apps/api/src/modules/verticals/staff-operations-model.service.spec.ts
+          apps/api/src/modules/verticals/vertical-migration.service.spec.ts
+          apps/api/src/modules/appointments/calendar-sync-outbox.service.spec.ts
+          apps/api/src/modules/appointments/calendar-integration.service.spec.ts
+          apps/api/src/modules/appointments/appointments.tenant-isolation.spec.ts
+          apps/api/src/modules/appointments/appointment-capacity.util.spec.ts
+          apps/api/src/modules/appointments/public-booking.controller.spec.ts
+          apps/api/src/modules/vertical-contract-matrix/vertical-contract-matrix.spec.ts
+          apps/api/src/modules/vertical-contract-matrix/vertical-commercial-units-matrix.spec.ts
+          apps/api/src/modules/conversations/tool-policy-registry.spec.ts
+          apps/api/src/modules/conversations/tool-execution-control.service.spec.ts
+          apps/api/src/modules/conversations/payment-operation.service.spec.ts
+          apps/api/src/modules/conversations/ai-tool-executor.central-controls.spec.ts
+          apps/api/src/modules/conversations/ai-tool-executor.appointment-safety.spec.ts
+          apps/api/src/modules/conversations/procedure-engine.central-controls.spec.ts
+          apps/api/src/modules/conversations/booking-engine.central-confirmation.spec.ts
+          apps/api/src/modules/conversations/tool-approval.controller.spec.ts
+          apps/api/src/modules/conversations/tool-approval-workflow.e2e.spec.ts
+          apps/api/src/modules/conversations/agent-test-request.spec.ts
+          apps/api/src/modules/conversations/ephemeral-agent-sandbox.spec.ts
+          apps/api/src/modules/conversations/prompt-assembler.active-objects.spec.ts
+          apps/api/src/modules/conversations/active-operations-context.service.spec.ts
+          apps/api/src/modules/agent-console/agent-console.service.nba-readiness.spec.ts
+          apps/api/src/common/policies/ai-decision-readiness.policy.spec.ts
+          apps/api/src/modules/crm/services/crm-insights/crm-insights.service.spec.ts
+          apps/api/src/modules/media-processing/media-ai-governance.policy.spec.ts
+          apps/api/src/modules/media-processing/media-processing.governance.spec.ts
+          apps/api/src/modules/widget/widget-capability-policy.spec.ts
+          apps/api/src/modules/widget/widget.gateway.security.spec.ts
+          apps/api/src/modules/conversations/conversations.widget-containment.spec.ts
+          apps/api/src/modules/push/web-push-isolation.spec.ts
+          apps/api/src/modules/push/push.service.spec.ts
+          apps/api/src/modules/push/push.service.expo-bounds.spec.ts
+          apps/api/src/modules/persona/onboarding-persona-resolver.spec.ts
+          apps/api/src/modules/automation/automation.service.spec.ts
+          --json --outputFile artifacts/vertical-focal-jest.json
+      - name: Convert API focal evidence to JUnit
+        if: always()
+        run: node apps/api/scripts/jest-json-to-junit.cjs artifacts/vertical-focal-jest.json artifacts/vertical-focal-jest.xml
+      - name: Dashboard resolver
+        run: >-
+          npx jest --config apps/dashboard/jest.config.cjs --runInBand
+          apps/dashboard/src/lib/vertical-dashboard-resolver.spec.ts
+          --json --outputFile artifacts/dashboard-vertical-jest.json
+      - name: Convert dashboard evidence to JUnit
+        if: always()
+        run: node apps/api/scripts/jest-json-to-junit.cjs artifacts/dashboard-vertical-jest.json artifacts/dashboard-vertical-jest.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vertical-contract-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts
+          retention-days: 30
+          if-no-files-found: error
+
+  integration:
+    name: Merge and nightly infrastructure evidence
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.tier != 'contract')
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: parallext
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: parallext_engine
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U parallext"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+      DIRECT_DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      NODE_ENV: test
+      JWT_SECRET: ci-dummy-jwt-secret
+      JWT_REFRESH_SECRET: ci-dummy-jwt-refresh-secret
+      INTERNAL_JWT_SECRET: ci-dummy-internal-jwt-secret
+      INTERNAL_API_KEY: ci-dummy-internal-api-key
+      ENCRYPTION_KEY: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+      OPENAI_API_KEY: sk-ci-dummy-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: mkdir -p artifacts
+      - name: Public and tenant schema compatibility
+        run: |
+          cd apps/api
+          npx prisma generate
+          npx prisma migrate deploy
+          npm run test:migrate:tenants
+      - name: Lifecycle, pipeline and purge regression
+        run: >-
+          npx jest --config apps/api/jest.config.js --runInBand
+          apps/api/src/modules/auth/auth-readiness.spec.ts
+          apps/api/src/modules/auth/auth-onboarding-provisioning.spec.ts
+          apps/api/src/modules/pipeline/pipeline-stage-resolver.spec.ts
+          apps/api/src/modules/pipeline/pipeline-outcome.util.spec.ts
+          apps/api/src/modules/offboarding/offboarding.service.spec.ts
+          apps/api/src/modules/verticals/verticals.service.spec.ts
+          --json --outputFile artifacts/vertical-integration-jest.json
+      - name: Convert integration evidence to JUnit
+        if: always()
+        run: node apps/api/scripts/jest-json-to-junit.cjs artifacts/vertical-integration-jest.json artifacts/vertical-integration-jest.xml
+      - name: Real Nest boot smoke
+        run: |
+          npx turbo build --filter=@parallext/api
+          node apps/api/dist/boot-check.js
+      - name: Environment readiness snapshot
+        env:
+          VERTICAL_READINESS_OUTPUT: artifacts/vertical-readiness.json
+        run: node apps/api/scripts/run-vertical-release-readiness.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vertical-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts
+          retention-days: 30
+          if-no-files-found: error
+
+  weekly:
+    name: Weekly full regression and release preflight
+    if: >-
+      github.event.schedule == '31 6 * * 0' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.tier == 'weekly' || inputs.tier == 'release'))
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.VERTICAL_RELEASE_DATABASE_URL }}
+      REDIS_URL: ${{ secrets.VERTICAL_RELEASE_REDIS_URL }}
+      OPENAI_API_KEY: ${{ secrets.VERTICAL_EVAL_OPENAI_API_KEY }}
+      VERTICAL_REAL_MODEL_EVAL_READY: ${{ vars.VERTICAL_REAL_MODEL_EVAL_READY }}
+      VERTICAL_CHANNEL_SANDBOX_READY: ${{ vars.VERTICAL_CHANNEL_SANDBOX_READY }}
+      VERTICAL_PROVIDER_SANDBOX_READY: ${{ vars.VERTICAL_PROVIDER_SANDBOX_READY }}
+      VERTICAL_BULLMQ_READY: ${{ vars.VERTICAL_BULLMQ_READY }}
+      VERTICAL_PERF_ENV_READY: ${{ vars.VERTICAL_PERF_ENV_READY }}
+      VERTICAL_CHAOS_ENV_READY: ${{ vars.VERTICAL_CHAOS_ENV_READY }}
+      VERTICAL_ROLLBACK_EVIDENCE_READY: ${{ vars.VERTICAL_ROLLBACK_EVIDENCE_READY }}
+      VERTICAL_CANARY_READY: ${{ vars.VERTICAL_CANARY_READY }}
+      VERTICAL_RELEASE_EVIDENCE_JSON: ${{ secrets.VERTICAL_RELEASE_EVIDENCE_JSON }}
+      REQUIRE_EXTERNAL_GATES: ${{ inputs.tier == 'release' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: mkdir -p artifacts
+      - name: Full API regression
+        run: >-
+          npx jest --config apps/api/jest.config.js --runInBand
+          --json --outputFile artifacts/api-full-jest.json
+      - name: Convert weekly evidence to JUnit
+        if: always()
+        run: node apps/api/scripts/jest-json-to-junit.cjs artifacts/api-full-jest.json artifacts/api-full-jest.xml
+      - name: Release environment preflight
+        env:
+          VERTICAL_READINESS_OUTPUT: artifacts/vertical-release-readiness.json
+        run: node apps/api/scripts/run-vertical-release-readiness.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vertical-weekly-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts
+          retention-days: 90
+          if-no-files-found: error

@@ -7,6 +7,9 @@ import { RedisService } from '../redis/redis.service';
 import { MediaService } from '../media/media.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { NormalizedMessage, MediaProcessingResult } from '@parallext/shared';
+import {
+    evaluateMediaAiGovernance,
+} from './media-ai-governance.policy';
 
 // Agent-facing annotation injected into the conversation (and saved to history)
 // when a customer sends voice/image. i18n'd by the tenant's language so agents read
@@ -183,7 +186,11 @@ export class MediaProcessingService {
         contactDbId: string,
         conversationId: string,
         conversationContext?: string,
-    ): Promise<{ text: string; result: MediaProcessingResult } | null> {
+    ): Promise<{
+        text: string;
+        result: MediaProcessingResult;
+        governance: { allowDurablePersistence: boolean };
+    } | null> {
         const { tenantId, channelType, content } = msg;
         const mediaType = content.type === 'audio' ? 'audio' : 'image';
 
@@ -193,6 +200,25 @@ export class MediaProcessingService {
 
         if (!content.mediaUrl) {
             this.logger.warn(`[MediaProcessing] No mediaUrl for ${content.type} message from ${msg.contactId} — check webhook normalization`);
+            return null;
+        }
+
+        const governance = evaluateMediaAiGovernance({
+            operation: mediaType === 'audio' ? 'audio_transcription' : 'image_analysis',
+            subjectId: msg.contactId,
+            // Message metadata is adapter/payload-adjacent and is not an
+            // authoritative consent registry. Never accept inline attestations,
+            // even when they self-label as "verified". Until a server-side
+            // contact consent + deletion registry exists, multimodal stays off.
+            consent: undefined,
+            retention: undefined,
+            // There is no verified source+derived cleanup adapter yet. Bounded
+            // retention therefore remains disabled; ephemeral processing is the
+            // only legal mode and creates no Parallly media copy/transcript row.
+            boundedDeletionVerified: false,
+        });
+        if (!governance.allowed) {
+            this.logger.warn(`[MediaProcessing] Governance blocked ${mediaType}: ${governance.reasons.join(',')}`);
             return null;
         }
 
@@ -208,6 +234,7 @@ export class MediaProcessingService {
             return null;
         }
 
+        let downloadedBuffer: Buffer | undefined;
         try {
             // 2. Download the media file
             // `channelAccountId` viene en el mensaje normalizado y ya se usa
@@ -216,21 +243,26 @@ export class MediaProcessingService {
             const downloaded = await this.download.download(
                 tenantId, channelType, content.mediaUrl, content.mimeType, msg.channelAccountId,
             );
+            downloadedBuffer = downloaded.buffer;
 
             let result: MediaProcessingResult;
 
             if (mediaType === 'audio') {
                 // Persist the voice note so the agent can play it back in the app (best-effort).
-                await this.persistInboundAudio(tenantId, conversationId, downloaded.buffer, downloaded.mimeType, contactDbId);
+                if (governance.allowDurablePersistence) {
+                    await this.persistInboundAudio(tenantId, conversationId, downloaded.buffer, downloaded.mimeType, contactDbId);
+                }
                 result = await this.processAudio(tenantId, downloaded.buffer, downloaded.mimeType, throttleResult.limits.maxAudioDurationSec);
             } else {
                 result = await this.processImage(tenantId, downloaded.buffer, downloaded.mimeType, conversationContext);
                 // Después de procesar, para poder usar la descripción como pie
                 // de foto sin pagarla dos veces.
-                await this.persistInboundImage(
-                    tenantId, conversationId, contactDbId,
-                    downloaded.buffer, downloaded.mimeType, result?.text,
-                );
+                if (governance.allowDurablePersistence) {
+                    await this.persistInboundImage(
+                        tenantId, conversationId, contactDbId,
+                        downloaded.buffer, downloaded.mimeType, result?.text,
+                    );
+                }
             }
 
             // 3. Record usage
@@ -250,11 +282,19 @@ export class MediaProcessingService {
                 : mediaAnnot(annotLang).image(cap, result.text);
 
             this.logger.log(`[MediaProcessing] ${mediaType} processed for tenant ${tenantId}: ${result.text.substring(0, 80)}...`);
-            return { text, result };
+            return {
+                text,
+                result,
+                governance: { allowDurablePersistence: governance.allowDurablePersistence },
+            };
 
         } catch (error: any) {
             this.logger.error(`[MediaProcessing] Failed to process ${mediaType}: ${error.message}`, error.stack);
             return null;
+        } finally {
+            // Best-effort source-media erasure for the only currently enabled
+            // retention mode. The provider call has completed before this point.
+            downloadedBuffer?.fill(0);
         }
     }
 

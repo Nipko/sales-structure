@@ -1439,7 +1439,7 @@ export const api = {
         apiDelete(`/policies/${tenantId}/${id}`),
 
     // ─── Test Agent (dry-run with debug info) ───
-    testAgent: (tenantId: string, agentId: string, data: { message: string; conversationHistory?: Array<{ role: string; content: string }>; channelType?: string }) =>
+    testAgent: (tenantId: string, agentId: string, data: { message: string; conversationHistory?: Array<{ role: string; content: string }> }) =>
         apiPost<any>(`/agent-test/${tenantId}/${agentId}`, data),
 
     // ─── Offers / Promotions ───

@@ -1,6 +1,10 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
+import {
+    normalizeCurrencyCode,
+    requirePositiveIntegerUnit,
+} from '../../common/utils/commercial-units.util';
 
 /**
  * Gyms / Fitness vertical service.
@@ -43,9 +47,11 @@ export class GymsService {
         freezeAllowanceDays?: number;
         perks?: string[];
     }): Promise<any> {
-        if (!data.name || !data.durationDays) {
+        if (!data.name || data.durationDays === undefined || data.durationDays === null) {
             throw new BadRequestException('name and durationDays are required');
         }
+        const durationDays = requirePositiveIntegerUnit(data.durationDays, 'durationDays');
+        const currency = normalizeCurrencyCode(data.currency);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO membership_plans (
@@ -55,8 +61,8 @@ export class GymsService {
              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
              RETURNING *`,
             [
-                data.name, data.description || null, data.durationDays,
-                data.price, data.currency || 'COP',
+                data.name, data.description || null, durationDays,
+                data.price, currency,
                 data.classCreditsPerPeriod ?? null,
                 data.personalTrainingCredits ?? 0,
                 data.guestPasses ?? 0,
@@ -68,6 +74,12 @@ export class GymsService {
     }
 
     async updatePlan(schemaName: string, id: string, data: any): Promise<any> {
+        if (data.durationDays !== undefined) {
+            data = { ...data, durationDays: requirePositiveIntegerUnit(data.durationDays, 'durationDays') };
+        }
+        if (data.currency !== undefined) {
+            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+        }
         const fields: string[] = [];
         const values: any[] = [];
         let i = 1;
@@ -410,6 +422,7 @@ export class GymsService {
         if (!data.name || !data.scheduledAt || !data.maxCapacity) {
             throw new BadRequestException('name, scheduledAt and maxCapacity are required');
         }
+        const durationMinutes = requirePositiveIntegerUnit(data.durationMinutes ?? 60, 'durationMinutes');
         // Tope de 52: un año. Más que eso es una grilla que el dueño va a querer
         // cambiar antes de que llegue, y son filas que después hay que cancelar
         // una por una.
@@ -437,7 +450,7 @@ export class GymsService {
                     data.name, data.description || null, data.classType || null,
                     data.instructorName || null,
                     scheduledAt,
-                    data.durationMinutes || 60,
+                    durationMinutes,
                     data.maxCapacity,
                     data.room || null, data.level || null,
                     data.creditsRequired ?? 1,

@@ -4,6 +4,8 @@ import { RedisService } from '../redis/redis.service';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { resolveReadyTenantContext } from '../../common/utils/tenant-lifecycle.util';
 
 /** Default widget strings by language (es/en/pt/fr). Fallback: es. */
 const WIDGET_DEFAULTS: Record<string, { welcomeMessage: string; agentName: string }> = {
@@ -22,6 +24,7 @@ export class WidgetService implements OnModuleInit {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly config: ConfigService,
+        private readonly throttle: TenantThrottleService,
     ) {
         // No hardcoded literal fallback — a predictable secret would let anyone
         // forge widget session tokens. Prefer a dedicated secret, else the platform
@@ -103,7 +106,10 @@ export class WidgetService implements OnModuleInit {
 
     async getConfig(widgetId: string): Promise<any> {
         const cached = await this.redis.get(`widget:config:${widgetId}`);
-        if (cached) return JSON.parse(cached);
+        if (cached) {
+            const config = JSON.parse(cached);
+            return await this.isConfigRuntimeAvailable(config) ? config : null;
+        }
 
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT wc.*, t.slug as tenant_slug, t.name as tenant_name
@@ -115,6 +121,7 @@ export class WidgetService implements OnModuleInit {
         if (!rows?.length) return null;
 
         const config = rows[0];
+        if (!await this.isConfigRuntimeAvailable(config)) return null;
         await this.redis.set(`widget:config:${widgetId}`, JSON.stringify(config), 300);
         return config;
     }
@@ -234,12 +241,16 @@ export class WidgetService implements OnModuleInit {
             return { sessionId: existing[0].id, token };
         }
 
-        const token = this.generateToken(crypto.randomUUID(), widgetConfig.tenant_id, widgetConfig.widget_id);
+        // The JWT sessionId must be the exact primary key persisted below. Signing a
+        // separate random UUID made every first-session token impossible to resolve;
+        // only a second create/resume request happened to repair it.
+        const sessionId = crypto.randomUUID();
+        const token = this.generateToken(sessionId, widgetConfig.tenant_id, widgetConfig.widget_id);
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `INSERT INTO public.widget_sessions (widget_config_id, tenant_id, visitor_id, visitor_name, visitor_email, visitor_phone, page_url, token)
-             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8)
+            `INSERT INTO public.widget_sessions (id, widget_config_id, tenant_id, visitor_id, visitor_name, visitor_email, visitor_phone, page_url, token)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9)
              RETURNING id`,
-            widgetConfig.id, widgetConfig.tenant_id,
+            sessionId, widgetConfig.id, widgetConfig.tenant_id,
             data.visitorId, data.name || null, data.email || null, data.phone || null, data.page || null, token,
         );
 
@@ -249,12 +260,19 @@ export class WidgetService implements OnModuleInit {
     async getSessionByToken(token: string): Promise<any> {
         try {
             const decoded = jwt.verify(token, this.jwtSecret) as any;
+            if (!decoded || typeof decoded.sessionId !== 'string' ||
+                typeof decoded.tenantId !== 'string' || typeof decoded.widgetId !== 'string') {
+                return null;
+            }
             const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT ws.*, wc.tenant_id, wc.widget_id
+                `SELECT ws.*, wc.tenant_id, wc.widget_id, wc.allowed_domains,
+                        wc.is_active AS widget_is_active
                  FROM public.widget_sessions ws
                  JOIN public.widget_configs wc ON wc.id = ws.widget_config_id
-                 WHERE ws.id = $1::uuid`,
-                decoded.sessionId,
+                 WHERE ws.id = $1::uuid
+                   AND ws.token = $2
+                   AND wc.is_active = true`,
+                decoded.sessionId, token,
             );
             const row = rows?.[0] || null;
             if (!row) return null;
@@ -265,10 +283,31 @@ export class WidgetService implements OnModuleInit {
                 this.logger.warn(`[Widget] token claim mismatch for session ${decoded.sessionId}`);
                 return null;
             }
+            if (!await this.isTenantWidgetRuntimeAvailable(row.tenant_id)) return null;
             return row;
         } catch {
             return null;
         }
+    }
+
+    private async isConfigRuntimeAvailable(config: any): Promise<boolean> {
+        if (!config?.id || !config?.tenant_id || !config?.widget_id) return false;
+        const active: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT 1
+               FROM public.widget_configs
+              WHERE id = $1::uuid AND tenant_id = $2::uuid
+                AND widget_id = $3 AND is_active = true
+              LIMIT 1`,
+            config.id, config.tenant_id, config.widget_id,
+        );
+        if (!active?.length) return false;
+        return this.isTenantWidgetRuntimeAvailable(config.tenant_id);
+    }
+
+    private async isTenantWidgetRuntimeAvailable(tenantId: string): Promise<boolean> {
+        if (!await resolveReadyTenantContext(this.prisma, this.redis, tenantId)) return false;
+        const features = await this.throttle.getPlanFeatures(tenantId);
+        return features.widget === true;
     }
 
     async updateSessionConversation(sessionId: string, conversationId: string, contactId: string): Promise<void> {

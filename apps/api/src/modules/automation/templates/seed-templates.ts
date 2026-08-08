@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 
-const templates = [
+export const AUTOMATION_TEMPLATE_SEEDS = [
     // ─── Lead Nurturing ──────────────────────────────────────────────
     {
         name: { es: 'Secuencia de bienvenida', en: 'Welcome Sequence', pt: 'Sequencia de boas-vindas', fr: 'Sequence de bienvenue' },
@@ -234,7 +234,7 @@ const templates = [
         category: 'after_hours',
         industry: null,
         icon: '🌙',
-        triggerConfig: { trigger_type: 'new_message', conditions: [] },
+        triggerConfig: { trigger_type: 'new_message', conditions: [{ field: 'businessHoursStatus', operator: 'equals', value: 'closed' }] },
         actionsConfig: [
             { type: 'send_template', config: { template_name: '{{after_hours_template}}', language: '{{language}}' }, delay: 0 },
         ],
@@ -298,7 +298,7 @@ const templates = [
             fr: 'Envoie un suivi aux leads interesses par des cours qui n\'ont pas termine l\'inscription',
         },
         category: 'lead_nurturing',
-        industry: 'educacion',
+        industry: 'education',
         icon: '🎓',
         triggerConfig: { trigger_type: 'lead.captured', conditions: [{ field: 'source', operator: 'equals', value: 'course_inquiry' }] },
         actionsConfig: [
@@ -383,7 +383,7 @@ const templates = [
             fr: 'Envoie une promotion speciale aux clients apres leur visite au restaurant',
         },
         category: 'reactivation',
-        industry: 'restaurante',
+        industry: 'restaurantes',
         icon: '🍽️',
         triggerConfig: { trigger_type: 'stage_changed', conditions: [{ field: 'stage', operator: 'equals', value: 'listo_para_cierre' }] },
         actionsConfig: [
@@ -397,7 +397,7 @@ const templates = [
 ];
 
 export async function seedAutomationTemplates(prisma: PrismaClient) {
-    for (const tpl of templates) {
+    for (const tpl of AUTOMATION_TEMPLATE_SEEDS) {
         const nameEn = (tpl.name as any).en;
         const existing = await prisma.automationTemplate.findFirst({
             where: {

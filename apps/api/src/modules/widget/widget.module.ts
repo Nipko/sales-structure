@@ -6,10 +6,11 @@ import { WidgetTriggersController } from './widget-triggers.controller';
 import { WidgetPublicController } from './widget-public.controller';
 import { WidgetGateway } from './widget.gateway';
 import { ConversationsModule } from '../conversations/conversations.module';
+import { WidgetRateLimitService } from './widget-rate-limit.service';
 
 @Module({
     imports: [ConversationsModule],
-    providers: [WidgetService, WidgetTriggersService, WidgetGateway],
+    providers: [WidgetService, WidgetTriggersService, WidgetRateLimitService, WidgetGateway],
     controllers: [WidgetController, WidgetTriggersController, WidgetPublicController],
     exports: [WidgetService, WidgetTriggersService],
 })

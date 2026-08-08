@@ -20,6 +20,21 @@ export class VerticalIntegrationsController {
         return { success: true, data: await this.vi.getAllConfigs(tenantId) };
     }
 
+    @Get(':tenantId/health')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async getAllHealth(@Param('tenantId') tenantId: string) {
+        return { success: true, data: await this.vi.getAllHealth(tenantId) };
+    }
+
+    @Get(':tenantId/:provider/health')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async getHealth(
+        @Param('tenantId') tenantId: string,
+        @Param('provider') provider: VerticalProvider,
+    ) {
+        return { success: true, data: await this.vi.getProviderHealth(tenantId, provider) };
+    }
+
     @Put(':tenantId/:provider/config')
     @Roles('super_admin', 'tenant_admin')
     async updateConfig(
@@ -28,7 +43,19 @@ export class VerticalIntegrationsController {
         @Body() body: any,
     ) {
         const cfg = await this.vi.updateConfig(tenantId, provider, body);
-        return { success: true, data: { ...cfg, clientSecret: undefined, apiKey: undefined, password: undefined, connected: true } };
+        const health = await this.vi.getProviderHealth(tenantId, provider);
+        return {
+            success: true,
+            data: {
+                ...cfg,
+                clientSecret: undefined,
+                apiKey: undefined,
+                password: undefined,
+                connected: health.connected,
+                status: health.status,
+                health,
+            },
+        };
     }
 
     @Delete(':tenantId/:provider')
@@ -47,7 +74,11 @@ export class VerticalIntegrationsController {
     @Post(':tenantId/:provider/sync')
     @Roles('super_admin', 'tenant_admin')
     async sync(@Param('tenantId') tenantId: string, @Param('provider') provider: VerticalProvider) {
-        return { success: true, data: await this.vi.sync(tenantId, provider) };
+        const result = await this.vi.sync(tenantId, provider);
+        return {
+            success: true,
+            data: { ...result, health: await this.vi.getProviderHealth(tenantId, provider) },
+        };
     }
 
     @Get(':tenantId/items')

@@ -2,6 +2,22 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { PrismaClient } from '@prisma/client';
 import { resolveMirroredDealStatus } from '../pipeline/pipeline-outcome.util';
 
+const TENANT_PUBLIC_PURGE_ORDER = [
+    'push_subscriptions', 'feature_request_subscribers', 'feature_request_comments',
+    'feature_request_votes', 'feature_requests', 'webhook_subscriptions',
+    'email_channel_configs', 'widget_sessions', 'widget_configs', 'billing_events',
+    'billing_payments', 'billing_coupon_redemptions', 'billing_subscriptions',
+    'tenant_invitations', 'channel_accounts', 'whatsapp_onboardings',
+    'whatsapp_credentials', 'tenant_financial_snapshots', 'storage_snapshots',
+    'sms_package_orders', 'sms_credit_ledger', 'sms_credit_balances',
+    'crm_connections', 'api_keys', 'audit_logs', 'users',
+] as const;
+
+const TENANT_PUBLIC_PURGE_CLASSIFIED = new Set<string>([
+    ...TENANT_PUBLIC_PURGE_ORDER.filter((table) => table !== 'feature_request_subscribers'),
+    'fiscal_invoices',
+]);
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(PrismaService.name);
@@ -277,6 +293,39 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     }
 
     /**
+     * Read-only purge preflight. It intentionally repeats inside the later
+     * transaction: this early pass prevents DROP/provider effects when a new
+     * tenant-owned public table has not yet been assigned a purge policy.
+     */
+    async preflightTenantPublicPurge(): Promise<void> {
+        const rows = await this.$queryRawUnsafe(
+            `SELECT table_name
+               FROM information_schema.columns
+              WHERE table_schema = 'public'
+                AND column_name = 'tenant_id'
+              ORDER BY table_name`,
+        ) as Array<{ table_name: string }>;
+        const unclassified = rows
+            .map((row) => row.table_name)
+            .filter((table) => !TENANT_PUBLIC_PURGE_CLASSIFIED.has(table));
+        if (unclassified.length > 0) {
+            throw new ConflictException({
+                error: 'tenant_purge_unclassified_public_data',
+                tables: unclassified,
+            });
+        }
+
+        const featureTables = await this.$queryRawUnsafe(
+            `SELECT
+                to_regclass('public.feature_request_subscribers')::text AS subscribers,
+                to_regclass('public.feature_requests')::text AS requests`,
+        ) as Array<{ subscribers: string | null; requests: string | null }>;
+        if (Boolean(featureTables[0]?.subscribers) !== Boolean(featureTables[0]?.requests)) {
+            throw new ConflictException({ error: 'tenant_purge_incomplete_feature_request_schema' });
+        }
+    }
+
+    /**
      * Delete every public-schema row owned by a tenant in one transaction.
      *
      * The tenant row is deliberately deleted last: its unique slug and
@@ -293,43 +342,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         tenantId: string,
         tenantSnapshot: { name: string; schemaName: string },
     ): Promise<Record<string, number>> {
-        const purgeOrder = [
-            // Raw/lazy public tables and user-dependent records first.
-            'push_subscriptions',
-            'feature_request_subscribers',
-            'feature_request_comments',
-            'feature_request_votes',
-            'feature_requests',
-            'webhook_subscriptions',
-            'email_channel_configs',
-            'widget_sessions',
-            'widget_configs',
-            // Billing children must precede their subscription parent.
-            'billing_events',
-            'billing_payments',
-            'billing_coupon_redemptions',
-            'billing_subscriptions',
-            // Remaining tenant-owned platform data.
-            'tenant_invitations',
-            'channel_accounts',
-            'whatsapp_onboardings',
-            'whatsapp_credentials',
-            'tenant_financial_snapshots',
-            'storage_snapshots',
-            'sms_package_orders',
-            'sms_credit_ledger',
-            'sms_credit_balances',
-            'crm_connections',
-            'api_keys',
-            'audit_logs',
-            'users',
-        ] as const;
-        const classifiedTenantTables = new Set<string>([
-            ...purgeOrder.filter((table) => table !== 'feature_request_subscribers'),
-            'fiscal_invoices',
-        ]);
+        const purgeOrder = TENANT_PUBLIC_PURGE_ORDER;
 
         return this.$transaction(async (tx: any) => {
+            // Serializes the final retention stamp/delete with fiscal document
+            // creation, whose transaction takes a shared lock on this row.
+            await tx.$queryRawUnsafe(
+                `SELECT id FROM public.tenants WHERE id = $1::uuid FOR UPDATE`,
+                tenantId,
+            );
             const rows = await tx.$queryRawUnsafe(
                 `SELECT table_name
                    FROM information_schema.columns
@@ -338,7 +359,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                   ORDER BY table_name`,
             ) as Array<{ table_name: string }>;
             const observed = new Set(rows.map((row) => row.table_name));
-            const unclassified = [...observed].filter((table) => !classifiedTenantTables.has(table));
+            const unclassified = [...observed].filter((table) => !TENANT_PUBLIC_PURGE_CLASSIFIED.has(table));
             if (unclassified.length > 0) {
                 throw new ConflictException({
                     error: 'tenant_purge_unclassified_public_data',
@@ -646,13 +667,61 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 const tenantId = tenantIdRows?.[0]?.id;
                 if (!tenantId) continue;
 
-                // 1. Ensure pipelines table exists in this schema
+                // 1. Ensure the multi-pipeline contract exists. Older schemas used
+                // to be skipped entirely here, so they never received outcome/link
+                // hardening or historical synchronization.
                 const hasPipelines = await (super.$queryRawUnsafe as any)(
                     `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = 'pipelines' LIMIT 1`,
                     schemaName
                 );
-                
-                if (!hasPipelines?.length) continue;
+                if (!hasPipelines?.length) {
+                    await this.transactionInTenantSchema(schemaName, async (query) => {
+                        await query(`CREATE TABLE IF NOT EXISTS pipelines (
+                            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                            tenant_id UUID NOT NULL,
+                            name VARCHAR(255) NOT NULL,
+                            description TEXT,
+                            is_default BOOLEAN DEFAULT false,
+                            is_active BOOLEAN DEFAULT true,
+                            created_at TIMESTAMPTZ DEFAULT NOW(),
+                            updated_at TIMESTAMPTZ DEFAULT NOW()
+                        )`);
+                        await query(`CREATE INDEX IF NOT EXISTS idx_pipelines_tenant ON pipelines(tenant_id, is_active)`);
+                        await query(`CREATE UNIQUE INDEX IF NOT EXISTS uidx_pipelines_default_per_tenant
+                                     ON pipelines(tenant_id) WHERE is_default = true`);
+                        await query(`ALTER TABLE pipeline_stages ADD COLUMN IF NOT EXISTS pipeline_id UUID`);
+                        await query(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS pipeline_id UUID`);
+                    });
+                }
+                await (super.$executeRawUnsafe as any)(
+                    `ALTER TABLE "${schemaName}"."pipeline_stages" ADD COLUMN IF NOT EXISTS pipeline_id UUID`
+                );
+                await (super.$executeRawUnsafe as any)(
+                    `ALTER TABLE "${schemaName}"."deals" ADD COLUMN IF NOT EXISTS pipeline_id UUID`
+                );
+                const pipelineRows = await this.transactionInTenantSchema(schemaName, async (query) => {
+                    await query(
+                        `INSERT INTO pipelines (tenant_id, name, description, is_default, is_active)
+                         SELECT $1::uuid, 'Pipeline Principal', 'Pipeline de ventas predeterminado', true, true
+                          WHERE NOT EXISTS (SELECT 1 FROM pipelines WHERE tenant_id = $1::uuid)`,
+                        [tenantId],
+                    );
+                    const rows = await query<any[]>(
+                        `SELECT id FROM pipelines WHERE tenant_id = $1::uuid
+                          ORDER BY is_default DESC, created_at ASC LIMIT 1`,
+                        [tenantId],
+                    );
+                    const pipelineId = rows?.[0]?.id;
+                    if (pipelineId) {
+                        await query(`UPDATE pipeline_stages SET pipeline_id = $1::uuid WHERE pipeline_id IS NULL`, [pipelineId]);
+                        await query(`UPDATE deals SET pipeline_id = $1::uuid WHERE pipeline_id IS NULL`, [pipelineId]);
+                    }
+                    return rows;
+                });
+                if (!pipelineRows?.[0]?.id) {
+                    this.logger.error(`[Historical Sync] No default pipeline could be established for ${schemaName}`);
+                    continue;
+                }
 
                 // Older tenant schemas predate the explicit outcome/link columns. Add
                 // the contract, but never manufacture a terminal outcome from probability.
@@ -686,6 +755,26 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                     `CREATE INDEX IF NOT EXISTS idx_opportunities_deal_id
                      ON "${schemaName}"."opportunities"(deal_id)`
                 );
+                const duplicateDealLinks = await (super.$queryRawUnsafe as any)(
+                    `SELECT deal_id, COUNT(*)::int AS opportunity_count
+                       FROM "${schemaName}"."opportunities"
+                      WHERE deal_id IS NOT NULL
+                      GROUP BY deal_id
+                     HAVING COUNT(*) > 1
+                      LIMIT 1`
+                );
+                if (duplicateDealLinks?.length) {
+                    this.logger.error(
+                        `[Historical Sync] ${schemaName} has ${duplicateDealLinks[0].opportunity_count} ` +
+                        `opportunities linked to deal ${duplicateDealLinks[0].deal_id}; manual repair required`,
+                    );
+                } else {
+                    await (super.$executeRawUnsafe as any)(
+                        `CREATE UNIQUE INDEX IF NOT EXISTS uidx_opportunities_deal_id
+                         ON "${schemaName}"."opportunities"(deal_id)
+                         WHERE deal_id IS NOT NULL`
+                    );
+                }
 
                 // 2. Repair the historical Deal mirror from the canonical stage outcome.
                 // Opportunities and Deals feed different dashboards; allowing an explicit

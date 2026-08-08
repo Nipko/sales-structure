@@ -114,6 +114,7 @@
       "tibio": "Morno",
       "caliente": "Quente",
       "listo_cierre": "Pronto para fechar",
+      "listo_para_cierre": "Pronto para fechar",
       "ganado": "Ganho",
       "perdido": "Perdido",
       "no_interesado": "Sem interesse"
@@ -550,7 +551,7 @@
       "phoneCol": "Telefone (Obrigatório)",
       "phoneColDesc": "O telefone é a chave exclusiva e obrigatória do contato. Espaços são removidos e o número é normalizado para o formato internacional E.164. Exemplo: +5511999999999 ou 11999999999.",
       "stageCol": "Etapa (Opcional)",
-      "stageColDesc": "Etapas válidas: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
+      "stageColDesc": "Etapas válidas: nuevo, contactado, respondio, calificado, tibio, caliente, listo_para_cierre, ganado, perdido, no_interesado.",
       "exampleHeader": "Exemplo de colagem direta (delimitador por ponto e vírgula):",
       "exampleBody": "nome;telefone;email;etapa;empresa;es_vip\nJoão Silva;11999999999;joao@silva.com;caliente;Acme S.A.;sí\nMaria Gomez;+5511988887777;maria@gomez.com;nuevo;;no",
       "dropzoneTitle": "Arraste seu arquivo Excel (.xlsx, .xls) ou CSV aqui",
@@ -719,7 +720,7 @@
         "firstName": "Primeiro nome do contato.",
         "lastName": "Sobrenome do contato.",
         "email": "E-mail de contato.",
-        "stage": "Etapa do CRM. Valores válidos: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
+        "stage": "Etapa do CRM. Valores válidos: nuevo, contactado, respondio, calificado, tibio, caliente, listo_para_cierre, ganado, perdido, no_interesado.",
         "company": "Nome da empresa. Será criado automaticamente se não existir no sistema.",
         "source": "Canal ou fonte de aquisição do lead (ex. whatsapp, facebook, instagram).",
         "vip": "Indicar se é VIP. Valores válidos: sí, no, verdadero, falso, true, false.",
@@ -2330,6 +2331,13 @@
     "stageName": "Nome da etapa",
     "terminalYes": "Etapa final (fechada)",
     "terminalNo": "Etapa ativa",
+    "terminalOutcome": "Resultado da etapa final",
+    "outcomePlaceholder": "Resultado",
+    "outcomeWon": "Ganha",
+    "outcomeLost": "Perdida",
+    "terminalOutcomeRequired": "Defina se a etapa final \"{stage}\" representa uma oportunidade ganha ou perdida.",
+    "saveSuccess": "Pipeline salvo de forma atômica.",
+    "saveError": "Nenhuma alteração foi salva. Verifique as etapas em uso e os resultados finais.",
     "addStage": "Adicionar etapa",
     "unsavedChanges": "Você tem alterações não salvas",
     "reset": "Restaurar padrões",
@@ -3362,7 +3370,8 @@
     },
     "test": {
       "title": "Testar agente",
-      "subtitle": "Simule uma conversa e veja o prompt completo que o LLM recebe",
+      "subtitle": "Pré-visualize uma conversa e o prompt que o LLM recebe",
+      "limitations": "Prévia segura: usa IA real e consome cota, mas não executa reservas, gravações, MCP, integrações nem entrega por canal.",
       "reset": "Reiniciar",
       "startHint": "Digite uma mensagem para começar",
       "inputPlaceholder": "Digite como se fosse um cliente...",
@@ -4878,6 +4887,7 @@
       "title": "Teste",
       "subtitle": "Converse com seu agente e veja ele responder com as informações do seu negócio.",
       "tryExamples": "Tente: «Quais são os preços?» ou «Têm disponibilidade?»",
+      "limitations": "Prévia segura com IA real: consome cota e não cria reservas nem outras operações.",
       "placeholder": "Escreva como se fosse um cliente…",
       "send": "Enviar",
       "error": "Não foi possível enviar a mensagem. Tente novamente."
@@ -4935,6 +4945,10 @@
         "inventory": {
           "name": "Estoque",
           "desc": "Cadastre seu estoque para o agente informar disponibilidade e preços."
+        },
+        "vehicles": {
+          "name": "Veículos",
+          "desc": "Cadastre seus veículos para que o agente informe disponibilidade, preços e opções."
         },
         "treatments": {
           "name": "Tratamentos e planos",
@@ -5123,6 +5137,7 @@
       "connectChannel": "Conectar um canal de mensagens",
       "sendTestMessage": "Enviar mensagem de teste",
       "addKnowledgeBase": "Adicionar Knowledge Base",
+      "configureVerticalCatalog": "Configurar o catálogo operacional",
       "inviteTeam": "Convidar equipe",
       "connectInstagram": "Conectar Instagram",
       "createAutomation": "Criar regras de automação",
@@ -9547,9 +9562,11 @@
       "salud": "Saúde",
       "inmobiliaria": "Imobiliária",
       "restaurante": "Restaurante",
+      "restaurantes": "Restaurantes",
       "automotriz": "Automotivo",
       "turismo": "Turismo",
       "educacion": "Educação",
+      "education": "Educação",
       "seguros": "Seguros",
       "legal": "Jurídico",
       "retail": "Varejo",

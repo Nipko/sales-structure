@@ -50,6 +50,28 @@ export class VehicleInventoryController {
         return { success: true, data: stats };
     }
 
+    // Keep static GET routes above `:vehicleId`: Nest registers controller
+    // handlers in declaration order, so `/search` must not be interpreted as
+    // a vehicle UUID by the dynamic route below.
+    @Get(':tenantId/search')
+    @ApiOperation({ summary: 'AI-oriented vehicle search' })
+    async searchForAI(
+        @CurrentTenant() schema: string,
+        @Query('make') make?: string,
+        @Query('budgetMax') budgetMax?: string,
+        @Query('category') category?: string,
+        @Query('fuelType') fuelType?: string,
+        @Query('condition') condition?: string,
+        @Query('year') year?: string,
+    ) {
+        const vehicles = await this.vehicleService.searchVehiclesForAI(schema, {
+            make, category, fuelType, condition,
+            budgetMax: budgetMax ? parseInt(budgetMax) : undefined,
+            year: year ? parseInt(year) : undefined,
+        });
+        return { success: true, data: vehicles };
+    }
+
     @Get(':tenantId/:vehicleId')
     @ApiOperation({ summary: 'Get a single vehicle' })
     async getVehicle(@CurrentTenant() schema: string, @Param('vehicleId') vehicleId: string) {
@@ -128,22 +150,4 @@ export class VehicleInventoryController {
         return { success: true, data: items };
     }
 
-    @Get(':tenantId/search')
-    @ApiOperation({ summary: 'AI-oriented vehicle search' })
-    async searchForAI(
-        @CurrentTenant() schema: string,
-        @Query('make') make?: string,
-        @Query('budgetMax') budgetMax?: string,
-        @Query('category') category?: string,
-        @Query('fuelType') fuelType?: string,
-        @Query('condition') condition?: string,
-        @Query('year') year?: string,
-    ) {
-        const vehicles = await this.vehicleService.searchVehiclesForAI(schema, {
-            make, category, fuelType, condition,
-            budgetMax: budgetMax ? parseInt(budgetMax) : undefined,
-            year: year ? parseInt(year) : undefined,
-        });
-        return { success: true, data: vehicles };
-    }
 }

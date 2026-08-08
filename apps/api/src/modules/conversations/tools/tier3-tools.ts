@@ -83,17 +83,12 @@ export const PET_SERVICES_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'check_daycare_availability',
-        description: 'Check whether daycare slots are open on a specific date. For boarding (hotel canino) call with checkOut to validate the full stay window.',
+        description: 'Check whether the configured daycare or boarding service has capacity for the full date range. For boarding (hotel canino), pass checkOut to validate every occupied night. Pet size and special-needs suitability are not represented in the capacity model and must be confirmed by the team.',
         parameters: {
             type: 'object',
             properties: {
                 checkIn: { type: 'string', description: 'Drop-off date YYYY-MM-DD' },
                 checkOut: { type: 'string', description: 'Pick-up date YYYY-MM-DD (boarding only)' },
-                petSize: {
-                    type: 'string',
-                    enum: ['small', 'medium', 'large', 'xlarge'],
-                    description: 'Affects which kennel size is needed',
-                },
             },
             required: ['checkIn'],
         },
@@ -127,32 +122,30 @@ export const PHOTOGRAPHY_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'check_date_availability',
-        description: 'Check whether a specific date is open for a shoot. Returns available time windows. CRITICAL for wedding photographers — prevents double booking.',
+        description: 'Check whether a specific date is free for a full-day photo shoot. Returns a boolean availability result and the number of active appointments/photo sessions already using that date; it does not return time windows.',
         parameters: {
             type: 'object',
             properties: {
                 date: { type: 'string', description: 'YYYY-MM-DD' },
-                duration: { type: 'number', description: 'Estimated hours of coverage' },
-                eventType: {
-                    type: 'string',
-                    enum: ['familiar', 'boda', 'corporativo', 'producto', 'retrato', 'evento_social'],
-                },
             },
             required: ['date'],
         },
     },
     {
         name: 'request_photo_quote',
-        description: 'Generate a quote for a specific date + package. Captures the lead even if they don\'t book immediately. Always confirm name + email + phone before calling.',
+        description: 'Register a photography session request for team follow-up. This creates a photo_sessions record but does not calculate or promise a price. Confirm the date and customer name before calling; include phone, package, location, session type, and special requests when known.',
         parameters: {
             type: 'object',
             properties: {
+                sessionType: {
+                    type: 'string',
+                    enum: ['wedding', 'portrait', 'event', 'product', 'family', 'newborn', 'other'],
+                    description: 'Type of photography session stored on the request',
+                },
                 packageName: { type: 'string' },
                 date: { type: 'string', description: 'YYYY-MM-DD' },
-                duration: { type: 'number', description: 'Hours of coverage' },
                 location: { type: 'string', description: 'Where the shoot will happen' },
                 customerName: { type: 'string' },
-                customerEmail: { type: 'string' },
                 customerPhone: { type: 'string' },
                 specialRequests: { type: 'string' },
             },

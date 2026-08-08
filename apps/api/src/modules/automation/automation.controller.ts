@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Logger, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Logger, UseGuards, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { AutomationService } from './automation.service';
@@ -61,15 +61,15 @@ export class AutomationController {
     ) {
         const schemaName = await this.schemaFor(tenantId);
 
-        // Plan gate — count existing active rules and reject if tier limit is reached.
-        const existing = await this.automationService.getRules(schemaName);
-        const activeCount = Array.isArray(existing)
-            ? existing.filter((r: any) => r.active !== false).length
-            : 0;
-        await this.throttle.enforcePlanLimit(tenantId, 'automationRules', activeCount, 'reglas de automatización');
         await this.assertActionsAllowed(tenantId, payload);
 
-        const created = await this.automationService.createRule(schemaName, { ...payload, tenant_id: tenantId });
+        const created = await this.automationService.createRuleWithinQuota(
+            schemaName,
+            { ...payload, tenant_id: tenantId },
+            (currentCount) => this.throttle.enforcePlanLimit(
+                tenantId, 'automationRules', currentCount, 'reglas de automatización',
+            ),
+        );
         return { success: true, data: created };
     }
 
@@ -82,7 +82,15 @@ export class AutomationController {
         @Body() payload: { isActive?: boolean },
     ) {
         const schemaName = await this.schemaFor(tenantId);
-        const updated = await this.automationService.toggleRule(schemaName, ruleId, payload?.isActive);
+        const updated = await this.automationService.toggleRuleWithinQuota(
+            schemaName,
+            ruleId,
+            payload?.isActive,
+            (activeCount) => this.throttle.enforcePlanLimit(
+                tenantId, 'automationRules', activeCount, 'reglas de automatización activas',
+            ),
+        );
+        if (!updated) throw new NotFoundException('Automation rule not found');
         return { success: true, data: updated };
     }
 
@@ -96,7 +104,15 @@ export class AutomationController {
     ) {
         const schemaName = await this.schemaFor(tenantId);
         await this.assertActionsAllowed(tenantId, payload);
-        const updated = await this.automationService.updateRule(schemaName, ruleId, payload);
+        const updated = await this.automationService.updateRuleWithinQuota(
+            schemaName,
+            ruleId,
+            payload,
+            (activeCount) => this.throttle.enforcePlanLimit(
+                tenantId, 'automationRules', activeCount, 'reglas de automatización activas',
+            ),
+        );
+        if (!updated) throw new NotFoundException('Automation rule not found');
         return { success: true, data: updated };
     }
 

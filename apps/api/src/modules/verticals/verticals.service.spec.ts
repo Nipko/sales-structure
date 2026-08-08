@@ -5,6 +5,7 @@ import {
     VERTICAL_PROVISIONING_VERSION,
 } from './verticals.service';
 import { resolveVerticalSelection } from './vertical-identifiers';
+import { VERTICAL_CAPABILITY_MANIFEST_VERSION } from '@parallext/shared';
 
 describe('selectQuotaAwareVerticalDefaults', () => {
     const plans = {
@@ -155,6 +156,10 @@ describe('VerticalsService resumable bootstrap', () => {
             acquireLockToken: jest.fn().mockResolvedValue('lock-token'),
             renewLockToken: jest.fn().mockResolvedValue(true),
             releaseLockToken: jest.fn().mockResolvedValue(undefined),
+            get: jest.fn().mockResolvedValue(null),
+            getJson: jest.fn().mockResolvedValue(null),
+            setJson: jest.fn().mockResolvedValue(undefined),
+            del: jest.fn().mockResolvedValue(undefined),
         };
         throttle = {
             getTenantPlan: jest.fn().mockResolvedValue('pro'),
@@ -192,6 +197,14 @@ describe('VerticalsService resumable bootstrap', () => {
         expect(seedServices).not.toHaveBeenCalled();
         expect(seedAvailability).not.toHaveBeenCalled();
         expect((service as any).enableSimpleTool).toHaveBeenCalledWith(schemaName, 'properties');
+        expect(settings.verticalConfig).toMatchObject({
+            industry: 'turismo',
+            subType: 'hotel',
+            bookingEnabled: false,
+            manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+            effectiveCapabilities: expect.arrayContaining(['crm_pipeline', 'faq_search', 'nightly_booking']),
+        });
+        expect(settings.verticalConfig.effectiveCapabilities).not.toContain('appointment_booking');
     });
 
     it('does not leak turismo/hotel skipAgenda into pet_services/hotel', async () => {
@@ -204,6 +217,37 @@ describe('VerticalsService resumable bootstrap', () => {
         expect(seedAvailability).toHaveBeenCalledTimes(1);
         expect((service as any).enableSimpleTool).toHaveBeenCalledWith(schemaName, 'petServices');
         expect((service as any).enableSimpleTool).toHaveBeenCalledWith(schemaName, 'pets');
+        expect(settings.verticalConfig).toMatchObject({
+            manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+            effectiveCapabilities: expect.arrayContaining(['appointment_booking', 'pet_services', 'pet_records']),
+        });
+    });
+
+    it('backfills manifest metadata when getVerticalConfig reads a legacy cached config', async () => {
+        redis.getJson.mockResolvedValueOnce({
+            industry: 'turismo',
+            subType: 'hotel',
+            terminology: VERTICAL_REGISTRY.turismo.terminology,
+            sidebar: VERTICAL_REGISTRY.turismo.sidebar,
+            dashboard: VERTICAL_REGISTRY.turismo.dashboard,
+            bookingEnabled: false,
+        });
+
+        const config = await service.getVerticalConfig(tenantId);
+
+        expect(config).toMatchObject({
+            manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+            effectiveCapabilities: expect.arrayContaining(['nightly_booking']),
+        });
+        expect(config?.effectiveCapabilities).not.toContain('appointment_booking');
+        expect(settings.verticalConfig).toMatchObject({
+            manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+        });
+        expect(redis.setJson).toHaveBeenCalledWith(
+            `vertical:${tenantId}`,
+            expect.objectContaining({ manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION }),
+            600,
+        );
     });
 
     it('seeds seven real 24-hour slots for veterinaria/hospital_24h', async () => {

@@ -11,6 +11,14 @@ import { PERSONA_CACHE_CHANNELS } from '../../common/utils/persona-cache.util';
 import { escapeXmlAttribute, escapeXmlText } from '../../common/utils/xml.util';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
+import {
+    applyVerticalAgentDefaults,
+    INVALID_VERTICAL_AGENT_DEFAULTS,
+    resolveVerticalAgentDefaults,
+    VerticalAgentDefaultsError,
+} from './vertical-agent-defaults.util';
+import type { ResolvedVerticalAgentDefaults } from './vertical-agent-defaults.util';
+import { resolveOnboardingPersonaTemplate } from './onboarding-persona-resolver';
 
 /**
  * Persona Configuration Engine
@@ -648,6 +656,38 @@ export class PersonaService {
         }
     }
 
+    /**
+     * Resolve the tenant's post-onboarding vertical contract before creating an
+     * agent. This is intentionally read-only and runs before channel/default
+     * ownership changes, so an invalid or unknown manifest fails closed.
+     */
+    private async getVerticalDefaultsForNewAgent(tenantId: string): Promise<ResolvedVerticalAgentDefaults> {
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { settings: true },
+        });
+        if (!tenant) {
+            throw new BadRequestException({
+                error: INVALID_VERTICAL_AGENT_DEFAULTS,
+                reason: 'vertical_settings_missing',
+                message: 'No se encontró el tenant para resolver sus capacidades verticales.',
+            });
+        }
+
+        try {
+            return resolveVerticalAgentDefaults(tenant.settings);
+        } catch (error: any) {
+            if (error instanceof VerticalAgentDefaultsError) {
+                throw new BadRequestException({
+                    error: INVALID_VERTICAL_AGENT_DEFAULTS,
+                    reason: error.reason,
+                    message: error.message,
+                });
+            }
+            throw error;
+        }
+    }
+
     async createAgent(tenantId: string, data: {
         name: string;
         templateId?: string;
@@ -658,6 +698,10 @@ export class PersonaService {
         isDefault?: boolean;
         createdBy?: string;
     }): Promise<any> {
+        // Capability inheritance is a creation-only default. Resolve it before
+        // lazy DDL or any UPDATE to another agent so invalid tenant settings do
+        // not leave partial side effects.
+        const verticalDefaults = await this.getVerticalDefaultsForNewAgent(tenantId);
         await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
 
@@ -676,12 +720,25 @@ export class PersonaService {
             });
         }
 
+        // Merge vertical capabilities into the submitted config as DEFAULTS.
+        // Explicit values (including enabled:false) win. This does not read or
+        // patch any existing agent config.
+        const configWithVerticalDefaults = applyVerticalAgentDefaults(
+            data.configJson || {},
+            verticalDefaults,
+        );
+        const defaultBase = this.buildDefaultPersona(tenantId);
+        const mergedConfig = this.deepMergeConfig(defaultBase, configWithVerticalDefaults);
+        if (data.name && mergedConfig.persona) {
+            mergedConfig.persona.name = data.name;
+        }
+
         // Mismo gate que el camino legacy (`savePersonaFromYaml`): no se crea un agente
         // con la herramienta de citas encendida si el tenant todavía no tiene servicios
         // ni horarios de disponibilidad. Sin esto el agendador ofrece turnos, pide fecha
         // y responde "no hay disponibilidad" para siempre. Va ANTES de tocar los canales
         // de otros agentes para que un rechazo no deje efectos a medias.
-        if (data.configJson?.tools?.appointments?.enabled === true) {
+        if (mergedConfig?.tools?.appointments?.enabled === true) {
             await this.assertAppointmentsPrerequisites(tenantId, schemaName);
         }
 
@@ -719,13 +776,6 @@ export class PersonaService {
                     b,
                 );
             }
-        }
-
-        // Merge template config with default persona so all required fields exist
-        const defaultBase = this.buildDefaultPersona(tenantId);
-        const mergedConfig = this.deepMergeConfig(defaultBase, data.configJson || {});
-        if (data.name && mergedConfig.persona) {
-            mergedConfig.persona.name = data.name;
         }
 
         const rows = await this.prisma.$queryRawUnsafe(
@@ -2768,91 +2818,30 @@ export class PersonaService {
             tenantLang = (tenant?.language || 'es-CO').split('-')[0];
         } catch {}
         const templates = this.getBuiltinTemplates(tenantLang);
-        let template = templates.find(t => t.id === 'tpl_sales')!; // default
-
-        // If industry is provided, prefer the first vertical template for that industry
-        if (industry) {
-            const verticalTemplates = this.getVerticalTemplates(industry, tenantLang);
-            if (verticalTemplates && verticalTemplates.length > 0) {
-                template = verticalTemplates[0];
-                // El sub-tipo elige la plantilla correcta dentro de la vertical.
-                // Antes siempre ganaba [0]: un operador de tours recibía la persona
-                // genérica de ventas aunque el bootstrap le encendiera tools.tours —
-                // la persona activa ni mencionaba los tours que podía vender.
-                // El sub-tipo elige la plantilla dentro de la vertical. Sin este mapa
-                // el default es `templates[0]`, y por eso las plantillas RICAS eran
-                // literalmente inalcanzables desde el alta: la clínica dental recibía
-                // la recepción genérica, el gimnasio de clases recibía al vendedor de
-                // membresías, y la inmobiliaria recibía al vendedor en vez de la
-                // persona con la disciplina de "no inventes propiedades".
-                // Regla: solo se mapea cuando existe una plantilla MEJOR que la [0]
-                // para ese sub-tipo; si no, el default sigue siendo correcto.
-                const bySubType: Record<string, string> = {
-                    // turismo
-                    tours: 'tpl_turismo_tours',
-                    agencia_viajes: 'tpl_turismo_agencia',
-                    // pet_services / restaurantes
-                    tienda: 'tpl_pet_tienda',
-                    delivery: 'tpl_restaurante_delivery',
-                    dark_kitchen: 'tpl_restaurante_delivery',
-                    comida_rapida: 'tpl_restaurante_delivery',
-                    casual_dining: 'tpl_restaurante_reservas',
-                    // salud: el bootstrap enciende tools.treatments para dental, y la
-                    // única plantilla que instruye usarlas (más el protocolo de
-                    // urgencias y el recall) es tpl_salud_dental.
-                    dental: 'tpl_salud_dental',
-                    // inmobiliaria: listings trae la regla "no inventes propiedades"
-                    // y el uso de search_listings; ventas (la [0]) no las menciona.
-                    venta: 'tpl_inmobiliaria_listings',
-                    arriendo: 'tpl_inmobiliaria_listings',
-                    comercial: 'tpl_inmobiliaria_listings',
-                    // gimnasios: el de clases usa las tools de membresía y reserva.
-                    crossfit: 'tpl_gimnasio_clases',
-                    yoga_pilates: 'tpl_gimnasio_clases',
-                    cycling: 'tpl_gimnasio_clases',
-                    martial_arts: 'tpl_gimnasio_clases',
-                    // automotriz: el taller es AGENDA de servicio, no inventario.
-                    taller: 'tpl_automotriz_servicio',
-                    // education
-                    idiomas: 'tpl_educacion_inscripciones',
-                    universitaria: 'tpl_educacion_inscripciones',
-                    online: 'tpl_educacion_inscripciones',
-                    capacitacion: 'tpl_educacion_inscripciones',
-                    // seguros: el broker cotiza; la aseguradora directa también.
-                    broker: 'tpl_seguros_cotizador',
-                    aseguradora: 'tpl_seguros_cotizador',
-                    // moda_belleza: la boutique es RETAIL de ropa, no agenda —
-                    // mientras siga en esta vertical, al menos recibe la persona de
-                    // productos en vez de la agendadora de peluquería.
-                    boutique: 'tpl_belleza_productos',
-                    // fotografía
-                    bodas: 'tpl_foto_reservas',
-                    // servicios_profesionales
-                    abogados: 'tpl_legal_consulta',
-                };
-                const preferredId = subType ? bySubType[subType] : undefined;
-                if (preferredId) {
-                    const preferred = verticalTemplates.find((t: any) => t.id === preferredId);
-                    if (preferred) template = preferred;
-                }
-                this.logger.log(`Using vertical template "${template.id}" for industry "${industry}"${subType ? ` (subType: ${subType})` : ''}`);
-            }
+        const verticalTemplates = industry
+            ? (this.getVerticalTemplates(industry, tenantLang) || [])
+            : [];
+        const resolution = resolveOnboardingPersonaTemplate({
+            industry,
+            subType,
+            goals,
+            availableVerticalTemplateIds: verticalTemplates.map((candidate: any) => candidate.id),
+            availableBuiltinTemplateIds: templates.map((candidate: any) => candidate.id),
+        });
+        const template = [...verticalTemplates, ...templates]
+            .find((candidate: any) => candidate.id === resolution.templateId);
+        if (!template) {
+            // The pure resolver already verifies inventory. This final fence
+            // protects against a malformed template record with no stable id.
+            throw new Error(`Resolved onboarding persona template is unavailable: ${resolution.templateId}`);
         }
-
-        // Fall through to goal-based selection only when no vertical template was matched
-        if (!industry || !this.getVerticalTemplates(industry, tenantLang)) {
-            if (goals.includes('appointments')) {
-                template = templates.find(t => t.id === 'tpl_appointments') || template;
-            } else if (goals.includes('support')) {
-                template = templates.find(t => t.id === 'tpl_support') || template;
-            } else if (goals.includes('faq')) {
-                template = templates.find(t => t.id === 'tpl_faq') || template;
-            } else if (goals.includes('lead_qualification')) {
-                template = templates.find(t => t.id === 'tpl_lead_qualifier') || template;
-            } else if (goals.includes('sales')) {
-                template = templates.find(t => t.id === 'tpl_sales') || template;
-            }
-        }
+        this.logger.log(
+            `Onboarding persona resolver v${resolution.version}: template="${template.id}" source=${resolution.source}`
+            + `${industry ? ` industry="${industry}"` : ''}`
+            + `${subType ? ` subType="${subType}"` : ''}`
+            + `${resolution.matchedGoal ? ` goal="${resolution.matchedGoal}"` : ''}`
+            + `${resolution.gaps.length ? ` gaps=${resolution.gaps.join(',')}` : ''}`,
+        );
 
         const configJson = this.deepMergeConfig(this.buildDefaultPersona(tenantId), template.config_json);
 

@@ -87,7 +87,7 @@ export const INSURANCE_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'cancel_quote',
-        description: 'Cancel a pending insurance quote. Only quotes in "pending" status can be cancelled. Use when the customer decides not to proceed with a quoted plan.',
+        description: 'Withdraw an open insurance quote. Only quotes in "draft" or "sent" status can be withdrawn; the runtime records the withdrawal as "rejected". Use when the customer decides not to proceed with a quoted plan.',
         parameters: {
             type: 'object',
             properties: {

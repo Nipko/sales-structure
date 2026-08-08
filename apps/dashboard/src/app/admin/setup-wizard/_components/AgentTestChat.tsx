@@ -60,6 +60,9 @@ export default function AgentTestChat({ tenantId }: AgentTestChatProps) {
 
     return (
         <div className="flex flex-col h-[340px] rounded-xl border border-neutral-200 dark:border-white/10 overflow-hidden bg-white dark:bg-white/[0.02]">
+            <p className="border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                {t("limitations")}
+            </p>
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
                 {turns.length === 0 && (
                     <div className="h-full flex flex-col items-center justify-center text-center text-sm text-muted-foreground gap-2 px-4">

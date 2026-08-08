@@ -180,7 +180,7 @@ export class EvalService {
         for (const msg of (sc.messages || []).slice(0, MAX_SCENARIO_MESSAGES)) {
             const res = await this.agentTest.test(
                 tenantId, agentId,
-                { message: msg, conversationHistory: [...history], channelType: 'whatsapp' as any },
+                { message: msg, conversationHistory: [...history] },
                 { disableTools: true },
             );
             const reply = res?.reply || '';
@@ -281,7 +281,7 @@ export class EvalService {
         for (const msg of (sc.messages || []).slice(0, MAX_SCENARIO_MESSAGES)) {
             const res = await this.agentTest.test(
                 tenantId, agentId,
-                { message: msg, conversationHistory: [...history], channelType: 'whatsapp' as any },
+                { message: msg, conversationHistory: [...history] },
                 hasActions
                     ? { disableTools: false, evalMode: true, sandboxContactId: EVAL_SANDBOX_CONTACT_ID }
                     : { disableTools: true },

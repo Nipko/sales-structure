@@ -123,11 +123,21 @@ export class PublicBookingController {
         const svc = await this.servicesService.getById(t.schemaName, serviceId);
         if (!svc.isActive) throw new BadRequestException('Service not available');
 
-        const rawSlots = await this.appointmentsService.getBookableSlots(
-            t.schemaName, date, svc.durationMinutes, svc.bufferMinutes,
-            undefined, [], svc.maxConcurrent,
+        const calendarBusy = await this.calendarService.getFreeBusyForDate(
+            t.schemaName,
+            date,
+            { serviceId },
         );
-        const slots = rawSlots.map(s => ({ start: s.time, end: s.endTime, display: s.time }));
+        const rawSlots = await this.appointmentsService.getBookableSlots(
+            t.schemaName, date, serviceId, svc.durationMinutes, svc.bufferMinutes,
+            undefined, calendarBusy, svc.maxConcurrent,
+        );
+        const slots = rawSlots.map(s => ({
+            start: s.time,
+            end: s.endTime,
+            display: s.time,
+            staffId: s.agentId,
+        }));
         return { success: true, data: { service: svc, date, slots } };
     }
 
@@ -144,6 +154,7 @@ export class PublicBookingController {
             customerPhone: string;
             customerEmail?: string;
             notes?: string;
+            staffId?: string;
         },
     ) {
         // Rate limit: 10 bookings per minute per IP
@@ -181,6 +192,31 @@ export class PublicBookingController {
         const startAt = `${body.date}T${body.startTime}:00`;
         const endAt = `${body.date}T${endTime}:00`;
 
+        // Re-resolve the exact offered resource immediately before the canonical
+        // writer. The writer then serializes/rechecks again under advisory locks.
+        const calendarBusy = await this.calendarService.getFreeBusyForDate(
+            schemaName,
+            body.date,
+            { serviceId: body.serviceId, ...(body.staffId ? { staffId: body.staffId } : {}) },
+        );
+        const liveSlots = await this.appointmentsService.getBookableSlots(
+            schemaName,
+            body.date,
+            body.serviceId,
+            svc.durationMinutes,
+            svc.bufferMinutes,
+            body.staffId,
+            calendarBusy,
+            svc.maxConcurrent,
+        );
+        const selectedSlot = liveSlots.find((slot) => slot.time === body.startTime);
+        if (!selectedSlot) {
+            throw new BadRequestException({
+                error: 'appointment_slot_unavailable',
+                message: 'That time slot is no longer available.',
+            });
+        }
+
         // Find existing contact
         let contactId: string | null = null;
         const existingContacts = await this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -191,10 +227,16 @@ export class PublicBookingController {
 
         const appointment = await this.appointmentsService.create(schemaName, {
             contactId: contactId || undefined,
+            assignedTo: selectedSlot.agentId,
+            serviceId: body.serviceId,
             serviceName: svc.name,
             startAt,
             endAt,
             notes: body.notes,
+            customerName: body.customerName,
+            customerPhone: body.customerPhone,
+            customerEmail: body.customerEmail,
+            source: 'public_booking',
             metadata: {
                 source: 'public_booking',
                 customerName: body.customerName,
@@ -202,14 +244,6 @@ export class PublicBookingController {
                 customerEmail: body.customerEmail,
             },
         });
-
-        // Update source + customer fields
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE appointments SET source = 'public_booking',
-                    customer_name = $2, customer_phone = $3, customer_email = $4
-             WHERE id = $1::uuid`,
-            [appointment.id, body.customerName, body.customerPhone, body.customerEmail || null],
-        );
 
         return {
             success: true,
@@ -219,6 +253,7 @@ export class PublicBookingController {
                 date: body.date,
                 startTime: body.startTime,
                 endTime,
+                staffId: selectedSlot.agentId,
             },
         };
     }

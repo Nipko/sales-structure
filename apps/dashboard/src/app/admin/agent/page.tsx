@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   Bot, Plus, Copy, MoreVertical, Star, Trash2,
-  MessageSquare, Instagram, Facebook, Send, Phone,
+  MessageSquare, Instagram, Facebook, Send, Phone, Globe2,
   Clock, Shield, Wrench, BookmarkPlus, CheckCircle, AlertTriangle, X, Sparkles,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -24,6 +24,7 @@ const CHANNEL_META: Record<string, { label: string; icon: React.ElementType; col
   instagram: { label: "Instagram", icon: Instagram,     color: "text-pink-500" },
   messenger: { label: "Facebook",  icon: Facebook,      color: "text-blue-500" },
   telegram:  { label: "Telegram",  icon: Send,          color: "text-sky-500" },
+  web_widget:{ label: "Web Widget",icon: Globe2,        color: "text-violet-500" },
   // sms: hidden until integration is ready
 };
 

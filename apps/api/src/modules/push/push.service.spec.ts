@@ -20,7 +20,6 @@ describe('PushService outbound endpoint policy', () => {
         'https://updates.push.services.mozilla.com/wpush/v2/subscription-id',
         'https://web.push.apple.com/subscription-id',
         'https://wns2-bl2p.notify.windows.com/w/?token=subscription-id',
-        'https://standards-compliant-push.example/subscription-id',
     ])('accepts and pins a public HTTPS push endpoint: %s', async (endpoint) => {
         const target = await prepareTrustedWebPushTarget(endpoint);
         expect(target.url.toString()).toBe(endpoint);
@@ -33,6 +32,8 @@ describe('PushService outbound endpoint policy', () => {
         'https://fcm.googleapis.com:8443/fcm/send/id',
         'https://127.0.0.1/push',
         'https://metadata.google.internal/latest/meta-data',
+        'https://standards-compliant-push.example/subscription-id',
+        'https://fcm.googleapis.com.attacker.example/subscription-id',
     ])('rejects unsafe push endpoint syntax before delivery: %s', async (endpoint) => {
         await expect(prepareTrustedWebPushTarget(endpoint)).rejects.toBeInstanceOf(BadRequestException);
     });
@@ -43,16 +44,16 @@ describe('PushService outbound endpoint policy', () => {
             { address: '169.254.169.254', family: 4 },
         ] as any);
 
-        await expect(prepareTrustedWebPushTarget('https://push.example/subscription-id'))
+        await expect(prepareTrustedWebPushTarget('https://fcm.googleapis.com/subscription-id'))
             .rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('normalizes and validates the endpoint before persistence', async () => {
-        const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([{ endpoint: 'https://push.example/subscription-id' }]) } as any;
+        const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([{ endpoint: 'https://fcm.googleapis.com/subscription-id' }]) } as any;
         const service = new PushService(prisma, { get: jest.fn() } as any);
 
         await service.subscribe('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222', {
-            endpoint: 'https://PUSH.EXAMPLE/subscription-id',
+            endpoint: 'https://FCM.GOOGLEAPIS.COM/subscription-id',
             keys: { p256dh: 'public-key', auth: 'auth-secret' },
         });
 
@@ -60,7 +61,7 @@ describe('PushService outbound endpoint policy', () => {
             expect.any(String),
             '11111111-1111-4111-8111-111111111111',
             '22222222-2222-4222-8222-222222222222',
-            'https://push.example/subscription-id',
+            'https://fcm.googleapis.com/subscription-id',
             JSON.stringify({ p256dh: 'public-key', auth: 'auth-secret' }),
         );
     });
@@ -73,7 +74,7 @@ describe('PushService outbound endpoint policy', () => {
             '11111111-1111-4111-8111-111111111111',
             '22222222-2222-4222-8222-222222222222',
             {
-                endpoint: 'https://push.example/subscription-id',
+                endpoint: 'https://fcm.googleapis.com/subscription-id',
                 keys: { p256dh: 'public-key', auth: 'auth-secret' },
             },
         )).rejects.toBeInstanceOf(ConflictException);
@@ -95,5 +96,30 @@ describe('PushService outbound endpoint policy', () => {
             '11111111-1111-4111-8111-111111111111',
             '22222222-2222-4222-8222-222222222222',
         );
+    });
+
+    it('paginates tenant-role subscriptions instead of dropping a dispatch above the memory cap', async () => {
+        const firstPage = Array.from({ length: 100 }, (_, index) => ({
+            id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+        }));
+        const secondPage = [{ id: '11111111-1111-4111-8111-111111111111' }];
+        const prisma = {
+            $queryRawUnsafe: jest.fn()
+                .mockResolvedValueOnce(firstPage)
+                .mockResolvedValueOnce(secondPage),
+        } as any;
+        const service = new PushService(prisma, { get: jest.fn() } as any);
+        const dispatch = jest.spyOn(service as any, 'dispatch')
+            .mockResolvedValueOnce(100)
+            .mockResolvedValueOnce(1);
+
+        await expect(service.sendToTenantRole(
+            '22222222-2222-4222-8222-222222222222',
+            'tenant_agent',
+            { title: 'Title', body: 'Body' },
+        )).resolves.toBe(101);
+
+        expect(dispatch).toHaveBeenCalledTimes(2);
+        expect(prisma.$queryRawUnsafe.mock.calls[1][3]).toBe(firstPage[99].id);
     });
 });

@@ -1,6 +1,7 @@
 # Plan maestro de pruebas de las 18 verticales
 
-**Corte:** 6 de agosto de 2026  
+**Corte de diseño:** 6 de agosto de 2026
+**Estado reconciliado:** 8 de agosto de 2026
 **Auditoría asociada:** [`vertical-system-audit-2026-08.md`](./vertical-system-audit-2026-08.md)  
 **Universo:** 18 verticales, 75 subtipos canónicos, `otro`, 4 idiomas, 5 planes y 7 superficies conversacionales
 
@@ -17,6 +18,23 @@ Construir una evidencia repetible de que cada vertical:
 - no regresa cuando se modifica código horizontal compartido.
 
 Este plan sirve tanto para validar el estado actual como para aceptar las correcciones futuras. Los casos que hoy describen una capacidad aún inexistente deben registrarse como **`blocked_by: VERT-*`**, nunca ocultarse ni marcarse como aprobados.
+
+### Estado real de ejecución al 8 de agosto
+
+Esta tabla separa el diseño de pruebas de las suites que existen y fueron ejecutadas localmente:
+
+| Capa | Estado actual | Falta para certificar |
+|---|---|---|
+| T0 — contrato estático | Parcial: 1.520/1.520; manifest/resolver, product mode, locales, planes, terminales `won/lost`, slugs, rutas, moneda/duración, capability↔tool group y registry positivo de cinco claims cuantitativos | Migrar copy narrativo al registry y verificar existencia/permiso de todas las rutas |
+| T1 — unit | Cobertura focal amplia para P0/P1 corregidos | Cobertura total y umbral medido por módulo |
+| T2 — provisioning | Simulado/unitario | Bootstrap PostgreSQL/Redis real: 380 bases y 1.520 localizados |
+| T3 — API/seguridad | Guards y servicios focales | HTTP real, cuatro roles, dos tenants y pruebas de PII |
+| T4 — tools | 92/92 tools estáticas clasificadas; `getMissingToolControls()` = 0 y enforcement central A0–A4/ledger/confirmación/approval | PostgreSQL real, carreras/recovery, adapters de pago y revisión explícita de cada MCP opaco |
+| T5 — IA | Prompt/XML, Agent Test seguro, sandbox lifecycle skeleton, NBA readiness y media-consent fail-closed | Provisioner sandbox real, matriz conversacional, canal/media consentido y real-model en cuatro idiomas |
+| T6 — CRM/automation/analytics | Outcomes, triggers y agregadores con unitarias focales | Reconciliación DB/eventos/KPIs E2E |
+| T7 — dashboard | Resolver subtype-aware: 76 configuraciones/18 verticales | Playwright, accesibilidad, screenshots y dependencia local `onborda` |
+| T8 — integraciones | Health, ownership y calendar outbox/reconciliation unitarios | Sandboxes/proveedores reales, rate limits, expiry y webhooks |
+| T9 — resiliencia | Concurrencia focal de locks/CAS y transporte push aislado/acotado | Load, servidor malicioso staging, chaos, failover y SLO medidos |
 
 ## 2. Principios de prueba
 
@@ -38,13 +56,17 @@ Este plan sirve tanto para validar el estado actual como para aceptar las correc
 El registro contiene 75 subtipos canónicos; `otro` agrega una configuración sin subtipo. Los planes efectivos del código son `emprendedor`, `starter`, `pro`, `enterprise` y `custom`.
 
 ```text
-76 configuraciones vertical/subtipo
-× 4 idiomas (es, en, pt, fr)
-× 5 planes
-= 1.520 escenarios de contrato y bootstrap
+Contrato estático ejecutado:
+76 configuraciones × 4 idiomas × 5 planes = 1.520
+
+Bootstrap DB base pendiente:
+76 configuraciones × 5 planes = 380
+
+Bootstrap DB localizado pendiente:
+76 configuraciones × 4 idiomas × 5 planes = 1.520
 ```
 
-Los **1.520** deben ejecutarse automáticamente. No se sustituyen por pairwise porque aquí no interviene un modelo estocástico y los errores de colisión/cuota son precisamente combinatorios.
+Los **1.520 contratos estáticos** ya se ejecutan automáticamente; el reporte marca expresamente `bootstrapCertified:false`. Los **1.520 bootstraps DB localizados** siguen pendientes y no se sustituyen por pairwise porque los errores de colisión/cuota son precisamente combinatorios.
 
 ### 3.2 Matriz conversacional
 
@@ -138,7 +160,7 @@ Se ejecutan en cada PR y no requieren infraestructura.
 | VT-CON-006 | Slugs de etapas únicos y probabilidades 0–100 | Validación de schema |
 | VT-CON-007 | Servicios tienen duración > 0, moneda válida y precio coherente | El paquete de fin de semana no puede ser cita de 0 minutos |
 | VT-CON-008 | Capability de booking corresponde a su modelo | appointment/nightly/class/order/work-order/project/case explícitos |
-| VT-CON-009 | Tools requeridas existen en definición, registro y executor | Paridad por nombre y schema; hoy la base esperada son 90 estáticas |
+| VT-CON-009 | Tools requeridas existen en definición, registro y executor | Paridad por nombre y schema; hoy la base esperada son 92 estáticas |
 | VT-CON-010 | Toda tool tiene clasificación y assurance level | `read/write/sensitive`, A0–A4, idempotencia y ownership |
 | VT-CON-011 | Toda ruta de UI declarada existe | Sin `/inventory` para vehículos ni links inválidos |
 | VT-CON-012 | KPIs declarados existen, tienen icono y semántica | Sin fallback visual silencioso ni alias genérico incorrecto |
@@ -376,13 +398,14 @@ Las métricas deben segmentarse por vertical, subtipo, idioma, modelo y versión
 
 ### Pruebas específicas del Agent Test
 
-- Cero cambio en todas las tablas y colas antes/después.
+- Cero cambio en tablas, colas, eventos y caches **de dominio** antes/después.
+- Deltas operacionales permitidos solo si son exactos y verificables: cuota de mensaje IA, tokens, costo y métricas de proveedor.
 - Contacto sandbox UUID válido.
-- Mismo prompt/contexto/tool set que producción, salvo reemplazos declarados.
-- Booking Engine incluido o limitación visible y bloqueante.
+- Mismo ensamblador y contrato seguro de contexto que producción; allowlist/diferencias declaradas y comprobadas.
+- Booking Engine, writers, MCP, integraciones y entrega por canal quedan excluidos y la limitación debe ser visible.
 - Debug panel redacta PII/secrets.
 - Muestra fuente, args redactados, resultado, latencia, costo y error.
-- Puede simular idioma, perfil, canal, hora, documentos, imágenes y audio.
+- Hoy puede simular mensaje/historial, idioma detectado, perfil, RAG y tools seguras. Canal, hora controlada, documentos, imágenes y audio quedan `blocked_by: VERT-P1-04` hasta existir sandbox real.
 
 ## 5.7 T6 — CRM, automatización y analítica
 
@@ -592,6 +615,8 @@ Todo defecto incluye:
 
 ## 10. Quality gates y criterios de salida
 
+Los gates siguientes siguen siendo el **criterio objetivo**. `deploy.yml` bloquea con claims, matriz, contratos de decisiones, typechecks, lint, migraciones y boot smoke. `vertical-quality.yml` ya cablea PR, integración/nightly, weekly/release y artefactos JSON/JUnit. Aun así, el wiring no equivale a ejecución observada: faltan varias suites DB de 1.520 escenarios, eval real-model, sandboxes externos, performance, chaos, rollback y canary; post-deploy tampoco está automatizado.
+
 ### Gate de PR
 
 - T0 y unit 100%.
@@ -642,7 +667,7 @@ Todo defecto incluye:
 - Evidencia de integración o declaración clara de modo standalone.
 - Runbook, alertas y dashboard operativo.
 
-## 11. Cadencia CI/CD
+## 11. Cadencia CI/CD objetivo
 
 | Momento | Suites | Presupuesto sugerido |
 |---|---|---:|
@@ -716,7 +741,7 @@ Al corte inicial de esta auditoría, antes de las remediaciones de Ola 0:
 - API `tsc --noEmit`: pasa.
 - API Jest: 52 pruebas pasan; una falla en `crm.controller.spec.ts` por dependencia de test faltante.
 - App bootstrap: pasa con secreto JWT de prueba, pero no es hermético y deja handles.
-- Dashboard typecheck: no ejecutable en este checkout por dependencia local `onborda` ausente.
+- Dashboard typecheck: no era ejecutable en el corte histórico por `onborda`; la dependencia ya forma parte del package/lock y el typecheck actual pasa.
 - Tests específicos de verticales: **0**.
 - Contrato automático tool definitions↔executor: **0**, aunque la inspección estática encontró 90↔90.
 - Certificaciones E2E: **0/18**.

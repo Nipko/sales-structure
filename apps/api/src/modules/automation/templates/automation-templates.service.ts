@@ -1,5 +1,6 @@
-import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TenantThrottleService } from '../../throttle/tenant-throttle.service';
 import { AutomationService } from '../automation.service';
 import { seedAutomationTemplates } from './seed-templates';
 
@@ -11,6 +12,7 @@ export class AutomationTemplatesService implements OnModuleInit {
     constructor(
         private readonly prisma: PrismaService,
         private readonly automationService: AutomationService,
+        private readonly throttle: TenantThrottleService,
     ) {}
 
     async onModuleInit() {
@@ -68,20 +70,39 @@ export class AutomationTemplatesService implements OnModuleInit {
     ) {
         const template = await this.getTemplate(templateId);
 
-        const triggerConfig = this.substituteVariables(template.triggerConfig, variables);
-        const actionsConfig = this.substituteVariables(template.actionsConfig, variables);
+        const resolvedVariables = this.resolveVariables(template.variables, variables);
+
+        const triggerConfig = this.substituteVariables(template.triggerConfig, resolvedVariables);
+        const actionsConfig = this.substituteVariables(template.actionsConfig, resolvedVariables);
+        this.assertResolved(actionsConfig);
+
+        const actions = Array.isArray(actionsConfig) ? actionsConfig : [];
+        if (actions.some((action: any) => action?.type === 'http_request')
+            && !(await this.throttle.isFeatureEnabled(tenantId, 'httpRequestAction'))) {
+            throw new ForbiddenException({
+                error: 'feature_not_available',
+                feature: 'httpRequestAction',
+                message: 'La plantilla requiere solicitudes HTTP, no disponibles en el plan actual.',
+            });
+        }
 
         const nameObj = template.name as any;
         const ruleName = nameObj?.es || nameObj?.en || 'Template Rule';
 
-        const rule = await this.automationService.createRule(schemaName, {
-            tenant_id: tenantId,
-            name: ruleName,
-            trigger_type: (triggerConfig as any).trigger_type || 'lead.captured',
-            conditions_json: (triggerConfig as any).conditions || [],
-            actions_json: actionsConfig,
-            active: false,
-        });
+        const rule = await this.automationService.createRuleWithinQuota(
+            schemaName,
+            {
+                tenant_id: tenantId,
+                name: ruleName,
+                trigger_type: (triggerConfig as any).trigger_type,
+                conditions_json: (triggerConfig as any).conditions || [],
+                actions_json: actions,
+                active: false,
+            },
+            (currentCount) => this.throttle.enforcePlanLimit(
+                tenantId, 'automationRules', currentCount, 'reglas de automatización',
+            ),
+        );
 
         await this.incrementPopularity(templateId);
 
@@ -101,5 +122,39 @@ export class AutomationTemplatesService implements OnModuleInit {
             return variables[key] !== undefined ? String(variables[key]) : `{{${key}}}`;
         });
         return JSON.parse(substituted);
+    }
+
+    private resolveVariables(definitions: unknown, supplied: Record<string, any>): Record<string, any> {
+        const resolved: Record<string, any> = {};
+        const required: string[] = [];
+        for (const definition of Array.isArray(definitions) ? definitions : []) {
+            const key = typeof definition?.key === 'string' ? definition.key : '';
+            if (!key) continue;
+            if (definition.default !== undefined) resolved[key] = definition.default;
+            if (definition.default === '' || definition.default == null) required.push(key);
+        }
+        for (const [key, value] of Object.entries(supplied || {})) resolved[key] = value;
+
+        const missing = required.filter((key) => String(resolved[key] ?? '').trim() === '');
+        if (missing.length) {
+            throw new BadRequestException({
+                error: 'automation_template_variables_required',
+                missingVariables: missing,
+                message: 'Completa las variables obligatorias antes de instalar la plantilla.',
+            });
+        }
+        return resolved;
+    }
+
+    private assertResolved(config: unknown): void {
+        const unresolved = [...JSON.stringify(config).matchAll(/\{\{(\w+)\}\}/g)]
+            .map((match) => match[1]);
+        if (unresolved.length) {
+            throw new BadRequestException({
+                error: 'automation_template_variables_unresolved',
+                missingVariables: [...new Set(unresolved)],
+                message: 'La plantilla contiene variables sin resolver.',
+            });
+        }
     }
 }

@@ -114,6 +114,7 @@
       "tibio": "Tibio",
       "caliente": "Caliente",
       "listo_cierre": "Listo para cierre",
+      "listo_para_cierre": "Listo para cierre",
       "ganado": "Ganado",
       "perdido": "Perdido",
       "no_interesado": "No interesado"
@@ -550,7 +551,7 @@
       "phoneCol": "Teléfono (Requerido)",
       "phoneColDesc": "El teléfono es la clave única y obligatoria del contacto. Se limpia de espacios y se normaliza a formato internacional E.164. Ejemplo: +573001234567 o 3001234567.",
       "stageCol": "Etapa (Opcional)",
-      "stageColDesc": "Etapas válidas: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
+      "stageColDesc": "Etapas válidas: nuevo, contactado, respondio, calificado, tibio, caliente, listo_para_cierre, ganado, perdido, no_interesado.",
       "exampleHeader": "Ejemplo de pegado directo (delimitador por punto y coma):",
       "exampleBody": "nombre;telefono;email;etapa;empresa;es_vip\nJuan Perez;3001234567;juan@perez.com;caliente;Acme S.A.;sí\nMaria Gomez;+573119876543;maria@gomez.com;nuevo;;no",
       "dropzoneTitle": "Arrastra tu archivo de Excel (.xlsx, .xls) o CSV aquí",
@@ -719,7 +720,7 @@
         "firstName": "Primer nombre del contacto.",
         "lastName": "Apellidos del contacto.",
         "email": "Correo electrónico de contacto.",
-        "stage": "Etapa del CRM. Valores válidos: nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado.",
+        "stage": "Etapa del CRM. Valores válidos: nuevo, contactado, respondio, calificado, tibio, caliente, listo_para_cierre, ganado, perdido, no_interesado.",
         "company": "Nombre de la empresa. Se creará automáticamente si no existe en el sistema.",
         "source": "Canal o fuente de adquisición del lead (ej. whatsapp, facebook, instagram).",
         "vip": "Indicar si es VIP. Valores válidos: sí, no, verdadero, falso, true, false.",
@@ -2330,6 +2331,13 @@
     "stageName": "Nombre de la etapa",
     "terminalYes": "Etapa final (cerrada)",
     "terminalNo": "Etapa activa",
+    "terminalOutcome": "Resultado de la etapa final",
+    "outcomePlaceholder": "Resultado",
+    "outcomeWon": "Ganada",
+    "outcomeLost": "Perdida",
+    "terminalOutcomeRequired": "Define si la etapa final \"{stage}\" representa una oportunidad ganada o perdida.",
+    "saveSuccess": "Pipeline guardado de forma atómica.",
+    "saveError": "No se guardó ningún cambio. Revisa las etapas en uso o los resultados finales.",
     "addStage": "Agregar etapa",
     "unsavedChanges": "Tienes cambios sin guardar",
     "reset": "Restaurar predeterminados",
@@ -3362,7 +3370,8 @@
     },
     "test": {
       "title": "Probar agente",
-      "subtitle": "Simula una conversación y ve el prompt completo que recibe el LLM",
+      "subtitle": "Previsualiza una conversación y el prompt que recibe el LLM",
+      "limitations": "Preview seguro: usa IA real y consume cuota, pero no ejecuta reservas, escrituras, MCP, integraciones ni entrega por canal.",
       "reset": "Reiniciar",
       "startHint": "Escribe un mensaje para comenzar",
       "inputPlaceholder": "Escribe como si fueras un cliente...",
@@ -4878,6 +4887,7 @@
       "title": "Pruébalo",
       "subtitle": "Chatea con tu agente y míralo responder con la información de tu negocio.",
       "tryExamples": "Prueba: «¿Qué precios manejan?» o «¿Tienen disponibilidad?»",
+      "limitations": "Preview seguro con IA real: consume cuota y no crea reservas ni otras operaciones.",
       "placeholder": "Escribe como si fueras un cliente…",
       "send": "Enviar",
       "error": "No se pudo enviar el mensaje. Inténtalo de nuevo."
@@ -4935,6 +4945,10 @@
         "inventory": {
           "name": "Inventario",
           "desc": "Carga tu stock para que el agente informe disponibilidad y precios."
+        },
+        "vehicles": {
+          "name": "Vehículos",
+          "desc": "Carga tus vehículos para que el agente informe disponibilidad, precios y opciones."
         },
         "treatments": {
           "name": "Tratamientos y planes",
@@ -5123,6 +5137,7 @@
       "connectChannel": "Conectar un canal de mensajería",
       "sendTestMessage": "Enviar mensaje de prueba",
       "addKnowledgeBase": "Agregar Knowledge Base (FAQs)",
+      "configureVerticalCatalog": "Configurar el catálogo operativo",
       "inviteTeam": "Invitar equipo",
       "connectInstagram": "Conectar Instagram",
       "createAutomation": "Crear reglas de automatización",
@@ -9547,9 +9562,11 @@
       "salud": "Salud",
       "inmobiliaria": "Inmobiliaria",
       "restaurante": "Restaurante",
+      "restaurantes": "Restaurantes",
       "automotriz": "Automotriz",
       "turismo": "Turismo",
       "educacion": "Educación",
+      "education": "Educación",
       "seguros": "Seguros",
       "legal": "Legal",
       "retail": "Retail",

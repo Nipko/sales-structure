@@ -6,13 +6,28 @@ import { EmailService } from '../email/email.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
-import { NormalizedMessage, TenantConfig } from '@parallext/shared';
+import {
+    ConversationAssignedEvent,
+    NormalizedMessage,
+    StructuredHandoffSummary,
+    TenantConfig,
+} from '@parallext/shared';
 import { handoffAgentI18n } from './handoff-i18n';
+import {
+    buildDeterministicHandoffSummary,
+    formatLegacyHandoffSummary,
+    HandoffMessageEvidence,
+    HandoffSummaryContext,
+    HandoffTraceEvidence,
+    parseLlmHandoffSummary,
+    sanitizeHandoffText,
+} from './handoff-summary.util';
 
 export interface HandoffResult {
     handoffId: string;
     assignedTo?: string;
     summary: string;
+    structuredSummary: StructuredHandoffSummary;
     reason: string;
 }
 
@@ -21,6 +36,9 @@ export interface HandoffEscalatedEvent {
     conversationId: string;
     reason: string;
     summary: string;
+    structuredSummary: StructuredHandoffSummary;
+    traceId: string;
+    schemaName: string;
     assignedTo: string | null;
     assignedAgentName?: string;
     contactName?: string;
@@ -29,9 +47,16 @@ export interface HandoffEscalatedEvent {
     handoffTriggeredAt: string;
 }
 
+interface AutoAssignment {
+    agentId: string;
+    contactId?: string;
+    phone?: string;
+}
+
 @Injectable()
 export class HandoffService {
     private readonly logger = new Logger(HandoffService.name);
+    private readonly handoffSchemaReady = new Set<string>();
 
     constructor(
         private prisma: PrismaService,
@@ -124,19 +149,33 @@ export class HandoffService {
         reason: string,
     ): Promise<HandoffResult> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        await this.ensureStructuredHandoffColumns(schemaName);
         // Tenant language drives the email template variant (fallback 'es').
         // These are agent/admin-facing notifications, so tenant language is the
         // right choice. TODO(i18n): for customer-facing emails use the
         // conversation's detected language instead.
         const lang = await this.getTenantLanguage(tenantId);
 
-        // 1. Build AI summary from recent messages
-        const recentMessages = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT direction, content_text FROM messages
+        // 1. Build a bounded, evidence-linked summary. The legacy string is
+        // retained for existing inbox/email consumers.
+        const recentMessages = await this.prisma.executeInTenantSchema<HandoffMessageEvidence[]>(schemaName,
+            `SELECT id::text, direction, content_text, metadata, created_at FROM messages
              WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 20`,
             [conversationId],
         );
-        const summary = await this.generateAISummary(recentMessages || [], reason, tenantId, lang);
+        const traceEvidence = await this.loadHandoffTraceEvidence(schemaName, conversationId);
+        const structuredSummary = await this.generateStructuredSummary({
+            tenantId,
+            conversationId,
+            reason,
+            language: lang,
+            messages: recentMessages || [],
+            messageMetadata: message.metadata,
+            ...traceEvidence,
+            generatedAt: new Date().toISOString(),
+        });
+        const summary = formatLegacyHandoffSummary(structuredSummary);
+        const handoffTriggeredAt = structuredSummary.generatedAt;
 
         // 2. Update conversation status to waiting_human
         await this.prisma.executeInTenantSchema(schemaName,
@@ -147,14 +186,19 @@ export class HandoffService {
                      '{handoff}',
                      $2::jsonb
                  ),
+                 handoff_summary = $3::jsonb,
+                 handoff_trace_id = $4,
+                 handoff_summary_generated_at = $5::timestamptz,
                  updated_at = NOW()
              WHERE id = $1::uuid`,
             [conversationId, JSON.stringify({
                 reason,
                 summary,
-                startedAt: new Date().toISOString(),
+                structuredSummary,
+                traceId: structuredSummary.traceId,
+                startedAt: handoffTriggeredAt,
                 contactId: message.contactId,
-            })],
+            }), JSON.stringify(structuredSummary), structuredSummary.traceId, structuredSummary.generatedAt],
         );
 
         // 2b. Mark conversation as handed off for AI resolution tracking
@@ -184,7 +228,8 @@ export class HandoffService {
         const contact = contactInfo?.[0] || {};
 
         // 5. Try to auto-assign to an available agent (skill-based routing)
-        const assignedTo = await this.tryAutoAssign(tenantId, schemaName, conversationId, reason);
+        const autoAssignment = await this.tryAutoAssign(tenantId, schemaName, conversationId, reason);
+        const assignedTo = autoAssignment?.agentId || null;
 
         // 6. Get assigned agent name for notifications
         let assignedAgentName: string | undefined;
@@ -197,18 +242,10 @@ export class HandoffService {
             assignedAgentName = agentRows?.[0]?.name;
             assignedAgentEmail = agentRows?.[0]?.email;
 
-            // Create conversation assignment
-            await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO conversation_assignments (conversation_id, agent_id, assigned_at)
-                 VALUES ($1::uuid, $2::uuid, NOW())
-                 ON CONFLICT (conversation_id, agent_id) WHERE resolved_at IS NULL DO NOTHING`,
-                [conversationId, assignedTo],
-            ).catch(() => {}); // Table might not have unique constraint yet
         }
 
         // 7. Store handoff state in Redis for fast lookup
         const handoffId = `hoff_${Date.now()}`;
-        const handoffTriggeredAt = new Date().toISOString();
         await this.redis.set(
             `handoff:${tenantId}:${conversationId}`,
             JSON.stringify({
@@ -217,6 +254,9 @@ export class HandoffService {
                 startedAt: handoffTriggeredAt,
                 contactId: message.contactId,
                 assignedTo,
+                summary,
+                structuredSummary,
+                traceId: structuredSummary.traceId,
             }),
             86400,
         );
@@ -227,6 +267,9 @@ export class HandoffService {
             conversationId,
             reason,
             summary,
+            structuredSummary,
+            traceId: structuredSummary.traceId,
+            schemaName,
             assignedTo,
             assignedAgentName,
             contactName: contact.contact_name || message.contactId,
@@ -313,7 +356,13 @@ export class HandoffService {
             `Handoff executed: conversation=${conversationId}, reason=${reason}, assignedTo=${assignedTo || 'unassigned'}`,
         );
 
-        return { handoffId, assignedTo: assignedTo || undefined, summary, reason };
+        return {
+            handoffId,
+            assignedTo: assignedTo || undefined,
+            summary,
+            structuredSummary,
+            reason,
+        };
     }
 
     /**
@@ -376,7 +425,12 @@ export class HandoffService {
     /**
      * Try to auto-assign to an available agent (least-loaded)
      */
-    private async tryAutoAssign(tenantId: string, schemaName: string, conversationId: string, reason?: string): Promise<string | null> {
+    private async tryAutoAssign(
+        tenantId: string,
+        schemaName: string,
+        conversationId: string,
+        reason?: string,
+    ): Promise<AutoAssignment | null> {
         try {
             // 1. Get contact_id from the conversation
             const convRows = await this.prisma.executeInTenantSchema<any[]>(
@@ -462,12 +516,55 @@ export class HandoffService {
 
             if (agents?.length) {
                 const agent = agents[0];
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `UPDATE conversations SET assigned_to = $2::uuid, status = 'with_human' WHERE id = $1::uuid`,
-                    [conversationId, agent.id],
+                const assignedAt = new Date().toISOString();
+                const assignment = await this.prisma.transactionInTenantSchema(
+                    schemaName,
+                    async (query) => {
+                        const conversations = await query<Array<{ contact_id: string | null }>>(
+                            `UPDATE conversations
+                                SET assigned_to = $2::uuid, status = 'with_human', updated_at = NOW()
+                              WHERE id = $1::uuid
+                              RETURNING contact_id`,
+                            [conversationId, agent.id],
+                        );
+                        if (!conversations[0]) throw new Error(`Conversation ${conversationId} not found`);
+                        await query(
+                            `UPDATE conversation_assignments
+                                SET resolved_at = NOW()
+                              WHERE conversation_id = $1::uuid AND resolved_at IS NULL`,
+                            [conversationId],
+                        );
+                        await query(
+                            `INSERT INTO conversation_assignments (conversation_id, agent_id, assigned_at)
+                             VALUES ($1::uuid, $2::uuid, $3::timestamptz)`,
+                            [conversationId, agent.id, assignedAt],
+                        );
+                        const contactId = conversations[0].contact_id || undefined;
+                        const contacts = contactId
+                            ? await query<Array<{ phone: string | null }>>(
+                                `SELECT phone FROM contacts WHERE id = $1::uuid LIMIT 1`,
+                                [contactId],
+                            )
+                            : [];
+                        return {
+                            agentId: String(agent.id),
+                            contactId,
+                            phone: contacts[0]?.phone || undefined,
+                        } as AutoAssignment;
+                    },
                 );
+                this.emitConversationAssigned({
+                    tenantId,
+                    schemaName,
+                    conversationId,
+                    agentId: assignment.agentId,
+                    ...(assignment.contactId ? { contactId: assignment.contactId } : {}),
+                    ...(assignment.phone ? { phone: assignment.phone } : {}),
+                    assignmentSource: 'auto',
+                    assignedAt,
+                });
                 this.logger.log(`[AutoAssign] Automatically assigned conversation ${conversationId} to agent "${agent.name}" (Active Count=${agent.active_count}, Matching Skills=${agent.matching_skills_count})`);
-                return agent.id;
+                return assignment;
             }
         } catch (e: any) {
             this.logger.warn(`Auto-assign failed: ${e.message}`);
@@ -475,55 +572,105 @@ export class HandoffService {
         return null;
     }
 
-    private async generateAISummary(
-        messages: Array<{ direction: string; content_text: string }>,
-        reason: string,
-        tenantId: string,
-        lang?: string,
-    ): Promise<string> {
-        const i18n = handoffAgentI18n(lang);
-        const reversed = [...messages].reverse();
-        if (reversed.length === 0) return i18n.noMessagesText;
+    private emitConversationAssigned(event: ConversationAssignedEvent): void {
+        try {
+            this.eventEmitter.emit('conversation.assigned', event);
+        } catch (error: any) {
+            // The assignment transaction already committed. A listener failure
+            // must not make callers retry and create a second assignment row.
+            this.logger.error(`conversation.assigned listener failed: ${error.message}`);
+        }
+    }
 
+    private async ensureStructuredHandoffColumns(schemaName: string): Promise<void> {
+        if (this.handoffSchemaReady.has(schemaName)) return;
+        const statements = [
+            `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS handoff_summary JSONB`,
+            `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS handoff_trace_id VARCHAR(128)`,
+            `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS handoff_summary_generated_at TIMESTAMPTZ`,
+        ];
+        for (const statement of statements) {
+            await this.prisma.executeInTenantSchema(schemaName, statement);
+        }
+        this.handoffSchemaReady.add(schemaName);
+    }
+
+    private async loadHandoffTraceEvidence(
+        schemaName: string,
+        conversationId: string,
+    ): Promise<{ turnTrace: HandoffTraceEvidence | null; conversationTrace: HandoffTraceEvidence | null }> {
+        let turnTrace: HandoffTraceEvidence | null = null;
+        let conversationTrace: HandoffTraceEvidence | null = null;
+        try {
+            const rows = await this.prisma.executeInTenantSchema<HandoffTraceEvidence[]>(
+                schemaName,
+                `SELECT id::text, steps, created_at
+                   FROM turn_traces
+                  WHERE conversation_id = $1::uuid
+                  ORDER BY created_at DESC LIMIT 1`,
+                [conversationId],
+            );
+            turnTrace = rows?.[0] || null;
+        } catch (error: any) {
+            this.logger.debug(`No turn trace available for handoff ${conversationId}: ${error.message}`);
+        }
+        try {
+            const rows = await this.prisma.executeInTenantSchema<HandoffTraceEvidence[]>(
+                schemaName,
+                `SELECT id::text, kb_sources, created_at
+                   FROM conversation_traces
+                  WHERE conversation_id = $1::uuid
+                  ORDER BY created_at DESC LIMIT 1`,
+                [conversationId],
+            );
+            conversationTrace = rows?.[0] || null;
+        } catch (error: any) {
+            this.logger.debug(`No LLM trace available for handoff ${conversationId}: ${error.message}`);
+        }
+        return { turnTrace, conversationTrace };
+    }
+
+    private async generateStructuredSummary(
+        context: HandoffSummaryContext,
+    ): Promise<StructuredHandoffSummary> {
+        const fallback = buildDeterministicHandoffSummary(context);
+        if (context.messages.length === 0) return fallback;
+
+        const i18n = handoffAgentI18n(context.language);
         const { customer, assistant } = i18n.transcriptLabels;
-        const transcript = reversed.map(m => {
-            const role = m.direction === 'inbound' ? customer : assistant;
-            return `${role}: ${(m.content_text || '').substring(0, 300)}`;
-        }).join('\n');
+        const transcript = [...context.messages]
+            .reverse()
+            .map((message) => {
+                const role = message.direction === 'inbound' ? customer : assistant;
+                return `${role}: ${sanitizeHandoffText(message.content_text, 300)}`;
+            })
+            .join('\n')
+            .slice(0, 6_000);
 
         try {
             const response = await this.llmRouter.execute({
                 model: 'gpt-4o-mini',
                 messages: [{ role: 'user', content: transcript }],
                 systemPrompt: [
-                    'You are an internal tool that creates brief handoff summaries for human agents.',
-                    'Analyze the conversation and produce a structured summary in Spanish with:',
-                    '1. **Tema**: What the customer wants (1 sentence)',
-                    '2. **Contexto**: Key facts mentioned (2-3 bullets)',
-                    '3. **Estado**: Where the conversation left off',
-                    `4. **Razón de escalación**: ${reason}`,
-                    'Be concise — max 150 words. No greetings, no filler.',
+                    'You create concise internal handoff summaries from the supplied transcript only.',
+                    'Return one valid JSON object and no markdown.',
+                    'Required keys: customerIntent (string), knownFacts (string[]), pendingActions (string[]), confidence (number 0..1), uncertainty (string[]).',
+                    'Do not include secrets, credentials, emails, phone numbers, payment-card or identity-document numbers.',
+                    'Do not invent facts, tool outcomes, citations, identifiers, or actions already completed.',
+                    `Output language: ${sanitizeHandoffText(context.language, 12)}. Escalation reason: ${sanitizeHandoffText(context.reason, 200)}.`,
                 ].join('\n'),
-                temperature: 0.2,
-                maxTokens: 400,
-                tenantId,
+                temperature: 0.1,
+                maxTokens: 500,
+                tenantId: context.tenantId,
+                traceContext: { conversationId: context.conversationId, stage: 'handoff_summary' },
             });
-
-            if (response.content) return response.content;
-        } catch (err: any) {
-            this.logger.warn(`AI summary failed, using fallback: ${err.message}`);
+            if (response.content) {
+                const parsed = parseLlmHandoffSummary(response.content, fallback);
+                if (parsed) return parsed;
+            }
+        } catch (error: any) {
+            this.logger.warn(`AI handoff summary failed, using deterministic fallback: ${error.message}`);
         }
-
-        return this.buildFallbackSummary(reversed, lang);
-    }
-
-    private buildFallbackSummary(messages: Array<{ direction: string; content_text: string }>, lang?: string): string {
-        const i18n = handoffAgentI18n(lang);
-        const { customer, ai } = i18n.transcriptLabels;
-        const lines = messages.map(m => {
-            const prefix = m.direction === 'inbound' ? customer : ai;
-            return `${prefix}: ${(m.content_text || '').substring(0, 150)}`;
-        });
-        return `${i18n.fallbackSummaryHeader(messages.length)}\n${lines.join('\n')}`;
+        return fallback;
     }
 }

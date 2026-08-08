@@ -134,7 +134,7 @@ export default function ContactsPage() {
                     // Map Real Lead data to UI variables we use
                     const mappedLeads = data.data.map((l: any) => {
                        let segmentType = "new";
-                       if (["calificado", "tibio", "caliente", "listo_cierre"].includes(l.stage)) segmentType = "qualified";
+                       if (["calificado", "tibio", "caliente", "listo_para_cierre", "listo_cierre"].includes(l.stage)) segmentType = "qualified";
                        if (["ganado"].includes(l.stage)) segmentType = "customer";
                        if (["perdido", "no_interesado"].includes(l.stage)) segmentType = "churned";
                        if (["contactado", "respondio"].includes(l.stage)) segmentType = "lead";
@@ -493,7 +493,7 @@ export default function ContactsPage() {
                                 className="px-3 py-1.5 rounded-lg border border-neutral-200 bg-white text-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 outline-none"
                             >
                                 <option value="">—</option>
-                                {["nuevo","contactado","respondio","calificado","tibio","caliente","listo_cierre","ganado","perdido","no_interesado"].map(s => (
+                                {["nuevo","contactado","respondio","calificado","tibio","caliente","listo_para_cierre","ganado","perdido","no_interesado"].map(s => (
                                     <option key={s} value={s}>{tc(`stages.${s}`)}</option>
                                 ))}
                             </select>
@@ -1031,7 +1031,7 @@ export default function ContactsPage() {
                                                 <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 font-bold rounded">{t('importModal.optional')}</span>
                                             </div>
                                             <p className="text-neutral-500 dark:text-neutral-400 font-normal leading-relaxed mb-1">
-                                                {t('importModal.col.stageDesc')} <span className="font-semibold text-indigo-500 dark:text-indigo-400">nuevo, contactado, respondio, calificado, tibio, caliente, listo_cierre, ganado, perdido, no_interesado</span>.
+                                                {t('importModal.col.stageDesc')} <span className="font-semibold text-indigo-500 dark:text-indigo-400">nuevo, contactado, respondio, calificado, tibio, caliente, listo_para_cierre, ganado, perdido, no_interesado</span>.
                                             </p>
                                             <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
                                                 <span className="font-semibold text-neutral-500">{t('importModal.synonyms')}</span> stage, etapa, estado, fase.

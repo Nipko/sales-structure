@@ -8,6 +8,11 @@ import { useRole } from "@/hooks/useRole";
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import {
+  hasVerticalDashboardItem,
+  resolveVerticalDashboard,
+  type VerticalDashboardItem,
+} from "@/lib/vertical-dashboard-resolver";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sheet,
@@ -83,10 +88,8 @@ interface NavItemDef {
   children?: { labelKey: string; href: string; capability?: keyof ReturnType<typeof useRole> }[];
   /** Capability flag from useRole that gates visibility. Omit = always visible. */
   capability?: keyof ReturnType<typeof useRole>;
-  /** Vertical industries that show this item. Omit = visible for all verticals.
-   *  NOTE: si agregás un ítem con `verticals:`, actualizá VERTICAL_TOOL_LABELKEY en
-   *  components/tour/ProductTour.tsx para que el tour guiado lo ilumine en esa vertical. */
-  verticals?: string[];
+  /** Capability-backed vertical surface. Omit = visible for every vertical. */
+  verticalItem?: VerticalDashboardItem;
   /** Accent color for primary/important items. Omit = neutral grey. */
   accent?: string;
 }
@@ -119,33 +122,25 @@ const tenantSections: NavSectionDef[] = [
           { labelKey: "organizations", href: "/admin/contacts/organizations", capability: "canEditPipeline" }
         ]
       },
-      { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays, capability: "canHandleConversations", accent: "text-amber-500 dark:text-amber-400" },
+      { labelKey: "appointments", href: "/admin/appointments", icon: CalendarDays, verticalItem: "appointments", capability: "canHandleConversations", accent: "text-amber-500 dark:text-amber-400" },
       // Catalog management — supervisor+ (agents don't manage catalogs, they only operate)
-      { labelKey: "properties", href: "/admin/properties", icon: Home, verticals: ["turismo"], capability: "canEditPipeline" },
-      { labelKey: "tours", href: "/admin/tours", icon: Compass, verticals: ["turismo"], capability: "canEditPipeline" },
-      { labelKey: "listings", href: "/admin/listings", icon: Building2, verticals: ["inmobiliaria"], capability: "canEditPipeline" },
-      { labelKey: "vehicles", href: "/admin/vehicles", icon: Car, verticals: ["automotriz"], capability: "canEditPipeline" },
-      { labelKey: "menu", href: "/admin/menu", icon: UtensilsCrossed, verticals: ["restaurantes"], capability: "canEditPipeline" },
+      { labelKey: "properties", href: "/admin/properties", icon: Home, verticalItem: "properties", capability: "canEditPipeline" },
+      { labelKey: "tours", href: "/admin/tours", icon: Compass, verticalItem: "tours", capability: "canEditPipeline" },
+      { labelKey: "listings", href: "/admin/listings", icon: Building2, verticalItem: "listings", capability: "canEditPipeline" },
+      { labelKey: "vehicles", href: "/admin/vehicles", icon: Car, verticalItem: "vehicles", capability: "canEditPipeline" },
+      { labelKey: "menu", href: "/admin/menu", icon: UtensilsCrossed, verticalItem: "menu", capability: "canEditPipeline" },
       // Operational — agents need access (taking orders, doing classes, dispatching, treating pets)
-      { labelKey: "foodOrders", href: "/admin/food-orders", icon: ChefHat, verticals: ["restaurantes"], capability: "canHandleConversations" },
-      { labelKey: "memberships", href: "/admin/memberships", icon: Dumbbell, verticals: ["gimnasios"], capability: "canEditPipeline" },
-      { labelKey: "classes", href: "/admin/classes", icon: CalendarRange, verticals: ["gimnasios"], capability: "canHandleConversations" },
-      { labelKey: "courses", href: "/admin/courses", icon: GraduationCap, verticals: ["education"], capability: "canEditPipeline" },
-      { labelKey: "insurance", href: "/admin/insurance", icon: Umbrella, verticals: ["seguros"], capability: "canEditPipeline" },
-      { labelKey: "serviceRequests", href: "/admin/service-requests", icon: Wrench, verticals: ["servicios_hogar"], capability: "canHandleConversations" },
-      { labelKey: "treatmentPlans", href: "/admin/treatment-plans", icon: ClipboardList, verticals: ["veterinaria", "salud"], capability: "canEditPipeline" },
-      { labelKey: "pets", href: "/admin/pets", icon: PawPrint, verticals: ["veterinaria", "pet_services"], capability: "canHandleConversations" },
-      { labelKey: "photoSessions", href: "/admin/photo-sessions", icon: Camera, verticals: ["fotografia"], capability: "canEditPipeline" },
-      // Inventario y Pedidos son el catálogo y la venta GENÉRICOS: la única
-      // pareja de páginas que sirve a un negocio que vende cosas y no encaja en
-      // ninguna vertical con módulo propio. Estaban allow-listeadas a retail y
-      // restaurantes, así que la ferretería, la papelería, la imprenta o el
-      // taller de bicicletas —que se dan de alta como "otro"— no tenían dónde
-      // cargar un solo producto: el agente sólo podía hablar de lo que hubiera
-      // en la base de conocimiento. Se suma `otro`, que es el cajón donde cae
-      // todo lo que el catálogo de 18 verticales no nombra.
-      { labelKey: "inventory", href: "/admin/inventory", icon: Package, verticals: ["retail", "restaurantes", "otro"], capability: "canEditPipeline" },
-      { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart, verticals: ["retail", "restaurantes", "otro"], capability: "canHandleConversations" },
+      { labelKey: "foodOrders", href: "/admin/food-orders", icon: ChefHat, verticalItem: "foodOrders", capability: "canHandleConversations" },
+      { labelKey: "memberships", href: "/admin/memberships", icon: Dumbbell, verticalItem: "memberships", capability: "canEditPipeline" },
+      { labelKey: "classes", href: "/admin/classes", icon: CalendarRange, verticalItem: "classes", capability: "canHandleConversations" },
+      { labelKey: "courses", href: "/admin/courses", icon: GraduationCap, verticalItem: "courses", capability: "canEditPipeline" },
+      { labelKey: "insurance", href: "/admin/insurance", icon: Umbrella, verticalItem: "insurance", capability: "canEditPipeline" },
+      { labelKey: "serviceRequests", href: "/admin/service-requests", icon: Wrench, verticalItem: "serviceRequests", capability: "canHandleConversations" },
+      { labelKey: "treatmentPlans", href: "/admin/treatment-plans", icon: ClipboardList, verticalItem: "treatmentPlans", capability: "canEditPipeline" },
+      { labelKey: "pets", href: "/admin/pets", icon: PawPrint, verticalItem: "pets", capability: "canHandleConversations" },
+      { labelKey: "photoSessions", href: "/admin/photo-sessions", icon: Camera, verticalItem: "photoSessions", capability: "canEditPipeline" },
+      { labelKey: "inventory", href: "/admin/inventory", icon: Package, verticalItem: "inventory", capability: "canEditPipeline" },
+      { labelKey: "orders", href: "/admin/orders", icon: ShoppingCart, verticalItem: "orders", capability: "canHandleConversations" },
       // Ofertas no tenía NINGUNA entrada en el sidebar: la página existe y
       // funciona, y la IA puede listar ofertas (tools.offers), pero el dueño no
       // tenía por dónde llegar a cargarlas. Sin vertical: cualquier negocio hace
@@ -373,6 +368,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
   const itemOrder = useTenantTree
     ? (verticalConfig?.sidebar?.itemOrder as string[] | undefined)
     : undefined;
+  const verticalDashboard = resolveVerticalDashboard(verticalConfig);
 
   const resolveLogoUrl = useCallback((raw: string) => {
     if (!raw) return "";
@@ -421,9 +417,9 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     return Boolean(roleCtx[cap]);
   };
 
-  const checkVertical = (verticals?: string[]): boolean => {
-    if (!verticals || verticals.length === 0) return true;
-    return verticals.includes(verticalConfig?.industry || "");
+  const checkVertical = (item?: VerticalDashboardItem): boolean => {
+    if (!item) return true;
+    return hasVerticalDashboardItem(verticalDashboard, item);
   };
 
   const sections = sectionDefs.map(s => {
@@ -441,7 +437,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
         // Parent visibility checks
         if (!children) {
           if (hiddenItems?.includes(item.labelKey)) return null;
-          if (!checkVertical(item.verticals)) return null;
+          if (!checkVertical(item.verticalItem)) return null;
           if (!checkCapability(item.capability)) return null;
         } else {
           // Items with children also need their own capability check

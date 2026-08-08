@@ -1,5 +1,9 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+    normalizeCurrencyCode,
+    optionalPositiveIntegerUnit,
+} from '../../common/utils/commercial-units.util';
 
 /**
  * Restaurants module — menu catalog, food orders, and promotions.
@@ -133,6 +137,8 @@ export class RestaurantsService {
     }): Promise<any> {
         if (!data.name) throw new BadRequestException('name is required');
         if (data.price === undefined || data.price < 0) throw new BadRequestException('price must be >= 0');
+        const currency = normalizeCurrencyCode(data.currency);
+        const prepTimeMinutes = optionalPositiveIntegerUnit(data.prepTimeMinutes, 'prepTimeMinutes');
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO menu_items (
@@ -146,11 +152,11 @@ export class RestaurantsService {
                 data.name,
                 data.description || null,
                 data.price,
-                data.currency || 'COP',
+                currency,
                 data.imageUrl || null,
                 JSON.stringify(data.allergens || []),
                 JSON.stringify(data.tags || []),
-                data.prepTimeMinutes ?? null,
+                prepTimeMinutes,
                 data.calories ?? null,
                 data.sortOrder ?? 0,
             ],
@@ -159,6 +165,15 @@ export class RestaurantsService {
     }
 
     async updateItem(schemaName: string, id: string, data: any): Promise<any> {
+        if (data.prepTimeMinutes !== undefined && data.prepTimeMinutes !== null) {
+            data = {
+                ...data,
+                prepTimeMinutes: optionalPositiveIntegerUnit(data.prepTimeMinutes, 'prepTimeMinutes'),
+            };
+        }
+        if (data.currency !== undefined) {
+            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+        }
         const fields: string[] = [];
         const values: any[] = [];
         let i = 1;
@@ -292,6 +307,49 @@ export class RestaurantsService {
         return { ...orders[0], items };
     }
 
+    private async getEtaBufferMinutes(
+        schemaName: string,
+        orderType: 'delivery' | 'pickup' | 'dine_in',
+    ): Promise<number> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { schemaName },
+                select: { settings: true },
+            });
+            const restaurantSettings = (tenant?.settings as any)?.restaurants;
+            const configured = restaurantSettings?.etaBufferMinutes;
+            const camelOrderType = orderType === 'dine_in' ? 'dineIn' : orderType;
+            const raw = typeof configured === 'number'
+                ? configured
+                : configured?.[orderType] ?? configured?.[camelOrderType];
+            const parsed = Number(raw);
+            return Number.isFinite(parsed) && parsed >= 0
+                ? Math.min(Math.floor(parsed), 24 * 60)
+                : 0;
+        } catch (error: any) {
+            // ETA enrichment must not make order intake unavailable. With no
+            // readable tenant configuration, the catalog preparation time is
+            // still authoritative and the optional buffer is simply zero.
+            this.logger.warn(`Could not load restaurant ETA buffer for ${schemaName}: ${error.message}`);
+            return 0;
+        }
+    }
+
+    private async calculateEstimatedMinutes(
+        schemaName: string,
+        orderType: 'delivery' | 'pickup' | 'dine_in',
+        items: Array<{ prepTimeMinutes?: number | null }>,
+    ): Promise<number | null> {
+        if (items.some((item) => item.prepTimeMinutes == null)) {
+            return null;
+        }
+        const prepTimes = items.map((item) => Number(item.prepTimeMinutes));
+        if (prepTimes.some((minutes) => !Number.isFinite(minutes) || minutes < 0)) return null;
+        const maxPrepMinutes = Math.max(...prepTimes.map((minutes) => Math.ceil(minutes)));
+        const bufferMinutes = await this.getEtaBufferMinutes(schemaName, orderType);
+        return maxPrepMinutes + bufferMinutes;
+    }
+
     async createOrder(schemaName: string, data: {
         contactId?: string;
         conversationId?: string;
@@ -301,7 +359,17 @@ export class RestaurantsService {
         deliveryAddress?: string;
         deliveryNotes?: string;
         tableNumber?: string;
-        items: Array<{ menuItemId?: string; name: string; quantity: number; unitPrice: number; modifiers?: any[]; specialInstructions?: string }>;
+        currency?: string;
+        items: Array<{
+            menuItemId?: string;
+            name: string;
+            quantity: number;
+            unitPrice: number;
+            currency?: string;
+            prepTimeMinutes?: number | null;
+            modifiers?: any[];
+            specialInstructions?: string;
+        }>;
         deliveryFee?: number;
         discount?: number;
         paymentMethod?: string;
@@ -316,64 +384,86 @@ export class RestaurantsService {
         const deliveryFee = data.deliveryFee || 0;
         const discount = data.discount || 0;
         const total = Math.max(0, subtotal + deliveryFee - discount);
+        const normalizeCurrency = (value?: string) => value?.trim()
+            ? normalizeCurrencyCode(value)
+            : null;
+        const currencies = new Set([
+            normalizeCurrency(data.currency),
+            ...data.items.map((item) => normalizeCurrency(item.currency)),
+        ].filter((value): value is string => !!value));
+        if (currencies.size > 1) {
+            throw new BadRequestException('All order items must use the same currency');
+        }
+        const currency = [...currencies][0] || 'COP';
+        const estimatedMinutes = await this.calculateEstimatedMinutes(schemaName, data.orderType, data.items);
 
-        const orderRows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO food_orders (
-                contact_id, conversation_id, order_type, customer_name, customer_phone,
-                delivery_address, delivery_notes, table_number,
-                subtotal, delivery_fee, discount, total,
-                payment_method, notes
-             ) VALUES (
-                $1::uuid, $2::uuid, $3, $4, $5,
-                $6, $7, $8,
-                $9, $10, $11, $12,
-                $13, $14
-             ) RETURNING *`,
-            [
-                data.contactId || null,
-                data.conversationId || null,
-                data.orderType,
-                data.customerName || null,
-                data.customerPhone || null,
-                data.deliveryAddress || null,
-                data.deliveryNotes || null,
-                data.tableNumber || null,
-                subtotal,
-                deliveryFee,
-                discount,
-                total,
-                data.paymentMethod || null,
-                data.notes || null,
-            ],
-        );
-        const order = orderRows[0];
-
-        // Insert items in one batch
-        for (const it of data.items) {
-            const itemSubtotal = it.quantity * it.unitPrice;
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `INSERT INTO food_order_items (
-                    order_id, menu_item_id, name_snapshot, quantity,
-                    unit_price, modifiers, special_instructions, subtotal
+        // Header, line items and the read-back share one tenant-scoped database
+        // transaction. If any line insert fails, PostgreSQL rolls the header
+        // back as well, so a partial `received` order can never escape.
+        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const orderRows = await query<any[]>(
+                `INSERT INTO food_orders (
+                    contact_id, conversation_id, order_type, customer_name, customer_phone,
+                    delivery_address, delivery_notes, table_number,
+                    subtotal, delivery_fee, discount, total, currency,
+                    estimated_delivery_at, payment_method, notes
                  ) VALUES (
-                    $1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7, $8
-                 )`,
+                    $1::uuid, $2::uuid, $3, $4, $5,
+                    $6, $7, $8,
+                    $9, $10, $11, $12, $13,
+                    CASE WHEN $14::int IS NULL THEN NULL
+                         ELSE NOW() + ($14::int * INTERVAL '1 minute') END,
+                    $15, $16
+                 ) RETURNING *`,
                 [
-                    order.id,
-                    it.menuItemId || null,
-                    it.name,
-                    it.quantity,
-                    it.unitPrice,
-                    JSON.stringify(it.modifiers || []),
-                    it.specialInstructions || null,
-                    itemSubtotal,
+                    data.contactId || null,
+                    data.conversationId || null,
+                    data.orderType,
+                    data.customerName || null,
+                    data.customerPhone || null,
+                    data.deliveryAddress || null,
+                    data.deliveryNotes || null,
+                    data.tableNumber || null,
+                    subtotal,
+                    deliveryFee,
+                    discount,
+                    total,
+                    currency,
+                    estimatedMinutes,
+                    data.paymentMethod || null,
+                    data.notes || null,
                 ],
             );
-        }
+            const order = orderRows[0];
+            if (!order) throw new Error('Order header was not created');
 
-        return this.getOrderById(schemaName, order.id);
+            for (const item of data.items) {
+                await query(
+                    `INSERT INTO food_order_items (
+                        order_id, menu_item_id, name_snapshot, quantity,
+                        unit_price, modifiers, special_instructions, subtotal
+                     ) VALUES (
+                        $1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7, $8
+                     )`,
+                    [
+                        order.id,
+                        item.menuItemId || null,
+                        item.name,
+                        item.quantity,
+                        item.unitPrice,
+                        JSON.stringify(item.modifiers || []),
+                        item.specialInstructions || null,
+                        item.quantity * item.unitPrice,
+                    ],
+                );
+            }
+
+            const items = await query<any[]>(
+                `SELECT * FROM food_order_items WHERE order_id = $1::uuid ORDER BY created_at`,
+                [order.id],
+            );
+            return { ...order, items, estimated_delivery_minutes: estimatedMinutes };
+        });
     }
 
     async updateOrderStatus(schemaName: string, id: string, status: string): Promise<any> {

@@ -5,7 +5,14 @@ import { RedisService } from '../redis/redis.service';
 import { getVerticalDefinition } from './vertical-definitions';
 import { PERSONA_CACHE_CHANNELS } from '../../common/utils/persona-cache.util';
 import {
+    listVerticalCapabilityConfigurations,
+    ResolvedVerticalCapabilityManifest,
+    resolveVerticalCapabilityManifest,
     TenantVerticalConfig,
+    VerticalCapability,
+    VERTICAL_CAPABILITY_MANIFEST,
+    VERTICAL_CAPABILITY_MANIFEST_VERSION,
+    VERTICAL_MANIFEST_INDUSTRIES,
     VerticalDefinition,
     VerticalServiceDefinition,
     VerticalStageDefinition,
@@ -13,6 +20,11 @@ import {
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
 import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import {
+    TENANT_LIFECYCLE_LOCK_TTL_SECONDS,
+    tenantLifecycleLockKey,
+    tenantPurgingFenceKey,
+} from '../../common/utils/tenant-lifecycle.util';
 
 export const VERTICAL_PROVISIONING_VERSION = 1;
 
@@ -274,6 +286,34 @@ function resolveSubtypeBootstrap(industry: string, subType?: string | null): Sub
     return SUBTYPE_BOOTSTRAP_BY_INDUSTRY[industry]?.[subType];
 }
 
+export interface VerticalAgendaSeedContract {
+    agendaAllowed: boolean;
+    /** Exact service rows selected before plan quota filtering. */
+    services: VerticalServiceDefinition[];
+    /** `services.duration_minutes` is always expressed in minutes. */
+    durationUnit: 'minutes';
+    /** Currency comes from each definition; no country/FX choice is invented here. */
+    currencySource: 'vertical_definition';
+}
+
+/**
+ * Pure contract shared by bootstrap, reseed and the 18-vertical audit matrix.
+ * It intentionally makes no currency conversion and does not reinterpret
+ * nightly/package models as appointment minutes.
+ */
+export function resolveVerticalAgendaSeedContract(
+    definition: VerticalDefinition,
+    subType?: string | null,
+): VerticalAgendaSeedContract {
+    const bootstrapMode = resolveSubtypeBootstrap(definition.industry, subType);
+    return {
+        agendaAllowed: definition.bookingEnabled && !bootstrapMode?.skipAgenda,
+        services: bootstrapMode?.services?.length ? bootstrapMode.services : definition.services,
+        durationUnit: 'minutes',
+        currencySource: 'vertical_definition',
+    };
+}
+
 @Injectable()
 export class VerticalsService {
     private readonly logger = new Logger(VerticalsService.name);
@@ -284,6 +324,34 @@ export class VerticalsService {
         private readonly throttle: TenantThrottleService,
     ) {}
 
+    /** Read-only operational contract consumed by API and dashboard clients. */
+    getCapabilityManifest() {
+        const configurations = listVerticalCapabilityConfigurations();
+        const subtypeCount = VERTICAL_MANIFEST_INDUSTRIES.reduce(
+            (total, industry) => total + VERTICAL_CAPABILITY_MANIFEST[industry].subtypes.length,
+            0,
+        );
+        return {
+            manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+            industryCount: VERTICAL_MANIFEST_INDUSTRIES.length,
+            subtypeCount,
+            configurationCount: configurations.length,
+            verticals: VERTICAL_CAPABILITY_MANIFEST,
+            configurations,
+        };
+    }
+
+    resolveCapabilityManifest(
+        industry: string,
+        subType?: string | null,
+    ): ResolvedVerticalCapabilityManifest {
+        try {
+            return resolveVerticalCapabilityManifest(industry, subType);
+        } catch (error: any) {
+            throw new BadRequestException(error?.message || 'Invalid vertical capability selection');
+        }
+    }
+
     /**
      * Bootstrap all vertical-specific defaults for a new tenant.
      * Called once during onboarding after schema + default agent are created.
@@ -293,13 +361,54 @@ export class VerticalsService {
         industry: string,
         subType: string | null,
         lang: string,
+        options?: { assertLifecycleOwned?: () => Promise<void> },
     ): Promise<void> {
         const definition = getVerticalDefinition(industry);
+        // Resolve up front so an unknown industry/subtype cannot be provisioned
+        // with an operational profile that differs from the canonical catalog.
+        const capabilityManifest = this.resolveCapabilityManifest(industry, subType);
         const l = lang || 'es';
+        let lifecycleToken: string | null = null;
+        let lifecycleLease: OwnedLockLease | null = null;
+        if (!options?.assertLifecycleOwned) {
+            const lifecycleKey = tenantLifecycleLockKey(tenantId);
+            lifecycleToken = await this.redis.acquireLockToken(
+                lifecycleKey,
+                TENANT_LIFECYCLE_LOCK_TTL_SECONDS,
+            );
+            if (!lifecycleToken) {
+                throw new ConflictException('El ciclo de vida de este tenant ya está siendo modificado.');
+            }
+            lifecycleLease = new OwnedLockLease(
+                this.redis,
+                lifecycleKey,
+                lifecycleToken,
+                TENANT_LIFECYCLE_LOCK_TTL_SECONDS,
+                this.logger,
+                `Tenant lifecycle lock lost while provisioning vertical ${tenantId}`,
+            );
+            lifecycleLease.start();
+            try {
+                await lifecycleLease.assertOwned();
+                if (await this.redis.get(tenantPurgingFenceKey(tenantId))) {
+                    throw new ConflictException('El tenant está en proceso de eliminación.');
+                }
+            } catch (error) {
+                lifecycleLease.stop();
+                await this.redis.releaseLockToken(lifecycleKey, lifecycleToken).catch(() => undefined);
+                throw error;
+            }
+        }
+        const assertLifecycleOwned = options?.assertLifecycleOwned
+            || (() => lifecycleLease!.assertOwned());
         const lockKey = `lock:vertical-provision:${tenantId}`;
         const lockTtlSeconds = 120;
         const lockToken = await this.redis.acquireLockToken(lockKey, lockTtlSeconds);
         if (!lockToken) {
+            if (lifecycleLease && lifecycleToken) {
+                lifecycleLease.stop();
+                await this.redis.releaseLockToken(tenantLifecycleLockKey(tenantId), lifecycleToken);
+            }
             throw new ConflictException('El provisioning vertical ya está en ejecución para este tenant.');
         }
         const lease = new OwnedLockLease(
@@ -311,7 +420,10 @@ export class VerticalsService {
             `Vertical provisioning lock lost for tenant ${tenantId}`,
         );
         lease.start();
-        const assertLockOwned = () => lease.assertOwned();
+        const assertLockOwned = async () => {
+            await assertLifecycleOwned();
+            await lease.assertOwned();
+        };
 
         let state: VerticalProvisioningState | null = null;
         try {
@@ -324,10 +436,9 @@ export class VerticalsService {
                 appointmentServices: assertQuotaValue(features.appointmentsServices, 'appointmentsServices'),
             };
             const bootstrapMode = resolveSubtypeBootstrap(industry, subType);
-            const agendaAllowed = definition.bookingEnabled && !bootstrapMode?.skipAgenda;
-            const candidateServices = bootstrapMode?.services?.length
-                ? bootstrapMode.services
-                : definition.services;
+            const agendaSeed = resolveVerticalAgendaSeedContract(definition, subType);
+            const agendaAllowed = agendaSeed.agendaAllowed;
+            const candidateServices = agendaSeed.services;
             const quotaEligibleServices = agendaAllowed ? candidateServices : [];
 
             state = await this.initializeProvisioningState(
@@ -411,6 +522,11 @@ export class VerticalsService {
                         sidebar: definition.sidebar,
                         dashboard: definition.dashboard,
                         bookingEnabled: effectiveBooking,
+                        manifestVersion: capabilityManifest.manifestVersion,
+                        effectiveCapabilities: this.getEffectiveCapabilities(
+                            capabilityManifest,
+                            effectiveBooking,
+                        ),
                     },
                     assertLockOwned,
                 ));
@@ -434,7 +550,7 @@ export class VerticalsService {
                 `${selectedServices.length}/${limits.appointmentServices} services`,
             );
         } catch (error: any) {
-            if (error instanceof LockOwnershipLostError || lease.hasLostOwnership()) {
+            if (error instanceof LockOwnershipLostError || lease.hasLostOwnership() || lifecycleLease?.hasLostOwnership()) {
                 throw new ConflictException({
                     error: 'vertical_provisioning_lock_lost',
                     message: 'El alta vertical perdió su lock; ningún paso posterior fue confirmado.',
@@ -457,6 +573,11 @@ export class VerticalsService {
             lease.stop();
             await this.redis.releaseLockToken(lockKey, lockToken)
                 .catch((error: any) => this.logger.warn(`Could not release vertical provisioning lock: ${error.message}`));
+            if (lifecycleLease && lifecycleToken) {
+                lifecycleLease.stop();
+                await this.redis.releaseLockToken(tenantLifecycleLockKey(tenantId), lifecycleToken)
+                    .catch((error: any) => this.logger.warn(`Could not release tenant lifecycle lock: ${error.message}`));
+            }
         }
     }
 
@@ -825,11 +946,9 @@ export class VerticalsService {
 
         // El mismo criterio del bootstrap: un sub-tipo que no agenda no recibe
         // servicios, o le volveríamos a llenar la agenda de cosas que no hace.
-        const bootstrapMode = resolveSubtypeBootstrap(industry, config?.subType);
-        const seedsAgenda = definition.bookingEnabled && !bootstrapMode?.skipAgenda;
-        const candidateServices = bootstrapMode?.services?.length
-            ? bootstrapMode.services
-            : definition.services;
+        const agendaSeed = resolveVerticalAgendaSeedContract(definition, config?.subType);
+        const seedsAgenda = agendaSeed.agendaAllowed;
+        const candidateServices = agendaSeed.services;
         const features = await this.throttle.getPlanFeatures(tenantId);
         const limits = {
             pipelineStages: assertQuotaValue(features.pipelineStages, 'pipelineStages'),
@@ -860,7 +979,19 @@ export class VerticalsService {
 
         // Check Redis cache
         const cached = await this.redis.getJson<TenantVerticalConfig>(cacheKey);
-        if (cached) return cached;
+        if (cached) {
+            const enriched = this.withCurrentCapabilityManifest(cached);
+            if (this.hasCurrentCapabilityManifest(cached, enriched)) return cached;
+            try {
+                await mergeTenantSettingsAtomic(this.prisma, tenantId, {
+                    verticalConfig: enriched,
+                });
+                await this.redis.setJson(cacheKey, enriched, 600);
+            } catch (err: any) {
+                this.logger.warn(`Failed to persist manifest metadata for cached verticalConfig ${tenantId}: ${err?.message}`);
+            }
+            return enriched;
+        }
 
         // Load from DB
         const tenant = await this.prisma.tenant.findUnique({
@@ -877,14 +1008,19 @@ export class VerticalsService {
         // future calls don't have to rebuild.
         if (!config && tenant?.industry) {
             const definition = getVerticalDefinition(tenant.industry);
-            config = {
+            const resolved = this.resolveCapabilityManifest(
+                tenant.industry,
+                settings?.subType ?? null,
+            );
+            const effectiveBooking = resolved.capabilities.includes('appointment_booking');
+            config = this.withCurrentCapabilityManifest({
                 industry: tenant.industry,
                 subType: settings?.subType ?? null,
                 terminology: definition.terminology,
                 sidebar: definition.sidebar,
                 dashboard: definition.dashboard,
-                bookingEnabled: definition.bookingEnabled,
-            };
+                bookingEnabled: effectiveBooking,
+            });
             try {
                 await mergeTenantSettingsAtomic(this.prisma, tenantId, {
                     verticalConfig: config,
@@ -893,6 +1029,19 @@ export class VerticalsService {
             } catch (err: any) {
                 this.logger.warn(`Failed to persist backfilled verticalConfig for ${tenantId}: ${err?.message}`);
             }
+        } else if (config) {
+            const enriched = this.withCurrentCapabilityManifest(config);
+            if (!this.hasCurrentCapabilityManifest(config, enriched)) {
+                config = enriched;
+                try {
+                    await mergeTenantSettingsAtomic(this.prisma, tenantId, {
+                        verticalConfig: config,
+                    });
+                    this.logger.log(`Updated verticalConfig manifest metadata for tenant ${tenantId}`);
+                } catch (err: any) {
+                    this.logger.warn(`Failed to persist verticalConfig manifest metadata for ${tenantId}: ${err?.message}`);
+                }
+            }
         }
 
         if (config) {
@@ -900,6 +1049,33 @@ export class VerticalsService {
         }
 
         return config || null;
+    }
+
+    private getEffectiveCapabilities(
+        manifest: ResolvedVerticalCapabilityManifest,
+        bookingEnabled: boolean,
+    ): VerticalCapability[] {
+        return manifest.capabilities.filter(
+            (capability) => capability !== 'appointment_booking' || bookingEnabled,
+        );
+    }
+
+    private withCurrentCapabilityManifest(config: TenantVerticalConfig): TenantVerticalConfig {
+        const manifest = this.resolveCapabilityManifest(config.industry, config.subType);
+        return {
+            ...config,
+            manifestVersion: manifest.manifestVersion,
+            effectiveCapabilities: this.getEffectiveCapabilities(manifest, config.bookingEnabled),
+        };
+    }
+
+    private hasCurrentCapabilityManifest(
+        current: TenantVerticalConfig,
+        expected: TenantVerticalConfig,
+    ): boolean {
+        return current.manifestVersion === expected.manifestVersion
+            && JSON.stringify(current.effectiveCapabilities || [])
+                === JSON.stringify(expected.effectiveCapabilities || []);
     }
 
     // ─── Private: Seed Methods ───────────────────────────────

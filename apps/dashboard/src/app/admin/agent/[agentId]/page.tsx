@@ -10,7 +10,7 @@ import Link from "next/link";
 import {
   Bot, User, Shield, Wrench, Save, CheckCircle, AlertTriangle,
   ArrowLeft, MoreVertical, BookmarkPlus, Star, Clock, TestTube2,
-  MessageSquare, Instagram, Facebook, Send, X, Phone,
+  MessageSquare, Instagram, Facebook, Send, X, Phone, Globe2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { TabNav } from "@/components/ui/tab-nav";
@@ -33,9 +33,10 @@ const CHANNEL_META: Record<string, { label: string; icon: React.ElementType; col
   messenger: { label: "Facebook",  icon: Facebook,      color: "text-blue-500" },
   telegram:  { label: "Telegram",  icon: Send,          color: "text-sky-500" },
   sms:       { label: "SMS",       icon: Phone,         color: "text-amber-500" },
+  web_widget:{ label: "Web Widget",icon: Globe2,        color: "text-violet-500" },
 };
 
-const ALL_CHANNELS = ["whatsapp", "instagram", "messenger", "telegram", "sms"];
+const ALL_CHANNELS = ["whatsapp", "instagram", "messenger", "telegram", "sms", "web_widget"];
 
 // A connected account of a channel (from /channels/overview).
 interface ChannelAccountLite { channelType: string; accountId: string; displayName?: string }

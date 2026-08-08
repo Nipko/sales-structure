@@ -7,7 +7,7 @@
     "dev": "next dev --port 3003",
     "build": "npm run check:claims && next build",
     "start": "next start",
-    "check:claims": "node scripts/validate-marketing-claims.cjs && node scripts/test-marketing-claim-regressions.cjs"
+    "check:claims": "node scripts/validate-marketing-claims.cjs && node scripts/test-marketing-claim-regressions.cjs && node scripts/validate-competitive-evidence.cjs"
   },
   "keywords": [],
   "author": "",

@@ -32,9 +32,8 @@ export class AutomationListenerService {
             `[AutomationListener] Evento lead.captured recibido — lead: ${event.leadId}, fuente: ${event.source}`,
         );
 
-        const schemaName = event.schemaName || `tenant_${event.tenantId.replace(/-/g, '_')}`;
-
         try {
+            const schemaName = event.schemaName || await this.prisma.getTenantSchemaName(event.tenantId);
             // 1. Verificar horario comercial
             const config = await this.personaService.getActivePersona(event.tenantId);
             if (config && !this.isWithinBusinessHours(config)) {
@@ -117,6 +116,142 @@ export class AutomationListenerService {
             event.appointmentId,
             event,
         );
+    }
+
+    @OnEvent('message.inbound')
+    async handleMessageInbound(event: {
+        tenantId: string;
+        schemaName?: string;
+        conversationId: string;
+        contactId?: string;
+        phone?: string;
+        [key: string]: any;
+    }) {
+        try {
+            const schemaName = event.schemaName || await this.prisma.getTenantSchemaName(event.tenantId);
+            let phone = event.phone;
+            if (!phone && event.contactId) {
+                const contacts = await this.prisma.executeInTenantSchema<any[]>(
+                    schemaName,
+                    `SELECT phone FROM contacts WHERE id = $1::uuid LIMIT 1`,
+                    [event.contactId],
+                );
+                phone = contacts?.[0]?.phone || undefined;
+            }
+
+            let businessHoursStatus: 'open' | 'closed' | 'unknown' = 'unknown';
+            try {
+                const persona = await this.personaService.getActivePersona(event.tenantId);
+                if (persona) businessHoursStatus = this.isWithinBusinessHours(persona) ? 'open' : 'closed';
+            } catch (error: any) {
+                this.logger.warn(`[AutomationListener] No se pudo resolver horario para new_message: ${error.message}`);
+            }
+
+            await this.runRulesForTrigger(
+                'new_message',
+                event.tenantId,
+                schemaName,
+                'conversation',
+                event.conversationId,
+                { ...event, schemaName, phone, businessHoursStatus, eventType: 'new_message' },
+            );
+        } catch (error: any) {
+            this.logger.error(`[AutomationListener] Error preparando new_message: ${error.message}`);
+        }
+    }
+
+    @OnEvent('conversation.assigned')
+    async handleConversationAssigned(event: {
+        tenantId: string;
+        schemaName?: string;
+        conversationId: string;
+        agentId: string;
+        [key: string]: any;
+    }) {
+        try {
+            const schemaName = event.schemaName || await this.prisma.getTenantSchemaName(event.tenantId);
+            await this.runRulesForTrigger(
+                'conversation_assigned',
+                event.tenantId,
+                schemaName,
+                'conversation',
+                event.conversationId,
+                { ...event, schemaName, assignedTo: event.agentId, eventType: 'conversation_assigned' },
+            );
+        } catch (error: any) {
+            this.logger.error(`[AutomationListener] Error preparando conversation_assigned: ${error.message}`);
+        }
+    }
+
+    @OnEvent('pipeline.stage_changed')
+    async handlePipelineStageChanged(event: {
+        tenantId: string;
+        dealId: string;
+        toStageSlug?: string;
+        [key: string]: any;
+    }) {
+        await this.handleDealTrigger('stage_changed', event, {
+            stage: event.toStageSlug,
+            eventType: 'stage_changed',
+        });
+    }
+
+    @OnEvent('pipeline.sla_violated')
+    async handlePipelineSlaViolated(event: {
+        tenantId: string;
+        dealId: string;
+        stageSlug?: string;
+        [key: string]: any;
+    }) {
+        await this.handleDealTrigger('sla_timeout', event, {
+            stage: event.stageSlug,
+            eventType: 'sla_timeout',
+        });
+    }
+
+    private async handleDealTrigger(
+        triggerType: 'stage_changed' | 'sla_timeout',
+        event: { tenantId: string; dealId: string; [key: string]: any },
+        aliases: Record<string, any>,
+    ): Promise<void> {
+        try {
+            const schemaName = event.schemaName || await this.prisma.getTenantSchemaName(event.tenantId);
+            const links = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT o.lead_id, l.contact_id,
+                        COALESCE(NULLIF(l.phone, ''), NULLIF(c.phone, '')) AS phone
+                   FROM opportunities o
+                   JOIN leads l ON l.id = o.lead_id
+                   LEFT JOIN contacts c ON c.id = l.contact_id
+                  WHERE o.deal_id = $1::uuid
+                  LIMIT 2`,
+                [event.dealId],
+            );
+            if (links?.length !== 1) {
+                this.logger.warn(
+                    `[AutomationListener] ${triggerType} omitido: deal ${event.dealId} tiene ${links?.length || 0} correlaciones exactas`,
+                );
+                return;
+            }
+            const link = links[0];
+            await this.runRulesForTrigger(
+                triggerType,
+                event.tenantId,
+                schemaName,
+                'deal',
+                event.dealId,
+                {
+                    ...event,
+                    ...aliases,
+                    schemaName,
+                    leadId: link.lead_id,
+                    contactId: link.contact_id,
+                    phone: link.phone || undefined,
+                },
+            );
+        } catch (error: any) {
+            this.logger.error(`[AutomationListener] Error preparando ${triggerType}: ${error.message}`);
+        }
     }
 
     /**

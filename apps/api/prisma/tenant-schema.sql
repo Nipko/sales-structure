@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."conversations" (
     "stage" VARCHAR(50) DEFAULT 'greeting', -- greeting, discovery, negotiation, closing, support, complaint
     "assigned_to" VARCHAR(255),
     "summary" TEXT,
+    "handoff_summary" JSONB,
+    "handoff_trace_id" VARCHAR(128),
+    "handoff_summary_generated_at" TIMESTAMPTZ,
     "estimated_ticket_value" DECIMAL(15, 2) DEFAULT 0,
     "metadata" JSONB DEFAULT '{}',
     "resolved_at" TIMESTAMP,
@@ -77,6 +80,135 @@ CREATE INDEX IF NOT EXISTS "idx_messages_conversation_id_created_at" ON "{{SCHEM
 -- would reply to it. Partial (WHERE NOT NULL) because paths without a provider
 -- id (widget, test messages) legitimately insert many NULLs.
 CREATE UNIQUE INDEX IF NOT EXISTS "uidx_messages_external_id" ON "{{SCHEMA_NAME}}"."messages" ("external_id") WHERE "external_id" IS NOT NULL;
+
+-- ---- Central AI Tool Authority / Idempotency (DEC-08/09) ----
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tool_execution_ledger" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "idempotency_key" VARCHAR(128) NOT NULL UNIQUE,
+    "tool_name" VARCHAR(160) NOT NULL,
+    "args_hash" CHAR(64) NOT NULL,
+    "request_payload" JSONB NOT NULL DEFAULT '{}'::jsonb,
+    "channel_type" VARCHAR(40),
+    "contact_id" UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE SET NULL,
+    "conversation_id" UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE SET NULL,
+    "assurance_level" VARCHAR(2) NOT NULL,
+    "status" VARCHAR(40) NOT NULL,
+    "confirmation_token" TEXT,
+    "request_source_message_id" UUID REFERENCES "{{SCHEMA_NAME}}"."messages"("id") ON DELETE SET NULL,
+    "confirmation_source_message_id" UUID REFERENCES "{{SCHEMA_NAME}}"."messages"("id") ON DELETE SET NULL,
+    "confirmed_by_message_id" UUID REFERENCES "{{SCHEMA_NAME}}"."messages"("id") ON DELETE SET NULL,
+    "confirmation_expires_at" TIMESTAMPTZ,
+    "confirmed_at" TIMESTAMPTZ,
+    "approval_ticket_id" UUID,
+    "response_payload" JSONB,
+    "attempt_count" INTEGER NOT NULL DEFAULT 0,
+    "execution_lease_token" UUID,
+    "execution_lease_expires_at" TIMESTAMPTZ,
+    "last_error_code" VARCHAR(80),
+    "completed_at" TIMESTAMPTZ,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_execution_ledger" ADD COLUMN IF NOT EXISTS "request_payload" JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_execution_ledger" ADD COLUMN IF NOT EXISTS "channel_type" VARCHAR(40);
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_execution_ledger" ADD COLUMN IF NOT EXISTS "execution_lease_token" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_execution_ledger" ADD COLUMN IF NOT EXISTS "execution_lease_expires_at" TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS "idx_tool_execution_ledger_status" ON "{{SCHEMA_NAME}}"."tool_execution_ledger" ("status", "updated_at");
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tool_approval_tickets" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "execution_ledger_id" UUID NOT NULL UNIQUE REFERENCES "{{SCHEMA_NAME}}"."tool_execution_ledger"("id") ON DELETE CASCADE,
+    "tool_name" VARCHAR(160) NOT NULL,
+    "contact_id" UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE SET NULL,
+    "conversation_id" UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE SET NULL,
+    "approval_source_message_id" UUID REFERENCES "{{SCHEMA_NAME}}"."messages"("id") ON DELETE SET NULL,
+    "status" VARCHAR(20) NOT NULL DEFAULT 'pending',
+    "requested_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "expires_at" TIMESTAMPTZ NOT NULL,
+    "decided_at" TIMESTAMPTZ,
+    "decided_by" UUID,
+    "decision_reason" TEXT,
+    "resume_state" VARCHAR(20) NOT NULL DEFAULT 'not_requested',
+    "resume_attempts" INTEGER NOT NULL DEFAULT 0,
+    "next_resume_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "resume_lease_token" UUID,
+    "resume_lease_expires_at" TIMESTAMPTZ,
+    "resumed_at" TIMESTAMPTZ,
+    "resume_result" JSONB,
+    "resume_error" TEXT,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" ADD COLUMN IF NOT EXISTS "resume_state" VARCHAR(20) NOT NULL DEFAULT 'not_requested';
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" ADD COLUMN IF NOT EXISTS "approval_source_message_id" UUID REFERENCES "{{SCHEMA_NAME}}"."messages"("id") ON DELETE SET NULL;
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" ADD COLUMN IF NOT EXISTS "resume_attempts" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" ADD COLUMN IF NOT EXISTS "next_resume_at" TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" ADD COLUMN IF NOT EXISTS "resume_lease_token" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" ADD COLUMN IF NOT EXISTS "resume_lease_expires_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" ADD COLUMN IF NOT EXISTS "resumed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" ADD COLUMN IF NOT EXISTS "resume_result" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" ADD COLUMN IF NOT EXISTS "resume_error" TEXT;
+CREATE INDEX IF NOT EXISTS "idx_tool_approval_tickets_status" ON "{{SCHEMA_NAME}}"."tool_approval_tickets" ("status", "expires_at");
+
+-- NOT VALID preserves legacy rows while enforcing the closed-world state
+-- machines for every new write.
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_execution_ledger" DROP CONSTRAINT IF EXISTS "tool_execution_ledger_assurance_chk";
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_execution_ledger" ADD CONSTRAINT "tool_execution_ledger_assurance_chk" CHECK ("assurance_level" IN ('A0', 'A1', 'A2', 'A3', 'A4')) NOT VALID;
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_execution_ledger" DROP CONSTRAINT IF EXISTS "tool_execution_ledger_status_chk";
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_execution_ledger" ADD CONSTRAINT "tool_execution_ledger_status_chk" CHECK ("status" IN ('awaiting_confirmation', 'awaiting_approval', 'ready', 'executing', 'succeeded', 'failed', 'handoff_required', 'reconciliation_required', 'rejected')) NOT VALID;
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" DROP CONSTRAINT IF EXISTS "tool_approval_tickets_status_chk";
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" ADD CONSTRAINT "tool_approval_tickets_status_chk" CHECK ("status" IN ('pending', 'approved', 'rejected', 'expired')) NOT VALID;
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" DROP CONSTRAINT IF EXISTS "tool_approval_tickets_resume_state_chk";
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_tickets" ADD CONSTRAINT "tool_approval_tickets_resume_state_chk" CHECK ("resume_state" IN ('not_requested', 'pending', 'processing', 'completed', 'failed')) NOT VALID;
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_execution_ledger" DROP CONSTRAINT IF EXISTS "tool_execution_ledger_approval_fk";
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_execution_ledger" ADD CONSTRAINT "tool_execution_ledger_approval_fk" FOREIGN KEY ("approval_ticket_id") REFERENCES "{{SCHEMA_NAME}}"."tool_approval_tickets"("id") ON DELETE SET NULL NOT VALID;
+CREATE INDEX IF NOT EXISTS "idx_tool_approval_tickets_resume" ON "{{SCHEMA_NAME}}"."tool_approval_tickets" ("resume_state", "next_resume_at") WHERE "status" = 'approved' AND "resume_state" IN ('pending', 'processing', 'failed');
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tool_approval_outbox" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "ticket_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."tool_approval_tickets"("id") ON DELETE CASCADE,
+    "event_type" VARCHAR(80) NOT NULL,
+    "event_key" VARCHAR(240) NOT NULL UNIQUE,
+    "payload" JSONB NOT NULL DEFAULT '{}'::jsonb,
+    "status" VARCHAR(20) NOT NULL DEFAULT 'pending',
+    "attempts" INTEGER NOT NULL DEFAULT 0,
+    "next_attempt_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "lease_token" UUID,
+    "lease_expires_at" TIMESTAMPTZ,
+    "last_error" TEXT,
+    "published_at" TIMESTAMPTZ,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_outbox" DROP CONSTRAINT IF EXISTS "tool_approval_outbox_status_chk";
+ALTER TABLE "{{SCHEMA_NAME}}"."tool_approval_outbox" ADD CONSTRAINT "tool_approval_outbox_status_chk" CHECK ("status" IN ('pending', 'processing', 'published', 'failed')) NOT VALID;
+CREATE INDEX IF NOT EXISTS "idx_tool_approval_outbox_due" ON "{{SCHEMA_NAME}}"."tool_approval_outbox" ("status", "next_attempt_at") WHERE "status" IN ('pending', 'failed');
+
+-- ---- Provider-neutral customer payment operations (DEC-10) ----
+-- No provider is implied by this table. An adapter must be explicitly bound,
+-- and a provider response is never success until reconciliation confirms it.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."payment_operation_ledger" (
+    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "execution_ledger_id" UUID NOT NULL UNIQUE REFERENCES "{{SCHEMA_NAME}}"."tool_execution_ledger"("id") ON DELETE RESTRICT,
+    "operation_kind" VARCHAR(30) NOT NULL,
+    "status" VARCHAR(40) NOT NULL,
+    "provider" VARCHAR(80),
+    "provider_operation_id" VARCHAR(255),
+    "canonical_reference" VARCHAR(180),
+    "request_hash" CHAR(64) NOT NULL,
+    "request_payload" JSONB NOT NULL DEFAULT '{}',
+    "response_payload" JSONB,
+    "reconciliation_status" VARCHAR(80) NOT NULL,
+    "reconciled_at" TIMESTAMPTZ,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE "{{SCHEMA_NAME}}"."payment_operation_ledger" ADD COLUMN IF NOT EXISTS "canonical_reference" VARCHAR(180);
+CREATE INDEX IF NOT EXISTS "idx_payment_operation_ledger_status" ON "{{SCHEMA_NAME}}"."payment_operation_ledger" ("status", "updated_at");
+ALTER TABLE "{{SCHEMA_NAME}}"."payment_operation_ledger" DROP CONSTRAINT IF EXISTS "payment_operation_ledger_kind_chk";
+ALTER TABLE "{{SCHEMA_NAME}}"."payment_operation_ledger" ADD CONSTRAINT "payment_operation_ledger_kind_chk" CHECK ("operation_kind" IN ('payment_link', 'refund', 'discount')) NOT VALID;
+ALTER TABLE "{{SCHEMA_NAME}}"."payment_operation_ledger" DROP CONSTRAINT IF EXISTS "payment_operation_ledger_status_chk";
+ALTER TABLE "{{SCHEMA_NAME}}"."payment_operation_ledger" ADD CONSTRAINT "payment_operation_ledger_status_chk" CHECK ("status" IN ('requested', 'processing', 'succeeded', 'handoff_required', 'reconciliation_required', 'failed')) NOT VALID;
 
 -- ---- Persona Config ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."persona_config" (
@@ -568,10 +700,28 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."stage_history" (
 );
 CREATE INDEX IF NOT EXISTS "idx_stage_history_lead_id_created_at" ON "{{SCHEMA_NAME}}"."stage_history" ("lead_id", "created_at");
 
+-- ---- Pipelines (multi-pipeline ownership) ----
+-- Created in the canonical template so fresh tenants never depend on lazy DDL
+-- from a request path. Legacy schemas are repaired by PipelineService/startup.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pipelines" (
+    "id"          UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "tenant_id"   UUID NOT NULL,
+    "name"        VARCHAR(255) NOT NULL,
+    "description" TEXT,
+    "is_default"  BOOLEAN DEFAULT false,
+    "is_active"   BOOLEAN DEFAULT true,
+    "created_at"  TIMESTAMPTZ DEFAULT NOW(),
+    "updated_at"  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_pipelines_tenant" ON "{{SCHEMA_NAME}}"."pipelines" ("tenant_id", "is_active");
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_pipelines_default_per_tenant"
+    ON "{{SCHEMA_NAME}}"."pipelines" ("tenant_id") WHERE "is_default" = true;
+
 -- ---- Pipeline Stages (configurable per tenant) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pipeline_stages" (
     "id"                  UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "tenant_id"           UUID NOT NULL,
+    "pipeline_id"         UUID REFERENCES "{{SCHEMA_NAME}}"."pipelines"("id") ON DELETE RESTRICT,
     "name"                VARCHAR(100) NOT NULL,
     "slug"                VARCHAR(100),
     "color"               VARCHAR(20) DEFAULT '#3498db',
@@ -593,22 +743,10 @@ ALTER TABLE "{{SCHEMA_NAME}}"."pipeline_stages" ADD COLUMN IF NOT EXISTS "termin
 UPDATE "{{SCHEMA_NAME}}"."pipeline_stages"
 SET "terminal_outcome" = NULL
 WHERE COALESCE("is_terminal", false) = false AND "terminal_outcome" IS NOT NULL;
--- Backfill de las etapas que existen desde antes de la columna. Sin esto, todo
--- tenant ya creado se queda con sus etapas terminales en NULL, y como
--- resolveTerminalOutcome() falla cerrado, getStages y getKanban
--- (pipeline.service.ts:615 y :750) responden 500: el embudo entero deja de
--- abrir. El CHECK de abajo entra NOT VALID, así que la migración pasaría igual
--- y el daño solo aparecería en runtime, tenant por tenant.
---
--- Se reconstruye la intención con dos señales, en orden de confianza:
---   1. el slug terminal canónico —los de las 18 verticales más el embudo
---      genérico—, que es la fuente de verdad de lo que se sembró;
---   2. para etapas terminales que el dueño creó a mano y no están en esa lista,
---      la probabilidad: en TODO el catálogo canónico 'won' es 100 y 'lost' es 0.
---
--- Que quede claro por qué esto no contradice el cambio: la probabilidad ya no
--- decide nada en runtime. Acá es reparación de datos históricos, donde es la
--- única señal de intención que sobrevivió.
+-- Backfill únicamente para slugs cuya semántica es canónica y, por tanto,
+-- inequívoca. Una etapa terminal personalizada antigua sin outcome queda en
+-- NULL y se bloquea para revisión explícita: la probabilidad es una métrica de
+-- forecast, no evidencia suficiente para inventar un resultado de negocio.
 UPDATE "{{SCHEMA_NAME}}"."pipeline_stages"
 SET "terminal_outcome" = CASE
     WHEN "slug" IN (
@@ -619,10 +757,15 @@ SET "terminal_outcome" = CASE
         'perdido', 'no_interesado', 'cerrado_perdido', 'cancelado', 'declinado',
         'desercion', 'devolucion', 'no_show', 'rechazado', 'inactivo'
     ) THEN 'lost'
-    WHEN COALESCE("default_probability", 0) >= 50 THEN 'won'
-    ELSE 'lost'
 END
-WHERE "is_terminal" = true AND "terminal_outcome" IS NULL;
+WHERE "is_terminal" = true
+  AND "terminal_outcome" IS NULL
+  AND "slug" IN (
+      'ganado', 'cerrado', 'cerrado_ganado', 'completado', 'completada',
+      'entregado', 'entregada', 'alta', 'vip', 'aprobado', 'poliza_emitida',
+      'perdido', 'no_interesado', 'cerrado_perdido', 'cancelado', 'declinado',
+      'desercion', 'devolucion', 'no_show', 'rechazado', 'inactivo'
+  );
 ALTER TABLE "{{SCHEMA_NAME}}"."pipeline_stages" DROP CONSTRAINT IF EXISTS "pipeline_stages_terminal_outcome_check";
 ALTER TABLE "{{SCHEMA_NAME}}"."pipeline_stages" ADD CONSTRAINT "pipeline_stages_terminal_outcome_check" CHECK (
     (COALESCE("is_terminal", false) = false AND "terminal_outcome" IS NULL)
@@ -646,6 +789,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."deals" (
     "title"               VARCHAR(255) NOT NULL,
     "value"               DECIMAL(14,2) DEFAULT 0,
     "currency"            VARCHAR(10) DEFAULT 'COP',
+    "pipeline_id"         UUID REFERENCES "{{SCHEMA_NAME}}"."pipelines"("id") ON DELETE RESTRICT,
     "stage_id"            UUID REFERENCES "{{SCHEMA_NAME}}"."pipeline_stages"("id"),
     "probability"         INTEGER DEFAULT 0,
     "expected_close_date" DATE,
@@ -669,6 +813,9 @@ CREATE INDEX IF NOT EXISTS "idx_deals_sla_deadline" ON "{{SCHEMA_NAME}}"."deals"
 ALTER TABLE "{{SCHEMA_NAME}}"."opportunities"
     ADD COLUMN IF NOT EXISTS "deal_id" UUID REFERENCES "{{SCHEMA_NAME}}"."deals"("id") ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS "idx_opportunities_deal_id" ON "{{SCHEMA_NAME}}"."opportunities" ("deal_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_opportunities_deal_id"
+    ON "{{SCHEMA_NAME}}"."opportunities" ("deal_id")
+    WHERE "deal_id" IS NOT NULL;
 
 -- Keep the B2B Deal mirror aligned with the canonical stage outcome. This is
 -- deliberately slug-independent so every vertical and language behaves alike.
@@ -1386,6 +1533,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."calendar_integrations" (
     "user_id" UUID NOT NULL,
     "provider" VARCHAR(50) NOT NULL DEFAULT 'google',
     "encrypted_refresh_token" TEXT NOT NULL,
+    "microsoft_home_account_id" VARCHAR(512),
     "calendar_id" VARCHAR(255) DEFAULT 'primary',
     "account_email" VARCHAR(255),
     "sync_token" TEXT,
@@ -1403,6 +1551,7 @@ DROP INDEX IF EXISTS "{{SCHEMA_NAME}}"."ci_user_idx";
 ALTER TABLE "{{SCHEMA_NAME}}"."calendar_integrations" ADD COLUMN IF NOT EXISTS "label" VARCHAR(255);
 ALTER TABLE "{{SCHEMA_NAME}}"."calendar_integrations" ADD COLUMN IF NOT EXISTS "assignment_type" VARCHAR(20) DEFAULT 'general';
 ALTER TABLE "{{SCHEMA_NAME}}"."calendar_integrations" ADD COLUMN IF NOT EXISTS "assignment_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."calendar_integrations" ADD COLUMN IF NOT EXISTS "microsoft_home_account_id" VARCHAR(512);
 
 -- Non-unique index for lookups
 CREATE INDEX IF NOT EXISTS "ci_user_provider_idx" ON "{{SCHEMA_NAME}}"."calendar_integrations" ("user_id", "provider");
@@ -3118,6 +3267,9 @@ ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "sa
 ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "feedback_count" INTEGER DEFAULT 0;
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "was_handed_off" BOOLEAN DEFAULT false;
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "handoff_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "handoff_summary" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "handoff_trace_id" VARCHAR(128);
+ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "handoff_summary_generated_at" TIMESTAMPTZ;
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "ai_message_count" INTEGER DEFAULT 0;
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "resolution_type" VARCHAR(50);
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS "resolution_verified" BOOLEAN;
@@ -3146,12 +3298,10 @@ ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "notes" TEXT;
 -- Pre-existing duplicates: the cleanup below only removes rows that nothing
 -- else references, so it can never cascade away staff assignments or orphan an
 -- appointment. When a duplicate IS referenced it survives and the
--- CREATE UNIQUE INDEX fails for that tenant. That is deliberate and safe: all
--- three paths that apply this template tolerate per-statement failures
--- (prisma.service.ts splitSqlStatements, scripts/migrate-tenants.js and the
--- psql pass in deploy.yml), so the deploy continues and only that one tenant is
--- left without the index. Destroying referenced tenant data to gain an index
--- would be a far worse trade.
+-- CREATE UNIQUE INDEX fails for that tenant. That is deliberate and safe:
+-- migrate-tenants.js reports SQLSTATE 23505 as a warning and the production
+-- workflow aborts promotion until the legacy data is reconciled. Destroying
+-- referenced tenant data merely to gain an index would be a far worse trade.
 
 -- ---- pipeline_stages: unique per (pipeline_id, slug) ----
 -- NOT keyed on slug alone: pipeline_stages.pipeline_id exists (multi-pipeline,
@@ -3241,3 +3391,158 @@ UPDATE "{{SCHEMA_NAME}}"."ical_blocks" b
       WHERE f2."property_id" = f."property_id" AND f2."source" = f."source"
         AND f2."is_active" = true AND f2."id" <> f."id"
    );
+
+-- =====================================================================
+-- Vertical operating decisions v1 (Aug 2026)
+-- =====================================================================
+-- These structures make money lineage, resource ownership, external-calendar
+-- reconciliation and future vertical migration explicit. Vertical migration
+-- remains preview-only until a versioned mapping adapter is registered.
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."money_lineage" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "object_type" VARCHAR(64) NOT NULL,
+    "object_id" VARCHAR(200) NOT NULL,
+    "line_id" VARCHAR(200),
+    "source_amount_minor" NUMERIC(30,0) NOT NULL,
+    "source_currency" VARCHAR(3) NOT NULL CHECK ("source_currency" ~ '^[A-Z]{3}$'),
+    "operating_amount_minor" NUMERIC(30,0) NOT NULL,
+    "operating_currency" VARCHAR(3) NOT NULL CHECK ("operating_currency" ~ '^[A-Z]{3}$'),
+    "source_system" VARCHAR(128) NOT NULL,
+    "idempotency_key" VARCHAR(200) NOT NULL UNIQUE,
+    "fx_snapshot" JSONB,
+    "payload_hash" CHAR(64) NOT NULL,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (("source_currency" = "operating_currency" AND "fx_snapshot" IS NULL)
+        OR ("source_currency" <> "operating_currency" AND "fx_snapshot" IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS "idx_money_lineage_object" ON "{{SCHEMA_NAME}}"."money_lineage" ("object_type", "object_id", "created_at");
+CREATE INDEX IF NOT EXISTS "idx_money_lineage_operating" ON "{{SCHEMA_NAME}}"."money_lineage" ("operating_currency", "created_at");
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_locations" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "name" VARCHAR(200) NOT NULL,
+    "timezone" VARCHAR(100) NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."operational_resources" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "location_id" UUID REFERENCES "{{SCHEMA_NAME}}"."operational_locations"("id") ON DELETE SET NULL,
+    "resource_type" VARCHAR(64) NOT NULL,
+    "name" VARCHAR(200) NOT NULL,
+    "capacity" INTEGER NOT NULL CHECK ("capacity" BETWEEN 1 AND 1000000),
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."staff_operational_bindings" (
+    "staff_id" UUID PRIMARY KEY REFERENCES "{{SCHEMA_NAME}}"."staff_members"("id") ON DELETE CASCADE,
+    "user_id" UUID REFERENCES public."users"("id") ON DELETE SET NULL,
+    "location_id" UUID REFERENCES "{{SCHEMA_NAME}}"."operational_locations"("id") ON DELETE SET NULL,
+    "calendar_integration_id" UUID REFERENCES "{{SCHEMA_NAME}}"."calendar_integrations"("id") ON DELETE SET NULL,
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "uidx_staff_operational_user" ON "{{SCHEMA_NAME}}"."staff_operational_bindings" ("user_id") WHERE "user_id" IS NOT NULL;
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."staff_resource_assignments" (
+    "staff_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."staff_members"("id") ON DELETE CASCADE,
+    "resource_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."operational_resources"("id") ON DELETE CASCADE,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY ("staff_id", "resource_id")
+);
+
+-- The provider event's owning account is durable evidence. Disconnecting an
+-- integration deactivates it; deleting it is rejected while appointments or
+-- outbox work still reference it, so reconciliation can never fall back to a
+-- different account implicitly.
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "calendar_integration_id" UUID REFERENCES "{{SCHEMA_NAME}}"."calendar_integrations"("id") ON DELETE RESTRICT;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "calendar_owner_id" UUID REFERENCES public."users"("id") ON DELETE SET NULL;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "calendar_provider" VARCHAR(20);
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "calendar_event_id" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "calendar_sync_state" VARCHAR(24) NOT NULL DEFAULT 'not_configured';
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "calendar_sync_revision" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "calendar_sync_error" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "calendar_synced_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" DROP CONSTRAINT IF EXISTS "appointments_calendar_provider_chk";
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD CONSTRAINT "appointments_calendar_provider_chk" CHECK ("calendar_provider" IS NULL OR "calendar_provider" IN ('google', 'microsoft'));
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" DROP CONSTRAINT IF EXISTS "appointments_calendar_sync_state_chk";
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD CONSTRAINT "appointments_calendar_sync_state_chk" CHECK ("calendar_sync_state" IN ('not_configured', 'pending', 'processing', 'synced', 'failed', 'reconciliation_required', 'deleted'));
+CREATE INDEX IF NOT EXISTS "idx_appointments_calendar_owner" ON "{{SCHEMA_NAME}}"."appointments" ("calendar_integration_id", "calendar_sync_state");
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."calendar_sync_outbox" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "appointment_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."appointments"("id") ON DELETE CASCADE,
+    "operation" VARCHAR(16) NOT NULL CHECK ("operation" IN ('upsert', 'delete')),
+    "revision" INTEGER NOT NULL,
+    "idempotency_key" VARCHAR(240) NOT NULL UNIQUE,
+    "integration_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."calendar_integrations"("id"),
+    "provider" VARCHAR(20) NOT NULL CHECK ("provider" IN ('google', 'microsoft')),
+    "payload" JSONB NOT NULL,
+    "provider_event_id" TEXT,
+    "state" VARCHAR(32) NOT NULL DEFAULT 'pending' CHECK ("state" IN ('pending', 'processing', 'failed', 'completed', 'superseded', 'reconciliation_required')),
+    "attempts" INTEGER NOT NULL DEFAULT 0,
+    "next_attempt_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "lease_token" UUID,
+    "lease_expires_at" TIMESTAMPTZ,
+    "last_error" TEXT,
+    "completed_at" TIMESTAMPTZ,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE ("appointment_id", "revision", "operation")
+);
+ALTER TABLE "{{SCHEMA_NAME}}"."calendar_sync_outbox" ALTER COLUMN "state" TYPE VARCHAR(32);
+ALTER TABLE "{{SCHEMA_NAME}}"."calendar_sync_outbox" DROP CONSTRAINT IF EXISTS "calendar_sync_outbox_state_check";
+ALTER TABLE "{{SCHEMA_NAME}}"."calendar_sync_outbox" ADD CONSTRAINT "calendar_sync_outbox_state_check" CHECK ("state" IN ('pending', 'processing', 'failed', 'completed', 'superseded', 'reconciliation_required'));
+CREATE INDEX IF NOT EXISTS "idx_calendar_sync_outbox_due" ON "{{SCHEMA_NAME}}"."calendar_sync_outbox" ("state", "next_attempt_at", "created_at") WHERE "state" IN ('pending', 'failed');
+CREATE INDEX IF NOT EXISTS "idx_calendar_sync_outbox_appointment" ON "{{SCHEMA_NAME}}"."calendar_sync_outbox" ("appointment_id", "revision");
+
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."vertical_migrations" (
+    "id" UUID PRIMARY KEY,
+    "status" VARCHAR(24) NOT NULL CHECK ("status" IN ('preview', 'approved', 'applying', 'applied', 'rolled_back', 'failed')),
+    "from_industry" VARCHAR(100) NOT NULL,
+    "from_subtype" VARCHAR(100),
+    "to_industry" VARCHAR(100) NOT NULL,
+    "to_subtype" VARCHAR(100),
+    "preview_hash" CHAR(64) NOT NULL,
+    "preview_payload" JSONB NOT NULL,
+    "source_fingerprint" CHAR(64) NOT NULL,
+    "requested_by" UUID NOT NULL,
+    "approved_by" UUID,
+    "applied_by" UUID,
+    "rolled_back_by" UUID,
+    "archive_id" UUID,
+    "inserted_rows" JSONB NOT NULL DEFAULT '{"pipelineStages":[],"faqs":[],"services":[]}'::jsonb,
+    "expires_at" TIMESTAMPTZ NOT NULL,
+    "approved_at" TIMESTAMPTZ,
+    "applied_at" TIMESTAMPTZ,
+    "rolled_back_at" TIMESTAMPTZ,
+    "last_error" TEXT,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."vertical_migration_archives" (
+    "id" UUID PRIMARY KEY,
+    "migration_id" UUID NOT NULL UNIQUE REFERENCES "{{SCHEMA_NAME}}"."vertical_migrations"("id") ON DELETE RESTRICT,
+    "snapshot" JSONB NOT NULL,
+    "created_by" UUID NOT NULL,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE "{{SCHEMA_NAME}}"."vertical_migrations" DROP CONSTRAINT IF EXISTS "vertical_migrations_archive_fk";
+ALTER TABLE "{{SCHEMA_NAME}}"."vertical_migrations" ADD CONSTRAINT "vertical_migrations_archive_fk" FOREIGN KEY ("archive_id") REFERENCES "{{SCHEMA_NAME}}"."vertical_migration_archives"("id") ON DELETE RESTRICT;
+CREATE INDEX IF NOT EXISTS "idx_vertical_migrations_status" ON "{{SCHEMA_NAME}}"."vertical_migrations" ("status", "expires_at");
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."vertical_migration_outbox" (
+    "id" UUID PRIMARY KEY,
+    "migration_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."vertical_migrations"("id") ON DELETE CASCADE,
+    "event_type" VARCHAR(100) NOT NULL,
+    "idempotency_key" VARCHAR(240) NOT NULL UNIQUE,
+    "payload" JSONB NOT NULL,
+    "status" VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK ("status" IN ('pending', 'published', 'failed')),
+    "attempts" INTEGER NOT NULL DEFAULT 0,
+    "next_attempt_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "last_error" TEXT,
+    "published_at" TIMESTAMPTZ,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "idx_vertical_migration_outbox_due" ON "{{SCHEMA_NAME}}"."vertical_migration_outbox" ("status", "next_attempt_at") WHERE "status" IN ('pending', 'failed');

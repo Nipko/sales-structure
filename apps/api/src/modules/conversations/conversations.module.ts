@@ -48,6 +48,13 @@ import { AttributionModule } from '../attribution/attribution.module';
 import { EmailModule } from '../email/email.module';
 import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
 import { ChatIdentityService } from './chat-identity.service';
+import { AgentTestRateLimitGuard } from './agent-test-rate-limit.guard';
+import { AgentTestRequestGuard } from './agent-test-request.guard';
+import { ActiveOperationsContextService } from './active-operations-context.service';
+import { ToolExecutionControlService } from './tool-execution-control.service';
+import { PaymentOperationService } from './payment-operation.service';
+import { ToolApprovalController } from './tool-approval.controller';
+import { ToolApprovalWorkflowService } from './tool-approval-workflow.service';
 
 @Module({
     imports: [
@@ -91,8 +98,8 @@ import { ChatIdentityService } from './chat-identity.service';
             inject: [ConfigService],
         }),
     ],
-    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, ResponseValidatorService, CustomerMemoryService, BookingEngineService, ProcedureEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, AgentTestService, PreChatService, ChatIdentityService],
-    controllers: [ConversationsController, AgentTestController],
-    exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, AgentTestService, AIToolExecutorService],
+    providers: [ConversationsService, ConversationsGateway, AIToolExecutorService, ToolExecutionControlService, ToolApprovalWorkflowService, PaymentOperationService, ResponseValidatorService, CustomerMemoryService, BookingEngineService, ProcedureEngineService, IntentInterpreterService, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AgentTestRateLimitGuard, AgentTestRequestGuard, PreChatService, ChatIdentityService],
+    controllers: [ConversationsController, AgentTestController, ToolApprovalController],
+    exports: [ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService],
 })
 export class ConversationsModule {}

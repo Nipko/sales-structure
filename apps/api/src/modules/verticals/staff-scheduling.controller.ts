@@ -8,6 +8,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { StaffSchedulingService } from './staff-scheduling.service';
+import { StaffOperationsModelService } from './staff-operations-model.service';
 
 @ApiTags('staff')
 @Controller('staff')
@@ -17,6 +18,7 @@ import { StaffSchedulingService } from './staff-scheduling.service';
 export class StaffSchedulingController {
     constructor(
         private readonly staffService: StaffSchedulingService,
+        private readonly operationsModel: StaffOperationsModelService,
     ) {}
 
     @Get(':tenantId')
@@ -84,5 +86,65 @@ export class StaffSchedulingController {
     async addBreak(@CurrentTenant() schema: string, @Param('staffId') staffId: string, @Body() body: any) {
         const brk = await this.staffService.addBreak(schema, staffId, body);
         return { success: true, data: brk };
+    }
+
+    @Post(':tenantId/locations')
+    @Roles('tenant_admin', 'tenant_supervisor')
+    @ApiOperation({ summary: 'Create an explicit operational location' })
+    async createLocation(
+        @CurrentTenant() schema: string,
+        @Body() body: { name: string; timezone: string },
+    ) {
+        const data = await this.requireOperationsModel().createLocation(schema, body);
+        return { success: true, data };
+    }
+
+    @Post(':tenantId/resources')
+    @Roles('tenant_admin', 'tenant_supervisor')
+    @ApiOperation({ summary: 'Create a capacity-bearing operational resource' })
+    async createResource(
+        @CurrentTenant() schema: string,
+        @Body() body: { locationId?: string | null; resourceType: string; name: string; capacity: number },
+    ) {
+        const data = await this.requireOperationsModel().createResource(schema, body);
+        return { success: true, data };
+    }
+
+    @Get(':tenantId/:staffId/operational-binding')
+    @ApiOperation({ summary: 'Read explicit staff/user/location/calendar/resource links' })
+    async getOperationalBinding(
+        @CurrentTenant() schema: string,
+        @Param('staffId') staffId: string,
+    ) {
+        const data = await this.requireOperationsModel().getBinding(schema, staffId);
+        return { success: true, data };
+    }
+
+    @Put(':tenantId/:staffId/operational-binding')
+    @Roles('tenant_admin', 'tenant_supervisor')
+    @ApiOperation({ summary: 'Link distinct staff/user/location/calendar/resource entities' })
+    async upsertOperationalBinding(
+        @Param('tenantId') tenantId: string,
+        @CurrentTenant() schema: string,
+        @Param('staffId') staffId: string,
+        @Body() body: {
+            userId?: string | null;
+            locationId?: string | null;
+            calendarIntegrationId?: string | null;
+            resourceIds?: string[];
+        },
+    ) {
+        const data = await this.requireOperationsModel().upsertBinding(
+            tenantId,
+            schema,
+            staffId,
+            body,
+        );
+        return { success: true, data };
+    }
+
+    private requireOperationsModel(): StaffOperationsModelService {
+        if (!this.operationsModel) throw new Error('StaffOperationsModelService is not configured');
+        return this.operationsModel;
     }
 }

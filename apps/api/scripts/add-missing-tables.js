@@ -1,4 +1,7 @@
 // scripts/add-missing-tables.js
+throw new Error(
+  'RETIRED: add-missing-tables.js is not a production migrator. Use tenant-schema.sql through migrate-tenants.js; provisioning alone may create tenant schemas.',
+);
 // Migration: adds ALL missing tables to existing tenant schemas.
 // Uses CREATE TABLE IF NOT EXISTS for safe idempotent execution.
 // This is the safety net for schemas that were partially created.
@@ -873,4 +876,3 @@ async function migrate() {
 migrate()
   .catch(function(err) { console.error('Fatal:', err); process.exit(1); })
   .finally(function() { return prisma.$disconnect().catch(function() {}); });
-

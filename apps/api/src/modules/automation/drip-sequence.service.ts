@@ -156,27 +156,30 @@ export class DripSequenceService {
         const schemaName = await this.tenantSchema(tenantId);
         await this.ensureDripTables(schemaName);
 
-        const existing = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT COUNT(*)::int AS count FROM drip_sequences WHERE tenant_id = $1::uuid`,
-            [tenantId],
-        );
-        const count = existing?.[0]?.count ?? 0;
-        await this.throttle.enforcePlanLimit(tenantId, 'maxDripSequences', count, 'secuencias drip');
-
         if (!data.name || !data.trigger_event || !Array.isArray(data.steps) || data.steps.length === 0) {
             throw new BadRequestException('name, trigger_event, and at least one step are required');
         }
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO drip_sequences (tenant_id, name, trigger_event, trigger_conditions, steps)
-             VALUES ($1::uuid, $2, $3, $4::jsonb, $5::jsonb)
-             RETURNING *`,
-            [tenantId, data.name, data.trigger_event, JSON.stringify(data.trigger_conditions || {}), JSON.stringify(data.steps)],
-        );
-
-        return rows?.[0];
+        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended('drip-sequences', 0))`);
+            const existing = await query<any[]>(
+                `SELECT COUNT(*)::int AS count FROM drip_sequences WHERE tenant_id = $1::uuid`,
+                [tenantId],
+            );
+            await this.throttle.enforcePlanLimit(
+                tenantId,
+                'maxDripSequences',
+                Number(existing?.[0]?.count || 0),
+                'secuencias drip',
+            );
+            const rows = await query<any[]>(
+                `INSERT INTO drip_sequences (tenant_id, name, trigger_event, trigger_conditions, steps)
+                 VALUES ($1::uuid, $2, $3, $4::jsonb, $5::jsonb)
+                 RETURNING *`,
+                [tenantId, data.name, data.trigger_event, JSON.stringify(data.trigger_conditions || {}), JSON.stringify(data.steps)],
+            );
+            return rows?.[0];
+        });
     }
 
     async updateSequence(tenantId: string, sequenceId: string, data: Partial<CreateSequenceDto>): Promise<any> {

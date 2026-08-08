@@ -12,6 +12,7 @@ describe('VerticalIntegrationsService endpoint security', () => {
 
     beforeEach(() => {
         prisma = {
+            $executeRawUnsafe: jest.fn().mockResolvedValue(1),
             tenant: {
                 findUnique: jest.fn().mockResolvedValue({ settings: {} }),
                 update: jest.fn().mockResolvedValue({}),
@@ -106,14 +107,20 @@ describe('VerticalIntegrationsService endpoint security', () => {
         expect(prisma.tenant.update).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: 'tenant-1' },
             data: {
-                settings: {
+                settings: expect.objectContaining({
                     verticalIntegrations: {
                         cliniko: expect.objectContaining({
                             provider: 'cliniko',
                             baseUrl: 'https://api.au1.cliniko.com/v1',
                         }),
                     },
-                },
+                    verticalIntegrationHealth: {
+                        cliniko: expect.objectContaining({
+                            credentialValidated: false,
+                            lastCheckedAt: null,
+                        }),
+                    },
+                }),
             },
         }));
     });
@@ -147,7 +154,16 @@ describe('VerticalIntegrationsService endpoint security', () => {
             },
         });
 
-        await expect(service.testConnection('tenant-1', 'cliniko')).resolves.toEqual({ ok: true });
+        await expect(service.testConnection('tenant-1', 'cliniko')).resolves.toEqual(expect.objectContaining({
+            ok: true,
+            health: expect.objectContaining({
+                provider: 'cliniko',
+                connected: true,
+                credentialValidated: true,
+                scopeStatus: 'satisfied',
+                status: 'stale',
+            }),
+        }));
         expect(http.axiosRef.get).toHaveBeenCalledWith(
             'https://api.au1.cliniko.com/v1/appointment_types?per_page=1',
             expect.objectContaining({
@@ -221,7 +237,15 @@ describe('VerticalIntegrationsService endpoint security', () => {
             },
         });
 
-        await expect(service.testConnection('tenant-1', 'toast')).resolves.toEqual({ ok: true });
+        await expect(service.testConnection('tenant-1', 'toast')).resolves.toEqual(expect.objectContaining({
+            ok: true,
+            health: expect.objectContaining({
+                provider: 'toast',
+                connected: true,
+                credentialValidated: true,
+                status: 'stale',
+            }),
+        }));
         expect(http.axiosRef.post).toHaveBeenCalledWith(
             'https://ws-api.toasttab.com/authentication/v1/authentication/login',
             expect.any(Object),
@@ -233,6 +257,44 @@ describe('VerticalIntegrationsService endpoint security', () => {
                 httpsAgent: expect.any(Object),
             }),
         );
+    });
+
+    it('records a sanitized unhealthy/missing-scope result when a provider returns 403', async () => {
+        prisma.tenant.findUnique.mockResolvedValue({
+            settings: {
+                verticalIntegrations: {
+                    cliniko: {
+                        provider: 'cliniko',
+                        apiKey: 'secret-au1',
+                        baseUrl: 'https://api.au1.cliniko.com/v1',
+                    },
+                },
+            },
+        });
+        http.axiosRef.get.mockRejectedValue({
+            response: { status: 403, data: { token: 'never-persist-this' } },
+            message: 'request failed with secret-au1',
+        });
+
+        const result = await service.testConnection('tenant-1', 'cliniko');
+
+        expect(result).toMatchObject({
+            ok: false,
+            message: 'Permisos insuficientes en el proveedor.',
+            health: {
+                status: 'unhealthy',
+                connected: false,
+                scopeStatus: 'missing',
+                requiredScopes: ['appointment_types:read'],
+                lastError: {
+                    code: 'http_403',
+                    message: 'Permisos insuficientes en el proveedor.',
+                },
+            },
+        });
+        const persistedHealth = prisma.$executeRawUnsafe.mock.calls[0][3];
+        expect(persistedHealth).not.toContain('never-persist-this');
+        expect(persistedHealth).not.toContain('secret-au1');
     });
 
     it('does not interpolate untrusted Cliniko identifiers into the request path', async () => {
@@ -247,6 +309,21 @@ describe('VerticalIntegrationsService endpoint security', () => {
                         practitionerId: '456',
                     },
                 },
+                verticalIntegrationHealth: {
+                    cliniko: {
+                        version: 1,
+                        provider: 'cliniko',
+                        credentialValidated: true,
+                        requiredScopes: ['appointment_types:read'],
+                        grantedScopes: ['appointment_types:read'],
+                        scopeStatus: 'satisfied',
+                        lastCheckedAt: new Date().toISOString(),
+                        lastSuccessfulSyncAt: new Date().toISOString(),
+                        consecutiveFailures: 0,
+                        circuitState: 'closed',
+                        lastError: null,
+                    },
+                },
             },
         });
 
@@ -255,7 +332,8 @@ describe('VerticalIntegrationsService endpoint security', () => {
             '789/../../users?admin=true',
         )).resolves.toEqual({
             availableTimes: [],
-            error: 'No se pudo obtener disponibilidad',
+            error: 'Identificador de disponibilidad inválido',
+            integrationStatus: 'healthy',
         });
 
         expect(http.axiosRef.get).not.toHaveBeenCalled();

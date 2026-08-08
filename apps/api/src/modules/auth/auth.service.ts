@@ -30,6 +30,13 @@ import {
 import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
 import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import {
+    resolveReadyTenantContext,
+    resolveReadyUserTenantContext,
+    TENANT_LIFECYCLE_LOCK_TTL_SECONDS,
+    tenantLifecycleLockKey,
+    tenantPurgingFenceKey,
+} from '../../common/utils/tenant-lifecycle.util';
+import {
     verificationEmail, passwordResetEmail, twoFactorEmail,
     welcomeEmail, passwordChangedEmail, newTrustedDeviceEmail,
 } from '../email/email-layouts';
@@ -80,6 +87,11 @@ export class AuthService {
         private throttleService: TenantThrottleService,
         private platformSms: PlatformSmsService,
     ) { }
+
+    /** Public for SAML and any boundary that must mint a tenant-scoped session. */
+    async resolveReadyTenantIdForUser(userId: string, claimedTenantId?: string | null): Promise<string | undefined> {
+        return (await resolveReadyUserTenantContext(this.prisma, this.redis, userId, claimedTenantId))?.tenantId;
+    }
 
     // ── Token helpers ─────────────────────────────────────────────
 
@@ -488,18 +500,19 @@ export class AuthService {
         });
 
         // Create session and generate tokens
-        const sid = await this.createSession(user.id, user.tenantId || undefined, clientType);
+        const readyTenantId = await this.resolveReadyTenantIdForUser(user.id, user.tenantId);
+        const sid = await this.createSession(user.id, readyTenantId, clientType);
 
         const payload: JwtPayload = {
             sub: user.id,
             email: user.email,
             role: user.role as UserRole,
-            tenantId: user.tenantId || undefined,
+            tenantId: readyTenantId,
         };
 
         const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid, clientType });
 
-        const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
+        const effectiveOnboarding = user.role === 'super_admin' || !!readyTenantId;
 
         return {
             requires2FA: false,
@@ -511,8 +524,8 @@ export class AuthService {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 role: user.role,
-                tenantId: user.tenantId,
-                tenantName: user.tenant?.name,
+                tenantId: readyTenantId,
+                tenantName: readyTenantId ? user.tenant?.name : undefined,
                 picture: user.picture,
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
@@ -570,9 +583,10 @@ export class AuthService {
             const user = await this.prisma.user.findUnique({ where: { id: userId } });
             if (!user || !user.isActive) throw new UnauthorizedException('Invalid token');
 
+            const readyTenantId = await this.resolveReadyTenantIdForUser(user.id, user.tenantId);
             const payload: JwtPayload = {
                 sub: user.id, email: user.email,
-                role: user.role as UserRole, tenantId: user.tenantId || undefined,
+                role: user.role as UserRole, tenantId: readyTenantId,
             };
             const session = await this.redis.getJson<SessionData>(sessionKey);
             const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload, { sid: session?.sid, clientType });
@@ -598,17 +612,18 @@ export class AuthService {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user || !user.isActive) throw new UnauthorizedException('Invalid token');
 
+        const readyTenantId = await this.resolveReadyTenantIdForUser(user.id, user.tenantId);
         if (sessionRecreated && tokenSid) {
             // Refresh válido + sesión vencida por TTL → nueva sesión con el MISMO
             // sid (los access tokens en vuelo siguen siendo coherentes).
             // El asiento se re-ocupa respetando el cupo del plan: si el tenant
             // está al tope (y este usuario ya no figura), toca re-login normal.
-            if (user.tenantId) {
-                const already = await this.redis.getClient().sismember(`tenant_sessions:${user.tenantId}`, userId);
+            if (readyTenantId) {
+                const already = await this.redis.getClient().sismember(`tenant_sessions:${readyTenantId}`, userId);
                 if (!already) {
-                    await this.cleanStaleTenantSessions(user.tenantId);
-                    const count = await this.redis.scard(`tenant_sessions:${user.tenantId}`);
-                    const seatsLimit = await this.throttleService.getPlanLimit(user.tenantId, 'seats');
+                    await this.cleanStaleTenantSessions(readyTenantId);
+                    const count = await this.redis.scard(`tenant_sessions:${readyTenantId}`);
+                    const seatsLimit = await this.throttleService.getPlanLimit(readyTenantId, 'seats');
                     if (count >= seatsLimit) {
                         throw new UnauthorizedException('Session expired — please log in again');
                     }
@@ -616,19 +631,19 @@ export class AuthService {
             }
             const session: SessionData = {
                 sid: tokenSid,
-                tenantId: user.tenantId || undefined,
+                tenantId: readyTenantId,
                 loginAt: Date.now(),
                 lastActivity: Date.now(),
                 clientType,
             };
             await this.redis.setJson(sessionKey, session, this.sessionTtl(clientType));
-            if (user.tenantId) await this.redis.sadd(`tenant_sessions:${user.tenantId}`, userId);
+            if (readyTenantId) await this.redis.sadd(`tenant_sessions:${readyTenantId}`, userId);
         }
 
         const session = await this.redis.getJson<SessionData>(sessionKey);
         const payload: JwtPayload = {
             sub: user.id, email: user.email,
-            role: user.role as UserRole, tenantId: user.tenantId || undefined,
+            role: user.role as UserRole, tenantId: readyTenantId,
         };
         const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload, {
             rememberMe: stored.rememberMe,
@@ -693,9 +708,10 @@ export class AuthService {
                 role: true,
                 tenantId: true,
                 isActive: true,
+                onboardingCompleted: true,
                 emailVerified: true,
                 tenant: {
-                    select: { schemaName: true },
+                    select: { id: true, schemaName: true, isActive: true, onboardingCompletedAt: true },
                 },
             },
         });
@@ -721,16 +737,20 @@ export class AuthService {
             await this.redis.expire(key, this.sessionTtl(clientType));
         }
 
+        const readyContext = user.role === 'super_admin'
+            ? await resolveReadyTenantContext(this.prisma, this.redis, payload.tenantId)
+            : await resolveReadyUserTenantContext(this.prisma, this.redis, user.id, payload.tenantId);
+
         return {
             id: user.id,
             email: user.email,
             role: user.role,
-            tenantId: user.tenantId,
+            tenantId: readyContext?.tenantId,
             isActive: user.isActive,
             // Necesario para EmailVerifiedGuard: sin esto en req.user no hay
             // forma de gatear las acciones donde el correo importa de verdad.
             emailVerified: user.emailVerified,
-            schemaName: user.tenant?.schemaName,
+            schemaName: readyContext?.schemaName,
             // Carry the delegation through. Re-selecting the user from the DB
             // dropped these, so anything written while impersonating was
             // attributed to the impersonated tenant_admin — the audit trail
@@ -834,18 +854,19 @@ export class AuthService {
             data: { lastLoginAt: new Date() },
         });
 
-        const sid = await this.createSession(user.id, user.tenantId || undefined, clientType);
+        const readyTenantId = await this.resolveReadyTenantIdForUser(user.id, user.tenantId);
+        const sid = await this.createSession(user.id, readyTenantId, clientType);
 
         const payload: JwtPayload = {
             sub: user.id,
             email: user.email,
             role: user.role as UserRole,
-            tenantId: user.tenantId || undefined,
+            tenantId: readyTenantId,
         };
 
         const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid, clientType });
 
-        const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
+        const effectiveOnboarding = user.role === 'super_admin' || !!readyTenantId;
 
         return {
             requires2FA: false,
@@ -857,8 +878,8 @@ export class AuthService {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 role: user.role,
-                tenantId: user.tenantId,
-                tenantName: user.tenant?.name,
+                tenantId: readyTenantId,
+                tenantName: readyTenantId ? user.tenant?.name : undefined,
                 picture: user.picture,
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
@@ -943,15 +964,16 @@ export class AuthService {
             data: { lastLoginAt: new Date() },
         });
 
-        const sid = await this.createSession(user.id, user.tenantId || undefined);
+        const readyTenantId = await this.resolveReadyTenantIdForUser(user.id, user.tenantId);
+        const sid = await this.createSession(user.id, readyTenantId);
 
         const payload: JwtPayload = {
             sub: user.id, email: user.email,
-            role: user.role as UserRole, tenantId: user.tenantId || undefined,
+            role: user.role as UserRole, tenantId: readyTenantId,
         };
 
         const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid });
-        const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
+        const effectiveOnboarding = user.role === 'super_admin' || !!readyTenantId;
 
         return {
             requires2FA: false,
@@ -959,8 +981,8 @@ export class AuthService {
             user: {
                 id: user.id, email: user.email,
                 firstName: user.firstName, lastName: user.lastName,
-                role: user.role, tenantId: user.tenantId,
-                tenantName: user.tenant?.name,
+                role: user.role, tenantId: readyTenantId,
+                tenantName: readyTenantId ? user.tenant?.name : undefined,
                 picture: user.picture,
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
@@ -1382,16 +1404,17 @@ export class AuthService {
         }
 
         await this.redis.del(attemptKey);
-        const sid = await this.createSession(user.id, user.tenantId || undefined, clientType);
+        const readyTenantId = await this.resolveReadyTenantIdForUser(user.id, user.tenantId);
+        const sid = await this.createSession(user.id, readyTenantId, clientType);
         const payload: JwtPayload = {
             sub: user.id,
             email: user.email,
             role: user.role as UserRole,
-            tenantId: user.tenantId || undefined,
+            tenantId: readyTenantId,
         };
         const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid, clientType });
 
-        const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
+        const effectiveOnboarding = user.role === 'super_admin' || !!readyTenantId;
 
         let deviceTrustToken: string | undefined;
         if (trustDevice && deviceInfo) {
@@ -1408,8 +1431,8 @@ export class AuthService {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 role: user.role,
-                tenantId: user.tenantId,
-                tenantName: user.tenant?.name,
+                tenantId: readyTenantId,
+                tenantName: readyTenantId ? user.tenant?.name : undefined,
                 picture: user.picture,
                 hasPassword: !!user.password,
                 emailVerified: user.emailVerified,
@@ -1650,6 +1673,54 @@ export class AuthService {
 
     // ── Onboarding completion ─────────────────────────────────────
 
+    private async withTenantLifecycleLease<T>(
+        tenantId: string,
+        work: (assertLifecycleOwned: () => Promise<void>) => Promise<T>,
+    ): Promise<T> {
+        const lockKey = tenantLifecycleLockKey(tenantId);
+        const lockToken = await this.redis.acquireLockToken(lockKey, TENANT_LIFECYCLE_LOCK_TTL_SECONDS);
+        if (!lockToken) {
+            throw new ConflictException({
+                error: 'tenant_lifecycle_in_progress',
+                message: 'El ciclo de vida de este tenant ya está siendo modificado.',
+                tenantId,
+            });
+        }
+        const lease = new OwnedLockLease(
+            this.redis,
+            lockKey,
+            lockToken,
+            TENANT_LIFECYCLE_LOCK_TTL_SECONDS,
+            this.logger,
+            `[Onboarding] Tenant lifecycle lock lost for ${tenantId}`,
+        );
+        lease.start();
+        try {
+            await lease.assertOwned();
+            if (await this.redis.get(tenantPurgingFenceKey(tenantId))) {
+                throw new ConflictException({
+                    error: 'tenant_purge_in_progress',
+                    message: 'El tenant está en proceso de eliminación y no puede provisionarse.',
+                    tenantId,
+                });
+            }
+            return await work(() => lease.assertOwned());
+        } catch (error: unknown) {
+            if (error instanceof LockOwnershipLostError || lease.hasLostOwnership()) {
+                throw new ConflictException({
+                    error: 'tenant_lifecycle_lock_lost',
+                    message: 'El alta perdió el lock de ciclo de vida y se detuvo antes del siguiente commit.',
+                    tenantId,
+                });
+            }
+            throw error;
+        } finally {
+            lease.stop();
+            await this.redis.releaseLockToken(lockKey, lockToken)
+                .catch((error: any) => this.logger.warn(`[Onboarding] Tenant lifecycle lock release failed: ${error.message}`));
+        }
+    }
+
     async completeOnboarding(userId: string, data: CompleteOnboardingDto): Promise<any> {
         // El lock cubre TODO el alta, no solo la transacción que crea tenant/user.
         // Sin él, dos requests que leen tenantId=null a la vez pueden crear dos
@@ -1700,15 +1771,22 @@ export class AuthService {
     ): Promise<any> {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
+        const assertOnboardingLockOwned = assertLockOwned;
 
         // Idempotencia. La transacción comitea el tenant ANTES de los pasos críticos
         // (schema, agente, Business Identity, vertical y billing). Si cualquiera
         // falla, el usuario queda ligado con onboardingCompleted=false y esta rama
         // repara/reanuda sin crear otro tenant ni emitir sesión prematuramente.
         if (user.tenantId) {
-            this.logger.log(`[Onboarding] Reintento sobre tenant ${user.tenantId} — verificando y reparando provisioning`);
+            const existingTenantId = user.tenantId;
+            return this.withTenantLifecycleLease(existingTenantId, async (assertLifecycleOwned) => {
+            const assertLockOwned = async () => {
+                await assertOnboardingLockOwned();
+                await assertLifecycleOwned();
+            };
+            this.logger.log(`[Onboarding] Reintento sobre tenant ${existingTenantId} — verificando y reparando provisioning`);
             const tenant = await this.prisma.tenant.findUnique({
-                where: { id: user.tenantId },
+                where: { id: existingTenantId },
                 select: {
                     name: true,
                     industry: true,
@@ -1757,7 +1835,7 @@ export class AuthService {
             };
             if (tenant.industry !== selection.industry || settings.subType !== selection.subType) {
                 await assertLockOwned();
-                await mergeTenantSettingsAtomic(this.prisma, user.tenantId, {
+                await mergeTenantSettingsAtomic(this.prisma, existingTenantId, {
                     subType: selection.subType,
                     businessInfoDraft: canonicalSettings.businessInfoDraft,
                 }, {
@@ -1771,14 +1849,14 @@ export class AuthService {
             await assertLockOwned();
             const effectiveSchemaName = await this.prisma.createTenantSchema(tenant.schemaName);
             await assertLockOwned();
-            await this.redis.del(`tenant:${user.tenantId}:schema`);
+            await this.redis.del(`tenant:${existingTenantId}:schema`);
             this.logger.log(`[Onboarding] Schema verificado/reparado: ${effectiveSchemaName}`);
             const goals = Array.isArray(settings.chatReasons)
                 ? settings.chatReasons
                 : (Array.isArray(data.goals || data.chatReasons) ? (data.goals || data.chatReasons) : []);
             await assertLockOwned();
             await this.personaService.createDefaultAgentFromGoals(
-                user.tenantId,
+                existingTenantId,
                 goals,
                 user.email || 'onboarding-retry',
                 selection.industry,
@@ -1786,7 +1864,7 @@ export class AuthService {
             );
             const businessDraft = canonicalSettings.businessInfoDraft || {};
             await assertLockOwned();
-            await this.businessInfoService.upsertPrimary(user.tenantId, {
+            await this.businessInfoService.upsertPrimary(existingTenantId, {
                 companyName: businessDraft.companyName || tenant.name,
                 industry: selection.industry,
                 website: businessDraft.website || settings.website || undefined,
@@ -1798,14 +1876,15 @@ export class AuthService {
             const tenantLang = (tenant.language || 'es-CO').split('-')[0];
             await assertLockOwned();
             await this.verticalsService.bootstrapVertical(
-                user.tenantId,
+                existingTenantId,
                 selection.industry,
                 selection.subType,
                 tenantLang,
+                { assertLifecycleOwned },
             );
             await assertLockOwned();
             await this.ensureOnboardingSubscription({
-                tenantId: user.tenantId,
+                tenantId: existingTenantId,
                 planSlug: (tenant.plan || data.plan || data.planSlug || 'emprendedor') as string,
                 billingEmail: businessDraft.email || tenant.billingEmail || user.email,
                 billingCountry: tenant.billingCountry
@@ -1818,31 +1897,36 @@ export class AuthService {
             // alta completa, y el UNIQUE (couponId, tenantId) hace que un segundo
             // intento devuelva `already_redeemed` en vez de regalar el mes dos veces.
             const couponResult = await this.applyOnboardingCoupon({
-                tenantId: user.tenantId,
+                tenantId: existingTenantId,
                 userId: user.id,
                 couponCode: data.couponCode,
             });
             await assertLockOwned();
-            await mergeTenantSettingsAtomic(this.prisma, user.tenantId, {}, {
-                onboardingCompletedAt: new Date(),
-            });
-            await assertLockOwned();
-            await this.prisma.user.update({
-                where: { id: user.id },
-                data: { onboardingCompleted: true },
+            await this.prisma.$transaction(async (tx: any) => {
+                await assertLockOwned();
+                await tx.tenant.update({
+                    where: { id: existingTenantId },
+                    data: { isActive: true, onboardingCompletedAt: new Date() },
+                });
+                await assertLockOwned();
+                await tx.user.update({
+                    where: { id: user.id },
+                    data: { onboardingCompleted: true },
+                });
+                await assertLockOwned();
             });
 
-            const verticalConfig = await this.verticalsService.getVerticalConfig(user.tenantId);
+            const verticalConfig = await this.verticalsService.getVerticalConfig(existingTenantId);
 
             await assertLockOwned();
             const prevSession = await this.redis.getJson<SessionData>(`session:${user.id}`);
-            const existingSid = prevSession?.sid || await this.createSession(user.id, user.tenantId);
+            const existingSid = prevSession?.sid || await this.createSession(user.id, existingTenantId);
             await assertLockOwned();
             const { accessToken, refreshToken } = await this.generateTokens({
                 sub: user.id,
                 email: user.email,
                 role: user.role as UserRole,
-                tenantId: user.tenantId,
+                tenantId: existingTenantId,
             }, { sid: existingSid });
 
             return {
@@ -1854,13 +1938,14 @@ export class AuthService {
                     firstName: user.firstName,
                     lastName: user.lastName,
                     role: user.role,
-                    tenantId: user.tenantId,
+                    tenantId: existingTenantId,
                     tenantName: tenant?.name,
                     onboardingCompleted: true,
                 },
                 verticalConfig,
                 coupon: couponResult,
             };
+            });
         }
 
         // Accept nested format from onboarding wizard
@@ -1932,6 +2017,15 @@ export class AuthService {
             : this.inferLanguageFromTimezone(timezone);
         const tenantLanguage = `${tenantLangCode}-${this.inferCountryFromTimezone(timezone)}`;
 
+        // Reserve the definitive tenant id first so the lifecycle lease exists
+        // before the tenant/user transaction becomes visible to purge workers.
+        const provisioningTenantId = crypto.randomUUID();
+        return this.withTenantLifecycleLease(provisioningTenantId, async (assertLifecycleOwned) => {
+        const assertLockOwned = async () => {
+            await assertOnboardingLockOwned();
+            await assertLifecycleOwned();
+        };
+
         // Atomic transaction: create tenant + link user
         await assertLockOwned();
         const result = await this.prisma.$transaction(async (tx: any) => {
@@ -1939,6 +2033,7 @@ export class AuthService {
             await assertLockOwned();
             const tenant = await tx.tenant.create({
                 data: {
+                    id: provisioningTenantId,
                     name: companyName,
                     slug,
                     industry,
@@ -1949,6 +2044,9 @@ export class AuthService {
                     // el tenant decía un plan que nadie había pedido.
                     plan: selectedPlan,
                     language: tenantLanguage,
+                    // Readiness is committed atomically only after every critical
+                    // provisioning invariant below has succeeded.
+                    isActive: false,
                     settings: {
                         website,
                         socialLinks,
@@ -2043,6 +2141,7 @@ export class AuthService {
             industry,
             subType,
             tenantLang,
+            { assertLifecycleOwned },
         );
         const verticalConfig = await this.verticalsService.getVerticalConfig(result.tenant.id);
         console.log(`[Onboarding] Vertical bootstrap completed and verified for "${effectiveSchemaName}"`);
@@ -2073,13 +2172,18 @@ export class AuthService {
         // críticos anteriores falló, el usuario queda ligado al tenant pero con
         // onboardingCompleted=false y la siguiente request repara/reanuda.
         await assertLockOwned();
-        await mergeTenantSettingsAtomic(this.prisma, result.tenant.id, {}, {
-            onboardingCompletedAt: new Date(),
-        });
-        await assertLockOwned();
-        await this.prisma.user.update({
-            where: { id: result.user.id },
-            data: { onboardingCompleted: true },
+        await this.prisma.$transaction(async (tx: any) => {
+            await assertLockOwned();
+            await tx.tenant.update({
+                where: { id: result.tenant.id },
+                data: { isActive: true, onboardingCompletedAt: new Date() },
+            });
+            await assertLockOwned();
+            await tx.user.update({
+                where: { id: result.user.id },
+                data: { onboardingCompleted: true },
+            });
+            await assertLockOwned();
         });
         result.user.onboardingCompleted = true;
         await assertLockOwned();
@@ -2130,6 +2234,7 @@ export class AuthService {
             verticalConfig,
             coupon: couponResult,
         };
+        });
     }
 
     /**
@@ -2223,6 +2328,13 @@ export class AuthService {
         if (!tenant) {
             throw new NotFoundException(`Tenant ${tenantId} not found`);
         }
+        if (!await resolveReadyTenantContext(this.prisma, this.redis, tenantId)) {
+            throw new ConflictException({
+                error: 'tenant_not_ready',
+                message: 'El tenant está inactivo, provisionando o en proceso de eliminación.',
+                tenantId,
+            });
+        }
 
         // Find the first tenant_admin user for this tenant
         const targetUser = await this.prisma.user.findFirst({
@@ -2233,6 +2345,8 @@ export class AuthService {
         if (!targetUser) {
             throw new NotFoundException(`No active tenant_admin found for tenant ${tenantId}`);
         }
+        const readyTenantId = await this.resolveReadyTenantIdForUser(targetUser.id, tenantId);
+        if (!readyTenantId) throw new ConflictException({ error: 'tenant_not_ready', tenantId });
 
         const tokenId = crypto.randomUUID();
 
@@ -2241,7 +2355,7 @@ export class AuthService {
             sub: targetUser.id,
             email: targetUser.email,
             role: targetUser.role as UserRole,
-            tenantId: targetUser.tenantId || undefined,
+            tenantId: readyTenantId,
         };
         const delegation = {
             impersonatedBy: superAdminId,
@@ -2320,7 +2434,7 @@ export class AuthService {
                 firstName: targetUser.firstName,
                 lastName: targetUser.lastName,
                 role: targetUser.role,
-                tenantId: targetUser.tenantId,
+                tenantId: readyTenantId,
                 tenantName: tenant.name,
                 emailVerified: true,
                 onboardingCompleted: true,

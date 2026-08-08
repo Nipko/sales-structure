@@ -18,7 +18,10 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
             properties: {
                 date: { type: 'string', description: 'YYYY-MM-DD format' },
                 serviceId: { type: 'string', description: 'Service UUID or name' },
-                staffId: { type: 'string', description: 'Optional staff UUID' },
+                staffId: {
+                    type: 'string',
+                    description: 'Optional availability-owner platform user UUID returned by check_availability; not a staff profile UUID',
+                },
             },
             required: ['date', 'serviceId'],
         },
@@ -30,7 +33,10 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
             type: 'object',
             properties: {
                 serviceId: { type: 'string', description: 'Service UUID or name' },
-                staffId: { type: 'string', description: 'Staff UUID' },
+                staffId: {
+                    type: 'string',
+                    description: 'Availability-owner platform user UUID returned by check_availability; not a staff profile UUID',
+                },
                 date: { type: 'string', description: 'YYYY-MM-DD' },
                 time: { type: 'string', description: 'HH:MM 24h format' },
                 customerName: { type: 'string', description: 'Customer full name' },
@@ -65,7 +71,7 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'send_booking_link',
-        description: 'Send the customer a link to book their appointment online (with their preferred date/time). Use when the customer wants to self-serve, or when scheduling by chat is taking too long. Returns the URL to share.',
+        description: 'Return the tenant\'s public self-service booking URL for the agent to share with the customer. The link does not prefill a preferred date or time. Use when the customer wants to self-serve, or when scheduling by chat is taking too long.',
         parameters: { type: 'object', properties: {}, required: [] },
     },
     {

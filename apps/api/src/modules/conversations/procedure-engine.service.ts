@@ -205,10 +205,46 @@ export class ProcedureEngineService {
                     const result = await this.toolExecutor.execute(
                         schemaName, tenantId, contactId, step.config.tool || '', step.config.args || {}, conversationId,
                     );
+                    if (result?.error) {
+                        const explicitlyRejected = ['action_rejected', 'approval_rejected'].includes(result.error);
+                        if (explicitlyRejected) {
+                            await this.clearState(conversationId);
+                            return {
+                                handled: true,
+                                completed: true,
+                                text: result.message || 'La acción fue rechazada y el procedimiento se cerró.',
+                                procedureName: procedure.name,
+                            };
+                        }
+
+                        // Confirmation/OTP/approval and fail-closed provider results
+                        // are not completed tool steps. Persist the SAME currentStepId
+                        // so the next turn resumes the control handshake instead of
+                        // silently skipping the writer.
+                        if (step.config.saveAs) state.collected[step.config.saveAs] = result;
+                        await this.saveState(conversationId, state);
+                        return {
+                            handled: true,
+                            completed: false,
+                            text: result.message || 'La acción todavía no puede completarse.',
+                            handoff: result.shouldHandoff === true,
+                            handoffReason: result.shouldHandoff === true
+                                ? `procedure_tool_control:${step.config.tool || 'unknown'}`
+                                : undefined,
+                            procedureName: procedure.name,
+                        };
+                    }
                     if (step.config.saveAs) state.collected[step.config.saveAs] = result;
                 } catch (e: any) {
                     this.logger.warn(`[Procedure] tool ${step.config.tool} failed: ${e.message}`);
                     if (step.config.saveAs) state.collected[step.config.saveAs] = { error: true };
+                    await this.saveState(conversationId, state);
+                    return {
+                        handled: true,
+                        completed: false,
+                        text: 'No se pudo completar esta acción. Inténtalo de nuevo o solicita ayuda humana.',
+                        procedureName: procedure.name,
+                    };
                 }
                 state.currentStepId = this.nextStepId(procedure, state.currentStepId);
                 continue;

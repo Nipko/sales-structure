@@ -122,7 +122,7 @@ export default function DripSequencesPage() {
   }
 
   function handleCreate() {
-    if (!canCreate("automationRules", sequences.length)) {
+    if (!canCreate("maxDripSequences", sequences.length)) {
       setUpgradeModalOpen(true);
       return;
     }
@@ -206,7 +206,7 @@ export default function DripSequencesPage() {
 
       <UpgradeBanner
         current={sequences.length}
-        limit={getLimit("automationRules")}
+        limit={getLimit("maxDripSequences")}
         resourceLabel={t("resourceLabel")}
       />
 

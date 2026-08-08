@@ -460,7 +460,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             const res = await this.agentTest.test(
                 tenantId,
                 agentId,
-                { message: customerMsg, conversationHistory: [...history], channelType: channelType as any },
+                { message: customerMsg, conversationHistory: [...history] },
                 { disableTools: true },
             );
             const reply = res.reply || '';

@@ -52,11 +52,11 @@ export default function PricingPage() {
     return {
       monthly: formatCopPrice(ap.displayPriceCents),
       // Per-month equivalent of the annual plan (suffix is "/mes"): yearly total ÷ 12.
-      // Real annual price from billing_plans when present; ~-17% estimate as fallback.
+      // Real annual price from billing_plans when present; the seeded 15% policy as fallback.
       annual: formatCopPrice(
         ap.displayPriceAnnualCents
           ? Math.round(ap.displayPriceAnnualCents / 12)
-          : Math.round(ap.displayPriceCents * 0.83),
+          : Math.round(ap.displayPriceCents * 0.85),
       ),
     };
   };
@@ -78,16 +78,7 @@ export default function PricingPage() {
 
   return (
     <>
-      <JsonLd
-        data={pricingJsonLd(
-          PLANS.map((p) => ({
-            name: p.nameKey,
-            price: p.priceUsd,
-            currency: "USD",
-            features: [],
-          }))
-        )}
-      />
+      <JsonLd data={pricingJsonLd()} />
       <JsonLd
         data={breadcrumbJsonLd([
           { name: "Inicio", url: "/" },

@@ -271,6 +271,7 @@ export class BookingEngineService {
         // same principle as `language`. `flowData` carries the parsed nfm_reply fields.
         flowCapable: boolean = false,
         flowData?: Record<string, unknown>,
+        conversationId?: string,
     ): Promise<EngineResult> {
         const state = { ...currentState };
         const L = language; // shorthand for msg() calls
@@ -361,7 +362,15 @@ export class BookingEngineService {
                     if (realSlots.some(s => s.time === state.time)) {
                         state.step = 'confirm';
                         state.flowStartedAt = undefined;
-                        return this.createBooking(schemaName, tenantId, contactId, state, L);
+                        return this.createBooking(
+                            schemaName,
+                            tenantId,
+                            contactId,
+                            state,
+                            L,
+                            conversationId,
+                            'flow_response',
+                        );
                     }
                     // The picked slot isn't actually bookable → show the real availability
                     // in text so the customer chooses a valid one (or is asked for a new date).
@@ -659,7 +668,17 @@ export class BookingEngineService {
             const slot = state.slots.find(s => s.time === time);
             if (slot) { state.time = slot.time; return this.collectMissingInfo(state, L); }
         }
-        if (rawText === 'confirm_yes') return this.createBooking(schemaName, tenantId, contactId, state, L);
+        if (rawText === 'confirm_yes') {
+            return this.createBooking(
+                schemaName,
+                tenantId,
+                contactId,
+                state,
+                L,
+                conversationId,
+                'confirm_yes',
+            );
+        }
         if (rawText === 'confirm_no') {
             Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
             return { handled: true, state, text: msg(L, 'cancelled') };
@@ -722,7 +741,7 @@ export class BookingEngineService {
         // ── Have service + date + time → collect info or confirm ──
         if (state.serviceId && state.date && state.time) {
             if (intent.isConfirmation && state.customerName && state.customerEmail) {
-                return this.createBooking(schemaName, tenantId, contactId, state, L);
+                return this.createBooking(schemaName, tenantId, contactId, state, L, conversationId);
             }
             return this.collectMissingInfo(state, L);
         }
@@ -884,7 +903,15 @@ export class BookingEngineService {
     }
 
     // ── Create booking ──
-    private async createBooking(schema: string, tenantId: string, contactId: string, state: BookingState, lang: string): Promise<EngineResult> {
+    private async createBooking(
+        schema: string,
+        tenantId: string,
+        contactId: string,
+        state: BookingState,
+        lang: string,
+        conversationId: string | undefined,
+        confirmationSource?: 'confirm_yes' | 'flow_response',
+    ): Promise<EngineResult> {
         this.logger.log(`[Decide] BOOKING: ${state.serviceName} ${state.date} ${state.time} for ${state.customerName}`);
 
         // Bug #5: Normalize startAt to ISO 8601 to avoid timezone-sensitive timestamp comparison.
@@ -917,7 +944,12 @@ export class BookingEngineService {
             // era el motor el que no se lo pasaba nunca.
             staffId: state.staffId,
             customerName: state.customerName, customerEmail: state.customerEmail, customerPhone: state.customerPhone,
-        });
+        }, conversationId, confirmationSource ? {
+            authorityEvidence: {
+                kind: 'booking_engine_confirmation',
+                source: confirmationSource,
+            },
+        } : undefined);
         if (result?.success) {
             state.step = 'booked';
             return {

@@ -96,7 +96,7 @@ export const RESTAURANTS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'cancel_order',
-        description: 'Cancel a food order by ID. Only orders in "pending" or "confirmed" status can be cancelled — orders already being prepared or delivered cannot. The customer can only cancel their own orders.',
+        description: 'Cancel a food order by ID. Orders in "received" status can be cancelled; legacy "pending" or "confirmed" orders are also accepted. Orders in "preparing", "ready", "delivered", or "cancelled" status cannot be cancelled. The customer can only cancel their own orders.',
         parameters: {
             type: 'object',
             properties: {
@@ -108,7 +108,7 @@ export const RESTAURANTS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'check_order_status',
-        description: 'Check the current status of a food order. Returns status, items, total, and estimated delivery time. Use when the customer asks about their order progress.',
+        description: 'Check the current status of a food order. Returns status, items, total, and estimatedDeliveryAt when an ETA was calculated for the order. Use when the customer asks about their order progress.',
         parameters: {
             type: 'object',
             properties: {

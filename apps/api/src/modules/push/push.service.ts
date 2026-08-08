@@ -1,24 +1,34 @@
 import { BadRequestException, ConflictException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import * as webpush from 'web-push';
 import { ConfigService } from '@nestjs/config';
-import { prepareSafeHttpsTarget } from '../../common/utils/safe-outbound-url.util';
+import { parseSafeHttpsUrl, pinSafeHttpsUrl } from '../../common/utils/safe-outbound-url.util';
+import {
+    IsolatedWebPushExecutor,
+    WEB_PUSH_MAX_SUBSCRIPTIONS_PER_DISPATCH,
+    EXPO_PUSH_MAX_REQUEST_BYTES,
+    assertAllowlistedPushServiceHostname,
+    assertBoundedWebPushPayload,
+    readBoundedPushJsonResponse,
+    withPushAbsoluteDeadline,
+} from './web-push-isolation';
 
 /**
  * A PushSubscription endpoint is supplied by an authenticated browser, but its
- * API payload can be tampered with. Resolve it through the shared public-network
- * policy and pin that exact address in the HTTPS agent passed to web-push. This
- * preserves standards-compliant/custom push services without permitting SSRF
- * or a second DNS lookup that could rebind to an internal address.
+ * API payload can be tampered with. Only known browser push services are legal;
+ * their public address is resolved once and passed to the isolated worker.
  */
 export async function prepareTrustedWebPushTarget(rawEndpoint: unknown) {
-    return prepareSafeHttpsTarget(rawEndpoint, 'suscripcion push');
+    const parsed = parseSafeHttpsUrl(rawEndpoint, 'suscripcion push');
+    assertAllowlistedPushServiceHostname(parsed.hostname);
+    return pinSafeHttpsUrl(parsed, 'suscripcion push');
 }
 
 @Injectable()
 export class PushService implements OnModuleInit {
     private readonly logger = new Logger(PushService.name);
     private enabled = false;
+    private vapidDetails?: { subject: string; publicKey: string; privateKey: string };
+    private readonly webPushExecutor = new IsolatedWebPushExecutor();
 
     constructor(
         private readonly prisma: PrismaService,
@@ -30,11 +40,9 @@ export class PushService implements OnModuleInit {
         const privateKey = this.config.get<string>('VAPID_PRIVATE_KEY');
 
         if (publicKey && privateKey) {
-            webpush.setVapidDetails(
-                'mailto:soporte@parallly-chat.cloud',
-                publicKey,
-                privateKey,
-            );
+            this.vapidDetails = {
+                subject: 'mailto:soporte@parallly-chat.cloud', publicKey, privateKey,
+            };
             this.enabled = true;
             this.logger.log('Web Push configured with VAPID keys');
         } else {
@@ -81,6 +89,9 @@ export class PushService implements OnModuleInit {
     /** Register a native Expo push token (provider='expo'). */
     async subscribeExpo(userId: string, tenantId: string, token: string): Promise<void> {
         if (!token) return;
+        if (typeof token !== 'string' || token.length > 512) {
+            throw new BadRequestException('Token Expo invalido');
+        }
         await this.ensurePushTable();
         const rows = await this.prisma.$queryRawUnsafe(
             `INSERT INTO public.push_subscriptions AS ps (user_id, tenant_id, endpoint, keys, provider, created_at)
@@ -96,42 +107,79 @@ export class PushService implements OnModuleInit {
     }
 
     async sendToUser(userId: string, payload: { title: string; body: string; url?: string; tag?: string }): Promise<number> {
-        const subs: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT endpoint, keys, user_id, tenant_id, COALESCE(provider, 'webpush') AS provider
-             FROM public.push_subscriptions WHERE user_id = $1::uuid`,
-            userId,
-        );
-        return this.dispatch(subs, payload);
+        let cursor: string | null = null;
+        let sent = 0;
+        do {
+            const subs: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, endpoint, keys, user_id, tenant_id, COALESCE(provider, 'webpush') AS provider
+                 FROM public.push_subscriptions
+                 WHERE user_id = $1::uuid
+                   AND ($2::uuid IS NULL OR id > $2::uuid)
+                 ORDER BY id
+                 LIMIT $3`,
+                userId, cursor, WEB_PUSH_MAX_SUBSCRIPTIONS_PER_DISPATCH,
+            );
+            if (!subs?.length) break;
+            sent += await this.dispatch(subs, payload);
+            cursor = subs[subs.length - 1].id;
+            if (subs.length < WEB_PUSH_MAX_SUBSCRIPTIONS_PER_DISPATCH) break;
+        } while (cursor);
+        return sent;
     }
 
     async sendToTenantRole(tenantId: string, role: string, payload: { title: string; body: string; url?: string; tag?: string }): Promise<number> {
-        const subs: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT ps.endpoint, ps.keys, ps.user_id, ps.tenant_id, COALESCE(ps.provider, 'webpush') AS provider
-             FROM public.push_subscriptions ps
-             JOIN public.users u ON u.id = ps.user_id
-             WHERE ps.tenant_id = $1::uuid AND u.role = $2 AND u.is_active = true`,
-            tenantId, role,
-        );
-        return this.dispatch(subs, payload);
+        let cursor: string | null = null;
+        let sent = 0;
+        do {
+            const subs: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT ps.id, ps.endpoint, ps.keys, ps.user_id, ps.tenant_id,
+                        COALESCE(ps.provider, 'webpush') AS provider
+                 FROM public.push_subscriptions ps
+                 JOIN public.users u ON u.id = ps.user_id
+                 WHERE ps.tenant_id = $1::uuid AND u.role = $2 AND u.is_active = true
+                   AND ($3::uuid IS NULL OR ps.id > $3::uuid)
+                 ORDER BY ps.id
+                 LIMIT $4`,
+                tenantId, role, cursor, WEB_PUSH_MAX_SUBSCRIPTIONS_PER_DISPATCH,
+            );
+            if (!subs?.length) break;
+            sent += await this.dispatch(subs, payload);
+            cursor = subs[subs.length - 1].id;
+            if (subs.length < WEB_PUSH_MAX_SUBSCRIPTIONS_PER_DISPATCH) break;
+        } while (cursor);
+        return sent;
     }
 
     /** Dispatch a payload to mixed web-push + native Expo subscriptions. */
     private async dispatch(subs: any[], payload: { title: string; body: string; url?: string; tag?: string }): Promise<number> {
         let sent = 0;
         const expoTokens: string[] = [];
+        const boundedSubs = subs || [];
+        if (boundedSubs.length > WEB_PUSH_MAX_SUBSCRIPTIONS_PER_DISPATCH) {
+            throw new Error(`Push dispatch exceeds the ${WEB_PUSH_MAX_SUBSCRIPTIONS_PER_DISPATCH}-subscription memory cap`);
+        }
+        const serializedPayload = JSON.stringify(payload);
+        // Validate once outside the per-subscription catch. An oversized product
+        // payload is not evidence that a browser subscription is stale.
+        assertBoundedWebPushPayload(serializedPayload);
 
-        for (const sub of subs) {
+        for (const sub of boundedSubs) {
             if (sub.provider === 'expo') { expoTokens.push(sub.endpoint); continue; }
             if (!this.enabled) continue; // web-push needs VAPID
             let target: Awaited<ReturnType<typeof prepareTrustedWebPushTarget>> | undefined;
             try {
                 target = await prepareTrustedWebPushTarget(sub.endpoint);
                 const keys = typeof sub.keys === 'string' ? JSON.parse(sub.keys) : sub.keys;
-                await webpush.sendNotification(
-                    { endpoint: target.url.toString(), keys },
-                    JSON.stringify(payload),
-                    { agent: target.httpsAgent, timeout: 10_000 },
-                );
+                if (!this.vapidDetails) continue;
+                await this.webPushExecutor.send({
+                    endpoint: target.url.toString(),
+                    hostname: target.hostname,
+                    address: target.address,
+                    family: target.family,
+                    keys,
+                    payload: serializedPayload,
+                    vapidDetails: this.vapidDetails,
+                });
                 sent++;
             } catch (err: any) {
                 if (err instanceof BadRequestException || err.statusCode === 410 || err.statusCode === 404) {
@@ -166,12 +214,20 @@ export class PushService implements OnModuleInit {
                 ...(conversationId ? { categoryId: 'message' } : {}),
                 data: { url: payload.url, tag: payload.tag, conversationId },
             }));
-            const res = await fetch('https://exp.host/--/api/v2/push/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                body: JSON.stringify(messages),
+            const requestBody = JSON.stringify(messages);
+            if (Buffer.byteLength(requestBody, 'utf8') > EXPO_PUSH_MAX_REQUEST_BYTES) {
+                throw new Error('Expo push request exceeded memory cap');
+            }
+            const data: any = await withPushAbsoluteDeadline(async (signal) => {
+                const res = await fetch('https://exp.host/--/api/v2/push/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                    body: requestBody,
+                    signal,
+                });
+                if (!res.ok) throw new Error(`Expo push provider returned ${res.status}`);
+                return readBoundedPushJsonResponse(res);
             });
-            const data: any = await res.json().catch(() => ({}));
             const tickets: any[] = Array.isArray(data?.data) ? data.data : [];
             tickets.forEach((t, i) => {
                 if (t?.status === 'error' && t?.details?.error === 'DeviceNotRegistered') {

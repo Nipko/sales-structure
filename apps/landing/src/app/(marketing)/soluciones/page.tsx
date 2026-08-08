@@ -118,21 +118,28 @@ export default function SolutionsPage() {
                           {t(`verticals.${v.slug}.name`)}
                         </h3>
                         <p className="text-xs text-text-muted">{t(`verticals.${v.slug}.subtitle`)}</p>
+                        <p className="mt-1 text-[10px] font-medium text-text-muted" data-product-mode={v.productMode}>
+                          {t(`solutions.productMode.${v.productMode}`)}
+                        </p>
                       </div>
                     </div>
-                    <span
-                      className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                      style={{
-                        backgroundColor: `${v.color}15`,
-                        color: v.color,
-                      }}
-                    >
-                      {t(`solutions.tierBadge${v.tier}`)}
-                    </span>
+                    {v.deepMarketingAllowed && (
+                      <span
+                        className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: `${v.color}15`,
+                          color: v.color,
+                        }}
+                      >
+                        {t(`solutions.tierBadge${v.tier}`)}
+                      </span>
+                    )}
                   </div>
 
                   <p className="text-sm text-text-secondary mb-4 leading-relaxed">
-                    {t(`verticals.${v.slug}.tagline`)}
+                    {v.deepMarketingAllowed
+                      ? t(`verticals.${v.slug}.tagline`)
+                      : t(`solutions.productModeDescription.${v.productMode}`)}
                   </p>
 
                   <div className="flex items-center justify-between">

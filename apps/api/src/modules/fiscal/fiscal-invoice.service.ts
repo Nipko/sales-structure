@@ -8,6 +8,8 @@ import { FiscalConfigService, FiscalConfig } from './fiscal-config.service';
 import { FiscalProviderFactory } from './fiscal-provider.factory';
 import { FISCAL_MAX_ATTEMPTS, FISCAL_QUEUE, FiscalJobData } from './fiscal.constants';
 import { FiscalAcquirer } from './interfaces/fiscal-provider.interface';
+import { RedisService } from '../redis/redis.service';
+import { tenantPurgingFenceKey } from '../../common/utils/tenant-lifecycle.util';
 
 /** Shape of the EventEmitter2 payload billing.service emits for payment events. */
 interface BillingEventPayload {
@@ -40,7 +42,31 @@ export class FiscalInvoiceService {
         private readonly config: FiscalConfigService,
         private readonly factory: FiscalProviderFactory,
         @InjectQueue(FISCAL_QUEUE) private readonly queue: Queue<FiscalJobData>,
+        private readonly redis: RedisService,
     ) {}
+
+    /**
+     * Serialize invoice creation with purge's tenant checkpoint. The shared row
+     * lock means either the invoice commits before purge deactivates/stamps it,
+     * or creation observes purgeSaga.startedAt and is rejected.
+     */
+    private async withTenantPurgeGate<T>(
+        tenantId: string,
+        work: (tx: any) => Promise<T>,
+    ): Promise<T | null> {
+        if (await this.redis.get(tenantPurgingFenceKey(tenantId))) return null;
+        return this.prisma.$transaction(async (tx: any) => {
+            const rows = await tx.$queryRawUnsafe(
+                `SELECT settings->'purgeSaga'->>'startedAt' AS purge_started_at
+                   FROM public.tenants
+                  WHERE id = $1::uuid
+                  FOR SHARE`,
+                tenantId,
+            ) as Array<{ purge_started_at: string | null }>;
+            if (!rows[0] || rows[0].purge_started_at) return null;
+            return work(tx);
+        });
+    }
 
     @OnEvent(BillingEventType.PAYMENT_SUCCEEDED)
     async onPaymentSucceeded(payload: BillingEventPayload): Promise<void> {
@@ -90,18 +116,20 @@ export class FiscalInvoiceService {
             }
 
             const acquirer = this.extractAcquirer(tenant.settings);
-            const invoice = await this.prisma.fiscalInvoice.create({
-                data: {
-                    tenantId,
-                    paymentId: payment.id,
-                    type: 'invoice',
-                    status: 'pending',
-                    provider: provider.name,
-                    amountCents: payment.amountCents,
-                    currency: payment.currency,
-                    acquirerSnapshot: acquirer ? (acquirer as any) : undefined,
-                },
-            });
+            const invoice: any = await this.withTenantPurgeGate(tenantId, (tx) =>
+                tx.fiscalInvoice.create({
+                    data: {
+                        tenantId,
+                        paymentId: payment.id,
+                        type: 'invoice',
+                        status: 'pending',
+                        provider: provider.name,
+                        amountCents: payment.amountCents,
+                        currency: payment.currency,
+                        acquirerSnapshot: acquirer ? (acquirer as any) : undefined,
+                    },
+                }));
+            if (!invoice) return;
 
             await this.enqueue({ fiscalInvoiceId: invoice.id, kind: 'issue' });
             this.logger.log(`[Fiscal] Queued invoice ${invoice.id} for tenant=${tenantId} (${provider.name})`);
@@ -139,19 +167,21 @@ export class FiscalInvoiceService {
             }
 
             const refundCents = charge.amountCents ?? original.amountCents;
-            const creditNote = await this.prisma.fiscalInvoice.create({
-                data: {
-                    tenantId,
-                    paymentId: null, // standalone; linked via relatedInvoiceId
-                    type: 'credit_note',
-                    status: 'pending',
-                    provider: original.provider,
-                    relatedInvoiceId: original.id,
-                    amountCents: refundCents,
-                    currency: payment.currency,
-                    acquirerSnapshot: (original.acquirerSnapshot as any) ?? undefined,
-                },
-            });
+            const creditNote: any = await this.withTenantPurgeGate(tenantId, (tx) =>
+                tx.fiscalInvoice.create({
+                    data: {
+                        tenantId,
+                        paymentId: null, // standalone; linked via relatedInvoiceId
+                        type: 'credit_note',
+                        status: 'pending',
+                        provider: original.provider,
+                        relatedInvoiceId: original.id,
+                        amountCents: refundCents,
+                        currency: payment.currency,
+                        acquirerSnapshot: (original.acquirerSnapshot as any) ?? undefined,
+                    },
+                }));
+            if (!creditNote) return;
 
             await this.enqueue({ fiscalInvoiceId: creditNote.id, kind: 'credit_note' });
             this.logger.log(`[Fiscal] Queued credit note ${creditNote.id} for original ${original.id}`);
@@ -164,10 +194,12 @@ export class FiscalInvoiceService {
     async requeue(fiscalInvoiceId: string): Promise<boolean> {
         const inv = await this.prisma.fiscalInvoice.findUnique({ where: { id: fiscalInvoiceId } });
         if (!inv || inv.status === 'issued') return false;
-        await this.prisma.fiscalInvoice.update({
-            where: { id: fiscalInvoiceId },
-            data: { status: 'pending', failureReason: null },
-        });
+        const updated = await this.withTenantPurgeGate(inv.tenantId, (tx) =>
+            tx.fiscalInvoice.update({
+                where: { id: fiscalInvoiceId },
+                data: { status: 'pending', failureReason: null },
+            }));
+        if (!updated) return false;
         await this.enqueue({ fiscalInvoiceId, kind: inv.type === 'credit_note' ? 'credit_note' : 'issue' });
         this.logger.log(`[Fiscal] Re-queued ${inv.type} ${fiscalInvoiceId} for retry`);
         return true;

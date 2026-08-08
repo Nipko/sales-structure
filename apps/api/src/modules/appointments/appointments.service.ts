@@ -1,7 +1,17 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { randomUUID } from 'crypto';
+import { CalendarSyncOutboxService } from './calendar-sync-outbox.service';
+import { TemporalCapacityContractService } from '../verticals/temporal-capacity-contract.service';
+import { assertActiveTenantUser } from './tenant-user-scope.util';
+import {
+    AppointmentServiceUnavailableError,
+    AppointmentSlotConflictError,
+    dayOfWeekForLocalDate,
+    lockAndAssertAppointmentCapacity,
+    wallClockEpoch,
+} from './appointment-capacity.util';
 
 export interface Appointment {
     id: string;
@@ -22,6 +32,13 @@ export interface Appointment {
     createdAt: string;
     recurringGroupId: string | null;
     recurrenceRule: Record<string, any> | null;
+    calendarIntegrationId: string | null;
+    calendarOwnerId: string | null;
+    calendarProvider: 'google' | 'microsoft' | null;
+    calendarEventId: string | null;
+    calendarSyncState: string | null;
+    calendarSyncError: string | null;
+    calendarSyncedAt: string | null;
 }
 
 export interface AvailabilitySlot {
@@ -43,10 +60,12 @@ export interface BlockedDate {
 @Injectable()
 export class AppointmentsService {
     private readonly logger = new Logger(AppointmentsService.name);
+    private readonly temporalContracts = new TemporalCapacityContractService();
 
     constructor(
         private prisma: PrismaService,
         private eventEmitter: EventEmitter2,
+        private calendarOutbox: CalendarSyncOutboxService,
     ) {}
 
     // ── Reminder Settings ─────────────────────────────────────
@@ -159,15 +178,25 @@ export class AppointmentsService {
         status?: string; assignedTo?: string;
         startDate?: string; endDate?: string;
     }): Promise<Appointment[]> {
+        if (filters?.assignedTo) {
+            await assertActiveTenantUser(this.prisma, schemaName, filters.assignedTo);
+        }
         let sql = `
-            SELECT a.*, c.name as contact_name, u.first_name || ' ' || u.last_name as assigned_name
+            SELECT a.*, c.name as contact_name, u.id as assigned_user_id,
+                   u.first_name || ' ' || u.last_name as assigned_name
             FROM appointments a
             LEFT JOIN contacts c ON c.id = a.contact_id
-            LEFT JOIN public.users u ON u.id = a.assigned_to::uuid
+            LEFT JOIN public.tenants tenant_owner
+              ON tenant_owner.schema_name = $1
+             AND tenant_owner.is_active = true
+            LEFT JOIN public.users u
+              ON u.id = a.assigned_to::uuid
+             AND u.tenant_id = tenant_owner.id
+             AND u.is_active = true
             WHERE 1=1
         `;
-        const params: any[] = [];
-        let idx = 1;
+        const params: any[] = [schemaName];
+        let idx = 2;
 
         if (filters?.status) {
             sql += ` AND a.status = $${idx++}`;
@@ -197,12 +226,19 @@ export class AppointmentsService {
 
     async getById(schemaName: string, appointmentId: string): Promise<Appointment> {
         const rows = await this.prisma.executeInTenantSchema(schemaName,
-            `SELECT a.*, c.name as contact_name, u.first_name || ' ' || u.last_name as assigned_name
+            `SELECT a.*, c.name as contact_name, u.id as assigned_user_id,
+                    u.first_name || ' ' || u.last_name as assigned_name
              FROM appointments a
              LEFT JOIN contacts c ON c.id = a.contact_id
-             LEFT JOIN public.users u ON u.id = a.assigned_to::uuid
-             WHERE a.id = $1::uuid`,
-            [appointmentId],
+             LEFT JOIN public.tenants tenant_owner
+               ON tenant_owner.schema_name = $1
+              AND tenant_owner.is_active = true
+             LEFT JOIN public.users u
+               ON u.id = a.assigned_to::uuid
+              AND u.tenant_id = tenant_owner.id
+              AND u.is_active = true
+             WHERE a.id = $2::uuid`,
+            [schemaName, appointmentId],
         );
         const row = (rows as any[])[0];
         if (!row) throw new NotFoundException('Appointment not found');
@@ -220,10 +256,17 @@ export class AppointmentsService {
         location?: string;
         notes?: string;
         metadata?: Record<string, any>;
+        customerName?: string;
+        customerPhone?: string;
+        customerEmail?: string;
+        source?: string;
     }): Promise<Appointment> {
-        // Validate assignedTo is a valid UUID (callers may pass a name instead of ID)
+        // Tenant-local appointment rows cannot FK to public.users. Resolve the
+        // assignment against the active tenant owner before any conflict/write.
         const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const assignedToUuid = data.assignedTo && uuidRe.test(data.assignedTo) ? data.assignedTo : null;
+        const assignedToUuid = data.assignedTo
+            ? await assertActiveTenantUser(this.prisma, schemaName, data.assignedTo)
+            : null;
         const contactIdUuid = data.contactId && uuidRe.test(data.contactId) ? data.contactId : null;
         const conversationIdUuid = data.conversationId && uuidRe.test(data.conversationId) ? data.conversationId : null;
 
@@ -242,37 +285,82 @@ export class AppointmentsService {
                 this.logger.warn(`Failed to resolve serviceId from name "${data.serviceName}": ${e.message}`);
             }
         }
+        if (!serviceIdUuid) {
+            throw new BadRequestException({
+                error: 'appointment_service_unavailable',
+                message: 'El servicio no existe o no está activo.',
+            });
+        }
 
-        // Normalize times to naive wall-clock (tenant-local). Open-duration services
-        // book through the dashboard with an empty end time (payload "YYYY-MM-DDT:00"),
-        // which previously crashed the ::timestamp cast with a 500. Validate the start
-        // and fall back to a 60-minute block when the end is missing or not after start.
+        // Appointments are fixed wall-clock intervals. An empty/open duration is
+        // not coerced to 60 minutes: callers must select the nightly,
+        // day-capacity, session or resource contract explicitly.
         const startAt = this.normalizeNaive(data.startAt);
         if (!startAt) {
             throw new BadRequestException('La hora de inicio de la cita no es válida.');
         }
-        let endAt = this.normalizeNaive(data.endAt);
+        const endAt = this.normalizeNaive(data.endAt);
         if (!endAt || endAt <= startAt) {
-            endAt = this.addMinutesNaive(startAt, 60);
+            throw new BadRequestException({
+                error: 'ambiguous_or_invalid_appointment_duration',
+                message: 'La cita necesita una hora final explícita posterior al inicio.',
+            });
         }
-
-        if (assignedToUuid) {
-            const conflict = await this.checkConflict(schemaName, assignedToUuid, startAt, endAt);
-            if (conflict) {
-                throw new BadRequestException('El agente ya tiene una cita en ese horario');
-            }
-        }
+        const timezone = await this.resolveTimezoneForSchema(schemaName, data.metadata?.timezone);
+        this.temporalContracts.normalize({
+            kind: 'appointment',
+            startsAtLocal: startAt,
+            timezone,
+            durationMinutes: this.diffMinutesNaive(startAt, endAt),
+        });
 
         const id = randomUUID();
-        await this.prisma.executeInTenantSchema(schemaName,
-            `INSERT INTO appointments (id, contact_id, conversation_id, assigned_to, service_id, service_name, start_at, end_at, location, notes, metadata, created_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7::timestamp, $8::timestamp, $9, $10, $11::jsonb, NOW(), NOW())`,
-            [id, contactIdUuid, conversationIdUuid, assignedToUuid, serviceIdUuid,
-             data.serviceName, startAt, endAt, data.location || null, data.notes || null,
-             JSON.stringify(data.metadata || {})],
-        );
+        let canonicalServiceName = data.serviceName;
+        try {
+            await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+                const service = await lockAndAssertAppointmentCapacity(query, {
+                    schemaName,
+                    serviceId: serviceIdUuid!,
+                    staffUserId: assignedToUuid,
+                    startAt,
+                    endAt,
+                });
+                canonicalServiceName = service.name;
+                await query(
+                    `INSERT INTO appointments
+                        (id, contact_id, conversation_id, assigned_to, service_id, service_name,
+                         start_at, end_at, location, notes, metadata, customer_name,
+                         customer_phone, customer_email, source, created_at, updated_at)
+                     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
+                             $7::timestamp, $8::timestamp, $9, $10, $11::jsonb, $12,
+                             $13, $14, $15, NOW(), NOW())`,
+                    [
+                        id, contactIdUuid, conversationIdUuid, assignedToUuid, serviceIdUuid,
+                        canonicalServiceName, startAt, endAt, data.location || null,
+                        data.notes || null, JSON.stringify(data.metadata || {}),
+                        data.customerName || null, data.customerPhone || null,
+                        data.customerEmail || null, data.source || 'manual',
+                    ],
+                );
+                await this.calendarOutbox.enqueueWithQuery(query, id, 'upsert');
+            });
+        } catch (error) {
+            if (error instanceof AppointmentSlotConflictError) {
+                throw new ConflictException({
+                    error: error.code,
+                    message: 'Ese horario ya no está disponible.',
+                });
+            }
+            if (error instanceof AppointmentServiceUnavailableError) {
+                throw new BadRequestException({
+                    error: error.code,
+                    message: 'El servicio no existe o no está activo.',
+                });
+            }
+            throw error;
+        }
 
-        this.logger.log(`Appointment created: ${id} — ${data.serviceName} at ${startAt}`);
+        this.logger.log(`Appointment created: ${id} — ${canonicalServiceName} at ${startAt}`);
         const appointment = await this.getById(schemaName, id);
 
         // Emit event for WhatsApp confirmation
@@ -282,7 +370,7 @@ export class AppointmentsService {
     }
 
     async update(schemaName: string, appointmentId: string, data: {
-        assignedTo?: string; serviceName?: string;
+        assignedTo?: string | null; serviceName?: string;
         startAt?: string; endAt?: string; status?: string;
         location?: string; notes?: string;
     }): Promise<Appointment> {
@@ -290,22 +378,42 @@ export class AppointmentsService {
         const params: any[] = [];
         let idx = 1;
 
-        if (data.assignedTo !== undefined) { sets.push(`assigned_to = $${idx++}::uuid`); params.push(data.assignedTo); }
-        if (data.serviceName !== undefined) { sets.push(`service_name = $${idx++}`); params.push(data.serviceName); }
-        if (data.startAt !== undefined) {
-            const s = this.normalizeNaive(data.startAt);
-            if (!s) throw new BadRequestException('La hora de inicio de la cita no es válida.');
-            sets.push(`start_at = $${idx++}::timestamp`); params.push(s);
+        if (data.assignedTo !== undefined) {
+            const assignedTo = data.assignedTo === null
+                ? null
+                : await assertActiveTenantUser(this.prisma, schemaName, data.assignedTo);
+            sets.push(`assigned_to = $${idx++}::uuid`);
+            params.push(assignedTo);
         }
-        if (data.endAt !== undefined) {
-            // Open-duration edits may send an empty end time — default to +60min from
-            // the (new) start when derivable, instead of crashing the ::timestamp cast.
-            let e = this.normalizeNaive(data.endAt);
-            if (!e) {
-                const baseStart = this.normalizeNaive(data.startAt);
-                e = baseStart ? this.addMinutesNaive(baseStart, 60) : null;
+        if (data.serviceName !== undefined) { sets.push(`service_name = $${idx++}`); params.push(data.serviceName); }
+        if (data.startAt !== undefined || data.endAt !== undefined) {
+            const currentRows = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT to_char(start_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS start_at,
+                        to_char(end_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS end_at
+                 FROM appointments WHERE id = $1::uuid LIMIT 1`,
+                [appointmentId],
+            );
+            if (!currentRows?.length) throw new NotFoundException('Appointment not found');
+            const startAt = data.startAt === undefined
+                ? currentRows[0].start_at : this.normalizeNaive(data.startAt);
+            const endAt = data.endAt === undefined
+                ? currentRows[0].end_at : this.normalizeNaive(data.endAt);
+            if (!startAt || !endAt || endAt <= startAt) {
+                throw new BadRequestException({
+                    error: 'ambiguous_or_invalid_appointment_duration',
+                    message: 'La cita necesita inicio y fin explícitos en orden válido.',
+                });
             }
-            if (e) { sets.push(`end_at = $${idx++}::timestamp`); params.push(e); }
+            const timezone = await this.resolveTimezoneForSchema(schemaName);
+            this.temporalContracts.normalize({
+                kind: 'appointment',
+                startsAtLocal: startAt,
+                timezone,
+                durationMinutes: this.diffMinutesNaive(startAt, endAt),
+            });
+            sets.push(`start_at = $${idx++}::timestamp`); params.push(startAt);
+            sets.push(`end_at = $${idx++}::timestamp`); params.push(endAt);
         }
         if (data.status !== undefined) {
             sets.push(`status = $${idx++}`); params.push(data.status);
@@ -321,10 +429,17 @@ export class AppointmentsService {
         if (sets.length === 1) return this.getById(schemaName, appointmentId);
 
         params.push(appointmentId);
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE appointments SET ${sets.join(', ')} WHERE id = $${idx}::uuid`,
-            params,
-        );
+        await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            await query(
+                `UPDATE appointments SET ${sets.join(', ')} WHERE id = $${idx}::uuid`,
+                params,
+            );
+            await this.calendarOutbox.enqueueWithQuery(
+                query,
+                appointmentId,
+                data.status === 'cancelled' ? 'delete' : 'upsert',
+            );
+        });
 
         // When marking as completed, propagate to contacts.last_appointment_at
         // so the recall cron can find contacts due for follow-up. We don't
@@ -347,12 +462,15 @@ export class AppointmentsService {
     }
 
     async cancel(schemaName: string, appointmentId: string, reason?: string): Promise<Appointment> {
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE appointments SET status = 'cancelled',
-                    cancellation_reason = $2, updated_at = NOW()
-             WHERE id = $1::uuid`,
-            [appointmentId, reason || null],
-        );
+        await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            await query(
+                `UPDATE appointments SET status = 'cancelled',
+                        cancellation_reason = $2, updated_at = NOW()
+                 WHERE id = $1::uuid`,
+                [appointmentId, reason || null],
+            );
+            await this.calendarOutbox.enqueueWithQuery(query, appointmentId, 'delete');
+        });
         const appointment = await this.getById(schemaName, appointmentId);
 
         // Emit event for WhatsApp cancellation notification
@@ -390,6 +508,9 @@ export class AppointmentsService {
         const maxInstances = Math.min(rule.count || 52, 52); // cap at 52 weeks
 
         const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const assignedToUuid = data.assignedTo
+            ? await assertActiveTenantUser(this.prisma, schemaName, data.assignedTo)
+            : null;
 
         // Auto-resolve serviceId from serviceName if not directly provided
         let serviceIdUuid = data.serviceId && uuidRe.test(data.serviceId) ? data.serviceId : null;
@@ -427,23 +548,24 @@ export class AppointmentsService {
             const endIso = instanceEnd.toISOString();
 
             const contactIdUuid = data.contactId && uuidRe.test(data.contactId) ? data.contactId : null;
-            const assignedToUuid = data.assignedTo && uuidRe.test(data.assignedTo) ? data.assignedTo : null;
-
             try {
-                await this.prisma.executeInTenantSchema(schemaName,
-                    `INSERT INTO appointments (id, contact_id, assigned_to, service_id, service_name, start_at, end_at,
-                        location, notes, metadata, recurring_group_id, recurrence_rule, created_at, updated_at)
-                     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::timestamp, $7::timestamp,
-                        $8, $9, $10::jsonb, $11::uuid, $12::jsonb, NOW(), NOW())`,
-                    [
-                        id, contactIdUuid, assignedToUuid, serviceIdUuid,
-                        data.serviceName, startIso, endIso,
-                        data.location || null, data.notes || null,
-                        JSON.stringify(data.metadata || {}),
-                        groupId,
-                        i === 0 ? JSON.stringify(rule) : null, // only store rule on first instance
-                    ],
-                );
+                await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+                    await query(
+                        `INSERT INTO appointments (id, contact_id, assigned_to, service_id, service_name, start_at, end_at,
+                            location, notes, metadata, recurring_group_id, recurrence_rule, created_at, updated_at)
+                         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::timestamp, $7::timestamp,
+                            $8, $9, $10::jsonb, $11::uuid, $12::jsonb, NOW(), NOW())`,
+                        [
+                            id, contactIdUuid, assignedToUuid, serviceIdUuid,
+                            data.serviceName, startIso, endIso,
+                            data.location || null, data.notes || null,
+                            JSON.stringify(data.metadata || {}),
+                            groupId,
+                            i === 0 ? JSON.stringify(rule) : null,
+                        ],
+                    );
+                    await this.calendarOutbox.enqueueWithQuery(query, id, 'upsert');
+                });
                 created.push(await this.getById(schemaName, id));
             } catch (err) {
                 this.logger.warn(`Skipped recurring instance ${i} due to conflict: ${err.message}`);
@@ -461,12 +583,18 @@ export class AppointmentsService {
     }
 
     async cancelSeries(schemaName: string, groupId: string, reason?: string): Promise<number> {
-        const result = await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE appointments SET status = 'cancelled', cancellation_reason = $2, updated_at = NOW()
-             WHERE recurring_group_id = $1::uuid AND status IN ('pending', 'confirmed')
-             RETURNING id`,
-            [groupId, reason || null],
-        );
+        const result = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const rows = await query<any[]>(
+                `UPDATE appointments SET status = 'cancelled', cancellation_reason = $2, updated_at = NOW()
+                 WHERE recurring_group_id = $1::uuid AND status IN ('pending', 'confirmed')
+                 RETURNING id`,
+                [groupId, reason || null],
+            );
+            for (const row of rows || []) {
+                await this.calendarOutbox.enqueueWithQuery(query, row.id, 'delete');
+            }
+            return rows;
+        });
         const count = (result as any[])?.length || 0;
         this.logger.log(`Cancelled ${count} appointments in recurring series ${groupId}`);
         return count;
@@ -474,13 +602,20 @@ export class AppointmentsService {
 
     async getSeriesInstances(schemaName: string, groupId: string): Promise<Appointment[]> {
         const rows = await this.prisma.executeInTenantSchema(schemaName,
-            `SELECT a.*, c.name as contact_name, u.first_name || ' ' || u.last_name as assigned_name
+            `SELECT a.*, c.name as contact_name, u.id as assigned_user_id,
+                    u.first_name || ' ' || u.last_name as assigned_name
              FROM appointments a
              LEFT JOIN contacts c ON c.id = a.contact_id
-             LEFT JOIN public.users u ON u.id = a.assigned_to::uuid
-             WHERE a.recurring_group_id = $1::uuid
+             LEFT JOIN public.tenants tenant_owner
+               ON tenant_owner.schema_name = $1
+              AND tenant_owner.is_active = true
+             LEFT JOIN public.users u
+               ON u.id = a.assigned_to::uuid
+              AND u.tenant_id = tenant_owner.id
+              AND u.is_active = true
+             WHERE a.recurring_group_id = $2::uuid
              ORDER BY a.start_at ASC`,
-            [groupId],
+            [schemaName, groupId],
         );
         return (rows as any[]).map((r) => this.mapRow(r));
     }
@@ -488,15 +623,25 @@ export class AppointmentsService {
     // ── Availability ──────────────────────────────────────────
 
     async getAvailability(schemaName: string, userId?: string): Promise<AvailabilitySlot[]> {
-        let sql = `SELECT id, user_id, day_of_week, start_time::text, end_time::text, is_active FROM availability_slots`;
-        const params: any[] = [];
+        if (userId) await assertActiveTenantUser(this.prisma, schemaName, userId);
+        let sql = `SELECT a.id, a.user_id, a.day_of_week, a.start_time::text,
+                          a.end_time::text, a.is_active
+                   FROM availability_slots a
+                   JOIN public.tenants tenant_owner
+                     ON tenant_owner.schema_name = $1
+                    AND tenant_owner.is_active = true
+                   JOIN public.users u
+                     ON u.id = a.user_id
+                    AND u.tenant_id = tenant_owner.id
+                    AND u.is_active = true`;
+        const params: any[] = [schemaName];
 
         if (userId) {
-            sql += ` WHERE user_id = $1::uuid`;
+            sql += ` WHERE a.user_id = $2::uuid`;
             params.push(userId);
         }
 
-        sql += ` ORDER BY user_id, day_of_week, start_time`;
+        sql += ` ORDER BY a.user_id, a.day_of_week, a.start_time`;
 
         const rows = await this.prisma.executeInTenantSchema(schemaName, sql, params);
         return (rows as any[]).map(row => ({
@@ -512,21 +657,21 @@ export class AppointmentsService {
     async saveAvailability(schemaName: string, userId: string, slots: {
         dayOfWeek: number; startTime: string; endTime: string; isActive?: boolean;
     }[]): Promise<AvailabilitySlot[]> {
-        // Delete existing slots for user
-        await this.prisma.executeInTenantSchema(schemaName,
-            `DELETE FROM availability_slots WHERE user_id = $1::uuid`,
-            [userId],
-        );
-
-        // Insert new slots
-        for (const slot of slots) {
-            const id = randomUUID();
-            await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO availability_slots (id, user_id, day_of_week, start_time, end_time, is_active, created_at)
-                 VALUES ($1::uuid, $2::uuid, $3, $4::time, $5::time, $6, NOW())`,
-                [id, userId, slot.dayOfWeek, slot.startTime, slot.endTime, slot.isActive !== false],
-            );
-        }
+        await assertActiveTenantUser(this.prisma, schemaName, userId);
+        await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            await query(`DELETE FROM availability_slots WHERE user_id = $1::uuid`, [userId]);
+            for (const slot of slots) {
+                await query(
+                    `INSERT INTO availability_slots
+                        (id, user_id, day_of_week, start_time, end_time, is_active, created_at)
+                     VALUES ($1::uuid, $2::uuid, $3, $4::time, $5::time, $6, NOW())`,
+                    [
+                        randomUUID(), userId, slot.dayOfWeek, slot.startTime,
+                        slot.endTime, slot.isActive !== false,
+                    ],
+                );
+            }
+        });
 
         return this.getAvailability(schemaName, userId);
     }
@@ -534,15 +679,25 @@ export class AppointmentsService {
     // ── Blocked Dates ─────────────────────────────────────────
 
     async getBlockedDates(schemaName: string, userId?: string): Promise<BlockedDate[]> {
-        let sql = `SELECT id, user_id, blocked_date::text, reason FROM blocked_dates`;
-        const params: any[] = [];
+        if (userId) await assertActiveTenantUser(this.prisma, schemaName, userId);
+        let sql = `SELECT b.id, b.user_id, b.blocked_date::text, b.reason
+                   FROM blocked_dates b
+                   LEFT JOIN public.tenants tenant_owner
+                     ON tenant_owner.schema_name = $1
+                    AND tenant_owner.is_active = true
+                   LEFT JOIN public.users u
+                     ON u.id = b.user_id
+                    AND u.tenant_id = tenant_owner.id
+                    AND u.is_active = true
+                   WHERE (b.user_id IS NULL OR u.id IS NOT NULL)`;
+        const params: any[] = [schemaName];
 
         if (userId) {
-            sql += ` WHERE user_id = $1::uuid`;
+            sql += ` AND b.user_id = $2::uuid`;
             params.push(userId);
         }
 
-        sql += ` ORDER BY blocked_date ASC`;
+        sql += ` ORDER BY b.blocked_date ASC`;
 
         const rows = await this.prisma.executeInTenantSchema(schemaName, sql, params);
         return (rows as any[]).map(row => ({
@@ -556,6 +711,7 @@ export class AppointmentsService {
     async createBlockedDate(schemaName: string, data: {
         userId?: string; blockedDate: string; reason?: string;
     }): Promise<BlockedDate> {
+        if (data.userId) await assertActiveTenantUser(this.prisma, schemaName, data.userId);
         const id = randomUUID();
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO blocked_dates (id, user_id, blocked_date, reason, created_at)
@@ -578,17 +734,24 @@ export class AppointmentsService {
         date: string;
         availableSlots: { startTime: string; endTime: string; agentName: string; userId: string }[];
     }> {
-        const dayOfWeek = new Date(date).getDay();
+        if (userId) await assertActiveTenantUser(this.prisma, schemaName, userId);
+        const dayOfWeek = dayOfWeekForLocalDate(date);
 
         // Get availability for that day
         let sql = `
             SELECT a.user_id, a.start_time::text, a.end_time::text, u.first_name || ' ' || u.last_name as agent_name
             FROM availability_slots a
-            LEFT JOIN public.users u ON u.id = a.user_id
+            JOIN public.tenants tenant_owner
+              ON tenant_owner.schema_name = $2
+             AND tenant_owner.is_active = true
+            JOIN public.users u
+              ON u.id = a.user_id
+             AND u.tenant_id = tenant_owner.id
+             AND u.is_active = true
             WHERE a.day_of_week = $1 AND a.is_active = true
         `;
-        const params: any[] = [dayOfWeek];
-        let idx = 2;
+        const params: any[] = [dayOfWeek, schemaName];
+        let idx = 3;
 
         if (userId) {
             sql += ` AND a.user_id = $${idx++}::uuid`;
@@ -612,7 +775,21 @@ export class AppointmentsService {
         ) as any[];
 
         const available = slots
-            .filter(s => !blockedUserIds.has(s.user_id))
+            .filter(s => {
+                if (blockedUserIds.has(null) || blockedUserIds.has(s.user_id)) return false;
+                const slotStart = wallClockEpoch(`${date.split('T')[0]}T${s.start_time}`);
+                const slotEnd = wallClockEpoch(`${date.split('T')[0]}T${s.end_time}`);
+                // This legacy endpoint has no service duration/capacity input,
+                // so it cannot safely split a window into concrete slots. Fail
+                // closed by withholding any window that overlaps an appointment
+                // for that staff (or an unassigned business-wide reservation).
+                return !(existing || []).some((appointment: any) => {
+                    if (appointment.assigned_to && appointment.assigned_to !== s.user_id) return false;
+                    const appointmentStart = wallClockEpoch(appointment.start_at);
+                    const appointmentEnd = wallClockEpoch(appointment.end_at);
+                    return slotStart < appointmentEnd && slotEnd > appointmentStart;
+                });
+            })
             .map(s => ({
                 startTime: s.start_time,
                 endTime: s.end_time,
@@ -684,13 +861,34 @@ export class AppointmentsService {
         return this.toNaiveIso(dt);
     }
 
+    private diffMinutesNaive(startAt: string, endAt: string): number {
+        const parse = (value: string) => Date.parse(`${value}Z`);
+        return Math.round((parse(endAt) - parse(startAt)) / 60_000);
+    }
+
+    private async resolveTimezoneForSchema(schemaName: string, requested?: unknown): Promise<string> {
+        if (typeof requested === 'string' && requested.trim()) return requested.trim();
+        try {
+            const tenant = await this.prisma.tenant.findFirst({
+                where: { schemaName },
+                select: { settings: true },
+            });
+            const settings = (tenant?.settings as any) || {};
+            return settings.timezone || settings.businessHours?.timezone || 'America/Bogota';
+        } catch {
+            // A missing global-tenant fixture must not silently weaken the temporal
+            // contract. The service still validates this deterministic fallback.
+            return 'America/Bogota';
+        }
+    }
+
     private mapRow(row: any): Appointment {
         return {
             id: row.id,
             contactId: row.contact_id,
             contactName: row.contact_name,
             conversationId: row.conversation_id,
-            assignedTo: row.assigned_to,
+            assignedTo: row.assigned_user_id || null,
             assignedName: row.assigned_name,
             // serviceId: sin él, el cliente móvil no puede pedir slots para
             // reagendar y depende de un match frágil por nombre de servicio.
@@ -706,6 +904,15 @@ export class AppointmentsService {
             createdAt: row.created_at,
             recurringGroupId: row.recurring_group_id || null,
             recurrenceRule: row.recurrence_rule || null,
+            calendarIntegrationId: row.calendar_integration_id || null,
+            calendarOwnerId: row.calendar_owner_id || null,
+            calendarProvider: row.calendar_provider || null,
+            calendarEventId: row.calendar_event_id || null,
+            calendarSyncState: row.calendar_sync_state || null,
+            calendarSyncError: row.calendar_sync_error || null,
+            calendarSyncedAt: row.calendar_synced_at
+                ? new Date(row.calendar_synced_at).toISOString()
+                : null,
         };
     }
 
@@ -717,24 +924,32 @@ export class AppointmentsService {
     async getBookableSlots(
         schemaName: string,
         date: string,
+        serviceId: string,
         durationMinutes: number,
         bufferMinutes: number = 0,
         userId?: string,
         calendarBusySlots: { start: string; end: string }[] = [],
         maxConcurrent: number = 1,
     ): Promise<{ time: string; endTime: string; agentId: string; agentName: string }[]> {
-        const dayOfWeek = new Date(date).getDay();
+        if (userId) await assertActiveTenantUser(this.prisma, schemaName, userId);
+        const dayOfWeek = dayOfWeekForLocalDate(date);
         const dateStr = date.split('T')[0]; // YYYY-MM-DD
 
         // 1. Get availability windows for this day
         let sql = `
             SELECT a.user_id, a.start_time::text, a.end_time::text, u.first_name || ' ' || u.last_name as agent_name
             FROM availability_slots a
-            LEFT JOIN public.users u ON u.id = a.user_id
+            JOIN public.tenants tenant_owner
+              ON tenant_owner.schema_name = $2
+             AND tenant_owner.is_active = true
+            JOIN public.users u
+              ON u.id = a.user_id
+             AND u.tenant_id = tenant_owner.id
+             AND u.is_active = true
             WHERE a.day_of_week = $1 AND a.is_active = true
         `;
-        const params: any[] = [dayOfWeek];
-        if (userId) { sql += ` AND a.user_id = $2::uuid`; params.push(userId); }
+        const params: any[] = [dayOfWeek, schemaName];
+        if (userId) { sql += ` AND a.user_id = $3::uuid`; params.push(userId); }
 
         const windows = await this.prisma.executeInTenantSchema(schemaName, sql, params) as any[];
 
@@ -746,7 +961,7 @@ export class AppointmentsService {
 
         // 3. Get existing appointments
         const existing = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT assigned_to, start_at, end_at FROM appointments
+            `SELECT assigned_to, service_id, start_at, end_at FROM appointments
              WHERE start_at::date = $1::date AND status NOT IN ('cancelled')`, [dateStr],
         );
 
@@ -777,20 +992,21 @@ export class AppointmentsService {
 
                 // Check concurrent bookings at this time slot
                 const concurrentCount = (existing || []).filter(e => {
-                    const eStart = new Date(e.start_at).getTime();
-                    const eEnd = new Date(e.end_at).getTime();
-                    const sStart = new Date(slotStartISO).getTime();
-                    const sEnd = new Date(slotEndISO).getTime();
+                    if (e.service_id !== serviceId) return false;
+                    const eStart = wallClockEpoch(e.start_at);
+                    const eEnd = wallClockEpoch(e.end_at);
+                    const sStart = wallClockEpoch(slotStartISO);
+                    const sEnd = wallClockEpoch(slotEndISO);
                     return sStart < eEnd && sEnd > eStart;
                 }).length;
 
                 // Check per-agent conflict
                 const agentConflict = (existing || []).some(e => {
                     if (e.assigned_to !== win.user_id) return false;
-                    const eStart = new Date(e.start_at).getTime();
-                    const eEnd = new Date(e.end_at).getTime();
-                    const sStart = new Date(slotStartISO).getTime();
-                    const sEnd = new Date(slotEndISO).getTime();
+                    const eStart = wallClockEpoch(e.start_at);
+                    const eEnd = wallClockEpoch(e.end_at);
+                    const sStart = wallClockEpoch(slotStartISO);
+                    const sEnd = wallClockEpoch(slotEndISO);
                     return sStart < eEnd && sEnd > eStart;
                 });
                 if (agentConflict) continue;
@@ -798,10 +1014,10 @@ export class AppointmentsService {
 
                 // Check conflict with calendar busy times
                 const calBusy = calendarBusySlots.some(b => {
-                    const bStart = new Date(b.start).getTime();
-                    const bEnd = new Date(b.end).getTime();
-                    const sStart = new Date(slotStartISO).getTime();
-                    const sEnd = new Date(slotEndISO).getTime();
+                    const bStart = wallClockEpoch(b.start);
+                    const bEnd = wallClockEpoch(b.end);
+                    const sStart = wallClockEpoch(slotStartISO);
+                    const sEnd = wallClockEpoch(slotEndISO);
                     return sStart < bEnd && sEnd > bStart;
                 });
                 if (calBusy) continue;

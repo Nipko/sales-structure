@@ -1,5 +1,9 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+    normalizeCurrencyCode,
+    optionalPositiveIntegerUnit,
+} from '../../common/utils/commercial-units.util';
 
 /**
  * Home services dispatch service for plomería / electricidad /
@@ -50,16 +54,21 @@ export class HomeServicesService {
 
     async createRequest(schemaName: string, data: any): Promise<any> {
         if (!data.serviceType) throw new BadRequestException('serviceType is required');
+        const estimatedDurationMinutes = optionalPositiveIntegerUnit(
+            data.estimatedDurationMinutes,
+            'estimatedDurationMinutes',
+        );
+        const currency = normalizeCurrencyCode(data.currency);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO service_requests (
                 contact_id, conversation_id, service_type, urgency,
                 customer_name, customer_phone, address, address_notes, city,
                 issue_description, preferred_date, preferred_time_window,
-                estimated_duration_minutes, estimated_cost
+                estimated_duration_minutes, estimated_cost, currency
              ) VALUES (
                 $1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10,
-                $11::date, $12, $13, $14
+                $11::date, $12, $13, $14, $15
              ) RETURNING *`,
             [
                 data.contactId || null, data.conversationId || null,
@@ -68,13 +77,25 @@ export class HomeServicesService {
                 data.address || null, data.addressNotes || null, data.city || null,
                 data.issueDescription || null,
                 data.preferredDate || null, data.preferredTimeWindow || null,
-                data.estimatedDurationMinutes ?? null, data.estimatedCost ?? null,
+                estimatedDurationMinutes, data.estimatedCost ?? null, currency,
             ],
         );
         return rows[0];
     }
 
     async updateRequest(schemaName: string, id: string, data: any): Promise<any> {
+        if (data.estimatedDurationMinutes !== undefined && data.estimatedDurationMinutes !== null) {
+            data = {
+                ...data,
+                estimatedDurationMinutes: optionalPositiveIntegerUnit(
+                    data.estimatedDurationMinutes,
+                    'estimatedDurationMinutes',
+                ),
+            };
+        }
+        if (data.currency !== undefined) {
+            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+        }
         const fields: string[] = [];
         const values: any[] = [];
         let i = 1;
@@ -84,6 +105,7 @@ export class HomeServicesService {
             preferredDate: 'preferred_date', preferredTimeWindow: 'preferred_time_window',
             estimatedDurationMinutes: 'estimated_duration_minutes',
             estimatedCost: 'estimated_cost',
+            currency: 'currency',
             assignedTechnicianId: 'assigned_technician_id',
             assignedTechnicianName: 'assigned_technician_name',
             scheduledAt: 'scheduled_at', completedAt: 'completed_at',

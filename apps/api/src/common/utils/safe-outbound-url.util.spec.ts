@@ -3,6 +3,7 @@ import { promises as dns } from 'node:dns';
 import {
     OUTBOUND_MAX_REQUEST_BYTES,
     OUTBOUND_MAX_RESPONSE_BYTES,
+    OUTBOUND_DNS_TIMEOUT_MS,
     isPrivateOrReservedAddress,
     parseSafeHttpsUrl,
     prepareSafeHttpsTarget,
@@ -72,6 +73,20 @@ describe('safe outbound URL utility', () => {
             .rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('fails closed when DNS does not resolve before the absolute deadline', async () => {
+        jest.useFakeTimers();
+        lookupSpy.mockImplementation(() => new Promise(() => undefined) as any);
+
+        try {
+            const pending = prepareSafeHttpsTarget('https://api.example.com/path', 'test');
+            const assertion = expect(pending).rejects.toBeInstanceOf(BadRequestException);
+            await jest.advanceTimersByTimeAsync(OUTBOUND_DNS_TIMEOUT_MS);
+            await assertion;
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     it('pins the validated address and refuses lookup for a changed hostname', async () => {
         const target = await prepareSafeHttpsTarget('https://api.example.com/path?x=1', 'test');
         const lookup = (target.httpsAgent as any).options.lookup;
@@ -91,7 +106,8 @@ describe('safe outbound URL utility', () => {
     it('provides bounded, direct, no-redirect Axios options', async () => {
         const target = await prepareSafeHttpsTarget('https://api.example.com', 'test');
 
-        expect(safeAxiosOptions(target, 1234)).toEqual(expect.objectContaining({
+        const options = safeAxiosOptions(target, 1234);
+        expect(options).toEqual(expect.objectContaining({
             timeout: 1234,
             maxRedirects: 0,
             maxContentLength: OUTBOUND_MAX_RESPONSE_BYTES,
@@ -99,6 +115,8 @@ describe('safe outbound URL utility', () => {
             proxy: false,
             httpsAgent: target.httpsAgent,
         }));
+        expect(options.signal).toBeInstanceOf(AbortSignal);
+        expect(options.signal.aborted).toBe(false);
         target.httpsAgent.destroy();
     });
 });

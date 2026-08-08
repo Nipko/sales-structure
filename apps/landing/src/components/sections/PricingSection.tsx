@@ -25,7 +25,7 @@ const STATIC_FALLBACK: PlanDef[] = [
   {
     nameKey: "emprendedorName",
     descKey: "emprendedorDesc",
-    annualPrice: "$105.000",
+    annualPrice: "$106.845",
     monthlyPrice: "$125.700",
     featuresKey: "emprendedorFeatures",
     ctaKey: "emprendedorCta",
@@ -34,7 +34,7 @@ const STATIC_FALLBACK: PlanDef[] = [
   {
     nameKey: "starterName",
     descKey: "starterDesc",
-    annualPrice: "$229.800",
+    annualPrice: "$235.365",
     monthlyPrice: "$276.900",
     featuresKey: "starterFeatures",
     ctaKey: "starterCta",
@@ -43,7 +43,7 @@ const STATIC_FALLBACK: PlanDef[] = [
   {
     nameKey: "proName",
     descKey: "proDesc",
-    annualPrice: "$628.900",
+    annualPrice: "$644.045",
     monthlyPrice: "$757.700",
     featuresKey: "proFeatures",
     ctaKey: "proCta",
@@ -53,7 +53,7 @@ const STATIC_FALLBACK: PlanDef[] = [
   {
     nameKey: "enterpriseName",
     descKey: "enterpriseDesc",
-    annualPrice: "$1.499.000",
+    annualPrice: "$1.521.330",
     monthlyPrice: "$1.789.800",
     featuresKey: "enterpriseFeatures",
     ctaKey: "enterpriseCta",
@@ -76,11 +76,11 @@ function mapApiPlans(apiPlans: ApiPlan[]): PlanDef[] {
     // displayPriceCents is the monthly price. The annual card shows the per-month
     // EQUIVALENT of the annual plan (suffix is always "/mes"), i.e. the yearly
     // total ÷ 12. Use the real annual price from billing_plans when present; fall
-    // back to a ~-17% estimate only if the plan has no annual price configured.
+    // back to the seeded 15% policy only if the plan has no annual price configured.
     const monthlyCents = ap.displayPriceCents;
     const annualCents = ap.displayPriceAnnualCents
       ? Math.round(ap.displayPriceAnnualCents / 12)
-      : Math.round(monthlyCents * 0.83);
+      : Math.round(monthlyCents * 0.85);
     result[idx] = {
       ...result[idx],
       monthlyPrice: formatCopPrice(monthlyCents),

@@ -8,6 +8,12 @@ import { WhatsappConnectionService } from '../whatsapp/services/whatsapp-connect
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { absoluteMediaUrl } from '../../common/utils/media-url.util';
+import { ConversationAssignedEvent, StructuredHandoffSummary } from '@parallext/shared';
+import {
+    createFreshLineage,
+    evaluateAiDecisionReadiness,
+    type OutcomeEvaluationCertification,
+} from '../../common/policies/ai-decision-readiness.policy';
 
 export interface InboxConversation {
     id: string;
@@ -28,6 +34,10 @@ export interface InboxConversation {
     tags: string[];
     isAiHandled: boolean;
     tenantName?: string;
+    handoffReason?: string | null;
+    handoffSummary?: string | null;
+    handoffStructuredSummary?: StructuredHandoffSummary | null;
+    handoffTriggeredAt?: string | null;
 }
 
 export interface ConversationDetail {
@@ -56,6 +66,7 @@ export interface ConversationDetail {
     aiSummary?: string;
     handoffReason?: string | null;
     handoffSummary?: string | null;
+    handoffStructuredSummary?: StructuredHandoffSummary | null;
     handoffTriggeredAt?: string | null;
 }
 
@@ -184,6 +195,7 @@ export class AgentConsoleService {
             isAiHandled: c.status !== 'handoff' && !c.assigned_agent_id,
             handoffReason: c.metadata?.handoff?.reason || null,
             handoffSummary: c.metadata?.handoff?.summary || null,
+            handoffStructuredSummary: c.metadata?.handoff?.structuredSummary || null,
             handoffTriggeredAt: c.metadata?.handoff?.startedAt || null,
         }));
         // Attach hasMore as a non-enumerable property so existing array consumers
@@ -297,6 +309,7 @@ export class AgentConsoleService {
             startedAt: conv.started_at,
             handoffReason: conv.metadata?.handoff?.reason || null,
             handoffSummary: conv.metadata?.handoff?.summary || null,
+            handoffStructuredSummary: conv.metadata?.handoff?.structuredSummary || null,
             handoffTriggeredAt: conv.metadata?.handoff?.startedAt || null,
         };
     }
@@ -401,16 +414,33 @@ export class AgentConsoleService {
     }
 
     /** Suggest the single next best SALES action for a conversation (AI coach). */
-    async nextBestAction(tenantId: string, conversationId: string): Promise<string> {
+    async nextBestAction(
+        tenantId: string,
+        conversationId: string,
+        evaluation?: OutcomeEvaluationCertification,
+    ): Promise<string> {
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) return '';
         const messages = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT content_text, direction FROM messages
+            `SELECT id, content_text, direction, created_at FROM messages
              WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 12`,
             [conversationId],
         );
         if (!messages || messages.length === 0) return '';
+        const readAt = new Date();
+        const readiness = evaluateAiDecisionReadiness({
+            outcome: 'conversation_next_best_action',
+            evaluation,
+            now: readAt,
+            lineage: messages.map((message: any) => createFreshLineage(
+                'tenant.messages', String(message.id || ''), readAt, message.created_at,
+            )),
+        });
+        if (!readiness.allowed) {
+            this.logger.warn(`nextBestAction blocked by readiness gate: ${readiness.reasons.join(',')}`);
+            return '';
+        }
         const ordered = [...messages].reverse();
         try {
             const res = await this.llmRouter.execute({
@@ -447,27 +477,58 @@ export class AgentConsoleService {
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) return;
 
-        await this.prisma.executeInTenantSchema(
+        const assignedAt = new Date().toISOString();
+        const assignment = await this.prisma.transactionInTenantSchema(
             schemaName,
-            `UPDATE conversations SET assigned_to = $2::uuid, status = 'with_human' WHERE id = $1::uuid`,
-            [conversationId, agentId],
+            async (query) => {
+                const conversations = await query<Array<{ contact_id: string | null }>>(
+                    `UPDATE conversations
+                        SET assigned_to = $2::uuid, status = 'with_human', updated_at = NOW()
+                      WHERE id = $1::uuid
+                      RETURNING contact_id`,
+                    [conversationId, agentId],
+                );
+                if (!conversations[0]) throw new Error(`Conversation ${conversationId} not found`);
+
+                await query(
+                    `UPDATE conversation_assignments SET resolved_at = NOW()
+                      WHERE conversation_id = $1::uuid AND resolved_at IS NULL`,
+                    [conversationId],
+                );
+                await query(
+                    `INSERT INTO conversation_assignments (conversation_id, agent_id, assigned_at)
+                     VALUES ($1::uuid, $2::uuid, $3::timestamptz)`,
+                    [conversationId, agentId, assignedAt],
+                );
+
+                const contactId = conversations[0].contact_id || undefined;
+                const contacts = contactId
+                    ? await query<Array<{ phone: string | null }>>(
+                        `SELECT phone FROM contacts WHERE id = $1::uuid LIMIT 1`,
+                        [contactId],
+                    )
+                    : [];
+                return { contactId, phone: contacts[0]?.phone || undefined };
+            },
         );
 
-        // Close any existing active assignment from a different agent before creating the new one
-        await this.prisma.executeInTenantSchema(
+        const event: ConversationAssignedEvent = {
+            tenantId,
             schemaName,
-            `UPDATE conversation_assignments SET resolved_at = NOW()
-             WHERE conversation_id = $1::uuid AND resolved_at IS NULL`,
-            [conversationId],
-        );
-
-        // Track assignment in conversation_assignments table
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `INSERT INTO conversation_assignments (conversation_id, agent_id, assigned_at)
-             VALUES ($1::uuid, $2::uuid, NOW())`,
-            [conversationId, agentId],
-        );
+            conversationId,
+            agentId,
+            ...(assignment.contactId ? { contactId: assignment.contactId } : {}),
+            ...(assignment.phone ? { phone: assignment.phone } : {}),
+            assignmentSource: 'manual',
+            assignedAt,
+        };
+        try {
+            this.eventEmitter.emit('conversation.assigned', event);
+        } catch (error: any) {
+            // The DB transaction already committed; do not make the caller retry
+            // and create a duplicate assignment because a listener failed.
+            this.logger.error(`conversation.assigned listener failed: ${error.message}`);
+        }
 
         this.logger.log(`Conversation ${conversationId} assigned to agent ${agentId}`);
     }

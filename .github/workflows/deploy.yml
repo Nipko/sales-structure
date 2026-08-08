@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feature/parallly-commercial-domain
     # The mobile app (apps/mobile) ships via EAS, not this pipeline, and docs are
     # not deployable. Skip the web deploy when a push touches ONLY those paths
     # (a push that also changes web/api/infra still deploys normally).
@@ -36,6 +35,7 @@ jobs:
   # validate blocks the whole build + deploy.
   # ──────────────────────────────────────────────────────────────
   validate:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     # Ephemeral infra for the boot smoke test. Postgres gets the schema via
@@ -102,6 +102,46 @@ jobs:
       # database bootstrap and end-to-end certification remain separate gates.
       - name: Vertical contract matrix (1,520 configurations)
         run: node apps/api/scripts/run-vertical-contract-matrix.cjs
+
+      # These are the fail-closed contracts adopted by DEC-01..19. The
+      # provider, DB-race, real-model, performance, chaos, rollback and canary
+      # gates remain external release evidence; this focused set only prevents
+      # deploy from bypassing the code-backed product, authority, money,
+      # migration and transport boundaries.
+      - name: Vertical operating decision contracts
+        run: >-
+          npx jest --config apps/api/jest.config.js --runInBand
+          apps/api/src/modules/verticals/vertical-product-policy.spec.ts
+          apps/api/src/modules/verticals/verticals.controller.spec.ts
+          apps/api/src/modules/verticals/vertical-builder-contract.spec.ts
+          apps/api/src/modules/verticals/vertical-operating-decisions-schema.spec.ts
+          apps/api/src/modules/verticals/vertical-migration.service.spec.ts
+          apps/api/src/modules/appointments/calendar-sync-outbox.service.spec.ts
+          apps/api/src/modules/appointments/calendar-integration.service.spec.ts
+          apps/api/src/modules/appointments/appointments.tenant-isolation.spec.ts
+          apps/api/src/modules/appointments/appointment-capacity.util.spec.ts
+          apps/api/src/modules/appointments/public-booking.controller.spec.ts
+          apps/api/src/modules/conversations/tool-policy-registry.spec.ts
+          apps/api/src/modules/conversations/tool-execution-control.service.spec.ts
+          apps/api/src/modules/conversations/tool-approval-workflow.e2e.spec.ts
+          apps/api/src/modules/conversations/payment-operation.service.spec.ts
+          apps/api/src/modules/conversations/ai-tool-executor.central-controls.spec.ts
+          apps/api/src/modules/conversations/ai-tool-executor.appointment-safety.spec.ts
+          apps/api/src/modules/conversations/procedure-engine.central-controls.spec.ts
+          apps/api/src/modules/conversations/booking-engine.central-confirmation.spec.ts
+          apps/api/src/modules/conversations/ephemeral-agent-sandbox.spec.ts
+          apps/api/src/modules/conversations/active-operations-context.service.spec.ts
+          apps/api/src/modules/conversations/conversations.widget-containment.spec.ts
+          apps/api/src/modules/widget/widget.gateway.security.spec.ts
+          apps/api/src/modules/widget/widget-capability-policy.spec.ts
+          apps/api/src/modules/verticals/operating-currency.service.spec.ts
+          apps/api/src/modules/verticals/temporal-capacity-contract.service.spec.ts
+          apps/api/src/modules/verticals/staff-operations-model.service.spec.ts
+          apps/api/src/common/policies/ai-decision-readiness.policy.spec.ts
+          apps/api/src/modules/media-processing/media-ai-governance.policy.spec.ts
+          apps/api/src/modules/push/web-push-isolation.spec.ts
+          apps/api/src/modules/push/push.service.spec.ts
+          apps/api/src/modules/push/push.service.expo-bounds.spec.ts
 
       - name: TypeScript check (all apps)
         run: |
@@ -311,6 +351,35 @@ jobs:
       packages: read
 
     steps:
+      - name: Checkout release contract
+        uses: actions/checkout@v4
+
+      - name: Production release attestation (fail closed)
+        env:
+          DATABASE_URL: ${{ secrets.VERTICAL_RELEASE_DATABASE_URL }}
+          REDIS_URL: ${{ secrets.VERTICAL_RELEASE_REDIS_URL }}
+          OPENAI_API_KEY: ${{ secrets.VERTICAL_EVAL_OPENAI_API_KEY }}
+          VERTICAL_REAL_MODEL_EVAL_READY: ${{ vars.VERTICAL_REAL_MODEL_EVAL_READY }}
+          VERTICAL_CHANNEL_SANDBOX_READY: ${{ vars.VERTICAL_CHANNEL_SANDBOX_READY }}
+          VERTICAL_PROVIDER_SANDBOX_READY: ${{ vars.VERTICAL_PROVIDER_SANDBOX_READY }}
+          VERTICAL_BULLMQ_READY: ${{ vars.VERTICAL_BULLMQ_READY }}
+          VERTICAL_PERF_ENV_READY: ${{ vars.VERTICAL_PERF_ENV_READY }}
+          VERTICAL_CHAOS_ENV_READY: ${{ vars.VERTICAL_CHAOS_ENV_READY }}
+          VERTICAL_ROLLBACK_EVIDENCE_READY: ${{ vars.VERTICAL_ROLLBACK_EVIDENCE_READY }}
+          VERTICAL_CANARY_READY: ${{ vars.VERTICAL_CANARY_READY }}
+          VERTICAL_RELEASE_EVIDENCE_JSON: ${{ secrets.VERTICAL_RELEASE_EVIDENCE_JSON }}
+          REQUIRE_EXTERNAL_GATES: 'true'
+          VERTICAL_READINESS_OUTPUT: artifacts/vertical-release-readiness.json
+        run: node apps/api/scripts/run-vertical-release-readiness.cjs
+
+      - name: Publish release attestation
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/vertical-release-readiness.json
+          if-no-files-found: error
+          retention-days: 180
+
       - name: Check if VPS secrets are configured
         id: check_secrets
         env:
@@ -702,16 +771,9 @@ jobs:
               || { echo "::error::Prisma migrate deploy FAILED — aborting deploy (containers were NOT recreated)"; exit 1; }
 
             echo "===> Running tenant schema migration (idempotent)..."
-            # Sigue siendo tolerante: un tenant problemático no puede bloquear el
-            # deploy de toda la plataforma. Pero ANTES el `|| true` se tragaba
-            # también el exit 1 FATAL del script (no puede conectar a la DB, no
-            # puede leer tenant-schema.sql), y encima el script cantaba [OK] por
-            # tenant aunque le hubieran fallado todas las sentencias. Resultado:
-            # una migración sistemáticamente rota salía en un deploy VERDE, que
-            # es exactamente donde nadie mira.
-            #
-            # Ahora se captura la salida y se anota el run. El deploy sigue sin
-            # fallar; lo que cambia es que deja de ser invisible.
+            # Runtime y schema se promueven como una sola unidad. Cualquier
+            # tenant omitido o statement fallido aborta antes de recrear
+            # contenedores; un deploy parcial no puede quedar verde.
             # ssh-action <=1.0.3 rewrote every line when script_stop=true and
             # treated false `if` predicates as fatal commands. Keep normal shell
             # semantics and capture the migration status inside the condition.
@@ -728,14 +790,17 @@ jobs:
             echo "$MIGRATE_OUT"
 
             if [ "$MIGRATE_RC" -ne 0 ]; then
-              echo "::error::Tenant migration exited $MIGRATE_RC (fallo FATAL, no per-tenant). El deploy sigue, pero los schemas de tenant NO se migraron. $SUMMARY"
+              echo "::error::Tenant migration exited $MIGRATE_RC (fallo fatal). $SUMMARY"
+              exit 1
             elif [ -z "$SUMMARY" ]; then
-              echo "::warning::Tenant migration no emitio resumen — revisar el log del paso."
+              echo "::error::Tenant migration no emitio resumen verificable."
+              exit 1
             else
               SKIPPED="${SKIPPED:-0}"
               WARNINGS="${WARNINGS:-0}"
               if [ "$SKIPPED" -gt 0 ] || [ "$WARNINGS" -gt 0 ]; then
-                echo "::warning::Tenant migration con problemas — $SUMMARY (tenants salteados y/o sentencias fallidas; revisar el log)"
+                echo "::error::Tenant migration incompleta — $SUMMARY"
+                exit 1
               else
                 echo "Tenant migration limpia — $SUMMARY"
               fi
@@ -747,26 +812,6 @@ jobs:
             $DC \
               run --rm api node prisma/seed-billing-plans.js \
               || { echo "::error::billing_plans seed FAILED — aborting deploy"; exit 1; }
-
-            echo "===> Fixing calendar_integrations UNIQUE index on all tenants..."
-            for schema in $($DC exec -T postgres \
-              psql -U parallext -d parallext_engine -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$' || true); do
-              $DC exec -T postgres \
-                psql -U parallext -d parallext_engine -c "
-                  DROP INDEX IF EXISTS ${schema}.ci_user_idx;
-                  CREATE UNIQUE INDEX IF NOT EXISTS ci_user_idx ON ${schema}.calendar_integrations (user_id, provider);
-                " 2>/dev/null || true
-            done
-
-            echo "===> Applying tenant-schema.sql to all existing tenants..."
-            TENANTS=$($DC exec -T postgres \
-              psql -U parallext -d parallext_engine -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$' || true)
-            for schema in $TENANTS; do
-              echo "  Migrating tenant: $schema"
-              cat apps/api/prisma/tenant-schema.sql | sed "s/{{SCHEMA_NAME}}/$schema/g" | \
-                $DC exec -T postgres \
-                psql -U parallext -d parallext_engine 2>/dev/null || true
-            done
 
             # ── Rolling deploy: update services one by one to minimize downtime ──
             # 1. Worker first (no HTTP traffic, no user impact)

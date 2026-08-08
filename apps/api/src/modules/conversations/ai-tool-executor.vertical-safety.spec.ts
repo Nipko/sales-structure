@@ -53,6 +53,12 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             {} as any,
             {} as any,
             {} as any,
+            {
+                preflight: jest.fn().mockResolvedValue({ allowed: true, policy: { externalEffect: 'none' } }),
+                complete: jest.fn(),
+                fail: jest.fn(),
+            } as any,
+            {} as any,
         );
         return {
             executor,

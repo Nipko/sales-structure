@@ -15,7 +15,7 @@ const BASE_TURN: TurnContext = {
 };
 
 function activeObjectsXml(prompt: string): string {
-    return prompt.match(/  <active_objects[\s\S]*?  <\/active_objects>/)?.[0] ?? '';
+    return prompt.match(/ {2}<active_objects[\s\S]*? {2}<\/active_objects>/)?.[0] ?? '';
 }
 
 function expectWellFormedXml(xml: string) {
@@ -243,7 +243,7 @@ describe('PromptAssemblerService active object context', () => {
             },
         });
         const compactBlock = activeObjectsXml(compactPrompt);
-        expect((compactBlock.match(/    <object /g) ?? [])).toHaveLength(ACTIVE_OBJECT_CONTEXT_MAX_ITEMS);
+        expect((compactBlock.match(/ {4}<object /g) ?? [])).toHaveLength(ACTIVE_OBJECT_CONTEXT_MAX_ITEMS);
         expect(compactBlock).not.toContain(`compact-request-${ACTIVE_OBJECT_CONTEXT_MAX_ITEMS}`);
 
         const expandedItems = Array.from({ length: ACTIVE_OBJECT_CONTEXT_MAX_ITEMS }, (_, index) => ({
@@ -270,7 +270,7 @@ describe('PromptAssemblerService active object context', () => {
         });
 
         const block = activeObjectsXml(prompt);
-        const renderedCount = (block.match(/    <object /g) ?? []).length;
+        const renderedCount = (block.match(/ {4}<object /g) ?? []).length;
         expect(renderedCount).toBeGreaterThan(0);
         expect(renderedCount).toBeLessThan(ACTIVE_OBJECT_CONTEXT_MAX_ITEMS);
         expect(block.length).toBeLessThanOrEqual(ACTIVE_OBJECT_CONTEXT_MAX_XML_CHARS);

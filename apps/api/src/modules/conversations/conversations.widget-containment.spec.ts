@@ -13,10 +13,12 @@ describe('ConversationsService widget containment', () => {
             acquireLockToken: jest.fn().mockResolvedValue('lock-token'),
             renewLockToken: jest.fn().mockResolvedValue(true),
             releaseLockToken: jest.fn().mockResolvedValue(true),
+            getJson: jest.fn().mockResolvedValue(null),
             ...overrides.redis,
         };
         const prisma = {
             executeInTenantSchema: jest.fn()
+                .mockResolvedValue([])
                 .mockResolvedValueOnce([
                     { id: 'old-2', direction: 'outbound', content_text: 'previous answer' },
                     { id: 'old-1', direction: 'inbound', content_text: 'previous question' },
@@ -49,7 +51,8 @@ describe('ConversationsService widget containment', () => {
             llmRouter,
             personaService: {
                 getPersonaForChannel: jest.fn().mockResolvedValue({
-                    language: 'es',
+                    language: 'en',
+                    hours: { timezone: 'Europe/Paris' },
                     llm: { temperature: 0.4, maxTokens: 500 },
                     persona: { name: 'Widget Agent' },
                 }),
@@ -58,9 +61,22 @@ describe('ConversationsService widget containment', () => {
                 shouldHandoff: jest.fn().mockReturnValue(null),
                 executeHandoff: jest.fn(),
             },
-            languageDetector: { detect: jest.fn().mockReturnValue('es') },
-            promptAssembler: { assemble: jest.fn().mockReturnValue('<contract/><persona/><turn/>') },
+            languageDetector: { detect: jest.fn().mockReturnValue('en') },
+            promptAssembler: {
+                assemble: jest.fn().mockReturnValue('<contract/><persona/><turn/>'),
+                computeUpcomingDays: jest.fn().mockReturnValue([]),
+            },
+            activeOperationsContext: { populateTurnContext: jest.fn() },
+            businessInfoService: { getPrimary: jest.fn().mockResolvedValue(null) },
             logger: { warn: jest.fn(), log: jest.fn(), debug: jest.fn(), error: jest.fn() },
+        });
+        service.loadTenantBusinessHours = jest.fn().mockResolvedValue({
+            timezone: 'Europe/Paris',
+            is247: false,
+            schedule: Object.fromEntries([
+                'sunday', 'monday', 'tuesday', 'wednesday',
+                'thursday', 'friday', 'saturday',
+            ].map((day) => [day, { enabled: false }])),
         });
         service.buildQuotaFallbackMessage = jest.fn().mockResolvedValue('quota fallback');
         return { service: service as ConversationsService, redis, prisma, throttle, llmRouter };
@@ -75,7 +91,7 @@ describe('ConversationsService widget containment', () => {
             'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1',
         ));
 
-        expect(output).toContain('mensaje anterior');
+        expect(output).toContain('previous message');
         expect(throttle.getPlanFeatures).not.toHaveBeenCalled();
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
     });
@@ -105,6 +121,15 @@ describe('ConversationsService widget containment', () => {
         ]);
         expect(throttle.incrementAiMessageCount).toHaveBeenCalledWith('tenant-1');
         expect(redis.releaseLockToken).toHaveBeenCalledWith('lock:conv:conversation-1', 'lock-token');
+        expect((service as any).promptAssembler.assemble).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                language: 'en',
+                timezone: 'Europe/Paris',
+                businessHoursStatus: 'closed',
+                channelType: 'web_widget',
+            }),
+        );
     });
 
     it('does not call the provider after the monthly quota is exhausted', async () => {
@@ -118,6 +143,34 @@ describe('ConversationsService widget containment', () => {
             'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'hello', 'inbound-1',
         ))).resolves.toBe('quota fallback');
         expect(throttle.incrementAiMessageCount).not.toHaveBeenCalled();
+        expect(llmRouter.executeStream).not.toHaveBeenCalled();
+    });
+
+    it('fails closed on handoff routing until human widget delivery is verified', async () => {
+        const { service, llmRouter } = makeService();
+        const handoff = (service as any).handoffService;
+        handoff.shouldHandoff.mockReturnValue('human_requested');
+
+        await expect(collect(service.streamWidgetMessage(
+            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human please', 'inbound-1',
+        ))).resolves.toContain('cannot transfer');
+
+        expect(handoff.executeHandoff).not.toHaveBeenCalled();
+        expect(llmRouter.executeStream).not.toHaveBeenCalled();
+    });
+
+    it('routes handoff only when an authenticated human-delivery adapter is explicitly evidenced', async () => {
+        const { service, llmRouter } = makeService();
+        const handoff = (service as any).handoffService;
+        handoff.shouldHandoff.mockReturnValue('human_requested');
+
+        const output = await collect(service.streamWidgetMessage(
+            'tenant-1', 'tenant_1', 'conversation-1', 'contact-1', 'human please', 'inbound-1',
+            { allowHumanHandoff: true },
+        ));
+
+        expect(output).toContain('support team');
+        expect(handoff.executeHandoff).toHaveBeenCalledTimes(1);
         expect(llmRouter.executeStream).not.toHaveBeenCalled();
     });
 

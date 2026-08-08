@@ -78,16 +78,7 @@ export default function PricingPage() {
 
   return (
     <>
-      <JsonLd
-        data={pricingJsonLd(
-          PLANS.map((p) => ({
-            name: p.nameKey,
-            price: p.priceUsd,
-            currency: "USD",
-            features: [],
-          }))
-        )}
-      />
+      <JsonLd data={pricingJsonLd()} />
       <JsonLd
         data={breadcrumbJsonLd([
           { name: "Inicio", url: "/" },

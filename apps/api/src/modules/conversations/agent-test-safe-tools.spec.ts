@@ -142,6 +142,12 @@ describe('Agent Test complete safe-tool allowlist', () => {
             ecommerce as any,
             verticalIntegrations as any,
             mcp as any,
+            {
+                preflight: jest.fn().mockResolvedValue({ allowed: true, policy: { externalEffect: 'none' } }),
+                complete: jest.fn(),
+                fail: jest.fn(),
+            } as any,
+            {} as any,
         );
         jest.spyOn((executor as any).logger, 'log').mockImplementation(() => undefined);
         jest.spyOn((executor as any).logger, 'warn').mockImplementation(() => undefined);

@@ -15,6 +15,29 @@ export function normalizeCurrencyCode(value: unknown, fallback = 'COP'): string 
     return candidate;
 }
 
+/**
+ * Resolve the ISO-4217 minor-unit exponent from the runtime's ICU currency
+ * data. Unknown three-letter labels are rejected instead of being treated as
+ * two-decimal currencies. This is required before any FX arithmetic.
+ */
+export function requireCurrencyMinorUnitExponent(value: unknown): number {
+    const currency = normalizeCurrencyCode(value, '');
+    const supported = typeof (Intl as any).supportedValuesOf === 'function'
+        ? new Set<string>((Intl as any).supportedValuesOf('currency'))
+        : null;
+    if (supported && !supported.has(currency)) {
+        throw new BadRequestException(`currency is not a recognized ISO-4217 code: ${currency}`);
+    }
+    const options = new Intl.NumberFormat('en', {
+        style: 'currency', currency,
+    }).resolvedOptions();
+    const exponent = options.maximumFractionDigits;
+    if (typeof exponent !== 'number' || !Number.isInteger(exponent) || exponent < 0 || exponent > 4) {
+        throw new BadRequestException(`currency minor-unit exponent is unsupported: ${currency}`);
+    }
+    return exponent;
+}
+
 /** PostgreSQL duration columns in the vertical schemas are integer units. */
 export function requirePositiveIntegerUnit(value: unknown, field: string): number {
     const parsed = typeof value === 'number' ? value : Number(value);

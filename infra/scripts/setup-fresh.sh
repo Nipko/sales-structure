@@ -58,30 +58,26 @@ fi
 $DB -c "INSERT INTO users (id, email, password, first_name, last_name, role, is_active, created_at, updated_at) VALUES (gen_random_uuid(), 'admin@parallext.com', '$ADMIN_HASH', 'Admin', 'Parallext', 'super_admin', true, NOW(), NOW()) ON CONFLICT (email) DO UPDATE SET password = '$ADMIN_HASH';"
 echo "  [OK] admin@parallext.com / Parallext2026!"
 
-# ---- 7. Create tenant schemas (if any tenants exist from a backup restore) ----
-echo "===> [7/10] Creating tenant schemas..."
-TENANT_SCHEMAS=$($DB -t -c "SELECT schema_name FROM tenants WHERE is_active = true;" 2>/dev/null | tr -d ' ' | grep -v '^$')
-
-if [ -n "$TENANT_SCHEMAS" ]; then
-    TENANT_SQL_FILE="apps/api/prisma/tenant-schema.sql"
-    if [ ! -f "$TENANT_SQL_FILE" ]; then
-        echo "  [WARN] tenant-schema.sql not found at $TENANT_SQL_FILE"
-    else
-        for schema in $TENANT_SCHEMAS; do
-            echo "  Creating schema: $schema"
-            sed "s/{{SCHEMA_NAME}}/$schema/g" "$TENANT_SQL_FILE" | \
-                $DB 2>/dev/null || echo "    [WARN] Some statements failed for $schema (may already exist)"
-            echo "    [OK] $schema"
-        done
-    fi
-else
-    echo "  No tenants found — schemas will be created when tenants sign up"
+# ---- 7. Validate restored tenant schema ownership ----
+echo "===> [7/10] Validating restored tenant schemas..."
+# Provisioning/restore owns schema creation. Setup must never manufacture an
+# empty replacement for an active tenant whose backup is incomplete.
+MISSING_ACTIVE=$($DB -At -c "
+  SELECT t.schema_name
+  FROM tenants t
+  WHERE t.is_active = true
+    AND NOT EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname = t.schema_name)
+  ORDER BY t.schema_name;")
+if [ -n "$MISSING_ACTIVE" ]; then
+    echo "  [ERROR] Active tenants are missing restored schemas:"
+    echo "$MISSING_ACTIVE"
+    exit 1
 fi
-echo "  [OK]"
+echo "  [OK] No active tenant schema is missing"
 
 # ---- 8. Run tenant-level migrations (safety net for existing schemas) ----
 echo "===> [8/10] Running tenant schema migrations..."
-$COMPOSE run --rm api npm run migrate:tenants || echo "  [WARN] Tenant migrations had issues (may be empty)"
+$COMPOSE run --rm api npm run migrate:tenants
 echo "  [OK]"
 
 # ---- 9. Pull latest images and restart ----

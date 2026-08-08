@@ -5,6 +5,7 @@ import {
     getToolPolicy,
     STATIC_TOOL_NAMES,
     TOOL_POLICY_REGISTRY,
+    toolBatchRequiresSequentialExecution,
     toolRequiresSequentialExecution,
 } from './tool-policy-registry';
 
@@ -13,6 +14,11 @@ function extractAll(input: string, pattern: RegExp): string[] {
 }
 
 describe('canonical AI tool policy registry', () => {
+    it('serializes mixed writer/read batches and parallelizes only pure reads', () => {
+        expect(toolBatchRequiresSequentialExecution(['create_appointment', 'check_availability'])).toBe(true);
+        expect(toolBatchRequiresSequentialExecution(['check_availability', 'list_services'])).toBe(false);
+    });
+
     const toolsDirectory = join(__dirname, 'tools');
     const definitionNames = readdirSync(toolsDirectory)
         .filter(file => file.endsWith('.ts'))
@@ -25,15 +31,15 @@ describe('canonical AI tool policy registry', () => {
         /\bcase\s+'([^']+)'/g,
     );
 
-    it('covers exactly the 90 definitions and 90 executor branches', () => {
+    it('covers exactly the 92 definitions and 92 executor branches', () => {
         const expected = [...new Set(definitionNames)].sort();
         const executed = [...new Set(executorNames)].sort();
         const registered = [...STATIC_TOOL_NAMES].sort();
 
-        expect(definitionNames).toHaveLength(90);
-        expect(expected).toHaveLength(90);
-        expect(executed).toHaveLength(90);
-        expect(registered).toHaveLength(90);
+        expect(definitionNames).toHaveLength(92);
+        expect(expected).toHaveLength(92);
+        expect(executed).toHaveLength(92);
+        expect(registered).toHaveLength(92);
         expect(registered).toEqual(expected);
         expect(registered).toEqual(executed);
     });
@@ -108,12 +114,57 @@ describe('canonical AI tool policy registry', () => {
         }
     });
 
-    it('keeps missing controls visible instead of silently claiming certification', () => {
+    it('closes every static gap through the central runtime boundary', () => {
         const gaps = new Map(getMissingToolControls().map(item => [item.name, item.missing]));
 
-        expect(gaps.get('create_appointment')).toEqual(expect.arrayContaining(['idempotency', 'confirmation']));
-        expect(gaps.get('file_claim')).toEqual(expect.arrayContaining(['idempotency', 'confirmation']));
-        expect(gaps.get('apply_discount')).toEqual(expect.arrayContaining(['assurance', 'human_approval']));
-        expect(gaps.has('list_services')).toBe(false);
+        expect(gaps.size).toBe(0);
+        expect(getToolPolicy('create_appointment')).toMatchObject({
+            idempotency: 'central_ledger',
+            confirmation: 'runtime_enforced',
+        });
+        expect(getToolPolicy('file_claim')).toMatchObject({
+            assurance: 'A2',
+            idempotency: 'central_ledger',
+            confirmation: 'runtime_enforced',
+        });
+        expect(getToolPolicy('create_payment_link')).toMatchObject({
+            assurance: 'A3',
+            assuranceEnforcement: 'central_guard',
+            externalEffect: 'provider_write',
+        });
+        for (const name of ['refund_payment', 'apply_discount']) {
+            expect(getToolPolicy(name)).toMatchObject({
+                assurance: 'A4',
+                assuranceEnforcement: 'central_guard',
+                humanApproval: 'runtime_enforced',
+            });
+        }
+        for (const name of ['create_payment_link', 'refund_payment', 'apply_discount']) {
+            expect(getToolPolicy(name)?.ownership).not.toBe('none');
+        }
+    });
+
+    it('requires A2 step-up for clinical, professional-case and physical-access reads', () => {
+        for (const name of [
+            'get_treatment_plan',
+            'list_upcoming_sessions',
+            'get_vaccination_status',
+            'get_case_status',
+            'get_check_in_instructions',
+            'get_appointment_details',
+            'list_customer_appointments',
+        ]) {
+            expect(getToolPolicy(name)).toMatchObject({
+                assurance: 'A2',
+                assuranceEnforcement: 'step_up',
+                dataClassification: 'sensitive',
+            });
+        }
+
+        // A pet list contains a basic contact-scoped profile, not medical detail.
+        expect(getToolPolicy('list_pets_for_contact')).toMatchObject({
+            assurance: 'A1',
+            assuranceEnforcement: 'contact_context',
+        });
     });
 });

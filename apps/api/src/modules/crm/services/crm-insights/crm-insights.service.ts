@@ -2,6 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
 import { LLMRouterService } from '../../../ai/router/llm-router.service';
+import {
+    createFreshLineage,
+    evaluateAiDecisionReadiness,
+    type OutcomeEvaluationCertification,
+} from '../../../../common/policies/ai-decision-readiness.policy';
 
 @Injectable()
 export class CrmInsightsService {
@@ -17,19 +22,20 @@ export class CrmInsightsService {
      * Generate AI-powered next-best-action for a lead.
      * Considers: score, stage, last activity, message count, days since contact.
      */
-    async getInsight(tenantId: string, leadId: string): Promise<{ action: string; reasoning: string } | null> {
-        // Check cache (15 min)
+    async getInsight(
+        tenantId: string,
+        leadId: string,
+        evaluation?: OutcomeEvaluationCertification,
+    ): Promise<{ action: string; reasoning: string } | null> {
         const cacheKey = `crm_insight:${tenantId}:${leadId}`;
-        const cached = await this.redis.getJson<{ action: string; reasoning: string }>(cacheKey);
-        if (cached) return cached;
 
         try {
             const schema = await this.getSchema(tenantId);
 
             // Gather lead context
             const lead = await this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT l.first_name, l.last_name, l.stage, l.score, l.phone, l.email, l.is_vip,
-                        l.created_at, l.last_contacted_at, l.primary_intent,
+                `SELECT l.id, l.first_name, l.last_name, l.stage, l.score, l.phone, l.email, l.is_vip,
+                        l.created_at, l.updated_at, l.last_contacted_at, l.primary_intent,
                         c.name as company_name
                  FROM leads l
                  LEFT JOIN companies c ON c.id = l.company_id
@@ -42,13 +48,45 @@ export class CrmInsightsService {
 
             // Recent message count
             const msgCount = await this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT COUNT(*) as cnt FROM messages m
+                `SELECT COUNT(*) as cnt, MAX(m.created_at) AS last_message_at FROM messages m
                  JOIN conversations c ON c.id = m.conversation_id
                  JOIN contacts ct ON ct.id = c.contact_id
                  JOIN leads ld ON ld.contact_id = ct.id
                  WHERE ld.id = $1::uuid AND m.created_at > NOW() - INTERVAL '7 days'`,
                 [leadId],
             );
+
+            const readAt = new Date();
+            const readiness = evaluateAiDecisionReadiness({
+                outcome: 'crm_lead_next_best_action',
+                evaluation,
+                now: readAt,
+                lineage: [
+                    createFreshLineage('tenant.leads', String(l.id || leadId), readAt, l.updated_at || l.created_at),
+                    createFreshLineage(
+                        'tenant.lead_message_aggregate', `${leadId}:messages_7d`, readAt,
+                        msgCount?.[0]?.last_message_at,
+                    ),
+                ],
+            });
+            if (!readiness.allowed) {
+                this.logger.warn(`CRM insight blocked by readiness gate: ${readiness.reasons.join(',')}`);
+                return null;
+            }
+
+            // A legacy cache cannot bypass current lineage/eval readiness, and a
+            // cache for an older source projection cannot satisfy current lineage.
+            const lineageKey = [
+                l.updated_at || l.created_at || '',
+                msgCount?.[0]?.cnt || 0,
+                msgCount?.[0]?.last_message_at || '',
+            ].map(String).join('|');
+            const cached = await this.redis.getJson<{
+                action: string; reasoning: string; lineageKey?: string;
+            }>(cacheKey);
+            if (cached?.lineageKey === lineageKey) {
+                return { action: cached.action, reasoning: cached.reasoning };
+            }
 
             const daysSinceContact = l.last_contacted_at
                 ? Math.round((Date.now() - new Date(l.last_contacted_at).getTime()) / 86400000)
@@ -78,7 +116,7 @@ Keep it under 40 words total. Respond in Spanish.`;
             if (jsonMatch) {
                 const parsed = JSON.parse(jsonMatch[0]);
                 const insight = { action: parsed.action || '', reasoning: parsed.reasoning || '' };
-                await this.redis.setJson(cacheKey, insight, 900); // 15 min cache
+                await this.redis.setJson(cacheKey, { ...insight, lineageKey }, 900); // 15 min cache
                 return insight;
             }
 

@@ -25,16 +25,16 @@ Esta tabla separa el diseño de pruebas de las suites que existen y fueron ejecu
 
 | Capa | Estado actual | Falta para certificar |
 |---|---|---|
-| T0 — contrato estático | Parcial: 1.520/1.520; manifest/resolver, locales, planes, terminales `won/lost`, slugs, rutas declaradas, moneda/duración y capability↔tool group | Registro positivo claim→evidencia y existencia física/permiso de todas las rutas |
+| T0 — contrato estático | Parcial: 1.520/1.520; manifest/resolver, product mode, locales, planes, terminales `won/lost`, slugs, rutas, moneda/duración, capability↔tool group y registry positivo de cinco claims cuantitativos | Migrar copy narrativo al registry y verificar existencia/permiso de todas las rutas |
 | T1 — unit | Cobertura focal amplia para P0/P1 corregidos | Cobertura total y umbral medido por módulo |
 | T2 — provisioning | Simulado/unitario | Bootstrap PostgreSQL/Redis real: 380 bases y 1.520 localizados |
 | T3 — API/seguridad | Guards y servicios focales | HTTP real, cuatro roles, dos tenants y pruebas de PII |
-| T4 — tools | 90/90 tools clasificadas | 37 tools aún reportan al menos un control faltante: 23 idempotencia, 23 confirmación, 1 assurance y 1 aprobación humana |
-| T5 — IA | Prompt/XML, Agent Test seguro y casos deterministas focales | Matriz conversacional completa, canal/media sandbox y real-model en cuatro idiomas |
+| T4 — tools | 92/92 tools estáticas clasificadas; `getMissingToolControls()` = 0 y enforcement central A0–A4/ledger/confirmación/approval | PostgreSQL real, carreras/recovery, adapters de pago y revisión explícita de cada MCP opaco |
+| T5 — IA | Prompt/XML, Agent Test seguro, sandbox lifecycle skeleton, NBA readiness y media-consent fail-closed | Provisioner sandbox real, matriz conversacional, canal/media consentido y real-model en cuatro idiomas |
 | T6 — CRM/automation/analytics | Outcomes, triggers y agregadores con unitarias focales | Reconciliación DB/eventos/KPIs E2E |
 | T7 — dashboard | Resolver subtype-aware: 76 configuraciones/18 verticales | Playwright, accesibilidad, screenshots y dependencia local `onborda` |
-| T8 — integraciones | Health y calendar contract unitarios | Sandboxes/proveedores reales, rate limits, expiry y webhooks |
-| T9 — resiliencia | Concurrencia focal de locks/CAS | Load, chaos, failover y SLO medidos |
+| T8 — integraciones | Health, ownership y calendar outbox/reconciliation unitarios | Sandboxes/proveedores reales, rate limits, expiry y webhooks |
+| T9 — resiliencia | Concurrencia focal de locks/CAS y transporte push aislado/acotado | Load, servidor malicioso staging, chaos, failover y SLO medidos |
 
 ## 2. Principios de prueba
 
@@ -160,7 +160,7 @@ Se ejecutan en cada PR y no requieren infraestructura.
 | VT-CON-006 | Slugs de etapas únicos y probabilidades 0–100 | Validación de schema |
 | VT-CON-007 | Servicios tienen duración > 0, moneda válida y precio coherente | El paquete de fin de semana no puede ser cita de 0 minutos |
 | VT-CON-008 | Capability de booking corresponde a su modelo | appointment/nightly/class/order/work-order/project/case explícitos |
-| VT-CON-009 | Tools requeridas existen en definición, registro y executor | Paridad por nombre y schema; hoy la base esperada son 90 estáticas |
+| VT-CON-009 | Tools requeridas existen en definición, registro y executor | Paridad por nombre y schema; hoy la base esperada son 92 estáticas |
 | VT-CON-010 | Toda tool tiene clasificación y assurance level | `read/write/sensitive`, A0–A4, idempotencia y ownership |
 | VT-CON-011 | Toda ruta de UI declarada existe | Sin `/inventory` para vehículos ni links inválidos |
 | VT-CON-012 | KPIs declarados existen, tienen icono y semántica | Sin fallback visual silencioso ni alias genérico incorrecto |
@@ -615,7 +615,7 @@ Todo defecto incluye:
 
 ## 10. Quality gates y criterios de salida
 
-Los gates siguientes son el **objetivo de CI/CD**, no todos están cableados hoy. El workflow actual ejecuta claims conocidos, matriz estática, typechecks, lint, billing focal, migraciones y boot smoke; no tiene trigger de PR, nightly/weekly/post-deploy, publicación JUnit ni todas las suites verticales.
+Los gates siguientes siguen siendo el **criterio objetivo**. `deploy.yml` bloquea con claims, matriz, contratos de decisiones, typechecks, lint, migraciones y boot smoke. `vertical-quality.yml` ya cablea PR, integración/nightly, weekly/release y artefactos JSON/JUnit. Aun así, el wiring no equivale a ejecución observada: faltan varias suites DB de 1.520 escenarios, eval real-model, sandboxes externos, performance, chaos, rollback y canary; post-deploy tampoco está automatizado.
 
 ### Gate de PR
 
@@ -741,7 +741,7 @@ Al corte inicial de esta auditoría, antes de las remediaciones de Ola 0:
 - API `tsc --noEmit`: pasa.
 - API Jest: 52 pruebas pasan; una falla en `crm.controller.spec.ts` por dependencia de test faltante.
 - App bootstrap: pasa con secreto JWT de prueba, pero no es hermético y deja handles.
-- Dashboard typecheck: no ejecutable en este checkout por dependencia local `onborda` ausente.
+- Dashboard typecheck: no era ejecutable en el corte histórico por `onborda`; la dependencia ya forma parte del package/lock y el typecheck actual pasa.
 - Tests específicos de verticales: **0**.
 - Contrato automático tool definitions↔executor: **0**, aunque la inspección estática encontró 90↔90.
 - Certificaciones E2E: **0/18**.

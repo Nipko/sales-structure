@@ -25,13 +25,16 @@ export default function IndustryPageClient() {
     .slice(0, 3);
 
   const industryName = t(`verticals.${slug}.name`);
+  const publicDescription = vertical.deepMarketingAllowed
+    ? t(`verticals.${slug}.tagline`)
+    : t(`solutions.productModeDescription.${vertical.productMode}`);
 
   return (
     <>
       <JsonLd
         data={industryPageJsonLd({
           name: industryName,
-          description: t(`verticals.${slug}.tagline`),
+          description: publicDescription,
           slug,
         })}
       />
@@ -66,13 +69,17 @@ export default function IndustryPageClient() {
                 {t(`verticals.${slug}.subtitle`)}
               </span>
 
+              <p className="mb-4 text-xs font-medium text-text-muted" data-product-mode={vertical.productMode}>
+                {t(`solutions.productMode.${vertical.productMode}`)}
+              </p>
+
               <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
                 {t("industryPage.heroTitlePrefix")}{" "}
                 <span style={{ color: vertical.color }}>{industryName}</span>
               </h1>
 
               <p className="text-lg text-text-secondary max-w-xl mb-8">
-                {t(`verticals.${slug}.tagline`)}
+                {publicDescription}
               </p>
 
               <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
@@ -112,30 +119,45 @@ export default function IndustryPageClient() {
                   </div>
                   <div>
                     <p className="font-bold text-lg">{t(`verticals.${slug}.agentName`)}</p>
-                    <p className="text-xs text-text-muted">{t("industryPage.agentSpotlightDesc", { industry: industryName })}</p>
+                    <p className="text-xs text-text-muted">
+                      {vertical.deepMarketingAllowed
+                        ? t("industryPage.agentSpotlightDesc", { industry: industryName })
+                        : t(`solutions.productModeDescription.${vertical.productMode}`)}
+                    </p>
                   </div>
                 </div>
-                <div className="space-y-2.5">
-                  {[1, 2, 3, 4].map((n) => (
-                    <div key={n} className="flex items-start gap-2.5">
-                      <span
-                        className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5"
-                        style={{ backgroundColor: `${vertical.color}20`, color: vertical.color }}
-                      >
-                        {Icon.check("w-3 h-3")}
-                      </span>
-                      <span className="text-sm text-text-secondary">
-                        {t(`verticals.${slug}.feature${n}`)}
+                {vertical.deepMarketingAllowed ? (
+                  <>
+                    <div className="space-y-2.5">
+                      {[1, 2, 3, 4].map((n) => (
+                        <div key={n} className="flex items-start gap-2.5">
+                          <span
+                            className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5"
+                            style={{ backgroundColor: `${vertical.color}20`, color: vertical.color }}
+                          >
+                            {Icon.check("w-3 h-3")}
+                          </span>
+                          <span className="text-sm text-text-secondary">
+                            {t(`verticals.${slug}.feature${n}`)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-5 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: vertical.color }} />
+                      <span className="text-xs font-semibold" style={{ color: vertical.color }}>
+                        {t("industryPage.agentActive")}
                       </span>
                     </div>
-                  ))}
-                </div>
-                <div className="mt-5 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: vertical.color }} />
-                  <span className="text-xs font-semibold" style={{ color: vertical.color }}>
-                    {t("industryPage.agentActive")}
-                  </span>
-                </div>
+                  </>
+                ) : (
+                  <p
+                    className="rounded-xl border border-border bg-surface/50 p-4 text-sm text-text-secondary"
+                    data-deep-marketing="withheld"
+                  >
+                    {t("solutions.validationRequired")}
+                  </p>
+                )}
               </div>
             </motion.div>
           </div>
@@ -243,7 +265,11 @@ export default function IndustryPageClient() {
                     <p className="text-xs text-text-muted">{t(`verticals.${v.slug}.subtitle`)}</p>
                   </div>
                 </div>
-                <p className="text-sm text-text-secondary">{t(`verticals.${v.slug}.tagline`)}</p>
+                <p className="text-sm text-text-secondary">
+                  {v.deepMarketingAllowed
+                    ? t(`verticals.${v.slug}.tagline`)
+                    : t(`solutions.productModeDescription.${v.productMode}`)}
+                </p>
               </Link>
             ))}
           </div>

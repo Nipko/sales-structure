@@ -5,7 +5,7 @@
 **Auditoría base:** [`vertical-system-audit-2026-08.md`](./vertical-system-audit-2026-08.md)
 **Plan de certificación:** [`vertical-master-test-plan-2026-08.md`](./vertical-master-test-plan-2026-08.md)
 **Detalle de contención:** [`wave-0-execution-2026-08.md`](./wave-0-execution-2026-08.md)
-**Decisiones diferidas:** [`vertical-decision-register-2026-08.md`](./vertical-decision-register-2026-08.md)
+**Decisiones adoptadas:** [`vertical-decision-register-2026-08.md`](./vertical-decision-register-2026-08.md) · [`implementación`](./vertical-decisions-implementation-2026-08.md)
 **Matriz competitiva:** [`vertical-competitive-matrix-2026-08.md`](./vertical-competitive-matrix-2026-08.md)
 
 ## 1. Veredicto ejecutivo
@@ -17,8 +17,8 @@ Esto no equivale todavía a certificar una vertical en producción. El estado co
 - contrato estático canónico: **1.520/1.520 aprobado**;
 - certificación E2E con PostgreSQL, Redis, BullMQ, proveedores, canales y modelos reales: **0/18**;
 - bloqueadores de seguridad y consistencia de Ola 0: corregidos en código y cubiertos por regresiones focales;
-- decisiones de producto o arquitectura: separadas del trabajo inequívoco y registradas al final del programa;
-- despliegue: la matriz estática quedó conectada al job `validate` de CI, pero no reemplaza los gates de infraestructura.
+- decisiones de producto o arquitectura: las 19 recomendaciones quedaron adoptadas como política, contrato o contención fail-closed;
+- despliegue: la matriz estática y los contratos críticos de decisión bloquean deploy; el workflow por tiers conserva separados los gates de infraestructura.
 
 La distinción es deliberada: `implemented`, `staticVerified` y `e2eCertified` son estados independientes.
 
@@ -36,11 +36,11 @@ La distinción es deliberada: `implemented`, `staticVerified` y `e2eCertified` s
 | Ola | Objetivo | Resultado del corte | Estado de certificación |
 |---|---|---|---|
 | **0** | Contención, tenant isolation, provisioning, outcomes, prompt, red, purge y verdad comercial | Los 12 P0 tienen remediación de código; readiness de lifecycle/auth es fail-closed; pipeline/outcomes y purge son transaccionales; XML y SSRF tienen defensas; Agent Test no escribe negocio | Gate externo pendiente; 0/18 |
-| **1** | Contratos comunes de manifest, tools, contexto, identidad, widget, staff, automatización e integraciones | Manifest operativo v1, ToolPolicy de 90 tools, ActiveObjects, integration health, persona por goals, navegación subtype-aware, analítica 18/18 y contratos de moneda/duración | Varias expansiones quedan como decisión; 0/18 |
+| **1** | Contratos comunes de manifest, tools, contexto, identidad, widget, staff, automatización e integraciones | Manifest operativo v1, ToolPolicy central, A0–A4, ActiveObjects, integration health, persona por goals, navegación subtype-aware, analítica 18/18 y contratos de moneda/duración | Expansiones sin provider/evidencia permanecen contenidas; 0/18 |
 | **2** | Profundizar inmobiliaria, restaurantes, automotriz, turismo, education y gimnasios | Se corrigieron rutas, writes, moneda/duración, ETA, contexto activo, reservas, agenda, disponibilidad, reprogramación e invariantes | Falta E2E por vertical y proveedores reales |
 | **3** | Profundizar salud, belleza, retail, veterinaria, seguros, hogar, pet services y fotografía | Assurance reforzado en seguros, ownership, moneda, claims, citas, operaciones y analítica; los dominios sensibles no se preinyectan sin política | Decisiones de assurance, pagos y modelos de capacidad pendientes |
-| **4** | Replantear finanzas, technology, servicios profesionales y `otro` | Contratos, analítica y navegación ya no fallan por ausencia; no se inventaron toolsets profundos sin definir objetos y permisos | Profundidad funcional depende de decisión de producto |
-| **5** | Diferenciación con IA y operación | Handoff estructurado con evidencia, contexto activo versionado, health de integraciones, outcomes explícitos y evaluación estática; guardrails y uso operacional reforzados | NBA, voz/multimodal, lineage completo y eval real-model siguen como programa evolutivo |
+| **4** | Replantear finanzas, technology, servicios profesionales y `otro` | Los tres dominios quedan presets horizontales honestos; `otro` queda fallback y el builder es un preview separado | Profundidad funcional requiere objetos/permisos/adapters; builder apply bloqueado |
+| **5** | Diferenciación con IA y operación | Handoff estructurado, contexto activo, health, outcomes; NBA exige lineage/freshness/eval y media exige consentimiento/retención | Sin registry/eval real, NBA y multimodal fallan cerrados |
 
 ## 4. Cierre de los doce P0
 
@@ -66,11 +66,11 @@ La distinción es deliberada: `implemented`, `staticVerified` y `e2eCertified` s
 | `P1-01` | **Implementado** | Contrato compuesto v1: identifier/alias contract, capability manifest, definiciones, ToolPolicy y factory-plan contract; la matriz verifica que sus proyecciones coincidan. |
 | `P1-02` | **Implementado** | Registro estricto para `pet_services`, `servicios_hogar`, `fotografia` y los demás subtipos. |
 | `P1-03` | **Implementado** | Alias `finanzas/seguros` converge a `seguros/broker`; combinaciones imposibles fallan cerradas. |
-| `P1-04` | **Contenido** | Agent Test es preview seguro y honesto, no sandbox writer ni réplica E2E de Booking Engine. Crear ese sandbox es una decisión de producto/costo. |
+| `P1-04` | **Adoptado con contención** | Agent Test sigue siendo preview seguro. El sandbox efímero separado tiene contrato de TTL/deadline/stubs/teardown, pero el provisioner real aún no existe. |
 | `P1-05` | **Implementado** | Agentes nuevos heredan capabilities efectivas desde manifest sin sobrescribir configuración explícita. |
-| `P1-06` | **Contenido** | Widget quedó protegido por origen, DTO, token, readiness, rate/quota/tier/budget, mutex e historia correcta. Unificar writers, booking y entrega de handoff requiere definir su alcance de canal. |
-| `P1-07` | **Implementado parcial** | `ActiveObjects v1` es seguro, acotado y compartido por producción/Agent Test; loaders actuales cubren appointments, properties, tours, orders y food orders con fallos aislados. Claims, casos y datos clínicos permanecen tool-only hasta decidir assurance. |
-| `P1-08` | **Contenido** | El cambio directo de vertical está bloqueado con `vertical_migration_required`; preview/mapeo/rollback es una decisión de migración. |
+| `P1-06` | **Adoptado por etapas** | `web_widget` es canal formal automatizado con policy; handoff continúa bloqueado hasta existir entrega humana autenticada y bidireccional. |
+| `P1-07` | **Implementado** | `ActiveObjects v1` es seguro/acotado; registry exhaustivo de 22 kinds y policy dinámica mantienen clínica, claims, casos, finanzas/legal y service requests tool-only A2. |
+| `P1-08` | **Adoptado con contención** | Cambio directo bloqueado; el preview durable inventaría datos y cobertura de mappings, y persiste archive/outbox; publica `applySupported:false` sin adapter completo. |
 | `P1-09` | **Contenido** | Reseed es aditivo e idempotente y preserva cambios del usuario; reconciliación destructiva/conflict policy requiere decisión. |
 | `P1-10` | **Implementado** | Booking y rutas derivan capabilities efectivas, no el nombre de industria. |
 | `P1-11` | **Implementado** | Catálogo/readiness/sidebar/tours/checklist resuelven por capability y subtipo, con fallback legacy explícito. |
@@ -78,14 +78,14 @@ La distinción es deliberada: `implemented`, `staticVerified` y `e2eCertified` s
 | `P1-13` | **Implementado** | Trigger contract compartido, ejecución/cuota atómica y plantillas alineadas con slugs/eventos reales. |
 | `P1-14` | **Implementado** | Persona determinista por vertical, subtipo y goals; matriz de 18/75/8 goals/4 idiomas. |
 | `P1-15` | **Implementado** | Prompt ofrece acciones solo con capability/contexto efectivo y responde en el idioma del turno. |
-| `P1-16` | **Implementado parcial** | OTP/identity fail-closed, ownership y minimización de PII; seguros/claims usan step-up. Extender niveles a salud, legal, pagos y documentos requiere política formal. |
-| `P1-17` | **Implementado parcial** | Agenda de staff valida horarios/breaks/duración, usa writes atómicos y overlap correcto. Unificar `staff_members`, usuarios, recursos, sedes y UI administrativa requiere un modelo elegido. |
-| `P1-18` | **Decisión** | No se agregaron payment/deposit/refund tools sin proveedor, aprobación, ledger e idempotencia definidos. |
+| `P1-16` | **Implementado** | Matriz A0–A4 y gate central: contacto, step-up, confirmación firmada ligada a turno/args, ledger idempotente y ticket humano A4. |
+| `P1-17` | **Implementado contractual** | Staff/user/location/calendar/resource se enlazan explícitamente; no se igualan UUID. Agenda existente conserva atomicidad/overlap; UI/backfill siguen pendientes. |
+| `P1-18` | **Adoptado con contención** | Payment link A3 y refund/discount A4 usan ledger provider-neutral, ownership, aprobación y reconciliación; sin adapter explícito se registra y escala a humano. |
 | `P1-19` | **Implementado** | Integraciones usan health durable, scopes, frescura, errores sanitizados y estados fail-closed antes de exponer tools. |
-| `P1-20` | **Implementado parcial** | Copy riesgoso y regresiones conocidas se corrigieron. La denylist actual no sustituye un registro positivo claim → capability → evidencia. |
+| `P1-20` | **Implementado incremental** | Los cinco claims cuantitativos visibles usan registry positivo con owner/scope/fecha/evidencia/expiración; copy narrativo sigue bajo denylist hasta migración semántica. |
 | `P1-21` | **Implementado** | Ruta estática de búsqueda de vehículos precede a `:vehicleId`; regresión de metadata/precedencia. |
-| `P1-22` | **Implementado sintáctico** | Writers validan/persisten currency y preservan lineage; no se relabelan importes. Moneda operativa/FX y agregados multimoneda son decisión. |
-| `P1-23` | **Implementado sintáctico** | Toda duración seed es entera positiva; tours persisten valor+unidad. El paquete fin de semana y servicios `open` requieren un modelo semántico de días/capacidad. |
+| `P1-22` | **Implementado contractual** | Moneda operativa explícita e inmutable tras primer ledger; cada línea conserva moneda fuente y snapshot FX, y agregados mixed-currency fallan cerrados. |
+| `P1-23` | **Implementado contractual** | Appointment, nightly, day-capacity, session y resource son modelos separados; `open` ambiguo se rechaza. Migrar writers/históricos sigue como trabajo de datos. |
 
 ## 6. Lectura operacional de las 18 verticales
 
@@ -129,12 +129,14 @@ Las cifras siguientes corresponden a lotes focales; no se suman porque varias su
 - automation trigger/quota/templates: **12/12**;
 - scheduling/reprogramación/calendario: **8/8 + 11/11 + 2/2**;
 - moneda/duración: **18/18** nuevas + **18/18** de regresión;
-- ToolPolicy/schema-runtime: 90/90 tools clasificadas y suites focales aprobadas; clasificación no equivale a enforcement: 37 tools reportan al menos un gap (23 idempotencia, 23 confirmación, 1 assurance y 1 aprobación humana);
+- ToolPolicy/schema-runtime: todas las tools estáticas están registradas; `getMissingToolControls()` queda en cero para el registry estático y los MCP opacos fallan cerrados. Enforcement central cubre ledger, confirmación, assurance y aprobación;
+- decisiones `DEC-01..19`: contratos focales de product mode/builder, A0–A4/pagos, moneda/tiempo/staff/calendario/migración, sandbox/widget/NBA/media y push pasan en lotes locales; el detalle reproducible está en el documento de implementación;
 - transporte seguro: **28/28** para sintaxis, IPs reservadas, DNS mixto/deadline, pinning y opciones Axios acotadas;
-- verificación secuencial final **posterior a la recuperación del contrato shared**: shared TypeScript **PASS**, API TypeScript **PASS** y **62 suites API / 489 pruebas PASS** en cinco lotes disjuntos (contratos/matriz/handoff; Agent Test/ToolPolicy; lifecycle/purge/pipeline; verticales/persona/integraciones; automation/widget);
+- corte actual posterior a `DEC-01..19`: **42/42 suites API, 337/337 pruebas y 0 snapshots PASS**, secuencial, sin caché y con 8 GB; shared/API/dashboard/WhatsApp TypeScript y ESLint API completo **PASS**;
+- corte histórico anterior a la adopción DEC-01..19: shared TypeScript **PASS**, API TypeScript **PASS** y **62 suites API / 489 pruebas PASS** en cinco lotes disjuntos. Se conserva solo como evidencia histórica, no como resultado del árbol actual;
 - superficies cliente: mobile TypeScript **PASS** y **2 suites / 196 pruebas PASS**; resolver dashboard **1 suite / 3 pruebas PASS**; nueve catálogos i18n modificados parsean correctamente;
-- gates estáticos finales: matriz CLI **1.520/1.520 PASS** con `bootstrapCertified:false`; claims principal y cuatro regresiones negativas **PASS**;
-- dashboard TypeScript: bloqueado únicamente por tres `TS2307` del módulo local ausente `onborda`; no se presenta como pase global;
+- gates estáticos finales: matriz CLI **1.520/1.520 PASS** con `bootstrapCertified:false`; claims de 18 verticales en `es/en/pt/fr` + `es-AR`, cuatro regresiones negativas y evidencia competitiva **PASS**; landing **34/34 páginas** y export **2/2 PASS**;
+- dashboard TypeScript: **PASS** con `onborda` resuelto desde package/lock; landing y WhatsApp TypeScript también **PASS** en la verificación actual;
 - un intento concurrente anterior agotó heap; se reruneó secuencialmente con 8 GB. Un OOM se registra como limitación de ambiente, no como PASS/FAIL funcional.
 
 Comandos canónicos:
@@ -146,7 +148,7 @@ node_modules\.bin\tsc.cmd -p apps/api/tsconfig.json --noEmit --pretty false
 node apps/landing/scripts/validate-marketing-claims.cjs
 ```
 
-El workflow `.github/workflows/deploy.yml` está **cableado** para ejecutar el control de claims y la matriz de 1.520 escenarios antes del typecheck/build. No se observó una corrida remota de CI en esta sesión. La salida estática jamás debe etiquetarse como bootstrap certificado.
+El workflow `.github/workflows/deploy.yml` está **cableado** para ejecutar claims, matriz de 1.520 escenarios y contratos operativos críticos antes del typecheck/build. `.github/workflows/vertical-quality.yml` separa PR, integración/nightly y regresión semanal, y publica evidencia JSON/JUnit; el preflight de producción valida la estructura de una atestación protegida, pero no comprueba por sí mismo URLs o digests remotos. No se observó una corrida remota de CI en esta sesión; la salida local/estática jamás debe etiquetarse como bootstrap certificado.
 
 ## 8. Gates de certificación que no pueden simularse
 
@@ -165,6 +167,6 @@ El workflow `.github/workflows/deploy.yml` está **cableado** para ejecutar el c
 
 Una vertical pasa de `implemented` a `certified` solo si cumple el plan maestro y conserva un paquete de evidencia reproducible: versión de manifest/prompt/modelo, seed, ambiente, JUnit, snapshots, trazas, fallos inyectados y decisión firmada. Hasta entonces, el contador público y técnico permanece en **0/18**, aunque la base común ya esté significativamente reforzada.
 
-## 10. Decisiones al final del programa
+## 10. Decisiones adoptadas
 
-Las decisiones se mantuvieron fuera de las correcciones inequívocas. El registro final contiene 19 decisiones agrupadas por foco comercial, Agent Test/widget/IA, assurance/tools/pagos, moneda/tiempo/staff/calendario/migración y gobierno de claims/CI/red. Cada una incluye opciones, recomendación y lo que bloquea: [`vertical-decision-register-2026-08.md`](./vertical-decision-register-2026-08.md).
+Las 19 recomendaciones fueron aceptadas explícitamente y se implementaron con fronteras fail-closed. Cuando falta provider, adapter, registry, infraestructura o evidencia real, quedó activo el contrato/preview/contención y no una simulación de éxito. El registro conserva la decisión y el bloqueo; el documento de implementación enlaza la evidencia y el gate residual: [`vertical-decision-register-2026-08.md`](./vertical-decision-register-2026-08.md) · [`vertical-decisions-implementation-2026-08.md`](./vertical-decisions-implementation-2026-08.md).

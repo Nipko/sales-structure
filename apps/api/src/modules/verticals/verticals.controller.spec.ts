@@ -13,7 +13,17 @@ describe('VerticalsController tenant isolation', () => {
         Reflect.getMetadata(GUARDS_METADATA, VerticalsController.prototype[method]) || []
     );
 
-    it.each(['getConfig', 'getStagesPresets', 'reseedContent'] as const)(
+    it.each([
+        'getConfig',
+        'getStagesPresets',
+        'reseedContent',
+        'getOperatingCurrency',
+        'configureOperatingCurrency',
+        'previewMigration',
+        'approveMigration',
+        'applyMigration',
+        'rollbackMigration',
+    ] as const)(
         'protects %s with TenantGuard',
         (method) => {
             expect(methodGuards(method)).toContain(TenantGuard);
@@ -27,7 +37,7 @@ describe('VerticalsController tenant isolation', () => {
     });
 
     it('publishes every canonical vertical, including entries with no subtypes', async () => {
-        const controller = new VerticalsController({} as any);
+        const controller = new VerticalsController({} as any, {} as any, {} as any);
 
         const result = await controller.getDefinitions();
 
@@ -53,7 +63,7 @@ describe('VerticalsController tenant isolation', () => {
             getCapabilityManifest: jest.fn().mockReturnValue(manifest),
             resolveCapabilityManifest: jest.fn().mockReturnValue(resolved),
         };
-        const controller = new VerticalsController(service as any);
+        const controller = new VerticalsController(service as any, {} as any, {} as any);
 
         expect(controller.getCapabilityManifest()).toEqual({ success: true, data: manifest });
         expect(controller.resolveCapabilityManifest('turismo', 'hotel')).toEqual({
@@ -65,6 +75,17 @@ describe('VerticalsController tenant isolation', () => {
 
     it('keeps content reseeding restricted to tenant administrators', () => {
         expect(Reflect.getMetadata(ROLES_KEY, VerticalsController.prototype.reseedContent))
+            .toEqual(['tenant_admin']);
+    });
+
+    it.each([
+        'configureOperatingCurrency',
+        'previewMigration',
+        'approveMigration',
+        'applyMigration',
+        'rollbackMigration',
+    ] as const)('keeps %s restricted to tenant administrators', (method) => {
+        expect(Reflect.getMetadata(ROLES_KEY, VerticalsController.prototype[method]))
             .toEqual(['tenant_admin']);
     });
 });

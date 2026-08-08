@@ -98,19 +98,6 @@ export function softwareAppJsonLd() {
     operatingSystem: "Web",
     url: SITE_URL,
     description: "IA conversacional para vender, atender y agendar en WhatsApp, Instagram, Messenger, Telegram, SMS y Email.",
-    offers: {
-      "@type": "AggregateOffer",
-      priceCurrency: "USD",
-      lowPrice: "21",
-      highPrice: "349",
-      offerCount: "4",
-    },
-    aggregateRating: {
-      "@type": "AggregateRating",
-      ratingValue: "4.9",
-      ratingCount: "500",
-      bestRating: "5",
-    },
   };
 }
 
@@ -166,19 +153,12 @@ export function industryPageJsonLd(industry: {
   };
 }
 
-export function pricingJsonLd(plans: { name: string; price: number; currency: string; features: string[] }[]) {
+export function pricingJsonLd() {
   return {
     "@context": "https://schema.org",
     "@type": "WebPage",
     name: "Precios de Parallly",
-    description: "Planes y precios de Parallly: desde $21 USD/mes para emprendedores hasta Enterprise.",
-    mainEntity: plans.map((plan) => ({
-      "@type": "Offer",
-      name: plan.name,
-      price: plan.price,
-      priceCurrency: plan.currency,
-      description: plan.features.join(", "),
-      url: `${SITE_URL}/precios`,
-    })),
+    description: "Consulta los planes y condiciones comerciales vigentes de Parallly.",
+    url: `${SITE_URL}/precios`,
   };
 }

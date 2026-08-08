@@ -7,10 +7,12 @@ export * from './timezones';
 
 // ---- Versioned vertical operational contract ----
 export * from './vertical-capability-manifest';
+export * from './vertical-product-policy';
+export * from './vertical-builder-contract';
 export * from './automation-trigger-contract';
 
 // ---- Channel Types ----
-export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email';
+export type ChannelType = 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'sms' | 'email' | 'web_widget';
 
 export type MessageContentType = 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'sticker' | 'reaction';
 

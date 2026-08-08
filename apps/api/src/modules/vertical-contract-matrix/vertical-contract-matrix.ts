@@ -1,6 +1,9 @@
 import {
     listVerticalCapabilityConfigurations,
+    resolveVerticalProductPolicy,
     VERTICAL_CAPABILITY_MANIFEST_VERSION,
+    VERTICAL_CERTIFICATION_ANCHORS,
+    VERTICAL_PRODUCT_POLICY_VERSION,
 } from '@parallext/shared';
 import type {
     LocalizedString,
@@ -47,6 +50,7 @@ export interface VerticalContractMatrixReport {
     sources: {
         definitions: 'verticals/vertical-definitions';
         capabilityManifestVersion: number;
+        productPolicyVersion: number;
         plans: typeof FACTORY_PLAN_SOURCE;
     };
     dimensions: {
@@ -257,6 +261,30 @@ function validateCapabilities(
     }
 }
 
+function validateProductPolicy(
+    industry: string,
+    add: (code: string, path: string, message: string) => void,
+): void {
+    try {
+        const policy = resolveVerticalProductPolicy(industry);
+        if (policy.certificationState !== 'implemented_not_certified' || policy.deepMarketingAllowed) {
+            add('product_policy_overclaim', 'productPolicy', 'Uncertified verticals must remain in honest marketing mode.');
+        }
+        const expectedMode = industry === 'otro'
+            ? 'generic_fallback'
+            : ['finanzas', 'technology', 'servicios_profesionales'].includes(industry)
+                ? 'horizontal_preset'
+                : (VERTICAL_CERTIFICATION_ANCHORS as readonly string[]).includes(industry)
+                    ? 'certification_anchor'
+                    : 'vertical_product';
+        if (policy.mode !== expectedMode) {
+            add('product_policy_mode_mismatch', 'productPolicy.mode', `Expected ${expectedMode}, received ${policy.mode}.`);
+        }
+    } catch (error: any) {
+        add('product_policy_missing', 'productPolicy', error?.message || 'Product policy is missing.');
+    }
+}
+
 function validatePrimaryObjectAndRoutes(
     manifest: ResolvedVerticalCapabilityManifest,
     add: (code: string, path: string, message: string) => void,
@@ -382,6 +410,7 @@ function validateScenario(
     }
     validateCapabilities(manifest, add);
     validatePrimaryObjectAndRoutes(manifest, add);
+    validateProductPolicy(manifest.industry, add);
 
     return { id: scenarioId(context), context, passed: failures.length === 0, failures };
 }
@@ -408,6 +437,7 @@ export function runVerticalContractMatrix(): VerticalContractMatrixReport {
         sources: {
             definitions: 'verticals/vertical-definitions',
             capabilityManifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+            productPolicyVersion: VERTICAL_PRODUCT_POLICY_VERSION,
             plans: FACTORY_PLAN_SOURCE,
         },
         dimensions: {

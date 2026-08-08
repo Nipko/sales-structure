@@ -265,7 +265,7 @@ Además pueden descubrirse tools MCP dinámicas. Estas no pueden validarse por c
 - El prompt en tres capas evita mezclar configuración del usuario con instrucciones globales.
 - RAG, FAQ, políticas, catálogo y business identity tienen responsabilidades distintas.
 - La IA recibe lenguaje, zona horaria, negocio, contacto, memoria, reservas y conocimiento recuperado.
-- Las tools se habilitan por configuración de agente y la producción contiene handlers para las 90 tools estáticas identificadas.
+- En el baseline se identificaron 90 tools estáticas; el contrato operativo vigente contiene 92/92 registradas, con controles centrales completos para el registry estático.
 - La regla de no inventar disponibilidad, precio o política está alineada con el producto.
 
 ### Lo que debe corregirse

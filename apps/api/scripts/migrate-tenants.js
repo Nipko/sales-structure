@@ -60,6 +60,11 @@ function splitSqlStatements(sql) {
   return results;
 }
 
+function postgresErrorCode(error) {
+  const candidates = [error?.meta?.code, error?.cause?.code, error?.code];
+  return candidates.find((value) => typeof value === 'string' && /^[0-9A-Z]{5}$/.test(value)) || null;
+}
+
 async function migrate() {
   console.log('--- Started Tenant Schema Migration ---');
   try {
@@ -70,15 +75,24 @@ async function migrate() {
     }
     const tpl = fs.readFileSync(tplPath, 'utf-8');
     
-    // Get all active tenants
+    // Upgrade every retained schema, including cancelled/offboarded tenants
+    // that may later be reactivated. Inactive tenants whose schema was already
+    // archived/dropped are excluded so migration never recreates erased data.
     const tenants = await prisma.$queryRaw`
-      SELECT id, schema_name FROM tenants WHERE is_active = true
+      SELECT t.id, t.schema_name, t.is_active
+      FROM tenants t
+      WHERE t.schema_name IS NOT NULL
+        AND (
+          t.is_active = true
+          OR EXISTS (
+            SELECT 1 FROM pg_namespace n WHERE n.nspname = t.schema_name
+          )
+        )
     `;
     
-    console.log(`Found ${tenants.length} active tenants.`);
+    console.log(`Found ${tenants.length} active or retained tenant schemas.`);
     let successCount = 0;
     let skipCount = 0;
-    let cleanedCount = 0;
     // Statements que fallaron por algo que NO es "ya existe". Sin contarlos, un
     // tenant cuyas 40 sentencias fallaron igual se reportaba [OK] y sumaba a
     // successCount: el resumen decia "todo bien" con el schema a medio migrar.
@@ -87,54 +101,29 @@ async function migrate() {
     for (const t of tenants) {
       console.log(`Migrating tenant schema: ${t.schema_name}`);
 
-      // ONE-TIME PURGE FOR CORRUPTED TEST TENANT
-      if (t.schema_name === 'tenant_fundaci_n_beta') {
-        console.log(`  [X] Purging corrupted tenant_fundaci_n_beta...`);
-        try {
-          await prisma.$executeRawUnsafe('DROP SCHEMA IF EXISTS "tenant_fundaci_n_beta" CASCADE');
-          await prisma.$executeRawUnsafe(`DELETE FROM audit_logs WHERE tenant_id = '${t.id}'::uuid`);
-          await prisma.$executeRawUnsafe(`DELETE FROM users WHERE tenant_id = '${t.id}'::uuid`);
-          await prisma.$executeRawUnsafe(`DELETE FROM tenants WHERE id = '${t.id}'::uuid`);
-          console.log(`  [X] Successfully purged tenant_fundaci_n_beta`);
-          cleanedCount++;
-          continue;
-        } catch (e) {
-          console.error(`  [X] Failed to purge tenant_fundaci_n_beta:`, e.message);
-        }
-      }
-
       try {
+        if (!/^tenant_[a-z0-9_]{1,56}$/.test(t.schema_name)) {
+          console.error(`  [SKIP] Unsafe tenant schema identifier: ${t.schema_name}`);
+          skipCount++;
+          continue;
+        }
         // Step 1: Check if schema exists
         const schemaCheck = await prisma.$queryRawUnsafe(
           `SELECT schema_name FROM information_schema.schemata WHERE schema_name = $1`,
           t.schema_name,
         );
 
-        // Step 2: If schema doesn't exist, create it explicitly FIRST
+        // Provisioning owns schema creation. A deploy migration must never
+        // invent a replacement schema (or delete the tenant) when lifecycle
+        // state and data are missing; fail closed and require reconciliation.
         if (schemaCheck.length === 0) {
-          console.log(`  [!] Schema "${t.schema_name}" does not exist — creating it before template...`);
-          try {
-            await prisma.$executeRawUnsafe(
-              `CREATE SCHEMA IF NOT EXISTS "${t.schema_name}"`
-            );
-            console.log(`  [+] Schema "${t.schema_name}" created`);
-          } catch (createErr) {
-            // Schema creation failed entirely — clean up the orphan tenant record
-            console.error(`  [X] Cannot create schema "${t.schema_name}": ${createErr.message}`);
-            console.log(`  [X] Cleaning up orphan tenant record (id: ${t.id})...`);
-            await prisma.$executeRawUnsafe(
-              `DELETE FROM audit_logs WHERE tenant_id = $1`, t.id
-            );
-            await prisma.$executeRawUnsafe(
-              `DELETE FROM users WHERE tenant_id = $1`, t.id
-            );
-            await prisma.$executeRawUnsafe(
-              `DELETE FROM tenants WHERE id = $1`, t.id
-            );
-            console.log(`  [X] Orphan tenant cleaned up`);
-            cleanedCount++;
-            continue; // Skip the rest of migration since the schema couldn't be created
+          if (!t.is_active) {
+            console.log(`  [ARCHIVED] Inactive schema "${t.schema_name}" is absent; leaving it dropped.`);
+            continue;
           }
+          console.error(`  [SKIP] Active tenant schema "${t.schema_name}" is missing; provisioning reconciliation is required.`);
+          skipCount++;
+          continue;
         }
 
         const sql = tpl.replace(/\{\{SCHEMA_NAME\}\}/g, t.schema_name);
@@ -144,36 +133,47 @@ async function migrate() {
 
         const stmts = splitSqlStatements(cleanSql);
 
-        for (const stmt of stmts) {
-          try {
-            await prisma.$executeRawUnsafe(stmt.endsWith(';') ? stmt : stmt + ';');
-          } catch (e) {
-            // Log ALL errors but continue — never let one table block the rest
-            const shortMsg = (e.message || '').substring(0, 120);
-            if (e.message && (e.message.includes('already exists') || e.message.includes('duplicate'))) {
-              // Silently skip existing objects
-            } else {
-              console.log(`  [WARN] Non-fatal error: ${shortMsg}`);
-              warnCount++;
+        let failedStatement = -1;
+        try {
+          // A tenant template is one compatibility unit. In particular, DROP
+          // CONSTRAINT + ADD CONSTRAINT must never straddle autocommit: if any
+          // statement fails, the whole tenant returns to its prior schema.
+          await prisma.$transaction(async (tx) => {
+            for (let index = 0; index < stmts.length; index++) {
+              failedStatement = index;
+              const stmt = stmts[index];
+              await tx.$executeRawUnsafe(stmt.endsWith(';') ? stmt : stmt + ';');
             }
-          }
+          }, { maxWait: 10_000, timeout: 600_000 });
+        } catch (error) {
+          const shortMsg = (error.message || '').substring(0, 160);
+          const sqlState = postgresErrorCode(error);
+          console.log(
+            `  [WARN] Tenant transaction rolled back at statement ${failedStatement + 1}`
+            + `${sqlState ? ` (${sqlState})` : ''}: ${shortMsg}`,
+          );
+          warnCount++;
+          throw error;
         }
         console.log(`  [OK] ${t.schema_name}`);
         successCount++;
       } catch (tenantError) {
-        // Log but DO NOT crash — continue to next tenant
+        // Continue only to inventory every affected tenant. The process exits
+        // non-zero below, so manual/setup-fresh/deploy callers all fail closed.
         console.error(`  [SKIP] Error migrating ${t.schema_name}: ${tenantError.message}`);
         skipCount++;
       }
     }
 
-    console.log(`Results: ${successCount} OK, ${skipCount} skipped, ${cleanedCount} orphans cleaned, ${warnCount} statement warnings`);
-    // Linea legible por maquina para que el workflow pueda anotar el deploy sin
-    // parsear prosa. El deploy NO falla por esto a proposito (ver el comentario
-    // del `|| true` en deploy.yml): un tenant roto no puede bloquear a los
-    // demas. Pero tiene que VERSE — hasta ahora un fallo sistematico quedaba
-    // enterrado en un log de deploy verde, que es donde nadie mira.
+    console.log(`Results: ${successCount} OK, ${skipCount} skipped, ${warnCount} statement warnings`);
+    // Machine-readable summary. Production promotion fails closed on any
+    // skipped tenant or statement warning; a partial multi-tenant schema is not
+    // compatible with the runtime that is about to be deployed.
     console.log(`MIGRATE_TENANTS_SUMMARY ok=${successCount} skipped=${skipCount} warnings=${warnCount}`);
+    if ((skipCount > 0 || warnCount > 0)
+        && process.env.MIGRATE_TENANTS_ALLOW_INCOMPLETE_FOR_TESTS !== 'true') {
+      process.exitCode = 1;
+    }
   } catch (error) {
     console.error('Fatal error during tenant migration:', error);
     process.exit(1);

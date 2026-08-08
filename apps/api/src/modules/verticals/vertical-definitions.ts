@@ -460,7 +460,10 @@ const TURISMO: VerticalDefinition = {
     ],
     services: [
         { name: { es: 'Tour día completo', en: 'Full day tour', pt: 'Tour dia inteiro', fr: 'Tour journée complète' }, description: { es: 'Tour guiado de día completo', en: 'Full day guided tour', pt: 'Tour guiado de dia inteiro', fr: 'Tour guidé journée complète' }, durationMinutes: 480, price: 300000, currency: 'COP', category: 'tours' },
-        { name: { es: 'Paquete fin de semana', en: 'Weekend package', pt: 'Pacote fim de semana', fr: 'Forfait week-end' }, description: { es: 'Paquete todo incluido fin de semana', en: 'All-inclusive weekend package', pt: 'Pacote tudo incluído fim de semana', fr: 'Forfait tout inclus week-end' }, durationMinutes: 60, price: 800000, currency: 'COP', category: 'paquetes' },
+        // Two nights are not a 60-minute appointment. `open` deliberately
+        // blocks the generic appointment writer until this package is handled
+        // by the nightly/date-range contract.
+        { name: { es: 'Paquete fin de semana', en: 'Weekend package', pt: 'Pacote fim de semana', fr: 'Forfait week-end' }, description: { es: 'Paquete todo incluido fin de semana', en: 'All-inclusive weekend package', pt: 'Pacote tudo incluído fim de semana', fr: 'Forfait tout inclus week-end' }, durationMinutes: 2880, price: 800000, currency: 'COP', category: 'paquetes', durationType: 'open' },
         { name: { es: 'Excursión medio día', en: 'Half day excursion', pt: 'Excursão meio dia', fr: 'Excursion demi-journée' }, description: { es: 'Excursión de medio día con transporte', en: 'Half day excursion with transport', pt: 'Excursão meio dia com transporte', fr: 'Excursion demi-journée avec transport' }, durationMinutes: 240, price: 150000, currency: 'COP', category: 'tours' },
     ],
     businessHours: { schedule: { mon: '08:00-19:00', tue: '08:00-19:00', wed: '08:00-19:00', thu: '08:00-19:00', fri: '08:00-19:00', sat: '09:00-16:00' }, afterHoursMessage: { es: 'Estamos fuera de horario. Te responderemos al iniciar la jornada.', en: 'We are closed. We\'ll respond when we open.', pt: 'Estamos fora do horário.', fr: 'Nous sommes fermés.' } },

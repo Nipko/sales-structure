@@ -125,12 +125,14 @@ export class AppointmentsController {
         @CurrentUser() user: any,
         @Query('all') all?: string,
     ) {
-        const userId = all === 'true' ? undefined : user.id;
+        const canListAll = ['super_admin', 'tenant_admin', 'tenant_supervisor'].includes(user.role);
+        const userId = all === 'true' && canListAll ? undefined : user.id;
         const data = await this.calendarService.listIntegrations(user.schemaName, userId);
         return { success: true, data };
     }
 
     @Put(':tenantId/calendar/:integrationId/assignment')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async updateCalendarAssignment(
         @Param('tenantId') tenantId: string,
         @Param('integrationId') integrationId: string,
@@ -154,6 +156,7 @@ export class AppointmentsController {
     }
 
     @Get(':tenantId/calendar/google/connect')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async connectGoogle(
         @Param('tenantId') tenantId: string,
         @CurrentUser() user: any,
@@ -161,7 +164,7 @@ export class AppointmentsController {
         @Query('assignmentId') assignmentId?: string,
         @Res() res?: Response,
     ) {
-        const url = this.calendarService.getGoogleAuthUrl(
+        const url = await this.calendarService.getGoogleAuthUrl(
             tenantId, user.id,
             (assignmentType as any) || undefined,
             assignmentId || undefined,
@@ -170,6 +173,7 @@ export class AppointmentsController {
     }
 
     @Get(':tenantId/calendar/microsoft/connect')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async connectMicrosoft(
         @Param('tenantId') tenantId: string,
         @CurrentUser() user: any,
@@ -177,7 +181,7 @@ export class AppointmentsController {
         @Query('assignmentId') assignmentId?: string,
         @Res() res?: Response,
     ) {
-        const url = this.calendarService.getMicrosoftAuthUrl(
+        const url = await this.calendarService.getMicrosoftAuthUrl(
             tenantId, user.id,
             (assignmentType as any) || undefined,
             assignmentId || undefined,
@@ -186,6 +190,7 @@ export class AppointmentsController {
     }
 
     @Delete(':tenantId/calendar/:integrationId')
+    @Roles('tenant_admin', 'tenant_supervisor')
     @HttpCode(HttpStatus.OK)
     async disconnectCalendar(@Param('tenantId') tenantId: string, @Param('integrationId') integrationId: string, @CurrentUser() user: any) {
         await this.calendarService.disconnect(user.schemaName, integrationId);
@@ -193,6 +198,7 @@ export class AppointmentsController {
     }
 
     @Post(':tenantId/calendar/:integrationId/reassign-disconnect')
+    @Roles('tenant_admin', 'tenant_supervisor')
     async reassignAndDisconnect(
         @Param('tenantId') tenantId: string,
         @Param('integrationId') integrationId: string,
@@ -217,18 +223,19 @@ export class AppointmentsController {
     ) {
         const svc = await this.servicesService.getById(user.schemaName, serviceId);
 
-        // Get calendar busy times if agent has connected calendar
-        let calendarBusy: { start: string; end: string }[] = [];
-        if (userId) {
-            const timeMin = `${date}T00:00:00Z`;
-            const timeMax = `${date}T23:59:59Z`;
-            calendarBusy = await this.calendarService.getFreeBusy(user.schemaName, userId, timeMin, timeMax);
-        }
+        // Resolve the external calendar by service/staff context. `getFreeBusy`
+        // accepts an integration UUID, not the public availability-owner UUID.
+        const calendarBusy = await this.calendarService.getFreeBusyForDate(
+            user.schemaName,
+            date,
+            { serviceId, ...(userId ? { staffId: userId } : {}) },
+        );
 
         // maxConcurrent del servicio: sin pasarlo, el default 1 mostraba menos
         // cupos que la página pública de reservas y que el booking del chat.
         const slots = await this.service.getBookableSlots(
-            user.schemaName, date, svc.durationMinutes, svc.bufferMinutes, userId, calendarBusy, svc.maxConcurrent,
+            user.schemaName, date, serviceId, svc.durationMinutes, svc.bufferMinutes,
+            userId, calendarBusy, svc.maxConcurrent,
         );
         return { success: true, data: { service: svc, slots } };
     }

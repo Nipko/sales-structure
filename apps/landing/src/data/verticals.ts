@@ -1,4 +1,10 @@
+import {
+  resolvePublicVerticalProductPolicy,
+  type VerticalProductMode,
+} from "../../../../packages/shared/src/vertical-product-policy";
+
 export type VerticalTier = 1 | 2 | 3;
+export type { VerticalProductMode };
 
 export type VerticalCluster =
   | "salud-bienestar"
@@ -15,6 +21,8 @@ export interface VerticalDef {
   cluster: VerticalCluster;
   channel: "whatsapp" | "instagram" | "messenger" | "telegram";
   demoMode: "illustrative";
+  productMode: VerticalProductMode;
+  deepMarketingAllowed: boolean;
   demoMessages: { from: "customer" | "ai"; text: string }[];
 }
 
@@ -294,9 +302,11 @@ export const VERTICALS: VerticalDef[] = ([
       { from: "ai", text: "Perfecto. Te paso las opciones disponibles. ¿Prefieres que te agende una llamada?" },
     ],
   },
-] satisfies Omit<VerticalDef, "demoMode">[]).map((vertical) => ({
+] satisfies Omit<VerticalDef, "demoMode" | "productMode" | "deepMarketingAllowed">[]).map((vertical) => ({
   ...vertical,
   demoMode: "illustrative" as const,
+  productMode: resolvePublicVerticalProductPolicy(vertical.slug).mode,
+  deepMarketingAllowed: resolvePublicVerticalProductPolicy(vertical.slug).deepMarketingAllowed,
 }));
 
 export const CLUSTER_LABELS: Record<VerticalCluster, string> = {

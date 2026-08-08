@@ -1,9 +1,13 @@
-import type { TurnContext } from '@parallext/shared';
+import { ACTIVE_OBJECT_KINDS, type ActiveObjectContextItemV1, type TurnContext } from '@parallext/shared';
 import {
     ActiveOperationsContextService,
     classifyActiveObjectStatus,
     resolveActiveOperationsLoaders,
 } from './active-operations-context.service';
+import {
+    ACTIVE_OBJECT_EXPOSURE_POLICY,
+    filterActiveObjectsForPrompt,
+} from './active-object-policy';
 
 const CONTACT_ID = '11111111-1111-4111-8111-111111111111';
 const SUBJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -20,6 +24,85 @@ function turn(): TurnContext {
 }
 
 describe('ActiveOperationsContextService', () => {
+    it('has an exhaustive per-kind exposure policy and keeps sensitive records tool-only at A2+', () => {
+        expect(Object.keys(ACTIVE_OBJECT_EXPOSURE_POLICY).sort())
+            .toEqual([...ACTIVE_OBJECT_KINDS].sort());
+
+        for (const kind of [
+            'treatment_plan', 'treatment_session', 'professional_case',
+            'insurance_policy', 'insurance_claim', 'insurance_quote', 'service_request',
+        ] as const) {
+            expect(ACTIVE_OBJECT_EXPOSURE_POLICY[kind]).toEqual({
+                mode: 'tool_only', minimumAssurance: 'A2',
+            });
+        }
+
+        const items = [
+            { kind: 'appointment', id: 'a', status: 'confirmed', statusClass: 'active', source: 'appointments' },
+            { kind: 'insurance_claim', id: 'c', status: 'open', statusClass: 'active', source: 'insurance_claims' },
+        ] as ActiveObjectContextItemV1[];
+        expect(filterActiveObjectsForPrompt(items, { industry: 'moda_belleza' })
+            .map((item) => item.kind)).toEqual(['appointment']);
+        expect(filterActiveObjectsForPrompt(items)).toEqual([]);
+        expect(filterActiveObjectsForPrompt(items, { industry: 'unknown_legacy_slug' })).toEqual([]);
+        expect(filterActiveObjectsForPrompt(items, { industry: 'salud', subtype: 'dental' }))
+            .toEqual([]);
+        expect(filterActiveObjectsForPrompt(items, { industry: 'servicios_profesionales' }))
+            .toEqual([]);
+        expect(filterActiveObjectsForPrompt(items, {
+            industry: 'veterinaria', subtype: 'clinica_general',
+        })).toEqual([]);
+        expect(filterActiveObjectsForPrompt(items, {
+            industry: 'veterinaria', subtype: 'peluqueria_canina',
+        }).map((item) => item.kind)).toEqual(['appointment']);
+    });
+
+    it('does not reveal existence or clinical appointment type in a health vertical at A1', async () => {
+        const query = jest.fn().mockResolvedValue([{
+            id: 'appointment-clinical-1',
+            service_name: 'Psicoterapia por trauma',
+            status: 'confirmed',
+            starts_at_iso: '2026-08-09T14:00:00.000Z',
+            ends_at_iso: '2026-08-09T15:00:00.000Z',
+        }]);
+        const service = new ActiveOperationsContextService({ executeInTenantSchema: query } as any);
+        const result = await service.load({
+            tenantId: 'tenant-1', schemaName: 'tenant_test', contactId: CONTACT_ID,
+            config: {
+                industry: 'salud', subType: 'psicologia',
+                tools: { appointments: { enabled: true } },
+            } as any,
+            now: NOW,
+        });
+
+        expect(result.activeObjects).toBeUndefined();
+        expect(result.activeBookings).toBeUndefined();
+        expect(JSON.stringify(result)).not.toContain('appointment-clinical-1');
+        expect(JSON.stringify(result)).not.toContain('Psicoterapia por trauma');
+    });
+
+    it('does not reveal a clinical veterinary appointment at A1', async () => {
+        const query = jest.fn().mockResolvedValue([{
+            id: 'appointment-vet-1',
+            service_name: 'Oncología veterinaria',
+            status: 'confirmed',
+            starts_at_iso: '2026-08-09T14:00:00.000Z',
+        }]);
+        const service = new ActiveOperationsContextService({ executeInTenantSchema: query } as any);
+        const result = await service.load({
+            tenantId: 'tenant-1', schemaName: 'tenant_test', contactId: CONTACT_ID,
+            config: {
+                industry: 'veterinaria', subType: 'clinica_general',
+                tools: { appointments: { enabled: true } },
+            } as any,
+            now: NOW,
+        });
+
+        expect(result.activeObjects).toBeUndefined();
+        expect(JSON.stringify(result)).not.toContain('appointment-vet-1');
+        expect(JSON.stringify(result)).not.toContain('Oncología veterinaria');
+    });
+
     it('activates by effective capabilities/tool groups, with explicit tool flags taking precedence', () => {
         expect(resolveActiveOperationsLoaders({
             capabilities: ['appointment_booking', 'nightly_booking', 'tour_booking', 'restaurant_ordering'],
@@ -74,7 +157,7 @@ describe('ActiveOperationsContextService', () => {
             tenantId: 'tenant-1',
             schemaName: 'tenant_test',
             contactId: CONTACT_ID,
-            config: { capabilities: ['appointment_booking'] } as any,
+            config: { industry: 'moda_belleza', capabilities: ['appointment_booking'] } as any,
             timezone: 'America/Bogota',
             now: NOW,
         });

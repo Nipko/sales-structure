@@ -9,6 +9,11 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { absoluteMediaUrl } from '../../common/utils/media-url.util';
 import { ConversationAssignedEvent, StructuredHandoffSummary } from '@parallext/shared';
+import {
+    createFreshLineage,
+    evaluateAiDecisionReadiness,
+    type OutcomeEvaluationCertification,
+} from '../../common/policies/ai-decision-readiness.policy';
 
 export interface InboxConversation {
     id: string;
@@ -409,16 +414,33 @@ export class AgentConsoleService {
     }
 
     /** Suggest the single next best SALES action for a conversation (AI coach). */
-    async nextBestAction(tenantId: string, conversationId: string): Promise<string> {
+    async nextBestAction(
+        tenantId: string,
+        conversationId: string,
+        evaluation?: OutcomeEvaluationCertification,
+    ): Promise<string> {
         const schemaName = await this.getTenantSchema(tenantId);
         if (!schemaName) return '';
         const messages = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
-            `SELECT content_text, direction FROM messages
+            `SELECT id, content_text, direction, created_at FROM messages
              WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 12`,
             [conversationId],
         );
         if (!messages || messages.length === 0) return '';
+        const readAt = new Date();
+        const readiness = evaluateAiDecisionReadiness({
+            outcome: 'conversation_next_best_action',
+            evaluation,
+            now: readAt,
+            lineage: messages.map((message: any) => createFreshLineage(
+                'tenant.messages', String(message.id || ''), readAt, message.created_at,
+            )),
+        });
+        if (!readiness.allowed) {
+            this.logger.warn(`nextBestAction blocked by readiness gate: ${readiness.reasons.join(',')}`);
+            return '';
+        }
         const ordered = [...messages].reverse();
         try {
             const res = await this.llmRouter.execute({

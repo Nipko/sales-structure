@@ -33,7 +33,7 @@ La certificación funcional continúa en **0/18** hasta ejecutar los gates de in
 6. Toda etapa terminal declara `terminalOutcome: won|lost`; no se infiere por slug, traducción ni probabilidad.
 7. El aprovisionamiento usa locks con token, heartbeat, comprobaciones fail-closed alrededor de cada etapa, estado durable, reintentos e invariantes antes de activar. Una operación externa o DDL ya iniciada no puede cancelarse; el fencing duro DB sigue siendo un gate explícito.
 8. Las rutas auditadas usan HTTPS, resolución DNS pública fijada y acotada por deadline, bloqueo de redirects/proxy y límites de respuesta donde aplica `safeAxiosOptions`; esas rutas combinan timeout de inactividad con deadline absoluto. Proveedores fijos agregan allowlist exacta. Web Push conserva un gate separado de deadline/cap porque usa otra librería de transporte.
-9. Se corrigieron claims concretos y el build/CI ejecuta una denylist con regresiones negativas. Este control evita reincidencias conocidas, pero **no** demuestra todavía una relación positiva claim → capability → evidencia; esa relación permanece en `VERT-P1-20`.
+9. Se corrigieron claims concretos; el build/CI ejecuta denylist con regresiones negativas y un registry positivo para los cinco claims cuantitativos visibles. El copy narrativo aún no está completamente migrado a claim → capability → evidencia, por lo que `VERT-P1-20` queda implementado incrementalmente, no certificado.
 10. El contrato vertical compuesto v1 —identificadores/aliases, capability manifest, definiciones y factory/plan contracts— ya cubre identidad, subtipos, capabilities, tool groups, objetos, rutas, terminal outcomes y floors operativos. La certificación y la evidencia de infraestructura siguen siendo estados separados: ningún artefacto las infiere.
 
 ## 3. Matriz de remediación P0
@@ -55,7 +55,7 @@ La certificación funcional continúa en **0/18** hasta ejecutar los gates de in
 
 ## 4. Control de verdad comercial
 
-El landing ejecuta en `build` y CI una denylist ampliada con regresiones para las sobreafirmaciones conocidas:
+El landing ejecuta en `build` y CI dos capas: registry positivo para los cinco claims cuantitativos visibles y denylist ampliada para sobreafirmaciones narrativas conocidas:
 
 - Las 18 demos se identifican como ilustrativas.
 - Precios, cupos, ETA, inventario, vacunas, coberturas y recomendaciones no se presentan como datos reales sin fuente.
@@ -65,7 +65,7 @@ El landing ejecuta en `build` y CI una denylist ampliada con regresiones para la
 - Las cuotas visibles de pipeline, servicios y canales se contrastan contra `seed-billing-plans.js`.
 - Una regresión inyecta deliberadamente claims prohibidos y exige que el validador termine con error.
 
-Este gate es útil pero parcial: no es un inventario semántico de cada promesa ni prueba por sí solo la capability, el ambiente o la evidencia que la soporta. El gate definitivo será un registro positivo versionado `claimId → capabilityId → evidenceId → estado/fecha`, con fail-closed para cualquier claim visible sin vínculo vigente.
+El registry v1 ya exige `claimId → capabilityId → evidenceId → scope/owner/fecha` y caducidad para los contadores visibles. El gate global sigue siendo parcial: el copy narrativo no está íntegramente registrado y una evidencia de repositorio no sustituye ambiente/E2E. La denylist permanece como segunda defensa.
 
 ## 5. Contratos verticales canónicos v1
 
@@ -96,11 +96,11 @@ La evidencia se separa por frente para no sumar dos veces suites reruneadas:
 - API TypeScript: **PASS** (`tsc --noEmit`).
 - La cifra histórica de este corte fue **41/41 suites focales y 303/303 pruebas**. Desde entonces se añadieron suites de readiness, purge, manifest, Agent Test, ToolPolicy, widget, handoff, integraciones, operaciones activas, moneda/duración y verticales; sus resultados vigentes se consolidan en `vertical-waves-execution-2026-08.md` y no se suman aquí para evitar doble conteo.
 - Invariantes estáticos del pipeline: **PASS**; no queda inferencia `won/lost` por probabilidad y `listo_cierre` solo aparece como alias legacy de entrada/canonicalización.
-- Claims: denylist principal **PASS** y regresiones deliberadamente inválidas **PASS** porque el validador las rechaza; el registro positivo de evidencia continúa pendiente.
+- Claims: registry positivo cuantitativo, denylist principal, regresiones deliberadamente inválidas y evidencia competitiva de 18 entradas **PASS**; migración semántica del copy narrativo pendiente.
 - Locales: los nueve JSON modificados de dashboard y landing (`es/en/pt/fr/es-AR`) parsean correctamente.
-- CI: `deploy.yml` parsea como YAML; el control de claims y la matriz estática de 1.520 escenarios están conectados al job de validación. Esto no sustituye los gates con infraestructura real.
-- Landing: TypeScript de fuentes **PASS** con `.next` excluido. El typecheck estándar permanece bloqueado por artefactos `.next/types` de otra versión de Next (`PrefetchForTypeCheckInternal`).
-- Dashboard: el typecheck de fuentes llega únicamente a tres errores por el módulo local ausente `onborda`; no se cuenta como pase global.
+- CI: `deploy.yml` parsea como YAML y bloquea con claims, matriz estática de 1.520 escenarios y contratos operativos críticos. `vertical-quality.yml` añade tiers PR/nightly/weekly/release y artefactos JSON/JUnit. Esto no sustituye los gates con infraestructura/proveedores/modelos reales.
+- Landing: TypeScript y build estático **PASS**; se generan 34 páginas, incluidas las 18 rutas de soluciones.
+- Dashboard y WhatsApp: TypeScript **PASS**; `onborda` está resuelto desde package/lock.
 
 `app.bootstrap.spec.ts` no se presenta como aprobado: el intento local no fue hermético porque requiere Redis y secretos de arranque que no están disponibles en esta sesión. El workflow de CI ya define PostgreSQL, Redis y variables efímeras, pero su ejecución efectiva —junto con los gates de integración siguientes— sigue siendo requisito de release.
 
@@ -126,7 +126,7 @@ La Ola 0 se declara completa solo cuando:
 
 - no quedan `S0/S1` abiertos;
 - cada `VERT-P0-*` tiene regresión automatizada y evidencia de integración pertinente;
-- el pipeline de CI publica el manifest, matriz, JUnit y snapshots de efectos;
+- el pipeline de CI publica matriz, resultados JSON/JUnit y el snapshot estructural de readiness; los snapshots de efectos externos pertenecen a los nueve artefactos de release y aún requieren corridas reales;
 - no existe claim comercial sin capability o marca ilustrativa;
 - los mismos artefactos pasan en staging con rollback probado;
 - la decisión queda registrada por vertical, aunque la certificación siga siendo `0/18` hasta las olas de profundidad operativa.

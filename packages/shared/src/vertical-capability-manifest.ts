@@ -147,11 +147,101 @@ export type VerticalDomainEvent =
     | 'service_request.created'
     | 'photo_session.requested';
 
-/**
- * A0: no verified identity. A1: resolved contact. A2: OTP/step-up verified.
- * A3 and A4 are reserved for explicit confirmation and human approval.
- */
 export type VerticalAssuranceLevel = 'A0' | 'A1' | 'A2' | 'A3' | 'A4';
+
+export type AssuranceConfirmationRequirement = 'never' | 'writes';
+export type AssuranceApprovalRequirement = 'never' | 'writes';
+
+/**
+ * Shared, code-backed authority matrix for conversational actions.
+ *
+ * A level is cumulative: a caller satisfying A3 also satisfies A0-A2. The
+ * `writes` controls are applied to both `write` and `conditional_write` tools;
+ * reads never acquire an idempotency reservation or a confirmation challenge.
+ */
+export interface AssuranceLevelDefinition {
+    rank: 0 | 1 | 2 | 3 | 4;
+    scope:
+        | 'public_information'
+        | 'own_low_risk_data'
+        | 'sensitive_owned_data'
+        | 'signature_payment_or_high_sensitivity'
+        | 'regulated_irreversible_or_financial_override';
+    requiresContactContext: boolean;
+    requiresStepUpIdentity: boolean;
+    signedConfirmation: AssuranceConfirmationRequirement;
+    idempotencyLedger: AssuranceConfirmationRequirement;
+    humanApproval: AssuranceApprovalRequirement;
+    examples: readonly string[];
+}
+
+export const ASSURANCE_LEVELS = ['A0', 'A1', 'A2', 'A3', 'A4'] as const;
+
+export const ASSURANCE_LEVEL_MATRIX: Readonly<Record<VerticalAssuranceLevel, AssuranceLevelDefinition>> =
+    Object.freeze({
+        A0: Object.freeze({
+            rank: 0,
+            scope: 'public_information',
+            requiresContactContext: false,
+            requiresStepUpIdentity: false,
+            signedConfirmation: 'never',
+            idempotencyLedger: 'writes',
+            humanApproval: 'never',
+            examples: Object.freeze(['catalog', 'availability', 'faq', 'public_policy']),
+        }),
+        A1: Object.freeze({
+            rank: 1,
+            scope: 'own_low_risk_data',
+            requiresContactContext: true,
+            requiresStepUpIdentity: false,
+            signedConfirmation: 'writes',
+            idempotencyLedger: 'writes',
+            humanApproval: 'never',
+            examples: Object.freeze(['own_order', 'appointment', 'booking', 'service_request']),
+        }),
+        A2: Object.freeze({
+            rank: 2,
+            scope: 'sensitive_owned_data',
+            requiresContactContext: true,
+            requiresStepUpIdentity: true,
+            signedConfirmation: 'writes',
+            idempotencyLedger: 'writes',
+            humanApproval: 'never',
+            examples: Object.freeze(['policy', 'claim', 'case', 'clinical_data', 'document']),
+        }),
+        A3: Object.freeze({
+            rank: 3,
+            scope: 'signature_payment_or_high_sensitivity',
+            requiresContactContext: true,
+            requiresStepUpIdentity: true,
+            signedConfirmation: 'writes',
+            idempotencyLedger: 'writes',
+            humanApproval: 'never',
+            examples: Object.freeze(['payment_link', 'deposit', 'signature', 'high_sensitivity_pii']),
+        }),
+        A4: Object.freeze({
+            rank: 4,
+            scope: 'regulated_irreversible_or_financial_override',
+            requiresContactContext: true,
+            requiresStepUpIdentity: true,
+            signedConfirmation: 'writes',
+            idempotencyLedger: 'writes',
+            humanApproval: 'writes',
+            examples: Object.freeze(['refund', 'high_discount', 'regulated_decision', 'irreversible_action']),
+        }),
+    });
+
+export function isVerticalAssuranceLevel(value: unknown): value is VerticalAssuranceLevel {
+    return typeof value === 'string'
+        && (ASSURANCE_LEVELS as readonly string[]).includes(value);
+}
+
+export function assuranceLevelSatisfies(
+    actual: VerticalAssuranceLevel,
+    required: VerticalAssuranceLevel,
+): boolean {
+    return ASSURANCE_LEVEL_MATRIX[actual].rank >= ASSURANCE_LEVEL_MATRIX[required].rank;
+}
 
 export interface VerticalAssuranceContract {
     minimum: VerticalAssuranceLevel;
@@ -306,6 +396,13 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             routes: ['/admin/appointments'],
             readiness: ['appointment_services'],
             events: APPOINTMENT_EVENTS,
+            assurance: {
+                minimum: 'A0',
+                enforcedActions: {
+                    get_treatment_plan: 'A2',
+                    list_upcoming_sessions: 'A2',
+                },
+            },
             kpiContract: kpis(DASH_APPOINTMENTS, [
                 'treatmentsActive', 'treatmentsCompleted',
                 'sessionsCompletedWeek', 'sessionsScheduledWeek',
@@ -351,6 +448,13 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             routes: ['/admin/appointments'],
             readiness: ['appointment_services'],
             events: APPOINTMENT_EVENTS,
+            assurance: {
+                minimum: 'A0',
+                enforcedActions: {
+                    get_treatment_plan: 'A2',
+                    list_upcoming_sessions: 'A2',
+                },
+            },
             kpiContract: kpis(DASH_APPOINTMENTS, [
                 'activeServices', 'appointments30d', 'completedAppointments30d',
                 'noShows30d', 'appointmentsNext7d', 'uniqueCustomers30d',
@@ -447,6 +551,10 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             routes: ['/admin/appointments'],
             readiness: ['appointment_services'],
             events: APPOINTMENT_EVENTS,
+            assurance: {
+                minimum: 'A0',
+                enforcedActions: { get_check_in_instructions: 'A2' },
+            },
             kpiContract: kpis(
                 ['leadsToday', 'tourBookingsToday', 'messagesProcessed', 'llmCostToday'],
                 ['tourPackages', 'properties', 'bookingsConfirmed30d', 'bookingsReserved30d', 'gmv30d'],
@@ -531,6 +639,10 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             routes: ['/admin/appointments'],
             readiness: ['appointment_services', 'professional_cases'],
             events: APPOINTMENT_EVENTS,
+            assurance: {
+                minimum: 'A0',
+                enforcedActions: { get_case_status: 'A2' },
+            },
             kpiContract: kpis(DASH_CONVERSION, [
                 'openDeals', 'wonDeals30d', 'lostDeals30d', 'winRate30d',
                 'pipelineValue', 'weightedPipelineValue', 'consultationsNext7d',
@@ -581,6 +693,10 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             routes: ['/admin/appointments', '/admin/pets'],
             readiness: ['appointment_services', 'pets'],
             events: APPOINTMENT_EVENTS,
+            assurance: {
+                minimum: 'A0',
+                enforcedActions: { get_vaccination_status: 'A2' },
+            },
             kpiContract: kpis(
                 ['leadsToday', 'appointmentsToday', 'messagesProcessed', 'llmCostToday'],
                 ['pets', 'upcomingVaccinations', 'overdueVaccinations'],

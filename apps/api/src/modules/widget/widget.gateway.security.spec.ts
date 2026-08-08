@@ -26,7 +26,11 @@ describe('WidgetGateway security containment', () => {
             executeInTenantSchema: jest.fn(),
             getTenantSchemaName: jest.fn().mockResolvedValue('tenant_1'),
         };
-        const redis = { get: jest.fn().mockResolvedValue(null) };
+        const redis = {
+            get: jest.fn().mockResolvedValue(null),
+            acquireLock: jest.fn().mockResolvedValue(true),
+            releaseLock: jest.fn().mockResolvedValue(undefined),
+        };
         const conversations = { streamWidgetMessage: jest.fn() };
         const rateLimit = { consumeMessage: jest.fn().mockResolvedValue({ allowed: true, retryAfterSeconds: 0 }) };
         return {
@@ -83,5 +87,53 @@ describe('WidgetGateway security containment', () => {
         expect(client.disconnect).toHaveBeenCalled();
         expect(prisma.executeInTenantSchema).not.toHaveBeenCalled();
         expect(conversations.streamWidgetMessage).not.toHaveBeenCalled();
+    });
+
+    it('emits chronological history without treating an older inbound as unanswered', async () => {
+        const { gateway, widgetService, prisma, redis } = makeGateway();
+        widgetService.getSessionByToken.mockResolvedValue({
+            ...session, conversation_id: 'conversation-1',
+        });
+        prisma.executeInTenantSchema.mockResolvedValue([
+            { id: 'outbound-new', direction: 'outbound', content_text: 'reply' },
+            { id: 'inbound-old', direction: 'inbound', content_text: 'question' },
+        ]);
+        const regenerate = jest.spyOn(gateway as any, 'regenerateReply').mockResolvedValue(undefined);
+        const client = socket();
+
+        await gateway.handleConnection(client);
+
+        expect(client.emit).toHaveBeenCalledWith('widget:history', {
+            messages: [
+                { id: 'inbound-old', direction: 'inbound', content_text: 'question' },
+                { id: 'outbound-new', direction: 'outbound', content_text: 'reply' },
+            ],
+        });
+        expect(redis.acquireLock).not.toHaveBeenCalled();
+        expect(regenerate).not.toHaveBeenCalled();
+    });
+
+    it('claims an unanswered inbound so concurrent reconnects regenerate exactly once', async () => {
+        const { gateway, widgetService, prisma, redis } = makeGateway();
+        widgetService.getSessionByToken.mockResolvedValue({
+            ...session, conversation_id: 'conversation-1',
+        });
+        prisma.executeInTenantSchema.mockResolvedValue([
+            { id: 'inbound-new', direction: 'inbound', content_text: 'question' },
+        ]);
+        redis.acquireLock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+        const regenerate = jest.spyOn(gateway as any, 'regenerateReply').mockResolvedValue(undefined);
+
+        await Promise.all([
+            gateway.handleConnection(socket()),
+            gateway.handleConnection(socket()),
+        ]);
+
+        expect(redis.acquireLock).toHaveBeenCalledTimes(2);
+        expect(regenerate).toHaveBeenCalledTimes(1);
+        expect(regenerate).toHaveBeenCalledWith(
+            expect.anything(), expect.objectContaining({ id: 'session-1' }),
+            'question', 'inbound-new',
+        );
     });
 });

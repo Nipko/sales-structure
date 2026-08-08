@@ -29,6 +29,8 @@ model Tenant {
   isActive   Boolean @default(true) @map("is_active")
   plan       String  @default("starter")
   settings   Json    @default("{}")
+  operatingCurrency         String?   @map("operating_currency") @db.VarChar(3)
+  operatingCurrencyLockedAt DateTime? @map("operating_currency_locked_at")
 
   // Billing — denormalized hot-path fields. Source of truth for full
   // subscription state is the BillingSubscription row linked via the

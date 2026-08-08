@@ -5,10 +5,74 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
     const tenantId = '11111111-1111-4111-8111-111111111111';
     const contactId = '22222222-2222-4222-8222-222222222222';
     const appointmentId = '33333333-3333-4333-8333-333333333333';
+    const calendarIntegrationId = '55555555-5555-4555-8555-555555555555';
+    const calendarOwnerId = '66666666-6666-4666-8666-666666666666';
 
     function createHarness(queryResults: any[][]) {
-        const prisma = { $queryRawUnsafe: jest.fn() };
-        for (const result of queryResults) prisma.$queryRawUnsafe.mockResolvedValueOnce(result);
+        const queuedResults = [...queryResults];
+        let insertedAppointment: any | undefined;
+        const rawQuery: jest.Mock<any, any[]> = jest.fn(async (..._args: any[]) => (
+            queuedResults.shift() ?? []
+        ));
+        const transactionQuery: jest.Mock<any, [string, unknown[]?]> = jest.fn(async (
+            sql: string,
+            params: unknown[] = [],
+        ) => {
+            // Keep outbox bookkeeping independent from the ordered domain-query
+            // fixtures below. This models one immutable, active calendar owner.
+            if (sql.includes('COALESCE(calendar_sync_revision')) {
+                return [{
+                    ...appointment,
+                    ...(insertedAppointment || {}),
+                    assigned_to: null,
+                    location: insertedAppointment?.location ?? null,
+                    notes: insertedAppointment?.notes ?? null,
+                    metadata: insertedAppointment?.metadata ?? {},
+                    customer_email: insertedAppointment?.customer_email ?? null,
+                    calendar_integration_id: calendarIntegrationId,
+                    calendar_owner_id: calendarOwnerId,
+                    calendar_provider: 'google',
+                    calendar_event_id: 'provider-event-1',
+                    calendar_sync_revision: 0,
+                }];
+            }
+            if (sql.includes('FROM calendar_integrations')
+                && (
+                    sql.includes('WHERE id = $1::uuid AND is_active = true')
+                    || sql.includes('WHERE ci.id = $1::uuid AND ci.is_active = true')
+                )) {
+                return [{ id: calendarIntegrationId, user_id: calendarOwnerId, provider: 'google' }];
+            }
+            if (sql.includes('calendar_sync_outbox') || sql.includes('calendar_sync_state')) {
+                return [];
+            }
+            const result = await rawQuery(sql, ...params);
+            if (sql.includes('INSERT INTO appointments') && result?.[0]) {
+                insertedAppointment = {
+                    ...result[0],
+                    service_id: params[1],
+                    service_name: params[2],
+                    assigned_to: params[3],
+                    start_at: params[4],
+                    end_at: params[5],
+                    customer_email: params[8],
+                    location: params[9],
+                    notes: params[10],
+                    metadata: JSON.parse(String(params[11] || '{}')),
+                };
+            }
+            return result;
+        });
+        const prisma = {
+            $queryRawUnsafe: rawQuery,
+            user: { findMany: jest.fn().mockResolvedValue([]) },
+            executeInTenantSchema: jest.fn(async (_schema: string, sql: string, params: unknown[] = []) => (
+                rawQuery(sql, ...params)
+            )),
+            transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => (
+                callback(transactionQuery)
+            )),
+        };
         const redis = {
             acquireLockToken: jest.fn().mockResolvedValue('slot-lock-token'),
             releaseLockToken: jest.fn().mockResolvedValue(undefined),
@@ -41,8 +105,22 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             {} as any,
             {} as any,
             {} as any,
+            {
+                preflight: jest.fn().mockResolvedValue({ allowed: true, policy: { externalEffect: 'none' } }),
+                complete: jest.fn().mockResolvedValue(undefined),
+                fail: jest.fn().mockResolvedValue(undefined),
+            } as any,
+            {} as any,
         );
-        return { executor, prisma, redis, eventEmitter, calendarIntegration, propertiesService };
+        return {
+            executor,
+            prisma,
+            redis,
+            eventEmitter,
+            calendarIntegration,
+            propertiesService,
+            transactionQuery,
+        };
     }
 
     const appointment = {
@@ -191,7 +269,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         expect(updateSql).toContain('start_at = $6::timestamp');
         expect(updateSql).toContain('end_at = $7::timestamp');
         expect(harness.prisma.$queryRawUnsafe.mock.calls.filter(([sql]) =>
-            typeof sql === 'string' && sql.includes('UPDATE') && sql.includes('.appointments'),
+            typeof sql === 'string' && sql.includes('UPDATE appointments'),
         )).toHaveLength(1);
         expect(harness.calendarIntegration.createEvent).not.toHaveBeenCalled();
         expect(harness.calendarIntegration.updateEvent).not.toHaveBeenCalled();
@@ -250,25 +328,167 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         );
 
         expect(result).toMatchObject({ retryable: true });
-        expect(harness.prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
         expect(harness.prisma.$queryRawUnsafe.mock.calls.some(([sql]) =>
-            typeof sql === 'string' && sql.includes('INSERT INTO') && sql.includes('.appointments'),
+            typeof sql === 'string' && sql.includes('INSERT INTO') && sql.includes('appointments'),
         )).toBe(false);
         expect(harness.redis.releaseLockToken).not.toHaveBeenCalled();
         expect(harness.calendarIntegration.createEvent).not.toHaveBeenCalled();
         expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
     });
 
+    it('rejects check_availability for a staff UUID outside the tenant before reading slots', async () => {
+        const serviceId = '44444444-4444-4444-8444-444444444444';
+        const foreignStaffId = '77777777-7777-4777-8777-777777777777';
+        const harness = createHarness([[]]);
+
+        const result = await harness.executor.execute(
+            schemaName,
+            tenantId,
+            contactId,
+            'check_availability',
+            { serviceId, staffId: foreignStaffId, date: '2026-08-12' },
+        );
+
+        expect(result).toMatchObject({ error: 'tool_failed' });
+        expect(harness.prisma.executeInTenantSchema).toHaveBeenCalledTimes(1);
+        expect(harness.prisma.$queryRawUnsafe.mock.calls.some(([sql]) => (
+            typeof sql === 'string' && sql.includes('availability_slots')
+        ))).toBe(false);
+        expect(harness.calendarIntegration.createEvent).not.toHaveBeenCalled();
+    });
+
+    it('rejects create_appointment for a staff UUID outside the tenant before lock, insert or outbox', async () => {
+        const serviceId = '44444444-4444-4444-8444-444444444444';
+        const foreignStaffId = '77777777-7777-4777-8777-777777777777';
+        const harness = createHarness([[
+            {
+                id: serviceId,
+                name: 'Consulta',
+                duration_minutes: 30,
+                duration_type: 'fixed',
+                duration_minutes_max: null,
+                price: 0,
+                currency: 'COP',
+                location_type: 'in_person',
+                location_address: 'Calle 10',
+                meeting_link: null,
+            },
+        ], [], []]);
+
+        const result = await harness.executor.execute(
+            schemaName,
+            tenantId,
+            contactId,
+            'create_appointment',
+            {
+                serviceId,
+                staffId: foreignStaffId,
+                date: '2026-08-12',
+                time: '11:00',
+                customerName: 'Cliente',
+            },
+        );
+
+        expect(result).toMatchObject({ error: 'tool_failed' });
+        expect(harness.redis.acquireLockToken).not.toHaveBeenCalled();
+        expect(harness.prisma.transactionInTenantSchema).not.toHaveBeenCalled();
+        expect(harness.transactionQuery).not.toHaveBeenCalled();
+        expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('persists the complete calendar enrichment before capturing the exact outbox payload', async () => {
+        const serviceId = '44444444-4444-4444-8444-444444444444';
+        const harness = createHarness([[
+            {
+                id: serviceId,
+                name: 'Consulta',
+                duration_minutes: 30,
+                duration_type: 'fixed',
+                duration_minutes_max: null,
+                max_concurrent: 1,
+                price: 0,
+                currency: 'COP',
+                location_type: 'in_person',
+                location_address: 'Calle 10 # 20-30',
+                meeting_link: 'https://meet.example/static-room',
+            },
+        ], [], [], [{ id: serviceId, name: 'Consulta', max_concurrent: 1 }], [{ occupied: 0 }], [{
+            id: appointmentId,
+            service_name: 'Consulta',
+            start_at: '2026-08-12T11:00:00',
+            end_at: '2026-08-12T11:30:00',
+            status: 'confirmed',
+        }]]);
+
+        const result = await harness.executor.execute(
+            schemaName,
+            tenantId,
+            contactId,
+            'create_appointment',
+            {
+                serviceId,
+                date: '2026-08-12',
+                time: '11:00',
+                customerName: 'Cliente',
+                customerPhone: '+573001112233',
+                customerEmail: 'cliente@example.com',
+                notes: 'Traer documentos',
+            },
+        );
+
+        expect(result).toMatchObject({
+            success: true,
+            appointment: { id: appointmentId, meetingUrl: 'https://meet.example/static-room' },
+        });
+        const insertCall = harness.transactionQuery.mock.calls.find(([sql]) => (
+            sql.includes('INSERT INTO appointments')
+        ));
+        expect(insertCall).toBeDefined();
+        const insertParams = insertCall![1] as any[];
+        expect(insertParams[9]).toBe('Calle 10 # 20-30');
+        expect(insertParams[10]).toBe(
+            'Customer: Cliente\nEmail: cliente@example.com\nPhone: +573001112233\n\n'
+            + 'Service: Consulta (N/A)\nDuration: 30 min\n\nNotes: Traer documentos',
+        );
+        expect(JSON.parse(insertParams[11])).toEqual({
+            isOnline: false,
+            meetingUrl: 'https://meet.example/static-room',
+        });
+
+        const outboxCall = harness.transactionQuery.mock.calls.find(([sql]) => (
+            sql.includes('INSERT INTO calendar_sync_outbox')
+        ));
+        expect(outboxCall).toBeDefined();
+        expect(JSON.parse(String((outboxCall![1] as any[])[7]))).toEqual({
+            appointmentId,
+            integrationId: calendarIntegrationId,
+            ownerUserId: calendarOwnerId,
+            provider: 'google',
+            externalEventId: 'provider-event-1',
+            summary: 'Consulta',
+            startAt: '2026-08-12T11:00:00',
+            endAt: '2026-08-12T11:30:00',
+            location: 'Calle 10 # 20-30',
+            description: insertParams[10],
+            attendeeEmail: 'cliente@example.com',
+            isOnline: false,
+        });
+        expect(harness.prisma.$queryRawUnsafe.mock.calls.some(([sql]) => (
+            typeof sql === 'string'
+            && sql.includes('UPDATE')
+            && sql.includes('meetingUrl')
+        ))).toBe(false);
+    });
+
     it.each([
         ['google', { google_event_id: 'google-event-1', outlook_event_id: null }],
         ['microsoft', { google_event_id: null, outlook_event_id: 'outlook-event-1' }],
-    ])('patches the existing %s event and never creates a replacement', async (provider, eventIds) => {
+    ])('queues the existing %s event update and performs no provider I/O in the writer', async (_provider, eventIds) => {
         const harness = createHarness([
             [{ ...appointment, assigned_to: null, ...eventIds }],
             [{ duration_minutes: 30 }],
             [],
             [{ id: appointmentId }],
-            [{ user_id: '55555555-5555-4555-8555-555555555555', provider }],
         ]);
 
         const result = await harness.executor.execute(
@@ -279,18 +499,15 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             { appointmentId, newDate: '2026-08-12', newTime: '11:00' },
         );
 
-        expect(result).toMatchObject({ success: true, calendarSynced: true });
-        expect(harness.calendarIntegration.updateEvent).toHaveBeenCalledTimes(1);
-        expect(harness.calendarIntegration.updateEvent).toHaveBeenCalledWith(
-            schemaName,
-            '55555555-5555-4555-8555-555555555555',
-            provider === 'google' ? 'google-event-1' : 'outlook-event-1',
-            expect.objectContaining({
-                startAt: '2026-08-12T11:00:00',
-                endAt: '2026-08-12T11:30:00',
-            }),
-            provider,
-        );
+        expect(result).toMatchObject({
+            success: true,
+            calendarSynced: false,
+            calendarSyncState: 'pending',
+        });
+        expect(harness.transactionQuery.mock.calls.some(([sql]) => (
+            typeof sql === 'string' && sql.includes('INSERT INTO calendar_sync_outbox')
+        ))).toBe(true);
+        expect(harness.calendarIntegration.updateEvent).not.toHaveBeenCalled();
         expect(harness.calendarIntegration.createEvent).not.toHaveBeenCalled();
         expect(harness.eventEmitter.emit).toHaveBeenCalledTimes(1);
     });

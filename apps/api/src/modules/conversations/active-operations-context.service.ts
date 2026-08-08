@@ -14,6 +14,7 @@ import type {
     VerticalCapability,
 } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { filterActiveObjectsForPrompt } from './active-object-policy';
 
 export type ActiveOperationsLoaderName =
     | 'appointments'
@@ -90,6 +91,16 @@ function firstStringArray(...values: unknown[]): string[] {
 
 function hasOwn(record: Record<string, any>, key: string): boolean {
     return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+function activeObjectPolicyContext(config: ActiveOperationsContextInput['config']) {
+    const verticalConfig = isRecord(config.verticalConfig) ? config.verticalConfig : {};
+    const capabilityManifest = isRecord(config.capabilityManifest) ? config.capabilityManifest : {};
+    return {
+        industry: config.industry || verticalConfig.industry || capabilityManifest.industry,
+        subtype: config.subType || config.subtype || verticalConfig.subType
+            || verticalConfig.subtype || capabilityManifest.subType || capabilityManifest.subtype,
+    };
 }
 
 /**
@@ -195,6 +206,27 @@ export class ActiveOperationsContextService {
 
     constructor(private readonly prisma: PrismaService) {}
 
+    private async resolvePolicyContext(input: ActiveOperationsContextInput) {
+        const configured = activeObjectPolicyContext(input.config);
+        if (configured.industry) return configured;
+        try {
+            const tenant = await (this.prisma as any).tenant?.findUnique?.({
+                where: { id: input.tenantId },
+                select: { industry: true, settings: true },
+            });
+            const verticalConfig = isRecord(tenant?.settings?.verticalConfig)
+                ? tenant.settings.verticalConfig : {};
+            return {
+                industry: verticalConfig.industry || tenant?.industry,
+                subtype: verticalConfig.subType || verticalConfig.subtype,
+            };
+        } catch (error: any) {
+            this.logger.warn(`[ActiveOperations] vertical policy unavailable for tenant ${input.tenantId}: ${error?.message || 'lookup_failed'}`);
+            // Empty context intentionally makes appointments tool-only.
+            return configured;
+        }
+    }
+
     /** Populate the exact same TurnContext contract in production and Agent Test. */
     async populateTurnContext(
         turnContext: TurnContext,
@@ -239,7 +271,14 @@ export class ActiveOperationsContextService {
             );
         });
 
-        const boundedItems = items.slice(0, maxItems);
+        // DEC-06: sensitive kinds are never pre-injected, even when a future
+        // loader accidentally returns them. They remain available only through
+        // reviewed tools at the assurance level declared by the kind policy.
+        const policyContext = await this.resolvePolicyContext(input);
+        const boundedItems = filterActiveObjectsForPrompt(
+            items,
+            policyContext,
+        ).slice(0, maxItems);
         if (boundedItems.length === 0) return { failures };
 
         const activeObjects: ActiveObjectsContextV1 = {

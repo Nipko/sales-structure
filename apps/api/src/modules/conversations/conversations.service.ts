@@ -54,7 +54,7 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MediaProcessingService } from '../media-processing/media-processing.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
-import { toolRequiresSequentialExecution } from './tool-policy-registry';
+import { toolBatchRequiresSequentialExecution, toolRequiresSequentialExecution } from './tool-policy-registry';
 import { ActiveOperationsContextService } from './active-operations-context.service';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
@@ -85,6 +85,17 @@ const errorFallbackText = (lang?: string) =>
 const ERROR_FALLBACK_VALUES = new Set(Object.values(ERROR_FALLBACK_MSG));
 /** True when a pipeline result IS the error fallback (in any supported language). */
 const isErrorFallback = (text?: string | null): boolean => !!text && ERROR_FALLBACK_VALUES.has(text);
+
+const WIDGET_HANDOFF_UNAVAILABLE: Record<string, string> = {
+    es: 'En este canal todavía no puedo transferirte a una persona. Detuve la respuesta automática para no darte una expectativa falsa.',
+    en: 'I cannot transfer you to a person in this channel yet. I stopped the automated reply so I do not set a false expectation.',
+    pt: 'Ainda não posso transferir você para uma pessoa neste canal. Interrompi a resposta automática para não criar uma expectativa falsa.',
+    fr: "Je ne peux pas encore vous transférer à une personne sur ce canal. J'ai arrêté la réponse automatique pour ne pas créer de fausse attente.",
+};
+const widgetHandoffUnavailableText = (lang?: string) => (
+    WIDGET_HANDOFF_UNAVAILABLE[(lang || 'es').slice(0, 2).toLowerCase()]
+    || WIDGET_HANDOFF_UNAVAILABLE.es
+);
 
 // Handoff messages, localized — deterministic layer (not persona copy) so it must be
 // i18n'd here. Keyed by 2-letter language; falls back to Spanish.
@@ -1393,13 +1404,17 @@ export class ConversationsService {
                 userText = mediaResult.text;
                 this.logger.log(`[Pipeline] Media processed (${msg.content.type}): ${userText.substring(0, 100)}...`);
 
-                // Persist transcribed/described text so it shows up in future conversation history
-                const schemaForUpdate = await this.tenantSchema(tenantId);
-                this.prisma.executeInTenantSchema(schemaForUpdate,
-                    `UPDATE messages SET content_text = $1
-                     WHERE id = (SELECT id FROM messages WHERE conversation_id = $2::uuid AND direction = 'inbound' ORDER BY created_at DESC LIMIT 1)`,
-                    [userText, conversation.id],
-                ).catch(e => this.logger.warn(`Failed to persist media text (non-fatal): ${e.message}`));
+                if (mediaResult.governance.allowDurablePersistence) {
+                    // Persist only when source+derived deletion has a verified
+                    // enforcement adapter. Current governance permits ephemeral
+                    // processing only, so this remains off by construction.
+                    const schemaForUpdate = await this.tenantSchema(tenantId);
+                    this.prisma.executeInTenantSchema(schemaForUpdate,
+                        `UPDATE messages SET content_text = $1
+                         WHERE id = (SELECT id FROM messages WHERE conversation_id = $2::uuid AND direction = 'inbound' ORDER BY created_at DESC LIMIT 1)`,
+                        [userText, conversation.id],
+                    ).catch(e => this.logger.warn(`Failed to persist media text (non-fatal): ${e.message}`));
+                }
             } else {
                 const configuredLang = config.language || 'es';
                 return this.mediaProcessing.getFallbackMessage(msg.content.type, configuredLang);
@@ -1697,7 +1712,7 @@ export class ConversationsService {
                 const engineResult = await this.bookingEngine.process(
                     schemaName, tenantId, conversation.contact_id || '',
                     intent, userText, bookingState, customerProfile, todayISO, userLanguage,
-                    flowCapable, flowResponseData,
+                    flowCapable, flowResponseData, conversation.id,
                 );
 
                 bookingState = engineResult.state;
@@ -2200,19 +2215,22 @@ export class ConversationsService {
                         return result;
                     };
 
-                    // Decide concurrency: parallelize unless >1 writer would be in flight.
+                    // Parallelize only a read-only batch. A writer followed by a
+                    // read must preserve order so the read sees the committed write.
                     const writerCount = toolCalls.filter((tc: any) => isWriteTool(tc.function.name)).length;
-                    const runSequential = writerCount > 1;
+                    const runSequential = toolBatchRequiresSequentialExecution(
+                        toolCalls.map((tc: any) => tc.function.name),
+                    );
 
                     let results: any[];
                     if (runSequential) {
-                        this.logger.warn(`[Pipeline] ${writerCount} write-tools this turn — running all ${toolCalls.length} tool(s) sequentially to avoid write races`);
+                        this.logger.warn(`[Pipeline] ${writerCount} write-tool(s) this turn — running all ${toolCalls.length} tool(s) sequentially to preserve write/read visibility`);
                         results = [];
                         for (const tc of toolCalls) {
                             results.push(await runTool(tc));
                         }
                     } else {
-                        // 0 or 1 writer + any number of reads → all concurrent.
+                        // Every tool is a registered read.
                         results = await Promise.all(toolCalls.map((tc: any) => runTool(tc)));
                     }
 
@@ -2738,6 +2756,7 @@ export class ConversationsService {
         conversationId: string,
         contactId: string,
         text: string,
+        options?: { allowHumanHandoff?: boolean },
     ): Promise<string | null> {
         const config = await this.personaService.getPersonaForChannel(tenantId, 'web_widget');
         if (!config) return null;
@@ -2771,29 +2790,28 @@ export class ConversationsService {
         );
 
         const handoffReason = this.handoffService.shouldHandoff(text, conversation?.[0] || {}, config);
-        if (handoffReason) {
+        if (handoffReason && options?.allowHumanHandoff === true) {
             await this.handoffService.executeHandoff(tenantId, conversationId, {
                 tenantId, conversationId, contactId, channelType: 'web_widget',
                 content: { type: 'text', text },
             } as any, handoffReason);
             return handoffText(this.languageDetector.detect(text, config.language || 'es')).queueHead;
         }
+        if (handoffReason) {
+            this.logger.warn(`[Widget] Handoff blocked: no verified human-delivery capability for ${conversationId}`);
+            return widgetHandoffUnavailableText(
+                this.languageDetector.detect(text, config.language || 'es'),
+            );
+        }
 
         if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {
             return null;
         }
 
-        const now = new Date();
-        const turnContext: any = {
-            userMessage: text,
-            language: 'es',
-            channelType: 'web_widget',
-            messageCount: (history?.length || 0) + 1,
-            timezone: 'America/Bogota',
-            now: now.toISOString(),
-            upcomingDays: [],
-            businessHoursStatus: 'open' as const,
-        };
+        const turnContext = await this.buildWidgetTurnContext(
+            tenantId, schemaName, conversation?.[0], contactId, text, config,
+            (history?.length || 0) + 1,
+        );
         const systemPrompt = this.promptAssembler.assemble(config, turnContext);
 
         const chatMessages = (history || []).map((m: any) => ({
@@ -2837,6 +2855,7 @@ export class ConversationsService {
         contactId: string,
         text: string,
         inboundMessageId?: string,
+        options?: { allowHumanHandoff?: boolean },
     ): AsyncGenerator<string, void, unknown> {
         const config = await this.personaService.getPersonaForChannel(tenantId, 'web_widget');
         if (!config) return;
@@ -2865,9 +2884,8 @@ export class ConversationsService {
             yield busy[lang] || busy.es;
             return;
         }
-        let lockHeartbeat: ReturnType<typeof setInterval> | undefined;
         const tk = lockToken;
-        lockHeartbeat = setInterval(() => { this.redis.renewLockToken(lockKey, tk, 30).catch(() => {}); }, 10_000);
+        const lockHeartbeat = setInterval(() => { this.redis.renewLockToken(lockKey, tk, 30).catch(() => {}); }, 10_000);
         lockHeartbeat.unref?.();
 
         try {
@@ -2885,12 +2903,19 @@ export class ConversationsService {
             );
 
             const handoffReason = this.handoffService.shouldHandoff(text, conversation?.[0] || {}, config);
-            if (handoffReason) {
+            if (handoffReason && options?.allowHumanHandoff === true) {
                 await this.handoffService.executeHandoff(tenantId, conversationId, {
                     tenantId, conversationId, contactId, channelType: 'web_widget',
                     content: { type: 'text', text },
                 } as any, handoffReason);
                 yield handoffText(this.languageDetector.detect(text, config.language || 'es')).queueHead;
+                return;
+            }
+            if (handoffReason) {
+                this.logger.warn(`[Widget] Handoff blocked: no verified human-delivery capability for ${conversationId}`);
+                yield widgetHandoffUnavailableText(
+                    this.languageDetector.detect(text, config.language || 'es'),
+                );
                 return;
             }
             if (conversation?.[0]?.status === 'waiting_human' || conversation?.[0]?.status === 'with_human') {
@@ -2916,17 +2941,10 @@ export class ConversationsService {
                 }
             }
 
-            const now = new Date();
-            const turnContext: any = {
-                userMessage: text,
-                language: 'es',
-                channelType: 'web_widget',
-                messageCount: (history?.length || 0) + 1,
-                timezone: 'America/Bogota',
-                now: now.toISOString(),
-                upcomingDays: [],
-                businessHoursStatus: 'open' as const,
-            };
+            const turnContext = await this.buildWidgetTurnContext(
+                tenantId, schemaName, conversation?.[0], contactId, text, config,
+                (history?.length || 0) + 1,
+            );
             const systemPrompt = this.promptAssembler.assemble(config, turnContext);
             const chatMessages = (history || []).map((m: any) => ({
                 role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
@@ -2968,6 +2986,81 @@ export class ConversationsService {
             if (lockHeartbeat) clearInterval(lockHeartbeat);
             if (lockToken) await this.redis.releaseLockToken(lockKey, lockToken).catch(() => {});
         }
+    }
+
+    private async buildWidgetTurnContext(
+        tenantId: string,
+        schemaName: string,
+        conversation: any,
+        contactId: string,
+        text: string,
+        config: TenantConfig,
+        messageCount: number,
+    ): Promise<TurnContext> {
+        const configuredLanguage = config.language || 'es-CO';
+        const previousLanguage = conversation?.metadata?.detectedLanguage;
+        const language = this.languageDetector.detect(
+            text,
+            previousLanguage || configuredLanguage,
+        );
+        const businessHours = await this.loadTenantBusinessHours(tenantId);
+        const timezone = businessHours?.timezone
+            || config.hours?.timezone
+            || 'America/Bogota';
+        const now = new Date();
+        const turnContext: TurnContext & Record<string, any> = {
+            userMessage: text,
+            language,
+            channelType: 'web_widget',
+            messageCount,
+            timezone,
+            now: now.toISOString(),
+            upcomingDays: this.promptAssembler.computeUpcomingDays(now, timezone, 8),
+            businessHoursStatus: this.isWithinBusinessHours(config, businessHours)
+                ? 'open' : 'closed',
+        };
+
+        const contacts = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT id, name, email, phone, first_contact_at, created_at
+             FROM contacts WHERE id = $1::uuid LIMIT 1`,
+            [contactId],
+        ).catch(() => []);
+        const contact = contacts?.[0];
+        if (contact) {
+            turnContext.contact = {
+                name: contact.name,
+                email: contact.email,
+                phone: contact.phone,
+                isKnown: Boolean(contact.name || contact.email || contact.phone),
+                knownSince: contact.first_contact_at || contact.created_at,
+            };
+            await this.activeOperationsContext.populateTurnContext(turnContext, {
+                tenantId,
+                schemaName,
+                contactId,
+                config: config as any,
+                timezone,
+                now,
+            });
+        }
+
+        const businessIdentity = await this.businessInfoService.getPrimary(tenantId).catch(() => null);
+        if (businessIdentity) {
+            turnContext.business = {
+                companyName: businessIdentity.companyName,
+                industry: businessIdentity.industry,
+                about: businessIdentity.about,
+                phone: businessIdentity.phone,
+                email: businessIdentity.email,
+                website: businessIdentity.website,
+                address: businessIdentity.address,
+                city: businessIdentity.city,
+                country: businessIdentity.country,
+                socialLinks: businessIdentity.socialLinks,
+            };
+        }
+        return turnContext;
     }
 
     private mapLlmTierToAllowed(planTier: string | undefined): ModelTier[] {

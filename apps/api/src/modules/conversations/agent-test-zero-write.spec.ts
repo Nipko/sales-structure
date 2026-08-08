@@ -337,6 +337,12 @@ describe('Agent Test no-business-write execution', () => {
             {} as any,
             {} as any,
             {} as any,
+            {
+                preflight: jest.fn().mockResolvedValue({ allowed: true, policy: { externalEffect: 'none' } }),
+                complete: jest.fn(),
+                fail: jest.fn(),
+            } as any,
+            {} as any,
         );
 
         const opts = { readOnly: true, executionContext: AGENT_TEST_EXECUTION_CONTEXT };

@@ -40,17 +40,25 @@ export interface HandoffSummaryContext {
 }
 
 const SECRET_ASSIGNMENT_RE = /\b(password|passwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|client[_-]?secret)\b\s*[:=]\s*([^\s,;]+)/gi;
-const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi;
+const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi;
 const JWT_RE = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}\b/g;
 const LONG_TOKEN_RE = /\b[A-Za-z0-9_-]{32,}\b/g;
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 const PHONE_RE = /\+?\d[\d\s().-]{7,}\d/g;
 const LONG_NUMBER_RE = /\b\d{12,19}\b/g;
 
+function replaceUnsafeControlCharacters(value: string): string {
+    return [...value].map((character) => {
+        const code = character.charCodeAt(0);
+        return code <= 8 || code === 11 || code === 12 || (code >= 14 && code <= 31) || code === 127
+            ? ' '
+            : character;
+    }).join('');
+}
+
 export function sanitizeHandoffText(value: unknown, maxLength = 240): string {
     if (value === null || value === undefined) return '';
-    return String(value)
-        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
+    return replaceUnsafeControlCharacters(String(value))
         .replace(SECRET_ASSIGNMENT_RE, '$1=[redacted-secret]')
         .replace(BEARER_RE, 'Bearer [redacted-secret]')
         .replace(JWT_RE, '[redacted-secret]')

@@ -18,6 +18,11 @@ import { resolveReadyTenantContext } from '../../common/utils/tenant-lifecycle.u
 import { WidgetMessageDto } from './dto/widget-public.dto';
 import { isWidgetOriginAllowed, resolveWidgetSocketIp } from './widget-security';
 import { WidgetRateLimitService } from './widget-rate-limit.service';
+import {
+    hasWidgetCapability,
+    resolveWidgetCapabilities,
+    type WidgetCapabilitySnapshot,
+} from './widget-capability-policy';
 
 @WebSocketGateway({
     namespace: '/widget',
@@ -56,8 +61,15 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
             return;
         }
 
+        const capabilities = this.resolveCurrentCapabilities(session);
+        if (!capabilities.formalChannel) {
+            this.rejectClient(client, 'Widget channel unavailable');
+            return;
+        }
+
         (client as any).widgetSession = session;
         (client as any).widgetToken = token;
+        (client as any).widgetCapabilities = capabilities;
         client.join(`session:${session.id}`);
 
         if (session.conversation_id) {
@@ -68,20 +80,34 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
                  WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 30`,
                 [session.conversation_id],
             );
-            client.emit('widget:history', { messages: (history || []).reverse() });
+            // The query is newest-first. Capture that fact before producing the
+            // oldest-first presentation copy; Array.reverse() would otherwise
+            // mutate the same array and make the oldest turn look unanswered.
+            const newest = (history || [])[0];
+            client.emit('widget:history', { messages: [...(history || [])].reverse() });
 
             // If the newest message is inbound, the previous turn never produced a
             // reply - the API was restarted or crashed mid-stream. The widget is
             // the one channel with no queue behind it, so nothing would ever retry
             // and the visitor would sit in front of an unanswered question.
-            const newest = (history || [])[0];
             if (newest && newest.direction === 'inbound' && newest.content_text) {
-                this.logger.warn(
-                    `[Widget] Conversation ${session.conversation_id} reconnected with an unanswered message - regenerating`,
-                );
-                this.regenerateReply(client, session, newest.content_text, newest.id).catch((err) =>
-                    this.logger.error(`[Widget] Regeneration failed: ${err?.message}`),
-                );
+                // Two browser tabs can reconnect at the same time. Claim the
+                // exact inbound before regenerating so only one of them can
+                // create the missing outbound turn. A failed attempt releases
+                // the claim; a successful one leaves the short TTL in place.
+                const regenerationKey = [
+                    'idem', 'widget', 'regenerate', session.tenant_id,
+                    session.conversation_id, newest.id,
+                ].join(':');
+                if (await this.redis.acquireLock(regenerationKey, 300)) {
+                    this.logger.warn(
+                        `[Widget] Conversation ${session.conversation_id} reconnected with an unanswered message - regenerating`,
+                    );
+                    this.regenerateReply(client, session, newest.content_text, newest.id).catch(async (err) => {
+                        await this.redis.releaseLock(regenerationKey).catch(() => undefined);
+                        this.logger.error(`[Widget] Regeneration failed: ${err?.message}`);
+                    });
+                }
             }
         }
 
@@ -158,6 +184,12 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
             client.disconnect();
             return;
         }
+        const capabilities = this.resolveCurrentCapabilities(session);
+        if (!capabilities.formalChannel) {
+            this.rejectClient(client, 'Widget channel unavailable');
+            return;
+        }
+        (client as any).widgetCapabilities = capabilities;
         const schemaName = ready.schemaName;
 
         let conversationId = session.conversation_id;
@@ -243,6 +275,12 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
         try {
             for await (const chunk of this.conversations.streamWidgetMessage(
                 tenantId, schemaName, conversationId, contactId, text, inboundMessageId,
+                {
+                    allowHumanHandoff: hasWidgetCapability(
+                        (client as any).widgetCapabilities as WidgetCapabilitySnapshot | undefined,
+                        'human_handoff',
+                    ),
+                },
             )) {
                 if (!chunk) continue;
                 if (!started) {
@@ -292,6 +330,19 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     emitToSession(sessionId: string, event: string, data: any) {
         this.server?.to(`session:${sessionId}`).emit(event, data);
+    }
+
+    private resolveCurrentCapabilities(session: any): WidgetCapabilitySnapshot {
+        // Every caller invokes this only after the matching checks above have
+        // succeeded. Human delivery intentionally remains false until an
+        // authenticated agent-console -> widget adapter is implemented.
+        return resolveWidgetCapabilities({
+            delivery: true,
+            identity: Boolean(session?.id && session?.tenant_id && session?.widget_id && session?.visitor_id),
+            policy: true,
+            revocation: true,
+            humanDelivery: false,
+        });
     }
 
     private rejectClient(client: Socket, message: string): void {

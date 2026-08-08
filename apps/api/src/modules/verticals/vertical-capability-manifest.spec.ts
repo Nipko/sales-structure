@@ -1,4 +1,7 @@
 import {
+    ASSURANCE_LEVEL_MATRIX,
+    ASSURANCE_LEVELS,
+    assuranceLevelSatisfies,
     listVerticalCapabilityConfigurations,
     resolveVerticalCapabilityManifest,
     VERTICAL_CAPABILITY_MANIFEST,
@@ -8,6 +11,32 @@ import {
 import { VERTICAL_REGISTRY } from './vertical-definitions';
 
 describe('VerticalCapabilityManifest v1 contract', () => {
+    it('publishes the cumulative A0-A4 authority matrix without gaps', () => {
+        expect(ASSURANCE_LEVELS).toEqual(['A0', 'A1', 'A2', 'A3', 'A4']);
+        expect(Object.keys(ASSURANCE_LEVEL_MATRIX)).toEqual(ASSURANCE_LEVELS);
+
+        for (const [index, level] of ASSURANCE_LEVELS.entries()) {
+            const contract = ASSURANCE_LEVEL_MATRIX[level];
+            expect(contract.rank).toBe(index);
+            expect(contract.idempotencyLedger).toBe('writes');
+            expect(assuranceLevelSatisfies(level, 'A0')).toBe(true);
+        }
+
+        expect(ASSURANCE_LEVEL_MATRIX.A0.requiresContactContext).toBe(false);
+        expect(ASSURANCE_LEVEL_MATRIX.A1).toMatchObject({
+            requiresContactContext: true,
+            requiresStepUpIdentity: false,
+            signedConfirmation: 'writes',
+        });
+        expect(ASSURANCE_LEVEL_MATRIX.A2.requiresStepUpIdentity).toBe(true);
+        expect(ASSURANCE_LEVEL_MATRIX.A3.scope).toBe('signature_payment_or_high_sensitivity');
+        expect(ASSURANCE_LEVEL_MATRIX.A4).toMatchObject({
+            scope: 'regulated_irreversible_or_financial_override',
+            humanApproval: 'writes',
+        });
+        expect(assuranceLevelSatisfies('A2', 'A3')).toBe(false);
+    });
+
     it('covers the same 18 industries, 75 subtypes and 76 catalogued configurations', () => {
         expect(VERTICAL_CAPABILITY_MANIFEST_VERSION).toBe(1);
         expect(VERTICAL_MANIFEST_INDUSTRIES).toHaveLength(18);
@@ -118,6 +147,17 @@ describe('VerticalCapabilityManifest v1 contract', () => {
                 list_my_claims: 'A2',
             },
         });
+
+        expect(resolveVerticalCapabilityManifest('salud', 'dental').assurance.enforcedActions)
+            .toMatchObject({ get_treatment_plan: 'A2', list_upcoming_sessions: 'A2' });
+        expect(resolveVerticalCapabilityManifest('moda_belleza', 'spa').assurance.enforcedActions)
+            .toMatchObject({ get_treatment_plan: 'A2', list_upcoming_sessions: 'A2' });
+        expect(resolveVerticalCapabilityManifest('veterinaria', 'clinica_general').assurance.enforcedActions)
+            .toMatchObject({ get_vaccination_status: 'A2' });
+        expect(resolveVerticalCapabilityManifest('servicios_profesionales', 'abogados').assurance.enforcedActions)
+            .toMatchObject({ get_case_status: 'A2' });
+        expect(resolveVerticalCapabilityManifest('turismo', 'hotel').assurance.enforcedActions)
+            .toMatchObject({ get_check_in_instructions: 'A2' });
     });
 
     it('publishes a non-empty implemented analytics contract for all 18 verticals', () => {

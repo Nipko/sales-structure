@@ -11,10 +11,10 @@ import type { VerticalAssuranceLevel } from '@parallext/shared';
 export type ToolEffect = 'read' | 'write' | 'conditional_write';
 export type ToolDataClassification = 'public' | 'contact' | 'sensitive';
 export type ToolOwnership = 'none' | 'tenant_scope' | 'contact_scope' | 'resource_owner';
-export type ToolIdempotency = 'not_applicable' | 'deterministic' | 'state_guarded' | 'missing';
+export type ToolIdempotency = 'not_applicable' | 'deterministic' | 'state_guarded' | 'central_ledger' | 'missing';
 export type ToolExternalEffect = 'none' | 'provider_read' | 'provider_write' | 'channel_write' | 'opaque';
 export type ToolDownstreamEffect = 'domain_event' | 'notification' | 'handoff';
-export type ToolAssuranceEnforcement = 'none' | 'contact_context' | 'step_up' | 'missing';
+export type ToolAssuranceEnforcement = 'none' | 'contact_context' | 'step_up' | 'central_guard' | 'missing';
 export type ToolConfirmation = 'not_required' | 'runtime_enforced' | 'required_missing';
 export type ToolHumanApproval = 'not_required' | 'runtime_enforced' | 'required_missing';
 
@@ -71,10 +71,10 @@ const contactWrite = (overrides: ToolPolicyOverrides = {}): ToolPolicy => ({
     assurance: 'A1',
     assuranceEnforcement: 'contact_context',
     ownership: 'contact_scope',
-    idempotency: 'missing',
+    idempotency: 'central_ledger',
     externalEffect: 'none',
     downstreamEffects: [],
-    confirmation: 'required_missing',
+    confirmation: 'runtime_enforced',
     humanApproval: 'not_required',
     agentTestAllowed: false,
     ...overrides,
@@ -120,8 +120,11 @@ const TOOL_POLICY_ENTRIES = [
         externalEffect: 'provider_write',
         downstreamEffects: ['domain_event'],
     })),
-    entry('get_appointment_details', sensitiveRead({ ownership: 'resource_owner', agentTestAllowed: true })),
-    entry('list_customer_appointments', contactRead({ agentTestAllowed: true })),
+    // Appointment payloads include time, service, meeting links and sometimes
+    // regulated-domain context. A static policy cannot safely infer the tenant
+    // industry here, so both reads use the stronger global A2 boundary.
+    entry('get_appointment_details', stepUpSensitiveRead({ ownership: 'resource_owner' })),
+    entry('list_customer_appointments', stepUpSensitiveRead()),
     entry('send_booking_link', publicRead()),
 
     // Catalog, CRM context, knowledge and e-commerce
@@ -132,7 +135,7 @@ const TOOL_POLICY_ENTRIES = [
     entry('list_active_offers', publicRead({ agentTestAllowed: true })),
     entry('search_faqs', publicRead({
         effect: 'conditional_write',
-        idempotency: 'missing',
+        idempotency: 'central_ledger',
         agentTestAllowed: true,
     })),
     entry('get_policy', publicRead({
@@ -142,7 +145,7 @@ const TOOL_POLICY_ENTRIES = [
     })),
     entry('search_knowledge_base', publicRead({
         effect: 'conditional_write',
-        idempotency: 'missing',
+        idempotency: 'central_ledger',
         externalEffect: 'provider_read',
         agentTestAllowed: true,
     })),
@@ -159,11 +162,32 @@ const TOOL_POLICY_ENTRIES = [
     entry('apply_discount', contactWrite({
         dataClassification: 'sensitive',
         assurance: 'A4',
-        assuranceEnforcement: 'missing',
-        ownership: 'none',
-        idempotency: 'deterministic',
-        confirmation: 'not_required',
-        humanApproval: 'required_missing',
+        assuranceEnforcement: 'central_guard',
+        ownership: 'contact_scope',
+        idempotency: 'central_ledger',
+        confirmation: 'runtime_enforced',
+        humanApproval: 'runtime_enforced',
+    })),
+    entry('create_payment_link', contactWrite({
+        dataClassification: 'sensitive',
+        assurance: 'A3',
+        assuranceEnforcement: 'central_guard',
+        ownership: 'resource_owner',
+        idempotency: 'central_ledger',
+        externalEffect: 'provider_write',
+        downstreamEffects: ['handoff'],
+        confirmation: 'runtime_enforced',
+    })),
+    entry('refund_payment', contactWrite({
+        dataClassification: 'sensitive',
+        assurance: 'A4',
+        assuranceEnforcement: 'central_guard',
+        ownership: 'resource_owner',
+        idempotency: 'central_ledger',
+        externalEffect: 'provider_write',
+        downstreamEffects: ['handoff'],
+        confirmation: 'runtime_enforced',
+        humanApproval: 'runtime_enforced',
     })),
 
     // Vertical integration reads still update lazy local schema/cache/health.
@@ -177,7 +201,8 @@ const TOOL_POLICY_ENTRIES = [
     entry('list_properties', publicRead({ agentTestAllowed: true })),
     entry('check_property_availability', publicRead({ agentTestAllowed: true })),
     entry('get_property_details', publicRead({ agentTestAllowed: true })),
-    entry('get_check_in_instructions', sensitiveRead({ ownership: 'resource_owner', agentTestAllowed: true })),
+    // Physical-access instructions can expose addresses and access codes.
+    entry('get_check_in_instructions', stepUpSensitiveRead({ ownership: 'resource_owner', agentTestAllowed: true })),
     entry('create_property_booking', contactWrite({ downstreamEffects: ['notification'] })),
     entry('cancel_property_booking', contactWrite({ ownership: 'resource_owner', idempotency: 'state_guarded' })),
     entry('list_my_property_bookings', contactRead({ agentTestAllowed: true })),
@@ -192,8 +217,8 @@ const TOOL_POLICY_ENTRIES = [
     entry('list_my_tour_bookings', contactRead({ agentTestAllowed: true })),
 
     // Health treatment context
-    entry('get_treatment_plan', sensitiveRead({ agentTestAllowed: true })),
-    entry('list_upcoming_sessions', sensitiveRead({ agentTestAllowed: true })),
+    entry('get_treatment_plan', stepUpSensitiveRead({ agentTestAllowed: true })),
+    entry('list_upcoming_sessions', stepUpSensitiveRead({ agentTestAllowed: true })),
 
     // Real estate and automotive
     entry('search_listings', publicRead({ agentTestAllowed: true })),
@@ -206,12 +231,12 @@ const TOOL_POLICY_ENTRIES = [
     // Pets and veterinary
     entry('list_pets_for_contact', sensitiveRead({ agentTestAllowed: true })),
     entry('register_pet', contactWrite({ dataClassification: 'sensitive' })),
-    entry('get_vaccination_status', sensitiveRead({ ownership: 'resource_owner', agentTestAllowed: true })),
+    entry('get_vaccination_status', stepUpSensitiveRead({ ownership: 'resource_owner', agentTestAllowed: true })),
     entry('triage_pet_emergency', publicRead({
         effect: 'conditional_write',
         dataClassification: 'sensitive',
         ownership: 'none',
-        idempotency: 'missing',
+        idempotency: 'central_ledger',
         downstreamEffects: ['handoff'],
         agentTestAllowed: true,
     })),
@@ -248,7 +273,7 @@ const TOOL_POLICY_ENTRIES = [
     entry('check_policy_status', stepUpSensitiveRead({
         effect: 'conditional_write',
         ownership: 'resource_owner',
-        idempotency: 'missing',
+        idempotency: 'central_ledger',
         externalEffect: 'channel_write',
         downstreamEffects: ['handoff'],
         agentTestAllowed: true,
@@ -265,7 +290,7 @@ const TOOL_POLICY_ENTRIES = [
     entry('file_claim', stepUpSensitiveWrite({ ownership: 'resource_owner', downstreamEffects: ['handoff', 'notification'] })),
     entry('list_my_claims', stepUpSensitiveRead({
         effect: 'conditional_write',
-        idempotency: 'missing',
+        idempotency: 'central_ledger',
         externalEffect: 'channel_write',
         downstreamEffects: ['handoff'],
         agentTestAllowed: true,
@@ -286,7 +311,7 @@ const TOOL_POLICY_ENTRIES = [
     entry('check_date_availability', publicRead({ agentTestAllowed: true })),
     entry('request_photo_quote', contactWrite({ downstreamEffects: ['domain_event', 'notification'] })),
     entry('cancel_photo_session', contactWrite({ ownership: 'resource_owner', idempotency: 'state_guarded' })),
-    entry('get_case_status', sensitiveRead({ agentTestAllowed: true })),
+    entry('get_case_status', stepUpSensitiveRead({ agentTestAllowed: true })),
 ] as const;
 
 function buildRegistry(entries: readonly ToolPolicyEntry[]): Readonly<Record<string, ToolPolicy>> {
@@ -337,6 +362,11 @@ export function toolRequiresSequentialExecution(name: unknown): boolean {
         || policy.externalEffect === 'provider_write'
         || policy.externalEffect === 'channel_write'
         || policy.externalEffect === 'opaque';
+}
+
+/** A mixed batch is serialized whenever any tool can mutate or emit effects. */
+export function toolBatchRequiresSequentialExecution(names: readonly unknown[]): boolean {
+    return names.some(toolRequiresSequentialExecution);
 }
 
 export function getMissingToolControls(): Array<{

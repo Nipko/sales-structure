@@ -23,6 +23,7 @@ describe('vertical contract/static matrix', () => {
 
         expect(report.layer).toBe(VERTICAL_CONTRACT_LAYER);
         expect(report.bootstrapCertified).toBe(false);
+        expect(report.sources.productPolicyVersion).toBe(1);
         expect(report.dimensions).toEqual({ configurations: 76, locales: 4, plans: 5 });
         expect(report.scenarios).toHaveLength(1_520);
         expect(new Set(report.scenarios.map((scenario) => scenario.id)).size).toBe(1_520);

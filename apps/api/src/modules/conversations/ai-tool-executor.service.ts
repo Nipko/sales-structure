@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { CalendarIntegrationService } from '../appointments/calendar-integration.service';
+import { CalendarSyncOutboxService } from '../appointments/calendar-sync-outbox.service';
 import { FaqsService } from '../faqs/faqs.service';
 import { PoliciesService } from '../policies/policies.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
@@ -26,6 +27,20 @@ import type { ServiceExecutionContext } from '../../common/types/execution-conte
 import { persistenceDisabled } from '../../common/types/execution-context';
 import { agentTestBlockedToolResult, isAgentTestSafeToolName } from './agent-test-tool-policy';
 import { isRegisteredStaticTool } from './tool-policy-registry';
+import {
+    ToolExecutionControlService,
+    type ToolExecutionControlDecision,
+} from './tool-execution-control.service';
+import { PaymentOperationService } from './payment-operation.service';
+import { TemporalCapacityContractService } from '../verticals/temporal-capacity-contract.service';
+import { assertActiveTenantUser } from '../appointments/tenant-user-scope.util';
+import {
+    AppointmentServiceUnavailableError,
+    AppointmentSlotConflictError,
+    dayOfWeekForLocalDate,
+    lockAndAssertAppointmentCapacity,
+    wallClockEpoch,
+} from '../appointments/appointment-capacity.util';
 
 /**
  * Executes AI tool calls against the appropriate services.
@@ -34,6 +49,7 @@ import { isRegisteredStaticTool } from './tool-policy-registry';
 @Injectable()
 export class AIToolExecutorService {
     private readonly logger = new Logger(AIToolExecutorService.name);
+    private readonly temporalContracts = new TemporalCapacityContractService();
 
     constructor(
         private prisma: PrismaService,
@@ -57,6 +73,8 @@ export class AIToolExecutorService {
         private ecommerceService: EcommerceService,
         private verticalIntegrations: VerticalIntegrationsService,
         private mcpClient: McpClientService,
+        private readonly toolExecutionControl: ToolExecutionControlService,
+        private readonly paymentOperations: PaymentOperationService,
     ) { }
 
     /**
@@ -78,10 +96,18 @@ export class AIToolExecutorService {
             channelType?: string;
             readOnly?: boolean;
             executionContext?: ServiceExecutionContext;
+            /** Trusted caller key; it is always rebound to tenant/tool/args. */
+            idempotencyKey?: string;
+            /** Server-origin evidence; never populated from LLM arguments. */
+            authorityEvidence?: {
+                kind: 'booking_engine_confirmation';
+                source: 'confirm_yes' | 'flow_response';
+            };
         },
     ): Promise<any> {
-        this.logger.log(`[Tool] Executing: ${toolName} args=${JSON.stringify(args)}`);
+        this.logger.log(`[Tool] Executing: ${toolName}`);
 
+        let controlDecision: ToolExecutionControlDecision | undefined;
         try {
             // Static tools must have a reviewed policy entry before they can
             // reach a handler. Dynamic MCP names use their separate opaque
@@ -96,6 +122,32 @@ export class AIToolExecutorService {
             if (persistenceDisabled(opts?.executionContext) && !isAgentTestSafeToolName(toolName)) {
                 return agentTestBlockedToolResult(toolName);
             }
+
+            // DEC-08/09: one authority boundary for every runtime tool. It runs
+            // before MCP routing and before the static handler switch; handlers
+            // keep their domain-level transaction/CAS protections.
+            if (!this.toolExecutionControl || !this.paymentOperations) {
+                return {
+                    error: 'tool_control_wiring_unavailable',
+                    message: 'Los controles de ejecución no están disponibles. La acción no puede continuar.',
+                    shouldHandoff: true,
+                };
+            }
+            controlDecision = await this.toolExecutionControl.preflight({
+                schemaName,
+                tenantId,
+                contactId,
+                toolName,
+                args,
+                conversationId,
+                channelType: opts?.channelType,
+                idempotencyKey: opts?.idempotencyKey,
+                readOnlyExecution: persistenceDisabled(opts?.executionContext),
+                authorityEvidence: opts?.authorityEvidence,
+            });
+            if (!controlDecision.allowed) return controlDecision.result;
+
+            const executeHandler = async (): Promise<any> => {
 
             // External MCP tools (T3.20) — namespaced mcp__{server}__{tool}.
             if (toolName.startsWith('mcp__')) {
@@ -189,7 +241,40 @@ export class AIToolExecutorService {
                     return this.getOrderStatus(schemaName, contactId, args.orderId);
 
                 case 'apply_discount':
-                    return this.applyDiscount(args.percent, args.reason);
+                    if (!controlDecision?.allowed || !controlDecision.ledgerId) {
+                        return this.moneyLedgerUnavailable();
+                    }
+                    return this.paymentOperations.applyDiscount(
+                        schemaName,
+                        tenantId,
+                        contactId,
+                        controlDecision.ledgerId,
+                        args,
+                    );
+
+                case 'create_payment_link':
+                    if (!controlDecision?.allowed || !controlDecision.ledgerId) {
+                        return this.moneyLedgerUnavailable();
+                    }
+                    return this.paymentOperations.createPaymentLink(
+                        schemaName,
+                        tenantId,
+                        contactId,
+                        controlDecision.ledgerId,
+                        args,
+                    );
+
+                case 'refund_payment':
+                    if (!controlDecision?.allowed || !controlDecision.ledgerId) {
+                        return this.moneyLedgerUnavailable();
+                    }
+                    return this.paymentOperations.refundPayment(
+                        schemaName,
+                        tenantId,
+                        contactId,
+                        controlDecision.ledgerId,
+                        args,
+                    );
 
                 // ── Vertical integrations (T3.19): Toast / Mindbody / Cliniko ──
                 case 'get_restaurant_menu':
@@ -413,7 +498,21 @@ export class AIToolExecutorService {
                 default:
                     return { error: `Unknown tool: ${toolName}` };
             }
+            };
+
+            const result = await executeHandler();
+            if (this.toolExecutionControl && controlDecision) {
+                // A handler result is not acknowledged until the central ledger
+                // commits it. A commit failure therefore fails closed.
+                await this.toolExecutionControl.complete(schemaName, controlDecision, result || {});
+            }
+            return result;
         } catch (error: any) {
+            if (this.toolExecutionControl) {
+                await this.toolExecutionControl
+                    .fail(schemaName, controlDecision, 'tool_execution_failed')
+                    .catch(() => undefined);
+            }
             // Log the technical detail internally, but return a GENERIC error to the
             // LLM — error.message can carry schema names and raw SQL fragments from
             // the DB driver that could otherwise be surfaced to the customer.
@@ -1014,34 +1113,12 @@ export class AIToolExecutorService {
         }
     }
 
-    /**
-     * Approve a discount to help close a sale. Clamped to a platform hard cap;
-     * the tenant's configured max is enforced softly via the persona prompt.
-     * Returns an approved code or a refusal — no external write.
-     */
-    private async applyDiscount(percent?: number, reason?: string): Promise<any> {
-        const HARD_CAP = 30;
-        const requested = Math.round(Number(percent) || 0);
-        if (requested <= 0) {
-            return { approved: false, reason: 'El porcentaje de descuento debe ser mayor a 0.' };
-        }
-        if (requested > HARD_CAP) {
-            return {
-                approved: false,
-                reason: `El descuento solicitado (${requested}%) supera el máximo permitido (${HARD_CAP}%).`,
-                maxPercent: HARD_CAP,
-            };
-        }
-        const code = `SAVE${requested}-${Math.abs(this.hashCode(`${requested}:${reason || ''}`)).toString(36).toUpperCase().slice(0, 5)}`;
-        return { approved: true, percent: requested, code, reason: reason || null };
-    }
-
-    private hashCode(s: string): number {
-        let h = 0;
-        for (let i = 0; i < s.length; i++) {
-            h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-        }
-        return h;
+    private moneyLedgerUnavailable(): Record<string, unknown> {
+        return {
+            error: 'payment_ledger_unavailable',
+            shouldHandoff: true,
+            message: 'No se pudo reservar una operación monetaria segura. Escala la solicitud y no anuncies éxito.',
+        };
     }
 
     // ── Knowledge tools ─────────────────────────────
@@ -1109,6 +1186,9 @@ export class AIToolExecutorService {
     }
 
     private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string): Promise<any> {
+        const resolvedStaffId = staffId
+            ? await assertActiveTenantUser(this.prisma, schema, staffId)
+            : undefined;
         // Resolve serviceId — LLM may pass name instead of UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId);
         let resolvedServiceId = serviceId;
@@ -1139,9 +1219,15 @@ export class AIToolExecutorService {
 
         const durationType = svcRows[0].duration_type || 'fixed';
 
-        // Open services: no slot generation needed — any time within availability works
+        // `open` is not an appointment duration. It must be migrated to the
+        // explicit nightly/day-capacity/session/resource model before booking.
         if (durationType === 'open') {
-            return this.checkAvailabilityOpen(schema, date, svcRows[0], staffId);
+            return {
+                available: false,
+                error: 'temporal_contract_required',
+                message: 'This service has an ambiguous open duration. Configure its explicit temporal/capacity model before offering availability.',
+                slots: [],
+            };
         }
 
         // For flexible services, use max duration for calendar blocking
@@ -1153,19 +1239,27 @@ export class AIToolExecutorService {
         const totalBlock = duration + buffer;
 
         // Get availability slots for the day
-        const dayOfWeek = new Date(date + 'T12:00:00').getDay();
+        const dayOfWeek = dayOfWeekForLocalDate(date);
 
         let staffFilter = '';
-        const params: any[] = [dayOfWeek];
-        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (staffId && uuidRe.test(staffId)) {
-            staffFilter = ' AND user_id = $2::uuid';
-            params.push(staffId);
+        const params: any[] = [dayOfWeek, schema];
+        if (resolvedStaffId) {
+            staffFilter = ' AND availability.user_id = $3::uuid';
+            params.push(resolvedStaffId);
         }
 
         const slots: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT user_id, start_time::text, end_time::text FROM "${schema}".availability_slots
-             WHERE day_of_week = $1 AND is_active = true${staffFilter}`,
+            `SELECT availability.user_id, availability.start_time::text, availability.end_time::text
+             FROM "${schema}".availability_slots availability
+             JOIN public.users staff_user
+               ON staff_user.id = availability.user_id
+              AND staff_user.is_active = true
+             JOIN public.tenants tenant_owner
+               ON tenant_owner.id = staff_user.tenant_id
+              AND tenant_owner.schema_name = $2
+              AND tenant_owner.is_active = true
+             WHERE availability.day_of_week = $1
+               AND availability.is_active = true${staffFilter}`,
             ...params,
         );
 
@@ -1206,7 +1300,10 @@ export class AIToolExecutorService {
         // Check Google/Microsoft Calendar busy times
         let googleBusy: { start: string; end: string }[] = [];
         try {
-            googleBusy = await this.calendarIntegration.getFreeBusyForDate(schema, date, { staffId });
+            googleBusy = await this.calendarIntegration.getFreeBusyForDate(schema, date, {
+                serviceId: resolvedServiceId,
+                staffId: resolvedStaffId,
+            });
             if (googleBusy.length > 0) {
                 this.logger.log(`[Tool] Calendar busy times for ${date}: ${JSON.stringify(googleBusy)}`);
             } else {
@@ -1214,10 +1311,14 @@ export class AIToolExecutorService {
             }
         } catch (e: any) {
             this.logger.warn(`[Tool] Calendar busy check failed: ${e.message}`);
+            return {
+                available: false,
+                error: 'calendar_availability_unverified',
+                message: 'External calendar availability could not be verified. Do not offer or book a slot; offer a human handoff instead.',
+                slots: [],
+                shouldHandoff: true,
+            };
         }
-
-        // Get tenant timezone for calendar comparison
-        const tenantTz = await this.getTenantTimezone(schema);
 
         // Generate available time slots
         const availableSlots: any[] = [];
@@ -1272,19 +1373,11 @@ export class AIToolExecutorService {
 
                 // Check conflicts with external calendar (Google/Microsoft) busy times.
                 const calendarConflict = googleBusy.some(busy => {
-                    const busyStartDate = new Date(busy.start);
-                    const busyEndDate = new Date(busy.end);
-                    const busyStartLocal = busyStartDate.toLocaleTimeString('en-GB', {
-                        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tenantTz,
-                    });
-                    const busyEndLocal = busyEndDate.toLocaleTimeString('en-GB', {
-                        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tenantTz,
-                    });
-                    const [bsH, bsM] = busyStartLocal.split(':').map(Number);
-                    const [beH, beM] = busyEndLocal.split(':').map(Number);
-                    const busyStartMin = bsH * 60 + bsM;
-                    const busyEndMin = beH * 60 + beM;
-                    return slotStartMinOfDay < busyEndMin && slotBlockEndMinOfDay > busyStartMin;
+                    const busyStart = wallClockEpoch(busy.start);
+                    const busyEnd = wallClockEpoch(busy.end);
+                    const candidateStart = wallClockEpoch(`${date}T${timeStr}:00`);
+                    const candidateEnd = candidateStart + totalBlock * 60_000;
+                    return candidateStart < busyEnd && candidateEnd > busyStart;
                 });
 
                 if (!hasConflict && !calendarConflict) {
@@ -1302,7 +1395,11 @@ export class AIToolExecutorService {
         let userNames: Record<string, string> = {};
         if (userIds.length > 0) {
             const users = await this.prisma.user.findMany({
-                where: { id: { in: userIds } },
+                where: {
+                    id: { in: userIds },
+                    isActive: true,
+                    tenant: { schemaName: schema, isActive: true },
+                },
                 select: { id: true, firstName: true, lastName: true },
             });
             userNames = Object.fromEntries(users.map((u: any) => [u.id, `${u.firstName} ${u.lastName}`.trim()]));
@@ -1346,7 +1443,7 @@ export class AIToolExecutorService {
     private async checkAvailabilityOpen(
         schema: string, date: string, svc: any, staffId?: string,
     ): Promise<any> {
-        const dayOfWeek = new Date(date + 'T12:00:00').getDay();
+        const dayOfWeek = dayOfWeekForLocalDate(date);
         let staffFilter = '';
         const params: any[] = [dayOfWeek];
         if (staffId) { staffFilter = ' AND user_id = $2::uuid'; params.push(staffId); }
@@ -1525,7 +1622,7 @@ export class AIToolExecutorService {
         // inválido → tool_failed. El check de disponibilidad ya la aceptaba
         // (b9bd6332), pero la reserva en sí seguía rota.
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, name, duration_minutes, duration_type, duration_minutes_max, price, currency, location_type, location_address, meeting_link FROM "${schema}".services WHERE id = $1::uuid`,
+            `SELECT id, name, duration_minutes, duration_type, duration_minutes_max, price, currency, location_type, location_address, meeting_link FROM "${schema}".services WHERE id = $1::uuid AND is_active = true`,
             args.serviceId,
         );
         if (!svcRows.length) return { error: 'Service not found' };
@@ -1533,22 +1630,33 @@ export class AIToolExecutorService {
         const svc = svcRows[0];
         const startAt = `${args.date}T${args.time}:00`;
         const durType = svc.duration_type || 'fixed';
-        // Open services: use 30min placeholder block. Flexible: use max duration for blocking.
-        const effectiveDuration = durType === 'open' ? 30
-            : (durType === 'flexible' && svc.duration_minutes_max ? svc.duration_minutes_max : (svc.duration_minutes || 30));
-        const endMinutes = parseInt(args.time.split(':')[0]) * 60 + parseInt(args.time.split(':')[1]) + effectiveDuration;
-        // endAt con desborde de medianoche: un servicio flexible largo (o una
-        // reserva cerca del cierre) cruza las 24h — formatear hora 25:30 rompe
-        // el cast ::timestamp. Aritmética sobre época UTC-naive para rolar fecha.
-        const endBase = new Date(`${args.date}T00:00:00Z`);
-        endBase.setUTCMinutes(endMinutes);
-        const endAt = `${endBase.getUTCFullYear()}-${String(endBase.getUTCMonth() + 1).padStart(2, '0')}-${String(endBase.getUTCDate()).padStart(2, '0')}T${String(endBase.getUTCHours()).padStart(2, '0')}:${String(endBase.getUTCMinutes()).padStart(2, '0')}:00`;
+        if (durType === 'open') {
+            return {
+                error: 'temporal_contract_required',
+                message: 'This service cannot be booked as a placeholder appointment. Configure nightly, day-capacity, session, or resource semantics first.',
+            };
+        }
+        const effectiveDuration = Number(
+            durType === 'flexible' && svc.duration_minutes_max
+                ? svc.duration_minutes_max : svc.duration_minutes,
+        );
+        let endAt: string;
+        try {
+            const normalized = this.temporalContracts.normalize({
+                kind: 'appointment',
+                startsAtLocal: startAt,
+                timezone: await this.getTenantTimezone(schema),
+                durationMinutes: effectiveDuration,
+            });
+            if (normalized.kind !== 'appointment') throw new Error('wrong_temporal_kind');
+            endAt = normalized.endsAtLocal;
+        } catch {
+            return {
+                error: 'invalid_appointment_temporal_contract',
+                message: 'The service duration or timezone is invalid. Correct configuration before creating an appointment.',
+            };
+        }
 
-        // Double-booking guard: re-check availability and INSERT under a short
-        // per-(staff,date) lock. check_availability runs earlier in the turn, but
-        // without this there is a TOCTOU window where two concurrent customers
-        // (or the deterministic booking engine racing the LLM tool path) can both
-        // book the same slot. Both paths funnel through this INSERT.
         // El objeto de la cita se resuelve ANTES del lock, no dentro: de él sale
         // el asesor sugerido, y el lock y el chequeo de conflicto se toman POR
         // profesional. Resolverlo después habría dejado a la visita inmobiliaria
@@ -1556,39 +1664,14 @@ export class AIToolExecutorService {
         // concreto — el bloqueo entre visitas a propiedades distintas que este
         // cambio viene justamente a levantar.
         const subject = await this.resolveAppointmentSubject(schema, args);
-        const assignedTo = args.staffId || subject.suggestedStaffId || null;
-        const slotLock = await this.acquireSlotLock(schema, assignedTo, args.date);
-        if (!slotLock) {
-            return {
-                error: 'The booking slot is being updated by another request. Please check availability again and retry.',
-                retryable: true,
-            };
-        }
-        let rows: any[];
-        try {
-            if (await this.findAppointmentConflict(schema, startAt, endAt, assignedTo, undefined, args.serviceId)) {
-                this.logger.warn(`[Tool] Double-booking prevented: ${args.date} ${args.time} (staff=${assignedTo || 'any'})`);
-                return { error: 'That time slot was just taken. Offer the customer another available time (call check_availability again).' };
-            }
-            rows = await this.prisma.$queryRawUnsafe(
-                `INSERT INTO "${schema}".appointments
-                 (contact_id, service_id, service_name, assigned_to, start_at, end_at, status, customer_name, customer_phone, customer_email, notes, metadata)
-                 VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5::timestamp, $6::timestamp, 'confirmed', $7, $8, $9, $10, $11::jsonb)
-                 RETURNING id, service_name, start_at, end_at, status`,
-                contactId, args.serviceId, svc.name,
-                assignedTo,
-                startAt, endAt,
-                args.customerName, args.customerPhone || null, args.customerEmail || null, args.notes || null,
-                JSON.stringify(subject.metadata),
-            );
-        } finally {
-            await this.redis.releaseLockToken(slotLock.key, slotLock.token);
-        }
+        const staffCandidate = args.staffId || subject.suggestedStaffId || null;
+        const assignedTo = staffCandidate
+            ? await assertActiveTenantUser(this.prisma, schema, staffCandidate)
+            : null;
 
-        const apt = rows[0];
-        this.logger.log(`[Tool] Appointment created: ${apt.id} for ${args.customerName}`);
-
-        // Build rich description for calendar event
+        // Build the immutable calendar snapshot before the appointment INSERT.
+        // The outbox reads the just-inserted row in the same transaction, so a
+        // later best-effort UPDATE would permanently enqueue stale calendar data.
         const descriptionParts: string[] = [];
         descriptionParts.push(`Customer: ${args.customerName}`);
         if (args.customerEmail) descriptionParts.push(`Email: ${args.customerEmail}`);
@@ -1597,12 +1680,8 @@ export class AIToolExecutorService {
         const priceStr = svc.price ? `${Number(svc.price).toLocaleString()} ${svc.currency || 'COP'}` : 'N/A';
         descriptionParts.push(`Service: ${svc.name} (${priceStr})`);
         descriptionParts.push(`Duration: ${svc.duration_minutes} min`);
-        // El objeto de la cita, arriba de todo el contexto: es lo primero que
-        // necesita saber quien abre el evento en su calendario. Un asesor que va
-        // a mostrar un inmueble necesita CUAL, no el uuid.
         for (const label of subject.labels) descriptionParts.push(label);
 
-        // Add conversation context if available
         if (conversationId) {
             try {
                 const msgs: any[] = await this.prisma.$queryRawUnsafe(
@@ -1612,7 +1691,6 @@ export class AIToolExecutorService {
                 if (msgs.length > 0) {
                     descriptionParts.push('');
                     descriptionParts.push('Conversation context:');
-                    // Reverse to show oldest first
                     for (const m of msgs.reverse()) {
                         const role = m.direction === 'inbound' ? 'Customer' : 'Agent';
                         const text = (m.content_text || '').slice(0, 200);
@@ -1623,67 +1701,75 @@ export class AIToolExecutorService {
                 this.logger.warn(`[Tool] Failed to fetch conversation context: ${e.message}`);
             }
         }
-
         if (args.notes) {
             descriptionParts.push('');
             descriptionParts.push(`Notes: ${args.notes}`);
         }
-
         const description = descriptionParts.join('\n');
-
-        // Determine modality for calendar event
         const isOnline = svc.location_type === 'online';
-        const location = (svc.location_type === 'in_person' && svc.location_address) ? svc.location_address : undefined;
+        const location = svc.location_type === 'in_person' && svc.location_address
+            ? svc.location_address
+            : null;
+        const meetingUrl: string | undefined = svc.meeting_link || undefined;
+        const appointmentMetadata = {
+            ...(subject.metadata || {}),
+            isOnline,
+            ...(meetingUrl ? { meetingUrl } : {}),
+        };
 
-        // Sync to Google/Microsoft Calendar if any active integration exists.
-        // Skipped in evalMode so an eval never writes to the tenant's real calendar.
-        let meetingUrl: string | undefined;
-        if (!evalMode) try {
-            const calUsers: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT user_id FROM "${schema}".calendar_integrations WHERE is_active = true LIMIT 1`,
-            );
-            if (calUsers.length > 0) {
-                const calUserId = calUsers[0].user_id;
-                const calResult = await this.calendarIntegration.createEvent(schema, calUserId, {
-                    summary: `${svc.name} — ${args.customerName}`,
+        // Double-booking guard: re-check availability and INSERT under a short
+        // per-(staff,date) lock. check_availability runs earlier in the turn, but
+        // without this there is a TOCTOU window where two concurrent customers
+        // can both book the same slot. Both paths funnel through this INSERT.
+        const slotLock = await this.acquireSlotLock(schema, assignedTo, args.date);
+        if (!slotLock) {
+            return {
+                error: 'The booking slot is being updated by another request. Please check availability again and retry.',
+                retryable: true,
+            };
+        }
+        let rows: any[];
+        try {
+            const insertSql = `INSERT INTO appointments
+                 (contact_id, service_id, service_name, assigned_to, start_at, end_at, status,
+                  customer_name, customer_phone, customer_email, location, notes, metadata)
+                 VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5::timestamp, $6::timestamp, 'confirmed',
+                         $7, $8, $9, $10, $11, $12::jsonb)
+                 RETURNING id, service_name, start_at, end_at, status`;
+            const insertParams = [
+                contactId, args.serviceId, svc.name, assignedTo, startAt, endAt,
+                args.customerName, args.customerPhone || null, args.customerEmail || null,
+                location, description, JSON.stringify(appointmentMetadata),
+            ];
+            rows = await this.prisma.transactionInTenantSchema(schema, async (query) => {
+                await lockAndAssertAppointmentCapacity(query, {
+                    schemaName: schema,
+                    serviceId: args.serviceId,
+                    staffUserId: assignedTo,
                     startAt,
                     endAt,
-                    attendeeEmail: args.customerEmail || undefined,
-                    description,
-                    location,
-                    isOnline,
                 });
-                if (calResult.eventId) {
-                    await this.prisma.$queryRawUnsafe(
-                        `UPDATE "${schema}".appointments SET google_event_id = $2 WHERE id = $1::uuid`,
-                        apt.id, calResult.eventId,
-                    );
-                    this.logger.log(`[Tool] Calendar event created: ${calResult.eventId} for appointment ${apt.id}`);
+                const inserted = await query<any[]>(insertSql, insertParams);
+                if (!evalMode) {
+                    await CalendarSyncOutboxService.enqueueWithTransaction(query, inserted[0].id, 'upsert');
                 }
-                if (calResult.meetingUrl) {
-                    meetingUrl = calResult.meetingUrl;
-                    // Store meeting URL on appointment metadata
-                    await this.prisma.$queryRawUnsafe(
-                        `UPDATE "${schema}".appointments SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
-                        apt.id, JSON.stringify({ meetingUrl }),
-                    );
-                    this.logger.log(`[Tool] Meeting URL stored for appointment ${apt.id}: ${meetingUrl}`);
-                }
+                return inserted;
+            });
+        } catch (error) {
+            if (error instanceof AppointmentSlotConflictError) {
+                this.logger.warn(`[Tool] Double-booking prevented: ${args.date} ${args.time} (staff=${assignedTo || 'any'})`);
+                return { error: 'That time slot was just taken. Offer the customer another available time (call check_availability again).' };
             }
-        } catch (calErr: any) {
-            this.logger.warn(`[Tool] Calendar sync failed for appointment ${apt.id}: ${calErr.message}`);
+            if (error instanceof AppointmentServiceUnavailableError) {
+                return { error: 'Service not found' };
+            }
+            throw error;
+        } finally {
+            await this.redis.releaseLockToken(slotLock.key, slotLock.token);
         }
 
-        // If service has a pre-configured meeting link and no auto-generated one, use it
-        if (!meetingUrl && svc.meeting_link) {
-            meetingUrl = svc.meeting_link;
-            try {
-                await this.prisma.$queryRawUnsafe(
-                    `UPDATE "${schema}".appointments SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
-                    apt.id, JSON.stringify({ meetingUrl }),
-                );
-            } catch { /* The appointment remains valid if metadata enrichment fails. */ }
-        }
+        const apt = rows[0];
+        this.logger.log(`[Tool] Appointment created: ${apt.id} for ${args.customerName}`);
 
         // Emit event so notifications (WhatsApp confirmation, email, calendar) are
         // triggered. In evalMode the INSERT above still happens (so verifyActions can
@@ -1732,15 +1818,26 @@ export class AIToolExecutorService {
             return { success: true, alreadyCancelled: true, message: 'Appointment was already cancelled.', alternatives: [] };
         }
 
-        const updated: any[] = await this.prisma.$queryRawUnsafe(
-            `UPDATE "${schema}".appointments
-             SET status = 'cancelled', cancellation_reason = $1,
-                 notes = COALESCE(notes, '') || $2, updated_at = NOW()
-             WHERE id = $3::uuid AND status <> 'cancelled'
-             RETURNING id`,
-            reason || null,
-            reason ? `\n[Cancelado: ${reason}]` : '\n[Cancelado por el cliente]',
-            appointmentId,
+        const updated: any[] = await this.prisma.transactionInTenantSchema(
+            schema,
+            async (query) => {
+                const changed = await query<any[]>(
+                    `UPDATE appointments
+                     SET status = 'cancelled', cancellation_reason = $1,
+                         notes = COALESCE(notes, '') || $2, updated_at = NOW()
+                     WHERE id = $3::uuid AND status <> 'cancelled'
+                     RETURNING id`,
+                    [
+                        reason || null,
+                        reason ? `\n[Cancelado: ${reason}]` : '\n[Cancelado por el cliente]',
+                        appointmentId,
+                    ],
+                );
+                if (changed.length) {
+                    await CalendarSyncOutboxService.enqueueWithTransaction(query, appointmentId, 'delete');
+                }
+                return changed;
+            },
         );
         // A concurrent retry may have won after our SELECT. Treat it as the same
         // successful cancellation, but do not repeat notes, events or messages.
@@ -3628,20 +3725,29 @@ export class AIToolExecutorService {
                 this.logger.warn(`[Tool] Reschedule conflict prevented: ${newDate} ${newTime} (staff=${assignedTo || 'any'})`);
                 return { error: 'That new time slot is already taken. Offer the customer another available time (call check_availability).' };
             }
-            const updated: any[] = await this.prisma.$queryRawUnsafe(
-                `UPDATE "${schema}".appointments
-                 SET start_at = $1::timestamp, end_at = $2::timestamp,
-                     notes = COALESCE(notes, '') || $3,
-                     updated_at = NOW()
-                 WHERE id = $4::uuid
-                   AND contact_id = $5::uuid
-                   AND status <> 'cancelled'
-                   AND start_at = $6::timestamp
-                   AND end_at = $7::timestamp
-                   AND (start_at IS DISTINCT FROM $1::timestamp OR end_at IS DISTINCT FROM $2::timestamp)
-                 RETURNING id`,
-                newStartAt, newEndAt, noteAppend, appointmentId, contactId,
-                apt.start_at, apt.end_at,
+            const updated: any[] = await this.prisma.transactionInTenantSchema(
+                schema,
+                async (query) => {
+                    const result = await query<any[]>(
+                        `UPDATE appointments
+                         SET start_at = $1::timestamp, end_at = $2::timestamp,
+                             notes = COALESCE(notes, '') || $3,
+                             updated_at = NOW()
+                         WHERE id = $4::uuid
+                           AND contact_id = $5::uuid
+                           AND status <> 'cancelled'
+                           AND start_at = $6::timestamp
+                           AND end_at = $7::timestamp
+                           AND (start_at IS DISTINCT FROM $1::timestamp OR end_at IS DISTINCT FROM $2::timestamp)
+                         RETURNING id`,
+                        [newStartAt, newEndAt, noteAppend, appointmentId, contactId,
+                            apt.start_at, apt.end_at],
+                    );
+                    if (result.length) {
+                        await CalendarSyncOutboxService.enqueueWithTransaction(query, appointmentId, 'upsert');
+                    }
+                    return result;
+                },
             );
             changed = updated.length > 0;
 
@@ -3680,60 +3786,6 @@ export class AIToolExecutorService {
             };
         }
 
-        // Patch the original provider event when it exists. Creating a second
-        // event on every reschedule leaves the old time active and causes both
-        // calendar clutter and false busy windows.
-        let calendarSynced = true;
-        try {
-            const provider = apt.google_event_id
-                ? 'google'
-                : apt.outlook_event_id
-                    ? 'microsoft'
-                    : null;
-            const calUsers: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT user_id, provider FROM "${schema}".calendar_integrations
-                 WHERE is_active = true
-                   AND ($1::text IS NULL OR provider = $1)
-                 ORDER BY connected_at ASC, id ASC LIMIT 1`,
-                provider,
-            );
-            if (calUsers.length > 0) {
-                const eventId = apt.google_event_id || apt.outlook_event_id || null;
-                if (eventId) {
-                    calendarSynced = await this.calendarIntegration.updateEvent(
-                        schema,
-                        calUsers[0].user_id,
-                        eventId,
-                        {
-                            summary: `${apt.service_name} — Reprogramado`,
-                            startAt: newStartAt,
-                            endAt: newEndAt,
-                        },
-                        provider || undefined,
-                    );
-                } else {
-                    const calResult = await this.calendarIntegration.createEvent(schema, calUsers[0].user_id, {
-                        summary: `${apt.service_name} — Reprogramado`,
-                        startAt: newStartAt,
-                        endAt: newEndAt,
-                    });
-                    calendarSynced = !!calResult.eventId;
-                    if (calResult.eventId) {
-                        const eventIdColumn = calUsers[0].provider === 'microsoft'
-                            ? 'outlook_event_id'
-                            : 'google_event_id';
-                        await this.prisma.$queryRawUnsafe(
-                            `UPDATE "${schema}".appointments SET ${eventIdColumn} = $2 WHERE id = $1::uuid`,
-                            appointmentId, calResult.eventId,
-                        );
-                    }
-                }
-            }
-        } catch (e: any) {
-            calendarSynced = false;
-            this.logger.warn(`[Tool] Calendar re-create failed for rescheduled appointment: ${e.message}`);
-        }
-
         this.eventEmitter.emit('appointment.rescheduled', {
             schemaName: schema,
             appointmentId,
@@ -3745,7 +3797,8 @@ export class AIToolExecutorService {
         return {
             success: true,
             message: 'Appointment rescheduled successfully',
-            calendarSynced,
+            calendarSynced: false,
+            calendarSyncState: 'pending',
             appointment: {
                 id: appointmentId,
                 service: apt.service_name,

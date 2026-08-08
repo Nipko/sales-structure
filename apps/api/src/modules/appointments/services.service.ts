@@ -7,6 +7,7 @@ import {
     optionalPositiveIntegerUnit,
     requirePositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import { assertActiveTenantUser } from './tenant-user-scope.util';
 
 export type DurationType = 'fixed' | 'flexible' | 'open';
 
@@ -185,10 +186,16 @@ export class ServicesService {
             `SELECT ss.id, ss.user_id, ss.is_primary, ss.sort_order,
                     u.first_name, u.last_name, u.email
              FROM service_staff ss
-             JOIN public.users u ON u.id = ss.user_id
-             WHERE ss.service_id = $1::uuid
+             JOIN public.tenants tenant_owner
+               ON tenant_owner.schema_name = $1
+              AND tenant_owner.is_active = true
+             JOIN public.users u
+               ON u.id = ss.user_id
+              AND u.tenant_id = tenant_owner.id
+              AND u.is_active = true
+             WHERE ss.service_id = $2::uuid
              ORDER BY ss.sort_order ASC, u.first_name ASC`,
-            [serviceId],
+            [schemaName, serviceId],
         );
         return (rows || []).map(r => ({
             id: r.id,
@@ -202,6 +209,7 @@ export class ServicesService {
     }
 
     async assignStaff(schemaName: string, serviceId: string, userId: string, isPrimary = false): Promise<void> {
+        await assertActiveTenantUser(this.prisma, schemaName, userId);
         const id = randomUUID();
         await this.prisma.executeInTenantSchema(schemaName,
             `INSERT INTO service_staff (id, service_id, user_id, is_primary)

@@ -479,6 +479,30 @@ export class AgentConsoleGateway implements OnGatewayInit, OnGatewayConnection, 
         this.relayEmit(`tenant:${event.tenantId}`, 'inbox:refresh', {});
     }
 
+    /**
+     * A4 notifications originate in the tenant approval outbox. The workflow
+     * marks that row published only after this listener runs, so a process
+     * crash is recoverable and the dashboard can refresh its tenant-scoped
+     * approval queue without ever routing ticket UUIDs through the LLM.
+     */
+    @OnEvent('tool.approval.notification')
+    handleToolApprovalNotification(event: {
+        tenantId: string;
+        eventId: string;
+        eventType: string;
+        ticketId: string;
+        toolName?: string;
+        contactId?: string | null;
+        conversationId?: string | null;
+        expiresAt?: string;
+        decidedBy?: string;
+        ledgerStatus?: string;
+        error?: string;
+    }) {
+        if (!event?.tenantId) return;
+        this.relayEmit(`tenant:${event.tenantId}`, 'inbox:tool_approval', event);
+    }
+
     @OnEvent('handoff.escalated_supervisor')
     handleSupervisorEscalation(event: { tenantId: string; conversationId: string; contactName: string; reason: string; waitMinutes: number }) {
         this.logger.warn(`[Escalation] Supervisor notified: ${event.contactName} waiting ${event.waitMinutes}min`);

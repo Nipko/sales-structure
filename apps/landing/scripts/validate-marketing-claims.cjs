@@ -20,8 +20,15 @@ function loadJson(locale) {
   }
 }
 
-function loadTsModule(relativeFile) {
-  const file = path.join(landingRoot, relativeFile);
+function getPath(object, dottedPath) {
+  return String(dottedPath || '').split('.').reduce((value, key) => value?.[key], object);
+}
+
+const tsModuleCache = new Map();
+
+function loadTsFile(file) {
+  const absoluteFile = path.resolve(file);
+  if (tsModuleCache.has(absoluteFile)) return tsModuleCache.get(absoluteFile).exports;
   const source = fs.readFileSync(file, "utf8");
   const output = ts.transpileModule(source, {
     compilerOptions: {
@@ -31,8 +38,23 @@ function loadTsModule(relativeFile) {
     fileName: file,
   }).outputText;
   const loaded = { exports: {} };
-  new Function("module", "exports", output)(loaded, loaded.exports);
+  tsModuleCache.set(absoluteFile, loaded);
+  const localRequire = (request) => {
+    if (!request.startsWith('.')) return require(request);
+    const base = path.resolve(path.dirname(absoluteFile), request);
+    const candidates = [base, `${base}.ts`, `${base}.js`, `${base}.json`, path.join(base, 'index.ts')];
+    const target = candidates.find(candidate => fs.existsSync(candidate));
+    if (!target) throw new Error(`Cannot resolve ${request} from ${absoluteFile}`);
+    if (target.endsWith('.ts')) return loadTsFile(target);
+    if (target.endsWith('.json')) return JSON.parse(fs.readFileSync(target, 'utf8'));
+    return require(target);
+  };
+  new Function("module", "exports", "require", output)(loaded, loaded.exports, localRequire);
   return loaded.exports;
+}
+
+function loadTsModule(relativeFile) {
+  return loadTsFile(path.join(landingRoot, relativeFile));
 }
 
 function loadVerticalData() {
@@ -72,16 +94,52 @@ function translatedDemoText(messages, slug) {
 
 const verticals = loadVerticalData();
 assert(Array.isArray(verticals) && verticals.length === 18, "Vertical catalog must contain exactly 18 entries");
+const canonicalProductPolicy = loadTsModule(path.join(
+  "..", "..", "packages", "shared", "src", "vertical-product-policy.ts",
+));
 for (const vertical of verticals || []) {
+  const expectedPolicy = canonicalProductPolicy.resolvePublicVerticalProductPolicy(vertical.slug);
   assert(
     vertical.demoMode === "illustrative",
     `${vertical.slug}: every demo must be explicitly marked illustrative`,
+  );
+  assert(
+    vertical.productMode === expectedPolicy.mode,
+    `${vertical.slug}: product mode must follow the adopted certification policy`,
+  );
+  assert(
+    vertical.deepMarketingAllowed === expectedPolicy.deepMarketingAllowed,
+    `${vertical.slug}: deep marketing state must come from the canonical product policy`,
   );
 }
 
 const chatDemoSource = fs.readFileSync(
   path.join(landingRoot, "src", "components", "demos", "VerticalChatDemo.tsx"),
   "utf8",
+);
+const solutionsPageSource = fs.readFileSync(
+  path.join(landingRoot, "src", "app", "(marketing)", "soluciones", "page.tsx"),
+  "utf8",
+);
+const industryPageSource = fs.readFileSync(
+  path.join(landingRoot, "src", "app", "(marketing)", "soluciones", "[slug]", "IndustryPageClient.tsx"),
+  "utf8",
+);
+assert(
+  solutionsPageSource.includes("data-product-mode={v.productMode}")
+    && solutionsPageSource.includes("solutions.productMode.${v.productMode}")
+    && industryPageSource.includes("data-product-mode={vertical.productMode}")
+    && industryPageSource.includes("solutions.productMode.${vertical.productMode}"),
+  "Solution list and detail pages must disclose the adopted product/certification mode",
+);
+assert(
+  solutionsPageSource.includes("v.deepMarketingAllowed")
+    && solutionsPageSource.includes("solutions.productModeDescription.${v.productMode}")
+    && industryPageSource.includes("vertical.deepMarketingAllowed")
+    && industryPageSource.includes("description: publicDescription")
+    && industryPageSource.includes('data-deep-marketing="withheld"')
+    && industryPageSource.includes("solutions.productModeDescription.${vertical.productMode}"),
+  "Uncertified verticals must hide deep taglines, tier badges and specialized feature lists",
 );
 assert(
   chatDemoSource.includes('vertical.demoMode === "illustrative"')
@@ -159,6 +217,34 @@ const frozenClaimPatterns = [
     label: "services preconfigured across all 18 verticals",
     pattern: /\b18\b.{0,120}\b(?:pre-?configured services?|servicios pre-?configurados?|serviços pré-configurados?|services pré-configurés?)\b/i,
   },
+  {
+    label: "unsupported autonomous-sales or zero-human promise",
+    pattern: /\b(?:sells? on its own|vende solo|vende sozinho|vend toute seule|zero human intervention|cero intervenci[oó]n humana|zero interven[cç][aã]o humana|z[eé]ro intervention humaine|never sleeps|nunca duerme|nunca dorme|ne dort jamais)\b/i,
+  },
+  {
+    label: "unsupported instant production-readiness promise",
+    pattern: /(?:\b(?:from (?:the )?first minute|desde (?:el )?primer minuto|desde o primeiro minuto|d[eè]s la premi[eè]re minute)\b|\b(?:ready to operate|listo para operar|pronto para operar|pr[eê]t [aà] op[eé]rer)\b.{0,35}\b(?:day one|primer d[ií]a|primeiro dia|premier jour)\b)/i,
+  },
+  {
+    label: "unsupported universal vertical adaptation promise",
+    pattern: /\b(?:adapts? to any business|se adapta a cualquier negocio|se adapta a qualquer neg[oó]cio|s['’]adapte [aà] toute activit[eé])\b/i,
+  },
+  {
+    label: "unsupported configure-once autonomy promise",
+    pattern: /(?:\b(?:all|todas?|tout)\b.{0,45}\b(?:run|work|funcionan?|fonctionne)\b.{0,25}\bautomati|\b(?:configure once|configura(?:s|r)? una vez|configure uma vez|configurez une fois)\b.{0,55}\b(?:AI|IA|assistant).{0,25}\b(?:handle the rest|se encargue del resto|cuidar do resto|s['’]occuper du reste)\b)/i,
+  },
+  {
+    label: "unverified customer outcome testimonial",
+    pattern: /\b(?:real LatAm businesses that stopped losing sales|negocios reales de LatAm que dejaron de perder ventas|neg[oó]cios reais da LatAm que pararam de perder vendas|vraies entreprises LatAm qui ont arr[eê]t[eé] de perdre des ventes)\b/i,
+  },
+  {
+    label: "absolute error-free booking promise",
+    pattern: /\b(?:error-?free booking engine|motor de reservas sin errores|motor de reservas sem erros|moteur de r[eé]servation sans erreurs|offers only open slots|ofrece solo slots libres|oferece apenas slots livres|propose uniquement les cr[eé]neaux libres)\b/i,
+  },
+  {
+    label: "instant human-handoff promise",
+    pattern: /(?:\b(?:hands? off|passes? the conversation|pasa la conversaci[oó]n|passa a conversa|transf[eè]re la conversation)\b.{0,70}\b(?:instantly|al instante|instantaneamente|instantan[eé]ment)\b)/i,
+  },
 ];
 
 // Regression fixtures ensure every high-risk branch remains executable. The
@@ -186,6 +272,13 @@ const frozenClaimRegressionSamples = [
   ["unsupported automotive diagnosis or repair tracking", "Ongoing repair tracking"],
   ["unsupported financial quotes or portfolio tracking", "Portfolio tracking"],
   ["services preconfigured across all 18 verticals", "18 verticals with pre-configured services"],
+  ["unsupported autonomous-sales or zero-human promise", "Your business sells on its own with zero human intervention"],
+  ["unsupported instant production-readiness promise", "Ready to operate from day one"],
+  ["unsupported universal vertical adaptation promise", "Parallly adapts to any business"],
+  ["unsupported configure-once autonomy promise", "Configure once and let the AI handle the rest"],
+  ["unverified customer outcome testimonial", "Real LatAm businesses that stopped losing sales"],
+  ["absolute error-free booking promise", "Error-free booking engine"],
+  ["instant human-handoff promise", "Passes the conversation to your team instantly"],
 ];
 for (const [label, sample] of frozenClaimRegressionSamples) {
   const rule = frozenClaimPatterns.find((claim) => claim.label === label);
@@ -322,6 +415,14 @@ for (const locale of locales) {
     statLabels.every((label) => typeof label === "string" && label.trim().length > 0),
     `${locale}: all five code-backed capability labels are required`,
   );
+  assert(
+    Object.values(messages?.solutions?.productModeDescription || {}).length === 4
+      && Object.values(messages.solutions.productModeDescription).every((value) => (
+        typeof value === 'string' && value.trim().length >= 20
+      ))
+      && typeof messages?.solutions?.validationRequired === 'string',
+    `${locale}: honest-mode descriptions are required for every product mode`,
+  );
 }
 
 const spanish = loadJson("es");
@@ -386,6 +487,81 @@ assert(
 assert(capabilityCounts.interfaceLanguages === locales.length, "Capability stat must match es/en/pt/fr locales");
 
 const repoRoot = path.resolve(landingRoot, "..", "..");
+const positiveRegistry = loadTsModule(path.join("src", "data", "marketing-claims.ts"));
+const positiveClaims = Object.values(positiveRegistry.MARKETING_CLAIMS || {});
+const validationDate = process.env.MARKETING_CLAIM_VALIDATION_DATE
+  || new Date().toISOString().slice(0, 10);
+assert(
+  positiveRegistry.MARKETING_CLAIM_REGISTRY_VERSION === 1,
+  "Positive marketing claim registry must publish version 1",
+);
+assert(positiveClaims.length === 5, "All five visible quantitative claims must be registered");
+assert(
+  new Set(positiveClaims.map((claim) => claim.claimId)).size === positiveClaims.length,
+  "Positive marketing claim ids must be unique",
+);
+const capabilityValueByClaim = {
+  "product.verticals.count": capabilityCounts.verticals,
+  "product.channels.adapters.count": capabilityCounts.channels,
+  "product.interface_languages.count": capabilityCounts.interfaceLanguages,
+  "product.knowledge_tiers.count": capabilityCounts.knowledgeTiers,
+  "product.prompt_layers.count": capabilityCounts.promptLayers,
+};
+for (const claim of positiveClaims) {
+  assert(claim.status === "verified", `${claim.claimId}: visible quantitative claim must be verified`);
+  assert(
+    capabilityValueByClaim[claim.claimId] === claim.value,
+    `${claim.claimId}: registry value must drive the rendered capability count`,
+  );
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(claim.verifiedAt || ""), `${claim.claimId}: verifiedAt is required`);
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(claim.expiresAt || ""), `${claim.claimId}: expiresAt is required`);
+  assert(claim.expiresAt >= validationDate, `${claim.claimId}: evidence expired on ${claim.expiresAt}`);
+  const expectedPlanScope = claim.claimId === "product.channels.adapters.count"
+    ? "plan_dependent_catalog"
+    : "all";
+  assert(
+    claim.scope?.plans === expectedPlanScope && claim.scope?.regions === "global",
+    `${claim.claimId}: scope must be ${expectedPlanScope}/global`,
+  );
+  assert(claim.owner === "product-engineering", `${claim.claimId}: evidence owner is required`);
+  assert(Array.isArray(claim.evidence) && claim.evidence.length > 0, `${claim.claimId}: evidence is required`);
+  for (const evidence of claim.evidence || []) {
+    assert(
+      typeof evidence.id === "string"
+        && evidence.id.length > 0
+        && fs.existsSync(path.join(repoRoot, evidence.repositoryPath || "")),
+      `${claim.claimId}: missing repository evidence ${evidence.repositoryPath || "<empty>"}`,
+    );
+  }
+  const [, localeKey] = String(claim.localeKey || "").split(".");
+  for (const locale of claim.locales || []) {
+    const localeMessages = loadJson(locale);
+    const copy = localeMessages?.socialProof?.[localeKey];
+    assert(typeof copy === "string" && copy.trim().length > 0, `${claim.claimId}: missing ${locale} copy`);
+    for (const localePath of claim.localePaths || []) {
+      const occurrence = getPath(localeMessages, localePath);
+      assert(
+        typeof occurrence === 'string' && occurrence.includes(String(claim.value)),
+        `${claim.claimId}: ${locale}.${localePath} must be driven by registered value ${claim.value}`,
+      );
+    }
+  }
+}
+const layoutSource = fs.readFileSync(path.join(landingRoot, "src", "app", "layout.tsx"), "utf8");
+const seoSource = fs.readFileSync(path.join(landingRoot, "src", "lib", "seo.ts"), "utf8");
+assert(
+  layoutSource.includes("PRODUCT_CAPABILITY_COUNTS.verticals")
+    && layoutSource.includes("PRODUCT_CAPABILITY_COUNTS.channels"),
+  "Structured page metadata must derive product counts from the positive registry source",
+);
+assert(
+  !/aggregateRating|ratingValue|ratingCount/.test(seoSource),
+  "Aggregate ratings must remain unpublished until testimonial/rating evidence is registered",
+);
+assert(
+  !/AggregateOffer|priceCurrency|lowPrice|highPrice|offerCount|"@type": "Offer"/.test(seoSource),
+  "Structured data must not publish static prices while billing plans are loaded from a mutable authoritative source",
+);
 const channelModuleSource = fs.readFileSync(
   path.join(repoRoot, "apps", "api", "src", "modules", "channels", "channels.module.ts"),
   "utf8",
@@ -452,6 +628,11 @@ assert(
     && statsSource.includes("PRODUCT_CAPABILITY_COUNTS.promptLayers"),
   "StatsCounter must render only code-backed product capability counts",
 );
+assert(
+  statsSource.includes("MARKETING_CLAIMS")
+    && statsSource.includes("data-claim-id={s.claimId}"),
+  "Every StatsCounter quantitative claim must render its positive registry id",
+);
 
 const trustSource = fs.readFileSync(
   path.join(landingRoot, "src", "components", "sections", "TrustRow.tsx"),
@@ -517,7 +698,11 @@ for (const [index, slug] of marketedPlanOrder.entries()) {
 }
 
 const english = loadJson("en");
-assert(/\b18\b/.test(english?.verticals?.subtitle || ""), "en: verticals.subtitle must advertise 18 industries");
+assert(
+  /\b18\b/.test(english?.verticals?.subtitle || "")
+    && /\bvertical configurations\b/i.test(english?.verticals?.subtitle || ""),
+  "en: verticals.subtitle must describe the 18 registered vertical configurations",
+);
 assert(/\b18\b/.test(english?.howItWorks?.step2Desc || ""), "en: howItWorks.step2Desc must advertise 18 templates");
 
 if (failures.length) {

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://parallly-chat.cloud/schemas/vertical-release-evidence-v1.json",
+  "title": "Parallly vertical release attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version", "attestationSource", "approved", "approvedBy", "approvalId",
+    "commitSha", "issuedAt", "expiresAt", "certifiedVerticals", "artifacts"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "attestationSource": { "const": "github_environment_protected" },
+    "approved": { "const": true },
+    "approvedBy": { "type": "string", "minLength": 3, "maxLength": 200 },
+    "approvalId": { "type": "string", "minLength": 8, "maxLength": 200 },
+    "commitSha": { "type": "string", "pattern": "^[a-fA-F0-9]{40}$" },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "certifiedVerticals": {
+      "type": "array",
+      "uniqueItems": true,
+      "minItems": 18,
+      "maxItems": 18,
+      "items": {
+        "enum": [
+          "salud", "moda_belleza", "inmobiliaria", "restaurantes", "automotriz",
+          "turismo", "education", "finanzas", "servicios_profesionales", "retail",
+          "technology", "veterinaria", "gimnasios", "seguros", "servicios_hogar",
+          "pet_services", "fotografia", "otro"
+        ]
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": { "$ref": "#/$defs/artifact" }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "runId", "url", "sha256", "outcome", "commitSha", "verifiedAt"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "postgres_bootstrap", "redis_bullmq", "real_model_eval", "channel_sandbox",
+            "provider_sandbox", "performance", "chaos", "rollback", "canary"
+          ]
+        },
+        "runId": { "type": "string", "pattern": "^[0-9]+$" },
+        "url": { "type": "string", "pattern": "^https://github\\.com/.+/actions/runs/[0-9]+" },
+        "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+        "outcome": { "const": "passed" },
+        "commitSha": { "type": "string", "pattern": "^[a-fA-F0-9]{40}$" },
+        "verifiedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

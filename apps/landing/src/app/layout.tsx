@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import LangProvider from "@/components/LangProvider";
+import { PRODUCT_CAPABILITY_COUNTS } from "@/data/product-capabilities";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -13,11 +14,11 @@ const jakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   metadataBase: new URL("https://parallly-chat.cloud"),
   title: {
-    default: "Parallly — IA conversacional para vender, atender y agendar 24/7",
+    default: "Parallly — Conversaciones, CRM y agenda con asistencia de IA",
     template: "%s | Parallly",
   },
   description:
-    "Conecta WhatsApp, Instagram y Messenger. Tu agente IA responde, agenda citas, califica leads y vende sin que muevas un dedo. Adaptado a 18 industrias. Hecho en LatinoAmérica.",
+    `Conecta WhatsApp, Instagram y Messenger. Incluye ${PRODUCT_CAPABILITY_COUNTS.verticals} configuraciones verticales con su modo de producto visible. Hecho en LatinoAmérica.`,
   keywords: [
     "WhatsApp automation",
     "automatización WhatsApp",
@@ -39,7 +40,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Parallly — IA conversacional para tu negocio",
     description:
-      "Agente IA, agenda y CRM integrado para 18 industrias y 6 adaptadores de mensajería. Hecho en LatAm.",
+      `Catálogo de ${PRODUCT_CAPABILITY_COUNTS.verticals} configuraciones verticales y hasta ${PRODUCT_CAPABILITY_COUNTS.channels} adaptadores de mensajería según el plan. Hecho en LatAm.`,
     type: "website",
     locale: "es_CO",
     siteName: "Parallly",
@@ -57,7 +58,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Parallly — IA conversacional para tu negocio",
     description:
-      "Conecta WhatsApp + Instagram + Messenger. IA que vende y agenda 24/7. Adaptado a tu industria.",
+      "Conecta WhatsApp, Instagram y Messenger con CRM, agenda y configuraciones verticales verificables.",
     images: ["/og/default.svg"],
   },
   robots: {

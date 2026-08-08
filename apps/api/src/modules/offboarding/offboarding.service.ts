@@ -1385,6 +1385,7 @@ export class OffboardingService {
 
             let releaseQueueFence: (() => Promise<void>) | null = null;
             let publicCommitted = false;
+            let queueFenceReleaseError: any = null;
             let publicRowsDeleted: Record<string, number>;
             let mediaResult: { removed: number; tenantDir: string; archiveDir?: string };
             try {
@@ -1472,11 +1473,15 @@ export class OffboardingService {
                     try {
                         await releaseQueueFence();
                     } catch (error: any) {
-                        if (!publicCommitted) throw error;
-                        this.logger.error(`[Purge ${tenantId}] Post-commit queue release failed: ${error.message}`);
+                        if (!publicCommitted) {
+                            queueFenceReleaseError = error;
+                        } else {
+                            this.logger.error(`[Purge ${tenantId}] Post-commit queue release failed: ${error.message}`);
+                        }
                     }
                 }
             }
+            if (queueFenceReleaseError !== null) throw queueFenceReleaseError;
 
             // The identity row is already committed away here, so no further
             // ownership assertion may turn a completed purge into a false

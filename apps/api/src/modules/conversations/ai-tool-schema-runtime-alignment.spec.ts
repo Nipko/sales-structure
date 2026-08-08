@@ -45,6 +45,12 @@ describe('AI tool schema and runtime alignment', () => {
             {} as any,
             {} as any,
             {} as any,
+            {
+                preflight: jest.fn().mockResolvedValue({ allowed: true, policy: { externalEffect: 'none' } }),
+                complete: jest.fn(),
+                fail: jest.fn(),
+            } as any,
+            {} as any,
         );
         return { executor, prisma, eventEmitter };
     }

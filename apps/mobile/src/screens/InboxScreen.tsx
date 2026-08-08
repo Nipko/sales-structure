@@ -176,6 +176,10 @@ export function InboxScreen() {
             // agentId scopes the 'mine' filter server-side — without it that filter
             // has nothing to match and always comes back empty.
             const res: any = await api.getInbox(tenantId, filter === 'all' ? undefined : filter, { limit: PAGE_SIZE, offset: 0, agentId: user?.id });
+            // Lanzar en fallo: devolver [] hacía que CUALQUIER error (sesión
+            // caída, sin red, 500) se viera como "No hay conversaciones" — el
+            // agente creía tener la bandeja limpia con la API caída.
+            if (res?.success === false) throw new Error(res?.error || 'load_failed');
             const list: Conv[] = Array.isArray(res?.data) ? res.data : (res?.data?.conversations || []);
             return { items: list, hasMore: !!res?.hasMore };
         },

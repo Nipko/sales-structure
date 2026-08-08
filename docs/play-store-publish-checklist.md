@@ -1,70 +1,143 @@
-# Play Store — Checklist de publicación (Parallly Mobile)
+# Play Store — Estado y checklist de publicación (Parallly Mobile)
 
-> Resultado del audit de cumplimiento (jun 2026). Lo legal/técnico está **listo**;
-> lo que falta es contenido a llenar en Play Console + decisiones tuyas.
+> **Estado al 8-ago-2026.** Cuenta de desarrollador **Organización con D-U-N-S ✅ configurada**
+> → exenta del test cerrado de 12 testers × 14 días. Falta crear la app en Play Console,
+> subir el primer AAB y llenar las declaraciones.
+> Todo lo marcado ✅ está **verificado contra el código o la URL real**, no de memoria.
 
-## ✅ Ya cumplido (no requiere acción)
+---
 
-| Requisito | Estado |
-|-----------|--------|
-| Política de privacidad | ✅ `parallly-chat.cloud/privacy` (1085 líneas, 4 idiomas, cubre datos/Meta/retención/cifrado/derechos) |
-| Términos | ✅ `parallly-chat.cloud/terms` |
-| Eliminación de cuenta/datos (requisito Google) | ✅ `parallly-chat.cloud/data-deletion` (formulario GDPR/LGPD/CCPA/Ley 1581) |
-| Permisos depurados en el AAB | ✅ plugin `withCleanPermissions` quita SYSTEM_ALERT_WINDOW + WRITE_EXTERNAL_STORAGE |
-| TLS / sin cleartext | ✅ `network_security_config` |
-| Target API level (34+) | ✅ Expo SDK 54 (API 35/36) |
-| Formato AAB + signing | ✅ `eas.json` profile `production` (AAB) + EAS upload key + Play App Signing |
+## 🚦 Resumen: qué falta para publicar
 
-## 📋 A llenar en Play Console (contenido)
+| # | Bloqueante | Quién | Estado |
+|---|---|---|---|
+| 1 | **Generar el AAB con EAS** y verificar sus permisos | Comando abajo | ⏳ nunca se ha generado |
+| 2 | **Tenant + agente DEMO** con datos de ejemplo (App access) | Tú (en la web) | ⏳ pendiente |
+| 3 | **Capturas de pantalla** del tenant demo (mín. 2) | Regenerar con el demo | ◐ hay borradores |
+| 4 | Declaración **Data safety** | Play Console | ⏳ tabla lista abajo |
+| 5 | Cuestionario **Content rating** (IARC) | Play Console | ⏳ respuestas abajo |
+| 6 | **Target audience** + resto de "App content" | Play Console | ⏳ |
+| 7 | Ficha de tienda (textos + gráficos) | Textos y gráficos listos | ◐ solo pegar |
 
-### 1. App access (⚠️ CRÍTICO — la causa #1 de rechazo)
-La app exige login → el revisor de Google NO puede entrar sin credenciales.
-- App content → **App access** → "Some functionality restricted"
-- Crea un **tenant demo + usuario agente** con datos de ejemplo (1-2 conversaciones)
-- Provee: email, contraseña, e instrucciones (ej. "Login con estas credenciales; verás la bandeja de conversaciones").
-- ⚠️ Si el agente demo tiene 2FA, **desactívalo** para esa cuenta o el revisor se traba.
+---
 
-### 1.b Qué ve quien instala SIN cuenta (implementado ago 2026)
+## ✅ Verificado hoy (no requiere acción)
 
-La app es la **consola del agente**, no el alta: crear la empresa exige el wizard
-web (rubro, canales, agente), así que el móvil nunca crea cuentas. El recorrido:
+| Requisito | Evidencia |
+|-----------|-----------|
+| Política de privacidad | `parallly-chat.cloud/privacy` → **HTTP 200** (4 idiomas) |
+| Términos | `parallly-chat.cloud/terms` → **HTTP 200** |
+| Eliminación de cuenta y datos (exigido por Google) | `parallly-chat.cloud/data-deletion` → **HTTP 200** |
+| Alta de cuenta accesible | `admin.parallly-chat.cloud/signup` → **HTTP 200** |
+| Target API level | `targetSdkVersion 36` (Android 16) — supera el mínimo 35 |
+| Package name | `cloud.parallly.mobile` · versionCode `1` · versionName `1.0.0` |
+| TLS / sin tráfico en claro | plugin `withAndroidNetworkSecurity` |
+| Ícono adaptativo y splash | `assets/` 1024×1024 y 1242×2436 |
+| Secretos de build en EAS | `GOOGLE_SERVICES_JSON`, `SENTRY_ORG/PROJECT/AUTH_TOKEN` (verificado con `eas secret:list`) |
+| Recorrido de quien instala **sin cuenta** | Implementado — ver §5 |
+| Gráficos de la ficha | **Generados hoy** en `apps/mobile/store-assets/` (ícono 512×512 y destacado 1024×500) |
 
-| Situación | Qué ve | Salida |
-|---|---|---|
-| Primer arranque tras instalar | **Pantalla de bienvenida**: qué es Parallly (3 bullets) + "Ya tengo cuenta" + "Crear cuenta en la web" (abre `/signup` en el navegador). Se muestra una sola vez por dispositivo | Login o navegador |
-| Login | Enlace permanente "¿No tenés cuenta? Creála en la web" | Navegador → `/signup` |
-| Entra con Google sin tener cuenta | El backend **rechaza** (`no_account`) en vez de crear un usuario huérfano; mensaje: "No hay ninguna cuenta con ese correo…" | Se queda en login |
-| Cuenta válida pero sin empresa (abandonó el wizard) | **Pantalla "Falta terminar la configuración"** con botón a `/onboarding` y cerrar sesión | Navegador o logout |
+---
 
-> Antes de esto, tocar "Continuar con Google" sin cuenta creaba un usuario **sin
-> tenant** que entraba a una consola permanentemente vacía y sin salida — exactamente
-> el escenario que un revisor de Google reporta como app rota / funcionalidad mínima.
+## 1. Generar el AAB y verificar permisos ⚠️
 
-⚠️ **Política de pagos**: la app NO vende ni menciona precios; el alta y el pago
-ocurren en la web. Mantenerlo así evita Google Play Billing (la suscripción es a un
-servicio SaaS usado fuera de la app, pero cualquier CTA de compra dentro del APK
-cambiaría esa lectura).
+Nunca se ha construido el AAB de producción, así que la afirmación "permisos depurados"
+**no estaba verificada**. Hoy se comprobó el APK local: trae `SYSTEM_ALERT_WINDOW`,
+`WRITE_EXTERNAL_STORAGE` y `READ_EXTERNAL_STORAGE` sin tope.
 
-### 2. Data safety (declarar exactamente esto)
+**No es un problema del AAB**: los builds locales con `gradlew` NO ejecutan los config
+plugins de Expo; EAS sí (corre `prebuild`, y `android/` no está en git). El plugin
+`withCleanPermissions` elimina los dos primeros y —**mejorado hoy**— acota
+`READ_EXTERNAL_STORAGE` a `maxSdkVersion="32"`, que es lo que evita que Play lo lea como
+*acceso amplio a fotos y vídeos* (esa política exige justificación aparte).
+
+```bash
+cd apps/mobile && npx eas-cli build --platform android --profile production
+```
+
+**Verificación obligatoria del AAB descargado** (debe imprimir solo `CAMERA`,
+`POST_NOTIFICATIONS`, `INTERNET`, `VIBRATE`, `USE_BIOMETRIC`… y `READ_EXTERNAL_STORAGE`
+**con maxSdkVersion 32**):
+
+```bash
+aapt2 dump xmltree --file AndroidManifest.xml app-release.aab | grep -A2 permission
+```
+
+Si `SYSTEM_ALERT_WINDOW` aparece en el AAB → **no subir**, el plugin no se aplicó.
+
+## 2. App access — la causa #1 de rechazo
+
+La app exige login: sin credenciales el revisor no ve nada y rechaza.
+
+- App content → **App access** → "Some functionality restricted".
+- Crear un **tenant demo + usuario agente** con 2-3 conversaciones de ejemplo.
+- Entregar email, contraseña e instrucciones: *"Inicia sesión con estas credenciales; verás la bandeja de conversaciones. Las pestañas CRM, Reserva y Más no requieren pasos extra."*
+- ⚠️ **Desactiva el 2FA** de esa cuenta o el revisor se traba en el código.
+- ⚠️ La cuenta demo **debe seguir viva** después de publicar (Google revalida en cada actualización).
+
+## 3. Capturas de pantalla
+
+Requisito: mínimo 2, máximo 8, lado entre 320 y 3840 px, ratio máx. 2:1.
+Las del teléfono (1080×2340) cumplen.
+
+Hay borradores en `apps/mobile/store-assets/` tomados del dispositivo real.
+
+> 🔒 **No subir capturas con datos de clientes reales** (nombres, teléfonos, mensajes):
+> es PII de terceros y contraviene la política de datos sensibles. **Regenerarlas
+> logueado en el tenant DEMO.**
+
+Sugeridas: Inbox · Conversación con copiloto de IA · CRM/lead · Reserva/agenda.
+
+Para capturar con el teléfono conectado por ADB:
+```bash
+adb exec-out screencap -p > screen-1-inbox.png
+```
+
+## 4. Data safety (declarar exactamente esto)
+
 | Categoría | ¿Se recopila? | Propósito | ¿Compartida? | Cifrada en tránsito | Eliminable |
 |-----------|:---:|---|:---:|:---:|:---:|
 | Nombre, email (cuenta de agente) | Sí | Gestión de cuenta / funcionalidad | No | Sí | Sí |
 | Mensajes (in-app) | Sí | Funcionalidad de mensajería | No | Sí | Sí |
-| Fotos/videos | Sí | El agente adjunta media | No | Sí | Sí |
+| Fotos y vídeos | Sí | El agente adjunta media | No | Sí | Sí |
 | Archivos de audio (notas de voz) | Sí | Mensajería | No | Sí | Sí |
 | ID de dispositivo / push token | Sí | Notificaciones | No (Expo/FCM como proveedor) | Sí | Sí |
 | Crash logs + diagnósticos | Sí | Estabilidad (Sentry) | No | Sí | N/A |
 | Ubicación / Datos financieros | **No** | — | — | — | — |
+
 - Método de eliminación: **URL** → `https://parallly-chat.cloud/data-deletion`
+- Cámara: se usa para adjuntar fotos y escanear tarjetas de visita → declarar como Fotos/Vídeos.
 
-### 3. Content rating (cuestionario IARC)
-- App de **comunicación / negocios**. Permite que usuarios se comuniquen → responde "Sí" a comunicación de usuarios.
-- Sin violencia/sexo/apuestas/drogas. Probable resultado: **Teen / PEGI 3-12** (por mensajería UGC).
+## 5. Qué ve quien instala SIN cuenta (implementado ago-2026)
 
-### 4. Target audience
-- Dirigida a **adultos / profesionales** (herramienta de trabajo). NO dirigida a niños.
+La app es la **consola del agente**, no el alta: crear la empresa exige el wizard web
+(rubro, canales, agente). El móvil **nunca** crea cuentas ni menciona precios.
 
-### 5. Ficha de tienda (textos sugeridos)
+| Situación | Qué ve | Salida |
+|---|---|---|
+| Primer arranque tras instalar | **Bienvenida**: qué es Parallly (3 puntos) + "Ya tengo cuenta" + "Crear cuenta en la web" (abre `/signup`). Una sola vez por dispositivo | Login o navegador |
+| En el login | Enlace permanente "¿No tenés cuenta? Creála en la web" | Navegador |
+| Entra con Google sin tener cuenta | El backend **rechaza** (`no_account`) en vez de crear un usuario huérfano | Se queda en login |
+| Cuenta válida sin empresa (abandonó el wizard) | Pantalla **"Falta terminar la configuración"** + botón a `/onboarding` | Navegador o logout |
+
+> Antes de esto, "Continuar con Google" sin cuenta creaba un usuario **sin tenant** que
+> entraba a una consola vacía y sin salida: el escenario clásico de rechazo por
+> *funcionalidad mínima / app rota*.
+
+⚠️ **Google Play Billing**: mientras el alta y el pago ocurran fuera del APK y la app no
+muestre precios ni CTAs de compra, la suscripción se considera un servicio SaaS externo.
+Cualquier botón de compra dentro de la app cambiaría esa lectura y obligaría a usar
+Play Billing (15-30 % de comisión).
+
+## 6. Content rating (IARC) y Target audience
+
+- App de **comunicación / negocios**. Permite comunicación entre usuarios → responder **Sí**.
+- Sin violencia, sexo, apuestas ni drogas. Resultado probable: **Teen / PEGI 3-12** por UGC.
+- Target audience: **adultos / profesionales** (herramienta de trabajo). **No** dirigida a niños.
+- Ads: **No** contiene anuncios.
+
+## 7. Ficha de tienda
+
 **Nombre:** Parallly
 **Descripción corta (≤80):**
 > Consola de agentes: responde WhatsApp, Instagram y más, con IA en el bolsillo.
@@ -81,25 +154,31 @@ cambiaría esa lectura).
 >
 > Diseñada para equipos de ventas y atención en Latinoamérica. Requiere una cuenta de Parallly.
 
-**Gráficos requeridos:** ícono 512×512 PNG · gráfico destacado 1024×500 · ≥2 capturas de teléfono (inbox, chat, CRM).
+**Gráficos** (generados, en `apps/mobile/store-assets/`):
+- `play-icon-512.png` — 512×512, el tamaño exacto que exige Play
+- `play-feature-graphic-1024x500.png` — gráfico destacado
+- Capturas: regenerar con el tenant demo (ver §3)
 
-> ⚠️ No uses logos de WhatsApp/Meta de forma que implique respaldo oficial; describe la integración como "compatible con WhatsApp Business API".
+> ⚠️ No usar logos de WhatsApp/Meta de forma que impliquen respaldo oficial; describir la
+> integración como "compatible con WhatsApp Business API".
 
-## 🔢 Decisión pendiente: tipo de cuenta
-- **Organización (recomendado para SaaS):** exenta del test de 12 testers; necesita **D-U-N-S** (gratis, ~1-2 semanas — tramítalo ya).
-- **Personal:** rápida de abrir pero exige **12 testers × 14 días** en closed testing antes de producción.
+## 8. Flujo de build y envío
 
-## 🚀 Flujo de build/submit
 ```bash
 cd apps/mobile
-# (1 sola vez) secret FCM para el build en la nube:
-npx eas-cli secret:create --scope project --type file --name GOOGLE_SERVICES_JSON --value ./google-services.json
-# Build AAB:
-npx eas-cli build --platform android --profile production
-# Subir: 1ª vez manual en Play Console (Internal testing) para validar; luego:
+npx eas-cli build --platform android --profile production   # genera el AAB
+```
+Primera vez: subir el AAB **a mano** en Play Console (Internal testing) para validar.
+Después, los envíos pueden automatizarse:
+```bash
 npx eas-cli submit --platform android --profile production
 ```
 
-## Verificación post-build (recomendada)
-Al generar el primer AAB, confirmar que NO incluye SYSTEM_ALERT_WINDOW:
-`unzip -p app.aab base/manifest/AndroidManifest.xml | grep -i SYSTEM_ALERT` → debe estar vacío.
+## 9. Notas de despliegue
+
+- **Sesiones (ago-2026):** al pasar a sesiones por dispositivo, los tokens emitidos antes
+  del cambio no llevan el marcador de plataforma y se tratan como web (TTL 6 min). Quien
+  ya tenía la app abierta debe **iniciar sesión una vez**; a partir de ahí su sesión
+  móvil dura 14 días y convive con el dashboard.
+- Los builds locales (`gradlew assembleRelease`) sirven para probar en dispositivo, pero
+  **no** representan el manifest final: no ejecutan los config plugins de Expo.

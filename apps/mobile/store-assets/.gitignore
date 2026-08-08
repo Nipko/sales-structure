@@ -1,0 +1,5 @@
+# Capturas tomadas del dispositivo real: pueden contener nombres, teléfonos y
+# mensajes de clientes (PII de terceros). Nunca al repositorio — y para la ficha
+# de Play Store hay que regenerarlas con el TENANT DEMO.
+screen-*.png
+diag-*.png

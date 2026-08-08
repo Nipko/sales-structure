@@ -225,8 +225,10 @@ export class AppointmentsController {
             calendarBusy = await this.calendarService.getFreeBusy(user.schemaName, userId, timeMin, timeMax);
         }
 
+        // maxConcurrent del servicio: sin pasarlo, el default 1 mostraba menos
+        // cupos que la página pública de reservas y que el booking del chat.
         const slots = await this.service.getBookableSlots(
-            user.schemaName, date, svc.durationMinutes, svc.bufferMinutes, userId, calendarBusy,
+            user.schemaName, date, svc.durationMinutes, svc.bufferMinutes, userId, calendarBusy, svc.maxConcurrent,
         );
         return { success: true, data: { service: svc, slots } };
     }

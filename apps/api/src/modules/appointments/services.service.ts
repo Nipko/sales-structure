@@ -40,7 +40,10 @@ export class ServicesService {
         sql += ` ORDER BY sort_order ASC, name ASC`;
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName, sql, []);
-        return (rows || []).map(this.mapRow);
+        // Arrow por consistencia con appointments.service: mapRow hoy no usa
+        // `this`, pero pasarlo sin bind es el patrón exacto que produjo el 500
+        // del listado de citas.
+        return (rows || []).map((r) => this.mapRow(r));
     }
 
     async getById(schemaName: string, serviceId: string): Promise<BookableService> {
@@ -102,7 +105,10 @@ export class ServicesService {
         if (data.maxConcurrent !== undefined) { sets.push(`max_concurrent = $${idx++}`); params.push(data.maxConcurrent); }
         if (data.requiredFields !== undefined) { sets.push(`required_fields = $${idx++}::jsonb`); params.push(JSON.stringify(data.requiredFields)); }
         if (data.durationType !== undefined) { sets.push(`duration_type = $${idx++}`); params.push(data.durationType); }
-        if (data.durationMinutesMax !== undefined) { sets.push(`duration_minutes_max = ${idx++}`); params.push(data.durationMinutesMax || null); }
+        // `$` obligatorio: sin él se interpolaba el ÍNDICE del parámetro como
+        // literal SQL y duration_minutes_max quedaba en 2 o 3 (el índice) en vez
+        // del valor real — corrompía las duraciones flexibles del booking engine.
+        if (data.durationMinutesMax !== undefined) { sets.push(`duration_minutes_max = $${idx++}`); params.push(data.durationMinutesMax || null); }
         // 0 o vacio = "no aplica" y se guarda NULL, no 0: un 0 haria que el
         // evaluador temporal reclame la re-reserva el mismo dia de la cita.
         if (data.rebookAfterDays !== undefined) { sets.push(`rebook_after_days = $${idx++}`); params.push(Number(data.rebookAfterDays) > 0 ? Number(data.rebookAfterDays) : null); }

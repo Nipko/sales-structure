@@ -33,6 +33,12 @@ class LoginDto {
 
     @IsOptional()
     deviceFingerprint?: string;
+
+    // 'mobile' → sesión propia (session:{userId}:mobile, TTL 14d) que coexiste
+    // con la del dashboard; ausente/otro valor = 'web' (compat total).
+    @IsOptional()
+    @IsString()
+    clientType?: 'web' | 'mobile';
 }
 
 class RegisterDto {
@@ -112,7 +118,8 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login with email and password' })
     async login(@Body() dto: LoginDto) {
-        const result = await this.authService.login(dto.email, dto.password, dto.rememberMe, dto.force, dto.deviceTrustToken, dto.deviceFingerprint);
+        const clientType = dto.clientType === 'mobile' ? 'mobile' as const : undefined;
+        const result = await this.authService.login(dto.email, dto.password, dto.rememberMe, dto.force, dto.deviceTrustToken, dto.deviceFingerprint, clientType);
         return { success: true, data: result };
     }
 
@@ -206,11 +213,12 @@ export class AuthController {
     @Post('google')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login or register with Google OAuth' })
-    async googleLogin(@Body() body: { idToken: string; rememberMe?: boolean; force?: boolean; deviceTrustToken?: string; deviceFingerprint?: string }) {
+    async googleLogin(@Body() body: { idToken: string; rememberMe?: boolean; force?: boolean; deviceTrustToken?: string; deviceFingerprint?: string; clientType?: string }) {
         if (!body.idToken) {
             throw new BadRequestException('idToken is required');
         }
-        const result = await this.authService.googleLogin(body.idToken, body.rememberMe, body.force, body.deviceTrustToken, body.deviceFingerprint);
+        const clientType = body.clientType === 'mobile' ? 'mobile' as const : undefined;
+        const result = await this.authService.googleLogin(body.idToken, body.rememberMe, body.force, body.deviceTrustToken, body.deviceFingerprint, clientType);
         return { success: true, data: result };
     }
 
@@ -689,12 +697,14 @@ export class AuthController {
         twoFAToken: string; code: string; method: 'totp' | 'email' | 'backup' | 'sms';
         rememberMe?: boolean; trustDevice?: boolean;
         deviceInfo?: { userAgent?: string; screenWidth?: number; screenHeight?: number; timezone?: string; language?: string };
+        clientType?: string;
     }, @Request() req: any) {
         const deviceInfo = body.trustDevice ? {
             ...body.deviceInfo,
             ip: req.headers?.['x-forwarded-for']?.split(',')[0]?.trim() || req.ip,
         } : undefined;
-        const result = await this.authService.verify2FA(body.twoFAToken, body.code, body.method, body.rememberMe, body.trustDevice, deviceInfo);
+        const clientType = body.clientType === 'mobile' ? 'mobile' as const : undefined;
+        const result = await this.authService.verify2FA(body.twoFAToken, body.code, body.method, body.rememberMe, body.trustDevice, deviceInfo, clientType);
         return { success: true, data: result };
     }
 

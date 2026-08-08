@@ -39,6 +39,7 @@ interface SessionData {
     tenantId?: string;
     loginAt: number;
     lastActivity: number;
+    clientType?: 'web' | 'mobile';
 }
 
 // Refresh token TTLs (seconds)
@@ -46,6 +47,14 @@ const REFRESH_TTL_DEFAULT = 8 * 60 * 60;       // 8 hours (one work shift)
 const REFRESH_TTL_REMEMBER = 14 * 24 * 60 * 60; // 14 days
 
 const SESSION_TTL = 360; // 6 min — refreshed by activity ping (frontend sends every 5 min)
+// La app móvil NO tiene activity-ping (y no debe: el teléfono pasa horas en el
+// bolsillo). Su sesión vive lo que su refresh window de rememberMe: el refresh
+// token rotativo de un solo uso es la autoridad real. Con el TTL web de 6 min,
+// cada background >6 min terminaba en "please log in again".
+const SESSION_TTL_MOBILE = REFRESH_TTL_REMEMBER; // 14 días
+
+/** 'web' (default, compat con todo lo existente) | 'mobile' (app RN). */
+type ClientType = 'web' | 'mobile';
 const TWO_FA_TOKEN_TTL = 300; // 5 min — temporary token for 2FA verification
 const EXCHANGE_CODE_TTL = 60; // 60s — one-time code for OAuth redirect token exchange
 const BACKUP_CODE_COUNT = 10;
@@ -80,9 +89,12 @@ export class AuthService {
      */
     private async generateTokens(
         payload: JwtPayload,
-        options: { rememberMe?: boolean; sid?: string } = {},
+        options: { rememberMe?: boolean; sid?: string; clientType?: ClientType } = {},
     ): Promise<{ accessToken: string; refreshToken: string }> {
-        const tokenPayload = options.sid ? { ...payload, sid: options.sid } : payload;
+        // El claim `client` viaja en access y refresh: validateUser/refreshToken
+        // resuelven con él la clave de sesión correcta (web vs mobile).
+        const base: any = options.clientType === 'mobile' ? { ...payload, client: 'mobile' } : { ...payload };
+        const tokenPayload = options.sid ? { ...base, sid: options.sid } : base;
 
         const accessToken = this.jwtService.sign(tokenPayload, {
             secret: this.configService.get<string>('auth.jwtSecret'),
@@ -106,6 +118,7 @@ export class AuthService {
         await this.redis.setJson(redisKey, {
             userId: payload.sub,
             rememberMe: !!options.rememberMe,
+            clientType: options.clientType || 'web',
             createdAt: Date.now(),
         }, refreshTtl);
 
@@ -137,10 +150,11 @@ export class AuthService {
     }
 
     /**
-     * Revoke ALL refresh tokens for a user (e.g., on password change).
-     * Scans Redis for all refresh:{userId}:* keys and deletes them.
+     * Revoke refresh tokens for a user. Sin clientType (p. ej. cambio de
+     * contraseña) revoca TODO; con clientType revoca solo los tokens de esa
+     * plataforma — un force-login web no debe matar la sesión del teléfono.
      */
-    async revokeAllUserSessions(userId: string): Promise<void> {
+    async revokeAllUserSessions(userId: string, clientType?: ClientType): Promise<void> {
         const client = this.redis.getClient();
         const pattern = `refresh:${userId}:*`;
         let cursor = '0';
@@ -148,50 +162,81 @@ export class AuthService {
             const [nextCursor, keys] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
             cursor = nextCursor;
             if (keys.length > 0) {
-                await client.del(...keys);
+                if (!clientType) {
+                    await client.del(...keys);
+                } else {
+                    for (const key of keys) {
+                        const meta = await this.redis.getJson<{ clientType?: string }>(key);
+                        // Tokens legacy sin clientType = web (compat).
+                        const tokenClient = meta?.clientType || 'web';
+                        if (tokenClient === clientType) await client.del(key);
+                    }
+                }
             }
         } while (cursor !== '0');
     }
 
     // ── Session management ─────────────────────────────────────
+    //
+    // Sesiones POR TIPO DE CLIENTE: `session:{userId}` (web, clave histórica
+    // intacta) y `session:{userId}:mobile` conviven. Antes había UNA sesión por
+    // usuario: abrir el dashboard mataba la sesión del teléfono y viceversa —
+    // el dueño alternando entre ambos vivía deslogueado.
 
-    private async createSession(userId: string, tenantId?: string): Promise<string> {
+    private sessionKey(userId: string, clientType?: ClientType): string {
+        return clientType === 'mobile' ? `session:${userId}:mobile` : `session:${userId}`;
+    }
+
+    private sessionTtl(clientType?: ClientType): number {
+        return clientType === 'mobile' ? SESSION_TTL_MOBILE : SESSION_TTL;
+    }
+
+    private async createSession(userId: string, tenantId?: string, clientType?: ClientType): Promise<string> {
         const sid = crypto.randomUUID();
         const session: SessionData = {
             sid,
             tenantId: tenantId || undefined,
             loginAt: Date.now(),
             lastActivity: Date.now(),
+            clientType: clientType || 'web',
         };
-        await this.redis.setJson(`session:${userId}`, session, SESSION_TTL);
+        await this.redis.setJson(this.sessionKey(userId, clientType), session, this.sessionTtl(clientType));
         if (tenantId) {
             await this.redis.sadd(`tenant_sessions:${tenantId}`, userId);
         }
         return sid;
     }
 
-    private async destroySession(userId: string): Promise<void> {
-        const session = await this.redis.getJson<SessionData>(`session:${userId}`);
-        await this.redis.del(`session:${userId}`);
+    private async destroySession(userId: string, clientType?: ClientType): Promise<void> {
+        const session = await this.redis.getJson<SessionData>(this.sessionKey(userId, clientType));
+        await this.redis.del(this.sessionKey(userId, clientType));
+        // El asiento (tenant_sessions) es por USUARIO: solo se libera cuando no
+        // queda ninguna sesión del usuario en el otro tipo de cliente.
         if (session?.tenantId) {
-            await this.redis.srem(`tenant_sessions:${session.tenantId}`, userId);
+            const other = await this.redis.get(this.sessionKey(userId, clientType === 'mobile' ? 'web' : 'mobile'));
+            if (!other) await this.redis.srem(`tenant_sessions:${session.tenantId}`, userId);
         }
     }
 
     private async cleanStaleTenantSessions(tenantId: string): Promise<void> {
         const members = await this.redis.smembers(`tenant_sessions:${tenantId}`);
         for (const userId of members) {
-            const exists = await this.redis.get(`session:${userId}`);
-            if (!exists) {
+            const [web, mobile] = await Promise.all([
+                this.redis.get(this.sessionKey(userId, 'web')),
+                this.redis.get(this.sessionKey(userId, 'mobile')),
+            ]);
+            if (!web && !mobile) {
                 await this.redis.srem(`tenant_sessions:${tenantId}`, userId);
             }
         }
     }
 
-    private async enforceSessionPolicy(user: { id: string; role: string; tenantId: string | null }, force: boolean): Promise<void> {
+    private async enforceSessionPolicy(user: { id: string; role: string; tenantId: string | null }, force: boolean, clientType?: ClientType): Promise<void> {
         if (user.role === 'super_admin') return;
 
-        const existing = await this.redis.getJson<SessionData>(`session:${user.id}`);
+        // El conflicto es SOLO contra una sesión del MISMO tipo de cliente:
+        // un login móvil nunca pisa (ni pregunta por) la sesión del dashboard.
+        const existing = await this.redis.getJson<SessionData>(this.sessionKey(user.id, clientType));
         if (existing && !force) {
             throw new ConflictException({
                 error: 'session_conflict',
@@ -204,8 +249,11 @@ export class AuthService {
             await this.cleanStaleTenantSessions(user.tenantId);
             const currentCount = await this.redis.scard(`tenant_sessions:${user.tenantId}`);
             const seatsLimit = await this.throttleService.getPlanLimit(user.tenantId, 'seats');
-            const isReplacingOwnSession = !!existing;
-            if (!isReplacingOwnSession && currentCount >= seatsLimit) {
+            // El asiento es por usuario: si ya ocupa uno (misma u otra plataforma),
+            // este login no consume un asiento nuevo.
+            const otherClient = await this.redis.get(this.sessionKey(user.id, clientType === 'mobile' ? 'web' : 'mobile'));
+            const occupiesSeat = !!existing || !!otherClient;
+            if (!occupiesSeat && currentCount >= seatsLimit) {
                 throw new ForbiddenException({
                     error: 'tenant_session_limit',
                     message: `Tu empresa ha alcanzado el límite de sesiones concurrentes (${Number.isFinite(seatsLimit) ? seatsLimit : '∞'})`,
@@ -216,15 +264,16 @@ export class AuthService {
         }
 
         if (force && existing) {
-            await this.revokeAllUserSessions(user.id);
-            await this.destroySession(user.id);
+            await this.revokeAllUserSessions(user.id, clientType);
+            await this.destroySession(user.id, clientType);
         }
     }
 
-    async activityPing(userId: string): Promise<boolean> {
-        const exists = await this.redis.get(`session:${userId}`);
+    async activityPing(userId: string, clientType?: ClientType): Promise<boolean> {
+        const key = this.sessionKey(userId, clientType);
+        const exists = await this.redis.get(key);
         if (!exists) return false;
-        await this.redis.expire(`session:${userId}`, SESSION_TTL);
+        await this.redis.expire(key, this.sessionTtl(clientType));
         return true;
     }
 
@@ -383,7 +432,7 @@ export class AuthService {
         };
     }
 
-    async login(email: string, password: string, rememberMe = false, force = false, deviceTrustToken?: string, deviceFingerprint?: string) {
+    async login(email: string, password: string, rememberMe = false, force = false, deviceTrustToken?: string, deviceFingerprint?: string, clientType?: ClientType) {
         const user = await this.prisma.user.findUnique({
             where: { email },
             include: { tenant: true },
@@ -403,7 +452,7 @@ export class AuthService {
         }
 
         // Enforce single-session + tenant session limits
-        await this.enforceSessionPolicy(user, force);
+        await this.enforceSessionPolicy(user, force, clientType);
 
         // 2FA check — skip if device is trusted
         if (user.twoFactorEnabled) {
@@ -439,7 +488,7 @@ export class AuthService {
         });
 
         // Create session and generate tokens
-        const sid = await this.createSession(user.id, user.tenantId || undefined);
+        const sid = await this.createSession(user.id, user.tenantId || undefined, clientType);
 
         const payload: JwtPayload = {
             sub: user.id,
@@ -448,7 +497,7 @@ export class AuthService {
             tenantId: user.tenantId || undefined,
         };
 
-        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid });
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid, clientType });
 
         const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
 
@@ -492,11 +541,27 @@ export class AuthService {
             throw new UnauthorizedException('Impersonation tokens cannot be refreshed');
         }
 
-        // Verify active session if the token had one
+        const clientType: ClientType = decoded.client === 'mobile' ? 'mobile' : 'web';
+        const sessionKey = this.sessionKey(userId, clientType);
+
+        // Verify active session if the token had one.
+        // SOLO PARA MÓVIL: sesión AUSENTE (TTL vencido) ≠ sid distinto (takeover).
+        // El refresh token rotativo de un solo uso es la credencial real: si sigue
+        // siendo válido, la sesión móvil se RECREA con su mismo sid en vez de
+        // expulsar — antes un teléfono quieto >6 min moría acá con 401.
+        // En WEB la semántica de producción se conserva intacta: sesión muerta
+        // por TTL = 401 y re-login (es el backstop de inactividad del navegador).
+        let sessionRecreated = false;
         if (tokenSid) {
-            const session = await this.redis.getJson<SessionData>(`session:${userId}`);
-            if (!session || session.sid !== tokenSid) {
+            const session = await this.redis.getJson<SessionData>(sessionKey);
+            if (session && session.sid !== tokenSid) {
                 throw new UnauthorizedException('Session expired — please log in again');
+            }
+            if (!session) {
+                if (!tokenId || clientType !== 'mobile') {
+                    throw new UnauthorizedException('Session expired — please log in again');
+                }
+                sessionRecreated = true; // se materializa tras validar el refresh en Redis
             }
         }
 
@@ -509,8 +574,8 @@ export class AuthService {
                 sub: user.id, email: user.email,
                 role: user.role as UserRole, tenantId: user.tenantId || undefined,
             };
-            const session = await this.redis.getJson<SessionData>(`session:${userId}`);
-            const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload, { sid: session?.sid });
+            const session = await this.redis.getJson<SessionData>(sessionKey);
+            const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload, { sid: session?.sid, clientType });
             return { accessToken, refreshToken: newRefresh };
         }
 
@@ -519,8 +584,10 @@ export class AuthService {
         const stored = await this.redis.getJson<{ rememberMe?: boolean }>(redisKey);
 
         if (!stored) {
-            await this.revokeAllUserSessions(userId);
-            await this.destroySession(userId);
+            // Blast radius acotado a ESTA plataforma: un refresh viejo de la web
+            // (pestaña zombie tras un force-login) no debe tumbar el teléfono.
+            await this.revokeAllUserSessions(userId, clientType);
+            await this.destroySession(userId, clientType);
             throw new UnauthorizedException('Token reuse detected — all sessions revoked');
         }
 
@@ -531,7 +598,34 @@ export class AuthService {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user || !user.isActive) throw new UnauthorizedException('Invalid token');
 
-        const session = await this.redis.getJson<SessionData>(`session:${userId}`);
+        if (sessionRecreated && tokenSid) {
+            // Refresh válido + sesión vencida por TTL → nueva sesión con el MISMO
+            // sid (los access tokens en vuelo siguen siendo coherentes).
+            // El asiento se re-ocupa respetando el cupo del plan: si el tenant
+            // está al tope (y este usuario ya no figura), toca re-login normal.
+            if (user.tenantId) {
+                const already = await this.redis.getClient().sismember(`tenant_sessions:${user.tenantId}`, userId);
+                if (!already) {
+                    await this.cleanStaleTenantSessions(user.tenantId);
+                    const count = await this.redis.scard(`tenant_sessions:${user.tenantId}`);
+                    const seatsLimit = await this.throttleService.getPlanLimit(user.tenantId, 'seats');
+                    if (count >= seatsLimit) {
+                        throw new UnauthorizedException('Session expired — please log in again');
+                    }
+                }
+            }
+            const session: SessionData = {
+                sid: tokenSid,
+                tenantId: user.tenantId || undefined,
+                loginAt: Date.now(),
+                lastActivity: Date.now(),
+                clientType,
+            };
+            await this.redis.setJson(sessionKey, session, this.sessionTtl(clientType));
+            if (user.tenantId) await this.redis.sadd(`tenant_sessions:${user.tenantId}`, userId);
+        }
+
+        const session = await this.redis.getJson<SessionData>(sessionKey);
         const payload: JwtPayload = {
             sub: user.id, email: user.email,
             role: user.role as UserRole, tenantId: user.tenantId || undefined,
@@ -539,6 +633,7 @@ export class AuthService {
         const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload, {
             rememberMe: stored.rememberMe,
             sid: session?.sid,
+            clientType,
         });
 
         return { accessToken, refreshToken: newRefresh };
@@ -555,7 +650,9 @@ export class AuthService {
             if (decoded.tid) {
                 await this.revokeRefreshToken(decoded.sub, decoded.tid);
             }
-            await this.destroySession(decoded.sub);
+            // Solo la sesión de ESTA plataforma: cerrar sesión en el teléfono no
+            // debe tumbar el dashboard abierto (ni al revés).
+            await this.destroySession(decoded.sub, decoded.client === 'mobile' ? 'mobile' : 'web');
         } catch {
             // Token already expired or invalid — nothing to revoke
         }
@@ -580,7 +677,9 @@ export class AuthService {
         });
 
         await this.revokeAllUserSessions(userId);
+        // Ambas plataformas: la sesión móvil (14d) también debe morir con la clave.
         await this.destroySession(userId);
+        await this.destroySession(userId, 'mobile');
 
         return { message: 'Password reset successfully' };
     }
@@ -607,8 +706,11 @@ export class AuthService {
 
         // Session validation: verify the JWT's session ID matches the active session.
         // Skip for super_admin and legacy tokens without sid (backward compat).
+        // El claim `client` decide contra QUÉ sesión se valida (web vs mobile).
         if (user.role !== 'super_admin' && payload.sid) {
-            const session = await this.redis.getJson<SessionData>(`session:${user.id}`);
+            const clientType: ClientType = (payload as any).client === 'mobile' ? 'mobile' : 'web';
+            const key = this.sessionKey(user.id, clientType);
+            const session = await this.redis.getJson<SessionData>(key);
             if (!session || session.sid !== payload.sid) {
                 throw new UnauthorizedException('session_expired');
             }
@@ -616,7 +718,7 @@ export class AuthService {
             // renewed the 6-min session was the frontend ping, which is disabled on
             // the registration screens — so somebody demonstrably filling in the
             // onboarding form could have their session expire underneath them.
-            await this.redis.expire(`session:${user.id}`, SESSION_TTL);
+            await this.redis.expire(key, this.sessionTtl(clientType));
         }
 
         return {
@@ -641,7 +743,7 @@ export class AuthService {
 
     // ── Google OAuth ──────────────────────────────────────────────
 
-    async googleLogin(idToken: string, rememberMe = false, force = false, deviceTrustToken?: string, deviceFingerprint?: string) {
+    async googleLogin(idToken: string, rememberMe = false, force = false, deviceTrustToken?: string, deviceFingerprint?: string, clientType?: ClientType) {
         const googleUser = await this.googleAuthService.verifyIdToken(idToken);
 
         // Find existing user by email or googleId
@@ -693,7 +795,7 @@ export class AuthService {
 
         // Enforce session policy (skip for brand-new users)
         if (!isNewUser) {
-            await this.enforceSessionPolicy(user, force);
+            await this.enforceSessionPolicy(user, force, clientType);
         }
 
         // 2FA check (skip for new users or if device is trusted)
@@ -721,7 +823,7 @@ export class AuthService {
             data: { lastLoginAt: new Date() },
         });
 
-        const sid = await this.createSession(user.id, user.tenantId || undefined);
+        const sid = await this.createSession(user.id, user.tenantId || undefined, clientType);
 
         const payload: JwtPayload = {
             sub: user.id,
@@ -730,7 +832,7 @@ export class AuthService {
             tenantId: user.tenantId || undefined,
         };
 
-        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid });
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid, clientType });
 
         const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
 
@@ -1014,7 +1116,9 @@ export class AuthService {
         });
 
         await this.revokeAllUserSessions(user.id);
+        // Ambas plataformas: la sesión móvil (14d) también debe morir con la clave.
         await this.destroySession(user.id);
+        await this.destroySession(user.id, 'mobile');
 
         this.emailService.send({
             to: user.email,
@@ -1208,6 +1312,7 @@ export class AuthService {
     async verify2FA(
         twoFAToken: string, code: string, method: 'totp' | 'email' | 'backup' | 'sms', rememberMe = false,
         trustDevice = false, deviceInfo?: { userAgent?: string; screenWidth?: number; screenHeight?: number; timezone?: string; language?: string; ip?: string },
+        clientType?: ClientType,
     ) {
         const userId = this.verify2FAToken(twoFAToken);
 
@@ -1266,14 +1371,14 @@ export class AuthService {
         }
 
         await this.redis.del(attemptKey);
-        const sid = await this.createSession(user.id, user.tenantId || undefined);
+        const sid = await this.createSession(user.id, user.tenantId || undefined, clientType);
         const payload: JwtPayload = {
             sub: user.id,
             email: user.email,
             role: user.role as UserRole,
             tenantId: user.tenantId || undefined,
         };
-        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid });
+        const { accessToken, refreshToken } = await this.generateTokens(payload, { rememberMe, sid, clientType });
 
         const effectiveOnboarding = user.role === 'super_admin' || !!user.tenantId || user.onboardingCompleted;
 
@@ -1497,6 +1602,7 @@ export class AuthService {
         // Revoke all sessions + trusted devices — user must re-login with new password
         await this.revokeAllUserSessions(userId);
         await this.destroySession(userId);
+        await this.destroySession(userId, 'mobile');
         await this.revokeAllTrustedDevices(userId);
 
         this.emailService.send({

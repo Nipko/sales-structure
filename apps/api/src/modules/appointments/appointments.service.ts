@@ -10,6 +10,7 @@ export interface Appointment {
     conversationId: string | null;
     assignedTo: string | null;
     assignedName?: string;
+    serviceId?: string | null;
     serviceName: string;
     startAt: string;
     endAt: string;
@@ -188,7 +189,10 @@ export class AppointmentsService {
         sql += ` ORDER BY a.start_at ASC`;
 
         const rows = await this.prisma.executeInTenantSchema(schemaName, sql, params);
-        return (rows as any[]).map(this.mapRow);
+        // Arrow obligatoria: pasar this.mapRow sin bind pierde `this` y
+        // toNaiveIso explota con TypeError → el listado devolvía 500 para
+        // TODO tenant con al menos una cita.
+        return (rows as any[]).map((r) => this.mapRow(r));
     }
 
     async getById(schemaName: string, appointmentId: string): Promise<Appointment> {
@@ -478,7 +482,7 @@ export class AppointmentsService {
              ORDER BY a.start_at ASC`,
             [groupId],
         );
-        return (rows as any[]).map(this.mapRow);
+        return (rows as any[]).map((r) => this.mapRow(r));
     }
 
     // ── Availability ──────────────────────────────────────────
@@ -688,6 +692,9 @@ export class AppointmentsService {
             conversationId: row.conversation_id,
             assignedTo: row.assigned_to,
             assignedName: row.assigned_name,
+            // serviceId: sin él, el cliente móvil no puede pedir slots para
+            // reagendar y depende de un match frágil por nombre de servicio.
+            serviceId: row.service_id || null,
             serviceName: row.service_name,
             startAt: this.toNaiveIso(row.start_at),
             endAt: this.toNaiveIso(row.end_at),
@@ -755,8 +762,11 @@ export class AppointmentsService {
             const windowStart = startH * 60 + startM;
             const windowEnd = endH * 60 + endM;
 
-            // Generate slots every 30 min (or duration if shorter)
-            const step = Math.min(30, durationMinutes);
+            // Generate slots every 30 min (or duration if shorter).
+            // Piso de 5: un servicio de duración ABIERTA llega con
+            // durationMinutes=0 → step 0 congelaba el for de abajo para siempre
+            // (event loop bloqueado, resultados sin cota, contenedor a OOM).
+            const step = Math.max(5, Math.min(30, durationMinutes || 30));
             for (let m = windowStart; m + totalMinutes <= windowEnd; m += step) {
                 const slotStart = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
                 const slotEndM = m + durationMinutes;

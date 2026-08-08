@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import * as Sentry from '@sentry/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { RootNavigator, navigationRef } from './src/navigation/RootNavigator';
+import { BootSplashGate, WelcomeBackFlash } from './src/components/BootSplash';
 import { ToastProvider } from './src/components/Toast';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { I18nProvider } from './src/i18n';
@@ -86,16 +87,25 @@ const linking: LinkingOptions<any> = {
 /** Full-screen biometric lock shown after the app was backgrounded a while. */
 function LockGate() {
     const { locked, unlock } = useAuth();
+    const anim = useRef(new Animated.Value(0)).current;
+    useEffect(() => {
+        if (locked) {
+            anim.setValue(0);
+            Animated.spring(anim, { toValue: 1, bounciness: 7, useNativeDriver: true }).start();
+        }
+    }, [locked, anim]);
     if (!locked) return null;
     return (
         <View style={styles.lock}>
-            <Ionicons name="lock-closed" size={42} color={theme.accent} />
-            <Text style={styles.lockTitle}>Parallly bloqueado</Text>
-            <Text style={styles.lockSub}>Desbloquea para continuar</Text>
-            <TouchableOpacity style={styles.lockBtn} onPress={unlock}>
-                <Ionicons name="finger-print" size={20} color="#fff" />
-                <Text style={styles.lockBtnText}>Desbloquear</Text>
-            </TouchableOpacity>
+            <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) }], alignItems: 'center', gap: 10 }}>
+                <Ionicons name="lock-closed" size={42} color={theme.accent} />
+                <Text style={styles.lockTitle}>Parallly bloqueado</Text>
+                <Text style={styles.lockSub}>Desbloquea para continuar</Text>
+                <TouchableOpacity style={styles.lockBtn} onPress={unlock}>
+                    <Ionicons name="finger-print" size={20} color="#fff" />
+                    <Text style={styles.lockBtnText}>Desbloquear</Text>
+                </TouchableOpacity>
+            </Animated.View>
         </View>
     );
 }
@@ -111,7 +121,11 @@ function App() {
                             <NavigationContainer theme={navTheme} ref={navigationRef} linking={linking}>
                                 <RootNavigator />
                             </NavigationContainer>
+                            {/* Orden = z-order: el saludo de marca queda debajo del
+                                candado biométrico; el splash de arranque, encima de todo. */}
+                            <WelcomeBackFlash />
                             <LockGate />
+                            <BootSplashGate />
                             <StatusBar style="light" />
                         </ErrorBoundary>
                     </ToastProvider>
@@ -126,7 +140,9 @@ function App() {
 export default Sentry.wrap(App);
 
 const styles = StyleSheet.create({
-    lock: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', gap: 10 },
+    // zIndex 100 > wrap(99) de BootSplash/WelcomeBack: en RN el zIndex le gana
+    // al orden de hermanos, así que sin esto el flash de marca tapaba el candado.
+    lock: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', gap: 10, zIndex: 100 },
     lockTitle: { color: theme.text, fontSize: 20, fontWeight: '700', marginTop: 8 },
     lockSub: { color: theme.textSecondary, fontSize: 14, marginBottom: 20 },
     lockBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.accent, paddingHorizontal: 24, paddingVertical: 13, borderRadius: 12 },

@@ -7,6 +7,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
+import { PressableScale } from '../components/PressableScale';
 import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
 
@@ -17,7 +18,7 @@ interface Appt {
     status?: string;
     service_name?: string; serviceName?: string;
     service_id?: string; serviceId?: string;
-    customer_name?: string; contact_name?: string; customerName?: string;
+    customer_name?: string; contact_name?: string; customerName?: string; contactName?: string;
     location?: string; notes?: string;
     assigned_name?: string; assignedName?: string;
 }
@@ -29,14 +30,18 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 function start(a: Appt): Date | null { const s = a.start_at || a.startAt; return s ? new Date(s) : null; }
-function customer(a: Appt): string { return a.customer_name || a.contact_name || a.customerName || 'Cliente'; }
+function customer(a: Appt): string { return a.customer_name || a.contact_name || a.contactName || a.customerName || 'Cliente'; }
 function service(a: Appt): string { return a.service_name || a.serviceName || 'Cita'; }
 const pad = (n: number) => String(n).padStart(2, '0');
 const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-// Build an ISO timestamp from a YYYY-MM-DD date + "H:MM"/"HH:MM" slot time (zero-pads defensively).
+// Build a NAIVE tenant-local timestamp from a YYYY-MM-DD date + "H:MM" slot.
+// El backend guarda hora-pared local SIN zona (normalizeNaive descarta el
+// offset): el round-trip por Date.toISOString() convertía a UTC y cada cita
+// creada desde el móvil quedaba corrida por el offset del teléfono (Bogotá:
+// 5 horas tarde). Mismo contrato que usa el dashboard.
 function toIsoAt(dateStr: string, hhmm: string): string {
     const [h, m] = String(hhmm || '0:0').split(':');
-    return new Date(`${dateStr}T${pad(Number(h))}:${pad(Number(m || 0))}:00`).toISOString();
+    return `${dateStr}T${pad(Number(h))}:${pad(Number(m || 0))}:00`;
 }
 
 export function AppointmentsScreen() {
@@ -74,7 +79,12 @@ export function AppointmentsScreen() {
             if (!tenantId) return [];
             const today = new Date(); today.setHours(0, 0, 0, 0);
             const horizon = new Date(today.getTime() + 14 * 86400000);
-            const params = `start=${today.toISOString()}&end=${horizon.toISOString()}`;
+            // El endpoint filtra por startDate/endDate — 'start'/'end' se ignoraban
+            // en silencio y la lista venía SIN filtrar (toda la historia del tenant).
+            // Hora-pared local SIN zona (mismo contrato que toIsoAt): toISOString()
+            // mandaba medianoche Bogotá como 05:00Z y el cast naive excluía las
+            // citas de 00:00-05:00 de hoy en todo huso negativo.
+            const params = `startDate=${localDate(today)}T00:00:00&endDate=${localDate(horizon)}T00:00:00`;
             const res: any = await api.getAppointments(tenantId, params);
             // Throw on failure so isError renders the error+retry state — returning []
             // here made a failed request indistinguishable from a clear calendar.
@@ -169,7 +179,12 @@ export function AppointmentsScreen() {
         const endAt = toIsoAt(rDate, slot.endTime || slot.time);
         setRescheduling(true);
         try {
-            const r: any = await api.updateAppointment(tenantId, selected.id, { startAt, endAt });
+            // El slot elegido puede pertenecer a la agenda de OTRO agente: sin
+            // reasignar, el asignado original quedaba doble-reservado.
+            const r: any = await api.updateAppointment(tenantId, selected.id, {
+                startAt, endAt,
+                ...(slot.agentId ? { assignedTo: slot.agentId } : {}),
+            });
             if (!r?.success) throw new Error('fail');
             toast.success(t('citas.rescheduled'));
             setSelected(null);
@@ -204,7 +219,7 @@ export function AppointmentsScreen() {
         try {
             const payload: Record<string, any> = { serviceName: svc?.name, serviceId: cServiceId, startAt, endAt };
             if (cSlot.agentId) payload.assignedTo = cSlot.agentId;
-            if (cContact) payload.contactId = cContact.id;
+            if (cContact?.id) payload.contactId = cContact.id;
             if (cNotes.trim()) payload.notes = cNotes.trim();
             const r: any = await api.createAppointment(tenantId, payload);
             if (!r?.success) throw new Error('fail');
@@ -247,7 +262,7 @@ export function AppointmentsScreen() {
                     const time = s ? s.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
                     const day = s ? (isToday ? t('citas.today') : s.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })) : '';
                     return (
-                        <TouchableOpacity style={styles.card} onPress={() => openDetail(item)}
+                        <PressableScale style={styles.card} onPress={() => openDetail(item)}
                             accessibilityRole="button" accessibilityLabel={`${service(item)} · ${customer(item)}`} accessibilityHint={t('citas.tapToManage')}>
                             <View style={styles.timeCol}>
                                 <Text style={[styles.day, isToday && { color: theme.accent }]}>{day}</Text>
@@ -276,7 +291,7 @@ export function AppointmentsScreen() {
                                     <Ionicons name="close-circle-outline" size={26} color={theme.danger} />
                                 </TouchableOpacity>
                             </View>
-                        </TouchableOpacity>
+                        </PressableScale>
                     );
                 }}
             />
@@ -392,8 +407,11 @@ export function AppointmentsScreen() {
                                         <TextInput style={styles.input} placeholder={t('citas.searchContact')} placeholderTextColor={theme.textSecondary} value={cContactSearch} onChangeText={setCContactSearch} />
                                         {cContactResults.map((l) => {
                                             const nm = `${l.first_name || ''} ${l.last_name || ''}`.trim() || l.name || l.phone || 'Lead';
+                                            // Solo contact_id vale para appointments.contact_id (FK a contacts):
+                                            // el id del LEAD o del perfil violaba la FK con un 500. Un lead sin
+                                            // contacto vinculado crea la cita sin contactId (columna nullable).
                                             return (
-                                                <TouchableOpacity key={l.id} style={styles.contactRow} onPress={() => { setCContact({ id: l.contact_id || l.customer_profile_id || l.id, name: nm }); setCContactResults([]); }}>
+                                                <TouchableOpacity key={l.id} style={styles.contactRow} onPress={() => { setCContact({ id: l.contact_id || '', name: nm }); setCContactResults([]); }}>
                                                     <Text style={styles.contactName}>{nm}</Text>
                                                     {!!l.phone && <Text style={styles.contactSub}>{l.phone}</Text>}
                                                 </TouchableOpacity>

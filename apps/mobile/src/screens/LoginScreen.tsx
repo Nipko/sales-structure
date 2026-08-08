@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Image, Linking } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Image, Linking, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +28,18 @@ export function LoginScreen() {
 
     // 2FA challenge state (set when login/google returns requires2FA)
     const [twoFA, setTwoFA] = useState<TwoFAState | null>(null);
+
+    // Entrada de marca: el wordmark "aterriza" desde el splash (translateY+fade)
+    // y el resto entra con un pequeño stagger — continuidad splash → login.
+    const logoAnim = useRef(new Animated.Value(0)).current;
+    const bodyAnim = useRef(new Animated.Value(0)).current;
+    useEffect(() => {
+        Animated.stagger(90, [
+            Animated.timing(logoAnim, { toValue: 1, duration: 450, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+            Animated.timing(bodyAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     const [code, setCode] = useState('');
     const [useBackup, setUseBackup] = useState(false);
     const [verifying, setVerifying] = useState(false);
@@ -120,11 +132,15 @@ export function LoginScreen() {
     return (
         <SafeAreaView style={styles.container}>
             <View style={[styles.inner, { paddingBottom: kbSpace }]}>
-                <Image
+                <Animated.Image
                     source={require('../../assets/logo-wordmark.png')}
-                    style={styles.logo}
+                    style={[styles.logo, {
+                        opacity: logoAnim,
+                        transform: [{ translateY: logoAnim.interpolate({ inputRange: [0, 1], outputRange: [-12, 0] }) }],
+                    }]}
                     resizeMode="contain"
                 />
+                <Animated.View style={{ opacity: bodyAnim, transform: [{ translateY: bodyAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }}>
                 <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
 
                 {!twoFA ? (
@@ -218,6 +234,7 @@ export function LoginScreen() {
                         </TouchableOpacity>
                     </>
                 )}
+                </Animated.View>
             </View>
         </SafeAreaView>
     );

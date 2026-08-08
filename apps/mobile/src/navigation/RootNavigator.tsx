@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, ActivityIndicator, TouchableOpacity, AppState } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -10,6 +10,7 @@ import { registerForPush, registerNotificationCategories, onNotificationTap, get
 import { api } from '../lib/api';
 import { getAgentSocket, connectRealtime } from '../lib/socket';
 import { subscribeUnread, getUnreadTotal } from '../lib/unread';
+import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
 import { InboxScreen } from '../screens/InboxScreen';
@@ -106,12 +107,19 @@ function MainTabs() {
     // Unread badge on the Inbox tab (QW5) — fed by the unread store from InboxScreen.
     const [unread, setUnread] = useState(getUnreadTotal());
     useEffect(() => subscribeUnread(setUnread), []);
+    // Un tap háptico cuando SUBEN los no-leídos: feedback físico de "entró algo".
+    const prevUnread = useRef(unread);
+    useEffect(() => {
+        if (unread > prevUnread.current) haptic.tap();
+        prevUnread.current = unread;
+    }, [unread]);
     const inboxBadge = unread > 0 ? (unread > 99 ? '99+' : unread) : undefined;
 
     return (
         <Tabs.Navigator
             screenOptions={({ route }) => ({
                 headerShown: false,
+                animation: 'shift',
                 tabBarStyle: { backgroundColor: theme.bgCard, borderTopColor: theme.border },
                 tabBarActiveTintColor: theme.accent,
                 tabBarInactiveTintColor: theme.textSecondary,
@@ -210,15 +218,13 @@ export function RootNavigator() {
     }, [user]);
 
     if (loading) {
-        return (
-            <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                <ActivityIndicator color={theme.accent} size="large" />
-            </View>
-        );
+        // Solo el fondo: el BootSplashGate (App.tsx) cubre este estado con la
+        // animación de marca — un spinner debajo sería ruido duplicado.
+        return <View style={{ flex: 1, backgroundColor: theme.bg }} />;
     }
 
     return (
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', animationDuration: 250 }}>
             {user ? (
                 <>
                     <Stack.Screen name="Main" component={MainTabs} />

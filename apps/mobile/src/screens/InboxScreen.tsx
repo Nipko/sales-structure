@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Image, ScrollView, TextInput, Alert, Animated, PanResponder } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, Image, ScrollView, TextInput, Alert, Animated, PanResponder, LayoutAnimation, Platform, UIManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// LayoutAnimation en Android old-arch necesita el flag experimental (no-op en new-arch/iOS).
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+const animateListChange = () => LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
 import { ListSkeleton } from '../components/Skeleton';
+import { PressableScale } from '../components/PressableScale';
 import { haptic } from '../lib/haptics';
 import { setUnreadTotal } from '../lib/unread';
 import { snoozeUntil } from '../lib/snooze';
@@ -167,6 +174,7 @@ export function InboxScreen() {
     // already-loaded older pages — otherwise the list would snap back to 50 items.
     useEffect(() => {
         if (!queryData) return;
+        animateListChange(); // filas nuevas entran deslizando, no de golpe
         setAllItems((prev) => {
             if (page === 0) return queryData.items;
             const freshIds = new Set(queryData.items.map((c) => c.id));
@@ -244,19 +252,20 @@ export function InboxScreen() {
             return;
         }
         const snapshot = allItems;
+        animateListChange(); // la fila resuelta/pospuesta colapsa suave
         setAllItems((prev) => prev.filter((c) => c.id !== item.id)); // optimistic
         if (action === 'resolve') {
             try {
                 await api.resolveConversation(tenantId, item.id, user?.id);
                 toast.success(t('conv.resolved'), { label: t('common.undo'), onPress: () =>
                     api.reopenConversation(tenantId, item.id).then(() => queryClient.invalidateQueries({ queryKey })).catch(() => toast.error(t('common.undoError'))) });
-            } catch { setAllItems(snapshot); toast.error(t('conv.resolveError')); }
+            } catch { animateListChange(); setAllItems(snapshot); toast.error(t('conv.resolveError')); }
         } else {
             try {
                 await api.snoozeConversation(tenantId, item.id, snoozeUntil('tomorrow').toISOString());
                 toast.success(t('conv.snoozed'), { label: t('common.undo'), onPress: () =>
                     api.unsnoozeConversation(tenantId, item.id).then(() => queryClient.invalidateQueries({ queryKey })).catch(() => toast.error(t('common.undoError'))) });
-            } catch { setAllItems(snapshot); toast.error(t('conv.snoozeError')); }
+            } catch { animateListChange(); setAllItems(snapshot); toast.error(t('conv.snoozeError')); }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tenantId, user?.id, allItems, toast, t]);
@@ -378,7 +387,7 @@ export function InboxScreen() {
                         const slaColor = waitMin >= 15 ? theme.danger : waitMin >= 5 ? theme.warning : theme.success;
                         return (
                             <SwipeableRow onResolve={() => doQuick(item, 'resolve')} onSnooze={() => doQuick(item, 'snooze')}>
-                            <TouchableOpacity
+                            <PressableScale
                                 style={styles.row}
                                 accessibilityRole="button"
                                 accessibilityLabel={t('inbox.rowA11y', { name: item.contactName || t('inbox.customer'), channel: channelLabel[ch] || ch })}
@@ -420,7 +429,7 @@ export function InboxScreen() {
                                         )}
                                     </View>
                                 </View>
-                            </TouchableOpacity>
+                            </PressableScale>
                             </SwipeableRow>
                         );
                     }}

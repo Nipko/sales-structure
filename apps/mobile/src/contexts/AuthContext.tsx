@@ -5,7 +5,10 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { api, tokens, setOnAuthFailure, AuthUser } from '../lib/api';
 import { disconnectSocket } from '../lib/socket';
 
-const RELOCK_AFTER_MS = 90_000; // re-prompt biometrics if backgrounded > 90s
+// Re-lock biométrico tras background prolongado. 15 min: a los 90s originales
+// cada cambio de app (responder un WhatsApp personal, mirar el calendario)
+// volvía a exigir huella — se percibía como "me pide loguearme cada rato".
+const RELOCK_AFTER_MS = 15 * 60_000;
 
 // Backend rejects a 2nd concurrent session unless force=true. On a personal phone
 // we always take over our own prior session (e.g. after an unclean exit / crash).
@@ -59,23 +62,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch { /* noop */ }
     }, []);
 
-    // Restore session on launch — optionally gated by biometrics.
+    // Restore session on launch. La sesión se restaura SIEMPRE que haya tokens:
+    // la biometría es un CANDADO (LockGate encima de la app), no la sesión.
+    // Antes, cancelar/fallar el prompt hacía `return` sin restaurar y el agente
+    // caía al FORMULARIO de login con tokens perfectamente válidos — la causa #1
+    // del "me pide loguearme cada rato".
     useEffect(() => {
         (async () => {
             try {
                 const [stored, { access }] = await Promise.all([tokens.getUser(), tokens.get()]);
                 if (stored && access) {
-                    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-                    const enrolled = await LocalAuthentication.isEnrolledAsync();
+                    setUser(stored);
+                    loadVertical(stored.tenantId);
+                    const [hasHardware, enrolled] = await Promise.all([
+                        LocalAuthentication.hasHardwareAsync().catch(() => false),
+                        LocalAuthentication.isEnrolledAsync().catch(() => false),
+                    ]);
                     if (hasHardware && enrolled) {
+                        setLocked(true);
+                        setLoading(false);
+                        // Prompt inmediato; si falla/cancela queda el LockGate con
+                        // "Desbloquear" para reintentar — nunca el login.
                         const result = await LocalAuthentication.authenticateAsync({
                             promptMessage: 'Desbloquea Parallly',
                             fallbackLabel: 'Usar contraseña',
-                        });
-                        if (!result.success) { setLoading(false); return; }
+                        }).catch(() => ({ success: false } as const));
+                        if (result.success) setLocked(false);
+                        return;
                     }
-                    setUser(stored);
-                    loadVertical(stored.tenantId);
                 }
             } catch { /* noop */ }
             setLoading(false);

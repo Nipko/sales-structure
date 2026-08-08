@@ -50,23 +50,37 @@ let refreshing: Promise<string | null> | null = null;
 let authFailureHandler: (() => void) | null = null;
 export function setOnAuthFailure(cb: (() => void) | null) { authFailureHandler = cb; }
 
+// Resultado del último refresh fallido: 'dead' = el SERVIDOR rechazó el token
+// (sesión realmente muerta → volver al login); 'network' = fallo transitorio
+// (sin señal, túnel caído, 5xx) → la sesión sigue siendo válida y NO hay que
+// desloguear: cada request individual falla y las pantallas muestran su error.
+// Antes cualquier fallo (incluido offline) borraba los tokens y expulsaba al
+// agente al login — en redes LatAm eso era "me pide loguearme cada rato".
+let lastRefreshFailure: 'dead' | 'network' | null = null;
+
 async function doRefresh(): Promise<string | null> {
     const { refresh } = await tokens.get();
-    if (!refresh) return null;
+    if (!refresh) { lastRefreshFailure = 'dead'; return null; }
     try {
         const res = await fetch(`${API_URL}/auth/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refreshToken: refresh }),
         });
-        if (!res.ok) return null;
-        const data = await res.json();
+        const data = await res.json().catch(() => null);
         if (data?.success && data.data?.accessToken) {
             await tokens.set(data.data.accessToken, data.data.refreshToken);
+            lastRefreshFailure = null;
             return data.data.accessToken;
         }
+        // Sesión muerta SOLO con un rechazo inequívoco del API (401/400 con
+        // cuerpo JSON). Un 403/429 de Cloudflare (WAF, challenge, rate-limit)
+        // devuelve HTML → data null → transitorio: desloguear ahí recrearía el
+        // "me pide loguearme cada rato".
+        lastRefreshFailure = (res.status === 401 || res.status === 400) && data !== null ? 'dead' : 'network';
         return null;
     } catch {
+        lastRefreshFailure = 'network';
         return null;
     }
 }
@@ -99,9 +113,9 @@ async function authFetch(path: string, options: RequestInit = {}): Promise<Respo
         if (newToken) {
             headers.Authorization = `Bearer ${newToken}`;
             res = await fetch(`${API_URL}${path}`, { ...options, headers });
-        } else {
-            // Refresh failed → the session is dead. Kick to login instead of
-            // leaving the user stuck inside the app with everything failing.
+        } else if (lastRefreshFailure === 'dead') {
+            // Solo cuando el servidor rechazó la sesión de verdad. Un fallo de
+            // red mantiene la sesión: el request falla y se reintenta después.
             authFailureHandler?.();
         }
     }
@@ -122,7 +136,7 @@ async function authFetchForm(path: string, form: FormData): Promise<Response> {
         if (newToken) {
             headers.Authorization = `Bearer ${newToken}`;
             res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: form as any });
-        } else {
+        } else if (lastRefreshFailure === 'dead') {
             authFailureHandler?.();
         }
     }
@@ -154,11 +168,14 @@ async function json<T = any>(path: string, options?: RequestInit): Promise<{ suc
 export const api = {
     // rememberMe=true → long-lived session (mobile standard). deviceTrustToken (if
     // present) lets the backend skip the 2FA challenge on a previously trusted device.
+    // clientType 'mobile' → el backend abre una sesión PROPIA del teléfono
+    // (TTL 14d, coexiste con la del dashboard): entrar a la web ya no mata la
+    // sesión de la app ni al revés.
     async login(email: string, password: string, deviceTrustToken?: string, force = false) {
         const res = await fetch(`${API_URL}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, rememberMe: true, deviceTrustToken, force }),
+            body: JSON.stringify({ email, password, rememberMe: true, deviceTrustToken, force, clientType: 'mobile' }),
         });
         return res.json();
     },
@@ -167,7 +184,7 @@ export const api = {
         const res = await fetch(`${API_URL}/auth/google`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken, rememberMe: true, deviceTrustToken, force }),
+            body: JSON.stringify({ idToken, rememberMe: true, deviceTrustToken, force, clientType: 'mobile' }),
         });
         return res.json();
     },
@@ -189,7 +206,7 @@ export const api = {
         const res = await fetch(`${API_URL}/auth/2fa/verify`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ twoFAToken, code, method, rememberMe, trustDevice }),
+            body: JSON.stringify({ twoFAToken, code, method, rememberMe, trustDevice, clientType: 'mobile' }),
         });
         return res.json();
     },

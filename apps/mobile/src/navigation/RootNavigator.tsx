@@ -45,21 +45,9 @@ const stackOptions = { headerStyle: { backgroundColor: theme.bgCard }, headerTin
 function InboxStackNavigator() {
     return (
         <InboxStack.Navigator screenOptions={stackOptions}>
-            <InboxStack.Screen name="InboxList" component={InboxScreen}
-                options={({ navigation }) => ({
-                    title: 'Inbox',
-                    headerRight: () => (
-                        <TouchableOpacity
-                            onPress={() => navigation.getParent()?.navigate('Outbound')}
-                            style={{ paddingHorizontal: 8, paddingVertical: 4 }}
-                            accessibilityRole="button"
-                            accessibilityLabel="Nueva conversación"
-                        >
-                            <Ionicons name="create-outline" size={22} color={theme.accent} />
-                        </TouchableOpacity>
-                    ),
-                })}
-            />
+            {/* Sin header nativo: el BrandHeader (Parallly + tenant + redactar)
+                dentro de InboxScreen lo reemplaza, con colapso al hacer scroll. */}
+            <InboxStack.Screen name="InboxList" component={InboxScreen} options={{ headerShown: false }} />
             <InboxStack.Screen name="Conversation" component={ConversationScreen}
                 options={({ route }) => ({ title: route.params?.title || 'Conversación' })} />
         </InboxStack.Navigator>

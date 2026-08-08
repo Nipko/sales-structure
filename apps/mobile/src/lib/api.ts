@@ -293,6 +293,9 @@ export const api = {
     // Vertical config (terminology per industry)
     getVerticalConfig: (tenantId: string) => json(`/verticals/${tenantId}`),
 
+    // Business identity (empresa primaria: nombre, logo_url…) — para el BrandHeader.
+    getBusinessInfo: (tenantId: string) => json(`/business-info/${tenantId}`),
+
     // CRM
     getLeads: (tenantId: string, params?: string) =>
         json(`/crm/leads/${tenantId}${params ? `?${params}` : ''}`),

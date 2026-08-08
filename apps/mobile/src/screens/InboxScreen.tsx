@@ -14,10 +14,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { getInboxSocket, getAgentSocket, onInboxStatus, getInboxStatus, type SocketStatus } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
 import { ListSkeleton } from '../components/Skeleton';
 import { PressableScale } from '../components/PressableScale';
+import { BrandHeader } from '../components/BrandHeader';
 import { haptic } from '../lib/haptics';
 import { setUnreadTotal } from '../lib/unread';
 import { snoozeUntil } from '../lib/snooze';
@@ -127,6 +129,19 @@ export function InboxScreen() {
     const [loadingMore, setLoadingMore] = useState(false);
 
     useEffect(() => onInboxStatus(setLive), []);
+
+    // Patrón FB/IG: la barra de marca se esconde al bajar y reaparece al subir
+    // (o cerca del tope). Histéresis de 6px para que no titile.
+    const [brandHidden, setBrandHidden] = useState(false);
+    const lastScrollY = useRef(0);
+    const onListScroll = useCallback((e: any) => {
+        const y = e.nativeEvent.contentOffset.y;
+        const dy = y - lastScrollY.current;
+        lastScrollY.current = y;
+        if (y < 24) { setBrandHidden(false); return; }
+        if (dy > 6) setBrandHidden(true);
+        else if (dy < -6) setBrandHidden(false);
+    }, []);
 
     // Offline start: seed the list with the last known inbox so a cold start
     // without network shows data instead of skeleton→error. Live data replaces
@@ -302,7 +317,14 @@ export function InboxScreen() {
             : t('inbox.empty');
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
+            {/* Identidad: Parallly + tenant. Reemplaza al header nativo del stack. */}
+            <BrandHeader
+                hidden={brandHidden}
+                actionIcon="create-outline"
+                actionLabel={t('inbox.compose')}
+                onAction={() => (nav as any).getParent()?.navigate('Outbound')}
+            />
             {/* Live connection status */}
             <View style={styles.statusBar}>
                 <View style={[styles.dot, { backgroundColor: live === 'connected' ? theme.success : live === 'connecting' ? theme.warning : theme.danger }]} />
@@ -319,7 +341,7 @@ export function InboxScreen() {
             </View>
 
             {/* Status filters */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={{ paddingHorizontal: 12, gap: 8, alignItems: 'center' }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 6, gap: 8, alignItems: 'center' }}>
                 {FILTERS.map((f) => (
                     <TouchableOpacity key={f.key} onPress={() => pickFilter(f.key)}
                         accessibilityRole="button" accessibilityState={{ selected: filter === f.key }}
@@ -332,7 +354,7 @@ export function InboxScreen() {
 
             {/* Channel + unread sub-filters (QW4) — only when there's more than one channel in play */}
             {(channelsPresent.length > 1 || unreadOnly) && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subFilters} contentContainerStyle={{ paddingHorizontal: 12, gap: 8, alignItems: 'center' }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subFilters} contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 6, gap: 8, alignItems: 'center' }}>
                     <TouchableOpacity onPress={() => { haptic.tap(); setUnreadOnly((v) => !v); }}
                         accessibilityRole="button" accessibilityState={{ selected: unreadOnly }}
                         accessibilityLabel={t('inbox.filter.unread')}
@@ -372,6 +394,8 @@ export function InboxScreen() {
                 <FlatList
                     data={visible}
                     keyExtractor={(c) => c.id}
+                    onScroll={onListScroll}
+                    scrollEventThrottle={32}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => refetch()} tintColor={theme.accent} />}
                     ListEmptyComponent={<View style={styles.center}><Text style={styles.empty}>{emptyText}</Text></View>}
                     onEndReached={() => { if (hasMore && !loadingMore && !search) loadMore(); }}
@@ -435,7 +459,7 @@ export function InboxScreen() {
                     }}
                 />
             )}
-        </View>
+        </SafeAreaView>
     );
 }
 
@@ -449,11 +473,14 @@ const styles = StyleSheet.create({
     retryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
     searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginTop: 10, marginBottom: 4, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1 },
     search: { flex: 1, color: theme.text, fontSize: 15 },
-    filters: { maxHeight: 52 },
+    // Sin maxHeight: con la escala de fuente del sistema los chips crecían más
+    // que la altura fija y las dos filas se dibujaban ENCIMADAS (recortadas).
+    // flexGrow 0 deja que cada fila mida lo que mide su contenido.
+    filters: { flexGrow: 0 },
     filterChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgCard },
     filterChipOn: { backgroundColor: theme.accent, borderColor: theme.accent },
     filterText: { color: theme.textSecondary, fontSize: 13, fontWeight: '600' },
-    subFilters: { maxHeight: 44, marginBottom: 2 },
+    subFilters: { flexGrow: 0, marginBottom: 2 },
     miniChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgCard },
     miniChipOn: { backgroundColor: theme.accent, borderColor: theme.accent },
     miniText: { color: theme.textSecondary, fontSize: 12, fontWeight: '600' },

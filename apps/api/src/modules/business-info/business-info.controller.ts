@@ -18,7 +18,9 @@ export class BusinessInfoController {
 
     @Get(':tenantId')
     @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
-    @Roles('super_admin', 'tenant_admin', 'tenant_agent')
+    // tenant_supervisor incluido: el BrandHeader móvil lee la identidad del
+    // negocio (nombre/logo) para cualquier rol que use la consola.
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async getPrimary(@Param('tenantId') tenantId: string) {
         const info = await this.service.getPrimary(tenantId);
         return { success: true, data: info };

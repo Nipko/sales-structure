@@ -2,6 +2,14 @@
 
 import { useTranslations } from "next-intl";
 import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  EMBEDDED_SIGNUP_FINISH_EVENTS,
+  EmbeddedSignupSessionData,
+  buildEmbeddedSignupLoginOptions,
+  extractEmbeddedSignupSessionData,
+  getEmbeddedSignupErrorDetails,
+  parseEmbeddedSignupEvent,
+} from "./embedded-signup-events";
 
 // ============================================
 // Types
@@ -22,6 +30,20 @@ interface OnboardingResult {
   verifiedName?: string;
 }
 
+interface FacebookLoginResponse {
+  authResponse?: {
+    code?: string;
+    business_id?: string | number;
+    waba_id?: string | number;
+    phone_number_id?: string | number;
+  };
+  status?: string;
+  error?: unknown;
+  error_message?: unknown;
+  error_description?: unknown;
+  message?: unknown;
+}
+
 // ============================================
 // WhatsApp Service API base
 // ============================================
@@ -31,15 +53,13 @@ const META_CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID || "";
 // Solution ID from Meta Business Manager → Partner Center → Solutions
 // Required for Tech Provider Embedded Signup
 const META_SOLUTION_ID = process.env.NEXT_PUBLIC_META_SOLUTION_ID || "";
-// Your Tech Provider Business ID from Meta Business Manager
-const META_BUSINESS_ID = process.env.NEXT_PUBLIC_META_BUSINESS_ID || "";
 
 // ============================================
 // Component
 // ============================================
 export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", onSuccess, onError }: EmbeddedSignupProps) {
-    const tc = useTranslations("common");
-    const t = useTranslations("channels.whatsapp");
+  const tc = useTranslations("common");
+  const t = useTranslations("channels.whatsapp");
   const [sdkLoaded, setSdkLoaded] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -49,31 +69,66 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
   // onSuccess suele desmontar este componente (el padre pasa al estado "conectado").
   // Evita setState tras el unmount en el finally del happy path.
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   // Use a ref to capture session data from window message (available immediately, no React state delay)
-  const sessionDataRef = useRef<{ waba_id?: string; phone_number_id?: string }>({});
+  const sessionDataRef = useRef<EmbeddedSignupSessionData>({});
+  const terminalEventRef = useRef<"cancel" | "error" | null>(null);
+  const onErrorRef = useRef(onError);
+  const tRef = useRef(t);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+    tRef.current = t;
+  }, [onError, t]);
 
   // ---- Listen for Embedded Signup session completion messages ----
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") return;
-      try {
-        const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-        if (data.type === "WA_EMBEDDED_SIGNUP") {
-          if (data.event === "FINISH" || data.event === "FINISH_ONLY_WABA") {
-            // Store in ref (synchronous, available immediately for handleFBResponse)
-            sessionDataRef.current = {
-              waba_id: data.data?.waba_id,
-              phone_number_id: data.data?.phone_number_id,
-            };
-          } else if (data.event === "CANCEL") {
-            // user closed the popup
-          } else if (data.event === "ERROR") {
-            console.error("[EmbeddedSignup] Signup error event:", data.data);
-          }
-        }
-      } catch {
-        // Not JSON or not relevant
+      const embeddedEvent = parseEmbeddedSignupEvent(event.data);
+      if (!embeddedEvent) return;
+
+      if (EMBEDDED_SIGNUP_FINISH_EVENTS.has(embeddedEvent.event)) {
+        // Store synchronously so handleFBResponse can include Meta's customer-owned IDs.
+        sessionDataRef.current = {
+          business_id: embeddedEvent.session.business_id ?? sessionDataRef.current.business_id,
+          waba_id: embeddedEvent.session.waba_id ?? sessionDataRef.current.waba_id,
+          phone_number_id: embeddedEvent.session.phone_number_id ?? sessionDataRef.current.phone_number_id,
+        };
+        return;
+      }
+
+      if (embeddedEvent.event === "CANCEL") {
+        const details = getEmbeddedSignupErrorDetails(embeddedEvent.data);
+        terminalEventRef.current = details ? "error" : "cancel";
+        setLaunching(false);
+        setProcessing(false);
+        setStep("");
+        setPhase("");
+        onErrorRef.current(
+          details
+            ? tRef.current("metaSignupErrorWithDetails", { details })
+            : tRef.current("metaSignupCancelled"),
+        );
+        return;
+      }
+
+      if (embeddedEvent.event === "ERROR") {
+        terminalEventRef.current = "error";
+        setLaunching(false);
+        setProcessing(false);
+        setStep("");
+        setPhase("");
+        const details = getEmbeddedSignupErrorDetails(embeddedEvent.data);
+        console.error("[EmbeddedSignup] Signup error event:", embeddedEvent.data);
+        onErrorRef.current(
+          details
+            ? tRef.current("metaSignupErrorWithDetails", { details })
+            : tRef.current("metaSignupError"),
+        );
       }
     };
     window.addEventListener("message", handleMessage);
@@ -88,15 +143,22 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
       return;
     }
 
+    let active = true;
+
     // Define the callback BEFORE loading the script
     (window as any).fbAsyncInit = function () {
-      (window as any).FB.init({
-        appId: META_APP_ID,
-        autoLogAppEvents: true,
-        xfbml: true,
-        version: "v25.0",
-      });
-      setSdkLoaded(true);
+      try {
+        (window as any).FB.init({
+          appId: META_APP_ID,
+          autoLogAppEvents: true,
+          xfbml: true,
+          version: "v25.0",
+        });
+        if (active) setSdkLoaded(true);
+      } catch (error) {
+        console.error("[EmbeddedSignup] Facebook SDK initialization failed:", error);
+        if (active) onErrorRef.current(tRef.current("facebookSdkLoadError"));
+      }
     };
 
     // Inject SDK script
@@ -105,30 +167,47 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
     script.async = true;
     script.defer = true;
     script.crossOrigin = "anonymous";
+    script.onerror = () => {
+      console.error("[EmbeddedSignup] Facebook SDK script failed to load");
+      if (active) onErrorRef.current(tRef.current("facebookSdkLoadError"));
+    };
     document.body.appendChild(script);
 
     return () => {
-      // Cleanup (optional — SDK persists)
+      active = false;
+      script.onerror = null;
     };
   }, []);
 
   // ---- Handle FB.login() response ----
   const handleFBResponse = useCallback(
-    (response: any) => {
+    (response: FacebookLoginResponse) => {
       const processResponse = async () => {
         if (!response.authResponse?.code) {
-          onError("Authorization code not received from Meta. The user cancelled or an error occurred.");
+          const terminalEventAlreadyReported = terminalEventRef.current !== null;
+          const details = getEmbeddedSignupErrorDetails(response);
+          if (!terminalEventAlreadyReported) {
+            onError(
+              details
+                ? t("metaAuthorizationErrorWithDetails", { details })
+                : t("metaAuthorizationError"),
+            );
+          }
+          terminalEventRef.current = null;
           setLaunching(false);
           return;
         }
 
         const code = response.authResponse.code;
+        terminalEventRef.current = null;
 
         // Extract session info: try authResponse first, then ref from window message (synchronous)
-        const sessionPhoneNumberId = response.authResponse.phone_number_id || sessionDataRef.current.phone_number_id || null;
-        const sessionWabaId = response.authResponse.waba_id || sessionDataRef.current.waba_id || null;
+        const authSession = extractEmbeddedSignupSessionData(response.authResponse);
+        const sessionPhoneNumberId = authSession.phone_number_id || sessionDataRef.current.phone_number_id || null;
+        const sessionWabaId = authSession.waba_id || sessionDataRef.current.waba_id || null;
+        const sessionBusinessId = authSession.business_id || sessionDataRef.current.business_id || null;
 
-        // sessionPhoneNumberId/sessionWabaId may be null — backend does API discovery as fallback
+        // Session IDs may be null — backend does API discovery as fallback.
 
         setLaunching(false);
         setProcessing(true);
@@ -172,6 +251,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
             coexistenceAcknowledged: mode === "coexistence",
             phoneNumberId: sessionPhoneNumberId,
             wabaId: sessionWabaId,
+            businessId: sessionBusinessId,
           };
           const res = await fetch(`${WA_SERVICE_URL}/onboarding/start`, {
             method: "POST",
@@ -187,16 +267,25 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
           if (!res.ok) {
             let errorData: any = {};
             try { errorData = JSON.parse(responseText); } catch {}
-            throw new Error(errorData.userMessage || errorData.message || `Error ${res.status}`);
+            throw new Error(
+              errorData.userMessage
+              || errorData.message
+              || t("onboardingRequestError", { status: res.status }),
+            );
           }
 
-          const result = JSON.parse(responseText);
+          let result: OnboardingResult;
+          try {
+            result = JSON.parse(responseText) as OnboardingResult;
+          } catch {
+            throw new Error(t("invalidOnboardingResponse"));
+          }
           setStep(t("connectionSuccess"));
           setPhase("done");
           onSuccess(result);
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error("[EmbeddedSignup] Error:", err);
-          onError(err.message || tc("errorSaving"));
+          onError(err instanceof Error ? err.message : tc("errorSaving"));
         } finally {
           // En éxito el componente ya se desmontó (onSuccess) → no tocar estado.
           if (mountedRef.current) {
@@ -209,7 +298,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
       
       processResponse();
     },
-    [tenantId, onSuccess, onError],
+    [mode, onError, onSuccess, t, tc, tenantId],
   );
 
   // ---- Handle redirect callback (code in URL query params) ----
@@ -227,30 +316,27 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
   const launchSignup = () => {
     const FB = (window as any).FB;
     if (!FB) {
-      onError("Facebook SDK not loaded");
+      onError(t("facebookSdkNotLoaded"));
+      return;
+    }
+    if (!META_APP_ID || !META_CONFIG_ID) {
+      onError(t("metaConfigurationMissing"));
       return;
     }
 
+    sessionDataRef.current = {};
+    terminalEventRef.current = null;
     setLaunching(true);
 
-    const loginOptions = {
-      config_id: META_CONFIG_ID,
-      response_type: "code",
-      override_default_response_type: true,
-      extras: {
-        setup: {
-          ...(META_SOLUTION_ID ? { solutionID: META_SOLUTION_ID } : {}),
-          ...(META_BUSINESS_ID ? { business_id: META_BUSINESS_ID } : {}),
-        },
-        ...(mode === "coexistence" ? {
-          featureType: "whatsapp_business_app_onboarding",
-          sessionInfoVersion: "3",
-        } : {}),
-        version: "v4",
-      },
-    };
+    const loginOptions = buildEmbeddedSignupLoginOptions(META_CONFIG_ID, META_SOLUTION_ID, mode);
 
-    FB.login(handleFBResponse, loginOptions);
+    try {
+      FB.login(handleFBResponse, loginOptions);
+    } catch (error) {
+      console.error("[EmbeddedSignup] Facebook SDK login failed:", error);
+      setLaunching(false);
+      onError(t("facebookSdkLaunchError"));
+    }
   };
 
   // ---- Render ----

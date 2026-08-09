@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { MetaGraphService, MetaApiError } from '../meta-graph/meta-graph.service';
+import { MetaGraphService, MetaApiError, WabaInfo } from '../meta-graph/meta-graph.service';
 import { AuditService } from '../audit/audit.service';
 import { StartOnboardingDto } from './dto/start-onboarding.dto';
 import { Cron } from '@nestjs/schedule';
@@ -50,7 +50,11 @@ export class OnboardingService {
   async startOnboarding(dto: StartOnboardingDto, user: RequestUser) {
     const tenantId = this.resolveTenantIdForAction(dto.tenantId, user);
     const userId = user.sub;
-    this.logger.log(`[Onboarding] START for tenant=${tenantId}, mode=${dto.mode}, sessionPhoneNumberId=${dto.phoneNumberId || 'none'}, sessionWabaId=${dto.wabaId || 'none'}`);
+    this.logger.log(
+      `[Onboarding] START for tenant=${tenantId}, mode=${dto.mode}, ` +
+      `sessionBusinessId=${dto.businessId || 'none'}, sessionWabaId=${dto.wabaId || 'none'}, ` +
+      `sessionPhoneNumberId=${dto.phoneNumberId || 'none'}`,
+    );
 
     // ---- 1. Validaciones previas ----
     await this.validatePreConditions(tenantId, dto);
@@ -65,6 +69,11 @@ export class OnboardingService {
         isCoexistence: dto.mode === OnboardingMode.COEXISTENCE,
         coexistenceAcknowledged: dto.coexistenceAcknowledged || false,
         startedByUserId: userId,
+        // Persist session identifiers immediately so a retry after token exchange
+        // keeps the Business Portfolio separate from the WABA.
+        metaBusinessId: dto.businessId,
+        wabaId: dto.wabaId,
+        phoneNumberId: dto.phoneNumberId,
         codeReceivedAt: new Date(),
       },
     });
@@ -138,7 +147,7 @@ export class OnboardingService {
     userId: string,
     longLivedToken: string,
     longLivedExpiresIn: number,
-    dto: Pick<StartOnboardingDto, 'phoneNumberId' | 'wabaId' | 'mode'>,
+    dto: Pick<StartOnboardingDto, 'businessId' | 'phoneNumberId' | 'wabaId' | 'mode'>,
   ) {
     try {
       // ---- 5. Debug/validate token ----
@@ -159,21 +168,26 @@ export class OnboardingService {
       await this.updateStatus(onboardingId, OnboardingStatus.ASSET_DISCOVERY_IN_PROGRESS);
 
       let wabaId: string;
-      let waba: any;
+      let waba: WabaInfo;
       let primaryPhone: any;
+      let businessId = dto.businessId;
+      let businessIdSource = businessId ? 'session_info' : 'unresolved';
+      let wabaSource = dto.wabaId ? 'session_info' : 'api_discovery';
       const usedSessionInfo = !!(dto.phoneNumberId && dto.wabaId);
 
       if (dto.wabaId) {
-        // Session info provides WABA ID — use it directly, skip /me/businesses discovery
+        // Session info provides WABA ID — use it directly for WABA discovery.
+        // /me/businesses may still be used later solely to resolve its parent portfolio.
         wabaId = dto.wabaId;
-        this.logger.log(`[Onboarding][${onboardingId}] Step 6: Using session info WABA ID=${wabaId} (skipping /me/businesses discovery)`);
+        this.logger.log(`[Onboarding][${onboardingId}] Step 6: Using session info WABA ID=${wabaId}`);
 
         try {
           waba = await this.metaGraph.getWabaDirectly(wabaId, longLivedToken);
         } catch (wabaError: any) {
           this.logger.warn(`[Onboarding][${onboardingId}] Direct WABA fetch failed, falling back to discovery: ${wabaError.message}`);
-          waba = await this.discoverWabaViaApi(longLivedToken);
+          waba = await this.discoverWabaViaApi(longLivedToken, wabaId);
           wabaId = waba.id;
+          wabaSource = 'api_discovery';
         }
       } else {
         // No session info — try extracting WABA from token scopes first, then /me/businesses
@@ -188,6 +202,7 @@ export class OnboardingService {
 
         if (scopeWabaId) {
           wabaId = scopeWabaId;
+          wabaSource = 'token_scope';
           try {
             waba = await this.metaGraph.getWabaDirectly(wabaId, longLivedToken);
           } catch (e: any) {
@@ -201,7 +216,43 @@ export class OnboardingService {
         }
       }
 
-      this.logger.log(`[Onboarding][${onboardingId}] Resolved WABA: id=${wabaId}, name=${waba.name}, source=${usedSessionInfo ? 'session_info' : 'api_discovery'}`);
+      // /me/businesses is the authoritative correlation between a WABA and its
+      // parent Business Portfolio. Validate session_info when possible so a
+      // stale or manually forged browser payload cannot bind the wrong portfolio.
+      let correlatedBusinessId = waba.businessId;
+      if (!correlatedBusinessId) {
+        try {
+          const discoveredWaba = await this.discoverWabaViaApi(longLivedToken, wabaId);
+          correlatedBusinessId = discoveredWaba.businessId;
+        } catch (businessDiscoveryError: any) {
+          // Session WABA + phone identifiers are sufficient to finish onboarding.
+          // If Meta does not expose /me/businesses, keep the Embedded Signup
+          // event value when present and skip verification only when neither is known.
+          this.logger.warn(
+            `[Onboarding][${onboardingId}] Could not correlate Business Portfolio for WABA ${wabaId} ` +
+            `(non-blocking): ${businessDiscoveryError.message}`,
+          );
+        }
+      }
+
+      if (correlatedBusinessId) {
+        if (businessId && businessId !== correlatedBusinessId) {
+          this.logger.warn(
+            `[Onboarding][${onboardingId}] Session Business ID ${businessId} does not match ` +
+            `portfolio ${correlatedBusinessId} correlated to WABA ${wabaId}; using the correlated portfolio`,
+          );
+        }
+        businessIdSource = businessId === correlatedBusinessId
+          ? 'session_info_validated'
+          : 'api_discovery';
+        businessId = correlatedBusinessId;
+      }
+
+      this.logger.log(
+        `[Onboarding][${onboardingId}] Resolved Meta assets: businessId=${businessId || 'unresolved'}, ` +
+        `wabaId=${wabaId}, wabaName=${waba.name}, businessIdSource=${businessIdSource}, ` +
+        `wabaSource=${wabaSource}`,
+      );
 
       // ---- 7. Get phone details ----
       if (dto.phoneNumberId) {
@@ -250,7 +301,7 @@ export class OnboardingService {
         where: { id: onboardingId },
         data: {
           status: OnboardingStatus.ASSETS_DISCOVERED,
-          metaBusinessId: wabaId,
+          metaBusinessId: businessId || null,
           wabaId,
           phoneNumberId: primaryPhone.id,
           displayPhoneNumber: primaryPhone.displayPhoneNumber,
@@ -259,11 +310,21 @@ export class OnboardingService {
         },
       });
 
-      this.logger.log(`[Onboarding][${onboardingId}] Assets discovered: WABA=${wabaId}, Phone=${primaryPhone.id}, source=${usedSessionInfo ? 'session_info' : 'api_discovery'}`);
+      this.logger.log(
+        `[Onboarding][${onboardingId}] Assets discovered: Business=${businessId || 'unresolved'}, ` +
+        `WABA=${wabaId}, Phone=${primaryPhone.id}, businessSource=${businessIdSource}, wabaSource=${wabaSource}`,
+      );
 
       // ---- 9-10. Persist channel + routing (CRITICAL — if this fails, onboarding must fail) ----
       this.logger.log(`[Onboarding][${onboardingId}] Step 9: Persisting WhatsApp channel in tenant schema`);
-      await this.persistWhatsAppChannel(tenantId, onboardingId, waba, primaryPhone, longLivedToken, dto.mode === OnboardingMode.COEXISTENCE);
+      await this.persistWhatsAppChannel(
+        tenantId,
+        onboardingId,
+        businessId,
+        waba,
+        primaryPhone,
+        dto.mode === OnboardingMode.COEXISTENCE,
+      );
 
       this.logger.log(`[Onboarding][${onboardingId}] Step 10: Registering channel_account for webhook routing`);
       await this.registerChannelAccount(tenantId, primaryPhone);
@@ -318,19 +379,40 @@ export class OnboardingService {
       }
 
       // ---- 13. Check business verification status ----
-      this.logger.log(`[Onboarding][${onboardingId}] Step 13: Checking business verification status for WABA=${wabaId}`);
-      let businessVerified = true;
+      let businessVerified: boolean | null = null;
+      let businessVerificationStatus = 'not_checked';
       let verificationWarning: string | null = null;
-      try {
-        const verificationStatus = await this.metaGraph.getBusinessVerificationStatus(wabaId, finalToken);
-        this.logger.log(`[Onboarding][${onboardingId}] Business verification status: ${JSON.stringify(verificationStatus)}`);
-        if (verificationStatus && verificationStatus !== 'verified') {
-          businessVerified = false;
-          verificationWarning = 'La verificación del negocio en Meta aún no está completa. Algunas funciones pueden estar limitadas hasta que se verifique.';
-          this.logger.warn(`[Onboarding][${onboardingId}] Business NOT verified — will set COMPLETED_WITH_WARNINGS`);
+      if (businessId) {
+        this.logger.log(
+          `[Onboarding][${onboardingId}] Step 13: Checking business verification status ` +
+          `for Business Portfolio=${businessId} (WABA=${wabaId})`,
+        );
+        try {
+          // The freshly exchanged user token owns the customer's authorization.
+          // A generated System User token only has WhatsApp scopes and may not
+          // be allowed to read the parent Business Portfolio.
+          businessVerificationStatus = await this.metaGraph.getBusinessVerificationStatus(
+            businessId,
+            longLivedToken,
+          );
+          businessVerified = businessVerificationStatus === 'verified';
+          this.logger.log(
+            `[Onboarding][${onboardingId}] Business Portfolio ${businessId} verification status: ` +
+            `${businessVerificationStatus}`,
+          );
+          if (!businessVerified) {
+            verificationWarning = 'La verificación del negocio en Meta aún no está completa. Algunas funciones pueden estar limitadas hasta que se verifique.';
+            this.logger.warn(`[Onboarding][${onboardingId}] Business NOT verified — will set COMPLETED_WITH_WARNINGS`);
+          }
+        } catch (verifyError: any) {
+          businessVerificationStatus = 'check_failed';
+          this.logger.warn(`[Onboarding][${onboardingId}] Business verification check failed (non-blocking): ${verifyError.message}`);
         }
-      } catch (verifyError: any) {
-        this.logger.warn(`[Onboarding][${onboardingId}] Business verification check failed (non-blocking): ${verifyError.message}`);
+      } else {
+        this.logger.warn(
+          `[Onboarding][${onboardingId}] Step 13: Skipping business verification because no Business Portfolio ID ` +
+          `was returned for WABA=${wabaId}`,
+        );
       }
 
       // ---- 14. Sync templates en background (no bloquea) ----
@@ -367,13 +449,17 @@ export class OnboardingService {
         entityType: 'whatsapp_onboarding',
         entityId: onboardingId,
         metadata: {
+          businessId: businessId || null,
           wabaId,
           phoneNumberId: primaryPhone.id,
           displayPhoneNumber: primaryPhone.displayPhoneNumber,
           mode: dto.mode,
           finalStatus,
           usedSessionInfo,
+          businessIdSource,
+          wabaSource,
           businessVerified,
+          businessVerificationStatus,
           warnings,
         },
       });
@@ -392,7 +478,7 @@ export class OnboardingService {
   /**
    * Discovers WABA via the /me/businesses API (backwards compat fallback).
    */
-  private async discoverWabaViaApi(accessToken: string): Promise<any> {
+  private async discoverWabaViaApi(accessToken: string, preferredWabaId?: string): Promise<WabaInfo> {
     const wabas = await this.metaGraph.getBusinessAccountsForToken(accessToken);
 
     if (!wabas || wabas.length === 0) {
@@ -402,6 +488,19 @@ export class OnboardingService {
         'No WABAs found via /me/businesses discovery',
         false,
       );
+    }
+
+    if (preferredWabaId) {
+      const preferredWaba = wabas.find(waba => waba.id === preferredWabaId);
+      if (!preferredWaba) {
+        throw new MetaApiError(
+          OnboardingErrorCode.WABA_NOT_FOUND,
+          'No se encontró la cuenta de WhatsApp Business seleccionada en los negocios autorizados.',
+          `WABA ${preferredWabaId} not found via /me/businesses discovery`,
+          false,
+        );
+      }
+      return preferredWaba;
     }
 
     return wabas[0];
@@ -466,13 +565,15 @@ export class OnboardingService {
         errorMessage: true,
         displayPhoneNumber: true,
         verifiedName: true,
+        metaBusinessId: true,
         wabaId: true,
         completedAt: true,
       },
     });
     if (!onboarding) throw new NotFoundException('Onboarding no encontrado');
     this.assertTenantAccess(user, onboarding.tenantId);
-    return onboarding;
+    const { metaBusinessId, ...status } = onboarding;
+    return { ...status, businessId: metaBusinessId };
   }
 
   /**
@@ -548,6 +649,8 @@ export class OnboardingService {
         previousError: onboarding.errorCode,
         hasStoredToken: !!storedLongLivedToken,
         retryStrategy: storedLongLivedToken ? 'resume_from_discovery' : 'needs_new_code',
+        businessId: onboarding.metaBusinessId || null,
+        wabaId: onboarding.wabaId || null,
       },
     });
 
@@ -593,6 +696,7 @@ export class OnboardingService {
       storedLongLivedToken,
       storedExpiresIn,
       {
+        businessId: onboarding.metaBusinessId || undefined,
         phoneNumberId: onboarding.phoneNumberId || undefined,
         wabaId: onboarding.wabaId || undefined,
         mode: onboarding.mode as OnboardingMode,
@@ -634,7 +738,12 @@ export class OnboardingService {
     // Re-sincronizar números
     if (onboarding.wabaId) {
       const phones = await this.metaGraph.getPhoneNumbersForWaba(onboarding.wabaId, accessToken);
-      await this.syncPhoneNumbersToDb(onboarding.tenantId, onboarding.wabaId, phones);
+      await this.syncPhoneNumbersToDb(
+        onboarding.tenantId,
+        onboarding.metaBusinessId || undefined,
+        onboarding.wabaId,
+        phones,
+      );
     }
 
     await this.prisma.whatsappOnboarding.update({
@@ -813,9 +922,9 @@ export class OnboardingService {
   private async persistWhatsAppChannel(
     tenantId: string,
     onboardingId: string,
-    waba: any,
+    businessId: string | undefined,
+    waba: WabaInfo,
     phone: any,
-    accessToken: string,
     isCoexistence: boolean,
   ) {
     const tenant = await this.prisma.tenant.findUnique({
@@ -849,7 +958,7 @@ export class OnboardingService {
         $8, $9::uuid
       )`,
       [
-        waba.id, waba.id, phone.id,
+        businessId || null, waba.id, phone.id,
         phone.displayPhoneNumber, phone.verifiedName, phone.qualityRating || 'GREEN',
         'credential_ref',
         isCoexistence, onboardingId,
@@ -866,7 +975,10 @@ export class OnboardingService {
       throw new Error(`WhatsApp channel INSERT succeeded but row not found — possible schema issue for ${tenant.schemaName}`);
     }
 
-    this.logger.log(`WhatsApp channel persisted in tenant schema: ${tenant.schemaName} (verified)`);
+    this.logger.log(
+      `WhatsApp channel persisted in tenant schema: ${tenant.schemaName} ` +
+      `(businessId=${businessId || 'unresolved'}, wabaId=${waba.id}, verified)`,
+    );
   }
 
   /**
@@ -1073,7 +1185,12 @@ export class OnboardingService {
   /**
    * Persistir números de teléfono sincronizados
    */
-  private async syncPhoneNumbersToDb(tenantId: string, wabaId: string, phones: any[]) {
+  private async syncPhoneNumbersToDb(
+    tenantId: string,
+    businessId: string | undefined,
+    wabaId: string,
+    phones: any[],
+  ) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { schemaName: true },
@@ -1084,14 +1201,26 @@ export class OnboardingService {
     for (const p of phones) {
       await this.prisma.executeInTenantSchema(
         tenant.schemaName,
-        `INSERT INTO whatsapp_channels (
-          provider_type, meta_waba_id, phone_number_id,
+        `WITH updated AS (
+          UPDATE whatsapp_channels
+          SET meta_business_id = $1,
+              meta_waba_id = $2,
+              display_phone_number = $4,
+              display_name = $5,
+              quality_rating = $6,
+              channel_status = 'connected',
+              updated_at = NOW()
+          WHERE phone_number_id = $3
+          RETURNING id
+        )
+        INSERT INTO whatsapp_channels (
+          provider_type, meta_business_id, meta_waba_id, phone_number_id,
           display_phone_number, display_name, quality_rating,
           channel_status, connected_at
-        ) VALUES (
-          'meta_cloud', $1, $2, $3, $4, $5, 'connected', NOW()
-        ) ON CONFLICT DO NOTHING`,
-        [wabaId, p.id, p.displayPhoneNumber, p.verifiedName, p.qualityRating || 'GREEN'],
+        )
+        SELECT 'meta_cloud', $1, $2, $3, $4, $5, $6, 'connected', NOW()
+        WHERE NOT EXISTS (SELECT 1 FROM updated)`,
+        [businessId || null, wabaId, p.id, p.displayPhoneNumber, p.verifiedName, p.qualityRating || 'GREEN'],
       );
     }
   }
@@ -1171,6 +1300,7 @@ export class OnboardingService {
       tenantId: onboarding.tenantId,
       mode: onboarding.mode,
       status: onboarding.status,
+      businessId: onboarding.metaBusinessId,
       wabaId: onboarding.wabaId,
       phoneNumberId: onboarding.phoneNumberId,
       displayPhoneNumber: onboarding.displayPhoneNumber,

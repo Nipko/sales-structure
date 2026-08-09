@@ -11,6 +11,12 @@ import {
 
 type JsonRecord = Record<string, any>;
 
+type PublicProjectablePlan = {
+    id: string;
+    features: unknown;
+    [key: string]: unknown;
+};
+
 const PUBLIC_FEATURE_KEYS = [
     'channels', 'customPrompt', 'customTemplates', 'aiInsights', 'recall', 'llmTier',
     'maxContacts', 'pipelineStages', 'automationRules', 'broadcastCampaigns', 'segments',
@@ -258,10 +264,13 @@ export class BillingPlanCatalogService {
 
     async listPublicPlans(country?: string) {
         const plans = await this.listActivePlans(country);
-        return plans.map(({ id: _id, features, ...plan }) => ({
-            ...plan,
-            features: publicFeatures(features),
-        }));
+        return plans.map((catalogPlan: PublicProjectablePlan) => {
+            const { id: _id, features, ...plan } = catalogPlan;
+            return {
+                ...plan,
+                features: publicFeatures(features),
+            };
+        });
     }
 
     private async resolveLocalPrice(country: keyof typeof BILLING_CURRENCY_BY_COUNTRY): Promise<{ currency: string; rate: number } | null> {

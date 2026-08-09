@@ -14,3 +14,13 @@ export const DASHBOARD_URL: string =
     (Constants.expoConfig?.extra as any)?.dashboardUrl ||
     process.env.EXPO_PUBLIC_DASHBOARD_URL ||
     'https://admin.parallly-chat.cloud';
+
+/** Public website origin — legal resources must not be derived from the admin host. */
+export const PUBLIC_SITE_URL: string = (
+    (Constants.expoConfig?.extra as any)?.publicSiteUrl ||
+    process.env.EXPO_PUBLIC_SITE_URL ||
+    'https://parallly-chat.cloud'
+).replace(/\/+$/, '');
+
+export const PRIVACY_POLICY_URL = `${PUBLIC_SITE_URL}/privacy`;
+export const ACCOUNT_DELETION_URL = `${PUBLIC_SITE_URL}/data-deletion`;

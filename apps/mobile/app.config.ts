@@ -92,6 +92,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     extra: {
         eas: { projectId: '5a6f6dab-dec2-44e0-b00a-58e77c909501' },
         apiUrl: process.env.EXPO_PUBLIC_API_URL || 'https://api.parallly-chat.cloud/api/v1',
+        publicSiteUrl: process.env.EXPO_PUBLIC_SITE_URL || 'https://parallly-chat.cloud',
         // Sentry DSN (client key — safe to embed). Mobile project, separate from the backend.
         sentryDsn:
             process.env.EXPO_PUBLIC_SENTRY_DSN ||

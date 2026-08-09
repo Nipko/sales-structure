@@ -922,23 +922,22 @@ export default function PrivacyEn() {
             13.5 Deletion mechanism
           </h3>
           <p>
-            Any end-user can request the deletion of their data through our{" "}
+            Parallly account holders can request deletion of their account and
+            associated data through our{" "}
             <Link
               href="/data-deletion"
               className="text-accent hover:underline"
             >
-              data deletion request
+              account and data deletion request
             </Link>{" "}
-            page. Additionally, we expose a Meta Data Deletion Callback URL
-            at{" "}
+            page. We also receive signed requests from Meta at{" "}
             <code>
               https://api.parallly-chat.cloud/api/v1/meta/data-deletion-callback
             </code>
-            . This is the URL that the super administrator must paste into
-            App Dashboard &gt; Settings &gt; Advanced &gt; Data Deletion
-            Callback URL. When Meta notifies a deletion event to that URL,
-            we run the corresponding deletion of the data associated with
-            the notified user.
+            . Each request receives a tracking code and enters our compliance
+            process. Before deleting the account and applicable data, we verify
+            the requester's identity and the scope of the request. We retain only
+            information required for legal, security, or fraud-prevention purposes.
           </p>
 
           <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">

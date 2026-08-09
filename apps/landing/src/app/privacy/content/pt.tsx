@@ -952,24 +952,23 @@ export default function PrivacyPt() {
             13.5 Mecanismo de exclusão
           </h3>
           <p>
-            Qualquer usuário final pode solicitar a exclusão de seus dados
-            por meio da nossa página de{" "}
+            Os titulares de uma conta do Parallly podem solicitar a exclusão da
+            conta e dos dados associados por meio da nossa página de{" "}
             <Link
               href="/data-deletion"
               className="text-accent hover:underline"
             >
-              solicitação de exclusão de dados
+              solicitação de exclusão da conta e dos dados
             </Link>
-            . Adicionalmente, expomos um Data Deletion Callback URL para a
-            plataforma da Meta em{" "}
+            . Também recebemos solicitações assinadas da plataforma Meta em{" "}
             <code>
               https://api.parallly-chat.cloud/api/v1/meta/data-deletion-callback
             </code>
-            . Esta é a URL que o super administrador deve colar em App
-            Dashboard &gt; Settings &gt; Advanced &gt; Data Deletion
-            Callback URL. Quando a Meta notifica um evento de exclusão a
-            essa URL, executamos a exclusão correspondente dos dados
-            associados ao usuário notificado.
+            . Cada solicitação recebe um código de acompanhamento e entra no
+            processo de conformidade. Antes de excluir a conta e os dados aplicáveis,
+            verificamos a identidade do solicitante e o escopo da solicitação.
+            Conservamos apenas informações exigidas por motivos legais, de segurança
+            ou de prevenção a fraudes.
           </p>
 
           <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">

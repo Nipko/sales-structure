@@ -1,6 +1,11 @@
-import { Body, Controller, Get, Logger, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 import { MetaComplianceService } from './meta-compliance.service';
+import { AuthThrottle } from '../../common/decorators/auth-throttle.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { AuthThrottleGuard } from '../../common/guards/auth-throttle.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 
 /**
  * Public, unauthenticated endpoints for Meta App Review compliance:
@@ -10,8 +15,8 @@ import { MetaComplianceService } from './meta-compliance.service';
  *                                          in App Dashboard → Settings →
  *                                          Advanced → Data Deletion Callback URL.
  *
- *   POST /meta/data-deletion-request    — Public form: anyone can request that
- *                                          their personal data be deleted.
+ *   POST /meta/data-deletion-request    — Public form: a user can request that
+ *                                          their account and associated data be deleted.
  *
  *   GET  /meta/data-deletion/status     — Status lookup by confirmation_code.
  */
@@ -31,7 +36,9 @@ export class MetaComplianceController {
     }
 
     @Post('data-deletion-request')
-    @ApiOperation({ summary: 'User-initiated data deletion request' })
+    @UseGuards(AuthThrottleGuard)
+    @AuthThrottle(5, 3600)
+    @ApiOperation({ summary: 'User-initiated account and data deletion request' })
     async userRequest(@Body() body: { email: string; description?: string }) {
         const result = await this.service.submitUserRequest(body || ({} as any));
         return { success: true, ...result };
@@ -42,6 +49,18 @@ export class MetaComplianceController {
     async status(@Query('code') code: string) {
         const record = await this.service.getStatus(code);
         if (!record) return { success: false, status: 'not_found' };
+        return { success: true, ...record };
+    }
+
+    @Patch('data-deletion/status/:code')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'Update a deletion request status (super admin)' })
+    async updateStatus(
+        @Param('code') code: string,
+        @Body() body: { status: 'processing' | 'completed' | 'rejected'; notes?: string },
+    ) {
+        const record = await this.service.updateStatus(code, body?.status, body?.notes);
         return { success: true, ...record };
     }
 }

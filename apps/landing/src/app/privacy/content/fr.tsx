@@ -995,25 +995,23 @@ export default function PrivacyFr() {
             13.5 Mécanisme de suppression
           </h3>
           <p>
-            Tout utilisateur final peut demander la suppression de ses
-            données via notre page de{" "}
+            Les titulaires d&apos;un compte Parallly peuvent demander la suppression
+            de leur compte et des données associées via notre page de{" "}
             <Link
               href="/data-deletion"
               className="text-accent hover:underline"
             >
-              demande de suppression de données
+              demande de suppression du compte et des données
             </Link>
-            . En complément, nous exposons une URL de Data Deletion
-            Callback pour la plateforme Meta à l&apos;adresse{" "}
+            . Nous recevons également les demandes signées de Meta à l&apos;adresse{" "}
             <code>
               https://api.parallly-chat.cloud/api/v1/meta/data-deletion-callback
             </code>
-            . Il s&apos;agit de l&apos;URL que le super administrateur
-            doit coller dans App Dashboard &gt; Settings &gt; Advanced
-            &gt; Data Deletion Callback URL. Lorsque Meta notifie un
-            événement de suppression à cette URL, nous exécutons la
-            suppression correspondante des données associées à
-            l&apos;utilisateur notifié.
+            . Chaque demande reçoit un code de suivi et entre dans notre processus
+            de conformité. Avant de supprimer le compte et les données concernées,
+            nous vérifions l&apos;identité du demandeur et la portée de la demande.
+            Nous ne conservons que les informations exigées à des fins légales,
+            de sécurité ou de prévention de la fraude.
           </p>
 
           <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">

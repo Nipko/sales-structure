@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from '../i18n';
 import { haptic } from '../lib/haptics';
+import { ACCOUNT_DELETION_URL, PRIVACY_POLICY_URL } from '../lib/config';
 import { theme } from '../theme';
 
 const STATUSES = [
@@ -104,6 +105,11 @@ export function MoreScreen() {
         ]);
     };
 
+    const openExternal = useCallback((url: string) => {
+        haptic.tap();
+        void Linking.openURL(url).catch(() => toast.error(t('more.openLinkError')));
+    }, [t, toast]);
+
     const resolution = stats?.aiResolutionRate ?? stats?.resolutionRate ?? stats?.rate;
     const verified = stats?.verifiedResolutionRate ?? stats?.verifiedRate;
     const totalConvs = kpis?.totalConversations ?? kpis?.conversations ?? stats?.total;
@@ -186,10 +192,36 @@ export function MoreScreen() {
                     </TouchableOpacity>
                 </View>
 
-                {/* Account */}
-                <View style={[styles.card, { marginTop: 16 }]}>
+                {/* Account and legal controls required by Google Play. */}
+                <Text style={[styles.section, { marginTop: 20 }]}>{t('more.account')}</Text>
+                <View style={styles.card}>
                     <Text style={styles.userName}>{user?.name || user?.email}</Text>
                     <Text style={styles.userMeta}>{user?.role}</Text>
+
+                    <TouchableOpacity
+                        style={styles.legalRow}
+                        onPress={() => openExternal(PRIVACY_POLICY_URL)}
+                        accessibilityRole="link"
+                        accessibilityLabel={t('more.privacyPolicy')}
+                        accessibilityHint={t('more.opensBrowser')}
+                    >
+                        <Ionicons name="shield-checkmark-outline" size={20} color={theme.accent} />
+                        <Text style={styles.legalLabel}>{t('more.privacyPolicy')}</Text>
+                        <Ionicons name="open-outline" size={16} color={theme.textSecondary} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.legalRow}
+                        onPress={() => openExternal(ACCOUNT_DELETION_URL)}
+                        accessibilityRole="link"
+                        accessibilityLabel={t('more.requestAccountDeletion')}
+                        accessibilityHint={t('more.opensBrowser')}
+                    >
+                        <Ionicons name="trash-outline" size={20} color={theme.danger} />
+                        <Text style={[styles.legalLabel, { color: theme.danger }]}>{t('more.requestAccountDeletion')}</Text>
+                        <Ionicons name="open-outline" size={16} color={theme.textSecondary} />
+                    </TouchableOpacity>
+
                     <TouchableOpacity style={styles.logout} onPress={confirmLogout}
                         accessibilityRole="button" accessibilityLabel={t('more.logout')}>
                         <Ionicons name="log-out-outline" size={18} color={theme.danger} />
@@ -230,7 +262,9 @@ const styles = StyleSheet.create({
     settingsRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
     rowLabel: { color: theme.text, fontSize: 14, fontWeight: '600' },
     userName: { color: theme.text, fontSize: 16, fontWeight: '600' },
-    userMeta: { color: theme.textSecondary, fontSize: 13, marginTop: 2 },
+    userMeta: { color: theme.textSecondary, fontSize: 13, marginTop: 2, marginBottom: 12 },
+    legalRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth },
+    legalLabel: { color: theme.text, fontSize: 14, fontWeight: '600', flex: 1 },
     logout: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, paddingTop: 14, borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth },
     logoutText: { color: theme.danger, fontSize: 15, fontWeight: '600' },
 });

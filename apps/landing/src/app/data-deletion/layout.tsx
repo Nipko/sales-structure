@@ -1,8 +1,8 @@
 import { buildMetadata } from "../../lib/seo";
 
 export const metadata = buildMetadata({
-  title: "Eliminación de datos",
-  description: "Consulta el proceso para solicitar la eliminación de datos asociados a Parallly.",
+  title: "Eliminación de cuenta y datos",
+  description: "Solicita la eliminación de una cuenta de Parallly y de sus datos asociados.",
   path: "/data-deletion",
 });
 

@@ -1,8 +1,9 @@
 # Play Store — Estado y checklist de publicación (Parallly Mobile)
 
-> **Estado al 8-ago-2026.** Cuenta de desarrollador **Organización con D-U-N-S ✅ configurada**
-> → exenta del test cerrado de 12 testers × 14 días. Falta crear la app en Play Console,
-> subir el primer AAB y llenar las declaraciones.
+> **Estado al 9-ago-2026.** Cuenta de desarrollador **Organización**, identidad, sitio web,
+> correo y teléfonos **verificados por Google ✅**; sin problemas de políticas. La cuenta está
+> exenta del requisito para determinadas cuentas personales de 12 testers × 14 días.
+> Play Console aún no tiene ninguna app; `cloud.parallly.mobile` está disponible.
 > Todo lo marcado ✅ está **verificado contra el código o la URL real**, no de memoria.
 
 ---
@@ -18,7 +19,7 @@
 | 5 | Declaración **Data safety** | Play Console | ⏳ tabla lista abajo |
 | 6 | Cuestionario **Content rating** (IARC) | Play Console | ⏳ respuestas abajo |
 | 7 | **Target audience** + resto de "App content" | Play Console | ⏳ |
-| 8 | Ficha de tienda (textos + gráficos) | Textos y gráficos listos | ◐ solo pegar |
+| 8 | Ficha de tienda (textos + gráficos válidos) | Textos listos; gráficos por corregir | ◐ |
 
 ---
 
@@ -30,13 +31,16 @@
 | Términos | `parallly-chat.cloud/terms` → **HTTP 200** |
 | Eliminación de cuenta y datos (exigido por Google) | `parallly-chat.cloud/data-deletion` → **HTTP 200** |
 | Alta de cuenta accesible | `admin.parallly-chat.cloud/signup` → **HTTP 200** |
+| Cuenta de Play Console | Organización; identidad, sitio web y contactos verificados; **sin infracciones** |
+| Disponibilidad del package | Play Console confirmó `cloud.parallly.mobile` disponible |
 | Target API level | `targetSdkVersion 36` (Android 16) — supera el mínimo 35 |
 | Package name | `cloud.parallly.mobile` · versionCode `1` · versionName `1.0.0` |
 | TLS / sin tráfico en claro | plugin `withAndroidNetworkSecurity` |
 | Ícono adaptativo y splash | `assets/` 1024×1024 y 1242×2436 |
 | Secretos de build en EAS | `GOOGLE_SERVICES_JSON`, `SENTRY_ORG/PROJECT/AUTH_TOKEN` (verificado con `eas secret:list`) |
 | Recorrido de quien instala **sin cuenta** | Implementado — ver §5 |
-| Gráficos de la ficha | **Generados hoy** en `apps/mobile/store-assets/` (ícono 512×512 y destacado 1024×500) |
+| Enlaces legales dentro de la app | Implementados en **Más → Cuenta**: privacidad y solicitud de eliminación de cuenta/datos (requieren el próximo build) |
+| Ícono de la ficha | `apps/mobile/store-assets/play-icon-512.png` — 512×512, válido |
 
 ---
 
@@ -89,8 +93,9 @@ La app exige login: sin credenciales el revisor no ve nada y rechaza.
 
 ## 3. Capturas de pantalla
 
-Requisito: mínimo 2, máximo 8, lado entre 320 y 3840 px, ratio máx. 2:1.
-Las del teléfono (1080×2340) cumplen.
+Requisito: mínimo 2, máximo 8, lado entre 320 y 3840 px, ratio máx. 2:1,
+JPEG o PNG de 24 bits sin alfa. Las actuales (1080×2340, RGBA) **no cumplen**:
+su ratio es 2,167:1 y una contiene nombres y teléfonos reales.
 
 Hay borradores en `apps/mobile/store-assets/` tomados del dispositivo real.
 
@@ -98,8 +103,11 @@ Hay borradores en `apps/mobile/store-assets/` tomados del dispositivo real.
 > es PII de terceros y contraviene la política de datos sensibles. **Regenerarlas
 > logueado en el tenant DEMO.**
 
-Sugeridas: Inbox · Conversación con copiloto de IA · CRM/lead · Operación vertical
-(por ejemplo pedidos, estadías o agenda).
+Regenerar al menos cuatro capturas 1080×1920 RGB con el tenant demo: Inbox ·
+Conversación con copiloto de IA · CRM/lead · Operación vertical (pedidos, estadías o agenda).
+
+El gráfico destacado tiene las dimensiones correctas (1024×500), pero actualmente es
+RGBA. Convertirlo a JPEG o PNG RGB de 24 bits sin alfa antes de subirlo.
 
 Para capturar con el teléfono conectado por ADB:
 ```bash
@@ -111,6 +119,7 @@ adb exec-out screencap -p > screen-1-inbox.png
 | Categoría | ¿Se recopila? | Propósito | ¿Compartida? | Cifrada en tránsito | Eliminable |
 |-----------|:---:|---|:---:|:---:|:---:|
 | Nombre y email (agentes, leads y huéspedes) | Sí | Gestión de cuenta, CRM y funcionalidad | No | Sí | Sí |
+| ID de usuario/cuenta | Sí | Autenticación, seguridad y funcionalidad | No | Sí | Sí |
 | Número de teléfono | Sí | CRM, contacto con clientes y reservas | No | Sí | Sí |
 | Otra información personal (empresa/cargo de tarjeta escaneada) | Sí | CRM | No | Sí | Sí |
 | Mensajes (in-app) | Sí | Funcionalidad de mensajería | No | Sí | Sí |
@@ -119,6 +128,7 @@ adb exec-out screencap -p > screen-1-inbox.png
 | Archivos y documentos | Sí | Adjuntos de conversaciones | No | Sí | Sí |
 | ID de dispositivo / push token | Sí | Notificaciones | No (Expo/FCM como proveedor) | Sí | Sí |
 | Crash logs + diagnósticos | Sí | Estabilidad (Sentry) | No | Sí | N/A |
+| Interacciones/rendimiento de la app | **Revisar en el formulario** | Trazas de rendimiento de Sentry | No | Sí | N/A |
 | Ubicación precisa o aproximada | **No** | — | — | — | — |
 | Datos de pago (tarjetas/cuentas bancarias) | **No** | — | — | — | — |
 
@@ -128,7 +138,9 @@ adb exec-out screencap -p > screen-1-inbox.png
 ## 5. Qué ve quien instala SIN cuenta (implementado ago-2026)
 
 La app es la **consola del agente**, no el alta: crear la empresa exige el wizard web
-(rubro, canales, agente). El móvil **nunca** crea cuentas ni menciona precios.
+(rubro, canales, agente). El móvil no completa el alta ni menciona precios. A efectos de
+la política de Google, el enlace al signup externo sí cuenta como una ruta de creación;
+por eso **Más → Cuenta** incluye privacidad y solicitud de eliminación de cuenta/datos.
 
 | Situación | Qué ve | Salida |
 |---|---|---|
@@ -171,9 +183,9 @@ Play Billing (15-30 % de comisión).
 >
 > Diseñada para equipos de ventas y atención en Latinoamérica. Requiere una cuenta de Parallly.
 
-**Gráficos** (generados, en `apps/mobile/store-assets/`):
+**Gráficos** (en `apps/mobile/store-assets/`):
 - `play-icon-512.png` — 512×512, el tamaño exacto que exige Play
-- `play-feature-graphic-1024x500.png` — gráfico destacado
+- `play-feature-graphic-1024x500.png` — convertir de RGBA a RGB antes de subir
 - Capturas: regenerar con el tenant demo (ver §3)
 
 > ⚠️ No usar logos de WhatsApp/Meta de forma que impliquen respaldo oficial; describir la
@@ -193,10 +205,12 @@ npx eas-cli submit --platform android --profile production
 
 ## 9. Notas de despliegue
 
-- **Operaciones verticales (ago-2026):** antes del smoke de los 13 modos hay que
-  desplegar la API del mismo commit y ejecutar la reconciliación del schema por tenant.
-  En particular, los tenants existentes necesitan la tabla `resource_rentals`; instalar
-  un APK nuevo no crea rutas ni tablas en el servidor.
+- **Operaciones verticales (ago-2026):** la API integral ya está desplegada y la última
+  reconciliación terminó `ok=9 skipped=0 warnings=0`. Aun así, falta el smoke autenticado
+  de los 13 modos con tenants reales; un `401` confirma la ruta, no los datos de cada tenant.
+- **Cumplimiento (ago-2026):** el código actual hace explícita la eliminación de la cuenta
+  y sus datos asociados y corrige la política para describir el proceso manual de verificación.
+  La landing actualizada debe desplegarse antes de completar Data deletion en Play Console.
 - **Sesiones (ago-2026):** al pasar a sesiones por dispositivo, los tokens emitidos antes
   del cambio no llevan el marcador de plataforma y se tratan como web (TTL 6 min). Quien
   ya tenía la app abierta debe **iniciar sesión una vez**; a partir de ahí su sesión

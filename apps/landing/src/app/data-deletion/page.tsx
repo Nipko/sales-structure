@@ -11,25 +11,25 @@ const API_BASE =
 const STRINGS = {
     es: {
         backHome: "Volver al inicio",
-        title: "Solicitud de eliminación de datos",
+        title: "Solicitud de eliminación de cuenta y datos",
         subtitle:
-            "Envía esta solicitud para que eliminemos los datos personales asociados a tu correo electrónico. Procesaremos la petición en un máximo de 30 días (15 días para residentes de Brasil bajo la LGPD).",
+            "Envía esta solicitud para eliminar permanentemente tu cuenta de Parallly y los datos personales asociados. La procesaremos sin demora indebida y, en general, dentro de 30 días, salvo que la ley aplicable exija otro plazo.",
         introHeading: "Antes de continuar",
         introBody:
-            "Si recibes mensajes desde una empresa que utiliza Parallly y deseas que esa empresa elimine tus datos, debes contactarla directamente — Parallly actúa como encargado del tratamiento (processor), no como responsable. Si tu cuenta es de Parallly o quieres revocar el acceso de Parallly a tu cuenta de Meta (Facebook/Instagram/WhatsApp), continúa con el formulario.",
+            "Si recibes mensajes desde una empresa que utiliza Parallly y deseas que esa empresa elimine tus datos, debes contactarla directamente — Parallly actúa como encargado del tratamiento (processor), no como responsable. Si eres titular de una cuenta de Parallly, este formulario solicita eliminar la cuenta y sus datos asociados. Verificaremos tu identidad por correo antes de procesarla. También puedes usarlo para revocar el acceso de Parallly a tu cuenta de Meta (Facebook/Instagram/WhatsApp).",
         emailLabel: "Correo electrónico",
         emailPlaceholder: "tucorreo@ejemplo.com",
         descLabel: "Descripción adicional (opcional)",
-        descPlaceholder: "Cuenta de qué empresa, qué canales (WhatsApp/Instagram/Messenger), motivo, etc.",
-        submit: "Enviar solicitud",
+        descPlaceholder: "Empresa o cuenta, tu rol, canales vinculados y cualquier dato que nos ayude a localizarla.",
+        submit: "Solicitar eliminación de cuenta y datos",
         submitting: "Enviando...",
-        successHeading: "Solicitud recibida",
+        successHeading: "Solicitud de eliminación recibida",
         successBody: (code: string) =>
             `Tu solicitud fue registrada con el código `,
         codeIs: "tu código de seguimiento",
         statusLink: "Consultar estado",
         emailSentNote:
-            "También enviamos una confirmación a tu correo. Procesaremos la eliminación dentro del plazo legal aplicable.",
+            "Guarda tu código de seguimiento. Podremos contactarte por correo para verificar tu identidad antes de procesar la eliminación dentro del plazo legal aplicable.",
         errorGeneric: "No pudimos enviar tu solicitud. Inténtalo de nuevo o escríbenos a cloud.manager@parallext.com.",
         errorEmail: "Ingresa un correo electrónico válido.",
         legalRefHeading: "Marco legal aplicable",
@@ -39,24 +39,24 @@ const STRINGS = {
     },
     en: {
         backHome: "Back to home",
-        title: "Data deletion request",
+        title: "Account and data deletion request",
         subtitle:
-            "Submit this request to delete the personal data associated with your email. We will process the request within 30 days (15 days for Brazilian residents under LGPD).",
+            "Submit this request to permanently delete your Parallly account and its associated personal data. We will process it without undue delay, normally within 30 days unless applicable law requires a different period.",
         introHeading: "Before you continue",
         introBody:
-            "If you receive messages from a business using Parallly and you want that business to delete your data, you must contact them directly — Parallly acts as a data processor, not as the controller. If you have a Parallly account, or you want to revoke Parallly's access to your Meta (Facebook/Instagram/WhatsApp) account, continue with the form below.",
+            "If you receive messages from a business using Parallly and want that business to delete your data, contact it directly — Parallly acts as its data processor, not its controller. If you own a Parallly account, this form requests deletion of the account and its associated data. We will verify your identity by email before processing it. You can also use it to revoke Parallly's access to your Meta (Facebook/Instagram/WhatsApp) account.",
         emailLabel: "Email address",
         emailPlaceholder: "you@example.com",
         descLabel: "Additional description (optional)",
-        descPlaceholder: "Which business account, which channels (WhatsApp/Instagram/Messenger), reason, etc.",
-        submit: "Submit request",
+        descPlaceholder: "Business or account, your role, linked channels, and anything that helps us locate it.",
+        submit: "Request account and data deletion",
         submitting: "Submitting...",
-        successHeading: "Request received",
+        successHeading: "Deletion request received",
         successBody: () => "Your request was registered with the code ",
         codeIs: "your tracking code",
         statusLink: "Check status",
         emailSentNote:
-            "We also sent a confirmation to your email. We will process the deletion within the applicable legal period.",
+            "Keep your tracking code. We may contact you by email to verify your identity before processing the deletion within the applicable legal period.",
         errorGeneric:
             "We couldn't submit your request. Please try again or write to cloud.manager@parallext.com.",
         errorEmail: "Please enter a valid email address.",
@@ -67,24 +67,24 @@ const STRINGS = {
     },
     pt: {
         backHome: "Voltar ao início",
-        title: "Solicitação de exclusão de dados",
+        title: "Solicitação de exclusão da conta e dos dados",
         subtitle:
-            "Envie esta solicitação para que excluamos os dados pessoais associados ao seu e-mail. Processaremos a solicitação em até 30 dias (15 dias para residentes do Brasil sob a LGPD).",
+            "Envie esta solicitação para excluir permanentemente sua conta do Parallly e os dados pessoais associados. Nós a processaremos sem demora indevida, normalmente em até 30 dias, salvo se a lei aplicável exigir outro prazo.",
         introHeading: "Antes de continuar",
         introBody:
-            "Se você recebe mensagens de uma empresa que usa o Parallly e deseja que essa empresa exclua seus dados, você deve contatá-la diretamente — o Parallly atua como operador (processor), não como controlador. Se sua conta é do Parallly, ou se você quer revogar o acesso do Parallly à sua conta da Meta (Facebook/Instagram/WhatsApp), continue com o formulário abaixo.",
+            "Se você recebe mensagens de uma empresa que usa o Parallly e deseja que essa empresa exclua seus dados, contate-a diretamente — o Parallly atua como operador (processor), não como controlador. Se você é titular de uma conta do Parallly, este formulário solicita a exclusão da conta e dos dados associados. Verificaremos sua identidade por e-mail antes do processamento. Você também pode usá-lo para revogar o acesso do Parallly à sua conta da Meta (Facebook/Instagram/WhatsApp).",
         emailLabel: "E-mail",
         emailPlaceholder: "voce@exemplo.com",
         descLabel: "Descrição adicional (opcional)",
-        descPlaceholder: "Conta de qual empresa, quais canais (WhatsApp/Instagram/Messenger), motivo, etc.",
-        submit: "Enviar solicitação",
+        descPlaceholder: "Empresa ou conta, sua função, canais vinculados e qualquer dado que nos ajude a localizá-la.",
+        submit: "Solicitar exclusão da conta e dos dados",
         submitting: "Enviando...",
-        successHeading: "Solicitação recebida",
+        successHeading: "Solicitação de exclusão recebida",
         successBody: () => "Sua solicitação foi registrada com o código ",
         codeIs: "seu código de acompanhamento",
         statusLink: "Consultar status",
         emailSentNote:
-            "Também enviamos uma confirmação ao seu e-mail. Processaremos a exclusão dentro do prazo legal aplicável.",
+            "Guarde seu código de acompanhamento. Poderemos contatá-lo por e-mail para verificar sua identidade antes de processar a exclusão dentro do prazo legal aplicável.",
         errorGeneric:
             "Não conseguimos enviar sua solicitação. Tente novamente ou escreva para cloud.manager@parallext.com.",
         errorEmail: "Insira um e-mail válido.",
@@ -95,24 +95,24 @@ const STRINGS = {
     },
     fr: {
         backHome: "Retour à l'accueil",
-        title: "Demande de suppression de données",
+        title: "Demande de suppression du compte et des données",
         subtitle:
-            "Envoyez cette demande pour que nous supprimions les données personnelles associées à votre e-mail. Nous traiterons la demande dans un délai maximum de 30 jours (15 jours pour les résidents du Brésil sous la LGPD).",
+            "Envoyez cette demande pour supprimer définitivement votre compte Parallly et les données personnelles associées. Nous la traiterons sans retard injustifié, généralement sous 30 jours, sauf si la loi applicable impose un autre délai.",
         introHeading: "Avant de continuer",
         introBody:
-            "Si vous recevez des messages d'une entreprise utilisant Parallly et que vous souhaitez que cette entreprise supprime vos données, vous devez la contacter directement — Parallly agit en tant que sous-traitant, pas en tant que responsable du traitement. Si vous avez un compte Parallly, ou si vous souhaitez révoquer l'accès de Parallly à votre compte Meta (Facebook/Instagram/WhatsApp), continuez avec le formulaire ci-dessous.",
+            "Si vous recevez des messages d'une entreprise utilisant Parallly et souhaitez qu'elle supprime vos données, contactez-la directement — Parallly agit en tant que sous-traitant, pas en tant que responsable du traitement. Si vous êtes titulaire d'un compte Parallly, ce formulaire demande la suppression du compte et des données associées. Nous vérifierons votre identité par e-mail avant le traitement. Vous pouvez aussi l'utiliser pour révoquer l'accès de Parallly à votre compte Meta (Facebook/Instagram/WhatsApp).",
         emailLabel: "Adresse e-mail",
         emailPlaceholder: "vous@exemple.com",
         descLabel: "Description additionnelle (facultatif)",
-        descPlaceholder: "Compte de quelle entreprise, quels canaux (WhatsApp/Instagram/Messenger), motif, etc.",
-        submit: "Envoyer la demande",
+        descPlaceholder: "Entreprise ou compte, votre rôle, canaux liés et toute information nous aidant à le retrouver.",
+        submit: "Demander la suppression du compte et des données",
         submitting: "Envoi...",
-        successHeading: "Demande reçue",
+        successHeading: "Demande de suppression reçue",
         successBody: () => "Votre demande a été enregistrée avec le code ",
         codeIs: "votre code de suivi",
         statusLink: "Consulter le statut",
         emailSentNote:
-            "Nous avons également envoyé une confirmation à votre e-mail. Nous traiterons la suppression dans le délai légal applicable.",
+            "Conservez votre code de suivi. Nous pourrons vous contacter par e-mail afin de vérifier votre identité avant de traiter la suppression dans le délai légal applicable.",
         errorGeneric:
             "Nous n'avons pas pu envoyer votre demande. Réessayez ou écrivez-nous à cloud.manager@parallext.com.",
         errorEmail: "Veuillez saisir un e-mail valide.",

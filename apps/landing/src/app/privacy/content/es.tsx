@@ -942,24 +942,23 @@ export default function PrivacyEs() {
             13.5 Mecanismo de eliminación
           </h3>
           <p>
-            Cualquier usuario final puede solicitar la eliminación de sus
-            datos a través de nuestra página de{" "}
+            Los titulares de una cuenta de Parallly pueden solicitar la
+            eliminación de su cuenta y de los datos asociados a través de nuestra página de{" "}
             <Link
               href="/data-deletion"
               className="text-accent hover:underline"
             >
-              solicitud de eliminación de datos
+              solicitud de eliminación de cuenta y datos
             </Link>
-            . Adicionalmente, exponemos un Data Deletion Callback URL para
-            la plataforma de Meta en{" "}
+            . También recibimos solicitudes firmadas de la plataforma de Meta en{" "}
             <code>
               https://api.parallly-chat.cloud/api/v1/meta/data-deletion-callback
             </code>
-            . Esta es la URL que el super administrador debe pegar en App
-            Dashboard &gt; Settings &gt; Advanced &gt; Data Deletion
-            Callback URL. Cuando Meta notifica un evento de eliminación a
-            esa URL, ejecutamos la eliminación correspondiente de los datos
-            asociados al usuario notificado.
+            . Cada solicitud recibe un código de seguimiento y entra al proceso
+            de cumplimiento. Antes de eliminar la cuenta y los datos aplicables,
+            verificamos la identidad del solicitante y el alcance de la petición;
+            solo conservamos aquello exigido por obligaciones legales, de seguridad
+            o prevención de fraude.
           </p>
 
           <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">

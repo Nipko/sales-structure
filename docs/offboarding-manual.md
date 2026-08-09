@@ -283,17 +283,31 @@ El super_admin **no tiene tenant implícito** (modo plataforma; `roles.ts` deny-
 
 ## 10. Callbacks de Meta (ya implementados)
 
-Módulo `meta-compliance` (`MetaComplianceController`, prefijo `/api/v1`, **públicos, sin auth**). Verifican `signed_request` (HMAC-SHA256 contra `META_APP_SECRET`).
+Módulo `meta-compliance` (`MetaComplianceController`, prefijo `/api/v1`). Los callbacks
+públicos de Meta verifican `signed_request` (HMAC-SHA256 contra `META_APP_SECRET`); la
+actualización del estado es exclusiva de `super_admin` autenticado.
 
 | Método | Ruta | Uso |
 |---|---|---|
 | `POST` | `/meta/data-deletion-callback` | Meta lo llama cuando un usuario de Facebook revoca la app. Persiste `meta:deletion:{code}` (Redis 90d), notifica al buzón de compliance, devuelve `{ url, confirmation_code }` |
-| `POST` | `/meta/data-deletion-request` | Formulario público: cualquiera pide borrado de sus datos personales (email + descripción) |
+| `POST` | `/meta/data-deletion-request` | Formulario público: solicita eliminar una cuenta Parallly y sus datos (email + descripción). Límite: 5/h por IP y 2/día por email hasheado; solo notifica al buzón fijo de compliance |
 | `GET` | `/meta/data-deletion/status?code=` | Consulta de estado por código (solo campos seguros) |
+| `PATCH` | `/meta/data-deletion/status/:code` | `super_admin`: avanza `received → processing → completed/rejected`; nunca devuelve email, `fb_user_id` ni notas |
 
 Configuración en **Facebook App Dashboard → Settings → Advanced → Data Deletion Callback URL**.
 
-> Hoy el callback **acusa y encola** el borrado (email a `COMPLIANCE_NOTIFY_EMAIL` para completar el cascade a mano): aún no se linkean `fb_user_id` ↔ cuentas de tenant. No hay endpoint separado de "Deauthorize Callback"; el mecanismo es el data-deletion-callback.
+Flujo operativo obligatorio para una solicitud de usuario:
+
+1. Verificar por el correo registrado la identidad y autoridad del solicitante.
+2. Marcar `processing` con el endpoint protegido y documentar internamente el alcance.
+3. Ejecutar el borrado aprobado de la cuenta y datos asociados; conservar únicamente lo
+   exigido por ley, seguridad o prevención de fraude y registrar esa retención.
+4. Marcar `completed` al terminar, o `rejected` con justificación si no se verifica la identidad.
+
+> El callback de Meta **acusa y encola** el borrado (email a `COMPLIANCE_NOTIFY_EMAIL`
+> para completar el cascade a mano): aún no se linkean `fb_user_id` ↔ cuentas de tenant.
+> No hay endpoint separado de "Deauthorize Callback"; el mecanismo es el
+> `data-deletion-callback`.
 
 ---
 

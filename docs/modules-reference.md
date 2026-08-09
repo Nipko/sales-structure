@@ -1391,8 +1391,9 @@ Complete reference for all 83 API modules, 139 dashboard pages (126 admin + 13 p
 - **Controller:** `meta-compliance.controller.ts`
 - **Endpoints:**
   - `POST /meta/data-deletion-callback` — Meta callback
-  - `POST /meta/data-deletion-request` — Request deletion
+  - `POST /meta/data-deletion-request` — Request account and associated-data deletion (public, rate limited)
   - `GET /meta/data-deletion/status` — Status
+  - `PATCH /meta/data-deletion/status/:code` — Advance request status (super_admin)
 
 #### 65. carla
 - **Purpose:** AI profile management (legacy/internal)

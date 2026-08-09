@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { RedisService } from '../redis/redis.service';
@@ -112,15 +112,30 @@ export class MetaComplianceService {
     }
 
     /**
-     * Public form: a person asks for deletion of their personal data. We don't
-     * authenticate them via Meta — we email-verify and process within SLA
-     * (30 days GDPR / 15 days LGPD).
+     * Public form: a person asks for deletion of their Parallly account and
+     * associated data. The compliance operator verifies identity by email
+     * before processing within SLA (30 days GDPR / 15 days LGPD).
      */
     async submitUserRequest(input: { email: string; description?: string }): Promise<{ confirmation_code: string }> {
         const email = (input.email || '').trim().toLowerCase();
         if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             throw new BadRequestException('Valid email is required');
         }
+
+        // Do not put PII in the Redis key. This limit complements the controller's
+        // per-IP guard and prevents repeated requests targeting the same account.
+        const emailHash = crypto.createHash('sha256').update(email).digest('hex');
+        const emailCount = await this.redis.incrementRateLimit(
+            `ratelimit:meta-deletion:email:${emailHash}`,
+            24 * 60 * 60,
+        );
+        if (emailCount > 2) {
+            throw new HttpException(
+                'Too many deletion requests for this account. Please try again later.',
+                HttpStatus.TOO_MANY_REQUESTS,
+            );
+        }
+
         const code = this.generateCode();
         const record: DeletionRecord = {
             code,
@@ -132,33 +147,22 @@ export class MetaComplianceService {
         };
         await this.persist(record);
 
-        this.logger.log(`User deletion request submitted email=${email} → code=${code}`);
+        this.logger.log(`User deletion request submitted email_hash=${emailHash.slice(0, 12)} → code=${code}`);
 
         this.email
             .send({
                 to: this.notifyEmail,
-                subject: `[Parallly] User data deletion request — ${code}`,
-                html: `<p>A user requested deletion of personal data.</p>
+                subject: `[Parallly] Account and data deletion request — ${code}`,
+                html: `<p>A user requested deletion of a Parallly account and its associated data.</p>
                        <ul>
                          <li>Email: <strong>${this.escape(email)}</strong></li>
                          <li>Description: ${this.escape(input.description || '—')}</li>
                          <li>Code: <code>${code}</code></li>
                        </ul>
-                       <p>Process within 30 days (GDPR) / 15 days (LGPD).</p>`,
+                       <p>Verify the requester's identity and authority before processing the deletion.</p>
+                       <p>Process without undue delay, normally within 30 days unless applicable law requires a different period.</p>`,
             })
             .catch((e) => this.logger.warn(`Compliance email failed: ${e.message}`));
-
-        // Acknowledge to the requester
-        this.email
-            .send({
-                to: email,
-                subject: 'We received your data deletion request — Parallly',
-                html: `<p>We have received your request to delete personal data associated with this email address.</p>
-                       <p>Your tracking code is: <code>${code}</code></p>
-                       <p>You can check the status at any time: <a href="${this.publicBaseUrl}/data-deletion/status?code=${code}">${this.publicBaseUrl}/data-deletion/status?code=${code}</a></p>
-                       <p>We will complete the deletion within 30 days as required by applicable law.</p>`,
-            })
-            .catch((e) => this.logger.warn(`Acknowledgement email failed: ${e.message}`));
 
         return { confirmation_code: code };
     }
@@ -168,18 +172,53 @@ export class MetaComplianceService {
         const raw = await this.redis.get(`meta:deletion:${code}`);
         if (!raw) return null;
         try {
-            const record = JSON.parse(raw) as DeletionRecord;
-            // Don't leak email or fb id to status lookups — only the safe fields
-            return {
-                code: record.code,
-                source: record.source,
-                requestedAt: record.requestedAt,
-                processedAt: record.processedAt,
-                status: record.status,
-            };
+            return this.toPublicRecord(JSON.parse(raw) as DeletionRecord);
         } catch {
             return null;
         }
+    }
+
+    async updateStatus(
+        code: string,
+        status: 'processing' | 'completed' | 'rejected' | undefined,
+        notes?: string,
+    ): Promise<DeletionRecord> {
+        if (!code || !/^[a-f0-9-]{8,64}$/i.test(code)) {
+            throw new BadRequestException('Invalid confirmation code');
+        }
+        if (status !== 'processing' && status !== 'completed' && status !== 'rejected') {
+            throw new BadRequestException('Invalid deletion status');
+        }
+
+        const raw = await this.redis.get(`meta:deletion:${code}`);
+        if (!raw) throw new NotFoundException('Deletion request not found');
+
+        let record: DeletionRecord;
+        try {
+            record = JSON.parse(raw) as DeletionRecord;
+        } catch {
+            throw new NotFoundException('Deletion request not found');
+        }
+
+        const allowed: Record<DeletionStatus, DeletionStatus[]> = {
+            received: ['processing', 'rejected'],
+            processing: ['completed', 'rejected'],
+            completed: [],
+            rejected: [],
+        };
+        if (record.status !== status && !allowed[record.status]?.includes(status)) {
+            throw new BadRequestException(`Invalid status transition: ${record.status} -> ${status}`);
+        }
+
+        const statusChanged = record.status !== status;
+        record.status = status;
+        if (notes?.trim()) record.notes = notes.trim().slice(0, 1000);
+        if (statusChanged && (status === 'completed' || status === 'rejected')) {
+            record.processedAt = new Date().toISOString();
+        }
+        await this.persist(record);
+        this.logger.log(`Deletion request ${code} marked ${status}`);
+        return this.toPublicRecord(record);
     }
 
     // ── helpers ─────────────────────────────────────────────────────
@@ -194,6 +233,17 @@ export class MetaComplianceService {
 
     private generateCode(): string {
         return crypto.randomUUID();
+    }
+
+    private toPublicRecord(record: DeletionRecord): DeletionRecord {
+        // Never expose email, fbUserId, or internal notes through public/admin responses.
+        return {
+            code: record.code,
+            source: record.source,
+            requestedAt: record.requestedAt,
+            processedAt: record.processedAt,
+            status: record.status,
+        };
     }
 
     private base64UrlNormalize(input: string): string {

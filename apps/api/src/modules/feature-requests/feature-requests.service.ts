@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import OpenAI from 'openai';
 import { CronLockService } from '../redis/cron-lock.service';
+import { LlmKeyService } from '../settings/llm-key.service';
 
 const STATUSES = ['open', 'under_review', 'planned', 'in_progress', 'shipped', 'declined'] as const;
 type Status = (typeof STATUSES)[number];
@@ -41,17 +42,25 @@ const PLAN_BASE_WEIGHT: Record<string, number> = {
 @Injectable()
 export class FeatureRequestsService {
     private readonly logger = new Logger(FeatureRequestsService.name);
-    private readonly openai: OpenAI;
+    private openai: OpenAI | null = null;
+    private openaiApiKey = '';
 
     constructor(
         private readonly prisma: PrismaService,
         private readonly config: ConfigService,
         private readonly email: EmailService,
         private readonly cronLock: CronLockService,
-    ) {
-        this.openai = new OpenAI({
-            apiKey: this.config.get<string>('OPENAI_API_KEY') || '',
-        });
+        private readonly llmKeys: LlmKeyService,
+    ) {}
+
+    private async ensureOpenAI(): Promise<OpenAI> {
+        const apiKey = await this.llmKeys.getKey('openai');
+        if (!apiKey) throw new Error('OpenAI API key not configured in platform settings');
+        if (this.openai && this.openaiApiKey === apiKey) return this.openai;
+
+        this.openai = new OpenAI({ apiKey });
+        this.openaiApiKey = apiKey;
+        return this.openai;
     }
 
     async list(filters: { status?: string; category?: string; search?: string; sort?: string; userId?: string }) {
@@ -381,7 +390,8 @@ export class FeatureRequestsService {
 
     private async embed(text: string): Promise<number[] | null> {
         try {
-            const r = await this.openai.embeddings.create({
+            const openai = await this.ensureOpenAI();
+            const r = await openai.embeddings.create({
                 model: 'text-embedding-3-small',
                 input: text.slice(0, 8000),
             });
@@ -583,7 +593,8 @@ export class FeatureRequestsService {
 
     private async summarizeSignalCluster(sampleText: string): Promise<{ title: string; description: string } | null> {
         try {
-            const r = await this.openai.chat.completions.create({
+            const openai = await this.ensureOpenAI();
+            const r = await openai.chat.completions.create({
                 model: 'gpt-4o-mini',
                 messages: [
                     {

@@ -140,6 +140,7 @@ jobs:
           apps/api/src/modules/verticals/staff-operations-model.service.spec.ts
           apps/api/src/common/policies/ai-decision-readiness.policy.spec.ts
           apps/api/src/modules/media-processing/media-ai-governance.policy.spec.ts
+          apps/api/src/modules/feature-requests/feature-requests.service.spec.ts
           apps/api/src/modules/push/web-push-isolation.spec.ts
           apps/api/src/modules/push/push.service.spec.ts
           apps/api/src/modules/push/push.service.expo-bounds.spec.ts
@@ -390,14 +391,18 @@ jobs:
       packages: read
 
     steps:
-      - name: Checkout release contract
+      - name: Checkout readiness contract
         uses: actions/checkout@v4
 
-      - name: Production release attestation (fail closed)
+      # We currently have one production environment. The ordinary deploy may reuse
+      # its existing infrastructure secrets for the presence-only readiness report,
+      # while advanced vertical certification remains a separate, strict manual gate
+      # in vertical-quality.yml (workflow_dispatch tier=release).
+      - name: Deployment readiness snapshot
         env:
-          DATABASE_URL: ${{ secrets.VERTICAL_RELEASE_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.VERTICAL_RELEASE_DATABASE_URL || secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.VERTICAL_RELEASE_REDIS_URL }}
-          OPENAI_API_KEY: ${{ secrets.VERTICAL_EVAL_OPENAI_API_KEY }}
+          REDIS_HOST: ${{ secrets.REDIS_HOST }}
           VERTICAL_REAL_MODEL_EVAL_READY: ${{ vars.VERTICAL_REAL_MODEL_EVAL_READY }}
           VERTICAL_CHANNEL_SANDBOX_READY: ${{ vars.VERTICAL_CHANNEL_SANDBOX_READY }}
           VERTICAL_PROVIDER_SANDBOX_READY: ${{ vars.VERTICAL_PROVIDER_SANDBOX_READY }}
@@ -407,14 +412,26 @@ jobs:
           VERTICAL_ROLLBACK_EVIDENCE_READY: ${{ vars.VERTICAL_ROLLBACK_EVIDENCE_READY }}
           VERTICAL_CANARY_READY: ${{ vars.VERTICAL_CANARY_READY }}
           VERTICAL_RELEASE_EVIDENCE_JSON: ${{ secrets.VERTICAL_RELEASE_EVIDENCE_JSON }}
-          REQUIRE_EXTERNAL_GATES: 'true'
+          # Missing advanced evidence is reported in the artifact but does not block
+          # an ordinary deployment. The explicit release tier still fails closed.
+          REQUIRE_EXTERNAL_GATES: 'false'
           VERTICAL_READINESS_OUTPUT: artifacts/vertical-release-readiness.json
-        run: node apps/api/scripts/run-vertical-release-readiness.cjs
+        run: |
+          missing=()
+          [ -n "$DATABASE_URL" ] || missing+=("DATABASE_URL")
+          if [ -z "$REDIS_URL" ] && [ -z "$REDIS_HOST" ]; then
+            missing+=("REDIS_HOST/REDIS_URL")
+          fi
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required production baseline: ${missing[*]}"
+            exit 1
+          fi
+          node apps/api/scripts/run-vertical-release-readiness.cjs
 
-      - name: Publish release attestation
+      - name: Publish deployment readiness
         uses: actions/upload-artifact@v4
         with:
-          name: production-release-${{ github.run_id }}-${{ github.run_attempt }}
+          name: production-readiness-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/vertical-release-readiness.json
           if-no-files-found: error
           retention-days: 180
@@ -476,11 +493,6 @@ jobs:
           PROD_META_CONFIG_ID: ${{ secrets.META_CONFIG_ID }}
           PROD_SYSTEM_USER_ID: ${{ secrets.SYSTEM_USER_ID }}
           PROD_INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-          PROD_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          PROD_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          PROD_GOOGLE_AI_KEY: ${{ secrets.GOOGLE_AI_KEY }}
-          PROD_XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          PROD_DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           PROD_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
           PROD_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           PROD_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
@@ -570,7 +582,6 @@ jobs:
             PROD_INTERNAL_JWT_SECRET,PROD_JWT_SECRET,PROD_ENCRYPTION_KEY,
             PROD_META_APP_ID,PROD_META_APP_SECRET,PROD_META_VERIFY_TOKEN,PROD_META_CONFIG_ID,PROD_SYSTEM_USER_ID,
             PROD_INTERNAL_API_KEY,
-            PROD_OPENAI_API_KEY,PROD_ANTHROPIC_API_KEY,PROD_GOOGLE_AI_KEY,PROD_XAI_API_KEY,PROD_DEEPSEEK_API_KEY,
             PROD_TUNNEL_TOKEN,PROD_GOOGLE_OAUTH_CLIENT_ID,PROD_GOOGLE_OAUTH_CLIENT_SECRET,
             PROD_SENTRY_DSN,PROD_SENTRY_AUTH_TOKEN,PROD_SENTRY_ORG,PROD_SENTRY_PROJECT,PROD_SENTRY_API_URL,PROD_TELEGRAM_ALERT_BOT_TOKEN,PROD_TELEGRAM_ALERT_CHAT_ID,
             PROD_SMS_ALERT_ACCOUNT_SID,PROD_SMS_ALERT_AUTH_TOKEN,PROD_SMS_ALERT_FROM,PROD_SMS_ALERT_TO,PROD_SMS_SENDER_ID,
@@ -656,11 +667,6 @@ jobs:
             echo "INSTAGRAM_APP_ID=1472258884595741" >> .env
             echo "INSTAGRAM_APP_SECRET=${{ secrets.INSTAGRAM_APP_SECRET }}" >> .env
             echo "INSTAGRAM_REDIRECT_URI=https://admin.parallly-chat.cloud/admin/channels/instagram/callback" >> .env
-            echo "OPENAI_API_KEY=${PROD_OPENAI_API_KEY}" >> .env
-            echo "ANTHROPIC_API_KEY=${PROD_ANTHROPIC_API_KEY}" >> .env
-            echo "GOOGLE_GENERATIVE_AI_API_KEY=${PROD_GOOGLE_AI_KEY}" >> .env
-            echo "XAI_API_KEY=${PROD_XAI_API_KEY}" >> .env
-            echo "DEEPSEEK_API_KEY=${PROD_DEEPSEEK_API_KEY}" >> .env
             echo "# Frontend Defaults" >> .env
             echo "NEXT_PUBLIC_API_URL=https://api.parallly-chat.cloud/api/v1" >> .env
             echo "NEXT_PUBLIC_WA_SERVICE_URL=https://wa.parallly-chat.cloud/api/v1" >> .env

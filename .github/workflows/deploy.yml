@@ -276,6 +276,30 @@ jobs:
           cache-from: type=gha,scope=billing-v2
           cache-to: type=gha,mode=max,scope=billing-v2
 
+      - name: Smoke test Worker — verify workspace runtime resolves
+        run: |
+          for i in 1 2 3; do
+            docker pull ${{ env.WORKER_IMAGE }}:${{ github.sha }} && break
+            echo "Pull attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
+          docker run --rm \
+            -w /app \
+            --entrypoint node \
+            ${{ env.WORKER_IMAGE }}:${{ github.sha }} \
+            -e "
+              try {
+                const m = require('./dist/app.module');
+                if (!m.AppModule) throw new Error('AppModule not exported');
+                console.log('✅ Worker AppModule loaded — all module imports resolved');
+                process.exit(0);
+              } catch(e) {
+                console.error('❌ Worker module load FAILED:', e.message);
+                process.exit(1);
+              }
+            "
+        timeout-minutes: 2
+
       - name: Build and push Dashboard image
         uses: docker/build-push-action@v5
         with:
@@ -321,7 +345,21 @@ jobs:
             echo "Pull attempt $i failed, retrying in 15s..."
             sleep 15
           done
-          docker run --rm --entrypoint node ${{ env.WHATSAPP_IMAGE }}:${{ github.sha }} -e "require('@nestjs/axios'); console.log('WhatsApp image module check OK')"
+          docker run --rm \
+            -w /app \
+            --entrypoint node \
+            ${{ env.WHATSAPP_IMAGE }}:${{ github.sha }} \
+            -e "
+              try {
+                const m = require('./dist/app.module');
+                if (!m.AppModule) throw new Error('AppModule not exported');
+                console.log('✅ WhatsApp AppModule loaded — all module imports resolved');
+                process.exit(0);
+              } catch(e) {
+                console.error('❌ WhatsApp module load FAILED:', e.message);
+                process.exit(1);
+              }
+            "
 
       - name: Build and push Landing image
         uses: docker/build-push-action@v5

@@ -44,6 +44,10 @@ RUN apk add --no-cache openssl
 # - workspace node_modules (non-hoisted, e.g. @nestjs/axios)
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/node_modules ./node_modules
+# npm workspaces installs @parallext/shared as a symlink into packages/shared.
+# Ship its compiled target as well so the runtime link is not left dangling.
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/prisma ./prisma
 COPY --from=builder /app/apps/api/scripts ./scripts

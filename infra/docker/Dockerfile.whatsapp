@@ -46,6 +46,9 @@ RUN apk add --no-cache openssl
 # - workspace node_modules (non-hoisted, e.g. @nestjs/axios)
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/whatsapp/node_modules ./node_modules
+# Keep the workspace target available if a runtime shared import is added.
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/apps/whatsapp/dist ./dist
 COPY --from=builder /app/apps/whatsapp/package.json ./
 

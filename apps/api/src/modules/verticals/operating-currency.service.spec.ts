@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { requireCurrencyMinorUnitExponent } from '../../common/utils/commercial-units.util';
 import { OperatingCurrencyService } from './operating-currency.service';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -6,6 +7,23 @@ const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 describe('OperatingCurrencyService', () => {
     const prisma: any = {};
     const service = new OperatingCurrencyService(prisma);
+
+    it('uses pinned ISO exponents without consulting the runtime ICU data', () => {
+        const numberFormat = jest.spyOn(Intl, 'NumberFormat').mockImplementation((() => {
+            throw new Error('runtime ICU must not resolve commercial currency exponents');
+        }) as unknown as typeof Intl.NumberFormat);
+
+        try {
+            expect(requireCurrencyMinorUnitExponent('COP')).toBe(2);
+            expect(requireCurrencyMinorUnitExponent('JPY')).toBe(0);
+            expect(requireCurrencyMinorUnitExponent('CLP')).toBe(0);
+            expect(requireCurrencyMinorUnitExponent('USD')).toBe(2);
+            expect(numberFormat).not.toHaveBeenCalled();
+            expect(() => requireCurrencyMinorUnitExponent('ZZZ')).toThrow(BadRequestException);
+        } finally {
+            numberFormat.mockRestore();
+        }
+    });
 
     it('preserves source money and requires a dated FX snapshot for conversion', () => {
         const lineage = service.buildLineage({

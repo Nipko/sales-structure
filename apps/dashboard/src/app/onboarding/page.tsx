@@ -20,11 +20,9 @@ import { TIMEZONE_GROUPS, TIMEZONE_VALUES, DEFAULT_TIMEZONE, normalizeTimezone }
 import AnimatedLogo from "@/components/AnimatedLogo";
 import MpCardForm from "@/components/billing/MpCardForm";
 
-// Ruta crítica mínima (trial-first): empresa → audiencia → objetivos.
-// Los pasos "referido" (marketing) y "plan/tarjeta" (muro de pago) se quitaron del
-// flujo: el usuario arranca con trial de plan "emprendedor" sin tarjeta y el upgrade
-// vive en Configuración → Billing. (El JSX de esos pasos queda inerte: step nunca llega.)
-const STEP_KEYS = ["step1", "step2", "step3"];
+// Ruta crítica: empresa → audiencia → objetivos → plan. El catálogo del último
+// paso viene del backend; ningún slug, precio o requisito de tarjeta vive acá.
+const STEP_KEYS = ["step1", "step2", "step3", "step5"];
 
 // Borrador local. El wizard no hace ninguna llamada al servidor hasta el submit final,
 // así que cerrar la pestaña —o que el navegador del celular la descarte en segundo
@@ -43,8 +41,132 @@ function draftKeyForCurrentUser(): string {
     return `${DRAFT_PREFIX}:anon`;
 }
 
-const PLAN_SLUGS = ["emprendedor", "starter", "pro", "enterprise"] as const;
-type PlanSlug = typeof PLAN_SLUGS[number];
+const PRICING_INTENT_KEY = "pricingIntent";
+const SALES_EMAIL = "it.executive@parallext.com";
+const BILLING_COUNTRIES = [
+    "CO", "MX", "AR", "CL", "PE", "BR", "UY", "PY", "BO",
+    "EC", "VE", "CR", "PA", "DO", "GT", "US", "CA",
+] as const;
+type BillingCountry = typeof BILLING_COUNTRIES[number];
+
+type BillingCycle = "monthly" | "annual";
+type CheckoutMode = "self_serve" | "contact_sales" | "temporarily_unavailable";
+
+type PricingIntent = {
+    plan?: string;
+    country?: string;
+    cycle?: BillingCycle;
+};
+
+type BillingPlan = {
+    id?: string;
+    slug: string;
+    name: string;
+    priceUsdCents: number;
+    displayPriceCents: number;
+    displayPriceAnnualCents?: number | null;
+    displayCurrency: string;
+    trialDays: number;
+    requiresCardForTrial: boolean;
+    requiresPaymentMethodAtSignup: boolean;
+    providerConfigured: boolean;
+    maxAgents: number;
+    maxAiMessages: number;
+    features: Record<string, unknown>;
+    signupAvailable: boolean;
+    signupUnavailableReason?: string | null;
+    trialAvailable: boolean;
+    monthlyAvailable: boolean;
+    annualAvailable: boolean;
+    checkoutMode: CheckoutMode;
+    monthlyUnavailableReason?: string | null;
+};
+
+function validPlanSlug(value: string | null): string | undefined {
+    const normalized = value?.trim().toLowerCase();
+    return normalized && normalized.length <= 80 && /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(normalized)
+        ? normalized
+        : undefined;
+}
+
+function validCountry(value: string | null): string | undefined {
+    const normalized = value?.trim().toUpperCase();
+    return normalized && BILLING_COUNTRIES.includes(normalized as BillingCountry)
+        ? normalized
+        : undefined;
+}
+
+function validCycle(value: string | null): BillingCycle | undefined {
+    return value === "monthly" || value === "annual" ? value : undefined;
+}
+
+function browserBillingCountry(): string | undefined {
+    try {
+        for (const language of navigator.languages) {
+            const region = new Intl.Locale(language).region?.toUpperCase();
+            if (region && BILLING_COUNTRIES.includes(region as BillingCountry)) {
+                return region;
+            }
+        }
+    } catch { /* browser without Intl.Locale */ }
+    return undefined;
+}
+
+function readStoredPricingIntent(): PricingIntent {
+    try {
+        const raw = sessionStorage.getItem(PRICING_INTENT_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (!parsed || typeof parsed !== "object") return {};
+        return {
+            plan: validPlanSlug(typeof parsed.plan === "string" ? parsed.plan : null),
+            country: validCountry(typeof parsed.country === "string" ? parsed.country : null),
+            cycle: validCycle(typeof parsed.cycle === "string" ? parsed.cycle : null),
+        };
+    } catch {
+        return {};
+    }
+}
+
+function isCycleAvailable(plan: BillingPlan, cycle: BillingCycle): boolean {
+    // Acquisition has stricter guarantees than an authenticated upgrade. In
+    // particular, card-backed trials are blocked until onboarding can persist
+    // and safely consume their token end-to-end.
+    if (!plan.signupAvailable) return false;
+    // A no-card monthly trial can be provisioned locally before a provider plan
+    // is synchronized. Card-backed trials and every annual signup remain
+    // strictly gated by the provider-backed cycle availability.
+    if (
+        cycle === "monthly"
+        && plan.trialAvailable
+        && plan.trialDays > 0
+        && !plan.requiresPaymentMethodAtSignup
+    ) return true;
+    if (plan.checkoutMode !== "self_serve") return false;
+    if (cycle === "annual") {
+        return plan.annualAvailable && Number.isFinite(plan.displayPriceAnnualCents);
+    }
+    return plan.monthlyAvailable && Number.isFinite(plan.displayPriceCents);
+}
+
+function formatMoney(amountCents: number, currency: string, locale: string): string {
+    try {
+        return new Intl.NumberFormat(locale, {
+            style: "currency",
+            currency,
+            maximumFractionDigits: 0,
+        }).format(amountCents / 100);
+    } catch {
+        return `${currency} ${(amountCents / 100).toLocaleString(locale)}`;
+    }
+}
+
+function billingCountryLabel(country: string, locale: string): string {
+    try {
+        return new Intl.DisplayNames([locale], { type: "region" }).of(country) ?? country;
+    } catch {
+        return country;
+    }
+}
 
 const ORG_SIZE_KEYS = ["1-10", "11-20", "21-50", "51-200", "201-1000", "1000+"];
 
@@ -53,11 +175,6 @@ const AUDIENCE_KEYS = ["b2c", "b2b", "government", "other"];
 const GOAL_KEYS = [
     "faq", "appointments", "sales", "support",
     "promotions", "lead_qualification", "response_time", "other",
-];
-
-const REFERRAL_KEYS = [
-    "google", "social_media", "referral", "ai_chat",
-    "youtube", "blog", "event", "other",
 ];
 
 const VERTICAL_GOALS: Record<string, Array<{key: string; label: string; icon: string}>> = {
@@ -319,12 +436,18 @@ export default function OnboardingPage() {
     const [goals, setGoals] = useState<string[]>([]);
     const [goalOther, setGoalOther] = useState("");
 
-    // Step 4
-    const [referral, setReferral] = useState("");
-    const [referralOther, setReferralOther] = useState("");
-
-    // Step 5 — plan picker + card for paid tiers
-    const [planSlug, setPlanSlug] = useState<PlanSlug>("emprendedor");
+    // Step 4 — active billing catalog. The initial selection comes from the
+    // landing intent when present and is revalidated after the API responds.
+    const [planSlug, setPlanSlug] = useState("");
+    const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
+    const [billingCountry, setBillingCountry] = useState<string | undefined>();
+    const [billingPlans, setBillingPlans] = useState<BillingPlan[]>([]);
+    const [planCatalogLoading, setPlanCatalogLoading] = useState(true);
+    const [planCatalogError, setPlanCatalogError] = useState(false);
+    const [planCatalogCountry, setPlanCatalogCountry] = useState<string | undefined>();
+    const [planCatalogReloadKey, setPlanCatalogReloadKey] = useState(0);
+    const [pricingIntentLoaded, setPricingIntentLoaded] = useState(false);
+    const [pricingIntentAdjusted, setPricingIntentAdjusted] = useState(false);
     const [cardTokenId, setCardTokenId] = useState<string | null>(null);
 
     // Protected
@@ -332,6 +455,104 @@ export default function OnboardingPage() {
         const token = localStorage.getItem("accessToken");
         if (!token) router.push("/login");
     }, [router]);
+
+    // Query parameters have priority over the intent retained by signup. Each
+    // field is validated independently; invalid URL input never becomes billing
+    // state and the active catalog performs the final slug validation.
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const queryIntent: PricingIntent = {
+            plan: validPlanSlug(params.get("plan")),
+            country: validCountry(params.get("country")),
+            cycle: validCycle(params.get("cycle")),
+        };
+        const storedIntent = readStoredPricingIntent();
+        const pricingIntent = {
+            ...storedIntent,
+            ...Object.fromEntries(Object.entries(queryIntent).filter(([, value]) => value !== undefined)),
+        } as PricingIntent;
+
+        setPlanSlug(pricingIntent.plan ?? "");
+        setBillingCountry(pricingIntent.country ?? browserBillingCountry() ?? "CO");
+        setBillingCycle(pricingIntent.cycle ?? "monthly");
+        setPricingIntentLoaded(true);
+    }, []);
+
+    useEffect(() => {
+        if (!pricingIntentLoaded) return;
+        let cancelled = false;
+        setPlanCatalogLoading(true);
+        setPlanCatalogError(false);
+
+        api.getPublicBillingPlans(billingCountry)
+            .then((result) => {
+                if (cancelled) return;
+                if (!result?.success || !Array.isArray(result.data)) {
+                    setBillingPlans([]);
+                    setPlanCatalogCountry(undefined);
+                    setPlanCatalogError(true);
+                    return;
+                }
+                setBillingPlans(result.data as BillingPlan[]);
+                setPlanCatalogCountry(billingCountry);
+            })
+            .catch(() => {
+                if (cancelled) return;
+                setBillingPlans([]);
+                setPlanCatalogCountry(undefined);
+                setPlanCatalogError(true);
+            })
+            .finally(() => {
+                if (!cancelled) setPlanCatalogLoading(false);
+            });
+
+        return () => { cancelled = true; };
+    }, [billingCountry, planCatalogReloadKey, pricingIntentLoaded]);
+
+    // Keep a requested live plan whenever possible. If its requested annual
+    // cycle is unavailable, retain the plan and safely fall back to monthly;
+    // otherwise select the first purchasable live plan from server order.
+    useEffect(() => {
+        if (planCatalogLoading || planCatalogError || planCatalogCountry !== billingCountry) return;
+        if (billingPlans.length === 0) {
+            if (planSlug) setPricingIntentAdjusted(true);
+            setPlanSlug("");
+            return;
+        }
+
+        const currentPlan = billingPlans.find((plan) => plan.slug === planSlug);
+        if (currentPlan && isCycleAvailable(currentPlan, billingCycle)) return;
+
+        if (currentPlan && billingCycle === "annual" && isCycleAvailable(currentPlan, "monthly")) {
+            setBillingCycle("monthly");
+            setPricingIntentAdjusted(true);
+            return;
+        }
+
+        const sameCycleFallback = billingPlans.find((plan) => isCycleAvailable(plan, billingCycle));
+        const monthlyFallback = billingPlans.find((plan) => isCycleAvailable(plan, "monthly"));
+        const fallback = sameCycleFallback ?? monthlyFallback;
+
+        if (planSlug) setPricingIntentAdjusted(true);
+        if (!sameCycleFallback && monthlyFallback) setBillingCycle("monthly");
+        setPlanSlug(fallback?.slug ?? "");
+    }, [billingCountry, billingCycle, billingPlans, planCatalogCountry, planCatalogError, planCatalogLoading, planSlug]);
+
+    // Keep the reconciled choice across verification/OAuth/reloads. It is
+    // removed only after onboarding completes successfully.
+    useEffect(() => {
+        if (!pricingIntentLoaded) return;
+        const pricingIntent: PricingIntent = {
+            plan: planSlug || undefined,
+            country: billingCountry,
+            cycle: billingCycle,
+        };
+        try { sessionStorage.setItem(PRICING_INTENT_KEY, JSON.stringify(pricingIntent)); } catch { /* noop */ }
+    }, [billingCountry, billingCycle, planSlug, pricingIntentLoaded]);
+
+    useEffect(() => {
+        setCardTokenId(null);
+    }, [billingCountry, billingCycle, planSlug]);
 
     // The API registry is the only source of truth for industries/subtypes.
     // Administrative creation consumes the same endpoint, preventing the two
@@ -468,6 +689,13 @@ export default function OnboardingPage() {
         );
     };
 
+    const selectedPlan = billingPlans.find((plan) => plan.slug === planSlug);
+    const annualCycleAvailable = billingPlans.some((plan) => isCycleAvailable(plan, "annual"));
+    const planCatalogIsCurrent = !planCatalogLoading
+        && !planCatalogError
+        && planCatalogCountry === billingCountry;
+    const billingCountryOptions = [...BILLING_COUNTRIES];
+
     const canProceed = (): boolean => {
         switch (step) {
             case 0:
@@ -485,12 +713,10 @@ export default function OnboardingPage() {
             case 2:
                 return goals.length > 0;
             case 3:
-                return !!referral;
-            case 4:
-                // Starter is always valid. Pro/Enterprise require a card
-                // token (collected via the MP card form below).
-                if (planSlug === "emprendedor" || planSlug === "starter") return true;
-                return !!cardTokenId;
+                return planCatalogIsCurrent
+                    && !!selectedPlan
+                    && isCycleAvailable(selectedPlan, billingCycle)
+                    && (!selectedPlan.requiresPaymentMethodAtSignup || !!cardTokenId);
             default:
                 return false;
         }
@@ -506,6 +732,10 @@ export default function OnboardingPage() {
     };
 
     const handleSubmit = async () => {
+        if (!planCatalogIsCurrent || !selectedPlan || !isCycleAvailable(selectedPlan, billingCycle)) {
+            setError(t('planSelectionUnavailable'));
+            return;
+        }
         setError("");
         setIsSubmitting(true);
 
@@ -526,6 +756,7 @@ export default function OnboardingPage() {
                 subType: subType || undefined,
                 orgSize,
                 timezone,
+                country: billingCountry,
             },
             audiences: audiences.includes("other")
                 ? [...audiences.filter((a) => a !== "other"), `other:${audienceOther}`]
@@ -533,12 +764,13 @@ export default function OnboardingPage() {
             goals: goals.includes("other")
                 ? [...goals.filter((g) => g !== "other"), `other:${goalOther}`]
                 : goals,
-            referral: referral === "other" ? `other:${referralOther}` : referral,
             // El idioma con el que está usando el dashboard es mejor señal que el huso
             // horario para decidir en qué idioma se siembra el agente y el contenido.
             locale,
-            plan: planSlug,
-            cardTokenId: planSlug !== "emprendedor" && planSlug !== "starter" ? cardTokenId : undefined,
+            plan: selectedPlan.slug,
+            billingCountry,
+            billingCycle,
+            cardTokenId: selectedPlan.requiresPaymentMethodAtSignup ? cardTokenId : undefined,
             couponCode: couponCode.trim() || undefined,
         };
 
@@ -564,7 +796,10 @@ export default function OnboardingPage() {
 
             // El alta ya está hecha: el borrador no debe sobrevivir (si no, reaparecería
             // relleno la próxima vez que alguien abra /onboarding en este navegador).
-            try { if (draftKey) localStorage.removeItem(draftKey); } catch { /* noop */ }
+            try {
+                if (draftKey) localStorage.removeItem(draftKey);
+                sessionStorage.removeItem(PRICING_INTENT_KEY);
+            } catch { /* noop */ }
 
             // Puente cohesivo: en vez de caer al dashboard (que rebota al wizard con un
             // flash), mostramos una transición breve y vamos DIRECTO al setup-wizard.
@@ -1024,95 +1259,193 @@ export default function OnboardingPage() {
                         </div>
                     )}
 
-                    {/* Step 4: Referral */}
+                    {/* Step 4: live plan catalog */}
                     {step === 3 && (
-                        <div>
-                            <h2 className="text-xl font-semibold text-foreground mb-1">{t('referralTitle')}</h2>
-                            <p className="text-muted-foreground text-sm mb-6">{t('step4')}</p>
-
-                            <div className="space-y-3">
-                                {REFERRAL_KEYS.map((key) => (
-                                    <label
-                                        key={key}
-                                        className={cn(
-                                            "flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all",
-                                            referral === key
-                                                ? "border-indigo-500 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10"
-                                                : "border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/[0.03] hover:border-neutral-300 dark:hover:border-white/20"
-                                        )}
-                                    >
-                                        <input
-                                            type="radio"
-                                            name="referral"
-                                            checked={referral === key}
-                                            onChange={() => setReferral(key)}
-                                            className="w-4 h-4 border-neutral-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
-                                        />
-                                        <span className="text-sm text-foreground">{t(`referrals.${key}`)}</span>
-                                    </label>
-                                ))}
-
-                                {referral === "other" && (
-                                    <input
-                                        type="text"
-                                        value={referralOther}
-                                        onChange={(e) => setReferralOther(e.target.value)}
-                                        placeholder={t('otherSpecify')}
-                                        className={cn(inputClasses, "ml-7")}
-                                    />
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Step 5: Plan picker */}
-                    {step === 4 && (
                         <div>
                             <h2 className="text-xl font-semibold text-foreground mb-1">{t('planTitle')}</h2>
                             <p className="text-muted-foreground text-sm mb-6">{t('planSubtitle')}</p>
 
-                            <div className="space-y-3">
-                                {PLAN_SLUGS.map((slug) => {
-                                    const requiresCard = slug !== 'emprendedor' && slug !== 'starter';
-                                    const active = planSlug === slug;
-                                    return (
-                                        <label
-                                            key={slug}
-                                            className={cn(
-                                                'flex items-start gap-3 p-4 rounded-xl border transition-all cursor-pointer',
-                                                active
-                                                    ? 'border-indigo-500 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10'
-                                                    : 'border-neutral-200 dark:border-white/10 bg-neutral-50 dark:bg-white/[0.03]'
-                                            )}
-                                        >
-                                            <input
-                                                type="radio"
-                                                name="plan"
-                                                checked={active}
-                                                onChange={() => {
-                                                    setPlanSlug(slug);
-                                                    // Changing plan invalidates any previously tokenised card
-                                                    setCardTokenId(null);
-                                                }}
-                                                className="mt-1 w-4 h-4 border-neutral-300 dark:border-white/20 text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
-                                            />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <span className="text-sm font-semibold text-foreground">{t(`plans.${slug}.name`)}</span>
-                                                    <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">{t(`plans.${slug}.price`)}</span>
-                                                </div>
-                                                <p className="text-xs text-muted-foreground mt-1">{t(`plans.${slug}.desc`)}</p>
-                                                {requiresCard && (
-                                                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">{t('requiresCardNote')}</p>
-                                                )}
-                                            </div>
-                                        </label>
-                                    );
-                                })}
+                            <div className="mb-4">
+                                <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground" htmlFor="billing-country">
+                                    {t('billingCountry')}
+                                </label>
+                                <select
+                                    id="billing-country"
+                                    value={billingCountry ?? "CO"}
+                                    onChange={(event) => {
+                                        setBillingCountry(event.target.value);
+                                        setPricingIntentAdjusted(false);
+                                    }}
+                                    className={selectClasses}
+                                >
+                                    {billingCountryOptions.map((country) => (
+                                        <option key={country} value={country}>
+                                            {billingCountryLabel(country, locale)} ({country})
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="mt-1 text-xs text-muted-foreground">{t('billingCountryHint')}</p>
                             </div>
 
-                            {/* Inline card form for Pro/Enterprise */}
-                            {planSlug !== "emprendedor" && planSlug !== "starter" && !cardTokenId && (
+                            {pricingIntentAdjusted && (
+                                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                                    {t('planIntentAdjusted')}
+                                </div>
+                            )}
+
+                            {planCatalogIsCurrent && annualCycleAvailable && (
+                                <div className="mb-4 inline-flex rounded-lg border border-neutral-200 p-0.5 text-sm dark:border-white/10">
+                                    {(["monthly", "annual"] as BillingCycle[]).map((cycle) => (
+                                        <button
+                                            key={cycle}
+                                            type="button"
+                                            onClick={() => {
+                                                setBillingCycle(cycle);
+                                                setPricingIntentAdjusted(false);
+                                            }}
+                                            className={cn(
+                                                "rounded-md px-3 py-1.5 font-medium transition-colors",
+                                                billingCycle === cycle
+                                                    ? "bg-indigo-600 text-white"
+                                                    : "text-muted-foreground hover:text-foreground",
+                                            )}
+                                        >
+                                            {cycle === "monthly" ? t('cycleMonthly') : t('cycleAnnual')}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {!planCatalogIsCurrent && !planCatalogError ? (
+                                <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-300 border-t-indigo-500" />
+                                    {t('planCatalogLoading')}
+                                </div>
+                            ) : planCatalogError ? (
+                                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center dark:border-red-900 dark:bg-red-950/30">
+                                    <p className="text-sm text-red-700 dark:text-red-300">{t('planCatalogError')}</p>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPlanCatalogReloadKey((value) => value + 1)}
+                                        className="mt-3 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500"
+                                    >
+                                        {t('retry')}
+                                    </button>
+                                </div>
+                            ) : billingPlans.length === 0 ? (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-center text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                                    {t('planCatalogEmpty')}
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {billingPlans.map((plan) => {
+                                        const available = isCycleAvailable(plan, billingCycle);
+                                        const active = planSlug === plan.slug;
+                                        const amount = billingCycle === "annual"
+                                            ? plan.displayPriceAnnualCents
+                                            : plan.displayPriceCents;
+                                        const channels = Array.isArray(plan.features?.channels)
+                                            ? plan.features.channels.length
+                                            : null;
+                                        const messages = plan.maxAiMessages < 0
+                                            ? t('unlimited')
+                                            : new Intl.NumberFormat(locale).format(plan.maxAiMessages);
+                                        const agents = plan.maxAgents < 0
+                                            ? t('unlimited')
+                                            : new Intl.NumberFormat(locale).format(plan.maxAgents);
+                                        const customPricing = plan.features?.salesLed === true
+                                            || (plan.checkoutMode === "contact_sales" && amount === 0);
+
+                                        return (
+                                            <label
+                                                key={plan.id ?? plan.slug}
+                                                className={cn(
+                                                    "flex items-start gap-3 rounded-xl border p-4 transition-all",
+                                                    available ? "cursor-pointer" : "cursor-not-allowed opacity-70",
+                                                    active
+                                                        ? "border-indigo-500 bg-indigo-50 dark:border-indigo-500/50 dark:bg-indigo-500/10"
+                                                        : "border-neutral-200 bg-neutral-50 dark:border-white/10 dark:bg-white/[0.03]",
+                                                )}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="plan"
+                                                    checked={active}
+                                                    disabled={!available}
+                                                    onChange={() => {
+                                                        setPlanSlug(plan.slug);
+                                                        setPricingIntentAdjusted(false);
+                                                    }}
+                                                    className="mt-1 h-4 w-4 border-neutral-300 text-indigo-600 accent-indigo-600 focus:ring-indigo-500 dark:border-white/20"
+                                                />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <span className="text-sm font-semibold text-foreground">{plan.name}</span>
+                                                        <span className="text-right text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+                                                            {customPricing
+                                                                ? t('customPrice')
+                                                                : typeof amount === "number" && Number.isFinite(amount)
+                                                                    ? `${formatMoney(amount, plan.displayCurrency, locale)} / ${billingCycle === "annual" ? t('perYear') : t('perMonth')}`
+                                                                    : t('priceUnavailable')}
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        {t('agentsIncluded', { n: agents })}
+                                                        {" · "}{t('messagesIncluded', { n: messages })}
+                                                        {channels !== null && <>{" · "}{t('channelsIncluded', { n: channels })}</>}
+                                                    </p>
+                                                    {billingCycle === "monthly" && plan.trialAvailable ? (
+                                                        <div className="mt-2 text-[11px] text-muted-foreground">
+                                                            <p>
+                                                                {t('trialDays', { n: plan.trialDays })}
+                                                                {" · "}{t('noCardRequired')}
+                                                            </p>
+                                                            {!plan.monthlyAvailable && (
+                                                                <p className="mt-1 font-medium text-amber-600 dark:text-amber-400">
+                                                                    {t('trialRenewalAvailability')}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    ) : plan.signupUnavailableReason === "card_trial_not_supported" ? (
+                                                        <p className="mt-2 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                                                            {t('cardTrialNotSupported')}
+                                                        </p>
+                                                    ) : plan.checkoutMode === "contact_sales" ? (
+                                                        <p className="mt-2 text-[11px] font-medium text-indigo-600 dark:text-indigo-400">{t('planContactSales')}</p>
+                                                    ) : !available ? (
+                                                        <p className="mt-2 text-[11px] font-medium text-amber-600 dark:text-amber-400">{t('planTemporarilyUnavailable')}</p>
+                                                    ) : plan.trialDays > 0 ? (
+                                                        <p className="mt-2 text-[11px] text-muted-foreground">
+                                                            {t('trialDays', { n: plan.trialDays })}
+                                                            {" · "}{plan.requiresCardForTrial ? t('requiresCardNote') : t('noCardRequired')}
+                                                        </p>
+                                                    ) : null}
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {!planCatalogError && !planCatalogLoading && billingPlans.some((plan) =>
+                                plan.checkoutMode === "contact_sales"
+                                || plan.signupUnavailableReason === "card_trial_not_supported") && (
+                                <p className="mt-3 text-center text-xs text-muted-foreground">
+                                    {t('contactSalesHint')}{" "}
+                                    <a
+                                        href={`mailto:${SALES_EMAIL}`}
+                                        className="font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                                    >
+                                        {t('contactSalesAction')}
+                                    </a>
+                                </p>
+                            )}
+
+                            {/* Inline card form driven exclusively by the selected plan. */}
+                            {selectedPlan?.signupAvailable
+                                && selectedPlan.requiresPaymentMethodAtSignup
+                                && isCycleAvailable(selectedPlan, billingCycle)
+                                && !cardTokenId && (
                                 <div className="mt-5 p-4 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900">
                                     <h3 className="text-sm font-semibold mb-3">{t('cardSectionTitle')}</h3>
                                     <MpCardForm
@@ -1122,7 +1455,10 @@ export default function OnboardingPage() {
                                 </div>
                             )}
 
-                            {planSlug !== "emprendedor" && planSlug !== "starter" && cardTokenId && (
+                            {selectedPlan?.signupAvailable
+                                && selectedPlan.requiresPaymentMethodAtSignup
+                                && isCycleAvailable(selectedPlan, billingCycle)
+                                && cardTokenId && (
                                 <div className="mt-5 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-sm text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
                                     <span>✓ {t('cardReady')}</span>
                                     <button

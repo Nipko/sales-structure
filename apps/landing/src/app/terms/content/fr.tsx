@@ -101,7 +101,7 @@ export default function TermsFr() {
               aux messages entrants.
             </li>
             <li>
-              Une architecture multi-tenant avec isolation des données par
+              Une architecture multiclient avec isolation des données par
               organisation.
             </li>
             <li>
@@ -148,7 +148,7 @@ export default function TermsFr() {
               des informations fausses.
             </li>
             <li>
-              Chaque organisation (tenant) peut comporter plusieurs
+              Chaque organisation peut comporter plusieurs
               utilisateurs avec différents rôles : administrateur, superviseur
               et agent.
             </li>
@@ -161,58 +161,20 @@ export default function TermsFr() {
             4. Forfaits et tarifs
           </h2>
           <p className="mb-4">
-            Parallly propose les forfaits d&apos;abonnement suivants :
+            Les forfaits actifs, tarifs, devises, limites et fonctionnalités en
+            vigueur figurent sur notre {" "}
+            <Link href="/precios" className="text-accent hover:underline">
+              page de tarification
+            </Link>
+            {" "}et, le cas échéant, dans le panneau de facturation avant tout
+            achat ou changement d&apos;abonnement. Ces informations font partie
+            de l&apos;offre applicable à votre compte et peuvent varier selon le
+            pays.
           </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-3 pr-4 text-text-primary font-semibold">
-                    Caractéristique
-                  </th>
-                  <th className="text-center py-3 px-4 text-text-primary font-semibold">
-                    Starter
-                  </th>
-                  <th className="text-center py-3 px-4 text-text-primary font-semibold">
-                    Pro
-                  </th>
-                  <th className="text-center py-3 px-4 text-text-primary font-semibold">
-                    Enterprise
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="text-text-muted">
-                <tr className="border-b border-border/50">
-                  <td className="py-3 pr-4">Conversations/mois</td>
-                  <td className="text-center py-3 px-4">500</td>
-                  <td className="text-center py-3 px-4">5 000</td>
-                  <td className="text-center py-3 px-4">Illimitées</td>
-                </tr>
-                <tr className="border-b border-border/50">
-                  <td className="py-3 pr-4">Agents d&apos;IA</td>
-                  <td className="text-center py-3 px-4">1</td>
-                  <td className="text-center py-3 px-4">5</td>
-                  <td className="text-center py-3 px-4">Illimités</td>
-                </tr>
-                <tr className="border-b border-border/50">
-                  <td className="py-3 pr-4">Utilisateurs de l&apos;équipe</td>
-                  <td className="text-center py-3 px-4">2</td>
-                  <td className="text-center py-3 px-4">10</td>
-                  <td className="text-center py-3 px-4">Illimités</td>
-                </tr>
-                <tr className="border-b border-border/50">
-                  <td className="py-3 pr-4">Support</td>
-                  <td className="text-center py-3 px-4">E-mail</td>
-                  <td className="text-center py-3 px-4">Prioritaire</td>
-                  <td className="text-center py-3 px-4">Dédié</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-4 text-text-muted text-sm">
-            Les tarifs en vigueur sont publiés sur la page de tarification de
-            parallly-chat.cloud. Nous nous réservons le droit de modifier les
-            tarifs avec un préavis d&apos;au moins 30 jours.
+          <p className="text-text-muted text-sm">
+            Nous nous réservons le droit de modifier les tarifs avec un préavis
+            d&apos;au moins 30 jours pour les abonnements existants, sauf délai
+            différent imposé par la loi applicable.
           </p>
         </section>
 
@@ -222,15 +184,12 @@ export default function TermsFr() {
             5. Période d&apos;essai
           </h2>
           <p>
-            Parallly offre une période d&apos;essai gratuite de 7 jours
-            calendaires aux nouveaux utilisateurs. Pendant cette période, vous
-            aurez accès aux fonctionnalités du forfait Pro. À l&apos;issue de
-            la période d&apos;essai, si vous n&apos;avez pas sélectionné de
-            forfait payant, votre compte passera en état inactif et aucun
-            message ne sera traité tant que vous n&apos;aurez pas activé un
-            abonnement. Aucun prélèvement automatique ne sera effectué à la fin
-            de l&apos;essai sauf si vous avez explicitement choisi un forfait
-            payant.
+            La disponibilité, la durée, les fonctionnalités et les exigences de
+            paiement d&apos;un essai dépendent du forfait actif sélectionné et
+            sont présentées avant son activation. À son terme, l&apos;accès peut
+            être limité jusqu&apos;à l&apos;activation d&apos;un abonnement. Aucun
+            prélèvement automatique ne sera effectué sans une autorisation de
+            paiement clairement présentée et expressément acceptée.
           </p>
         </section>
 
@@ -241,8 +200,8 @@ export default function TermsFr() {
           </h2>
           <ul className="list-disc pl-6 space-y-2">
             <li>
-              Les abonnements sont facturés mensuellement ou annuellement,
-              selon le cycle de facturation sélectionné.
+              Les abonnements sont facturés selon le cycle disponible affiché et
+              confirmé avant l&apos;achat.
             </li>
             <li>
               Les paiements sont traités par des prestataires de paiement
@@ -293,7 +252,7 @@ export default function TermsFr() {
               intellectuelle.
             </li>
             <li>
-              Tenter d&apos;accéder aux données d&apos;autres tenants ou
+              Tenter d&apos;accéder aux données d&apos;autres organisations ou
               contourner les mécanismes de sécurité de la plateforme.
             </li>
             <li>

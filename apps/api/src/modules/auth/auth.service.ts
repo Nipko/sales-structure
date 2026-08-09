@@ -1885,13 +1885,14 @@ export class AuthService {
             await assertLockOwned();
             await this.ensureOnboardingSubscription({
                 tenantId: existingTenantId,
-                planSlug: (tenant.plan || data.plan || data.planSlug || 'emprendedor') as string,
+                planSlug: (data.plan || data.planSlug || tenant.plan || 'emprendedor') as string,
                 billingEmail: businessDraft.email || tenant.billingEmail || user.email,
-                billingCountry: tenant.billingCountry
+                billingCountry: data.billingCountry
                     || data.company?.country
-                    || data.billingCountry
+                    || tenant.billingCountry
                     || this.inferCountryFromTimezone(settings.timezone || 'America/Bogota'),
                 cardTokenId: data.cardTokenId,
+                billingCycle: data.billingCycle,
             });
             // Mismo cupón que en el flujo normal: la rama de reparación reintenta el
             // alta completa, y el UNIQUE (couponId, tenantId) hace que un segundo
@@ -2156,6 +2157,7 @@ export class AuthService {
             billingEmail: businessEmail || user.email,
             billingCountry,
             cardTokenId: data.cardTokenId,
+            billingCycle: data.billingCycle,
         });
 
         // 7.5. Código promocional del alta. Va DESPUÉS de la suscripción porque el
@@ -2292,6 +2294,7 @@ export class AuthService {
         billingEmail?: string;
         billingCountry?: string;
         cardTokenId?: string;
+        billingCycle?: 'monthly' | 'annual';
     }): Promise<void> {
         const existing = await this.prisma.billingSubscription.findUnique({
             where: { tenantId: input.tenantId },

@@ -1,7 +1,8 @@
 import { BadRequestException, Body, Controller, Get, Logger, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -11,8 +12,11 @@ import { BillingService } from './billing.service';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MediaThrottleService } from '../media-processing/media-throttle.service';
-import { resolveAnnualPlanDisplay } from './billing-plan-display.util';
 import { EmailVerifiedGuard } from '../../common/guards/email-verified.guard';
+import { BillingPlanCatalogService } from './billing-plan-catalog.service';
+import { BILLING_CURRENCY_BY_COUNTRY } from './billing-country-config';
+
+const BILLING_COUNTRIES = Object.keys(BILLING_CURRENCY_BY_COUNTRY);
 
 /**
  * Tenant-facing billing endpoints.
@@ -28,7 +32,7 @@ import { EmailVerifiedGuard } from '../../common/guards/email-verified.guard';
 
 class StartTrialDto {
     @IsString()
-    @IsIn(['emprendedor', 'starter', 'pro', 'enterprise', 'custom'])
+    @MaxLength(80)
     planSlug!: string;
 
     @IsOptional()
@@ -40,7 +44,9 @@ class StartTrialDto {
     billingEmail?: string;
 
     @IsOptional()
+    @Transform(({ value }) => typeof value === 'string' ? value.trim().toUpperCase() : value)
     @IsString()
+    @IsIn(BILLING_COUNTRIES)
     billingCountry?: string;
 
     @IsOptional()
@@ -50,7 +56,7 @@ class StartTrialDto {
 
 class ChangePlanDto {
     @IsString()
-    @IsIn(['emprendedor', 'starter', 'pro', 'enterprise'])
+    @MaxLength(80)
     planSlug!: string;
 
     @IsOptional()
@@ -95,90 +101,17 @@ export class BillingController {
         private readonly throttle: TenantThrottleService,
         private readonly invoiceGenerator: InvoiceGeneratorService,
         private readonly mediaThrottle: MediaThrottleService,
+        private readonly planCatalog: BillingPlanCatalogService,
     ) {}
 
     /**
-     * Public plan catalog — used by the onboarding pricing step and the
-     * dashboard plan picker. No auth required.
+     * Authenticated plan catalog used by onboarding and the dashboard plan
+     * picker. The public landing uses BillingPublicController.
      */
     @Get('plans')
     async listPlans(@Query('country') country?: string) {
-        const plans = await this.prisma.billingPlan.findMany({
-            where: { isActive: true },
-            orderBy: { sortOrder: 'asc' },
-            select: {
-                id: true,
-                slug: true,
-                name: true,
-                priceUsdCents: true,
-                trialDays: true,
-                requiresCardForTrial: true,
-                maxAgents: true,
-                maxAiMessages: true,
-                features: true,
-                priceLocalOverrides: true,
-            },
-        });
-
-        // Resolve display price per plan based on requested country.
-        // Order of precedence:
-        //  1. priceLocalOverrides[country].amountCents (fixed local price)
-        //  2. latest ExchangeRate USD→localCurrency (auto, fallback)
-        //  3. USD (no override, no FX rate available)
-        const localPrice = country ? await this.resolveLocalPrice(country) : null;
-
-        const enriched = plans.map((p: typeof plans[number]) => {
-            const overrides = (p.priceLocalOverrides ?? {}) as Record<string, any>;
-            const countryOverride = country ? overrides[country] : null;
-
-            let displayCurrency: string = 'USD';
-            let displayPriceCents: number = p.priceUsdCents;
-            let priceSource: 'override' | 'fx' | 'usd' = 'usd';
-
-            if (countryOverride?.amountCents && countryOverride?.currency) {
-                displayCurrency = countryOverride.currency;
-                displayPriceCents = countryOverride.amountCents;
-                priceSource = 'override';
-            } else if (localPrice) {
-                displayCurrency = localPrice.currency;
-                displayPriceCents = Math.round(p.priceUsdCents * localPrice.rate);
-                priceSource = 'fx';
-            }
-
-            // Annual cycle (override-only): the total yearly charge + its MP plan
-            // id, plus the % discount vs paying the monthly price 12×.
-            const { displayPriceAnnualCents, mpPlanIdAnnual, annualDiscountPct } =
-                resolveAnnualPlanDisplay(countryOverride, displayPriceCents);
-
-            return {
-                ...p,
-                displayPriceCents,
-                displayCurrency,
-                priceSource,
-                displayPriceAnnualCents,
-                mpPlanIdAnnual,
-                annualDiscountPct,
-            };
-        });
-
-        return { success: true, data: enriched };
-    }
-
-    private async resolveLocalPrice(country: string): Promise<{ currency: string; rate: number } | null> {
-        const COUNTRY_CURRENCY: Record<string, string> = {
-            CO: 'COP', AR: 'ARS', MX: 'MXN', CL: 'CLP', PE: 'PEN', UY: 'UYU',
-            BR: 'BRL', US: 'USD', CA: 'USD', PY: 'PYG', BO: 'BOB', EC: 'USD',
-            VE: 'USD', CR: 'CRC', PA: 'USD', DO: 'DOP', GT: 'GTQ',
-        };
-        const currency = COUNTRY_CURRENCY[country.toUpperCase()];
-        if (!currency || currency === 'USD') return null;
-
-        const fx = await this.prisma.exchangeRate.findFirst({
-            where: { fromCurrency: 'USD', toCurrency: currency },
-            orderBy: { rateDate: 'desc' },
-        });
-        if (!fx) return null;
-        return { currency, rate: Number(fx.rate) };
+        const plans = await this.planCatalog.listActivePlans(country);
+        return { success: true, data: plans };
     }
 
     /**
@@ -228,6 +161,7 @@ export class BillingController {
                 plan: (sub as any).plan,
                 provider: sub.provider,
                 billingCycle: ((sub as any).metadata && typeof (sub as any).metadata === 'object' && (sub as any).metadata.billingCycle === 'annual') ? 'annual' : 'monthly',
+                providerBacked: Boolean(sub.providerSubscriptionId),
                 trialStartedAt: sub.trialStartedAt,
                 trialEndsAt: sub.trialEndsAt,
                 currentPeriodStart: sub.currentPeriodStart,

@@ -12,7 +12,7 @@
   /* ─── Text ──────────────────────────────────────────────── */
   --color-text-primary: #fafafa;
   --color-text-secondary: #a1a1aa;
-  --color-text-muted: #71717a;
+  --color-text-muted: #8b8b95;
 
   /* ─── Brand accent (Meta blue, mantenido del v1) ─────── */
   --color-accent: #3897f0;
@@ -20,6 +20,8 @@
   --color-accent-soft: rgba(56, 151, 240, 0.12);
   --color-accent-glow: rgba(56, 151, 240, 0.35);
   --color-brand: #3897f0;
+  --color-accent-solid: #1f6fb2;
+  --color-accent-solid-hover: #195f99;
 
   /* ─── Status semánticos ─────────────────────────────────── */
   --color-success: #10b981;
@@ -63,6 +65,17 @@ body {
 ::selection {
   background-color: rgba(56, 151, 240, 0.3);
   color: #fafafa;
+}
+
+/* Keep the bright brand blue for links and focus states. Filled blue controls
+   use a darker shade so white text remains AA-compliant at every text size. */
+.bg-accent.text-white {
+  background-color: var(--color-accent-solid);
+}
+
+a.bg-accent.text-white:hover,
+button.bg-accent.text-white:hover {
+  background-color: var(--color-accent-solid-hover);
 }
 
 /* Scrollbar */
@@ -159,4 +172,3 @@ body {
   33% { transform: translate(-40px, 30px) rotate(-4deg); }
   66% { transform: translate(30px, -40px) rotate(3deg); }
 }
-

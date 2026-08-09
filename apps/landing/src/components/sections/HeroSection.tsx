@@ -1,227 +1,170 @@
 "use client";
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
-import { SIGNUP_URL, WHATSAPP_URL } from "../../lib/constants";
-import { Icon, getVerticalIcon } from "../ui/Icon";
-import { VerticalChatDemo } from "../demos/VerticalChatDemo";
-import { VERTICALS } from "../../data/verticals";
-
-const HERO_VERTICALS = VERTICALS.filter((v) => v.tier === 1).slice(0, 6);
+import { SIGNUP_URL } from "../../lib/constants";
+import { Icon } from "../ui/Icon";
 
 export function HeroSection() {
   const t = useTranslations("hero");
-  const [activeIdx, setActiveIdx] = useState(0);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const { clientX, clientY } = e;
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    // Calculate position from center (-0.5 to 0.5)
-    const x = (clientX / width) - 0.5;
-    const y = (clientY / height) - 0.5;
-    setMousePos({ x, y });
-  };
 
   return (
-    <section 
-      onMouseMove={handleMouseMove}
-      className="relative pt-28 pb-20 px-6 overflow-hidden min-h-[90vh] flex items-center justify-center"
+    <section
+      className="relative overflow-hidden px-6 pb-20 pt-28 sm:pb-24 lg:flex lg:min-h-[90vh] lg:items-center"
+      aria-labelledby="hero-title"
     >
-      {/* Interactive Aurora mesh background — Parallax drift reactive to mouse */}
-      <div className="absolute inset-0 pointer-events-none" aria-hidden>
-        <div
-          className="absolute top-[-10%] left-[20%] w-[600px] h-[600px] rounded-full blur-[120px] opacity-[0.14] pointer-events-none"
-          style={{ 
-            background: "radial-gradient(circle, #3897f0 0%, transparent 70%)", 
-            transform: `translate(${mousePos.x * 40}px, ${mousePos.y * 40}px)`,
-            transition: "transform 0.4s cubic-bezier(0.1, 0.8, 0.2, 1)",
-            animation: "aurora-drift 18s ease-in-out infinite"
-          }}
-        />
-        <div
-          className="absolute top-[10%] right-[10%] w-[500px] h-[500px] rounded-full blur-[100px] opacity-[0.09] pointer-events-none"
-          style={{ 
-            background: "radial-gradient(circle, #06b6d4 0%, transparent 70%)", 
-            transform: `translate(${mousePos.x * -35}px, ${mousePos.y * -35}px)`,
-            transition: "transform 0.4s cubic-bezier(0.1, 0.8, 0.2, 1)",
-            animation: "aurora-drift-reverse 20s ease-in-out infinite"
-          }}
-        />
-        <div
-          className="absolute bottom-[-5%] left-[40%] w-[400px] h-[400px] rounded-full blur-[100px] opacity-[0.07] pointer-events-none"
-          style={{ 
-            background: "radial-gradient(circle, #10b981 0%, transparent 70%)", 
-            transform: `translate(${mousePos.x * 25}px, ${mousePos.y * -25}px)`,
-            transition: "transform 0.4s cubic-bezier(0.1, 0.8, 0.2, 1)",
-            animation: "aurora-drift 22s ease-in-out infinite 2s"
-          }}
-        />
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute left-[8%] top-[-15%] h-[620px] w-[620px] rounded-full bg-[radial-gradient(circle,rgba(56,151,240,0.16),transparent_68%)] blur-3xl" />
+        <div className="absolute right-[-8%] top-[8%] h-[520px] w-[520px] rounded-full bg-[radial-gradient(circle,rgba(6,182,212,0.1),transparent_68%)] blur-3xl" />
+        <div className="absolute bottom-[-22%] left-[42%] h-[460px] w-[460px] rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.08),transparent_68%)] blur-3xl" />
       </div>
 
-      <div className="mx-auto max-w-5xl relative z-10 w-full">
-        {/* Badge */}
-        <motion.div
-          className="text-center mb-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-accent/10 border border-accent/25 text-accent text-xs font-semibold backdrop-blur-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-            {t("badge")}
-          </span>
-        </motion.div>
+      <div className="relative z-10 mx-auto grid w-full max-w-6xl items-center gap-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(420px,0.98fr)] lg:gap-16">
+        <div>
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45 }}
+          >
+            <span className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/10 px-3.5 py-1.5 text-xs font-semibold text-accent backdrop-blur-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
+              {t("badge")}
+            </span>
+          </motion.div>
 
-        {/* Headline — centered */}
+          <motion.div
+            initial={{ opacity: 0, y: 22 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.05 }}
+          >
+            <h1
+              id="hero-title"
+              className="mt-6 max-w-3xl text-4xl font-black leading-[1.04] tracking-tight sm:text-5xl lg:text-[3.7rem]"
+            >
+              {t.rich("title", {
+                em: (chunks) => (
+                  <span className="bg-gradient-to-r from-accent via-cyan-400 to-emerald-400 bg-clip-text text-transparent">
+                    {chunks}
+                  </span>
+                ),
+              })}
+            </h1>
+            <p className="mt-6 max-w-2xl text-base leading-relaxed text-text-secondary sm:text-lg">
+              {t("subtitle")}
+            </p>
+          </motion.div>
+
+          <motion.div
+            className="mt-8 flex flex-col gap-3 sm:flex-row"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.15 }}
+          >
+            <a
+              href={SIGNUP_URL}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-accent px-7 py-3.5 text-base font-semibold text-white shadow-[0_0_22px_rgba(56,151,240,0.28)] transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            >
+              {t("cta")}
+              <span aria-hidden="true">{Icon.arrow("h-5 w-5")}</span>
+            </a>
+            <a
+              href="#flujo"
+              className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-surface/60 px-7 py-3.5 text-base font-semibold text-text-primary transition-colors hover:border-border-light hover:bg-surface-light/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            >
+              {t("ctaSecondary")}
+            </a>
+          </motion.div>
+
+          <motion.div
+            className="mt-6 space-y-2 text-sm text-text-muted"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.45, delay: 0.25 }}
+          >
+            <p className="flex items-center gap-2">
+              <span className="text-emerald-400" aria-hidden="true">
+                {Icon.check("h-4 w-4")}
+              </span>
+              {t("noCard")}
+            </p>
+            <p className="flex items-start gap-2">
+              <span className="mt-0.5 text-accent" aria-hidden="true">
+                {Icon.shield("h-4 w-4")}
+              </span>
+              {t("trustline")}
+            </p>
+          </motion.div>
+        </div>
+
         <motion.div
-          className="text-center max-w-3xl mx-auto mb-6"
-          initial={{ opacity: 0, y: 25 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.05 }}
+          className="relative mx-auto w-full max-w-xl"
+          initial={{ opacity: 0, x: 24 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.65, delay: 0.12 }}
+          aria-label={t("visualLabel")}
         >
-          <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-black leading-[1.05] tracking-tight">
-            {t.rich("title", {
-              em: () => (
-                <span className="bg-gradient-to-r from-accent via-cyan-400 to-emerald-400 bg-clip-text text-transparent">
-                  {t("titleHighlight")}
+          <div className="absolute -inset-5 rounded-[2rem] bg-accent/10 blur-3xl" aria-hidden="true" />
+          <div className="glass-card relative overflow-hidden rounded-3xl border border-white/10 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border bg-surface/80 px-5 py-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#25D366]/10">
+                  <img src="/logos/whatsapp.svg" alt="" className="h-5 w-5" aria-hidden="true" />
                 </span>
-              ),
-            })}
-          </h1>
-          <p className="mt-5 text-base sm:text-lg text-text-secondary max-w-2xl mx-auto leading-relaxed">
-            {t("subtitle")}
-          </p>
-        </motion.div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-text-primary">{t("visualTitle")}</p>
+                  <p className="text-xs text-text-muted">{t("visualChannel")}</p>
+                </div>
+              </div>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+                {t("visualLive")}
+              </span>
+            </div>
 
-        {/* Before/After transformation strip */}
-        <motion.div
-          className="flex items-center justify-center gap-3 mb-8"
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.15 }}
-        >
-          <div className="glass-card rounded-xl px-4 py-2.5 flex items-center gap-2 border border-white/5 shadow-md">
-            <span className="w-2 h-2 rounded-full bg-danger" />
-            <span className="text-xs text-text-muted">{t("beforeLabel")}</span>
-            <span className="text-sm font-semibold text-text-primary tabular">{t("beforeStat")}</span>
+            <div className="space-y-4 p-5 sm:p-6">
+              <div className="ml-auto max-w-[86%] rounded-2xl rounded-br-sm bg-accent px-4 py-3 text-sm leading-relaxed text-white">
+                {t("visualCustomer")}
+              </div>
+              <div className="max-w-[90%] rounded-2xl rounded-bl-sm border border-border bg-surface-light/70 px-4 py-3 text-sm leading-relaxed text-text-primary">
+                {t("visualAssistant")}
+                <div className="mt-3 flex items-center gap-2 border-t border-border/70 pt-2 text-[11px] text-text-muted">
+                  <span className="text-accent" aria-hidden="true">{Icon.book("h-3.5 w-3.5")}</span>
+                  {t("visualSource")}
+                </div>
+              </div>
+
+              <div className="grid gap-3 border-t border-border/70 pt-4 sm:grid-cols-2">
+                <div className="rounded-xl border border-border bg-bg/35 p-3.5">
+                  <div className="mb-2 flex items-center gap-2 text-accent">
+                    <span aria-hidden="true">{Icon.users("h-4 w-4")}</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider">CRM</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-text-secondary">{t("visualCrm")}</p>
+                </div>
+                <div className="rounded-xl border border-border bg-bg/35 p-3.5">
+                  <div className="mb-2 flex items-center gap-2 text-cyan-300">
+                    <span aria-hidden="true">{Icon.calendar("h-4 w-4")}</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider">{t("visualAgendaLabel")}</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-text-secondary">{t("visualAgenda")}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-300" aria-hidden="true">
+                  {Icon.inbox("h-4 w-4")}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-text-primary">{t("visualTeam")}</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-text-muted">{t("visualTeamDesc")}</p>
+                </div>
+                <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-[10px] font-semibold text-text-secondary">
+                  {t("visualDevices")}
+                </span>
+              </div>
+            </div>
           </div>
-          <svg className="w-5 h-5 text-accent flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-            <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <div className="glass-card rounded-xl px-4 py-2.5 flex items-center gap-2 border border-accent/20 shadow-md">
-            <span className="w-2 h-2 rounded-full bg-success" />
-            <span className="text-xs text-text-muted">{t("afterLabel")}</span>
-            <span className="text-sm font-semibold text-accent tabular">{t("afterStat")}</span>
-          </div>
-        </motion.div>
-
-        {/* Industry picker pills */}
-        <motion.div
-          className="mb-8"
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-        >
-          <p className="text-center text-xs text-text-muted mb-3 font-medium uppercase tracking-wider">{t("pickIndustry")}</p>
-          <div className="flex flex-wrap gap-2 justify-center max-w-3xl mx-auto">
-            {HERO_VERTICALS.map((v, i) => (
-              <motion.button
-                key={v.slug}
-                onClick={() => setActiveIdx(i)}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold transition-all border cursor-pointer ${
-                  i === activeIdx
-                    ? "bg-accent text-white border-transparent shadow-lg shadow-accent/25"
-                    : "bg-surface-light/50 text-text-muted border-border hover:border-border-light hover:text-text-secondary"
-                }`}
-              >
-                <span className="w-3.5 h-3.5" style={{ color: i === activeIdx ? "white" : v.color }}>{getVerticalIcon(v.slug, "w-3.5 h-3.5")}</span>
-                <span>{t(`verticalName.${v.slug}`)}</span>
-              </motion.button>
-            ))}
-          </div>
-          <p className="text-center text-xs text-accent/80 mt-3 font-medium max-w-xl mx-auto">
-            {t("vibeSelling")}
-          </p>
-        </motion.div>
-
-        {/* Demo — the star of the hero */}
-        <motion.div
-          className="mx-auto max-w-sm relative"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.25 }}
-        >
-          <div className="absolute inset-0 bg-gradient-to-t from-bg via-transparent to-transparent z-20 pointer-events-none h-full w-full" />
-          <p className="text-center text-xs text-text-muted mb-3 font-semibold uppercase tracking-wider">{t("demoLabel")}</p>
-          <div className="relative z-10 shadow-2xl rounded-2xl">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={HERO_VERTICALS[activeIdx].slug}
-                initial={{ opacity: 0, scale: 0.97 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.97 }}
-                transition={{ duration: 0.3 }}
-              >
-                <VerticalChatDemo vertical={HERO_VERTICALS[activeIdx]} />
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </motion.div>
-
-        {/* CTAs below demo */}
-        <motion.div
-          className="mt-10 flex flex-col sm:flex-row gap-4 justify-center relative z-30"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.35 }}
-        >
-          <motion.a
-            whileHover={{ scale: 1.03, y: -2 }}
-            whileTap={{ scale: 0.97 }}
-            transition={{ type: "spring", stiffness: 400, damping: 15 }}
-            href={SIGNUP_URL}
-            className="inline-flex items-center justify-center gap-2 px-7 py-3.5 bg-accent hover:bg-accent-hover text-white font-semibold rounded-xl text-base transition-all shadow-[0_0_20px_rgba(56,151,240,0.25)] hover:shadow-[0_0_28px_rgba(56,151,240,0.35)] cursor-pointer"
-          >
-            {t("cta")} {Icon.arrow()}
-          </motion.a>
-          <motion.a
-            whileHover={{ scale: 1.03, y: -2 }}
-            whileTap={{ scale: 0.97 }}
-            transition={{ type: "spring", stiffness: 400, damping: 15 }}
-            href={WHATSAPP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 px-7 py-3.5 bg-[#25D366] hover:bg-[#1ebe5b] text-white font-semibold rounded-xl text-base transition-all shadow-[0_0_20px_rgba(37,211,102,0.25)] hover:shadow-[0_0_28px_rgba(37,211,102,0.35)] cursor-pointer"
-          >
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 2C6.5 2 2 6.2 2 11.3c0 1.8.5 3.5 1.5 5L2 22l5.9-1.5c1.4.8 3 1.2 4.6 1.2 5.5 0 10-4.2 10-9.4S17.5 2 12 2Zm5.8 13.3c-.2.7-1.4 1.3-2 1.4-.5.1-1.2.1-1.9-.1-.4-.1-1-.3-1.7-.6-3-1.3-4.9-4.3-5.1-4.5-.1-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5.2.6.8 2 .9 2.1.1.1.1.3 0 .5-.1.2-.1.3-.3.5l-.4.5c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.4 2.4 1.5.3.1.5.1.6-.1.2-.2.7-.8.9-1.1.2-.3.4-.2.6-.1.2.1 1.5.7 1.7.8.2.1.4.2.5.3.1.1.1.6-.1 1.3Z"/></svg>
-            {t("ctaWhatsapp")}
-          </motion.a>
-          <motion.a
-            whileHover={{ scale: 1.02, y: -1 }}
-            whileTap={{ scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 400, damping: 15 }}
-            href="#como-funciona"
-            className="inline-flex items-center justify-center gap-2 px-7 py-3.5 border border-border hover:border-border-light text-text-primary rounded-xl text-base font-semibold transition-colors cursor-pointer"
-          >
-            {t("ctaSecondary")}
-          </motion.a>
-        </motion.div>
-
-        {/* Trust line */}
-        <motion.div
-          className="mt-8 text-center"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-        >
-          <p className="text-xs text-text-muted">{t("noCard")}</p>
-          <p className="text-xs text-text-muted mt-2">{t("trustline")}</p>
+          <p className="mt-3 text-center text-[11px] leading-relaxed text-text-muted">{t("visualDisclaimer")}</p>
         </motion.div>
       </div>
     </section>

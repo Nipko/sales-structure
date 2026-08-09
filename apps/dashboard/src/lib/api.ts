@@ -1048,6 +1048,7 @@ export const api = {
 
     // --- Billing (Sprint 2+3) ---
     getBillingPlans: (country?: string) => apiGet(`/billing/plans${country ? `?country=${encodeURIComponent(country)}` : ""}`),
+    getPublicBillingPlans: (country?: string) => apiGet(`/billing/public/plans${country ? `?country=${encodeURIComponent(country)}` : ""}`),
     getBillingSubscription: (tenantId: string) =>
         apiGet(`/billing/${tenantId}/subscription`),
     startBillingTrial: (tenantId: string, data: { planSlug: string; cardTokenId?: string; billingEmail?: string; billingCountry?: string; billingCycle?: 'monthly' | 'annual' }) =>

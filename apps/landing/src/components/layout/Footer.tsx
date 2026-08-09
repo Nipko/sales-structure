@@ -25,8 +25,8 @@ export function Footer() {
               <h4 className="text-sm font-semibold mb-4">{t(section.titleKey)}</h4>
               <ul className="space-y-2 text-sm text-text-muted">
                 {section.links.map((link) => (
-                  <li key={link.href}>
-                    {link.href.startsWith("mailto:") || link.href === "#" ? (
+                  <li key={`${link.labelKey}-${link.href}`}>
+                    {link.href.startsWith("mailto:") ? (
                       <a href={link.href} className="hover:text-text-secondary transition-colors">
                         {t(link.labelKey)}
                       </a>

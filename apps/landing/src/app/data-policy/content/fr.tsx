@@ -111,7 +111,7 @@ export default function DataPolicyFr() {
             </li>
             <li>
               Créer et administrer les comptes utilisateurs et organisations
-              (tenants) sur la plateforme.
+              clientes sur la plateforme.
             </li>
             <li>
               Traiter les paiements, émettre les factures et gérer la
@@ -550,10 +550,10 @@ export default function DataPolicyFr() {
             </li>
             <li>
               <strong className="text-text-primary">
-                Isolation multi-tenant :
+                Isolation par entreprise :
               </strong>{" "}
               chaque organisation cliente opère dans un schéma de base de
-              données PostgreSQL isolé (schema-per-tenant), garantissant que
+              données PostgreSQL isolé (un schéma par entreprise), garantissant que
               les données de chaque client sont logiquement séparées.
             </li>
             <li>

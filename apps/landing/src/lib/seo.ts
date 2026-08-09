@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 const SITE_URL = "https://parallly-chat.cloud";
 const SITE_NAME = "Parallly";
-const DEFAULT_OG_IMAGE = `${SITE_URL}/og/default.svg`;
+const DEFAULT_OG_IMAGE = `${SITE_URL}/og/parallly-social.png`;
 
 const LOCALES = ["es", "en", "pt", "fr"] as const;
 type SupportedLocale = (typeof LOCALES)[number];
@@ -24,22 +24,23 @@ export function buildMetadata({
   ogImage = DEFAULT_OG_IMAGE,
   noIndex = false,
   type = "website",
+  locale = "es",
 }: SEOInput): Metadata {
   const url = `${SITE_URL}${path}`;
   const fullTitle = path === "/" ? title : `${title} | ${SITE_NAME}`;
-
-  const alternates: Record<string, string> = {};
-  for (const loc of LOCALES) {
-    alternates[loc] = url;
-  }
+  const openGraphLocale: Record<SupportedLocale, string> = {
+    es: "es_CO",
+    en: "en_US",
+    pt: "pt_BR",
+    fr: "fr_FR",
+  };
 
   return {
-    title: fullTitle,
+    title: { absolute: fullTitle },
     description,
     metadataBase: new URL(SITE_URL),
     alternates: {
       canonical: url,
-      languages: alternates,
     },
     openGraph: {
       title: fullTitle,
@@ -47,7 +48,7 @@ export function buildMetadata({
       url,
       siteName: SITE_NAME,
       type,
-      locale: "es_CO",
+      locale: openGraphLocale[locale],
       images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
     },
     twitter: {
@@ -95,7 +96,7 @@ export function softwareAppJsonLd() {
     "@type": "SoftwareApplication",
     name: "Parallly",
     applicationCategory: "BusinessApplication",
-    operatingSystem: "Web",
+    operatingSystem: "Web, Android",
     url: SITE_URL,
     description: "IA conversacional para vender, atender y agendar en WhatsApp, Instagram, Messenger, Telegram, SMS y Email.",
   };

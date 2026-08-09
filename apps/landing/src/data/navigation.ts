@@ -35,6 +35,7 @@ export const PRODUCT_MENU: MegaMenuItem = {
     { labelKey: "menuChannels", descKey: "menuChannelsDesc", href: "/producto/canales", emoji: "💬" },
     { labelKey: "menuBooking", descKey: "menuBookingDesc", href: "/producto/reservas", emoji: "📅" },
     { labelKey: "menuCrm", descKey: "menuCrmDesc", href: "/producto/crm", emoji: "📊" },
+    { labelKey: "menuAndroid", descKey: "menuAndroidDesc", href: "/producto/app-android", emoji: "📱" },
   ],
 };
 
@@ -43,16 +44,14 @@ export const FOOTER_SECTIONS = [
     titleKey: "footerProduct",
     links: [
       { labelKey: "footerSolutions", href: "/soluciones" },
-      { labelKey: "footerFeatures", href: "/#caracteristicas" },
+      { labelKey: "footerFeatures", href: "/#herramientas" },
       { labelKey: "footerPricing", href: "/precios" },
-      { labelKey: "footerDemo", href: "/#como-funciona" },
+      { labelKey: "footerDemo", href: "/#flujo" },
     ],
   },
   {
     titleKey: "footerCompany",
     links: [
-      { labelKey: "footerAbout", href: "#" },
-      { labelKey: "footerBlog", href: "#" },
       { labelKey: "footerSupport", href: "mailto:it.executive@parallext.com" },
       { labelKey: "footerContact", href: "mailto:it.executive@parallext.com" },
     ],

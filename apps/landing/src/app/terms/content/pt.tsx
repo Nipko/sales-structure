@@ -97,7 +97,7 @@ export default function TermsPt() {
               mensagens recebidas.
             </li>
             <li>
-              Arquitetura multi-tenant com isolamento de dados por organização.
+              Arquitetura multicliente com isolamento de dados por organização.
             </li>
             <li>
               CRM integrado com caixa de entrada, atribuição de conversas e
@@ -142,7 +142,7 @@ export default function TermsPt() {
               violem estes Termos ou que contenham informações falsas.
             </li>
             <li>
-              Cada organização (tenant) pode ter múltiplos usuários com
+              Cada organização pode ter múltiplos usuários com
               diferentes papéis: administrador, supervisor e agente.
             </li>
           </ul>
@@ -154,58 +154,19 @@ export default function TermsPt() {
             4. Planos e preços
           </h2>
           <p className="mb-4">
-            O Parallly oferece os seguintes planos de assinatura:
+            Os planos ativos, preços, moedas, limites e recursos vigentes são
+            exibidos em nossa {" "}
+            <Link href="/precios" className="text-accent hover:underline">
+              página de preços
+            </Link>
+            {" "}e, quando aplicável, no painel de faturamento antes de contratar
+            ou alterar uma assinatura. Essas informações fazem parte da oferta
+            aplicável à sua conta e podem variar por país.
           </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-3 pr-4 text-text-primary font-semibold">
-                    Recurso
-                  </th>
-                  <th className="text-center py-3 px-4 text-text-primary font-semibold">
-                    Starter
-                  </th>
-                  <th className="text-center py-3 px-4 text-text-primary font-semibold">
-                    Pro
-                  </th>
-                  <th className="text-center py-3 px-4 text-text-primary font-semibold">
-                    Enterprise
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="text-text-muted">
-                <tr className="border-b border-border/50">
-                  <td className="py-3 pr-4">Conversas/mês</td>
-                  <td className="text-center py-3 px-4">500</td>
-                  <td className="text-center py-3 px-4">5.000</td>
-                  <td className="text-center py-3 px-4">Ilimitadas</td>
-                </tr>
-                <tr className="border-b border-border/50">
-                  <td className="py-3 pr-4">Agentes de IA</td>
-                  <td className="text-center py-3 px-4">1</td>
-                  <td className="text-center py-3 px-4">5</td>
-                  <td className="text-center py-3 px-4">Ilimitados</td>
-                </tr>
-                <tr className="border-b border-border/50">
-                  <td className="py-3 pr-4">Usuários da equipe</td>
-                  <td className="text-center py-3 px-4">2</td>
-                  <td className="text-center py-3 px-4">10</td>
-                  <td className="text-center py-3 px-4">Ilimitados</td>
-                </tr>
-                <tr className="border-b border-border/50">
-                  <td className="py-3 pr-4">Suporte</td>
-                  <td className="text-center py-3 px-4">E-mail</td>
-                  <td className="text-center py-3 px-4">Prioritário</td>
-                  <td className="text-center py-3 px-4">Dedicado</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-4 text-text-muted text-sm">
-            Os preços vigentes estão publicados na página de preços de
-            parallly-chat.cloud. Reservamo-nos o direito de modificar os preços
-            mediante aviso prévio de 30 dias.
+          <p className="text-text-muted text-sm">
+            Reservamo-nos o direito de alterar os preços mediante aviso prévio
+            de 30 dias para assinaturas existentes, salvo se a legislação
+            aplicável exigir um prazo diferente.
           </p>
         </section>
 
@@ -215,14 +176,11 @@ export default function TermsPt() {
             5. Período de avaliação
           </h2>
           <p>
-            O Parallly oferece um período de avaliação gratuito de 7 dias
-            corridos para novos usuários. Durante esse período, você terá
-            acesso às funcionalidades do plano Pro. Ao final do período de
-            avaliação, se você não tiver selecionado um plano pago, sua conta
-            passará para o estado inativo e nenhuma mensagem será processada
-            até que você ative uma assinatura. Nenhuma cobrança automática será
-            efetuada ao final da avaliação, exceto se você tiver selecionado
-            explicitamente um plano pago.
+            A disponibilidade, duração, os recursos e os requisitos de pagamento
+            de uma avaliação dependem do plano ativo selecionado e são exibidos
+            antes da ativação. Ao final, o acesso poderá ser limitado até que
+            você ative uma assinatura. Não faremos uma cobrança automática sem
+            uma autorização de pagamento apresentada e aceita expressamente.
           </p>
         </section>
 
@@ -233,8 +191,8 @@ export default function TermsPt() {
           </h2>
           <ul className="list-disc pl-6 space-y-2">
             <li>
-              As assinaturas são faturadas mensal ou anualmente, conforme o
-              ciclo de faturamento selecionado.
+              As assinaturas são faturadas conforme o ciclo disponível exibido
+              e confirmado antes da compra.
             </li>
             <li>
               Os pagamentos são processados por meio de provedores de pagamento
@@ -284,7 +242,7 @@ export default function TermsPt() {
               propriedade intelectual.
             </li>
             <li>
-              Tentar acessar dados de outros tenants ou contornar os mecanismos
+              Tentar acessar dados de outras organizações ou contornar os mecanismos
               de segurança da plataforma.
             </li>
             <li>

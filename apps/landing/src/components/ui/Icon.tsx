@@ -250,7 +250,7 @@ const VERTICAL_ICON_MAP: Record<string, (cls?: string) => React.ReactNode> = {
   seguros: Icon.shieldCheck,
   veterinaria: Icon.paw,
   automotriz: Icon.car,
-  "servicios-hogar": Icon.wrench,
+  hogar: Icon.wrench,
   fotografia: Icon.camera,
   finanzas: Icon.trendingUp,
   "servicios-profesionales": Icon.briefcase,

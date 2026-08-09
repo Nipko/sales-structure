@@ -15,6 +15,12 @@ import {
 import { FiscalConfigService } from '../fiscal/fiscal-config.service';
 import { billingCountryRequiresFiscalData, isFiscalDataComplete } from '../fiscal/fiscal-data.util';
 import { SmsCreditsService } from '../sms-credits/sms-credits.service';
+import {
+    MERCADOPAGO_CURRENCY_BY_COUNTRY,
+    isBillingCountry,
+    normalizeBillingCountry,
+} from './billing-country-config';
+import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
 
 /**
  * Provider-agnostic subscription billing orchestrator.
@@ -46,6 +52,7 @@ export class BillingService {
         private readonly providerFactory: PaymentProviderFactory,
         private readonly fiscalConfig: FiscalConfigService,
         private readonly smsCredits: SmsCreditsService,
+        private readonly mpConfig: MercadoPagoConfigService,
     ) {}
 
     /**
@@ -106,6 +113,16 @@ export class BillingService {
         const billingCycle: BillingCycle = input.billingCycle === 'annual' ? 'annual' : 'monthly';
         const tenant = await this.prisma.tenant.findUnique({ where: { id: input.tenantId } });
         if (!tenant) throw new NotFoundException({ error: 'tenant_not_found', tenantId: input.tenantId });
+        const normalizedInputCountry = normalizeBillingCountry(input.billingCountry);
+        if (normalizedInputCountry && !isBillingCountry(normalizedInputCountry)) {
+            throw new BadRequestException({
+                error: 'invalid_billing_country',
+                message: `Billing country ${normalizedInputCountry} is not supported.`,
+            });
+        }
+        const storedCountry = normalizeBillingCountry(tenant.billingCountry);
+        const effectiveBillingCountry = normalizedInputCountry
+            || (storedCountry && isBillingCountry(storedCountry) ? storedCountry : 'CO');
 
         const existing = await this.prisma.billingSubscription.findUnique({ where: { tenantId: input.tenantId } });
         if (existing) {
@@ -120,7 +137,22 @@ export class BillingService {
         const plan = await this.prisma.billingPlan.findUnique({ where: { slug: input.planSlug } });
         if (!plan || !plan.isActive) throw new NotFoundException({ error: 'plan_not_found', planSlug: input.planSlug });
 
-        if (plan.requiresCardForTrial && !input.cardTokenId) {
+        if (plan.slug === 'custom' || (plan.features as any)?.salesLed === true) {
+            throw new BadRequestException({
+                error: 'sales_led_plan_not_self_serve',
+                message: 'This plan is managed by sales and cannot be started through self-service billing.',
+            });
+        }
+
+        if (plan.requiresCardForTrial && plan.trialDays > 0) {
+            throw new BadRequestException({
+                error: 'card_trial_not_supported',
+                message: 'Card-backed trials are not available until the provider-backed trial lifecycle can retain the payment method.',
+            });
+        }
+
+        const requiresPaymentMethodAtSignup = plan.trialDays === 0 || plan.requiresCardForTrial;
+        if (requiresPaymentMethodAtSignup && !input.cardTokenId) {
             throw new BadRequestException({
                 error: 'card_required_for_trial',
                 message: `The ${plan.slug} plan requires a payment method to start the trial.`,
@@ -128,7 +160,20 @@ export class BillingService {
         }
 
         const providerName = (tenant.paymentProvider || 'mercadopago') as PaymentProviderName;
+        this.assertProviderConfigured(providerName);
         const provider = this.providerFactory.getByName(providerName);
+
+        // A local no-card trial may start before monthly MP synchronization,
+        // but an annual selection promises a specific yearly amount/cadence and
+        // must already have a verified provider cycle even while trialing.
+        if (billingCycle === 'annual') {
+            this.resolveProviderPlanId(
+                plan,
+                providerName,
+                effectiveBillingCountry,
+                billingCycle,
+            );
+        }
 
         // Trial periods are managed entirely by Parallly (not the provider).
         // MP plans are created without free_trial so upgrades don't get a
@@ -141,7 +186,7 @@ export class BillingService {
         // trial that auto-converts). A free trial with no card has no charge yet, so
         // we don't block free signups/onboarding — the gate fires later on upgrade.
         if (plan.requiresCardForTrial || plan.trialDays === 0) {
-            await this.assertFiscalDataReady(tenant, input.billingCountry);
+            await this.assertFiscalDataReady(tenant, effectiveBillingCountry);
         }
 
         // Create the customer on the provider side (or reuse existing one).
@@ -153,7 +198,7 @@ export class BillingService {
                 tenantId: tenant.id,
                 email: input.billingEmail || tenant.billingEmail || '',
                 name: tenant.name,
-                country: input.billingCountry || tenant.billingCountry || undefined,
+                country: effectiveBillingCountry,
             });
             providerCustomerId = customer.providerCustomerId;
         }
@@ -170,7 +215,7 @@ export class BillingService {
             : await provider.createSubscription({
                   tenantId: tenant.id,
                   providerCustomerId: providerCustomerId!,
-                  providerPlanId: this.resolveProviderPlanId(plan, providerName, input.billingCountry ?? tenant.billingCountry, billingCycle),
+                  providerPlanId: this.resolveProviderPlanId(plan, providerName, effectiveBillingCountry, billingCycle),
                   trialDays: plan.trialDays > 0 ? plan.trialDays : undefined,
                   cardTokenId: input.cardTokenId,
                   billingInterval: billingCycle === 'annual' ? 'year' : 'month',
@@ -209,7 +254,7 @@ export class BillingService {
                     paymentProvider: providerName,
                     paymentProviderCustomerId: providerCustomerId,
                     billingEmail: input.billingEmail ?? tenant.billingEmail,
-                    billingCountry: input.billingCountry ?? tenant.billingCountry,
+                    billingCountry: effectiveBillingCountry,
                     subscriptionStatus: providerSub.status,
                     trialEndsAt: trialEndsAt ?? null,
                     currentPeriodEnd: providerSub.currentPeriodEnd ?? null,
@@ -240,6 +285,12 @@ export class BillingService {
         const sub = await this.requireSubscription(tenantId);
         const newPlan = await this.prisma.billingPlan.findUnique({ where: { slug: newPlanSlug } });
         if (!newPlan || !newPlan.isActive) throw new NotFoundException({ error: 'plan_not_found', planSlug: newPlanSlug });
+        if (newPlan.slug === 'custom' || (newPlan.features as any)?.salesLed === true) {
+            throw new BadRequestException({
+                error: 'sales_led_plan_not_self_serve',
+                message: 'This plan is managed by sales and cannot be selected through self-service billing.',
+            });
+        }
 
         const currentCycle = this.subscriptionCycle(sub);
         const targetCycle: BillingCycle = billingCycle ?? currentCycle;
@@ -258,7 +309,7 @@ export class BillingService {
         const currentPlan = await this.prisma.billingPlan.findUnique({ where: { id: sub.planId } });
         const isDowngrade = (currentPlan?.priceUsdCents ?? 0) > newPlan.priceUsdCents;
         if (isDowngrade && !cycleChanged) {
-            return this.scheduleDowngrade(tenantId, sub.id, newPlan.id, currentCycle);
+            return this.scheduleDowngrade(tenantId, sub.id, newPlan, currentCycle);
         }
 
         // Upgrade DURANTE un mes regalado por cupón. El tenant tiene un trial futuro
@@ -272,6 +323,12 @@ export class BillingService {
         // que le quedaba de regalo.
         const nowTs = new Date();
         if (sub.trialEndsAt && sub.trialEndsAt > nowTs && !sub.providerSubscriptionId) {
+            if (cardTokenId || newPlan.requiresCardForTrial || newPlan.trialDays === 0 || targetCycle === 'annual') {
+                throw new BadRequestException({
+                    error: 'local_trial_plan_change_not_supported',
+                    message: 'A local trial cannot accept or retain a payment token during a plan/cycle change. Activate billing from the supported provider flow first.',
+                });
+            }
             await this.prisma.billingSubscription.update({
                 where: { id: sub.id },
                 data: {
@@ -396,13 +453,38 @@ export class BillingService {
     }
 
     /**
-     * Schedule a downgrade for the next billing cycle. Doesn't touch the
-     * provider — the user keeps their higher tier features until period end,
-     * then the daily cron (applyPendingPlanChanges) flips planId.
+     * Schedule a downgrade for the next billing cycle. Provider-backed
+     * subscriptions must already have a synchronized target cycle; otherwise
+     * accepting the pending change would guarantee a later billing/entitlement
+     * mismatch. Local subscriptions can schedule without provider metadata.
      */
-    private async scheduleDowngrade(tenantId: string, subscriptionId: string, targetPlanId: string, cycle: BillingCycle = 'monthly') {
+    private async scheduleDowngrade(
+        tenantId: string,
+        subscriptionId: string,
+        targetPlan: {
+            id: string;
+            mpPlanId: string | null;
+            stripePlanId: string | null;
+            priceLocalOverrides: any;
+        },
+        cycle: BillingCycle = 'monthly',
+    ) {
         const sub = await this.prisma.billingSubscription.findUnique({ where: { id: subscriptionId } });
         if (!sub) throw new NotFoundException({ error: 'subscription_not_found' });
+
+        if (sub.providerSubscriptionId) {
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { billingCountry: true },
+            });
+            if (!tenant) throw new NotFoundException({ error: 'tenant_not_found', tenantId });
+            this.resolveProviderPlanId(
+                targetPlan,
+                sub.provider as PaymentProviderName,
+                tenant.billingCountry,
+                cycle,
+            );
+        }
 
         // Effective date: end of current period if present, otherwise fall back to
         // one cycle out (+365d for annual, +30d for monthly).
@@ -413,12 +495,12 @@ export class BillingService {
         const updated = await this.prisma.billingSubscription.update({
             where: { id: subscriptionId },
             data: {
-                pendingPlanId: targetPlanId,
+                pendingPlanId: targetPlan.id,
                 pendingPlanChangeAt: effectiveAt,
             },
         });
 
-        this.logger.log(`[Billing] Tenant ${tenantId} scheduled downgrade to plan ${targetPlanId} effective ${effectiveAt.toISOString()}`);
+        this.logger.log(`[Billing] Tenant ${tenantId} scheduled downgrade to plan ${targetPlan.id} effective ${effectiveAt.toISOString()}`);
         await this.prisma.auditLog.create({
             data: {
                 tenantId,
@@ -426,7 +508,7 @@ export class BillingService {
                 resource: `billing_subscriptions/${sub.id}`,
                 details: {
                     fromPlanId: sub.planId,
-                    toPlanId: targetPlanId,
+                    toPlanId: targetPlan.id,
                     effectiveAt: effectiveAt.toISOString(),
                 },
             },
@@ -463,11 +545,10 @@ export class BillingService {
     }
 
     /**
-     * Cron-callable: apply all pending plan changes whose effective date
-     * has passed. For MercadoPago, this currently only flips the local
-     * planId — the next charge cycle will pick up the new plan via the
-     * provider's normal recurring schedule. If we ever need same-cycle
-     * provider sync, this is the place to add it.
+     * Cron-callable: apply all pending plan changes whose effective date has
+     * passed. Provider-backed subscriptions are changed at the provider first;
+     * local entitlements move only after provider confirmation. A failure leaves
+     * the pending change intact for a safe retry.
      */
     async applyPendingPlanChanges(): Promise<{ applied: number }> {
         const now = new Date();
@@ -481,54 +562,97 @@ export class BillingService {
 
         let applied = 0;
         for (const sub of due) {
+            let phase: 'load' | 'provider' | 'local' = 'load';
             try {
                 const newPlan = await this.prisma.billingPlan.findUnique({
                     where: { id: sub.pendingPlanId! },
                     select: { slug: true, mpPlanId: true, stripePlanId: true, priceLocalOverrides: true },
                 });
-                await this.prisma.billingSubscription.update({
-                    where: { id: sub.id },
-                    data: {
-                        planId: sub.pendingPlanId!,
-                        pendingPlanId: null,
-                        pendingPlanChangeAt: null,
-                    },
+                if (!newPlan) {
+                    throw new NotFoundException({
+                        error: 'pending_plan_not_found',
+                        planId: sub.pendingPlanId,
+                    });
+                }
+
+                const tenant = await this.prisma.tenant.findUnique({
+                    where: { id: sub.tenantId },
+                    select: { billingCountry: true },
                 });
-                let billingCountry: string | null = null;
-                if (newPlan) {
-                    const tenant = await this.prisma.tenant.update({
+                if (!tenant) {
+                    throw new NotFoundException({ error: 'tenant_not_found', tenantId: sub.tenantId });
+                }
+
+                if (sub.providerSubscriptionId) {
+                    phase = 'provider';
+                    await this.syncDowngradeToProvider(
+                        sub,
+                        newPlan,
+                        tenant.billingCountry,
+                        this.subscriptionCycle(sub),
+                    );
+                }
+
+                phase = 'local';
+                await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+                    await tx.billingSubscription.update({
+                        where: { id: sub.id },
+                        data: {
+                            planId: sub.pendingPlanId!,
+                            pendingPlanId: null,
+                            pendingPlanChangeAt: null,
+                        },
+                    });
+                    await tx.tenant.update({
                         where: { id: sub.tenantId },
                         data: { plan: newPlan.slug },
-                        select: { billingCountry: true },
                     });
-                    billingCountry = tenant.billingCountry;
-                }
-                await this.redis.del(`tenant_plan:${sub.tenantId}`);
-                await this.redis.del(`sub_status:${sub.tenantId}`);
-                await this.redis.del(`plan_features:${sub.tenantId}`);
+                    await tx.auditLog.create({
+                        data: {
+                            tenantId: sub.tenantId,
+                            action: 'subscription_downgrade_applied',
+                            resource: `billing_subscriptions/${sub.id}`,
+                            details: { fromPlanId: sub.planId, toPlanId: sub.pendingPlanId },
+                        },
+                    });
+                });
+
+                applied++;
+                await Promise.allSettled([
+                    this.redis.del(`tenant_plan:${sub.tenantId}`),
+                    this.redis.del(`sub_status:${sub.tenantId}`),
+                    this.redis.del(`plan_features:${sub.tenantId}`),
+                ]);
                 this.emit(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, sub.tenantId, sub.id, {
                     fromPlan: sub.planId, toPlan: sub.pendingPlanId, scheduled: true,
                 });
-                await this.prisma.auditLog.create({
-                    data: {
-                        tenantId: sub.tenantId,
-                        action: 'subscription_downgrade_applied',
-                        resource: `billing_subscriptions/${sub.id}`,
-                        details: { fromPlanId: sub.planId, toPlanId: sub.pendingPlanId },
-                    },
-                });
-                applied++;
-
-                // Best-effort: move the subscription to the new plan at the
-                // provider so the NEXT charge reflects the lower price. The local
-                // entitlement flip above already succeeded — a provider failure
-                // must never undo it, so this runs in its own try/catch and is
-                // recorded for manual follow-up instead of throwing.
-                if (sub.provider === 'mercadopago' && sub.providerSubscriptionId && newPlan) {
-                    await this.syncDowngradeToProvider(sub, newPlan, billingCountry, this.subscriptionCycle(sub));
-                }
             } catch (e: any) {
-                this.logger.error(`[Billing] Failed to apply pending change for ${sub.id}: ${e.message}`);
+                const errorMessage = e?.message || 'unknown error';
+                this.logger.error(
+                    `[Billing] Failed to apply pending change for ${sub.id} during ${phase}; pending change retained: ${errorMessage}`,
+                );
+                try {
+                    await this.prisma.auditLog.create({
+                        data: {
+                            tenantId: sub.tenantId,
+                            action: phase === 'provider'
+                                ? 'subscription_downgrade_provider_sync_failed'
+                                : 'subscription_downgrade_apply_failed',
+                            resource: `billing_subscriptions/${sub.id}`,
+                            details: {
+                                fromPlanId: sub.planId,
+                                toPlanId: sub.pendingPlanId,
+                                provider: sub.provider,
+                                cycle: this.subscriptionCycle(sub),
+                                error: errorMessage,
+                            },
+                        },
+                    });
+                } catch (auditError: any) {
+                    this.logger.error(
+                        `[Billing] Failed to audit pending change failure for ${sub.id}: ${auditError?.message || 'unknown error'}`,
+                    );
+                }
             }
         }
         if (applied > 0) this.logger.log(`[Billing] Applied ${applied} pending plan changes`);
@@ -536,49 +660,26 @@ export class BillingService {
     }
 
     /**
-     * Best-effort push of a scheduled downgrade to MercadoPago so the next charge
-     * uses the new plan's amount. NEVER throws — the local entitlement flip has
-     * already been applied by the caller. MercadoPago has no native proration and
-     * changing a live preapproval's plan "works on some accounts" (see
-     * mercadopago.adapter changeSubscriptionPlan); when it can't, we log an audit
-     * entry (subscription_downgrade_provider_sync_failed) so a super admin can
-     * follow up, since MP may require the customer to re-authorize their card.
+     * Resolve the same verified plan contract used by acquisition and push it to
+     * the provider. Errors intentionally propagate so the caller can retain the
+     * pending change and avoid lowering entitlements while the old price remains.
      */
     private async syncDowngradeToProvider(
         sub: { id: string; tenantId: string; provider: string; providerSubscriptionId: string | null },
-        newPlan: { mpPlanId: string | null; priceLocalOverrides: any },
+        newPlan: { mpPlanId: string | null; stripePlanId: string | null; priceLocalOverrides: any },
         billingCountry: string | null,
         cycle: BillingCycle = 'monthly',
     ): Promise<void> {
-        try {
-            const overrides = (newPlan.priceLocalOverrides && typeof newPlan.priceLocalOverrides === 'object')
-                ? (newPlan.priceLocalOverrides as Record<string, any>)
-                : {};
-            const country = billingCountry?.toUpperCase();
-            // Annual fails closed: never fall back to the monthly id (would charge
-            // the wrong amount on the next cycle).
-            const providerPlanId = cycle === 'annual'
-                ? (country ? overrides[country]?.annual?.mpPlanId : undefined)
-                : ((country && overrides[country]?.mpPlanId) ? overrides[country].mpPlanId : newPlan.mpPlanId);
-
-            if (!providerPlanId) {
-                throw new Error(`no MercadoPago ${cycle} plan id for country ${country ?? '(default)'}`);
-            }
-
-            const provider = this.providerFactory.getByName('mercadopago');
-            await provider.changeSubscriptionPlan(sub.providerSubscriptionId!, providerPlanId);
-            this.logger.log(`[Billing] Downgrade sub=${sub.id} synced to MP plan ${providerPlanId}`);
-        } catch (e: any) {
-            this.logger.error(`[Billing] Downgrade sub=${sub.id} MP sync failed (local entitlement already applied): ${e?.message}`);
-            await this.prisma.auditLog.create({
-                data: {
-                    tenantId: sub.tenantId,
-                    action: 'subscription_downgrade_provider_sync_failed',
-                    resource: `billing_subscriptions/${sub.id}`,
-                    details: { providerSubscriptionId: sub.providerSubscriptionId, error: e?.message },
-                },
-            });
-        }
+        const providerName = sub.provider as PaymentProviderName;
+        const providerPlanId = this.resolveProviderPlanId(
+            newPlan,
+            providerName,
+            billingCountry,
+            cycle,
+        );
+        const provider = this.providerFactory.getByName(providerName);
+        await provider.changeSubscriptionPlan(sub.providerSubscriptionId!, providerPlanId);
+        this.logger.log(`[Billing] Downgrade sub=${sub.id} confirmed by ${providerName} on plan ${providerPlanId}`);
     }
 
     // -------------------------------------------------------------------------
@@ -931,7 +1032,7 @@ export class BillingService {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: input.tenantId } });
         if (!tenant) throw new NotFoundException({ error: 'tenant_not_found' });
         const plan = await this.prisma.billingPlan.findUnique({ where: { slug: input.planSlug } });
-        if (!plan) throw new NotFoundException({ error: 'plan_not_found', planSlug: input.planSlug });
+        if (!plan || !plan.isActive) throw new NotFoundException({ error: 'plan_not_found', planSlug: input.planSlug });
 
         const now = new Date();
         const periodEnd = new Date(now.getTime() + input.durationDays * 86_400_000);
@@ -976,6 +1077,7 @@ export class BillingService {
         });
         await this.redis.del(`tenant_plan:${input.tenantId}`);
         await this.redis.del(`sub_status:${input.tenantId}`);
+        await this.redis.del(`plan_features:${input.tenantId}`);
 
         await this.prisma.auditLog.create({
             data: {
@@ -1263,12 +1365,10 @@ export class BillingService {
     /**
      * Resolve the provider-specific plan id to use for a given tenant.
      *
-     * Lookup order (most specific first):
-     *  1. `billing_plans.priceLocalOverrides[billingCountry].mpPlanId` — per-country
-     *     id populated by scripts/sync-mp-plans.js. Essential when Parallly
-     *     operates in multiple countries (AR/MX/BR/CL/PE/UY on top of CO).
-     *  2. `billing_plans.mpPlanId` — legacy single-country fallback. Today
-     *     this holds the Colombia id as a convenience.
+     * Mercado Pago ids are usable only with a matching server-owned
+     * amount/currency fingerprint. Historical ids and the legacy top-level CO
+     * column are not sufficient proof that the frozen provider amount matches
+     * the live catalog.
      *
      * Stripe lookup stays simple because our Stripe rollout (Phase 4) will
      * use one plan per tier globally with Stripe-side currency handling.
@@ -1281,28 +1381,38 @@ export class BillingService {
     ): string {
         let id: string | null | undefined;
         if (providerName === 'mercadopago') {
+            this.assertProviderConfigured(providerName);
             const overrides = (plan.priceLocalOverrides && typeof plan.priceLocalOverrides === 'object') ? plan.priceLocalOverrides : {};
-            const country = billingCountry?.toUpperCase();
-            const countryOverride = country ? overrides[country] : undefined;
-            if (cycle === 'annual') {
-                // Fail closed: the annual preapproval_plan must exist explicitly.
-                // Never fall back to the monthly id (plan.mpPlanId / overrides.mpPlanId)
-                // for an annual subscription — that would silently charge the
-                // MONTHLY amount on a yearly cadence.
-                id = countryOverride?.annual?.mpPlanId;
-            } else if (countryOverride?.mpPlanId) {
-                id = countryOverride.mpPlanId;
-            } else if (!country || country === 'CO') {
-                // `plan.mpPlanId` es el id de COLOMBIA: es lo único que escribe
-                // el sync (`if (country === 'CO' && !isAnnual)`). Usarlo como
-                // comodín para cualquier país suscribía a un tenant mexicano o
-                // chileno al preapproval_plan colombiano y le cobraba en COP el
-                // monto de Colombia — un error que no se descubre en el deploy
-                // sino en el resumen de tarjeta del cliente.
-                //
-                // Se falla cerrado, igual que el ciclo anual de arriba. El error
-                // que sigue más abajo ya dice exactamente qué hay que correr.
-                id = plan.mpPlanId;
+            const country = normalizeBillingCountry(billingCountry) || 'CO';
+            const countryEntry = Object.entries(overrides).find(([key]) =>
+                normalizeBillingCountry(key) === country)?.[1] as any;
+            const cycleEntry = cycle === 'annual' ? countryEntry?.annual : countryEntry;
+            const expectedCurrency = MERCADOPAGO_CURRENCY_BY_COUNTRY[
+                country as keyof typeof MERCADOPAGO_CURRENCY_BY_COUNTRY
+            ];
+            const configuredCurrency = typeof cycleEntry?.currency === 'string'
+                ? cycleEntry.currency.trim().toUpperCase()
+                : '';
+            const fingerprintCurrency = typeof cycleEntry?.syncedCurrency === 'string'
+                ? cycleEntry.syncedCurrency.trim().toUpperCase()
+                : '';
+            const fingerprintMatches = expectedCurrency
+                && configuredCurrency === expectedCurrency
+                && Number.isSafeInteger(cycleEntry?.amountCents)
+                && cycleEntry.amountCents > 0
+                && cycleEntry.syncedAmountCents === cycleEntry.amountCents
+                && fingerprintCurrency === configuredCurrency;
+
+            if (fingerprintMatches && typeof cycleEntry?.mpPlanId === 'string' && cycleEntry.mpPlanId.trim()) {
+                id = cycleEntry.mpPlanId.trim();
+            } else {
+                throw new BadRequestException({
+                    error: 'provider_plan_not_synchronized',
+                    message: `This plan is not synchronized with ${providerName} for country ${country} (${cycle}) at the configured amount and currency.`,
+                    providerName,
+                    billingCountry: country,
+                    cycle,
+                });
             }
         } else if (providerName === 'stripe') {
             id = plan.stripePlanId;
@@ -1320,6 +1430,21 @@ export class BillingService {
             });
         }
         return id;
+    }
+
+    /**
+     * Keep the executable billing contract aligned with the catalog. A stored
+     * provider id/fingerprint is not actionable when the application has no
+     * initialized provider client, including local no-card trial acquisition.
+     */
+    private assertProviderConfigured(providerName: PaymentProviderName): void {
+        if (providerName === 'mercadopago' && !this.mpConfig.isConfigured()) {
+            throw new BadRequestException({
+                error: 'provider_not_configured',
+                message: 'Mercado Pago is not configured for self-service acquisition.',
+                providerName,
+            });
+        }
     }
 
     /** Read the billing cycle a subscription runs on (persisted in metadata). Defaults to monthly. */

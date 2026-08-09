@@ -48,6 +48,7 @@
   <url><loc>https://parallly-chat.cloud/producto/canales</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://parallly-chat.cloud/producto/reservas</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://parallly-chat.cloud/producto/crm</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://parallly-chat.cloud/producto/app-android</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
 
   <!-- Legal -->
   <url><loc>https://parallly-chat.cloud/privacy</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>

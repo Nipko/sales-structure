@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
     ArrayMaxSize,
     IsArray,
@@ -10,6 +10,9 @@ import {
     MaxLength,
     ValidateNested,
 } from 'class-validator';
+import { BILLING_CURRENCY_BY_COUNTRY } from '../../billing/billing-country-config';
+
+const BILLING_COUNTRIES = Object.keys(BILLING_CURRENCY_BY_COUNTRY);
 
 class SocialMediaDto {
     @IsOptional() @IsString() @MaxLength(500) instagram?: string;
@@ -34,7 +37,8 @@ class OnboardingCompanyDto {
     @IsOptional() @IsString() @MaxLength(80) subType?: string;
     @IsOptional() @IsString() @MaxLength(50) orgSize?: string;
     @IsOptional() @IsString() @MaxLength(100) timezone?: string;
-    @IsOptional() @IsString() @MaxLength(2) country?: string;
+    @IsOptional() @Transform(({ value }) => typeof value === 'string' ? value.trim().toUpperCase() : value)
+    @IsString() @IsIn(BILLING_COUNTRIES) country?: string;
 }
 
 export class CompleteOnboardingDto {
@@ -47,7 +51,11 @@ export class CompleteOnboardingDto {
     @IsOptional() @IsArray() @ArrayMaxSize(25) @IsString({ each: true }) goals?: string[];
     @IsOptional() @IsString() @MaxLength(300) referral?: string;
     @IsOptional() @IsString() @MaxLength(10) locale?: string;
-    @IsOptional() @IsIn(['emprendedor', 'starter', 'pro', 'enterprise', 'custom']) plan?: string;
+    // Slugs are data-owned by billing_plans. BillingService validates that the
+    // selected plan exists and is active; a DTO enum would reject new plans that
+    // Superadmin has already published to the live catalog.
+    @IsOptional() @IsString() @MaxLength(80) plan?: string;
+    @IsOptional() @IsIn(['monthly', 'annual']) billingCycle?: 'monthly' | 'annual';
     @IsOptional() @IsString() @MaxLength(500) cardTokenId?: string;
     // Código promocional opcional del alta. Sin esta declaración el ValidationPipe
     // global (whitelist: true) lo descartaría en silencio, sin error visible.
@@ -64,10 +72,11 @@ export class CompleteOnboardingDto {
     @IsOptional() @IsArray() @ArrayMaxSize(25) @IsString({ each: true }) customerTypes?: string[];
     @IsOptional() @IsArray() @ArrayMaxSize(25) @IsString({ each: true }) chatReasons?: string[];
     @IsOptional() @IsString() @MaxLength(300) referralSource?: string;
-    @IsOptional() @IsIn(['emprendedor', 'starter', 'pro', 'enterprise', 'custom']) planSlug?: string;
+    @IsOptional() @IsString() @MaxLength(80) planSlug?: string;
     @IsOptional() @IsString() @MaxLength(100) signupSource?: string;
     @IsOptional() @IsString() @MaxLength(30) phone?: string;
     @IsOptional() @IsEmail() @MaxLength(254) businessEmail?: string;
     @IsOptional() @IsString() @MaxLength(5000) about?: string;
-    @IsOptional() @IsString() @MaxLength(2) billingCountry?: string;
+    @IsOptional() @Transform(({ value }) => typeof value === 'string' ? value.trim().toUpperCase() : value)
+    @IsString() @IsIn(BILLING_COUNTRIES) billingCountry?: string;
 }

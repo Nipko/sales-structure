@@ -48,7 +48,7 @@ export function VerticalsShowcase() {
   };
 
   const current = VERTICALS.find((v) => v.slug === activeVertical) || VERTICALS[0];
-  const isBookingConfirmed = chatStep >= 4;
+  const isBookingConfirmed = chatStep >= (current.deepMarketingAllowed ? 4 : 6);
 
   return (
     <Section id="industrias">
@@ -70,6 +70,7 @@ export function VerticalsShowcase() {
           <button
             key={v}
             onClick={() => setView(v)}
+            aria-pressed={view === v}
             className={`relative flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl transition-all cursor-pointer ${
               view === v ? "text-white" : "text-text-secondary hover:text-text-primary"
             }`}
@@ -97,6 +98,7 @@ export function VerticalsShowcase() {
             <button
               key={cluster}
               onClick={() => handleClusterChange(cluster)}
+              aria-pressed={isActive}
               className={`relative flex-1 py-3 px-4 text-xs sm:text-sm font-semibold rounded-xl transition-all duration-300 cursor-pointer ${
                 isActive
                   ? "text-white"
@@ -133,6 +135,7 @@ export function VerticalsShowcase() {
                   setActiveVertical(v.slug);
                   setChatStep(0); // Reset chat state
                 }}
+                aria-pressed={isActive}
                 className={`relative inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all border cursor-pointer ${
                   isActive
                     ? "text-white border-transparent"
@@ -142,7 +145,7 @@ export function VerticalsShowcase() {
                   isActive
                     ? {
                         backgroundColor: v.color,
-                        boxShadow: `0 0 20px ${v.glow}`,
+                        boxShadow: v.glow,
                       }
                     : {}
                 }
@@ -177,12 +180,21 @@ export function VerticalsShowcase() {
 
           {/* 1. Google Calendar Booking Widget (Top Left) */}
           <div className="absolute -left-6 lg:-left-12 -top-4 z-20 hidden md:block">
-            <BookingLiveWidget active={isBookingConfirmed} color={current.color} verticalSlug={current.slug} />
+            <BookingLiveWidget
+              active={isBookingConfirmed}
+              color={current.color}
+              verticalSlug={current.deepMarketingAllowed ? current.slug : "otro"}
+            />
           </div>
 
           {/* 2. Identity Merge Widget (Bottom Left) */}
           <div className="absolute -left-10 lg:-left-16 bottom-2 z-20 hidden md:block">
-            <IdentityMergeWidget active={isBookingConfirmed} color={current.color} verticalSlug={current.slug} step={chatStep} />
+            <IdentityMergeWidget
+              active={isBookingConfirmed}
+              color={current.color}
+              verticalSlug={current.deepMarketingAllowed ? current.slug : "otro"}
+              step={chatStep}
+            />
           </div>
 
           {/* Main Phone Chat Simulator */}
@@ -202,7 +214,12 @@ export function VerticalsShowcase() {
 
           {/* 3. CRM Kanban Lead Card (Right Side) */}
           <div className="absolute -right-6 lg:-right-12 top-16 z-20 hidden md:block">
-            <CrmKanbanWidget active={isBookingConfirmed} color={current.color} verticalSlug={current.slug} step={chatStep} />
+            <CrmKanbanWidget
+              active={isBookingConfirmed}
+              color={current.color}
+              verticalSlug={current.deepMarketingAllowed ? current.slug : "otro"}
+              step={chatStep}
+            />
           </div>
         </div>
 
@@ -232,7 +249,9 @@ export function VerticalsShowcase() {
                 {t(`${activeVertical}.name`, { defaultValue: activeVertical.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) })}
               </h3>
               <p className="text-text-secondary text-sm sm:text-base leading-relaxed">
-                {t(`${activeVertical}.tagline`, { defaultValue: "" })}
+                {current.deepMarketingAllowed
+                  ? t(`${activeVertical}.tagline`, { defaultValue: "" })
+                  : t("genericTagline")}
               </p>
             </div>
 
@@ -257,7 +276,9 @@ export function VerticalsShowcase() {
                     {Icon.check("w-3.5 h-3.5")}
                   </span>
                   <span className="text-text-secondary text-sm sm:text-base">
-                    {t(`${activeVertical}.feature${n}`, { defaultValue: `Feature ${n}` })}
+                    {current.deepMarketingAllowed
+                      ? t(`${activeVertical}.feature${n}`, { defaultValue: `Feature ${n}` })
+                      : t(`genericFeature${n}`)}
                   </span>
                 </motion.li>
               ))}
@@ -276,9 +297,15 @@ export function VerticalsShowcase() {
                   <span style={{ color: current.color }}>
                     {getVerticalIcon(current.slug, "w-4 h-4")}
                   </span>
-                  <span>{t(`${activeVertical}.agentName`, { defaultValue: "Agente IA" })}</span>
+                  <span>
+                    {current.deepMarketingAllowed
+                      ? t(`${activeVertical}.agentName`, { defaultValue: "Agente IA" })
+                      : t("genericAgentName")}
+                  </span>
                   <span className="text-xs text-text-muted font-normal">
-                    · {t("preConfigured", { defaultValue: "Pre-configurado" })}
+                    · {current.deepMarketingAllowed
+                      ? t("preConfigured", { defaultValue: "Pre-configurado" })
+                      : t("configurableSetup")}
                   </span>
                 </p>
               </div>

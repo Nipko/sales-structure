@@ -35,6 +35,12 @@ const PRODUCTS = [
     icon: () => Icon.users("w-7 h-7"),
     color: "#f59e0b",
   },
+  {
+    key: "mobile",
+    href: "/producto/app-android",
+    icon: () => Icon.inbox("w-7 h-7"),
+    color: "#22c55e",
+  },
 ] as const;
 
 export default function ProductHubPage() {
@@ -97,7 +103,7 @@ export default function ProductHubPage() {
 
       {/* Product cards */}
       <Section>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {PRODUCTS.map((product, i) => (
             <motion.div
               key={product.key}

@@ -10,6 +10,7 @@ import { SubscriptionStatus } from './types/subscription-status.enum';
 import { NormalizedBillingEvent } from './types/provider-types';
 import { FiscalConfigService } from '../fiscal/fiscal-config.service';
 import { SmsCreditsService } from '../sms-credits/sms-credits.service';
+import { MercadoPagoConfigService } from './adapters/mercadopago-config.service';
 
 /**
  * Unit tests for BillingService.
@@ -24,21 +25,24 @@ describe('BillingService', () => {
     let mockProvider: MockPaymentProvider;
     let prismaMock: any;
     let redisMock: any;
+    let mpConfigMock: { isConfigured: jest.Mock };
     let eventEmitter: EventEmitter2;
 
     beforeEach(async () => {
         prismaMock = {
             tenant: { findUnique: jest.fn(), update: jest.fn() },
             billingPlan: { findUnique: jest.fn() },
-            billingSubscription: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+            billingSubscription: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
             billingEvent: { findUnique: jest.fn(), create: jest.fn() },
             billingPayment: { create: jest.fn() },
+            auditLog: { create: jest.fn() },
             // $transaction receives a callback and invokes it with a tx object.
             // For unit tests we pass the same prismaMock so calls inside the
             // transaction hit the same mocks.
             $transaction: jest.fn(async (cb: any) => cb(prismaMock)),
         };
         redisMock = { del: jest.fn() };
+        mpConfigMock = { isConfigured: jest.fn().mockReturnValue(true) };
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
@@ -59,6 +63,10 @@ describe('BillingService', () => {
                 {
                     provide: SmsCreditsService,
                     useValue: { addCredits: jest.fn(), adjust: jest.fn() },
+                },
+                {
+                    provide: MercadoPagoConfigService,
+                    useValue: mpConfigMock,
                 },
             ],
         })
@@ -154,7 +162,7 @@ describe('BillingService', () => {
             });
             const createSpy = jest.spyOn(mockProvider, 'createSubscription');
 
-            const result = await service.upgradeSubscription('tenant-1', 'pro', 'card-token-xyz');
+            const result = await service.upgradeSubscription('tenant-1', 'pro');
 
             // El proveedor NUNCA se toca: no hay cobro adelantado.
             expect(createSpy).not.toHaveBeenCalled();
@@ -231,17 +239,106 @@ describe('BillingService', () => {
             );
         });
 
-        it('rejects when Pro is selected without a card token', async () => {
+        it.each([undefined, 'short-lived-card-token'])('rejects card-backed local trials before discarding token %s', async (cardTokenId) => {
             prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', name: 'T1' });
             prismaMock.billingSubscription.findUnique.mockResolvedValueOnce(null);
             prismaMock.billingPlan.findUnique.mockResolvedValueOnce({
                 id: 'plan_pro', slug: 'pro', requiresCardForTrial: true,
-                trialDays: 15, isActive: true, mpPlanId: 'mp_plan_pro',
+                trialDays: 15, isActive: true, mpPlanId: 'mp_plan_pro', features: {},
             });
 
             await expectErrorCode(
-                () => service.createTrialSubscription({ tenantId: 't1', planSlug: 'pro' /* no cardTokenId */ }),
+                () => service.createTrialSubscription({ tenantId: 't1', planSlug: 'pro', cardTokenId }),
+                'card_trial_not_supported',
+            );
+        });
+
+        it('fails closed instead of discarding a payment token during a local trial plan change', async () => {
+            const future = new Date(Date.now() + 20 * 86_400_000);
+            prismaMock.billingSubscription.findUnique.mockResolvedValue({
+                id: 'sub-1', tenantId: 'tenant-1', planId: 'plan-emp',
+                status: SubscriptionStatus.TRIALING, provider: 'mercadopago',
+                providerSubscriptionId: null, trialEndsAt: future, metadata: {},
+            });
+            prismaMock.billingPlan.findUnique.mockImplementation(({ where }: any) => {
+                if (where.slug === 'pro') return Promise.resolve({
+                    id: 'plan-pro', slug: 'pro', isActive: true, priceUsdCents: 12_900,
+                    requiresCardForTrial: false, features: {},
+                });
+                if (where.id === 'plan-emp') return Promise.resolve({ id: 'plan-emp', priceUsdCents: 2_100 });
+                return Promise.resolve(null);
+            });
+            const createSpy = jest.spyOn(mockProvider, 'createSubscription');
+
+            await expect(service.upgradeSubscription('tenant-1', 'pro', 'card-token')).rejects.toMatchObject({
+                response: expect.objectContaining({ error: 'local_trial_plan_change_not_supported' }),
+            });
+            expect(createSpy).not.toHaveBeenCalled();
+            expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
+        });
+
+        it('keeps requiring a card for a zero-day self-serve plan', async () => {
+            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', name: 'T1' });
+            prismaMock.billingSubscription.findUnique.mockResolvedValueOnce(null);
+            prismaMock.billingPlan.findUnique.mockResolvedValueOnce({
+                id: 'plan_paid', slug: 'paid-now', requiresCardForTrial: false,
+                trialDays: 0, isActive: true, features: {},
+            });
+
+            await expectErrorCode(
+                () => service.createTrialSubscription({ tenantId: 't1', planSlug: 'paid-now' }),
                 'card_required_for_trial',
+            );
+        });
+
+        it('requires an annual provider fingerprint even for a local no-card trial', async () => {
+            prismaMock.tenant.findUnique.mockResolvedValueOnce({
+                id: 't1', name: 'T1', paymentProvider: 'mercadopago', billingCountry: 'CO',
+            });
+            prismaMock.billingSubscription.findUnique.mockResolvedValueOnce(null);
+            prismaMock.billingPlan.findUnique.mockResolvedValueOnce({
+                id: 'plan_starter', slug: 'starter', requiresCardForTrial: false,
+                trialDays: 7, isActive: true, features: {}, mpPlanId: 'legacy-id',
+                stripePlanId: null, priceLocalOverrides: {},
+            });
+
+            await expectErrorCode(
+                () => service.createTrialSubscription({
+                    tenantId: 't1', planSlug: 'starter', billingCycle: 'annual',
+                }),
+                'provider_plan_not_synchronized',
+            );
+        });
+
+        it('fails closed for a local no-card Mercado Pago trial when the provider is not configured', async () => {
+            mpConfigMock.isConfigured.mockReturnValueOnce(false);
+            prismaMock.tenant.findUnique.mockResolvedValueOnce({
+                id: 't1', name: 'T1', paymentProvider: 'mercadopago', billingCountry: 'CO',
+            });
+            prismaMock.billingSubscription.findUnique.mockResolvedValueOnce(null);
+            prismaMock.billingPlan.findUnique.mockResolvedValueOnce({
+                id: 'plan_starter', slug: 'starter', requiresCardForTrial: false,
+                trialDays: 7, isActive: true, features: {},
+            });
+
+            await expectErrorCode(
+                () => service.createTrialSubscription({ tenantId: 't1', planSlug: 'starter' }),
+                'provider_not_configured',
+            );
+            expect(prismaMock.billingSubscription.create).not.toHaveBeenCalled();
+        });
+
+        it('blocks sales-led plans from the self-serve trial endpoint', async () => {
+            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', name: 'T1' });
+            prismaMock.billingSubscription.findUnique.mockResolvedValueOnce(null);
+            prismaMock.billingPlan.findUnique.mockResolvedValueOnce({
+                id: 'plan_custom', slug: 'custom', requiresCardForTrial: false,
+                trialDays: 0, isActive: true, features: { salesLed: true },
+            });
+
+            await expectErrorCode(
+                () => service.createTrialSubscription({ tenantId: 't1', planSlug: 'custom' }),
+                'sales_led_plan_not_self_serve',
             );
         });
 
@@ -263,6 +360,202 @@ describe('BillingService', () => {
                 () => service.createTrialSubscription({ tenantId: 'ghost', planSlug: 'starter' }),
                 'tenant_not_found',
             );
+        });
+    });
+
+    describe('scheduled downgrade provider ordering', () => {
+        const synchronizedTargetPlan = {
+            id: 'plan-starter',
+            slug: 'starter',
+            isActive: true,
+            priceUsdCents: 2_100,
+            mpPlanId: null,
+            stripePlanId: null,
+            requiresCardForTrial: false,
+            features: {},
+            priceLocalOverrides: {
+                CO: {
+                    currency: 'COP',
+                    amountCents: 8_900_000,
+                    mpPlanId: 'mp-starter-co',
+                    syncedAmountCents: 8_900_000,
+                    syncedCurrency: 'COP',
+                },
+            },
+        };
+
+        const dueDowngrade = (providerSubscriptionId: string | null = 'mp-sub-1') => ({
+            id: 'sub-downgrade',
+            tenantId: 'tenant-1',
+            planId: 'plan-pro',
+            pendingPlanId: 'plan-starter',
+            pendingPlanChangeAt: new Date(Date.now() - 60_000),
+            provider: 'mercadopago',
+            providerSubscriptionId,
+            metadata: { billingCycle: 'monthly' },
+        });
+
+        it('does not schedule a provider-backed downgrade when the target fingerprint is stale', async () => {
+            const sub = dueDowngrade();
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(sub);
+            prismaMock.billingPlan.findUnique.mockImplementation(({ where }: any) => {
+                if (where.slug === 'starter') {
+                    return Promise.resolve({
+                        ...synchronizedTargetPlan,
+                        priceLocalOverrides: {
+                            CO: {
+                                currency: 'COP', amountCents: 8_900_000,
+                                mpPlanId: 'stale-id', syncedAmountCents: 8_000_000,
+                                syncedCurrency: 'COP',
+                            },
+                        },
+                    });
+                }
+                if (where.id === 'plan-pro') return Promise.resolve({ id: 'plan-pro', priceUsdCents: 12_900 });
+                return Promise.resolve(null);
+            });
+            prismaMock.tenant.findUnique.mockResolvedValue({ id: 'tenant-1', billingCountry: 'CO' });
+
+            await expect(service.upgradeSubscription('tenant-1', 'starter')).rejects.toMatchObject({
+                response: expect.objectContaining({ error: 'provider_plan_not_synchronized' }),
+            });
+            expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
+            expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+        });
+
+        it('retains pending downgrade and entitlements when provider confirmation fails', async () => {
+            const sub = dueDowngrade();
+            prismaMock.billingSubscription.findMany.mockResolvedValue([sub]);
+            prismaMock.billingPlan.findUnique.mockResolvedValue(synchronizedTargetPlan);
+            prismaMock.tenant.findUnique.mockResolvedValue({ id: 'tenant-1', billingCountry: 'CO' });
+            const providerChange = jest.spyOn(mockProvider, 'changeSubscriptionPlan')
+                .mockRejectedValueOnce(new Error('provider rejected plan change'));
+
+            const result = await service.applyPendingPlanChanges();
+
+            expect(result).toEqual({ applied: 0 });
+            expect(providerChange).toHaveBeenCalledWith('mp-sub-1', 'mp-starter-co');
+            expect(prismaMock.billingSubscription.update).not.toHaveBeenCalled();
+            expect(prismaMock.tenant.update).not.toHaveBeenCalled();
+            expect(prismaMock.auditLog.create).toHaveBeenCalledWith({
+                data: expect.objectContaining({
+                    action: 'subscription_downgrade_provider_sync_failed',
+                    tenantId: 'tenant-1',
+                }),
+            });
+        });
+
+        it('confirms the provider before atomically applying local entitlements', async () => {
+            const sub = dueDowngrade();
+            prismaMock.billingSubscription.findMany.mockResolvedValue([sub]);
+            prismaMock.billingPlan.findUnique.mockResolvedValue(synchronizedTargetPlan);
+            prismaMock.tenant.findUnique.mockResolvedValue({ id: 'tenant-1', billingCountry: 'CO' });
+            const providerChange = jest.spyOn(mockProvider, 'changeSubscriptionPlan')
+                .mockResolvedValueOnce({} as any);
+
+            const result = await service.applyPendingPlanChanges();
+
+            expect(result).toEqual({ applied: 1 });
+            expect(providerChange).toHaveBeenCalledWith('mp-sub-1', 'mp-starter-co');
+            expect(prismaMock.billingSubscription.update).toHaveBeenCalledWith({
+                where: { id: 'sub-downgrade' },
+                data: expect.objectContaining({
+                    planId: 'plan-starter',
+                    pendingPlanId: null,
+                    pendingPlanChangeAt: null,
+                }),
+            });
+            expect(providerChange.mock.invocationCallOrder[0]).toBeLessThan(
+                prismaMock.billingSubscription.update.mock.invocationCallOrder[0],
+            );
+            expect(prismaMock.tenant.update).toHaveBeenCalledWith({
+                where: { id: 'tenant-1' },
+                data: { plan: 'starter' },
+            });
+        });
+
+        it('applies a local pending downgrade without provider metadata or calls', async () => {
+            const sub = dueDowngrade(null);
+            prismaMock.billingSubscription.findMany.mockResolvedValue([sub]);
+            prismaMock.billingPlan.findUnique.mockResolvedValue({
+                ...synchronizedTargetPlan,
+                priceLocalOverrides: {},
+            });
+            prismaMock.tenant.findUnique.mockResolvedValue({ id: 'tenant-1', billingCountry: 'CO' });
+            const providerChange = jest.spyOn(mockProvider, 'changeSubscriptionPlan');
+
+            const result = await service.applyPendingPlanChanges();
+
+            expect(result).toEqual({ applied: 1 });
+            expect(providerChange).not.toHaveBeenCalled();
+            expect(prismaMock.billingSubscription.update).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({ pendingPlanId: null }),
+                }),
+            );
+        });
+    });
+
+    describe('Mercado Pago provider-plan fingerprint', () => {
+        const resolve = (plan: any, country: string, cycle: 'monthly' | 'annual' = 'monthly') =>
+            (service as any).resolveProviderPlanId(plan, 'mercadopago', country, cycle);
+
+        it('accepts only a country cycle whose id, amount and currency fingerprint match', () => {
+            const plan = {
+                mpPlanId: 'legacy-id',
+                stripePlanId: null,
+                priceLocalOverrides: {
+                    co: {
+                        currency: 'COP',
+                        amountCents: 27_690_000,
+                        mpPlanId: 'verified-id',
+                        syncedAmountCents: 27_690_000,
+                        syncedCurrency: 'cop',
+                    },
+                },
+            };
+
+            expect(resolve(plan, ' co ')).toBe('verified-id');
+        });
+
+        it('rejects an unknown billing country before persisting a local trial', async () => {
+            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', billingCountry: null });
+
+            await expect(service.createTrialSubscription({
+                tenantId: 't1', planSlug: 'starter', billingCountry: 'zz',
+            })).rejects.toMatchObject({
+                response: expect.objectContaining({ error: 'invalid_billing_country' }),
+            });
+            expect(prismaMock.billingSubscription.create).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            ['historical id without fingerprint', {
+                CO: { currency: 'COP', amountCents: 100, mpPlanId: 'historical-id' },
+            }, 'monthly'],
+            ['legacy top-level id without country proof', {}, 'monthly'],
+            ['annual fingerprint with stale amount', {
+                CO: {
+                    currency: 'COP', amountCents: 100,
+                    annual: {
+                        currency: 'COP', amountCents: 1_000, mpPlanId: 'annual-id',
+                        syncedAmountCents: 900, syncedCurrency: 'COP',
+                    },
+                },
+            }, 'annual'],
+            ['country with unsupported Mercado Pago currency', {
+                US: {
+                    currency: 'USD', amountCents: 100, mpPlanId: 'us-id',
+                    syncedAmountCents: 100, syncedCurrency: 'USD',
+                },
+            }, 'monthly'],
+        ])('fails closed for %s', (_label, priceLocalOverrides, cycle) => {
+            try {
+                resolve({ mpPlanId: 'legacy-id', stripePlanId: null, priceLocalOverrides }, 'US' in priceLocalOverrides ? 'US' : 'CO', cycle as any);
+                throw new Error('expected provider sync error');
+            } catch (error: any) {
+                expect(error.getResponse?.()?.error ?? error.response?.error).toBe('provider_plan_not_synchronized');
+            }
         });
     });
 });

@@ -21,22 +21,25 @@ describe('CompleteOnboardingDto', () => {
             referral: 'google',
             locale: 'es',
             plan: 'starter',
+            billingCycle: 'annual',
         });
 
         await expect(validate(dto, { whitelist: true })).resolves.toHaveLength(0);
     });
 
-    it('rejects malformed nested data, unsupported plans and oversized arrays', async () => {
+    it('rejects malformed nested data, unsupported billing cycles and oversized arrays', async () => {
         const dto = plainToInstance(CompleteOnboardingDto, {
             company: { email: 'not-an-email' },
             plan: 'professional',
+            billingCycle: 'quarterly',
             goals: Array.from({ length: 26 }, (_, index) => `goal-${index}`),
         });
 
         const errors = await validate(dto, { whitelist: true });
         expect(errors.map((error) => error.property)).toEqual(
-            expect.arrayContaining(['company', 'plan', 'goals']),
+            expect.arrayContaining(['company', 'billingCycle', 'goals']),
         );
+        expect(errors.map((error) => error.property)).not.toContain('plan');
     });
 
     it('keeps supported legacy fields for backwards-compatible clients', async () => {
@@ -51,5 +54,24 @@ describe('CompleteOnboardingDto', () => {
         });
 
         await expect(validate(dto, { whitelist: true })).resolves.toHaveLength(0);
+    });
+
+    it('accepts a new catalog-owned slug instead of enforcing a stale DTO enum', async () => {
+        const dto = plainToInstance(CompleteOnboardingDto, {
+            plan: 'scale-latam',
+            billingCycle: 'monthly',
+        });
+
+        await expect(validate(dto, { whitelist: true })).resolves.toHaveLength(0);
+    });
+
+    it('normalizes a supported billing country and rejects unknown country codes', async () => {
+        const supported = plainToInstance(CompleteOnboardingDto, { billingCountry: ' ca ' });
+        await expect(validate(supported, { whitelist: true })).resolves.toHaveLength(0);
+        expect(supported.billingCountry).toBe('CA');
+
+        const unknown = plainToInstance(CompleteOnboardingDto, { billingCountry: 'ZZ' });
+        const errors = await validate(unknown, { whitelist: true });
+        expect(errors.map((error) => error.property)).toContain('billingCountry');
     });
 });

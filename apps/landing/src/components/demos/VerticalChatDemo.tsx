@@ -11,11 +11,23 @@ interface VerticalChatDemoProps {
   onStepChange?: (step: number) => void;
 }
 
+const GENERIC_DEMO_MESSAGES: VerticalDef["demoMessages"] = [
+  { from: "customer", text: "" },
+  { from: "ai", text: "" },
+  { from: "customer", text: "" },
+  { from: "ai", text: "" },
+  { from: "customer", text: "" },
+  { from: "ai", text: "" },
+];
+
 export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoProps) {
   const t = useTranslations("verticals");
   const tChannels = useTranslations("channels");
   const skin = CHANNELS[vertical.channel];
-  const agentName = t.has(`${vertical.slug}.name`) ? t(`${vertical.slug}.name`) : vertical.slug;
+  const agentName = vertical.deepMarketingAllowed && t.has(`${vertical.slug}.agentName`)
+    ? t(`${vertical.slug}.agentName`)
+    : t("genericAgentName");
+  const demoMessages = vertical.deepMarketingAllowed ? vertical.demoMessages : GENERIC_DEMO_MESSAGES;
   const statusText = tChannels.has(`status.${vertical.channel}`) ? tChannels(`status.${vertical.channel}`) : skin.statusText;
   const [visibleCount, setVisibleCount] = useState(0);
   const [cycle, setCycle] = useState(0);
@@ -26,7 +38,7 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
   const runAnimation = useCallback(() => {
     setVisibleCount(0);
     if (onStepChange) onStepChange(0);
-    const total = vertical.demoMessages.length;
+    const total = demoMessages.length;
     const showNext = (i: number) => {
       if (i > total) {
         if (onStepChange) onStepChange(total + 1);
@@ -43,7 +55,7 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
       );
     };
     showNext(1);
-  }, [vertical.demoMessages.length, onStepChange]);
+  }, [demoMessages.length, onStepChange]);
 
   useEffect(() => {
     if (!isInView) return;
@@ -57,7 +69,7 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
     <div
       ref={ref}
       className="bg-surface border border-border rounded-2xl overflow-hidden shadow-xl w-full"
-      style={{ boxShadow: `0 0 24px ${vertical.glow}` }}
+      style={{ boxShadow: vertical.glow }}
     >
       {/* Channel-skinned header */}
       <div
@@ -95,7 +107,7 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
         className="p-4 min-h-[320px] flex flex-col gap-2"
         style={{ backgroundColor: skin.bodyBg }}
       >
-        {vertical.demoMessages.map((msg, i) => (
+        {demoMessages.map((msg, i) => (
           <AnimatePresence key={`${cycle}-${i}`}>
             {i < visibleCount && (
               <motion.div
@@ -119,7 +131,9 @@ export function VerticalChatDemo({ vertical, onStepChange }: VerticalChatDemoPro
                         : skin.incomingText,
                   }}
                 >
-                  {t.has(`${vertical.slug}.demo${i + 1}`) ? t(`${vertical.slug}.demo${i + 1}`) : msg.text}
+                  {vertical.deepMarketingAllowed && t.has(`${vertical.slug}.demo${i + 1}`)
+                    ? t(`${vertical.slug}.demo${i + 1}`)
+                    : t(`genericDemo${i + 1}`)}
                 </div>
               </motion.div>
             )}

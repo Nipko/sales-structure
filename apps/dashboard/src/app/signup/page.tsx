@@ -16,6 +16,51 @@ const GOOGLE_CLIENT_ID =
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
     "950001098107-4ctk2jm3876afqktip7r4f04120kt0ou.apps.googleusercontent.com";
 
+const PRICING_INTENT_KEY = "pricingIntent";
+const BILLING_COUNTRIES = [
+    "CO", "MX", "AR", "CL", "PE", "BR", "UY", "PY", "BO",
+    "EC", "VE", "CR", "PA", "DO", "GT", "US", "CA",
+] as const;
+
+type PricingIntent = {
+    plan?: string;
+    country?: string;
+    cycle?: "monthly" | "annual";
+};
+
+function validPlanSlug(value: string | null): string | undefined {
+    const normalized = value?.trim().toLowerCase();
+    return normalized && normalized.length <= 80 && /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(normalized)
+        ? normalized
+        : undefined;
+}
+
+function validCountry(value: string | null): string | undefined {
+    const normalized = value?.trim().toUpperCase();
+    return normalized && BILLING_COUNTRIES.includes(normalized as typeof BILLING_COUNTRIES[number])
+        ? normalized
+        : undefined;
+}
+
+function validCycle(value: string | null): PricingIntent["cycle"] {
+    return value === "monthly" || value === "annual" ? value : undefined;
+}
+
+function readStoredPricingIntent(): PricingIntent {
+    try {
+        const raw = sessionStorage.getItem(PRICING_INTENT_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (!parsed || typeof parsed !== "object") return {};
+        return {
+            plan: validPlanSlug(typeof parsed.plan === "string" ? parsed.plan : null),
+            country: validCountry(typeof parsed.country === "string" ? parsed.country : null),
+            cycle: validCycle(typeof parsed.cycle === "string" ? parsed.cycle : null),
+        };
+    } catch {
+        return {};
+    }
+}
+
 declare global {
     interface Window {
         google?: {
@@ -45,6 +90,28 @@ export default function SignupPage() {
     const { googleLogin } = useAuth();
     const router = useRouter();
 
+    // The marketing site sends the selected commercial context in the signup
+    // query. Persist only syntactically valid values so email verification and
+    // OAuth redirects do not erase the user's choice. Onboarding will validate
+    // the plan again against the authenticated, active catalog.
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const queryIntent: PricingIntent = {
+            plan: validPlanSlug(params.get("plan")),
+            country: validCountry(params.get("country")),
+            cycle: validCycle(params.get("cycle")),
+        };
+        const storedIntent = readStoredPricingIntent();
+        const pricingIntent = {
+            ...storedIntent,
+            ...Object.fromEntries(Object.entries(queryIntent).filter(([, value]) => value !== undefined)),
+        } as PricingIntent;
+
+        if (pricingIntent.plan || pricingIntent.country || pricingIntent.cycle) {
+            try { sessionStorage.setItem(PRICING_INTENT_KEY, JSON.stringify(pricingIntent)); } catch { /* noop */ }
+        }
+    }, []);
+
     const updateField = (field: string, value: string) => {
         setForm((prev) => ({ ...prev, [field]: value }));
     };
@@ -61,7 +128,7 @@ export default function SignupPage() {
             }
             setIsGoogleLoading(false);
         },
-        [googleLogin, router]
+        [googleLogin, router, t]
     );
 
     const googleHiddenRef = useRef<HTMLDivElement>(null);

@@ -1,7 +1,6 @@
 {
   "hero": {
-    "subtitle": "Mientras vos atendés tu negocio, tu asistente con IA gestiona mensajes, agenda citas y guarda los datos de cada cliente. La configuración guiada no requiere programar.",
-    "ctaWhatsapp": "Hablá con nuestra IA"
+    "subtitle": "Parallly responde en WhatsApp, Instagram y otros canales con la información de tu negocio; actualiza el CRM y la agenda, y pasa la conversación a tu equipo cuando hace falta. Tu equipo trabaja desde la web y la app Android en acceso privado."
   },
   "problem": {
     "title": "¿Cuántas ventas perdés por no responder a tiempo?",
@@ -34,7 +33,7 @@
     "ctaBanner": "Explorá la configuración para {industry}"
   },
   "pricingPage": {
-    "heroSubtitle": "Elegí el plan que mejor se adapte a tu negocio. Todos incluyen prueba gratuita.",
+    "heroSubtitle": "Elegí el plan que mejor se adapte a tu negocio. Las condiciones vigentes aparecen directamente en cada plan.",
     "upsellEmpToStarter1": "Agregá Instagram y Messenger",
     "needMore": "¿Necesitás más? →",
     "comparisonTitle": "Compará todos los planes en detalle",
@@ -43,16 +42,16 @@
     "quizQ2": "¿Cuántos mensajes recibís al mes?",
     "quizQ3": "¿Necesitás automatización avanzada?",
     "enterpriseCtaTitle": "¿Necesitás más? Hablemos",
-    "faqA1": "Sí. Podés subir o bajar de plan cuando quieras. El cambio se aplica inmediatamente y se prorratea.",
+    "faqA1": "Podés solicitar cambios cuando quieras. Las mejoras se aplican al confirmarse el nuevo cobro y las reducciones se programan para el período siguiente. Mercado Pago no realiza prorrateo automático.",
     "faqA2": "Cuando termine la prueba, revisá en el panel las opciones de activación y los planes disponibles.",
     "faqA3": "Los límites de IA no generan cobros automáticos: al alcanzarlos se pausa esa automatización y te mostramos opciones de ampliación. Servicios de terceros o paquetes opcionales, como SMS cuando estén habilitados, se informan por separado.",
     "faqA6": "Los cambios de plan y la cancelación se gestionan desde las opciones disponibles en el panel de facturación.",
     "faqA7": "Facturación muestra el historial y el estado de cada pago. Cualquier devolución se rige por los términos vigentes."
   },
   "pricing": {
-    "subtitle": "Empezá con prueba gratis. Cancelá cuando quieras. Sin letra pequeña.",
-    "title": "Precios claros, pagás en tu moneda con MercadoPago",
-    "currencyHint": "Pagás en tu moneda local con MercadoPago: COP, ARS, MXN, CLP, PEN, UYU y BRL · o USD con tarjeta internacional."
+    "subtitle": "Consultá en cada plan la prueba, los requisitos y los límites vigentes.",
+    "title": "Precios y condiciones vigentes, sin valores de respaldo",
+    "currencyHint": "Seleccioná tu país para consultar la moneda y el precio vigentes. Si no hay tarifa local, vas a ver el importe en USD."
   },
   "howItWorks": {
     "step1": "Conectá tus canales",
@@ -88,6 +87,7 @@
     "agentDemoTitle": "Mirá al agente en acción",
     "agentFeature4Desc": "Cargá catálogos, PDFs, FAQs y documentos. La IA recupera fragmentos relevantes y puede citar la fuente; revisá los flujos sensibles.",
     "crmFeaturesSubtitle": "Todo lo que necesitás para convertir leads en clientes, sin perder ninguno.",
+    "crmFeature2Desc": "Score automático basado en interacciones, intención de compra y engagement. Priorizá los leads que más valen.",
     "demoTitle": "Mirá cómo funciona"
   },
   "verticals": {

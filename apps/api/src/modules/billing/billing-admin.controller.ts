@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsPositive, IsString, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsPositive, IsString, MaxLength, Min } from 'class-validator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BillingService } from './billing.service';
@@ -16,12 +16,14 @@ import {
     unknownFeatureKeys,
 } from '../throttle/plan-features.registry';
 import { auditActor } from '../../common/utils/audit-actor.util';
-
-// Countries for which we can register a MercadoPago preapproval_plan. Mirrors
-// scripts/sync-mp-plans.js — MP subscriptions are per-country.
-const SYNC_CURRENCY_BY_COUNTRY: Record<string, string> = {
-    CO: 'COP', AR: 'ARS', MX: 'MXN', CL: 'CLP', PE: 'PEN', UY: 'UYU', BR: 'BRL',
-};
+import {
+    PriceOverrideValidationError,
+    reconcilePlanPriceSync,
+} from './billing-plan-price-sync.util';
+import {
+    MERCADOPAGO_CURRENCY_BY_COUNTRY,
+    normalizeBillingCountry,
+} from './billing-country-config';
 
 class RefundPaymentDto {
     @IsOptional()
@@ -36,7 +38,7 @@ class RefundPaymentDto {
 
 class CompPlanDto {
     @IsString()
-    @IsIn(['emprendedor', 'starter', 'pro', 'enterprise', 'custom'])
+    @MaxLength(80)
     planSlug!: string;
 
     @IsInt()
@@ -49,7 +51,7 @@ class CompPlanDto {
 
 class SetTenantPlanDto {
     @IsString()
-    @IsIn(['emprendedor', 'starter', 'pro', 'enterprise', 'custom'])
+    @MaxLength(80)
     planSlug!: string;
 
     @IsOptional()
@@ -62,8 +64,8 @@ class UpdatePlanDto {
     @IsOptional() @IsInt() @Min(0) priceUsdCents?: number;
     @IsOptional() @IsInt() @Min(0) trialDays?: number;
     @IsOptional() @IsBoolean() requiresCardForTrial?: boolean;
-    @IsOptional() @IsInt() @Min(0) maxAgents?: number;
-    @IsOptional() @IsInt() maxAiMessages?: number;
+    @IsOptional() @IsInt() @Min(-1) maxAgents?: number;
+    @IsOptional() @IsInt() @Min(-1) maxAiMessages?: number;
     @IsOptional() @IsObject() features?: Record<string, any>;
     @IsOptional() @IsObject() priceLocalOverrides?: Record<string, any>;
     @IsOptional() @IsBoolean() isActive?: boolean;
@@ -148,9 +150,26 @@ export class BillingAdminController {
         const existing = await this.prisma.billingPlan.findUnique({ where: { slug } });
         if (!existing) throw new NotFoundException('Plan not found');
 
-        const mergedOverrides = body.priceLocalOverrides
-            ? { ...((existing.priceLocalOverrides as any) ?? {}), ...body.priceLocalOverrides }
-            : (existing.priceLocalOverrides as any);
+        let priceSync;
+        try {
+            priceSync = reconcilePlanPriceSync({
+                planSlug: slug,
+                existingOverrides: existing.priceLocalOverrides,
+                incomingOverrides: body.priceLocalOverrides,
+                existingUsdPriceCents: existing.priceUsdCents,
+                nextUsdPriceCents: body.priceUsdCents ?? existing.priceUsdCents,
+                existingLegacyMpPlanId: existing.mpPlanId,
+            });
+        } catch (error) {
+            if (error instanceof PriceOverrideValidationError) {
+                throw new BadRequestException({
+                    error: 'invalid_price_local_overrides',
+                    message: 'priceLocalOverrides contiene países, monedas o montos inválidos.',
+                    issues: error.issues,
+                });
+            }
+            throw error;
+        }
 
         // Validate the incoming features against the canonical registry and MERGE
         // into the stored object (instead of replacing it), so a partial payload
@@ -179,7 +198,8 @@ export class BillingAdminController {
                 maxAgents: body.maxAgents ?? existing.maxAgents,
                 maxAiMessages: body.maxAiMessages ?? existing.maxAiMessages,
                 features: mergedFeatures,
-                priceLocalOverrides: mergedOverrides,
+                priceLocalOverrides: priceSync.priceLocalOverrides,
+                mpPlanId: priceSync.legacyMpPlanId,
                 isActive: body.isActive ?? existing.isActive,
             },
         });
@@ -207,6 +227,12 @@ export class BillingAdminController {
         if (body.priceLocalOverrides) {
             changes.priceLocalOverrides = { from: existing.priceLocalOverrides, to: updated.priceLocalOverrides };
         }
+        if (priceSync.invalidated.length > 0) {
+            changes.providerPlanInvalidations = {
+                reason: 'configured_amount_changed',
+                cycles: priceSync.invalidated,
+            };
+        }
         if (Object.keys(changes).length > 0) {
             await this.prisma.auditLog.create({
                 data: {
@@ -219,7 +245,12 @@ export class BillingAdminController {
             });
         }
 
-        return { success: true, data: updated, invalidatedTenants: invalidated };
+        return {
+            success: true,
+            data: updated,
+            invalidatedTenants: invalidated,
+            invalidatedProviderCycles: priceSync.invalidated,
+        };
     }
 
     /** Shallow merge with 1-level deep-merge for nested config objects. */
@@ -282,31 +313,36 @@ export class BillingAdminController {
         const plan = await this.prisma.billingPlan.findUnique({ where: { slug } });
         if (!plan) throw new NotFoundException('Plan not found');
 
-        const country = (body.country || 'CO').toUpperCase();
-        const currency = SYNC_CURRENCY_BY_COUNTRY[country];
+        const country = normalizeBillingCountry(body.country) || 'CO';
+        const currency = MERCADOPAGO_CURRENCY_BY_COUNTRY[
+            country as keyof typeof MERCADOPAGO_CURRENCY_BY_COUNTRY
+        ];
         if (!currency) {
             throw new BadRequestException({
                 error: 'unsupported_country',
-                message: `País ${country} no soportado. Soportados: ${Object.keys(SYNC_CURRENCY_BY_COUNTRY).join(', ')}.`,
+                message: `País ${country} no soportado. Soportados: ${Object.keys(MERCADOPAGO_CURRENCY_BY_COUNTRY).join(', ')}.`,
             });
         }
         if (!this.mpConfig.isConfigured()) {
             throw new BadRequestException({ error: 'mp_not_configured', message: 'MercadoPago no está configurado (falta MP_ACCESS_TOKEN).' });
         }
 
-        const overrides: Record<string, any> = (plan.priceLocalOverrides && typeof plan.priceLocalOverrides === 'object')
-            ? { ...(plan.priceLocalOverrides as any) }
-            : {};
+        // Fold any legacy lowercase aliases before reading/writing so a sync can
+        // never create parallel `co` + `CO` entries.
+        const overrides: Record<string, any> = reconcilePlanPriceSync({
+            planSlug: plan.slug,
+            existingOverrides: plan.priceLocalOverrides,
+            existingUsdPriceCents: plan.priceUsdCents,
+            nextUsdPriceCents: plan.priceUsdCents,
+            existingLegacyMpPlanId: plan.mpPlanId,
+        }).priceLocalOverrides;
         const existing = overrides[country];
         const isAnnual = body.cycle === 'year';
 
-        // Idempotent PER CYCLE: skip only if THIS cycle's plan already exists.
-        // (Without this, an annual sync would be skipped just because the monthly
-        // plan exists, and the annual preapproval_plan would never be created.)
+        // Idempotency is per cycle and requires the server-owned amount/currency
+        // fingerprint. A historical id without that proof is recreated by this
+        // explicit sync action instead of being treated as current.
         const existingCycleId = isAnnual ? existing?.annual?.mpPlanId : existing?.mpPlanId;
-        if (existingCycleId && !body.force) {
-            return { success: true, data: { slug, country, currency, cycle: isAnnual ? 'year' : 'month', mpPlanId: existingCycleId, amountCents: (isAnnual ? existing?.annual?.amountCents : existing?.amountCents) ?? null, skipped: true } };
-        }
 
         // Amount source. Monthly: local override or priceUsdCents×fx. Annual: the
         // stored annual override only — the yearly total has no USD/FX source, so
@@ -332,6 +368,24 @@ export class BillingAdminController {
             });
         }
 
+        const existingCycle = isAnnual ? existing?.annual : existing;
+        const fingerprintMatches = existingCycle?.syncedAmountCents === amountCents
+            && String(existingCycle?.syncedCurrency || '').trim().toUpperCase() === currency;
+        if (existingCycleId && fingerprintMatches && !body.force) {
+            return {
+                success: true,
+                data: {
+                    slug,
+                    country,
+                    currency,
+                    cycle: isAnnual ? 'year' : 'month',
+                    mpPlanId: existingCycleId,
+                    amountCents,
+                    skipped: true,
+                },
+            };
+        }
+
         const providerPlan = await this.mp.createPlan({
             slug: plan.slug,
             name: `${plan.name} — Parallly ${country}${isAnnual ? ' (Anual)' : ''}`,
@@ -345,10 +399,24 @@ export class BillingAdminController {
         if (isAnnual) {
             overrides[country] = {
                 ...(existing ?? {}),
-                annual: { ...(existing?.annual ?? {}), currency, amountCents, mpPlanId: providerPlan.providerPlanId },
+                annual: {
+                    ...(existing?.annual ?? {}),
+                    currency,
+                    amountCents,
+                    mpPlanId: providerPlan.providerPlanId,
+                    syncedAmountCents: amountCents,
+                    syncedCurrency: currency,
+                },
             };
         } else {
-            overrides[country] = { ...(existing ?? {}), currency, amountCents, mpPlanId: providerPlan.providerPlanId };
+            overrides[country] = {
+                ...(existing ?? {}),
+                currency,
+                amountCents,
+                mpPlanId: providerPlan.providerPlanId,
+                syncedAmountCents: amountCents,
+                syncedCurrency: currency,
+            };
         }
         const data: any = { priceLocalOverrides: overrides };
         // Keep the legacy top-level column in sync for CO MONTHLY (resolveProviderPlanId fallback).
@@ -551,7 +619,7 @@ export class BillingAdminController {
         @Req() req: any,
     ) {
         const plan = await this.prisma.billingPlan.findUnique({ where: { slug: body.planSlug } });
-        if (!plan) throw new NotFoundException('Plan not found');
+        if (!plan || !plan.isActive) throw new NotFoundException('Active plan not found');
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
             select: { id: true, plan: true },

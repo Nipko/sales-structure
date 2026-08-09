@@ -347,10 +347,10 @@ export default function PrivacyFr() {
             </li>
             <li>
               <strong className="text-text-primary">
-                Isolation multi-tenant :
+                Isolation par entreprise :
               </strong>{" "}
               chaque client opère dans un schéma de base de données isolé
-              (schema-per-tenant), garantissant la séparation logique des
+              (un schéma par entreprise), garantissant la séparation logique des
               données entre organisations.
             </li>
             <li>

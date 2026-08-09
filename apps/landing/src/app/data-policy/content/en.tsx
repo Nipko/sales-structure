@@ -108,7 +108,7 @@ export default function DataPolicyEn() {
               Parallly platform&apos;s services.
             </li>
             <li>
-              Create and manage user accounts and organizations (tenants) on
+              Create and manage user accounts and customer organizations on
               the platform.
             </li>
             <li>
@@ -528,10 +528,10 @@ export default function DataPolicyEn() {
             </li>
             <li>
               <strong className="text-text-primary">
-                Multi-tenant isolation:
+                Business data isolation:
               </strong>{" "}
               each client organization operates in an isolated PostgreSQL
-              database schema (schema-per-tenant), ensuring that each
+              database schema (one schema per business), ensuring that each
               client&apos;s data is logically separated.
             </li>
             <li>

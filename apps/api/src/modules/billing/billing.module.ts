@@ -24,6 +24,7 @@ import { FiscalModule } from '../fiscal/fiscal.module';
 import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
 import { SmsCheckoutService } from './sms-checkout.service';
 import { SmsCheckoutController } from './sms-checkout.controller';
+import { BillingPlanCatalogService } from './billing-plan-catalog.service';
 
 /**
  * Billing module — provider-agnostic subscription billing.
@@ -52,6 +53,7 @@ import { SmsCheckoutController } from './sms-checkout.controller';
         BillingReconciliationProcessor,
         InvoiceGeneratorService,
         SmsCheckoutService,
+        BillingPlanCatalogService,
     ],
     exports: [BillingService, CouponsService, InvoiceGeneratorService],
 })

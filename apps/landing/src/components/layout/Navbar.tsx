@@ -28,41 +28,65 @@ export function Navbar() {
 
   useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
 
-  const renderMega = (menu: typeof SOLUTIONS_MENU) => (
-    <AnimatePresence>
-      {activeMenu === menu.labelKey && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 8 }}
-          transition={{ duration: 0.15 }}
-          className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[540px] bg-bg/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl p-4 grid grid-cols-2 gap-1"
-          onMouseEnter={() => openMenu(menu.labelKey)}
-          onMouseLeave={scheduleClose}
-        >
-          {menu.items.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-start gap-3 p-3 rounded-xl hover:bg-surface-light transition-colors group"
-              onClick={() => setActiveMenu(null)}
-            >
-              <span className="text-xl mt-0.5">{item.emoji}</span>
-              <div>
-                <p className="text-sm font-semibold text-text-primary group-hover:text-accent transition-colors">
-                  {t(item.labelKey)}
-                </p>
-                <p className="text-xs text-text-muted mt-0.5">{t(item.descKey)}</p>
-              </div>
-            </Link>
-          ))}
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setActiveMenu(null);
+      setMobileOpen(false);
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, []);
+
+  const renderMega = (menu: typeof SOLUTIONS_MENU) => {
+    const menuId = `mega-${menu.labelKey}`;
+
+    return (
+      <AnimatePresence>
+        {activeMenu === menu.labelKey && (
+          <motion.div
+            id={menuId}
+            role="region"
+            aria-label={t(menu.labelKey)}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.15 }}
+            className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[540px] bg-bg/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl p-4 grid grid-cols-2 gap-1"
+            onMouseEnter={() => openMenu(menu.labelKey)}
+            onMouseLeave={scheduleClose}
+          >
+            {menu.items.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-start gap-3 p-3 rounded-xl hover:bg-surface-light transition-colors group"
+                onClick={() => setActiveMenu(null)}
+              >
+                <span className="text-xl mt-0.5" aria-hidden="true">{item.emoji}</span>
+                <div>
+                  <p className="text-sm font-semibold text-text-primary group-hover:text-accent transition-colors">
+                    {t(item.labelKey)}
+                  </p>
+                  <p className="text-xs text-text-muted mt-0.5">{t(item.descKey)}</p>
+                </div>
+              </Link>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
+  };
 
   return (
     <>
+      <a
+        href="#contenido-principal"
+        className="fixed left-4 top-3 z-[60] -translate-y-20 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white shadow-lg transition-transform focus:translate-y-0"
+      >
+        {t("skipToContent")}
+      </a>
       <motion.header
         className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-bg/80 backdrop-blur-xl"
         initial={{ opacity: 0, y: -20 }}
@@ -83,6 +107,10 @@ export function Navbar() {
             >
               <Link
                 href="/soluciones"
+                aria-haspopup="true"
+                aria-expanded={activeMenu === SOLUTIONS_MENU.labelKey}
+                aria-controls={`mega-${SOLUTIONS_MENU.labelKey}`}
+                onFocus={() => openMenu(SOLUTIONS_MENU.labelKey)}
                 className="flex items-center gap-1 px-3 py-2 rounded-lg hover:text-text-primary hover:bg-surface-light/50 transition-colors"
               >
                 {t("navSolutions")}
@@ -99,6 +127,10 @@ export function Navbar() {
             >
               <Link
                 href="/producto"
+                aria-haspopup="true"
+                aria-expanded={activeMenu === PRODUCT_MENU.labelKey}
+                aria-controls={`mega-${PRODUCT_MENU.labelKey}`}
+                onFocus={() => openMenu(PRODUCT_MENU.labelKey)}
                 className="flex items-center gap-1 px-3 py-2 rounded-lg hover:text-text-primary hover:bg-surface-light/50 transition-colors"
               >
                 {t("navProduct")}
@@ -109,16 +141,18 @@ export function Navbar() {
 
             <Link
               href="/precios"
+              onFocus={() => setActiveMenu(null)}
               className="px-3 py-2 rounded-lg hover:text-text-primary hover:bg-surface-light/50 transition-colors"
             >
               {t("navPricing")}
             </Link>
           </nav>
 
-          <div className="hidden lg:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-3" onFocus={() => setActiveMenu(null)}>
             <select
               value={locale}
               onChange={(e) => setLocale(e.target.value)}
+              aria-label={t("languageAriaLabel")}
               className="bg-transparent text-xs text-text-secondary border border-border rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:border-border-light transition-colors"
             >
               {Object.entries(localeNames).map(([code, name]) => (
@@ -137,9 +171,11 @@ export function Navbar() {
           </div>
 
           <button
-            className="lg:hidden text-text-secondary cursor-pointer"
+            className="lg:hidden rounded-lg p-2 text-text-secondary cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             onClick={() => setMobileOpen(!mobileOpen)}
             aria-label={t("menuAriaLabel")}
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-navigation"
           >
             {mobileOpen ? Icon.close("w-6 h-6") : Icon.menu("w-6 h-6")}
           </button>

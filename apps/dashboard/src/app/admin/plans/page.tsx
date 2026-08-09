@@ -1,13 +1,25 @@
 "use client";
 
 import { useState, useEffect, useCallback, Fragment } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { api, type MercadoPagoProviderStatus } from "@/lib/api";
 import {
     Layers, Save, CheckCircle, AlertCircle, Loader2, Pencil, X,
     RefreshCw, Users, ToggleLeft, ToggleRight,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+
+type PriceCycle = {
+    currency?: string;
+    amountCents?: number;
+    mpPlanId?: string;
+    syncedAmountCents?: number;
+    syncedCurrency?: string;
+};
+
+type CountryPriceOverride = PriceCycle & {
+    annual?: PriceCycle;
+};
 
 type Plan = {
     id: string;
@@ -19,12 +31,110 @@ type Plan = {
     maxAgents: number;
     maxAiMessages: number;
     features: Record<string, any>;
-    priceLocalOverrides: Record<string, { currency: string; amountCents: number; mpPlanId?: string; annual?: { amountCents?: number; mpPlanId?: string } }>;
+    priceLocalOverrides: Record<string, CountryPriceOverride>;
     isActive: boolean;
     sortOrder: number;
     tenantCount: number;
     unknownFeatureKeys?: string[];
 };
+
+const BILLING_CURRENCY_BY_COUNTRY = {
+    CO: "COP",
+    MX: "MXN",
+    AR: "ARS",
+    CL: "CLP",
+    PE: "PEN",
+    BR: "BRL",
+    UY: "UYU",
+    PY: "PYG",
+    BO: "BOB",
+    EC: "USD",
+    VE: "USD",
+    CR: "CRC",
+    PA: "USD",
+    DO: "DOP",
+    GT: "GTQ",
+    US: "USD",
+    CA: "CAD",
+} as const;
+
+type BillingCountry = keyof typeof BILLING_CURRENCY_BY_COUNTRY;
+
+const MERCADOPAGO_COUNTRIES = new Set<BillingCountry>([
+    "CO", "AR", "MX", "CL", "PE", "UY", "BR",
+]);
+
+function countryDisplayName(country: BillingCountry, locale: string): string {
+    try {
+        return new Intl.DisplayNames([locale], { type: "region" }).of(country) ?? country;
+    } catch {
+        return country;
+    }
+}
+
+function formatLocalPrice(amountCents: number | undefined, currency: string, locale: string): string {
+    if (!Number.isSafeInteger(amountCents)) return "—";
+    try {
+        return new Intl.NumberFormat(locale, {
+            style: "currency",
+            currency,
+            minimumFractionDigits: amountCents! % 100 === 0 ? 0 : 2,
+            maximumFractionDigits: amountCents! % 100 === 0 ? 0 : 2,
+        }).format(amountCents! / 100);
+    } catch {
+        return `${currency} ${(amountCents! / 100).toLocaleString(locale)}`;
+    }
+}
+
+/**
+ * Provider IDs and synchronization fingerprints are server-owned. The editor
+ * sends only the canonical currency and editable monthly/annual amounts.
+ */
+function editablePriceOverrides(overrides: Plan["priceLocalOverrides"]): Record<string, {
+    currency: string;
+    amountCents?: number;
+    annual?: { currency: string; amountCents: number };
+}> {
+    const editable: Record<string, {
+        currency: string;
+        amountCents?: number;
+        annual?: { currency: string; amountCents: number };
+    }> = {};
+
+    for (const [country, currency] of Object.entries(BILLING_CURRENCY_BY_COUNTRY) as [BillingCountry, string][]) {
+        const current = overrides?.[country];
+        if (!current) continue;
+        const hasMonthly = Number.isSafeInteger(current.amountCents);
+        const hasAnnual = Number.isSafeInteger(current.annual?.amountCents);
+        if (!hasMonthly && !hasAnnual) continue;
+
+        editable[country] = {
+            currency,
+            ...(hasMonthly ? { amountCents: current.amountCents } : {}),
+            ...(hasAnnual ? {
+                annual: { currency, amountCents: current.annual!.amountCents! },
+            } : {}),
+        };
+    }
+    return editable;
+}
+
+function hasMatchingSyncFingerprint(
+    cycle: {
+        currency?: string;
+        amountCents?: number;
+        mpPlanId?: string;
+        syncedAmountCents?: number;
+        syncedCurrency?: string;
+    } | undefined,
+): boolean {
+    return Boolean(
+        cycle?.mpPlanId
+        && Number.isSafeInteger(cycle.amountCents)
+        && cycle.syncedAmountCents === cycle.amountCents
+        && cycle.syncedCurrency?.trim().toUpperCase() === cycle.currency?.trim().toUpperCase(),
+    );
+}
 
 type FeatureType = "boolean" | "number" | "string" | "array" | "object";
 type FeatureDef = { key: string; type: FeatureType; category: string };
@@ -83,6 +193,7 @@ export default function PlansPage() {
     const tf = useTranslations("plansPage.features");
     const tc = useTranslations("plansPage.categories");
     const tHelp = useTranslations("help");
+    const locale = useLocale();
 
     const [plans, setPlans] = useState<Plan[]>([]);
     const [registry, setRegistry] = useState<FeatureDef[]>([]);
@@ -94,6 +205,10 @@ export default function PlansPage() {
     const [providerStatus, setProviderStatus] = useState<MercadoPagoProviderStatus | null>(null);
     const [syncing, setSyncing] = useState<string | null>(null);
     const [reconciling, setReconciling] = useState(false);
+    const [selectedCountry, setSelectedCountry] = useState<BillingCountry>("CO");
+
+    const selectedCurrency = BILLING_CURRENCY_BY_COUNTRY[selectedCountry];
+    const selectedCountrySupportsMp = MERCADOPAGO_COUNTRIES.has(selectedCountry);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -141,7 +256,10 @@ export default function PlansPage() {
                 maxAgents: editBuffer.maxAgents,
                 maxAiMessages: editBuffer.maxAiMessages,
                 features: editBuffer.features,
-                priceLocalOverrides: editBuffer.priceLocalOverrides,
+                // Never send provider IDs/fingerprints back from a full-object
+                // form. The API owns them and preserves/invalidates them by
+                // comparing these editable amount/currency fields.
+                priceLocalOverrides: editablePriceOverrides(editBuffer.priceLocalOverrides),
                 isActive: editBuffer.isActive,
             });
             if (res.success) {
@@ -158,11 +276,19 @@ export default function PlansPage() {
     };
 
     const handleSync = async (slug: string, force: boolean, cycle: "month" | "year" = "month") => {
-        setSyncing(cycle === "year" ? `${slug}:annual` : slug);
+        if (!selectedCountrySupportsMp) return;
+        const country = selectedCountry;
+        const syncKey = `${country}:${slug}:${cycle}`;
+        setSyncing(syncKey);
         try {
-            const res = await api.syncPlanToMp(slug, { country: "CO", force, cycle });
+            const res = await api.syncPlanToMp(slug, { country, force, cycle });
             if (res.success) {
-                setToast({ type: "success", msg: res.data?.skipped ? t("syncMpSkipped") : t("syncMpDone") });
+                setToast({
+                    type: "success",
+                    msg: res.data?.skipped
+                        ? t("syncMpSkippedCountry", { country, currency: selectedCurrency })
+                        : t("syncMpDoneCountry", { country, currency: selectedCurrency }),
+                });
                 load();
             } else {
                 setToast({ type: "error", msg: res.error || "Error" });
@@ -338,7 +464,7 @@ export default function PlansPage() {
         );
     };
 
-    const renderTopCell = (plan: Plan, key: "maxAgents" | "maxAiMessages" | "priceUsdCents" | "trialDays", display: string) => {
+    const renderTopCell = (plan: Plan, key: "maxAgents" | "maxAiMessages" | "priceUsdCents" | "trialDays") => {
         const isEditing = editSlug === plan.slug && editBuffer;
         const val = isEditing ? editBuffer[key] : plan[key];
         if (!isEditing) {
@@ -400,6 +526,43 @@ export default function PlansPage() {
                 tips={tHelp.raw("plans.tips") as string[]}
                 mediaKey="plans"
             />
+
+            <div className={`${sectionCls} p-4`}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                        <label htmlFor="pricing-country" className="block text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                            {t("pricingCountry")}
+                        </label>
+                        <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                            {t("pricingCountryHint")}
+                        </p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:items-end">
+                        <select
+                            id="pricing-country"
+                            value={selectedCountry}
+                            disabled={Boolean(editSlug || syncing)}
+                            onChange={(event) => setSelectedCountry(event.target.value as BillingCountry)}
+                            className="h-9 min-w-[260px] rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
+                        >
+                            {(Object.keys(BILLING_CURRENCY_BY_COUNTRY) as BillingCountry[]).map((country) => (
+                                <option key={country} value={country}>
+                                    {countryDisplayName(country, locale)} ({country}) · {BILLING_CURRENCY_BY_COUNTRY[country]}
+                                </option>
+                            ))}
+                        </select>
+                        <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-[11px] font-medium ${
+                            selectedCountrySupportsMp
+                                ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
+                                : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+                        }`}>
+                            {selectedCountrySupportsMp
+                                ? t("mpSyncAvailable", { country: selectedCountry, currency: selectedCurrency })
+                                : t("mpSyncUnavailable", { country: selectedCountry, currency: selectedCurrency })}
+                        </span>
+                    </div>
+                </div>
+            </div>
 
             {toast && (
                 <div className={`flex items-center gap-2 rounded-lg px-4 py-3 text-sm ${
@@ -480,70 +643,105 @@ export default function PlansPage() {
                         </tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className={`${tdCls} font-medium`}>{t("priceRef")}</td>
-                            {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "priceUsdCents", "")}</td>)}
+                            {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "priceUsdCents")}</td>)}
                         </tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
-                            <td className={`${tdCls} font-medium`}>{t("priceCOP")}</td>
+                            <td className={`${tdCls} font-medium`}>
+                                {t("priceLocal", { country: selectedCountry, currency: selectedCurrency })}
+                            </td>
                             {plans.map(p => {
                                 const isEditing = editSlug === p.slug && editBuffer;
                                 const overrides = isEditing ? editBuffer.priceLocalOverrides : p.priceLocalOverrides;
-                                const copCents = overrides?.CO?.amountCents ?? 0;
+                                const amountCents = overrides?.[selectedCountry]?.amountCents;
                                 if (!isEditing) {
-                                    return <td key={p.slug} className={tdCls}><span className="font-mono text-xs">{copCents ? `$${(copCents / 100).toLocaleString("es-CO")}` : "—"}</span></td>;
+                                    return (
+                                        <td key={p.slug} className={tdCls}>
+                                            <span className="font-mono text-xs">
+                                                {formatLocalPrice(amountCents, selectedCurrency, locale)}
+                                            </span>
+                                        </td>
+                                    );
                                 }
                                 return (
                                     <td key={p.slug} className={tdCls}>
                                         <input
                                             type="number"
+                                            min={p.slug === "custom" ? 0 : 1}
                                             className={inputCls}
-                                            value={copCents}
+                                            value={amountCents ?? ""}
                                             onChange={e => {
                                                 const val = parseInt(e.target.value) || 0;
+                                                const currentCountry = editBuffer.priceLocalOverrides?.[selectedCountry] ?? {};
                                                 setEditBuffer({
                                                     ...editBuffer,
                                                     priceLocalOverrides: {
                                                         ...editBuffer.priceLocalOverrides,
-                                                        CO: { ...(editBuffer.priceLocalOverrides?.CO ?? { currency: "COP" }), amountCents: val },
+                                                        [selectedCountry]: {
+                                                            ...currentCountry,
+                                                            currency: selectedCurrency,
+                                                            amountCents: val,
+                                                        },
                                                     },
                                                 });
                                             }}
                                         />
-                                        <span className="text-[10px] text-neutral-400 mt-0.5 block">{t("copHint")}</span>
+                                        <span className="text-[10px] text-neutral-400 mt-0.5 block">
+                                            {t("localPriceHint", { currency: selectedCurrency })}
+                                        </span>
                                     </td>
                                 );
                             })}
                         </tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
-                            <td className={`${tdCls} font-medium`}>{t("priceCOPAnnual")}</td>
+                            <td className={`${tdCls} font-medium`}>
+                                {t("priceLocalAnnual", { country: selectedCountry, currency: selectedCurrency })}
+                            </td>
                             {plans.map(p => {
                                 const isEditing = editSlug === p.slug && editBuffer;
                                 const overrides = isEditing ? editBuffer.priceLocalOverrides : p.priceLocalOverrides;
-                                const annualCents = overrides?.CO?.annual?.amountCents ?? 0;
+                                const annualCents = overrides?.[selectedCountry]?.annual?.amountCents;
                                 if (p.slug === "custom") {
                                     return <td key={p.slug} className={tdCls}><span className="text-xs text-neutral-400">—</span></td>;
                                 }
                                 if (!isEditing) {
-                                    return <td key={p.slug} className={tdCls}><span className="font-mono text-xs">{annualCents ? `$${(annualCents / 100).toLocaleString("es-CO")}` : "—"}</span></td>;
+                                    return (
+                                        <td key={p.slug} className={tdCls}>
+                                            <span className="font-mono text-xs">
+                                                {formatLocalPrice(annualCents, selectedCurrency, locale)}
+                                            </span>
+                                        </td>
+                                    );
                                 }
                                 return (
                                     <td key={p.slug} className={tdCls}>
                                         <input
                                             type="number"
+                                            min={1}
                                             className={inputCls}
-                                            value={annualCents}
+                                            value={annualCents ?? ""}
                                             onChange={e => {
                                                 const val = parseInt(e.target.value) || 0;
-                                                const co = editBuffer.priceLocalOverrides?.CO ?? { currency: "COP", amountCents: 0 };
+                                                const currentCountry = editBuffer.priceLocalOverrides?.[selectedCountry] ?? {};
                                                 setEditBuffer({
                                                     ...editBuffer,
                                                     priceLocalOverrides: {
                                                         ...editBuffer.priceLocalOverrides,
-                                                        CO: { ...co, annual: { ...(co.annual ?? {}), amountCents: val } },
+                                                        [selectedCountry]: {
+                                                            ...currentCountry,
+                                                            currency: selectedCurrency,
+                                                            annual: {
+                                                                ...(currentCountry.annual ?? {}),
+                                                                currency: selectedCurrency,
+                                                                amountCents: val,
+                                                            },
+                                                        },
                                                     },
                                                 });
                                             }}
                                         />
-                                        <span className="text-[10px] text-neutral-400 mt-0.5 block">{t("copAnnualHint")}</span>
+                                        <span className="text-[10px] text-neutral-400 mt-0.5 block">
+                                            {t("localAnnualHint", { currency: selectedCurrency })}
+                                        </span>
                                     </td>
                                 );
                             })}
@@ -551,13 +749,22 @@ export default function PlansPage() {
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className={`${tdCls} font-medium`}>{t("mpPlanId")}</td>
                             {plans.map(p => {
-                                const mpId = p.priceLocalOverrides?.CO?.mpPlanId;
+                                const cycle = p.priceLocalOverrides?.[selectedCountry];
+                                const mpId = cycle?.mpPlanId;
+                                const synchronized = hasMatchingSyncFingerprint(cycle);
                                 if (p.slug === "custom") {
                                     return <td key={p.slug} className={tdCls}><span className="text-xs text-neutral-400">—</span></td>;
                                 }
+                                if (!selectedCountrySupportsMp) {
+                                    return (
+                                        <td key={p.slug} className={tdCls}>
+                                            <span className="text-[11px] text-neutral-400">{t("mpNotAvailable")}</span>
+                                        </td>
+                                    );
+                                }
                                 return (
                                     <td key={p.slug} className={tdCls}>
-                                        {mpId ? (
+                                        {synchronized ? (
                                             <span className="inline-flex items-center gap-1.5" title={mpId}>
                                                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
                                                 <span className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">{String(mpId).slice(0, 14)}…</span>
@@ -574,13 +781,22 @@ export default function PlansPage() {
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className={`${tdCls} font-medium`}>{t("mpPlanIdAnnual")}</td>
                             {plans.map(p => {
-                                const mpId = p.priceLocalOverrides?.CO?.annual?.mpPlanId;
+                                const cycle = p.priceLocalOverrides?.[selectedCountry]?.annual;
+                                const mpId = cycle?.mpPlanId;
+                                const synchronized = hasMatchingSyncFingerprint(cycle);
                                 if (p.slug === "custom") {
                                     return <td key={p.slug} className={tdCls}><span className="text-xs text-neutral-400">—</span></td>;
                                 }
+                                if (!selectedCountrySupportsMp) {
+                                    return (
+                                        <td key={p.slug} className={tdCls}>
+                                            <span className="text-[11px] text-neutral-400">{t("mpNotAvailable")}</span>
+                                        </td>
+                                    );
+                                }
                                 return (
                                     <td key={p.slug} className={tdCls}>
-                                        {mpId ? (
+                                        {synchronized ? (
                                             <span className="inline-flex items-center gap-1.5" title={mpId}>
                                                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
                                                 <span className="font-mono text-[10px] text-neutral-500 dark:text-neutral-400">{String(mpId).slice(0, 14)}…</span>
@@ -596,7 +812,7 @@ export default function PlansPage() {
                         </tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className={`${tdCls} font-medium`}>{t("trialDays")}</td>
-                            {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "trialDays", "")}</td>)}
+                            {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "trialDays")}</td>)}
                         </tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className={`${tdCls} font-medium`}>{t("requiresCard")}</td>
@@ -636,11 +852,11 @@ export default function PlansPage() {
                         </tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className={`${tdCls} font-medium`}>{t("maxAgents")}</td>
-                            {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "maxAgents", "")}</td>)}
+                            {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "maxAgents")}</td>)}
                         </tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className={`${tdCls} font-medium`}>{t("maxAiMessages")}</td>
-                            {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "maxAiMessages", "")}</td>)}
+                            {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "maxAiMessages")}</td>)}
                         </tr>
 
                         {/* Feature categories (registry-driven) */}
@@ -680,50 +896,63 @@ export default function PlansPage() {
 
             {/* Sync plans to MercadoPago */}
             <div className={`${sectionCls} p-4`}>
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-1">{t("syncMpTitle")}</h3>
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                    {t("syncMpTitleCountry", { country: selectedCountry, currency: selectedCurrency })}
+                </h3>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">{t("syncMpDesc")}</p>
-                <div className="flex flex-wrap gap-2">
-                    {plans.filter(p => p.slug !== "custom").map(p => {
-                        const syncedM = !!p.priceLocalOverrides?.CO?.mpPlanId;
-                        const syncedA = !!p.priceLocalOverrides?.CO?.annual?.mpPlanId;
-                        const hasAnnualPrice = !!p.priceLocalOverrides?.CO?.annual?.amountCents;
-                        const busyM = syncing === p.slug;
-                        const busyA = syncing === `${p.slug}:annual`;
-                        const btnCls = "inline-flex items-center gap-1 px-2 py-1 rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-[11px] font-medium text-neutral-700 dark:text-neutral-300 hover:border-indigo-400 transition-colors disabled:opacity-50";
-                        return (
-                            <div key={p.slug} className="inline-flex flex-col gap-1 rounded-lg border border-neutral-200 dark:border-neutral-700 p-1.5">
-                                <span className="px-1 text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">{p.name}</span>
-                                <div className="flex gap-1">
-                                    <button
-                                        disabled={busyM}
-                                        onClick={() => {
-                                            if (syncedM && !window.confirm(t("syncMpConfirm"))) return;
-                                            handleSync(p.slug, syncedM, "month");
-                                        }}
-                                        className={btnCls}
-                                    >
-                                        {busyM ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                                        {t("cycleMonthly")}
-                                        {syncedM && <span className="text-[9px] text-amber-600 dark:text-amber-400">· {t("resync")}</span>}
-                                    </button>
-                                    <button
-                                        disabled={busyA || !hasAnnualPrice}
-                                        title={!hasAnnualPrice ? t("annualPriceMissing") : undefined}
-                                        onClick={() => {
-                                            if (syncedA && !window.confirm(t("syncMpConfirm"))) return;
-                                            handleSync(p.slug, syncedA, "year");
-                                        }}
-                                        className={btnCls}
-                                    >
-                                        {busyA ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                                        {t("cycleAnnual")}
-                                        {syncedA && <span className="text-[9px] text-amber-600 dark:text-amber-400">· {t("resync")}</span>}
-                                    </button>
+                {!selectedCountrySupportsMp ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                        {t("syncMpUnavailableCountry", { country: selectedCountry, currency: selectedCurrency })}
+                    </div>
+                ) : (
+                    <div className="flex flex-wrap gap-2">
+                        {plans.filter(p => p.slug !== "custom" && p.features?.salesLed !== true).map(p => {
+                            const countryPrice = p.priceLocalOverrides?.[selectedCountry];
+                            const syncedM = hasMatchingSyncFingerprint(countryPrice);
+                            const syncedA = hasMatchingSyncFingerprint(countryPrice?.annual);
+                            const hasMonthlyPrice = Number.isSafeInteger(countryPrice?.amountCents)
+                                && Number(countryPrice?.amountCents) > 0;
+                            const hasAnnualPrice = Number.isSafeInteger(countryPrice?.annual?.amountCents)
+                                && Number(countryPrice?.annual?.amountCents) > 0;
+                            const busyM = syncing === `${selectedCountry}:${p.slug}:month`;
+                            const busyA = syncing === `${selectedCountry}:${p.slug}:year`;
+                            const btnCls = "inline-flex items-center gap-1 px-2 py-1 rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-[11px] font-medium text-neutral-700 dark:text-neutral-300 hover:border-indigo-400 transition-colors disabled:opacity-50";
+                            return (
+                                <div key={p.slug} className="inline-flex flex-col gap-1 rounded-lg border border-neutral-200 dark:border-neutral-700 p-1.5">
+                                    <span className="px-1 text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">{p.name}</span>
+                                    <div className="flex gap-1">
+                                        <button
+                                            disabled={busyM || !hasMonthlyPrice}
+                                            title={!hasMonthlyPrice ? t("monthlyPriceMissing") : undefined}
+                                            onClick={() => {
+                                                if (syncedM && !window.confirm(t("syncMpConfirmCountry", { country: selectedCountry, currency: selectedCurrency }))) return;
+                                                handleSync(p.slug, syncedM, "month");
+                                            }}
+                                            className={btnCls}
+                                        >
+                                            {busyM ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                                            {t("cycleMonthly")}
+                                            {syncedM && <span className="text-[9px] text-amber-600 dark:text-amber-400">· {t("resync")}</span>}
+                                        </button>
+                                        <button
+                                            disabled={busyA || !hasAnnualPrice}
+                                            title={!hasAnnualPrice ? t("annualPriceMissing") : undefined}
+                                            onClick={() => {
+                                                if (syncedA && !window.confirm(t("syncMpConfirmCountry", { country: selectedCountry, currency: selectedCurrency }))) return;
+                                                handleSync(p.slug, syncedA, "year");
+                                            }}
+                                            className={btnCls}
+                                        >
+                                            {busyA ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                                            {t("cycleAnnual")}
+                                            {syncedA && <span className="text-[9px] text-amber-600 dark:text-amber-400">· {t("resync")}</span>}
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
-                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             {/* Cache invalidation buttons */}

@@ -25,18 +25,23 @@ interface Plan {
     priceUsdCents: number;
     trialDays: number;
     requiresCardForTrial: boolean;
+    requiresPaymentMethodAtSignup: boolean;
+    providerConfigured: boolean;
     maxAgents: number;
     maxAiMessages: number;
     features: Record<string, any>;
-    priceLocalOverrides: Record<string, { currency: string; amountCents: number; mpPlanId?: string }>;
     /** Display values returned by backend when ?country=XX is sent */
     displayPriceCents?: number;
     displayCurrency?: string;
     priceSource?: "override" | "fx" | "usd";
-    /** Annual cycle (override-only): total yearly charge + its MP plan id + discount %. */
+    /** Public catalog availability; provider identifiers never leave the API. */
     displayPriceAnnualCents?: number | null;
-    mpPlanIdAnnual?: string | null;
     annualDiscountPct?: number | null;
+    monthlyAvailable: boolean;
+    annualAvailable: boolean;
+    trialAvailable: boolean;
+    signupAvailable: boolean;
+    checkoutMode: "self_serve" | "contact_sales" | "temporarily_unavailable";
 }
 
 interface Payment {
@@ -55,6 +60,7 @@ interface Subscription {
     planId: string;
     plan?: Plan;
     provider: string;
+    providerBacked: boolean;
     trialStartedAt?: string | null;
     trialEndsAt?: string | null;
     currentPeriodStart?: string | null;
@@ -293,9 +299,8 @@ export default function BillingPage() {
 
     const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
     const annualCycleAvailable = useMemo(() => {
-        const selfServicePlans = plans.filter((plan) => plan.slug !== "custom");
-        return selfServicePlans.length > 0
-            && selfServicePlans.every((plan) => !!plan.displayPriceAnnualCents && !!plan.mpPlanIdAnnual);
+        const selfServicePlans = plans.filter((plan) => plan.checkoutMode !== "contact_sales" && plan.features?.salesLed !== true);
+        return selfServicePlans.some((plan) => plan.annualAvailable && !!plan.displayPriceAnnualCents);
     }, [plans]);
 
     useEffect(() => {
@@ -311,7 +316,13 @@ export default function BillingPage() {
         try {
             const plan = plans.find((p) => p.slug === planSlug);
             // MP no soporta cambios de plan en suscripciones activas sin recrearlas con un nuevo token.
-            const needsCard = !subscription ? plan?.requiresCardForTrial : true;
+            const localTrial = subscription?.status === "trialing"
+                && !!subscription.trialEndsAt
+                && new Date(subscription.trialEndsAt).getTime() > Date.now()
+                && !subscription.providerBacked;
+            const needsCard = !subscription
+                ? plan?.requiresPaymentMethodAtSignup
+                : !localTrial;
             // A same-cycle DOWNGRADE is a no-charge scheduled change (backend
             // early-returns before the fiscal gate), so the fiscal precheck must not
             // fire on it — otherwise we'd force a tax profile to LOWER the plan.
@@ -1200,14 +1211,21 @@ export default function BillingPage() {
                                 className={cn("px-3 py-1 rounded-md font-medium transition-colors inline-flex items-center gap-1", billingCycle === "annual" ? "bg-indigo-500 text-white" : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300")}
                             >
                                 {t("cycleAnnual")}
-                                {(() => { const pct = plans.map((p) => p.annualDiscountPct).find(Boolean); return pct ? <span className="text-[10px] text-emerald-500 font-semibold">-{pct}%</span> : null; })()}
+                                {(() => {
+                                    const pct = plans
+                                        .map((p) => p.annualDiscountPct)
+                                        .find((value): value is number => typeof value === "number" && value > 0);
+                                    return pct
+                                        ? <span className="text-[10px] text-emerald-500 font-semibold">-{pct}%</span>
+                                        : null;
+                                })()}
                             </button>
                         </div>
                     )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {plans
-                        .filter((p) => p.slug !== "custom")
+                        .filter((p) => p.checkoutMode !== "contact_sales" && p.features?.salesLed !== true)
                         .map((plan) => {
                             const currentCycle = (subscription as any)?.billingCycle === "annual" ? "annual" : "monthly";
                             const isCurrent = subscription?.planId === plan.id && currentCycle === billingCycle;
@@ -1217,7 +1235,18 @@ export default function BillingPage() {
                             // in MP (charges now), so it must NOT show the "scheduled / no charge /
                             // keep features" downgrade UI — mirror the backend's `!cycleChanged` guard.
                             const isDowngrade = currentPlan && plan.priceUsdCents < currentPlan.priceUsdCents && currentCycle === billingCycle;
-                            const showAnnual = billingCycle === "annual" && !!plan.displayPriceAnnualCents && !!plan.mpPlanIdAnnual;
+                            const showAnnual = billingCycle === "annual" && plan.annualAvailable && !!plan.displayPriceAnnualCents;
+                            const selectedCycleAvailable = billingCycle === "annual"
+                                ? plan.annualAvailable
+                                : plan.monthlyAvailable;
+                            const cycleActionAvailable = subscription
+                                ? (subscription.status === "trialing" && !subscription.providerBacked
+                                    ? billingCycle === "monthly" && !plan.requiresPaymentMethodAtSignup
+                                    : selectedCycleAvailable)
+                                : plan.signupAvailable && (
+                                    selectedCycleAvailable
+                                    || (billingCycle === "monthly" && plan.trialAvailable)
+                                );
                             const priceCents = showAnnual ? plan.displayPriceAnnualCents! : (plan.displayPriceCents ?? plan.priceUsdCents);
                             const Icon = PLAN_ICON[plan.slug] ?? Zap;
                             return (
@@ -1288,7 +1317,7 @@ export default function BillingPage() {
                                             }
                                             handleUpgrade(plan.slug);
                                         }}
-                                        disabled={isCurrent || action !== null || (billingCycle === "annual" && !showAnnual)}
+                                        disabled={isCurrent || action !== null || !cycleActionAvailable}
                                         className={cn(
                                             "mt-4 w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors",
                                             isCurrent
@@ -1308,6 +1337,13 @@ export default function BillingPage() {
                                     {isDowngrade && !isCurrent && (
                                         <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5 text-center">
                                             {t("downgradeScheduledHint")}
+                                        </p>
+                                    )}
+                                    {subscription?.status === "trialing"
+                                        && !subscription.providerBacked
+                                        && !cycleActionAvailable && (
+                                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5 text-center">
+                                            {t("localTrialChangeUnavailable")}
                                         </p>
                                     )}
                                 </div>

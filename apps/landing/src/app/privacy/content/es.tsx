@@ -331,9 +331,9 @@ export default function PrivacyEs() {
             </li>
             <li>
               <strong className="text-text-primary">
-                Aislamiento multi-tenant:
+                Aislamiento por empresa:
               </strong>{" "}
-              cada cliente opera en un esquema de base de datos aislado (schema-per-tenant),
+              cada cliente opera en un esquema de base de datos aislado (un esquema por empresa),
               garantizando la separación lógica de datos entre organizaciones.
             </li>
             <li>

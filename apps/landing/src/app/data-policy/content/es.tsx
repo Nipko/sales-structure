@@ -108,7 +108,7 @@ export default function DataPolicyEs() {
             </li>
             <li>
               Crear y administrar las cuentas de usuario y organizaciones
-              (tenants) en la plataforma.
+              clientes en la plataforma.
             </li>
             <li>
               Procesar pagos, emitir facturas y administrar la facturación.
@@ -531,10 +531,10 @@ export default function DataPolicyEs() {
             </li>
             <li>
               <strong className="text-text-primary">
-                Aislamiento multi-tenant:
+                Aislamiento por empresa:
               </strong>{" "}
               cada organización cliente opera en un esquema de base de datos
-              PostgreSQL aislado (schema-per-tenant), garantizando que los datos
+              PostgreSQL aislado (un esquema por empresa), garantizando que los datos
               de cada cliente estén lógicamente separados.
             </li>
             <li>

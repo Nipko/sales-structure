@@ -97,7 +97,7 @@ export default function TermsEn() {
               messages.
             </li>
             <li>
-              Multi-tenant architecture with data isolation per organization.
+              Multi-organization architecture with data isolation per business.
             </li>
             <li>
               Built-in CRM with shared inbox, conversation assignment and
@@ -142,7 +142,7 @@ export default function TermsEn() {
               these Terms or contain false information.
             </li>
             <li>
-              Each organization (tenant) may have multiple users with different
+              Each organization may have multiple users with different
               roles: administrator, supervisor and agent.
             </li>
           </ul>
@@ -154,58 +154,19 @@ export default function TermsEn() {
             4. Plans and pricing
           </h2>
           <p className="mb-4">
-            Parallly offers the following subscription plans:
+            Current active plans, prices, currencies, limits, and features are
+            displayed on our {" "}
+            <Link href="/precios" className="text-accent hover:underline">
+              pricing page
+            </Link>
+            {" "}and, where applicable, in the billing panel before you purchase
+            or change a subscription. That information forms part of the offer
+            applicable to your account and may vary by country.
           </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-3 pr-4 text-text-primary font-semibold">
-                    Feature
-                  </th>
-                  <th className="text-center py-3 px-4 text-text-primary font-semibold">
-                    Starter
-                  </th>
-                  <th className="text-center py-3 px-4 text-text-primary font-semibold">
-                    Pro
-                  </th>
-                  <th className="text-center py-3 px-4 text-text-primary font-semibold">
-                    Enterprise
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="text-text-muted">
-                <tr className="border-b border-border/50">
-                  <td className="py-3 pr-4">Conversations/month</td>
-                  <td className="text-center py-3 px-4">500</td>
-                  <td className="text-center py-3 px-4">5,000</td>
-                  <td className="text-center py-3 px-4">Unlimited</td>
-                </tr>
-                <tr className="border-b border-border/50">
-                  <td className="py-3 pr-4">AI agents</td>
-                  <td className="text-center py-3 px-4">1</td>
-                  <td className="text-center py-3 px-4">5</td>
-                  <td className="text-center py-3 px-4">Unlimited</td>
-                </tr>
-                <tr className="border-b border-border/50">
-                  <td className="py-3 pr-4">Team users</td>
-                  <td className="text-center py-3 px-4">2</td>
-                  <td className="text-center py-3 px-4">10</td>
-                  <td className="text-center py-3 px-4">Unlimited</td>
-                </tr>
-                <tr className="border-b border-border/50">
-                  <td className="py-3 pr-4">Support</td>
-                  <td className="text-center py-3 px-4">Email</td>
-                  <td className="text-center py-3 px-4">Priority</td>
-                  <td className="text-center py-3 px-4">Dedicated</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-4 text-text-muted text-sm">
-            Current prices are published on the pricing page at
-            parallly-chat.cloud. We reserve the right to change prices with at
-            least 30 days&apos; prior notice.
+          <p className="text-text-muted text-sm">
+            We reserve the right to change prices with at least 30 days&apos;
+            prior notice for existing subscriptions, unless applicable law
+            requires a different period.
           </p>
         </section>
 
@@ -215,13 +176,12 @@ export default function TermsEn() {
             5. Trial period
           </h2>
           <p>
-            Parallly offers a free 7-calendar-day trial period for new users.
-            During this period, you will have access to the features of the Pro
-            plan. At the end of the trial period, if you have not selected a
-            paid plan, your account will become inactive and no messages will be
-            processed until you activate a subscription. No automatic charge
-            will be made at the end of the trial unless you have explicitly
-            selected a paid plan.
+            Trial availability, duration, features, and payment requirements
+            depend on the active plan selected and are displayed before you
+            activate it. When a trial ends, access may be limited until you
+            activate a subscription. We will not make an automatic charge
+            without payment authorization that has been clearly presented and
+            expressly accepted.
           </p>
         </section>
 
@@ -232,8 +192,8 @@ export default function TermsEn() {
           </h2>
           <ul className="list-disc pl-6 space-y-2">
             <li>
-              Subscriptions are billed monthly or annually, according to the
-              billing cycle selected.
+              Subscriptions are billed according to the available cycle shown
+              and confirmed before purchase.
             </li>
             <li>
               Payments are processed through PCI-DSS-certified payment
@@ -282,7 +242,7 @@ export default function TermsEn() {
               rights.
             </li>
             <li>
-              Attempt to access data of other tenants or to circumvent the
+              Attempt to access data of other organizations or to circumvent the
               platform&apos;s security mechanisms.
             </li>
             <li>

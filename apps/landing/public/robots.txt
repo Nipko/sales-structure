@@ -3,6 +3,5 @@ Allow: /
 
 Sitemap: https://parallly-chat.cloud/sitemap.xml
 
-# Block admin/API paths (not on this domain, but just in case)
+# Block API paths that are not part of the public marketing site.
 Disallow: /api/
-Disallow: /_next/

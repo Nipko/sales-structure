@@ -117,6 +117,10 @@ const chatDemoSource = fs.readFileSync(
   path.join(landingRoot, "src", "components", "demos", "VerticalChatDemo.tsx"),
   "utf8",
 );
+const verticalsShowcaseSource = fs.readFileSync(
+  path.join(landingRoot, "src", "components", "sections", "VerticalsShowcase.tsx"),
+  "utf8",
+);
 const solutionsPageSource = fs.readFileSync(
   path.join(landingRoot, "src", "app", "(marketing)", "soluciones", "page.tsx"),
   "utf8",
@@ -145,6 +149,14 @@ assert(
   chatDemoSource.includes('vertical.demoMode === "illustrative"')
     && chatDemoSource.includes('t("demoDisclaimer")'),
   "VerticalChatDemo must render the illustrative-data disclaimer",
+);
+assert(
+  verticalsShowcaseSource.includes("current.deepMarketingAllowed")
+    && verticalsShowcaseSource.includes('t("genericTagline")')
+    && verticalsShowcaseSource.includes("genericFeature")
+    && chatDemoSource.includes("vertical.deepMarketingAllowed")
+    && chatDemoSource.includes("genericDemo"),
+  "Home vertical showcase must fail closed to horizontal copy and demos until deep marketing is certified",
 );
 
 const markerPatterns = {
@@ -368,7 +380,11 @@ for (const locale of locales) {
   const messages = loadJson(locale);
   const allLandingCopy = JSON.stringify(messages);
   const marker = markerPatterns[locale];
-  assert(marker.test(messages?.hero?.demoLabel || ""), `${locale}: hero.demoLabel must say the demo is illustrative`);
+  const heroDemoDisclosure = `${messages?.hero?.visualLabel || ""} ${messages?.hero?.visualDisclaimer || ""}`;
+  assert(
+    marker.test(heroDemoDisclosure),
+    `${locale}: the hero visual must say the example is illustrative`,
+  );
   assert(marker.test(messages?.verticals?.demoRespondedIn || ""), `${locale}: demo badge must say the demo is illustrative`);
   assert(
     typeof messages?.verticals?.demoDisclaimer === "string"
@@ -549,10 +565,16 @@ for (const claim of positiveClaims) {
 }
 const layoutSource = fs.readFileSync(path.join(landingRoot, "src", "app", "layout.tsx"), "utf8");
 const seoSource = fs.readFileSync(path.join(landingRoot, "src", "lib", "seo.ts"), "utf8");
+const metadataPublishesProductCounts = new RegExp(
+  `\\b(?:${capabilityCounts.verticals}\\b.{0,60}(?:vertical|industr|config)|${capabilityCounts.channels}\\b.{0,60}(?:channel|canal))`,
+  "i",
+).test(layoutSource);
 assert(
-  layoutSource.includes("PRODUCT_CAPABILITY_COUNTS.verticals")
-    && layoutSource.includes("PRODUCT_CAPABILITY_COUNTS.channels"),
-  "Structured page metadata must derive product counts from the positive registry source",
+  !metadataPublishesProductCounts || (
+    layoutSource.includes("PRODUCT_CAPABILITY_COUNTS.verticals")
+      && layoutSource.includes("PRODUCT_CAPABILITY_COUNTS.channels")
+  ),
+  "Quantitative metadata must derive product counts from the positive registry, or omit those counts",
 );
 assert(
   !/aggregateRating|ratingValue|ratingCount/.test(seoSource),
@@ -644,8 +666,9 @@ assert(
   "TrustRow/Footer must present integrations and capabilities, not certifications",
 );
 
-// The landing fallback matrix must never undershoot the canonical vertical
-// bootstrap. Cross-check both the exported floors and the API seed.
+// The detailed pricing matrix reads live values from the billing catalog. Keep
+// the bootstrap floors aligned with the seed, and prevent commercial rows from
+// regressing to hardcoded fallback values.
 const pricing = loadTsModule(path.join("src", "data", "pricing.ts"));
 const planSeedSource = fs.readFileSync(path.join(repoRoot, "apps", "api", "prisma", "seed-billing-plans.js"), "utf8");
 function featureFromSeed(slug, feature) {
@@ -679,22 +702,19 @@ const pipelineRow = pricing.FEATURE_MATRIX.find((row) => row.key === "pipelineSt
 const servicesRow = pricing.FEATURE_MATRIX.find((row) => row.key === "services");
 const channelRow = pricing.FEATURE_MATRIX.find((row) => row.key === "channels");
 assert(
-  pipelineRow?.values[0] === "7" && pipelineRow?.values[1] === "7",
-  "Pricing fallback must show 7 pipeline stages for Emprendedor and Starter",
+  pipelineRow?.src === "feat:pipelineStages",
+  "Pricing must read pipeline stages from the live billing catalog",
 );
 assert(
-  servicesRow?.values[0] === "4" && servicesRow?.values[1] === "4",
-  "Pricing fallback must show 4 services for Emprendedor and Starter",
+  servicesRow?.src === "feat:appointmentsServices",
+  "Pricing must read appointment services from the live billing catalog",
 );
-const marketedPlanOrder = ["emprendedor", "starter", "pro", "enterprise"];
-for (const [index, slug] of marketedPlanOrder.entries()) {
-  const seedChannels = channelsFromSeed(slug);
-  const displayedCount = Number.parseInt(channelRow?.values?.[index] || "", 10);
-  assert(seedChannels.length > 0, `${slug}: billing seed must declare its channel set`);
-  assert(
-    displayedCount === seedChannels.length,
-    `${slug}: landing channel count must match billing seed (${seedChannels.length})`,
-  );
+assert(
+  channelRow?.src === "feat:channels",
+  "Pricing must read channel availability from the live billing catalog",
+);
+for (const slug of ["emprendedor", "starter", "pro", "enterprise", "custom"]) {
+  assert(channelsFromSeed(slug).length > 0, `${slug}: billing seed must declare its channel set`);
 }
 
 const english = loadJson("en");

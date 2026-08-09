@@ -87,7 +87,14 @@ export default function LangProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         const saved = document.cookie.match(/locale=([\w-]+)/)?.[1];
-        if (saved && allMessages[saved]) setLocaleState(saved);
+        if (saved && allMessages[saved]) {
+            setLocaleState(saved);
+        } else {
+            const browserLocale = [navigator.language, ...(navigator.languages || [])]
+                .map((language) => language?.split("-")[0]?.toLowerCase())
+                .find((language) => language && allMessages[language]);
+            if (browserLocale) setLocaleState(browserLocale);
+        }
 
         // An explicit dialect choice (cookie) wins; otherwise auto-detect by country.
         const savedDialect = document.cookie.match(/es_dialect=(\w+)/)?.[1];
@@ -96,9 +103,13 @@ export default function LangProvider({ children }: { children: ReactNode }) {
         else setVoseo(detectVoseo());
     }, []);
 
+    useEffect(() => {
+        document.documentElement.lang = locale;
+    }, [locale]);
+
     const setLocale = (lang: string) => {
         if (!allMessages[lang]) return;
-        document.cookie = `locale=${lang};path=/;max-age=31536000`;
+        document.cookie = `locale=${lang};path=/;max-age=31536000;SameSite=Lax`;
         setLocaleState(lang);
     };
 
@@ -106,7 +117,11 @@ export default function LangProvider({ children }: { children: ReactNode }) {
 
     return (
         <LangContext.Provider value={{ locale, setLocale, localeNames }}>
-            <NextIntlClientProvider locale={locale} messages={messages}>
+            <NextIntlClientProvider
+                locale={locale}
+                messages={messages}
+                timeZone="America/Bogota"
+            >
                 {children}
             </NextIntlClientProvider>
         </LangContext.Provider>

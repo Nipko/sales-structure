@@ -332,10 +332,10 @@ export default function PrivacyPt() {
             </li>
             <li>
               <strong className="text-text-primary">
-                Isolamento multi-tenant:
+                Isolamento por empresa:
               </strong>{" "}
               cada cliente opera em um schema de banco de dados isolado
-              (schema-per-tenant), garantindo a separação lógica de dados
+              (um esquema por empresa), garantindo a separação lógica de dados
               entre organizações.
             </li>
             <li>

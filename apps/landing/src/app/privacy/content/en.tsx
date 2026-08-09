@@ -326,9 +326,9 @@ export default function PrivacyEn() {
             </li>
             <li>
               <strong className="text-text-primary">
-                Multi-tenant isolation:
+                Business data isolation:
               </strong>{" "}
-              each customer operates in an isolated database schema (schema-per-tenant),
+              each customer operates in an isolated database schema (one schema per business),
               ensuring logical data separation between organizations.
             </li>
             <li>
@@ -846,7 +846,7 @@ export default function PrivacyEn() {
           </p>
           <ul className="list-disc pl-6 space-y-2">
             <li>
-              The tenant (business using Parallly) is the{" "}
+              The business using Parallly is the{" "}
               <strong className="text-text-primary">data controller</strong>{" "}
               under GDPR, LGPD, Colombia&apos;s Law 1581 of 2012, and
               equivalent regulations.
@@ -854,7 +854,7 @@ export default function PrivacyEn() {
             <li>
               Parallly acts as the{" "}
               <strong className="text-text-primary">data processor</strong>{" "}
-              and processes the data on the tenant&apos;s instructions, under
+              and processes the data on the customer business&apos;s instructions, under
               the Data Processing Agreement (DPA) implicit in the Terms of
               Service.
             </li>
@@ -866,14 +866,14 @@ export default function PrivacyEn() {
             </li>
             <li>
               Message content is forwarded to the LLM provider configured
-              by the tenant (OpenAI, Anthropic, Google Gemini, DeepSeek, or
+              by the customer business (OpenAI, Anthropic, Google Gemini, DeepSeek, or
               xAI) for the sole purpose of generating the conversational
               reply, under each provider&apos;s standard data-processing
               terms.
             </li>
             <li>
               We retain conversation content for the duration configured by
-              the tenant, capped at 24 months.
+              the customer business, capped at 24 months.
             </li>
           </ul>
 
@@ -949,7 +949,7 @@ export default function PrivacyEn() {
             window after the customer&apos;s last message, only Meta-approved
             Message Templates may be sent. The end customer initiates the
             conversation, and our pipeline blocks free-form sends outside
-            of that window. Each tenant that uses Parallly is responsible
+            of that window. Each business that uses Parallly is responsible
             for obtaining opt-in from their contacts before initiating
             outbound campaigns.
           </p>
@@ -970,7 +970,7 @@ export default function PrivacyEn() {
                 LLM model providers
               </strong>{" "}
               — OpenAI, Anthropic, Google AI, DeepSeek, and xAI, used per
-              tenant configuration.
+              business configuration.
             </li>
             <li>
               <strong className="text-text-primary">

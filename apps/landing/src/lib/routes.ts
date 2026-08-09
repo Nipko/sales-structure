@@ -7,6 +7,7 @@ export const routes = {
   productChannels: "/producto/canales",
   productBooking: "/producto/reservas",
   productCrm: "/producto/crm",
+  productAndroid: "/producto/app-android",
   pricing: "/precios",
   privacy: "/privacy",
   terms: "/terms",

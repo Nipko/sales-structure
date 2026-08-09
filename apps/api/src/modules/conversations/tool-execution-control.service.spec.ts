@@ -290,7 +290,7 @@ describe('ToolExecutionControlService', () => {
         expect(state.ledger.status).toBe('awaiting_confirmation');
     });
 
-    it('rejects a tampered confirmation token after a later affirmative message', async () => {
+    it('rejects a non-canonical confirmation token after a later affirmative message', async () => {
         const { service, state } = createHarness();
         const request = {
             schemaName,
@@ -301,7 +301,9 @@ describe('ToolExecutionControlService', () => {
             args: { serviceId: 'service-1', date: '2026-08-10', time: '10:00' },
         };
         await service.preflight(request);
-        state.ledger.confirmation_token = `${state.ledger.confirmation_token.slice(0, -1)}x`;
+        // Buffer.from(..., 'base64') decodes this padded variant to the same
+        // signature bytes as the original token. It must still fail closed.
+        state.ledger.confirmation_token = `${state.ledger.confirmation_token}=`;
         state.latestMessage = { id: secondMessageId, content_text: 'sí' };
 
         const decision = await service.preflight(request);

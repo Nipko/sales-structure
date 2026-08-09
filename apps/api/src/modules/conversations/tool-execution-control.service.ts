@@ -189,6 +189,18 @@ function fromBase64Url(value: string): Buffer {
 }
 
 /**
+ * Node's base64 decoder is intentionally permissive: distinct textual inputs
+ * (such as an unpadded value and that same value with `=` appended) can decode
+ * to the same bytes. Confirmation signatures must have one representation so
+ * a modified token cannot pass HMAC verification through decoder normalizing.
+ */
+function fromCanonicalBase64Url(value: string): Buffer | null {
+    if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
+    const decoded = fromBase64Url(value);
+    return base64Url(decoded) === value ? decoded : null;
+}
+
+/**
  * Central authority boundary executed before AIToolExecutor's handler switch.
  * Domain handlers keep their own CAS/transactions; this service supplies the
  * cross-cutting assurance, confirmation, approval and retry ledger.
@@ -1652,11 +1664,13 @@ export class ToolExecutionControlService {
         if (!secret || secret.length < 16) return null;
         const [encoded, suppliedSignature, extra] = token.split('.');
         if (!encoded || !suppliedSignature || extra) return null;
+        const payload = fromCanonicalBase64Url(encoded);
+        const supplied = fromCanonicalBase64Url(suppliedSignature);
+        if (!payload || !supplied) return null;
         const expected = createHmac('sha256', secret).update(encoded).digest();
-        const supplied = fromBase64Url(suppliedSignature);
         if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return null;
         try {
-            const claims = JSON.parse(fromBase64Url(encoded).toString('utf8')) as ConfirmationClaims;
+            const claims = JSON.parse(payload.toString('utf8')) as ConfirmationClaims;
             return claims?.version === 1 ? claims : null;
         } catch {
             return null;

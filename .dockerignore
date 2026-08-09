@@ -11,6 +11,10 @@ scratch
 *.png
 *.jpg
 *.jpeg
-docs
+# The landing build validates these two evidence artifacts. Keep all other
+# documentation out of image build contexts.
+docs/*
+!docs/vertical-competitive-evidence.json
+!docs/vertical-competitive-matrix-2026-08.md
 .claude
 .vscode

@@ -23,6 +23,9 @@ COPY apps/landing/next.config.ts apps/landing/tsconfig.json apps/landing/postcss
 # direct Docker build cannot bypass the same fail-closed gate used by CI.
 COPY apps/api/prisma/seed-billing-plans.js /repo/apps/api/prisma/seed-billing-plans.js
 COPY apps/api/src/ /repo/apps/api/src/
+COPY apps/api/scripts/run-vertical-contract-matrix.cjs /repo/apps/api/scripts/run-vertical-contract-matrix.cjs
+COPY packages/shared/src/ /repo/packages/shared/src/
+COPY docs/vertical-competitive-evidence.json docs/vertical-competitive-matrix-2026-08.md /repo/docs/
 
 # Build static export
 RUN npm run build

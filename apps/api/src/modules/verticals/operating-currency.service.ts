@@ -4,6 +4,7 @@ import {
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -96,7 +97,7 @@ export class OperatingCurrencyService {
         const currency = normalizeCurrencyCode(requestedCurrency, '');
         requireCurrencyMinorUnitExponent(currency);
 
-        return this.prisma.$transaction(async (tx) => {
+        return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const rows: any[] = await tx.$queryRawUnsafe(
                 `SELECT id, operating_currency, operating_currency_locked_at
                  FROM public.tenants

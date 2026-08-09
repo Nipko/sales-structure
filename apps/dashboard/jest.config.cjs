@@ -6,6 +6,8 @@ module.exports = {
   moduleFileExtensions: ["ts", "tsx", "js", "json"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
+    // Jest runs before the workspace dependency build in the contract job.
+    "^@parallext/shared$": "<rootDir>/../../packages/shared/src/index.ts",
   },
   transform: {
     "^.+\\.tsx?$": ["ts-jest", {

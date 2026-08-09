@@ -171,8 +171,9 @@ export class TenantsService {
 
         let tenant = await this.prisma.tenant.findUnique({ where: { slug } });
         let schemaName = tenant?.schemaName || requestedSchemaName;
-        lifecycleTenantId = tenant?.id || randomUUID();
-        const lifecycleKey = tenantLifecycleLockKey(lifecycleTenantId);
+        const resolvedLifecycleTenantId = tenant?.id || randomUUID();
+        lifecycleTenantId = resolvedLifecycleTenantId;
+        const lifecycleKey = tenantLifecycleLockKey(resolvedLifecycleTenantId);
         lifecycleToken = await this.redis.acquireLockToken(lifecycleKey, TENANT_LIFECYCLE_LOCK_TTL_SECONDS);
         if (!lifecycleToken) {
             throw new ConflictException({
@@ -191,8 +192,8 @@ export class TenantsService {
         );
         lifecycleLease.start();
         await assertLockOwned();
-        if (await this.redis.get(tenantPurgingFenceKey(lifecycleTenantId))) {
-            throw new ConflictException({ error: 'tenant_purge_in_progress', tenantId: lifecycleTenantId });
+        if (await this.redis.get(tenantPurgingFenceKey(resolvedLifecycleTenantId))) {
+            throw new ConflictException({ error: 'tenant_purge_in_progress', tenantId: resolvedLifecycleTenantId });
         }
         let provisioning: TenantProvisioningState;
         let provisioningWasComplete = false;

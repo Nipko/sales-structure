@@ -52,7 +52,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U parallext"
+          --health-cmd "pg_isready -U parallext -d parallext_engine"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
@@ -69,6 +69,7 @@ jobs:
     env:
       # DB/Redis point at the service containers above. Secrets are CI dummies —
       # the app reads them at construction but makes no real external calls at boot.
+      NODE_OPTIONS: --max-old-space-size=8192
       DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
       DIRECT_DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallext_engine?schema=public
       REDIS_HOST: localhost

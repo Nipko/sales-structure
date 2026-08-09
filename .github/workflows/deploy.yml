@@ -315,7 +315,6 @@ jobs:
             NEXT_PUBLIC_WA_SERVICE_URL=https://wa.parallly-chat.cloud/api/v1
             NEXT_PUBLIC_META_APP_ID=${{ secrets.META_APP_ID }}
             NEXT_PUBLIC_META_CONFIG_ID=${{ secrets.META_CONFIG_ID }}
-            NEXT_PUBLIC_META_BUSINESS_ID=${{ secrets.META_BUSINESS_ID }}
             NEXT_PUBLIC_META_SOLUTION_ID=${{ secrets.META_SOLUTION_ID }}
             NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
             NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID=${{ secrets.MESSENGER_FB_LOGIN_CONFIG_ID }}

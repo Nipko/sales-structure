@@ -41,4 +41,9 @@ export class StartOnboardingDto {
   @IsString()
   @IsOptional()
   wabaId?: string;
+
+  @ApiPropertyOptional({ description: 'Meta Business Portfolio ID from Embedded Signup session info' })
+  @IsString()
+  @IsOptional()
+  businessId?: string;
 }

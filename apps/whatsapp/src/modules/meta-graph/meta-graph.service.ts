@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
+import { createHmac } from 'crypto';
 import { firstValueFrom } from 'rxjs';
 import { OnboardingErrorCode } from '../../common/enums/onboarding-error.enum';
 
@@ -26,6 +27,9 @@ export interface ExchangeCodeResult {
 export interface WabaInfo {
   id: string;
   name: string;
+  /** Parent Meta Business Portfolio returned by /me/businesses. */
+  businessId?: string;
+  businessName?: string;
   currency?: string;
   timezoneId?: string;
   messageTemplateNamespace?: string;
@@ -147,6 +151,8 @@ export class MetaGraphService {
             wabas.push({
               id: waba.id,
               name: waba.name,
+              businessId: business.id,
+              businessName: business.name,
               currency: waba.currency,
               timezoneId: waba.timezone_id,
               messageTemplateNamespace: waba.message_template_namespace,
@@ -555,8 +561,7 @@ export class MetaGraphService {
    * Required by some endpoints when app-level security is enabled.
    */
   private generateAppSecretProof(appSecret: string, accessToken: string): string {
-    const crypto = require('crypto');
-    return crypto.createHmac('sha256', appSecret).update(accessToken).digest('hex');
+    return createHmac('sha256', appSecret).update(accessToken).digest('hex');
   }
 
   /**

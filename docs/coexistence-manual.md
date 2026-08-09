@@ -1,6 +1,6 @@
 # WhatsApp Coexistence Mode — Manual Técnico
 
-> **Actualizado**: 2026-07-23 — Verificado contra el código. Ingesta de coexistencia en `apps/whatsapp` (puerto 3002); el procesamiento de IA vive en la API (`apps/api`, puerto 3000). Incluye multi-canal por tipo (gate de plan) y marca los guards `metadata.source` que **todavía no** están implementados en la API.
+> **Actualizado**: 2026-08-09 — Verificado contra el código. Ingesta de coexistencia en `apps/whatsapp` (puerto 3002); el procesamiento de IA vive en la API (`apps/api`, puerto 3000). Incluye multi-canal por tipo (gate de plan) y marca los guards `metadata.source` que **todavía no** están implementados en la API.
 
 ## Resumen
 
@@ -320,18 +320,25 @@ Los siguientes campos de webhook deben estar habilitados:
 ```typescript
 // Estándar (número nuevo o migración)
 extras: {
-  setup: { solutionID, business_id },
+  setup: { solutionID },
   version: "v4",
 }
 
 // Coexistencia (Business App)
 extras: {
-  setup: { solutionID, business_id },
+  setup: { solutionID },
   featureType: "whatsapp_business_app_onboarding",  // ← Activa coexistencia
   sessionInfoVersion: "3",                          // ← Requerido para coex
   version: "v4",
 }
 ```
+
+`business_id` no se inyecta globalmente en `setup`: Meta puede devolver el Business Portfolio
+ID del cliente en el evento de finalización. En coexistencia, el evento puede incluir solo
+`waba_id`; en ese caso el backend intenta correlacionar esa WABA mediante `/me/businesses` y
+deja el Business Portfolio sin resolver si Meta no lo expone. Si se preselecciona explícitamente
+un portfolio del cliente, la forma documentada es `setup.business.id` y el usuario debe tener
+acceso a él.
 
 ### Backend (payload a `/onboarding/start`)
 
@@ -339,6 +346,7 @@ extras: {
 {
   mode: "coexistence",            // vs "new" para estándar
   coexistenceAcknowledged: true,  // El usuario confirmó las limitaciones
+  businessId,                     // Opcional: Business Portfolio ID devuelto por Meta
 }
 ```
 

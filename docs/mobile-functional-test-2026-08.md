@@ -22,14 +22,23 @@
 
 ## Resumen
 
-**9 hallazgos, 2 de ellos P0.** Los dos P0 son fallas de servidor que devolvían 500 en
-funciones centrales y que la app mostraba como "no pasa nada" — ninguna era visible sin
-mirar los logs. Ambas están corregidas; una ya desplegada y la otra pendiente de deploy.
+**11 hallazgos, 3 de ellos P0**, en poco más de media app recorrida. Los tres P0 estaban
+del lado del servidor y **ninguno era visible desde la app**: dos devolvían 500 y el
+tercero omitía un campo. Los tres están corregidos; uno desplegado, dos pendientes.
 
-El patrón que las une vale más que los bugs sueltos: **la app pide algo, la API devuelve
-500, y el usuario no ve ningún error**. El GATE 0 (G0.2) daba esto por cerrado. Está
-cerrado para los `Alert` de falso-éxito, pero no para los errores que ocurren con un
-`Modal` abierto ni para los que la UI traduce como "lista vacía".
+El patrón que los une vale más que los bugs sueltos: **la app pide algo, el servidor
+responde mal, y el usuario ve una pantalla plausible**. Un 500 al crear un lead se ve
+como un botón muerto; un 500 en el filtro "Mías" se ve como un inbox vacío; un campo
+faltante se ve como "seguís sin tomar la conversación". Ninguno se manifiesta como un
+error.
+
+El GATE 0 (G0.2) daba esto por cerrado. Está cerrado para los `Alert` de falso-éxito,
+pero no para los errores que ocurren con un `Modal` abierto, ni para los que la UI
+traduce como "lista vacía", ni para los campos que el contrato promete y no entrega.
+
+Consecuencia práctica: **no alcanza con recorrer la app mirando la pantalla.** Los tres
+P0 salieron de leer logs del servidor y de contrastar el contrato con el código. Conviene
+correr el resto de la cobertura con los logs de producción a la vista.
 
 | # | Severidad | Hallazgo | Estado |
 |---|---|---|---|
@@ -42,6 +51,8 @@ cerrado para los `Alert` de falso-éxito, pero no para los errores que ocurren c
 | 7 | 🟡 P2 | Pestaña "Deal" vs encabezado "Agenda" | ✅ `e268912b` |
 | 8 | 🟡 P2 | Dos controles sin etiqueta de accesibilidad en la fila del inbox | ❌ Sin corregir |
 | 9 | 🟡 P2 | El filtro del inbox persiste y un filtro vacío parece un inbox vacío | ❌ Sin corregir |
+| 10 | 🔴 P0 | "Tomar control" **nunca** se refleja: el detalle no devuelve `assignedAgentId` | ✅ `60c578d0`, **falta desplegar** |
+| 11 | 🟠 P1 | El resumen del hilo **alucina**: describe una conversación que no ocurrió | ❌ Sin corregir |
 
 ---
 
@@ -137,6 +148,61 @@ La selección de filtro sobrevive a salir y volver a la pantalla. Combinado con 
 filtro sin resultados se ve como un inbox vacío, es fácil creer que se perdieron las
 conversaciones. Se notó al volver al Inbox y encontrarlo "vacío" cuando en realidad
 seguía aplicado un filtro de un paso anterior.
+
+### 10. 🔴 P0 — "Tomar control" nunca se refleja en la pantalla
+
+Al tocar **Tomar control**, el banner pasa por un instante a "vos estás atendiendo" y
+enseguida vuelve a **"Esperando atención humana"**, con el botón "Tomar control" todavía
+ofrecido. El agente no tiene forma de saber si tomó la conversación o no.
+
+Causa: `ConversationScreen` decide quién atiende con
+
+```js
+const assignedToMe = !!(conv?.assignedAgentId && user?.id && conv.assignedAgentId === user.id);
+```
+
+pero el endpoint de detalle (`GET /agent-console/conversation/:tenantId/:id`)
+**no devuelve `assignedAgentId`**. La interfaz `ConversationDetail` declaraba un
+`assignedAgent?: {id, name}` anidado que **nada poblaba y nada leía**, mientras el
+cliente pedía el `assignedAgentId` plano que la lista del inbox sí devuelve. El campo
+del que dependía la pantalla nunca llegaba, así que `assignedToMe` era **siempre false**
+y el modo `'you'` era inalcanzable.
+
+La asignación sí ocurre en el servidor; lo que está roto es que el agente nunca lo ve. El
+comentario del propio código dice que ese banner existe para resolver *"job #2: takeover
+ambiguity"* — el defecto lo reintroduce por completo.
+
+**Corregido** en `60c578d0`: el detalle devuelve `assignedAgentId`, y se reemplazó el
+campo muerto por el que el cliente realmente consume. 2 tests de regresión.
+
+### 11. 🟠 P1 — El resumen del hilo alucina
+
+Conversación real, completa:
+
+| | |
+|---|---|
+| Cliente | `/start` |
+| IA | "Hola, soy Diego. ¿Estás evaluando nuestra solución para tu equipo? Cuéntame brevemente sobre tu empresa." |
+| Cliente | "Hola" |
+| IA | "¡Hola! ¿Cómo estás? Para poder ayudarte mejor, ¿me cuentas brevemente sobre tu empresa y qué estás buscando?" |
+
+Resumen devuelto por **Resumir**:
+
+> "El cliente pregunta sobre los servicios ofrecidos por la empresa, y el agente responde
+> enumerando los servicios disponibles."
+
+Nada de eso pasó: el cliente nunca preguntó por servicios y el agente nunca enumeró
+ninguno. El resumen no está anclado en el hilo.
+
+Importa más de lo que parece: el resumen es lo que lee un agente al recibir una
+conversación escalada, para no hacer repetir al cliente. Un resumen inventado es peor que
+no tener resumen. Hay que revisar qué contexto se le manda al modelo y si el hilo llega
+realmente en el prompt.
+
+> **No es un bug** (verificado en código): "Próxima acción" devuelve *"Sin sugerencia
+> disponible"* porque está **gateado a propósito** — sin una evaluación de outcome
+> vigente no se llama al modelo (`agent-console.service.nba-readiness.spec.ts`). Es el
+> estado correcto, no una falla.
 
 ---
 

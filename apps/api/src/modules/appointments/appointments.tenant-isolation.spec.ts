@@ -10,6 +10,7 @@ describe('Agenda tenant isolation and slot safety', () => {
     const serviceId = '33333333-3333-4333-8333-333333333333';
     const otherServiceId = '44444444-4444-4444-8444-444444444444';
     const appointmentId = '55555555-5555-4555-8555-555555555555';
+    const contactId = '66666666-6666-4666-8666-666666666666';
 
     function harness(authorityRows: any[] = []) {
         const executeInTenantSchema = jest.fn(async (_schema: string, sql: string, _params: any[] = []) => {
@@ -49,6 +50,7 @@ describe('Agenda tenant isolation and slot safety', () => {
 
     it.each([
         ['create', (h: ReturnType<typeof harness>) => h.appointments.create(schemaName, {
+            contactId,
             assignedTo: otherStaffId,
             serviceName: 'Consulta',
             startAt: '2026-08-12T09:00:00',
@@ -58,6 +60,7 @@ describe('Agenda tenant isolation and slot safety', () => {
             schemaName, appointmentId, { assignedTo: otherStaffId },
         )],
         ['createRecurring', (h: ReturnType<typeof harness>) => h.appointments.createRecurring(schemaName, {
+            contactId,
             assignedTo: otherStaffId,
             serviceName: 'Consulta',
             startAt: '2026-08-12T09:00:00',

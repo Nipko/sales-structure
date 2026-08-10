@@ -611,6 +611,27 @@ export default function PipelinePage() {
                                                      case 'appointment_required':
                                                          errMsg = t('ruleErrorAppointment');
                                                          break;
+                                                     case 'tour_booking_required':
+                                                         errMsg = t('ruleErrorTourBooking');
+                                                         break;
+                                                     case 'property_booking_required':
+                                                         errMsg = t('ruleErrorPropertyBooking');
+                                                         break;
+                                                     case 'service_request_scheduled_required':
+                                                         errMsg = t('ruleErrorServiceRequestScheduled');
+                                                         break;
+                                                     case 'food_order_required':
+                                                         errMsg = t('ruleErrorFoodOrder');
+                                                         break;
+                                                     case 'photo_session_scheduled_required':
+                                                         errMsg = t('ruleErrorPhotoSessionScheduled');
+                                                         break;
+                                                     case 'pet_boarding_required':
+                                                         errMsg = t('ruleErrorPetBoarding');
+                                                         break;
+                                                     case 'vehicle_rental_required':
+                                                         errMsg = t('ruleErrorVehicleRental');
+                                                         break;
                                                      case 'offer_required':
                                                          errMsg = t('ruleErrorOffer');
                                                          break;

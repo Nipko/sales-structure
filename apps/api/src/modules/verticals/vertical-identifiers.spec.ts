@@ -50,6 +50,13 @@ describe('resolveVerticalSelection', () => {
     });
 
     it.each([
+        ['moda_belleza', 'boutique'],
+        ['restaurantes', 'delivery'],
+    ])('preserva el subtipo legacy soportado %s/%s para poder reanudar un alta', (industry, subType) => {
+        expect(resolveVerticalSelection(industry, subType)).toEqual({ industry, subType });
+    });
+
+    it.each([
         ['', undefined],
         ['inventada', 'algo'],
         ['pet_services', 'tienda'],

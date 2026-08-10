@@ -6,12 +6,17 @@ import { CalendarSyncOutboxService } from './calendar-sync-outbox.service';
 import { TemporalCapacityContractService } from '../verticals/temporal-capacity-contract.service';
 import { assertActiveTenantUser } from './tenant-user-scope.util';
 import {
+    assertOptionalContactId,
+    requireTenantContact,
+} from '../../common/utils/tenant-contact.util';
+import {
     AppointmentServiceUnavailableError,
     AppointmentSlotConflictError,
     dayOfWeekForLocalDate,
     lockAndAssertAppointmentCapacity,
     wallClockEpoch,
 } from './appointment-capacity.util';
+import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 
 export interface Appointment {
     id: string;
@@ -248,6 +253,7 @@ export class AppointmentsService {
     async create(schemaName: string, data: {
         contactId?: string;
         conversationId?: string;
+        opportunityId?: string;
         assignedTo?: string;
         serviceId?: string;
         serviceName: string;
@@ -264,10 +270,16 @@ export class AppointmentsService {
         // Tenant-local appointment rows cannot FK to public.users. Resolve the
         // assignment against the active tenant owner before any conflict/write.
         const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const requestedContactId = assertOptionalContactId(data.contactId);
+        if (!requestedContactId) {
+            throw new BadRequestException({
+                error: 'appointment_contact_required',
+                message: 'contactId is required',
+            });
+        }
         const assignedToUuid = data.assignedTo
             ? await assertActiveTenantUser(this.prisma, schemaName, data.assignedTo)
             : null;
-        const contactIdUuid = data.contactId && uuidRe.test(data.contactId) ? data.contactId : null;
         const conversationIdUuid = data.conversationId && uuidRe.test(data.conversationId) ? data.conversationId : null;
 
         // Auto-resolve serviceId from serviceName if not directly provided
@@ -318,6 +330,12 @@ export class AppointmentsService {
         let canonicalServiceName = data.serviceName;
         try {
             await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+                const contactIdUuid = await requireTenantContact(query, requestedContactId);
+                const opportunityId = await resolveNativeEvidenceOpportunity(query, {
+                    contactId: contactIdUuid,
+                    conversationId: conversationIdUuid,
+                    trustedOpportunityId: data.opportunityId,
+                });
                 const service = await lockAndAssertAppointmentCapacity(query, {
                     schemaName,
                     serviceId: serviceIdUuid!,
@@ -328,14 +346,14 @@ export class AppointmentsService {
                 canonicalServiceName = service.name;
                 await query(
                     `INSERT INTO appointments
-                        (id, contact_id, conversation_id, assigned_to, service_id, service_name,
+                        (id, contact_id, opportunity_id, conversation_id, assigned_to, service_id, service_name,
                          start_at, end_at, location, notes, metadata, customer_name,
                          customer_phone, customer_email, source, created_at, updated_at)
-                     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
-                             $7::timestamp, $8::timestamp, $9, $10, $11::jsonb, $12,
-                             $13, $14, $15, NOW(), NOW())`,
+                     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid, $7,
+                             $8::timestamp, $9::timestamp, $10, $11, $12::jsonb, $13,
+                             $14, $15, $16, NOW(), NOW())`,
                     [
-                        id, contactIdUuid, conversationIdUuid, assignedToUuid, serviceIdUuid,
+                        id, contactIdUuid, opportunityId, conversationIdUuid, assignedToUuid, serviceIdUuid,
                         canonicalServiceName, startAt, endAt, data.location || null,
                         data.notes || null, JSON.stringify(data.metadata || {}),
                         data.customerName || null, data.customerPhone || null,
@@ -483,6 +501,8 @@ export class AppointmentsService {
 
     async createRecurring(schemaName: string, data: {
         contactId?: string;
+        conversationId?: string;
+        opportunityId?: string;
         assignedTo?: string;
         serviceId?: string;
         serviceName: string;
@@ -497,6 +517,13 @@ export class AppointmentsService {
             endDate?: string; // alternative: stop at date
         };
     }): Promise<{ groupId: string; appointments: Appointment[] }> {
+        const requestedContactId = assertOptionalContactId(data.contactId);
+        if (!requestedContactId) {
+            throw new BadRequestException({
+                error: 'appointment_contact_required',
+                message: 'contactId is required',
+            });
+        }
         const groupId = randomUUID();
         const rule = data.recurrence;
         const created: Appointment[] = [];
@@ -547,16 +574,22 @@ export class AppointmentsService {
             const startIso = instanceStart.toISOString();
             const endIso = instanceEnd.toISOString();
 
-            const contactIdUuid = data.contactId && uuidRe.test(data.contactId) ? data.contactId : null;
             try {
                 await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+                    const contactIdUuid = await requireTenantContact(query, requestedContactId);
+                    const opportunityId = await resolveNativeEvidenceOpportunity(query, {
+                        contactId: contactIdUuid,
+                        conversationId: data.conversationId,
+                        trustedOpportunityId: data.opportunityId,
+                    });
                     await query(
-                        `INSERT INTO appointments (id, contact_id, assigned_to, service_id, service_name, start_at, end_at,
+                        `INSERT INTO appointments (id, contact_id, opportunity_id, conversation_id, assigned_to, service_id, service_name, start_at, end_at,
                             location, notes, metadata, recurring_group_id, recurrence_rule, created_at, updated_at)
-                         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::timestamp, $7::timestamp,
-                            $8, $9, $10::jsonb, $11::uuid, $12::jsonb, NOW(), NOW())`,
+                         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid, $7, $8::timestamp, $9::timestamp,
+                            $10, $11, $12::jsonb, $13::uuid, $14::jsonb, NOW(), NOW())`,
                         [
-                            id, contactIdUuid, assignedToUuid, serviceIdUuid,
+                            id, contactIdUuid, opportunityId, data.conversationId || null,
+                            assignedToUuid, serviceIdUuid,
                             data.serviceName, startIso, endIso,
                             data.location || null, data.notes || null,
                             JSON.stringify(data.metadata || {}),
@@ -568,6 +601,10 @@ export class AppointmentsService {
                 });
                 created.push(await this.getById(schemaName, id));
             } catch (err) {
+                // Contact integrity is a request error, never a skippable slot
+                // conflict. Propagate it so a foreign/deleted contact cannot
+                // turn into a superficially successful empty series.
+                if (err instanceof BadRequestException) throw err;
                 this.logger.warn(`Skipped recurring instance ${i} due to conflict: ${err.message}`);
             }
         }

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { BulkImportModal } from "@/components/BulkImportModal";
+import { PaginatedContactSelect } from "@/components/ui/paginated-contact-select";
 
 interface Plan {
     id: string;
@@ -80,7 +81,6 @@ export default function MembershipsPage() {
     // get_my_membership respondían "no es miembro" al 100% de los clientes
     // porque no existía ninguna forma de crear el primero.
     const [showNewMember, setShowNewMember] = useState(false);
-    const [contacts, setContacts] = useState<any[]>([]);
     const [newMember, setNewMember] = useState<{ contactId: string; planId: string; memberNumber: string }>({ contactId: "", planId: "", memberNumber: "" });
     const [savingMember, setSavingMember] = useState(false);
     const [memberError, setMemberError] = useState("");
@@ -115,9 +115,6 @@ export default function MembershipsPage() {
         setMemberError("");
         setNewMember({ contactId: "", planId: "", memberNumber: "" });
         setShowNewMember(true);
-        if (!activeTenantId || contacts.length) return;
-        const res = await api.getOrderContacts(activeTenantId).catch(() => null);
-        if (res?.success && Array.isArray(res.data)) setContacts(res.data);
     }
 
     async function handleCreateMember() {
@@ -480,18 +477,13 @@ export default function MembershipsPage() {
                         <div className="space-y-3">
                             <div>
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("memberName")}</label>
-                                <select
+                                <PaginatedContactSelect
+                                    tenantId={activeTenantId}
                                     value={newMember.contactId}
-                                    onChange={e => setNewMember({ ...newMember, contactId: e.target.value })}
+                                    onChange={(contactId) => setNewMember({ ...newMember, contactId })}
+                                    required
                                     className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm cursor-pointer"
-                                >
-                                    <option value="">{tc("select")}</option>
-                                    {contacts.map((c: any) => (
-                                        <option key={c.id} value={c.id}>
-                                            {c.name || c.phone || c.id}
-                                        </option>
-                                    ))}
-                                </select>
+                                />
                             </div>
 
                             <div>

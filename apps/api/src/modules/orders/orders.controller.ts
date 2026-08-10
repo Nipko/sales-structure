@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { OrdersService } from './orders.service';
@@ -20,8 +20,17 @@ export class OrdersController {
     }
 
     @Get('contacts/:tenantId')
-    async getContacts(@Param('tenantId') tenantId: string) {
-        const data = await this.ordersService.getContacts(tenantId);
+    async getContacts(
+        @Param('tenantId') tenantId: string,
+        @Query('search') search?: string,
+        @Query('limit') limit?: string,
+        @Query('offset') offset?: string,
+    ) {
+        const data = await this.ordersService.getContacts(tenantId, {
+            search,
+            limit: limit === undefined ? undefined : Number(limit),
+            offset: offset === undefined ? undefined : Number(offset),
+        });
         return { success: true, data };
     }
 

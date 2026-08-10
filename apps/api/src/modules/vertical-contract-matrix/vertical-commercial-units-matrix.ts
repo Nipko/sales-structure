@@ -29,6 +29,7 @@ export interface VerticalCommercialConfigurationRow {
     industry: string;
     subtype: string | null;
     agendaAllowed: boolean;
+    serviceCatalogAllowed: boolean;
     durationUnit: 'minutes';
     currencySource: 'vertical_definition';
     configuredServices: VerticalCommercialServiceRow[];
@@ -158,10 +159,11 @@ export function buildVerticalCommercialUnitsMatrix(): VerticalCommercialUnitsMat
                 industry,
                 subtype,
                 agendaAllowed: contract.agendaAllowed,
+                serviceCatalogAllowed: contract.serviceCatalogAllowed,
                 durationUnit: contract.durationUnit,
                 currencySource: contract.currencySource,
                 configuredServices,
-                seededServices: contract.agendaAllowed ? configuredServices : [],
+                seededServices: contract.serviceCatalogAllowed ? configuredServices : [],
             });
         }
 

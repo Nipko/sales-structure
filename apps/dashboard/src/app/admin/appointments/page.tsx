@@ -17,6 +17,10 @@ import AppointmentModal from "@/components/appointments/AppointmentModal";
 import ServiceModal from "@/components/appointments/ServiceModal";
 import AnalyticsTab from "@/components/appointments/AnalyticsTab";
 import {
+  hasAppointmentContact,
+} from "@/components/appointments/contact-selection";
+import { usePaginatedContacts } from "@/hooks/usePaginatedContacts";
+import {
   type Appointment, type Service, DAY_KEYS,
   toLocalDate, addDays, getMondayOfWeek, fmt2,
 } from "@/components/appointments/shared";
@@ -149,6 +153,16 @@ export default function AppointmentsPage() {
     contactId: "",
   });
   const [saving, setSaving] = useState(false);
+  const {
+    contacts: appointmentContacts,
+    search: appointmentContactSearch,
+    setSearch: setAppointmentContactSearch,
+    hasMore: appointmentContactsHasMore,
+    loading: loadingAppointmentContacts,
+    error: appointmentContactsLoadFailed,
+    loadMore: loadMoreAppointmentContacts,
+    retry: retryAppointmentContacts,
+  } = usePaginatedContacts(activeTenantId, showModal);
 
   // ---- Agenda filters ----
   const [filterStatus, setFilterStatus] = useState("");
@@ -353,6 +367,13 @@ export default function AppointmentsPage() {
     loadCalendarIntegrations();
   }, [loadAppointments, loadServices, loadCalendarIntegrations]);
 
+  // A tenant switch invalidates both the loaded CRM contacts and any open form
+  // that still references an appointment from the previous tenant.
+  useEffect(() => {
+    setEditingAppointment(null);
+    setShowModal(false);
+  }, [activeTenantId]);
+
   // Load external events when calendar is connected and week changes
   useEffect(() => {
     loadExternalEvents();
@@ -540,6 +561,10 @@ export default function AppointmentsPage() {
 
   const handleSave = async () => {
     if (!activeTenantId || !modalForm.serviceName || !modalForm.date) return;
+    if (!editingAppointment && !hasAppointmentContact(modalForm.contactId, appointmentContacts)) {
+      showToast(t("contactRequired"));
+      return;
+    }
     setSaving(true);
     try {
       const startAt = `${modalForm.date}T${modalForm.startTime}:00`;
@@ -559,9 +584,8 @@ export default function AppointmentsPage() {
       } else {
         response = await api.createAppointment(activeTenantId, payload);
       }
-      if (response && response.success === false) {
+      if (!response?.success) {
         showToast(response.error || t("errors.saveAppointment"));
-        setSaving(false);
         return;
       }
       showToast(editingAppointment ? t("editAppointment") + " ✓" : t("newAppointment") + " ✓");
@@ -569,17 +593,22 @@ export default function AppointmentsPage() {
       loadAppointments();
     } catch {
       showToast(t("errors.saveAppointment"));
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleSaveRecurring = async (recurrence: { frequency: string; count: number }) => {
     if (!activeTenantId || !modalForm.serviceName || !modalForm.date) return;
+    if (!hasAppointmentContact(modalForm.contactId, appointmentContacts)) {
+      showToast(t("contactRequired"));
+      return;
+    }
     setSaving(true);
     try {
       const startAt = `${modalForm.date}T${modalForm.startTime}:00`;
       const endAt = `${modalForm.date}T${modalForm.endTime}:00`;
-      await api.createRecurringAppointment(activeTenantId, {
+      const response = await api.createRecurringAppointment(activeTenantId, {
         serviceName: modalForm.serviceName,
         startAt,
         endAt,
@@ -592,13 +621,18 @@ export default function AppointmentsPage() {
           count: recurrence.count,
         },
       });
+      if (!response?.success) {
+        showToast(response?.error || t("errors.saveAppointment"));
+        return;
+      }
       showToast(t("createRecurringSeries") + " ✓");
       setShowModal(false);
       loadAppointments();
     } catch {
       showToast(t("errors.saveAppointment"));
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleReschedule = async (apptId: string, newDate: string, newStart: string, newEnd: string) => {
@@ -1077,6 +1111,14 @@ export default function AppointmentsPage() {
           form={modalForm}
           onChange={setModalForm}
           services={services}
+          contacts={appointmentContacts}
+          contactsLoading={loadingAppointmentContacts}
+          contactsLoadFailed={appointmentContactsLoadFailed}
+          contactSearch={appointmentContactSearch}
+          onContactSearchChange={setAppointmentContactSearch}
+          contactsHasMore={appointmentContactsHasMore}
+          onLoadMoreContacts={loadMoreAppointmentContacts}
+          onRetryContacts={retryAppointmentContacts}
           editingAppointment={editingAppointment}
           saving={saving}
           onSave={handleSave}

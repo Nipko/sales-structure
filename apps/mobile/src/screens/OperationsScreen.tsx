@@ -27,13 +27,17 @@ import {
     availableItemActions,
     canCreateOperation,
     getSafeNextStatus,
+    requiresScheduledAtTransition,
     type VerticalOperationActionId,
     type VerticalOperationItemType,
 } from '../lib/verticalOperationPolicy';
 import { theme } from '../theme';
+import { parseApiTimestamp } from '../lib/localTimestamp';
+import { resourceRentalCustomer, resourceRentalPhone } from '../lib/resourceRentalDisplay';
 import { AppointmentsScreen } from './AppointmentsScreen';
 import { ReservationsScreen } from './ReservationsScreen';
 import { OperationCreateModal } from './OperationCreateModal';
+import { buildScheduledTransition, validScheduleInput } from '../lib/operationScheduling';
 
 interface OperationItem {
     id: string;
@@ -50,6 +54,8 @@ interface OperationItem {
     metaParams?: Record<string, string | number>;
     amount?: string;
     primaryReferenceId?: string;
+    /** Raw tenant-local timestamp used by scheduling transitions. */
+    scheduledAt?: string;
 }
 
 interface OperationSection {
@@ -78,6 +84,7 @@ const STATUS_COLORS: Record<string, string> = {
     preparing: theme.warning,
     picked_up: theme.accent,
     processing: theme.warning,
+    requested: theme.warning,
     quoted: theme.warning,
     received: theme.warning,
     reviewing: theme.warning,
@@ -103,15 +110,14 @@ const KNOWN_STATUSES = new Set(Object.keys(STATUS_COLORS));
 const pad = (n: number) => String(n).padStart(2, '0');
 const localDay = (d: Date) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 
+function tomorrowDay(): string {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    return localDay(date);
+}
+
 function localDate(value?: string, dateOnly = false): Date | null {
-    if (!value) return null;
-    const raw = String(value);
-    if (dateOnly || (/^\d{4}-\d{2}-\d{2}$/.test(raw.slice(0, 10)) && raw.length <= 10)) {
-        const parts = raw.slice(0, 10).split('-').map(Number);
-        return new Date(parts[0], parts[1] - 1, parts[2]);
-    }
-    const date = new Date(raw);
-    return Number.isNaN(date.getTime()) ? null : date;
+    return parseApiTimestamp(value, dateOnly);
 }
 
 function formatWhen(value: string | undefined, locale: string, dateOnly = false): string {
@@ -426,6 +432,7 @@ async function loadOperationSections(
                     meta: row.address || row.city || '',
                     metaKey: row.urgency ? 'ops.urgency.' + row.urgency : undefined,
                     amount: formatMoney(row.estimated_cost, row.currency, locale),
+                    scheduledAt: row.scheduled_at || undefined,
                 })),
         }];
     }
@@ -442,11 +449,12 @@ async function loadOperationSections(
                     icon: 'camera-outline',
                     title: row.client_name || row.contact_name || '',
                     subtitle: row.package_name || row.session_type || '',
-                    status: row.status || 'scheduled',
+                    status: row.status || 'requested',
                     when: row.scheduled_at || row.delivery_due_at,
                     dateOnly: !row.scheduled_at && !!row.delivery_due_at,
                     meta: row.location || '',
                     amount: formatMoney(row.price, row.currency, locale),
+                    scheduledAt: row.scheduled_at || undefined,
                 })),
         }];
     }
@@ -489,11 +497,11 @@ async function loadOperationSections(
                         || [row.make, row.model, row.year].filter(Boolean).join(' ')
                         || row.pet_name
                         || '',
-                    subtitle: row.customer_name || '',
+                    subtitle: resourceRentalCustomer(row),
                     status: row.status || 'reserved',
                     when: row.start_date,
                     dateOnly: true,
-                    meta: row.end_date || '',
+                    meta: [row.end_date, resourceRentalPhone(row)].filter(Boolean).join(' · '),
                 })),
         }];
     }
@@ -555,6 +563,9 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
     }>({});
     const [deliveryItem, setDeliveryItem] = useState<OperationItem | null>(null);
     const [galleryUrl, setGalleryUrl] = useState('');
+    const [scheduleItem, setScheduleItem] = useState<OperationItem | null>(null);
+    const [scheduleDate, setScheduleDate] = useState(tomorrowDay());
+    const [scheduleTime, setScheduleTime] = useState('09:00');
 
     const restaurantSubType = String(verticalConfig?.subType || '').trim().toLowerCase();
     const canManageTableReservations = kind === 'restaurant'
@@ -692,6 +703,19 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
             return;
         }
         const next = getSafeNextStatus(kind, item.entityType, item.status);
+        if (requiresScheduledAtTransition(kind, item.entityType, next)) {
+            const existingDate = item.scheduledAt?.slice(0, 10) || '';
+            const existingTime = /[T ](\d{2}:\d{2})/.exec(item.scheduledAt || '')?.[1] || '';
+            const preferredDate = existingDate
+                || (kind === 'service_requests' && item.dateOnly && item.when && item.when.slice(0, 10) >= localDay(new Date())
+                    ? item.when.slice(0, 10)
+                    : tomorrowDay());
+            setScheduleDate(preferredDate);
+            setScheduleTime(existingTime || '09:00');
+            setSelected(null);
+            setScheduleItem(item);
+            return;
+        }
         if (next) void finishAction(item, () => callStatusUpdate(item, next));
     };
 
@@ -702,6 +726,18 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
         setDeliveryItem(null);
         void finishAction(item, () => api.deliverPhotoSession(tenantId, entityId(item), { galleryUrl: url }));
     };
+
+    const scheduleOperation = () => {
+        const payload = buildScheduledTransition(scheduleDate, scheduleTime);
+        if (!tenantId || !scheduleItem || !payload) return;
+        const item = scheduleItem;
+        setScheduleItem(null);
+        void finishAction(item, () => item.entityType === 'photo_session'
+            ? api.updatePhotoSession(tenantId, entityId(item), payload)
+            : api.updateServiceRequest(tenantId, entityId(item), payload));
+    };
+
+    const scheduleInputValid = validScheduleInput(scheduleDate, scheduleTime);
 
     if (kind === 'none') return <UnavailableWorkspace />;
     if (query.isLoading) return <SafeAreaView style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></SafeAreaView>;
@@ -926,6 +962,51 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                 />
             )}
 
+            <Modal visible={!!scheduleItem} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setScheduleItem(null)}>
+                <TouchableOpacity style={styles.centerBackdrop} activeOpacity={1} onPress={() => setScheduleItem(null)}>
+                    <View style={styles.dialog} onStartShouldSetResponder={() => true}>
+                        <Text style={styles.sheetTitle}>{t(scheduleItem?.entityType === 'photo_session' ? 'ops.schedule.photoTitle' : 'ops.schedule.title')}</Text>
+                        <Text style={styles.dialogHint}>{t(scheduleItem?.entityType === 'photo_session' ? 'ops.schedule.photoBody' : 'ops.schedule.body')}</Text>
+                        <Text style={styles.dialogLabel}>{t('ops.field.date')}</Text>
+                        <TextInput
+                            style={styles.dialogInput}
+                            value={scheduleDate}
+                            onChangeText={setScheduleDate}
+                            placeholder="YYYY-MM-DD"
+                            placeholderTextColor={theme.textSecondary}
+                            keyboardType="numbers-and-punctuation"
+                            autoCapitalize="none"
+                        />
+                        <Text style={styles.dialogLabel}>{t('ops.field.time')}</Text>
+                        <TextInput
+                            style={styles.dialogInput}
+                            value={scheduleTime}
+                            onChangeText={setScheduleTime}
+                            placeholder="HH:mm"
+                            placeholderTextColor={theme.textSecondary}
+                            keyboardType="numbers-and-punctuation"
+                            autoCapitalize="none"
+                        />
+                        {!scheduleInputValid && (
+                            <Text style={styles.validationText}>{t('ops.schedule.invalid')}</Text>
+                        )}
+                        <View style={styles.dialogActions}>
+                            <TouchableOpacity style={styles.dialogSecondary} onPress={() => setScheduleItem(null)} accessibilityRole="button">
+                                <Text style={styles.dialogSecondaryText}>{t('citas.no')}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.dialogPrimary, !scheduleInputValid && styles.disabled]}
+                                onPress={scheduleOperation}
+                                disabled={!scheduleInputValid}
+                                accessibilityRole="button"
+                            >
+                                <Text style={styles.sheetActionText}>{t('ops.schedule.submit')}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
             <Modal visible={!!deliveryItem} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDeliveryItem(null)}>
                 <TouchableOpacity style={styles.centerBackdrop} activeOpacity={1} onPress={() => setDeliveryItem(null)}>
                     <View style={styles.dialog} onStartShouldSetResponder={() => true}>
@@ -1020,7 +1101,9 @@ const styles = StyleSheet.create({
     centerBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, backgroundColor: 'rgba(0,0,0,0.58)' },
     dialog: { width: '100%', maxWidth: 420, borderRadius: 16, padding: 18, backgroundColor: theme.bgCard, borderWidth: 1, borderColor: theme.border },
     dialogHint: { color: theme.textSecondary, fontSize: 13, lineHeight: 18, marginTop: 6 },
+    dialogLabel: { color: theme.textSecondary, fontSize: 12, fontWeight: '700', marginTop: 13 },
     dialogInput: { minHeight: 46, borderWidth: 1, borderColor: theme.border, borderRadius: 10, color: theme.text, backgroundColor: theme.bg, paddingHorizontal: 12, marginTop: 14 },
+    validationText: { color: theme.danger, fontSize: 12, lineHeight: 17, marginTop: 10 },
     dialogActions: { flexDirection: 'row', gap: 8, marginTop: 14 },
     dialogSecondary: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: theme.border },
     dialogSecondaryText: { color: theme.text, fontSize: 13, fontWeight: '700' },

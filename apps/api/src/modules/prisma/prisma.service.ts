@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { resolveMirroredDealStatus } from '../pipeline/pipeline-outcome.util';
+import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
 
 const TENANT_PUBLIC_PURGE_ORDER = [
     'push_subscriptions', 'feature_request_subscribers', 'feature_request_comments',
@@ -17,6 +18,20 @@ const TENANT_PUBLIC_PURGE_CLASSIFIED = new Set<string>([
     ...TENANT_PUBLIC_PURGE_ORDER.filter((table) => table !== 'feature_request_subscribers'),
     'fiscal_invoices',
 ]);
+
+const NATIVE_EVIDENCE_TABLES = [
+    'appointments',
+    'tour_bookings',
+    'property_bookings',
+    'service_requests',
+    'food_orders',
+    'photo_sessions',
+    'resource_rentals',
+    'orders',
+] as const;
+
+type NativeEvidenceTable = (typeof NATIVE_EVIDENCE_TABLES)[number];
+type TenantQueryExecutor = <R = any[]>(sql: string, params?: any[]) => Promise<R>;
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
@@ -40,6 +55,22 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 // Widen critical columns system-wide at startup
                 await this.ensureVarcharColumnsWiden().catch((err) => {
                     this.logger.error(`Column widening failed (non-blocking): ${err.message}`);
+                });
+
+                // Existing tenant schemas predate exact native-evidence
+                // ownership. Migrate them without inventing contact-only
+                // backfills; unresolved historical rows deliberately stay NULL.
+                //
+                // No-bloqueante a propósito: el DDL toma ACCESS EXCLUSIVE sobre 8
+                // tablas calientes por schema y corre en CADA arranque. Durante el
+                // restart rolling el worker sigue escribiendo, así que un
+                // lock_timeout (55P03) en UN solo tenant es plausible — y sin este
+                // catch ese fallo cae en el retry de conexión, agota los 5 intentos
+                // y deja al contenedor del API en crash-loop para TODOS los tenants.
+                // El resolver de aplicación ya es fail-closed, el trigger es defensa
+                // en profundidad: se reintenta en el próximo arranque.
+                await this.ensureNativeEvidenceOpportunityOwnership().catch((err) => {
+                    this.logger.error(`Native evidence ownership migration failed (non-blocking): ${err.message}`);
                 });
 
                 // Retroactively sync historical opportunities to deals
@@ -592,6 +623,208 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     }
 
     /**
+     * Add exact opportunity ownership to all native operational evidence tables.
+     * Each tenant is migrated atomically under an advisory lock. A tenant with a
+     * custom/missing optional table simply migrates the tables it actually has.
+     */
+    private async ensureNativeEvidenceOwnershipWithQuery(
+        query: TenantQueryExecutor,
+        schemaName: string,
+        tables: readonly NativeEvidenceTable[],
+    ): Promise<void> {
+        for (const table of tables) {
+            await query(`ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS opportunity_id UUID`);
+            const fkName = `${table}_opportunity_id_fkey`;
+            const constraint = await query<Array<{ exists: boolean }>>(
+                `SELECT EXISTS (
+                    SELECT 1
+                      FROM pg_constraint constraint_ref
+                      JOIN pg_class table_ref ON table_ref.oid = constraint_ref.conrelid
+                      JOIN pg_namespace schema_ref ON schema_ref.oid = table_ref.relnamespace
+                     WHERE schema_ref.nspname = $1
+                       AND table_ref.relname = $2
+                       AND constraint_ref.conname = $3
+                       AND constraint_ref.contype = 'f'
+                ) AS exists`,
+                [schemaName, table, fkName],
+            );
+            if (!constraint?.[0]?.exists) {
+                await query(
+                    `ALTER TABLE "${table}"
+                     ADD CONSTRAINT "${fkName}"
+                     FOREIGN KEY (opportunity_id)
+                     REFERENCES opportunities(id) ON DELETE RESTRICT NOT VALID`,
+                );
+            }
+            await query(
+                `CREATE INDEX IF NOT EXISTS "idx_${table}_opportunity_id"
+                 ON "${table}" (opportunity_id)
+                 WHERE opportunity_id IS NOT NULL`,
+            );
+        }
+
+        await query(`
+            CREATE OR REPLACE FUNCTION "${schemaName}"."validate_native_evidence_opportunity"()
+            RETURNS TRIGGER
+            LANGUAGE plpgsql
+            SET search_path = "${schemaName}", public
+            AS $native_evidence_opportunity_guard$
+            BEGIN
+                IF TG_OP = 'UPDATE'
+                   AND OLD.opportunity_id IS NOT NULL
+                   AND NEW.opportunity_id IS DISTINCT FROM OLD.opportunity_id THEN
+                    RAISE EXCEPTION 'native evidence opportunity ownership is immutable'
+                        USING ERRCODE = '23514',
+                              CONSTRAINT = 'native_evidence_opportunity_immutable';
+                END IF;
+                IF NEW.opportunity_id IS NULL THEN
+                    RETURN NEW;
+                END IF;
+                -- contact_id es FK ON DELETE SET NULL: borrar un contacto dispara
+                -- un UPDATE real sobre esta tabla y por lo tanto este trigger. Sin
+                -- esta excepción se rompen el borrado de contacto, la purga de
+                -- tenant y el borrado GDPR. Solo se permite ese desprendimiento.
+                IF TG_OP = 'UPDATE'
+                   AND NEW.contact_id IS NULL
+                   AND OLD.contact_id IS NOT NULL
+                   AND NEW.opportunity_id IS NOT DISTINCT FROM OLD.opportunity_id THEN
+                    RETURN NEW;
+                END IF;
+                IF NEW.contact_id IS NULL OR NOT EXISTS (
+                    SELECT 1
+                     FROM "${schemaName}"."opportunities" opportunity_ref
+                      JOIN "${schemaName}"."leads" lead_ref
+                        ON lead_ref.id = opportunity_ref.lead_id
+                     WHERE opportunity_ref.id = NEW.opportunity_id
+                       AND (
+                            lead_ref.contact_id = NEW.contact_id
+                            OR EXISTS (
+                                SELECT 1
+                                  FROM "${schemaName}"."contact_identities" evidence_identity
+                                  JOIN "${schemaName}"."contact_identities" lead_identity
+                                    ON lead_identity.customer_profile_id = evidence_identity.customer_profile_id
+                                 WHERE evidence_identity.contact_id = NEW.contact_id
+                                   AND lead_identity.contact_id = lead_ref.contact_id
+                            )
+                       )
+                ) THEN
+                    RAISE EXCEPTION 'native evidence opportunity does not belong to contact'
+                        USING ERRCODE = '23514',
+                              CONSTRAINT = 'native_evidence_opportunity_contact_check';
+                END IF;
+                RETURN NEW;
+            END
+            $native_evidence_opportunity_guard$`);
+
+        for (const table of tables) {
+            const triggerName = `${table}_opportunity_owner_guard`;
+            const trigger = await query<Array<{ exists: boolean }>>(
+                `SELECT EXISTS (
+                    SELECT 1
+                      FROM pg_trigger trigger_ref
+                      JOIN pg_class table_ref ON table_ref.oid = trigger_ref.tgrelid
+                      JOIN pg_namespace schema_ref ON schema_ref.oid = table_ref.relnamespace
+                     WHERE schema_ref.nspname = $1
+                       AND table_ref.relname = $2
+                       AND trigger_ref.tgname = $3
+                       AND NOT trigger_ref.tgisinternal
+                ) AS exists`,
+                [schemaName, table, triggerName],
+            );
+            if (!trigger?.[0]?.exists) {
+                await query(
+                    `CREATE TRIGGER "${triggerName}"
+                     BEFORE INSERT OR UPDATE OF opportunity_id, contact_id ON "${table}"
+                     FOR EACH ROW EXECUTE FUNCTION "${schemaName}"."validate_native_evidence_opportunity"()`,
+                );
+            }
+        }
+    }
+
+    /**
+     * Install exact native-evidence ownership for a table created lazily after
+     * startup. The cache owner must only mark itself ready after this resolves.
+     */
+    async ensureNativeEvidenceOpportunityOwnershipForTable(
+        schemaName: string,
+        table: NativeEvidenceTable,
+    ): Promise<void> {
+        this.validateSchemaName(schemaName);
+        if (!(NATIVE_EVIDENCE_TABLES as readonly string[]).includes(table)) {
+            throw new BadRequestException(`Unsupported native evidence table: ${table}`);
+        }
+        await this.transactionInTenantSchema(schemaName, async (query) => {
+            await query(
+                `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+                [`native-evidence-opportunity:${schemaName}`],
+            );
+            await query(`SET LOCAL lock_timeout = '5s'`);
+            const tableRows = await query<Array<{ exists: boolean }>>(
+                `SELECT EXISTS (
+                    SELECT 1
+                      FROM information_schema.tables
+                     WHERE table_schema = $1
+                       AND table_name = $2
+                ) AS exists`,
+                [schemaName, table],
+            );
+            if (!tableRows?.[0]?.exists) {
+                throw new Error(`Native evidence table ${schemaName}.${table} does not exist`);
+            }
+            await this.ensureNativeEvidenceOwnershipWithQuery(query, schemaName, [table]);
+        }, { timeout: 60_000 });
+    }
+
+    private async ensureNativeEvidenceOpportunityOwnership(): Promise<void> {
+        const schemas = await (super.$queryRawUnsafe as any)(
+            `SELECT schema_name
+               FROM information_schema.schemata
+              WHERE schema_name LIKE 'tenant_%'
+              ORDER BY schema_name`,
+        ) as Array<{ schema_name: string }>;
+
+        const failures: string[] = [];
+        for (const schemaRow of schemas || []) {
+            const schemaName = schemaRow.schema_name;
+            try {
+                this.validateSchemaName(schemaName);
+                await this.transactionInTenantSchema(schemaName, async (query) => {
+                    await query(
+                        `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+                        [`native-evidence-opportunity:${schemaName}`],
+                    );
+                    await query(`SET LOCAL lock_timeout = '5s'`);
+
+                    const presentRows = await query<Array<{ table_name: string }>>(
+                        `SELECT table_name
+                           FROM information_schema.tables
+                          WHERE table_schema = $1
+                            AND table_name = ANY($2::text[])`,
+                        [schemaName, [...NATIVE_EVIDENCE_TABLES]],
+                    );
+                    const present = new Set((presentRows || []).map((row) => row.table_name));
+
+                    await this.ensureNativeEvidenceOwnershipWithQuery(
+                        query,
+                        schemaName,
+                        NATIVE_EVIDENCE_TABLES.filter((table) => present.has(table)),
+                    );
+                }, { timeout: 60_000 });
+            } catch (error: any) {
+                this.logger.error(
+                    `[Schema Migration] Native evidence ownership failed for ${schemaName}: ${error.message}`,
+                );
+                failures.push(`${schemaName}: ${error.message}`);
+            }
+        }
+        if (failures.length > 0) {
+            throw new Error(
+                `Native evidence ownership migration failed for ${failures.length} tenant schema(s): ${failures.join('; ')}`,
+            );
+        }
+    }
+
+    /**
      * Defensive raw SQL parameter sanitization. Prevents Postgres VARCHAR length errors (22001)
      * by safely truncating strings that would exceed column bounds, while preserving TEXT and JSONB fields.
      */
@@ -666,6 +899,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 );
                 const tenantId = tenantIdRows?.[0]?.id;
                 if (!tenantId) continue;
+                try {
 
                 // 1. Ensure the multi-pipeline contract exists. Older schemas used
                 // to be skipped entirely here, so they never received outcome/link
@@ -693,42 +927,55 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                         await query(`ALTER TABLE deals ADD COLUMN IF NOT EXISTS pipeline_id UUID`);
                     });
                 }
+                // CREATE TABLE IF NOT EXISTS does not repair a pre-existing
+                // pipelines table that missed this constraint. Multiple
+                // defaults are ambiguous tenant data, so index creation is
+                // intentionally fail-closed for that schema.
+                await (super.$executeRawUnsafe as any)(
+                    `CREATE UNIQUE INDEX IF NOT EXISTS uidx_pipelines_default_per_tenant
+                     ON "${schemaName}"."pipelines" (tenant_id) WHERE is_default = true`
+                );
                 await (super.$executeRawUnsafe as any)(
                     `ALTER TABLE "${schemaName}"."pipeline_stages" ADD COLUMN IF NOT EXISTS pipeline_id UUID`
                 );
-                await (super.$executeRawUnsafe as any)(
-                    `ALTER TABLE "${schemaName}"."deals" ADD COLUMN IF NOT EXISTS pipeline_id UUID`
-                );
-                const pipelineRows = await this.transactionInTenantSchema(schemaName, async (query) => {
-                    await query(
-                        `INSERT INTO pipelines (tenant_id, name, description, is_default, is_active)
-                         SELECT $1::uuid, 'Pipeline Principal', 'Pipeline de ventas predeterminado', true, true
-                          WHERE NOT EXISTS (SELECT 1 FROM pipelines WHERE tenant_id = $1::uuid)`,
-                        [tenantId],
-                    );
-                    const rows = await query<any[]>(
-                        `SELECT id FROM pipelines WHERE tenant_id = $1::uuid
-                          ORDER BY is_default DESC, created_at ASC LIMIT 1`,
-                        [tenantId],
-                    );
-                    const pipelineId = rows?.[0]?.id;
-                    if (pipelineId) {
-                        await query(`UPDATE pipeline_stages SET pipeline_id = $1::uuid WHERE pipeline_id IS NULL`, [pipelineId]);
-                        await query(`UPDATE deals SET pipeline_id = $1::uuid WHERE pipeline_id IS NULL`, [pipelineId]);
-                    }
-                    return rows;
-                });
-                if (!pipelineRows?.[0]?.id) {
-                    this.logger.error(`[Historical Sync] No default pipeline could be established for ${schemaName}`);
-                    continue;
-                }
-
-                // Older tenant schemas predate the explicit outcome/link columns. Add
-                // the contract, but never manufacture a terminal outcome from probability.
+                // Ownership reconciliation compares these fields.  Historical
+                // schemas may predate the explicit outcome/rules columns, so
+                // establish that contract before invoking the reconciler or a
+                // missing column would make this schema permanently skip the
+                // later ALTER statements on every startup.
                 await (super.$executeRawUnsafe as any)(
                     `ALTER TABLE "${schemaName}"."pipeline_stages"
                      ADD COLUMN IF NOT EXISTS terminal_outcome VARCHAR(10)`
                 );
+                await (super.$executeRawUnsafe as any)(
+                    `ALTER TABLE "${schemaName}"."pipeline_stages"
+                     ADD COLUMN IF NOT EXISTS transition_rules JSONB DEFAULT '[]'::jsonb`
+                );
+                await (super.$executeRawUnsafe as any)(
+                    `ALTER TABLE "${schemaName}"."deals" ADD COLUMN IF NOT EXISTS pipeline_id UUID`
+                );
+                const pipelineResolution = await this.transactionInTenantSchema(
+                    schemaName,
+                    (query) => ensurePrimaryPipeline(query, tenantId),
+                );
+                const pipelineId = pipelineResolution.pipelineId;
+                if (pipelineResolution.repairedDuplicateStages > 0) {
+                    this.logger.warn(
+                        `[Historical Sync] Repaired ${pipelineResolution.repairedDuplicateStages} ` +
+                        `duplicate pipeline stage(s) in ${schemaName}`,
+                    );
+                }
+                // Bootstrap and the legacy CRM use ON CONFLICT(pipeline_id,
+                // slug).  Historical schemas that never received the full
+                // template must gain the same conflict target after ownership
+                // reconciliation has removed safe duplicates.
+                await (super.$executeRawUnsafe as any)(
+                    `CREATE UNIQUE INDEX IF NOT EXISTS uidx_pipeline_stages_pipeline_slug
+                     ON "${schemaName}"."pipeline_stages" (pipeline_id, slug) NULLS NOT DISTINCT`
+                );
+
+                // Older tenant schemas predate the explicit outcome/link columns. Add
+                // the contract, but never manufacture a terminal outcome from probability.
                 await (super.$executeRawUnsafe as any)(
                     `UPDATE "${schemaName}"."pipeline_stages"
                         SET terminal_outcome = NULL
@@ -813,13 +1060,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 if (!opportunities?.length) continue;
 
                 this.logger.log(`[Historical Sync] Found ${opportunities.length} opportunities needing deal sync in schema ${schemaName}`);
-
-                // Get the primary default active pipeline ID
-                const pipelines = await (super.$queryRawUnsafe as any)(
-                    `SELECT id FROM "${schemaName}"."pipelines" WHERE is_active = true ORDER BY is_default DESC, created_at ASC LIMIT 1`
-                );
-                const pipelineId = pipelines?.[0]?.id;
-                if (!pipelineId) continue;
 
                 for (const opp of opportunities) {
                     try {
@@ -912,6 +1152,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                     } catch (error: any) {
                         this.logger.warn(`[Historical Sync] Skipped opportunity ${opp.opportunity_id}: ${error.message}`);
                     }
+                }
+                } catch (schemaError: any) {
+                    // One damaged tenant must not prevent startup repair for every
+                    // schema that follows it. Ownership conflicts are fail-closed
+                    // inside their transaction and are reported for manual review.
+                    this.logger.error(
+                        `[Historical Sync] Skipped schema ${schemaName}: ${schemaError.message}`,
+                    );
                 }
             }
             this.logger.log('[Historical Sync] Retroactive Opportunity -> Deal synchronization completed successfully.');

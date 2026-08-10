@@ -3,9 +3,19 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 
+function escapeHtml(value: unknown): string {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 /**
- * Escucha `service_request.created` (emitido por la tool create_service_request
- * de servicios_hogar) y notifica a los humanos cuando la urgencia es emergencia.
+ * Escucha `service_request.created` (emitido por el writer canónico de
+ * servicios_hogar, tanto para IA como para altas manuales) y notifica a los
+ * humanos cuando la urgencia es emergencia.
  *
  * Hasta ahora el evento se emitía al vacío: una fuga de gas creaba el request y
  * ningún humano recibía aviso — ni email, ni inbox. La única escalación real era
@@ -52,11 +62,15 @@ export class ServiceRequestListener {
             });
             if (recipients.length === 0) return;
 
+            const address = [req.address, req.city]
+                .filter(Boolean)
+                .map((value) => escapeHtml(value))
+                .join(', ') || 'sin dirección';
             const detalle = [
-                `Servicio: ${req.service_type || '—'}`,
-                `Cliente: ${req.customer_name || 'sin nombre'} · ${req.customer_phone || 'sin teléfono'}`,
-                `Dirección: ${[req.address, req.city].filter(Boolean).join(', ') || 'sin dirección'}`,
-                `Problema: ${req.issue_description || '—'}`,
+                `Servicio: ${escapeHtml(req.service_type || '—')}`,
+                `Cliente: ${escapeHtml(req.customer_name || 'sin nombre')} · ${escapeHtml(req.customer_phone || 'sin teléfono')}`,
+                `Dirección: ${address}`,
+                `Problema: ${escapeHtml(req.issue_description || '—')}`,
             ].join('<br>');
 
             // Fire-and-forget por destinatario: un SMTP flojo no debe frenar el turno.

@@ -182,14 +182,15 @@ describe('tenant-native pipeline stage resolver', () => {
         expect(txQueries.some((query) => query.includes('WHERE d.contact_id'))).toBe(false);
     });
 
-    it('moves the exact linked opportunity with the canonical slug in one transaction', async () => {
+    it('moves the exact linked opportunity with the canonical slug atomically after ownership migration', async () => {
         const tenantId = '11111111-1111-4111-8111-111111111111';
         const dealId = '22222222-2222-4222-8222-222222222222';
         const opportunityId = '33333333-3333-4333-8333-333333333333';
         const leadId = '44444444-4444-4444-8444-444444444444';
+        const pipelineId = '77777777-7777-4777-8777-777777777777';
         const currentStageId = '55555555-5555-4555-8555-555555555555';
         const targetStageId = '66666666-6666-4666-8666-666666666666';
-        const txCalls: Array<{ query: string; params: unknown[] }> = [];
+        const transactions: Array<Array<{ query: string; params: unknown[] }>> = [];
         const prisma: any = {
             executeInTenantSchema: jest.fn(async (_schema: string, query: string) => {
                 if (query.includes('SELECT id FROM pipeline_stages')) return [{ id: targetStageId }];
@@ -206,23 +207,47 @@ describe('tenant-native pipeline stage resolver', () => {
                 }
                 return [];
             }),
-            transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => callback(
-                async (query: string, params: unknown[] = []) => {
+            transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => {
+                const txCalls: Array<{ query: string; params: unknown[] }> = [];
+                transactions.push(txCalls);
+                return callback(async (query: string, params: unknown[] = []) => {
                     txCalls.push({ query, params });
-                    if (query.includes('FROM deals d')) {
+                    if (query.includes('SELECT id FROM pipelines') && query.includes('is_default = true')) {
+                        return [{ id: pipelineId }];
+                    }
+                    if (query.includes('AS has_orphans')) {
+                        return [{ has_orphans: false, has_owned_duplicates: false }];
+                    }
+                    if (query.includes('FROM deals d') && query.includes('WHERE d.id = $1::uuid')) {
                         return [{
                             stage_id: currentStageId,
+                            deal_pipeline_id: pipelineId,
+                            stage_pipeline_id: pipelineId,
                             current_is_terminal: false,
                             current_terminal_outcome: null,
                             current_slug: 'contactado',
+                        }];
+                    }
+                    if (query.includes('FROM pipeline_stages') && query.includes('ORDER BY position ASC')) {
+                        return [{
+                            id: targetStageId,
+                            pipeline_id: pipelineId,
+                            name: 'Listo para cierre',
+                            slug: 'listo_para_cierre',
+                            position: 1,
+                            is_terminal: false,
+                            terminal_outcome: null,
+                            sla_hours: 24,
+                            transition_rules: [],
+                            prob: 95,
                         }];
                     }
                     if (query.includes('FROM opportunities')) {
                         return [{ id: opportunityId, lead_id: leadId, stage: 'contactado' }];
                     }
                     return [];
-                },
-            )),
+                });
+            }),
         };
         const redis: any = { get: jest.fn().mockResolvedValue('tenant_contract') };
         const emitter = { emit: jest.fn() };
@@ -230,18 +255,20 @@ describe('tenant-native pipeline stage resolver', () => {
 
         await service.moveToStage(tenantId, dealId, targetStageId);
 
-        expect(prisma.transactionInTenantSchema).toHaveBeenCalledTimes(1);
-        const exactLookup = txCalls.find(({ query }) => query.includes('FROM opportunities'));
+        expect(prisma.transactionInTenantSchema).toHaveBeenCalledTimes(2);
+        const moveCalls = transactions.at(-1)!;
+        const exactLookup = moveCalls.find(({ query }) => query.includes('FROM opportunities'));
         expect(exactLookup?.query).toContain('WHERE deal_id = $1::uuid');
         expect(exactLookup?.query).not.toContain('contact_id');
-        const opportunityWrite = txCalls.find(({ query }) => query.includes('UPDATE opportunities'));
+        const opportunityWrite = moveCalls.find(({ query }) => query.includes('UPDATE opportunities'));
         expect(opportunityWrite?.params).toEqual(['listo_para_cierre', opportunityId]);
-        expect(txCalls.some(({ query }) => query.includes('INSERT INTO stage_history'))).toBe(true);
-        expect(txCalls.some(({ query }) => query.includes('INSERT INTO stage_transitions'))).toBe(true);
+        expect(moveCalls.some(({ query }) => query.includes('INSERT INTO stage_history'))).toBe(true);
+        expect(moveCalls.some(({ query }) => query.includes('INSERT INTO stage_transitions'))).toBe(true);
         expect(emitter.emit).toHaveBeenCalledTimes(1);
     });
 
     it('does not emit a stage event when the atomic history write fails', async () => {
+        const pipelineId = '77777777-7777-4777-8777-777777777777';
         const targetStageId = '66666666-6666-4666-8666-666666666666';
         const prisma: any = {
             executeInTenantSchema: jest.fn(async (_schema: string, query: string) => {
@@ -260,8 +287,33 @@ describe('tenant-native pipeline stage resolver', () => {
             }),
             transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => callback(
                 async (query: string) => {
-                    if (query.includes('FROM deals d')) {
-                        return [{ stage_id: '55555555-5555-4555-8555-555555555555', current_is_terminal: false }];
+                    if (query.includes('SELECT id FROM pipelines') && query.includes('is_default = true')) {
+                        return [{ id: pipelineId }];
+                    }
+                    if (query.includes('AS has_orphans')) {
+                        return [{ has_orphans: false, has_owned_duplicates: false }];
+                    }
+                    if (query.includes('FROM deals d') && query.includes('WHERE d.id = $1::uuid')) {
+                        return [{
+                            stage_id: '55555555-5555-4555-8555-555555555555',
+                            deal_pipeline_id: pipelineId,
+                            stage_pipeline_id: pipelineId,
+                            current_is_terminal: false,
+                        }];
+                    }
+                    if (query.includes('FROM pipeline_stages') && query.includes('ORDER BY position ASC')) {
+                        return [{
+                            id: targetStageId,
+                            pipeline_id: pipelineId,
+                            name: 'Listo para cierre',
+                            slug: 'listo_para_cierre',
+                            position: 1,
+                            default_probability: 95,
+                            prob: 95,
+                            is_terminal: false,
+                            terminal_outcome: null,
+                            transition_rules: [],
+                        }];
                     }
                     if (query.includes('FROM opportunities')) {
                         return [{

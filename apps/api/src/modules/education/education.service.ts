@@ -4,6 +4,10 @@ import {
     normalizeCurrencyCode,
     optionalPositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import {
+    assertOptionalContactId,
+    requireTenantContact,
+} from '../../common/utils/tenant-contact.util';
 
 /**
  * Education service — courses, cohorts, enrollments, placement tests.
@@ -230,58 +234,44 @@ export class EducationService {
         if (!data.cohortId || !data.studentName) {
             throw new BadRequestException('cohortId and studentName are required');
         }
+        const contactId = assertOptionalContactId(data.contactId);
 
-        const cohortRows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName, `SELECT * FROM course_cohorts WHERE id = $1::uuid`, [data.cohortId],
-        );
-        const cohort = cohortRows[0];
-        if (!cohort) throw new BadRequestException('Cohort not found');
-        if (cohort.status !== 'open') throw new BadRequestException(`Cohort is ${cohort.status}, not open`);
-        if (cohort.available_seats <= 0) throw new BadRequestException('Cohort is full');
+        // Contact ownership, capacity claim and enrollment commit together.
+        // A foreign contact or a failed INSERT cannot consume a cohort seat.
+        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            await requireTenantContact(query, contactId);
+            const cohortRows = await query<any[]>(
+                `SELECT * FROM course_cohorts WHERE id = $1::uuid FOR UPDATE`,
+                [data.cohortId],
+            );
+            const cohort = cohortRows[0];
+            if (!cohort) throw new BadRequestException('Cohort not found');
+            if (cohort.status !== 'open') {
+                throw new BadRequestException(`Cohort is ${cohort.status}, not open`);
+            }
+            if (cohort.available_seats <= 0) throw new BadRequestException('Cohort is full');
 
-        // Se toma el asiento PRIMERO y de forma atomica. El chequeo de arriba
-        // (available_seats <= 0) es solo un atajo con mensaje lindo: entre ese
-        // SELECT y el INSERT puede entrar otra inscripcion. Antes el UPDATE
-        // corria DESPUES del INSERT y su resultado se descartaba, asi que dos
-        // alumnos que tomaban el ultimo asiento a la vez quedaban los dos
-        // inscritos en una cohorte de capacidad 1. PgBouncer corre en
-        // transaction mode: no hay transaccion multi-sentencia, la unica
-        // atomicidad es un UPDATE guardado del que hay que MIRAR el resultado.
-        const claimed = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `UPDATE course_cohorts SET available_seats = available_seats - 1,
-                status = CASE WHEN available_seats - 1 <= 0 THEN 'full' ELSE status END
-             WHERE id = $1::uuid AND available_seats > 0
-             RETURNING id`,
-            [data.cohortId],
-        );
-        if (!claimed.length) throw new BadRequestException('Cohort is full');
+            const claimed = await query<any[]>(
+                `UPDATE course_cohorts SET available_seats = available_seats - 1,
+                    status = CASE WHEN available_seats - 1 <= 0 THEN 'full' ELSE status END
+                 WHERE id = $1::uuid AND available_seats > 0
+                 RETURNING id`,
+                [data.cohortId],
+            );
+            if (!claimed.length) throw new BadRequestException('Cohort is full');
 
-        try {
-            const enrollRows = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
+            const enrollRows = await query<any[]>(
                 `INSERT INTO enrollments (
                     cohort_id, course_id, contact_id, student_name, student_email, student_phone
                  ) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6)
                  RETURNING *`,
                 [
-                    data.cohortId, cohort.course_id, data.contactId || null,
+                    data.cohortId, cohort.course_id, contactId,
                     data.studentName, data.studentEmail || null, data.studentPhone || null,
                 ],
             );
             return enrollRows[0];
-        } catch (e) {
-            // Compensacion: el asiento esta tomado y la inscripcion no existe.
-            // Espejo exacto del claim, incluida la vuelta de 'full' a 'open'.
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE course_cohorts SET available_seats = available_seats + 1,
-                    status = CASE WHEN status = 'full' THEN 'open' ELSE status END
-                 WHERE id = $1::uuid`,
-                [data.cohortId],
-            ).catch(() => {});
-            throw e;
-        }
+        });
     }
 
     async updateEnrollment(schemaName: string, id: string, data: any): Promise<any> {

@@ -8,9 +8,9 @@ function petServicesSettings() {
     return {
         verticalConfig: {
             industry: 'pet_services',
-            subType: 'hotel',
+            subType: 'peluqueria',
             bookingEnabled: true,
-            manifestVersion: 1,
+            manifestVersion: 2,
             effectiveCapabilities: [
                 'crm_pipeline', 'faq_search', 'appointment_booking',
                 'pet_records', 'pet_services',

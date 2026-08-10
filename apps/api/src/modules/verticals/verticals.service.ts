@@ -25,8 +25,11 @@ import {
     tenantLifecycleLockKey,
     tenantPurgingFenceKey,
 } from '../../common/utils/tenant-lifecycle.util';
+import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
+import { withResolvedVerticalPipeline } from './vertical-pipeline-contract';
+import { reconcileVerticalSubtypePersonaRules } from '../persona/vertical-subtype-persona-contract';
 
-export const VERTICAL_PROVISIONING_VERSION = 1;
+export const VERTICAL_PROVISIONING_VERSION = 2;
 
 type VerticalProvisioningStatus = 'pending' | 'complete' | 'failed';
 type VerticalProvisioningStep =
@@ -60,6 +63,8 @@ export interface VerticalProvisioningState {
     completedAt?: string;
     currentStep?: VerticalProvisioningStep;
     completedSteps: VerticalProvisioningStep[];
+    /** Last manifest whose full provisioning completed and is safe to serve. */
+    publishedManifestVersion?: number;
     quotaPolicy?: VerticalProvisioningQuotaPolicy;
     failure?: { step: VerticalProvisioningStep; message: string; at: string };
     invariants?: VerticalProvisioningInvariants;
@@ -73,6 +78,8 @@ interface VerticalProvisioningInvariants {
     activeAgents: number;
     requiredTools: string[];
 }
+
+type TenantQueryExecutor = <T = any[]>(sql: string, params?: any[]) => Promise<T>;
 
 export interface QuotaAwareVerticalDefaults {
     pipelineStages: VerticalStageDefinition[];
@@ -162,6 +169,8 @@ export function selectQuotaAwareVerticalDefaults(
 interface SubtypeBootstrap {
     /** El sub-tipo no agenda: ni servicios ni horarios semanales. */
     skipAgenda?: boolean;
+    /** Seed a domain service catalogue without enabling fixed appointment slots. */
+    seedServicesWithoutAgenda?: boolean;
     /** Atiende 24×7 (guardia, urgencias): los horarios semanales no aplican. */
     roundTheClock?: boolean;
     /** Herramientas extra que su industria no enciende por defecto. */
@@ -210,14 +219,64 @@ const SUBTYPE_BOOTSTRAP_BY_INDUSTRY: Record<string, Record<string, SubtypeBootst
     },
     restaurantes: {
         // Sin salón no hay mesa que reservar.
+        comida_rapida: { skipAgenda: true },
         dark_kitchen: { skipAgenda: true },
         delivery: { skipAgenda: true },
     },
+    automotriz: {
+        // Parts use inventory/orders. Vehicle hire uses date ranges; neither
+        // belongs in the fixed-slot appointment engine.
+        repuestos: { skipAgenda: true, extraTools: ['catalog'] },
+        alquiler: { skipAgenda: true },
+    },
     turismo: {
+        // Tours and travel packages use tour_bookings, not fixed appointment
+        // slots. Hotels/rentals use property_bookings by date range.
+        agencia_viajes: { skipAgenda: true },
+        tours: { skipAgenda: true },
         // El alojamiento reserva noches contra `properties`, no franjas de
         // cuatro horas contra `services`.
         hotel: { skipAgenda: true },
         alquiler_vacacional: { skipAgenda: true },
+    },
+    servicios_hogar: {
+        // Field jobs are dispatched through service_requests (urgency,
+        // address, technician and lifecycle), never through generic citas.
+        plomeria: { skipAgenda: true },
+        electricidad: { skipAgenda: true },
+        fumigacion: { skipAgenda: true },
+        limpieza: { skipAgenda: true },
+        jardineria: { skipAgenda: true },
+        cerrajeria: { skipAgenda: true },
+        pintura: { skipAgenda: true },
+    },
+    pet_services: {
+        guarderia: {
+            skipAgenda: true,
+            seedServicesWithoutAgenda: true,
+            services: [{
+                name: { es: 'Guardería diurna', en: 'Day care', pt: 'Creche diária', fr: 'Garderie journée' },
+                description: { es: 'Estancia 8-10h con socialización', en: '8-10h stay with socialization', pt: 'Permanência 8-10h', fr: 'Séjour 8-10h' },
+                durationMinutes: 480,
+                price: 50000,
+                currency: 'COP',
+                category: 'guarderia',
+                durationType: 'open',
+            }],
+        },
+        hotel: {
+            skipAgenda: true,
+            seedServicesWithoutAgenda: true,
+            services: [{
+                name: { es: 'Hotel — noche', en: 'Hotel — overnight', pt: 'Hotel — diária', fr: 'Hôtel — nuit' },
+                description: { es: 'Pernocta con alimentación incluida', en: 'Overnight stay with food', pt: 'Pernoite com alimentação', fr: 'Nuit avec nourriture' },
+                durationMinutes: 1440,
+                price: 80000,
+                currency: 'COP',
+                category: 'hotel',
+                durationType: 'open',
+            }],
+        },
     },
     servicios_profesionales: {
         // Los precios son una base editable; el valor del preset es que el
@@ -245,6 +304,7 @@ const SUBTYPE_BOOTSTRAP_BY_INDUSTRY: Record<string, Record<string, SubtypeBootst
         // `abogados` usa correctamente los servicios genéricos de la vertical.
     },
     technology: {
+        hardware: { skipAgenda: true, extraTools: ['catalog'] },
         // Desarrollo y consultoría no "demuestran" nada: relevan.
         desarrollo: {
             services: [
@@ -288,6 +348,8 @@ function resolveSubtypeBootstrap(industry: string, subType?: string | null): Sub
 
 export interface VerticalAgendaSeedContract {
     agendaAllowed: boolean;
+    /** Services may back a range/capacity engine without fixed appointments. */
+    serviceCatalogAllowed: boolean;
     /** Exact service rows selected before plan quota filtering. */
     services: VerticalServiceDefinition[];
     /** `services.duration_minutes` is always expressed in minutes. */
@@ -308,6 +370,9 @@ export function resolveVerticalAgendaSeedContract(
     const bootstrapMode = resolveSubtypeBootstrap(definition.industry, subType);
     return {
         agendaAllowed: definition.bookingEnabled && !bootstrapMode?.skipAgenda,
+        serviceCatalogAllowed:
+            (definition.bookingEnabled && !bootstrapMode?.skipAgenda)
+            || bootstrapMode?.seedServicesWithoutAgenda === true,
         services: bootstrapMode?.services?.length ? bootstrapMode.services : definition.services,
         durationUnit: 'minutes',
         currencySource: 'vertical_definition',
@@ -363,7 +428,10 @@ export class VerticalsService {
         lang: string,
         options?: { assertLifecycleOwned?: () => Promise<void> },
     ): Promise<void> {
-        const definition = getVerticalDefinition(industry);
+        const definition = withResolvedVerticalPipeline(
+            getVerticalDefinition(industry),
+            subType,
+        );
         // Resolve up front so an unknown industry/subtype cannot be provisioned
         // with an operational profile that differs from the canonical catalog.
         const capabilityManifest = this.resolveCapabilityManifest(industry, subType);
@@ -426,128 +494,210 @@ export class VerticalsService {
         };
 
         let state: VerticalProvisioningState | null = null;
+        let previouslyPublishedManifestVersion: number | undefined;
         try {
             this.logger.log(`Provisioning vertical "${industry}" (sub: ${subType || 'none'}) for tenant ${tenantId}`);
             const schemaName = await this.prisma.getTenantSchemaName(tenantId);
             const plan = await this.throttle.getTenantPlan(tenantId);
             const features = await this.throttle.getPlanFeatures(tenantId);
-            const limits = {
-                pipelineStages: assertQuotaValue(features.pipelineStages, 'pipelineStages'),
-                appointmentServices: assertQuotaValue(features.appointmentsServices, 'appointmentsServices'),
-            };
             const bootstrapMode = resolveSubtypeBootstrap(industry, subType);
             const agendaSeed = resolveVerticalAgendaSeedContract(definition, subType);
             const agendaAllowed = agendaSeed.agendaAllowed;
             const candidateServices = agendaSeed.services;
-            const quotaEligibleServices = agendaAllowed ? candidateServices : [];
+            const quotaEligibleServices = agendaSeed.serviceCatalogAllowed ? candidateServices : [];
+            const limits = {
+                pipelineStages: assertQuotaValue(features.pipelineStages, 'pipelineStages'),
+                // Specialized engines do not consume appointment-service
+                // quota. Historical/custom service rows remain preserved, but
+                // cannot block a tour/property/order/service-request retry.
+                appointmentServices: agendaAllowed
+                    ? assertQuotaValue(features.appointmentsServices, 'appointmentsServices')
+                    : -1,
+            };
 
             state = await this.initializeProvisioningState(
                 tenantId, industry, subType, l, plan, limits, assertLockOwned,
             );
+            previouslyPublishedManifestVersion = state.publishedManifestVersion;
 
-            let usage = await this.readQuotaUsage(schemaName);
-            if (state.status === 'complete' && state.quotaPolicy) {
-                try {
-                    const selectedStages = definition.pipeline.stages.filter((stage) =>
-                        state!.quotaPolicy!.selectedStageSlugs.includes(stage.slug));
-                    const selectedServices = quotaEligibleServices.filter((_service, index) =>
-                        state!.quotaPolicy!.selectedServiceIndexes.includes(index));
-                    const effectiveBooking = agendaAllowed && (usage.serviceNames.length > 0 || selectedServices.length > 0);
-                    state.invariants = await this.assertProvisioningInvariants(
-                        tenantId, schemaName, definition, subType, l, state.quotaPolicy,
-                        selectedStages, selectedServices, effectiveBooking,
+            const provisioningState = state;
+            let completedSummary = { stages: 0, services: 0 };
+            let alreadyComplete = false;
+            await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+                let usage = await this.readQuotaUsage(tenantId, schemaName, query);
+                if (provisioningState.status === 'complete' && provisioningState.quotaPolicy) {
+                    try {
+                        const selectedStages = definition.pipeline.stages.filter((stage) =>
+                            provisioningState.quotaPolicy!.selectedStageSlugs.includes(stage.slug));
+                        const selectedServices = quotaEligibleServices.filter((_service, index) =>
+                            provisioningState.quotaPolicy!.selectedServiceIndexes.includes(index));
+                        const effectiveBooking = agendaAllowed
+                            && (usage.serviceNames.length > 0 || selectedServices.length > 0);
+                        const verifiedConfig: TenantVerticalConfig = {
+                            industry,
+                            subType,
+                            terminology: definition.terminology,
+                            sidebar: definition.sidebar,
+                            dashboard: definition.dashboard,
+                            bookingEnabled: effectiveBooking,
+                        };
+                        provisioningState.invariants = await this.assertProvisioningInvariants(
+                            tenantId, schemaName, definition, subType, l, provisioningState.quotaPolicy,
+                            selectedStages, selectedServices, effectiveBooking, verifiedConfig, query,
+                        );
+                        provisioningState.publishedManifestVersion = capabilityManifest.manifestVersion;
+                        provisioningState.updatedAt = new Date().toISOString();
+                        await this.completeProvisioningAndPromoteConfig(
+                            tenantId,
+                            provisioningState,
+                            this.withCurrentCapabilityManifest(verifiedConfig),
+                            assertLockOwned,
+                            query,
+                        );
+                        completedSummary = {
+                            stages: selectedStages.length,
+                            services: selectedServices.length,
+                        };
+                        alreadyComplete = true;
+                        return;
+                    } catch (error: any) {
+                        this.logger.warn(`Completed vertical provisioning failed re-verification; rebuilding: ${error.message}`);
+                        provisioningState.status = 'pending';
+                        provisioningState.completedSteps = [];
+                        delete provisioningState.completedAt;
+                        delete provisioningState.invariants;
+                    }
+                }
+
+                await this.runProvisioningStep(provisioningState, 'quota_plan', assertLockOwned, async () => {
+                    usage = await this.readQuotaUsage(tenantId, schemaName, query);
+                    const selected = selectQuotaAwareVerticalDefaults(
+                        definition,
+                        quotaEligibleServices,
+                        limits,
+                        usage,
                     );
-                    await this.persistProvisioningState(tenantId, state, assertLockOwned);
-                    this.logger.log(`Vertical provisioning already complete and verified for tenant ${tenantId}`);
-                    return;
-                } catch (error: any) {
-                    this.logger.warn(`Completed vertical provisioning failed re-verification; rebuilding: ${error.message}`);
-                    state.status = 'pending';
-                    state.completedSteps = [];
-                    delete state.completedAt;
-                    delete state.invariants;
-                    await this.persistProvisioningState(tenantId, state, assertLockOwned);
-                }
-            }
+                    provisioningState.quotaPolicy = {
+                        ...limits,
+                        selectedStageSlugs: selected.pipelineStages.map((stage) => stage.slug),
+                        selectedServiceIndexes: selected.services.map(
+                            (service) => quotaEligibleServices.indexOf(service),
+                        ),
+                    };
+                });
 
-            await this.runProvisioningStep(tenantId, state, 'quota_plan', assertLockOwned, async () => {
-                usage = await this.readQuotaUsage(schemaName);
-                const selected = selectQuotaAwareVerticalDefaults(definition, quotaEligibleServices, limits, usage);
-                state!.quotaPolicy = {
-                    ...limits,
-                    selectedStageSlugs: selected.pipelineStages.map((stage) => stage.slug),
-                    selectedServiceIndexes: selected.services.map((service) => quotaEligibleServices.indexOf(service)),
+                if (!provisioningState.quotaPolicy) throw new Error('Vertical quota plan was not resolved');
+                const selectedStages = definition.pipeline.stages.filter((stage) =>
+                    provisioningState.quotaPolicy!.selectedStageSlugs.includes(stage.slug));
+                const selectedServices = quotaEligibleServices.filter((_service, index) =>
+                    provisioningState.quotaPolicy!.selectedServiceIndexes.includes(index));
+                usage = await this.readQuotaUsage(tenantId, schemaName, query);
+                const effectiveBooking = agendaAllowed
+                    && (usage.serviceNames.length > 0 || selectedServices.length > 0);
+                const provisionalConfig: TenantVerticalConfig = {
+                    industry,
+                    subType,
+                    terminology: definition.terminology,
+                    sidebar: definition.sidebar,
+                    dashboard: definition.dashboard,
+                    bookingEnabled: effectiveBooking,
                 };
-            });
+                const promotedConfig: TenantVerticalConfig = {
+                    ...provisionalConfig,
+                    manifestVersion: capabilityManifest.manifestVersion,
+                    effectiveCapabilities: this.getEffectiveCapabilities(
+                        capabilityManifest,
+                        effectiveBooking,
+                    ),
+                };
 
-            if (!state.quotaPolicy) throw new Error('Vertical quota plan was not persisted');
-            const selectedStages = definition.pipeline.stages.filter((stage) =>
-                state!.quotaPolicy!.selectedStageSlugs.includes(stage.slug));
-            const selectedServices = quotaEligibleServices.filter((_service, index) =>
-                state!.quotaPolicy!.selectedServiceIndexes.includes(index));
-            usage = await this.readQuotaUsage(schemaName);
-            const effectiveBooking = agendaAllowed && (usage.serviceNames.length > 0 || selectedServices.length > 0);
-
-            await this.runProvisioningStep(tenantId, state, 'pipeline', assertLockOwned, () =>
-                this.seedPipelineStages(
-                    tenantId,
-                    schemaName,
-                    { ...definition, pipeline: { stages: selectedStages } },
-                    l,
-                ));
-            await this.runProvisioningStep(tenantId, state, 'persona', assertLockOwned, () =>
-                this.patchDefaultAgent(schemaName, definition, l));
-            await this.runProvisioningStep(tenantId, state, 'knowledge', assertLockOwned, async () => {
-                await this.seedFaqs(schemaName, definition, l);
-                await this.enableSimpleTool(schemaName, 'faqs');
-            });
-            await this.runProvisioningStep(tenantId, state, 'agenda', assertLockOwned, async () => {
-                if (selectedServices.length > 0) {
-                    await this.seedServices(schemaName, { ...definition, services: selectedServices }, l);
-                }
-                if (effectiveBooking) {
-                    await this.seedAvailability(tenantId, schemaName, definition, bootstrapMode?.roundTheClock);
-                }
-                await this.restoreAppointmentsTool(schemaName, effectiveBooking);
-            });
-            await this.runProvisioningStep(tenantId, state, 'vertical_tools', assertLockOwned, () =>
-                this.seedVerticalTools(tenantId, schemaName, industry, subType, l, bootstrapMode));
-            await this.runProvisioningStep(tenantId, state, 'config', assertLockOwned, () =>
-                this.persistResolvedVerticalConfig(
-                    tenantId,
-                    {
+                await this.runProvisioningStep(provisioningState, 'pipeline', assertLockOwned, () =>
+                    this.seedPipelineStages(
+                        tenantId,
+                        schemaName,
+                        { ...definition, pipeline: { stages: selectedStages } },
+                        l,
+                        query,
+                    ));
+                await this.runProvisioningStep(provisioningState, 'persona', assertLockOwned, () =>
+                    this.patchDefaultAgent(schemaName, definition, subType, l, query));
+                await this.runProvisioningStep(provisioningState, 'knowledge', assertLockOwned, async () => {
+                    await this.seedFaqs(schemaName, definition, l, query);
+                    await this.enableSimpleTool(schemaName, 'faqs', query);
+                });
+                await this.runProvisioningStep(provisioningState, 'agenda', assertLockOwned, async () => {
+                    if (selectedServices.length > 0) {
+                        await this.seedServices(
+                            schemaName,
+                            { ...definition, services: selectedServices },
+                            l,
+                            query,
+                        );
+                    }
+                    if (effectiveBooking) {
+                        await this.seedAvailability(
+                            tenantId,
+                            schemaName,
+                            definition,
+                            bootstrapMode?.roundTheClock,
+                            query,
+                        );
+                    }
+                    await this.restoreAppointmentsTool(schemaName, effectiveBooking, query);
+                });
+                await this.runProvisioningStep(provisioningState, 'vertical_tools', assertLockOwned, () =>
+                    this.seedVerticalTools(
+                        tenantId,
+                        schemaName,
                         industry,
                         subType,
-                        terminology: definition.terminology,
-                        sidebar: definition.sidebar,
-                        dashboard: definition.dashboard,
-                        bookingEnabled: effectiveBooking,
-                        manifestVersion: capabilityManifest.manifestVersion,
-                        effectiveCapabilities: this.getEffectiveCapabilities(
-                            capabilityManifest,
-                            effectiveBooking,
-                        ),
-                    },
+                        l,
+                        bootstrapMode,
+                        query,
+                    ));
+                await this.runProvisioningStep(
+                    provisioningState,
+                    'config',
                     assertLockOwned,
-                ));
-            await this.runProvisioningStep(tenantId, state, 'cache', assertLockOwned, () =>
-                this.invalidateRuntimeCaches(tenantId));
-            await this.runProvisioningStep(tenantId, state, 'invariants', assertLockOwned, async () => {
-                state!.invariants = await this.assertProvisioningInvariants(
-                    tenantId, schemaName, definition, subType, l, state!.quotaPolicy!,
-                    selectedStages, selectedServices, effectiveBooking,
+                    async () => undefined,
                 );
-            });
+                await this.runProvisioningStep(provisioningState, 'invariants', assertLockOwned, async () => {
+                    provisioningState.invariants = await this.assertProvisioningInvariants(
+                        tenantId, schemaName, definition, subType, l, provisioningState.quotaPolicy!,
+                        selectedStages, selectedServices, effectiveBooking, provisionalConfig, query,
+                    );
+                });
 
-            state.status = 'complete';
-            state.completedAt = new Date().toISOString();
-            state.updatedAt = state.completedAt;
-            delete state.failure;
-            await this.persistProvisioningState(tenantId, state, assertLockOwned);
+                provisioningState.status = 'complete';
+                provisioningState.publishedManifestVersion = capabilityManifest.manifestVersion;
+                provisioningState.completedAt = new Date().toISOString();
+                provisioningState.updatedAt = provisioningState.completedAt;
+                delete provisioningState.failure;
+                await this.completeProvisioningAndPromoteConfig(
+                    tenantId,
+                    provisioningState,
+                    promotedConfig,
+                    assertLockOwned,
+                    query,
+                );
+                completedSummary = {
+                    stages: selectedStages.length,
+                    services: selectedServices.length,
+                };
+            }, { timeout: 90_000 });
+
+            // Cache invalidation is deliberately post-commit. A failed
+            // transaction leaves all previously published cache entries valid.
+            await this.invalidateRuntimeCaches(tenantId).catch((error: any) =>
+                this.logger.warn(`Post-commit vertical cache invalidation failed: ${error.message}`));
+            if (alreadyComplete) {
+                this.logger.log(`Vertical provisioning already complete and verified for tenant ${tenantId}`);
+                return;
+            }
             this.logger.log(
                 `Vertical provisioning complete for tenant ${tenantId}: ` +
-                `${selectedStages.length}/${limits.pipelineStages} stages, ` +
-                `${selectedServices.length}/${limits.appointmentServices} services`,
+                `${completedSummary.stages}/${limits.pipelineStages} stages, ` +
+                `${completedSummary.services}/${limits.appointmentServices} services`,
             );
         } catch (error: any) {
             if (error instanceof LockOwnershipLostError || lease.hasLostOwnership() || lifecycleLease?.hasLostOwnership()) {
@@ -557,11 +707,17 @@ export class VerticalsService {
                     tenantId,
                 });
             }
-            if (state && state.status !== 'failed') {
-                const step = state.currentStep || 'invariants';
+            if (state) {
+                const step = state.failure?.step || state.currentStep || 'invariants';
+                const at = new Date().toISOString();
                 state.status = 'failed';
-                state.failure = { step, message: error?.message || String(error), at: new Date().toISOString() };
-                state.updatedAt = state.failure.at;
+                state.completedSteps = [];
+                state.currentStep = undefined;
+                state.publishedManifestVersion = previouslyPublishedManifestVersion;
+                delete state.completedAt;
+                delete state.invariants;
+                state.failure = { step, message: error?.message || String(error), at };
+                state.updatedAt = at;
                 try {
                     await this.persistProvisioningState(tenantId, state, assertLockOwned);
                 } catch (persistError: any) {
@@ -601,6 +757,14 @@ export class VerticalsService {
         });
         if (!tenant) throw new Error(`Tenant ${tenantId} not found while provisioning vertical`);
         const existing = ((tenant.settings as any) || {}).verticalProvisioning as VerticalProvisioningState | undefined;
+        const publishedConfig = ((tenant.settings as any) || {}).verticalConfig as
+            TenantVerticalConfig | undefined;
+        const verifiedPreviousManifestVersion = existing?.status === 'complete'
+            && typeof publishedConfig?.manifestVersion === 'number'
+            && publishedConfig.manifestVersion < VERTICAL_CAPABILITY_MANIFEST_VERSION
+            && Array.isArray(publishedConfig.effectiveCapabilities)
+            ? publishedConfig.manifestVersion
+            : undefined;
         const sameIdentity = existing
             && existing.version === VERTICAL_PROVISIONING_VERSION
             && existing.industry === industry
@@ -627,7 +791,9 @@ export class VerticalsService {
                 // del agente pudo haber tragado un INSERT fallido). Reejecutar los
                 // pasos idempotentes es la reparación segura; conservarlos como
                 // completos dejaría el retry fallando para siempre.
-                completedSteps: resetAfterInvariantFailure ? [] : existing.completedSteps,
+                completedSteps: existing.status === 'complete' && !resetAfterInvariantFailure
+                    ? existing.completedSteps
+                    : [],
             }
             : {
                 version: VERTICAL_PROVISIONING_VERSION,
@@ -640,6 +806,7 @@ export class VerticalsService {
                 startedAt: now,
                 updatedAt: now,
                 completedSteps: [],
+                publishedManifestVersion: verifiedPreviousManifestVersion,
             };
         await this.persistProvisioningState(tenantId, state, assertLockOwned);
         return state;
@@ -656,19 +823,45 @@ export class VerticalsService {
         });
     }
 
-    private async runProvisioningStep(
+    private async completeProvisioningAndPromoteConfig(
         tenantId: string,
+        state: VerticalProvisioningState,
+        config: TenantVerticalConfig,
+        assertLockOwned: () => Promise<void>,
+        executor: TenantQueryExecutor,
+    ): Promise<void> {
+        await assertLockOwned();
+        const promoted = await executor<Array<{ id: string }>>(
+            `UPDATE public.tenants
+                SET settings = COALESCE(settings, '{}'::jsonb) || $2::jsonb,
+                    updated_at = NOW()
+              WHERE id = $1::uuid
+              RETURNING id`,
+            [
+                tenantId,
+                JSON.stringify({
+                    verticalProvisioning: state,
+                    verticalConfig: config,
+                    verticalConfigPending: null,
+                    subType: config.subType,
+                }),
+            ],
+        );
+        if (promoted.length !== 1) {
+            throw new Error(`Tenant ${tenantId} not found while promoting vertical provisioning`);
+        }
+    }
+
+    private async runProvisioningStep(
         state: VerticalProvisioningState,
         step: VerticalProvisioningStep,
         assertLockOwned: () => Promise<void>,
         run: () => Promise<void>,
     ): Promise<void> {
-        if (state.completedSteps.includes(step)) return;
         state.status = 'pending';
         state.currentStep = step;
         state.updatedAt = new Date().toISOString();
         delete state.failure;
-        await this.persistProvisioningState(tenantId, state, assertLockOwned);
         try {
             await assertLockOwned();
             await run();
@@ -676,51 +869,41 @@ export class VerticalsService {
             state.completedSteps = [...state.completedSteps, step];
             state.currentStep = undefined;
             state.updatedAt = new Date().toISOString();
-            await this.persistProvisioningState(tenantId, state, assertLockOwned);
         } catch (error: any) {
             if (error instanceof LockOwnershipLostError) throw error;
             const at = new Date().toISOString();
             state.status = 'failed';
+            state.completedSteps = [];
             state.currentStep = undefined;
             state.updatedAt = at;
             state.failure = { step, message: error?.message || String(error), at };
-            try {
-                await this.persistProvisioningState(tenantId, state, assertLockOwned);
-            } catch (persistError: any) {
-                this.logger.error(`Could not persist failed provisioning step ${step}: ${persistError.message}`);
-            }
             throw error;
         }
     }
 
     private async readQuotaUsage(
-        schemaName: string,
-    ): Promise<{ stageSlugs: string[]; serviceNames: string[] }> {
-        const [stages, services] = await Promise.all([
-            this.prisma.executeInTenantSchema<Array<{ slug: string }>>(
-                schemaName,
-                `SELECT slug FROM pipeline_stages`,
-            ),
-            this.prisma.executeInTenantSchema<Array<{ name: string }>>(
-                schemaName,
-                `SELECT name FROM services WHERE is_active = true`,
-            ),
-        ]);
-        return {
-            stageSlugs: stages.map((row) => row.slug),
-            serviceNames: services.map((row) => row.name),
-        };
-    }
-
-    private async persistResolvedVerticalConfig(
         tenantId: string,
-        config: TenantVerticalConfig,
-        assertLockOwned: () => Promise<void>,
-    ): Promise<void> {
-        await assertLockOwned();
-        await mergeTenantSettingsAtomic(this.prisma, tenantId, {
-            verticalConfig: config,
-            subType: config.subType,
+        schemaName: string,
+        executor?: TenantQueryExecutor,
+    ): Promise<{ stageSlugs: string[]; serviceNames: string[] }> {
+        return this.withTenantQuery(schemaName, executor, async (query) => {
+            const { pipelineId, repairedDuplicateStages } = await ensurePrimaryPipeline(query, tenantId);
+            if (repairedDuplicateStages > 0) {
+                this.logger.warn(
+                    `Repaired ${repairedDuplicateStages} duplicate bootstrap stage(s) in primary pipeline ${pipelineId}`,
+                );
+            }
+            const stages = await query<Array<{ slug: string }>>(
+                `SELECT slug FROM pipeline_stages WHERE pipeline_id = $1::uuid`,
+                [pipelineId],
+            );
+            const services = await query<Array<{ name: string }>>(
+                `SELECT name FROM services WHERE is_active = true`,
+            );
+            return {
+                stageSlugs: stages.map((row) => row.slug),
+                serviceNames: services.map((row) => row.name),
+            };
         });
     }
 
@@ -731,24 +914,31 @@ export class VerticalsService {
         subType: string | null,
         lang: string,
         bootstrapMode?: SubtypeBootstrap,
+        executor?: TenantQueryExecutor,
     ): Promise<void> {
         for (const tool of bootstrapMode?.extraTools || []) {
-            await this.enableSimpleTool(schemaName, tool);
+            await this.enableSimpleTool(schemaName, tool, executor);
         }
         if (industry === 'turismo' && (subType === 'tours' || subType === 'agencia_viajes')) {
-            await this.seedToursExtras(tenantId, schemaName, lang);
-            await this.enableSimpleTool(schemaName, 'tours');
+            await this.seedToursExtras(tenantId, schemaName, lang, executor);
+            await this.enableSimpleTool(schemaName, 'tours', executor);
         }
         if (industry === 'turismo' && (subType === 'hotel' || subType === 'alquiler_vacacional')) {
-            await this.enableSimpleTool(schemaName, 'properties');
+            await this.enableSimpleTool(schemaName, 'properties', executor);
         }
         if (industry === 'salud' && subType === 'dental') {
-            await this.seedDentalExtras(tenantId, schemaName, lang);
-            await this.enableSimpleTool(schemaName, 'treatments');
+            await this.seedDentalExtras(tenantId, schemaName, lang, executor);
+            await this.enableSimpleTool(schemaName, 'treatments', executor);
         }
         if (industry === 'inmobiliaria') {
-            await this.seedInmobiliariaExtras(tenantId, schemaName, lang);
-            await this.enableSimpleTool(schemaName, 'realEstate');
+            await this.seedInmobiliariaExtras(tenantId, schemaName, lang, executor);
+            await this.enableSimpleTool(schemaName, 'realEstate', executor);
+        }
+        if (industry === 'automotriz' && subType !== 'repuestos') {
+            await this.enableSimpleTool(schemaName, 'vehicles', executor);
+        }
+        if (industry === 'automotriz' && subType === 'repuestos') {
+            await this.disableSimpleTool(schemaName, 'vehicles', executor);
         }
 
         const toolsByIndustry: Record<string, string[]> = {
@@ -763,13 +953,12 @@ export class VerticalsService {
             servicios_profesionales: ['professionalServices'],
             retail: ['catalog'],
             otro: ['catalog'],
-            automotriz: ['vehicles'],
         };
         for (const tool of toolsByIndustry[industry] || []) {
-            await this.enableSimpleTool(schemaName, tool);
+            await this.enableSimpleTool(schemaName, tool, executor);
         }
         if (industry === 'gimnasios') {
-            await this.seedMembershipPlans(schemaName, lang);
+            await this.seedMembershipPlans(schemaName, lang, executor);
         }
     }
 
@@ -785,12 +974,12 @@ export class VerticalsService {
         if (industry === 'turismo' && (subType === 'hotel' || subType === 'alquiler_vacacional')) required.add('properties');
         if (industry === 'salud' && subType === 'dental') required.add('treatments');
         if (industry === 'inmobiliaria') required.add('realEstate');
+        if (industry === 'automotriz' && subType !== 'repuestos') required.add('vehicles');
         const toolsByIndustry: Record<string, string[]> = {
             veterinaria: ['pets'], restaurantes: ['restaurants'], gimnasios: ['gyms'],
             education: ['education'], seguros: ['insurance'], servicios_hogar: ['homeServices'],
             pet_services: ['petServices', 'pets'], fotografia: ['photography'],
             servicios_profesionales: ['professionalServices'], retail: ['catalog'], otro: ['catalog'],
-            automotriz: ['vehicles'],
         };
         for (const tool of toolsByIndustry[industry] || []) required.add(tool);
         return [...required];
@@ -806,32 +995,56 @@ export class VerticalsService {
         selectedStages: VerticalStageDefinition[],
         selectedServices: VerticalServiceDefinition[],
         effectiveBooking: boolean,
+        candidateConfig?: TenantVerticalConfig,
+        executor?: TenantQueryExecutor,
     ): Promise<VerticalProvisioningInvariants> {
-        const [stageRows, serviceRows, countsRows, faqRows, agents, tenant] = await Promise.all([
-            this.prisma.executeInTenantSchema<Array<{ slug: string; terminal_outcome: string | null }>>(
-                schemaName,
-                `SELECT slug, terminal_outcome FROM pipeline_stages`,
-            ),
-            this.prisma.executeInTenantSchema<Array<{ name: string }>>(
-                schemaName,
-                `SELECT name FROM services WHERE is_active = true`,
-            ),
-            this.prisma.executeInTenantSchema<Array<{ slots: number; faqs: number }>>(
-                schemaName,
-                `SELECT
-                    (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true) AS slots,
-                    (SELECT COUNT(*)::int FROM faqs WHERE is_published = true) AS faqs`,
-            ),
-            this.prisma.executeInTenantSchema<Array<{ question: string }>>(
-                schemaName,
-                `SELECT question FROM faqs WHERE is_published = true`,
-            ),
-            this.prisma.executeInTenantSchema<Array<{ config_json: any }>>(
-                schemaName,
-                `SELECT config_json FROM agent_personas WHERE is_active = true`,
-            ),
-            this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } }),
-        ]);
+        if (!executor) {
+            return this.withTenantQuery(schemaName, undefined, (query) =>
+                this.assertProvisioningInvariants(
+                    tenantId,
+                    schemaName,
+                    definition,
+                    subType,
+                    lang,
+                    quota,
+                    selectedStages,
+                    selectedServices,
+                    effectiveBooking,
+                    candidateConfig,
+                    query,
+                ));
+        }
+        const { pipelineId } = await ensurePrimaryPipeline(executor, tenantId);
+        const stageRows = await executor<Array<{
+            slug: string;
+            terminal_outcome: string | null;
+            transition_rules: any[] | null;
+        }>>(
+            `SELECT slug, terminal_outcome, transition_rules
+               FROM pipeline_stages
+              WHERE pipeline_id = $1::uuid`,
+            [pipelineId],
+        );
+        const serviceRows = await executor<Array<{ name: string }>>(
+            `SELECT name FROM services WHERE is_active = true`,
+        );
+        const countsRows = await executor<Array<{ slots: number; faqs: number }>>(
+            `SELECT
+                (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true) AS slots,
+                (SELECT COUNT(*)::int FROM faqs WHERE is_published = true) AS faqs`,
+        );
+        const faqRows = await executor<Array<{ question: string }>>(
+            `SELECT question FROM faqs WHERE is_published = true`,
+        );
+        const agents = await executor<Array<{ config_json: any }>>(
+            `SELECT config_json FROM agent_personas WHERE is_active = true`,
+        );
+        const tenantRows = candidateConfig
+            ? []
+            : await executor<Array<{ settings: any }>>(
+                `SELECT settings FROM public.tenants WHERE id = $1::uuid`,
+                [tenantId],
+            );
         const stageCount = stageRows.length;
         const serviceCount = serviceRows.length;
         if (quota.pipelineStages !== -1 && stageCount > quota.pipelineStages) {
@@ -848,11 +1061,24 @@ export class VerticalsService {
             if (actual.terminal_outcome !== expectedOutcome) {
                 throw new Error(`Invariant failed: stage "${stage.slug}" has terminal outcome ${actual.terminal_outcome}`);
             }
+            const actualRules = actual.transition_rules || [];
+            const expectedRules = stage.transitionRules || [];
+            const isLegacyAppointmentRule = JSON.stringify(actualRules)
+                === JSON.stringify([{ type: 'appointment_required' }]);
+            if (
+                isLegacyAppointmentRule
+                && JSON.stringify(expectedRules) !== JSON.stringify(actualRules)
+            ) {
+                throw new Error(
+                    `Invariant failed: stage "${stage.slug}" retains legacy appointment_required`,
+                );
+            }
         }
         const actualServiceNames = new Set(serviceRows.map((row) => row.name));
         for (const service of selectedServices) {
-            const expectedName = service.name[lang] || service.name.es;
-            if (!actualServiceNames.has(expectedName)) {
+            const acceptedNames = [...new Set(Object.values(service.name).filter(Boolean))];
+            if (!acceptedNames.some((name) => actualServiceNames.has(name))) {
+                const expectedName = service.name[lang] || service.name.es;
                 throw new Error(`Invariant failed: missing appointment service "${expectedName}"`);
             }
         }
@@ -864,8 +1090,9 @@ export class VerticalsService {
         }
         const actualFaqQuestions = new Set(faqRows.map((row) => row.question));
         for (const faq of definition.faqs) {
-            const expectedQuestion = faq.question[lang] || faq.question.es;
-            if (!actualFaqQuestions.has(expectedQuestion)) {
+            const acceptedQuestions = [...new Set(Object.values(faq.question).filter(Boolean))];
+            if (!acceptedQuestions.some((question) => actualFaqQuestions.has(question))) {
+                const expectedQuestion = faq.question[lang] || faq.question.es;
                 throw new Error(`Invariant failed: missing vertical FAQ "${expectedQuestion}"`);
             }
         }
@@ -877,6 +1104,24 @@ export class VerticalsService {
         const requiredTools = this.requiredTools(definition.industry, subType, effectiveBooking, bootstrapMode);
         for (const [index, agent] of agents.entries()) {
             const agentTools = agent.config_json?.tools || {};
+            if (!effectiveBooking && agentTools.appointments?.enabled === true) {
+                // A completed provisioning record from an older manifest must
+                // not short-circuit before the agenda step disables this
+                // generic writer. Failing re-verification reopens the
+                // idempotent steps and makes capability removal authoritative.
+                throw new Error(
+                    `Invariant failed: active agent ${index + 1} retains appointments outside appointment_booking capability`,
+                );
+            }
+            if (
+                definition.industry === 'automotriz'
+                && subType === 'repuestos'
+                && agentTools.vehicles?.enabled === true
+            ) {
+                throw new Error(
+                    `Invariant failed: active agent ${index + 1} retains vehicle inventory in the parts-order subtype`,
+                );
+            }
             for (const tool of requiredTools) {
                 if (agentTools[tool]?.enabled !== true) {
                     if (tool === 'appointments') {
@@ -894,9 +1139,11 @@ export class VerticalsService {
                 }
             }
         }
-        const config = ((tenant?.settings as any) || {}).verticalConfig as TenantVerticalConfig | undefined;
+        const tenantSettings = (tenantRows[0]?.settings as any) || {};
+        const config = candidateConfig || (tenantSettings.verticalConfigPending || tenantSettings.verticalConfig) as
+            TenantVerticalConfig | undefined;
         if (!config || config.industry !== definition.industry || config.subType !== subType || config.bookingEnabled !== effectiveBooking) {
-            throw new Error('Invariant failed: persisted verticalConfig does not match resolved provisioning');
+            throw new Error('Invariant failed: candidate verticalConfig does not match resolved provisioning');
         }
         return {
             pipelineStages: stageCount,
@@ -948,21 +1195,24 @@ export class VerticalsService {
         // servicios, o le volveríamos a llenar la agenda de cosas que no hace.
         const agendaSeed = resolveVerticalAgendaSeedContract(definition, config?.subType);
         const seedsAgenda = agendaSeed.agendaAllowed;
+        const seedsServices = agendaSeed.serviceCatalogAllowed;
         const candidateServices = agendaSeed.services;
         const features = await this.throttle.getPlanFeatures(tenantId);
         const limits = {
             pipelineStages: assertQuotaValue(features.pipelineStages, 'pipelineStages'),
-            appointmentServices: assertQuotaValue(features.appointmentsServices, 'appointmentsServices'),
+            appointmentServices: seedsAgenda
+                ? assertQuotaValue(features.appointmentsServices, 'appointmentsServices')
+                : -1,
         };
-        const usage = await this.readQuotaUsage(schemaName);
+        const usage = await this.readQuotaUsage(tenantId, schemaName);
         const quotaDefaults = selectQuotaAwareVerticalDefaults(
             definition,
-            seedsAgenda ? candidateServices : [],
+            seedsServices ? candidateServices : [],
             limits,
             usage,
         );
         const servicesToSeed = quotaDefaults.services;
-        if (seedsAgenda && servicesToSeed.length > 0) {
+        if (seedsServices && servicesToSeed.length > 0) {
             await this.seedServices(schemaName, { ...definition, services: servicesToSeed }, lang);
         }
 
@@ -976,51 +1226,48 @@ export class VerticalsService {
 
     async getVerticalConfig(tenantId: string): Promise<TenantVerticalConfig | null> {
         const cacheKey = `vertical:${tenantId}`;
-
-        // Check Redis cache
-        const cached = await this.redis.getJson<TenantVerticalConfig>(cacheKey);
-        if (cached) {
-            const enriched = this.withCurrentCapabilityManifest(cached);
-            if (this.hasCurrentCapabilityManifest(cached, enriched)) return cached;
-            try {
-                await mergeTenantSettingsAtomic(this.prisma, tenantId, {
-                    verticalConfig: enriched,
-                });
-                await this.redis.setJson(cacheKey, enriched, 600);
-            } catch (err: any) {
-                this.logger.warn(`Failed to persist manifest metadata for cached verticalConfig ${tenantId}: ${err?.message}`);
-            }
-            return enriched;
-        }
-
-        // Load from DB
+        // The provisioning state in PostgreSQL is the publication fence. A
+        // Redis hit can never bypass this durable read because a cached v2
+        // manifest may outlive a failed/restarted bootstrap.
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
             select: { settings: true, industry: true },
         });
+        if (!tenant) return null;
 
-        const settings = tenant?.settings as any;
-        let config = settings?.verticalConfig as TenantVerticalConfig | undefined;
+        const settings = (tenant.settings as any) || {};
+        const mayPublishCurrentManifest = this.hasCompletedCurrentProvisioning(
+            settings.verticalProvisioning,
+        );
+        const cached = await this.redis.getJson<TenantVerticalConfig>(cacheKey);
+        const storedConfig = settings.verticalConfig as TenantVerticalConfig | undefined;
+        let config = storedConfig || cached || undefined;
 
         // Fallback for tenants created before settings.verticalConfig was
         // persisted: rebuild the config on the fly from tenant.industry and
         // the static vertical definition. We also write it back to settings so
         // future calls don't have to rebuild.
-        if (!config && tenant?.industry) {
+        if (!config && tenant.industry) {
             const definition = getVerticalDefinition(tenant.industry);
             const resolved = this.resolveCapabilityManifest(
                 tenant.industry,
                 settings?.subType ?? null,
             );
             const effectiveBooking = resolved.capabilities.includes('appointment_booking');
-            config = this.withCurrentCapabilityManifest({
+            const fallbackConfig: TenantVerticalConfig = {
                 industry: tenant.industry,
                 subType: settings?.subType ?? null,
                 terminology: definition.terminology,
                 sidebar: definition.sidebar,
                 dashboard: definition.dashboard,
                 bookingEnabled: effectiveBooking,
-            });
+            };
+            config = mayPublishCurrentManifest
+                ? this.withCurrentCapabilityManifest(fallbackConfig)
+                : this.withoutUnverifiedCapabilityManifest(
+                    fallbackConfig,
+                    settings.verticalProvisioning,
+                );
             try {
                 await mergeTenantSettingsAtomic(this.prisma, tenantId, {
                     verticalConfig: config,
@@ -1030,16 +1277,23 @@ export class VerticalsService {
                 this.logger.warn(`Failed to persist backfilled verticalConfig for ${tenantId}: ${err?.message}`);
             }
         } else if (config) {
-            const enriched = this.withCurrentCapabilityManifest(config);
-            if (!this.hasCurrentCapabilityManifest(config, enriched)) {
-                config = enriched;
+            const resolved = mayPublishCurrentManifest
+                ? this.withCurrentCapabilityManifest(config)
+                : this.withoutUnverifiedCapabilityManifest(
+                    config,
+                    settings.verticalProvisioning,
+                );
+            const mustPersist = !storedConfig
+                || JSON.stringify(storedConfig) !== JSON.stringify(resolved);
+            config = resolved;
+            if (mustPersist) {
                 try {
                     await mergeTenantSettingsAtomic(this.prisma, tenantId, {
                         verticalConfig: config,
                     });
-                    this.logger.log(`Updated verticalConfig manifest metadata for tenant ${tenantId}`);
+                    this.logger.log(`Reconciled verticalConfig publication state for tenant ${tenantId}`);
                 } catch (err: any) {
-                    this.logger.warn(`Failed to persist verticalConfig manifest metadata for ${tenantId}: ${err?.message}`);
+                    this.logger.warn(`Failed to persist verticalConfig publication state for ${tenantId}: ${err?.message}`);
                 }
             }
         }
@@ -1049,6 +1303,58 @@ export class VerticalsService {
         }
 
         return config || null;
+    }
+
+    private hasCompletedCurrentProvisioning(state: unknown): boolean {
+        const provisioning = state as Partial<VerticalProvisioningState> | null | undefined;
+        return provisioning?.version === VERTICAL_PROVISIONING_VERSION
+            && provisioning.status === 'complete';
+    }
+
+    private withoutUnverifiedCapabilityManifest(
+        config: TenantVerticalConfig,
+        state: unknown,
+    ): TenantVerticalConfig {
+        // A persisted manifest from an older completed provisioning run is the
+        // last known-good runtime contract and remains authoritative until the
+        // v2 reconciler succeeds. Do not replace it with the current subtype
+        // resolver merely because the application code was deployed.
+        const provisioning = state as Partial<VerticalProvisioningState> | null | undefined;
+        const verifiedPublishedVersion = provisioning
+            && provisioning.version === config.manifestVersion
+            && provisioning.status === 'complete'
+            ? provisioning.version
+            : provisioning?.publishedManifestVersion;
+        // `verticalProvisioning` recién existe desde ago 2026: todo tenant que
+        // completó onboarding antes NO tiene la clave. Ausencia de estado NO es
+        // evidencia de fallo — es un tenant anterior al versionado, cuya config
+        // publicada (manifestVersion + effectiveCapabilities) es su último
+        // contrato bueno conocido. Fencearlo a [] apagaría todos los módulos
+        // verticales de la población vieja en la primera lectura post-deploy,
+        // antes de que el reconciliador pueda correr, y además lo persistiría.
+        // Un provisioning presente pero `pending`/`failed` sigue fenceado.
+        const publishedBeforeProvisioningStateExisted = !provisioning;
+        if (
+            typeof config.manifestVersion === 'number'
+            && (
+                verifiedPublishedVersion === config.manifestVersion
+                || publishedBeforeProvisioningStateExisted
+            )
+            && config.manifestVersion < VERTICAL_CAPABILITY_MANIFEST_VERSION
+            && Array.isArray(config.effectiveCapabilities)
+        ) {
+            return config;
+        }
+        const {
+            manifestVersion: _manifestVersion,
+            effectiveCapabilities: _effectiveCapabilities,
+            ...safeConfig
+        } = config;
+        // Consumers treat an array as authoritative. An explicit empty list is
+        // therefore the fail-closed fence that prevents mobile/dashboard from
+        // falling back to the new subtype manifest while provisioning is
+        // absent, pending or failed.
+        return { ...safeConfig, effectiveCapabilities: [] };
     }
 
     private getEffectiveCapabilities(
@@ -1062,20 +1368,28 @@ export class VerticalsService {
 
     private withCurrentCapabilityManifest(config: TenantVerticalConfig): TenantVerticalConfig {
         const manifest = this.resolveCapabilityManifest(config.industry, config.subType);
+        const bookingEnabled = manifest.capabilities.includes('appointment_booking')
+            && config.bookingEnabled === true;
         return {
             ...config,
+            bookingEnabled,
             manifestVersion: manifest.manifestVersion,
-            effectiveCapabilities: this.getEffectiveCapabilities(manifest, config.bookingEnabled),
+            effectiveCapabilities: this.getEffectiveCapabilities(manifest, bookingEnabled),
         };
     }
 
-    private hasCurrentCapabilityManifest(
-        current: TenantVerticalConfig,
-        expected: TenantVerticalConfig,
-    ): boolean {
-        return current.manifestVersion === expected.manifestVersion
-            && JSON.stringify(current.effectiveCapabilities || [])
-                === JSON.stringify(expected.effectiveCapabilities || []);
+    private async withTenantQuery<T>(
+        schemaName: string,
+        executor: TenantQueryExecutor | undefined,
+        run: (query: TenantQueryExecutor) => Promise<T>,
+    ): Promise<T> {
+        if (executor) return run(executor);
+        if (typeof (this.prisma as any).transactionInTenantSchema !== 'function') {
+            const fallback: TenantQueryExecutor = (sql, params = []) =>
+                this.prisma.executeInTenantSchema(schemaName, sql, params);
+            return run(fallback);
+        }
+        return this.prisma.transactionInTenantSchema(schemaName, run);
     }
 
     // ─── Private: Seed Methods ───────────────────────────────
@@ -1085,27 +1399,59 @@ export class VerticalsService {
         schemaName: string,
         definition: VerticalDefinition,
         lang: string,
+        executor?: TenantQueryExecutor,
     ): Promise<void> {
         try {
-            for (let i = 0; i < definition.pipeline.stages.length; i++) {
-                const stage = definition.pipeline.stages[i];
-                const name = stage.name[lang] || stage.name['es'] || stage.slug;
-                const terminalOutcome = stage.isTerminal ? stage.terminalOutcome : null;
-                // El target tiene que ser el índice real: `uidx_pipeline_stages_pipeline_slug`
-                // es (pipeline_id, slug) NULLS NOT DISTINCT — no (slug) a secas — porque un
-                // segundo embudo reutiliza legítimamente los mismos slugs. El bootstrap
-                // inserta con pipeline_id NULL, y ahí el índice sí muerde.
-                await this.prisma.$queryRawUnsafe(
-                    `INSERT INTO "${schemaName}"."pipeline_stages"
-                     (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, terminal_outcome, transition_rules)
-                     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
-                     ON CONFLICT (pipeline_id, slug) DO UPDATE
-                     SET is_terminal = EXCLUDED.is_terminal,
-                         terminal_outcome = EXCLUDED.terminal_outcome`,
-                     tenantId, name, stage.slug, stage.color, i, stage.probability, stage.slaHours || null, stage.isTerminal,
-                     terminalOutcome, JSON.stringify((stage as any).transitionRules || []),
-                );
-            }
+            await this.withTenantQuery(schemaName, executor, async (query) => {
+                // The shared reconciler serializes startup migration, lazy
+                // multi-pipeline adoption and bootstrap.  It also repairs only
+                // exact, unreferenced duplicates from an interrupted retry and
+                // fails with 409 for edited/in-use rows.
+                const { pipelineId, repairedDuplicateStages } = await ensurePrimaryPipeline(query, tenantId);
+                if (repairedDuplicateStages > 0) {
+                    this.logger.warn(
+                        `Repaired ${repairedDuplicateStages} duplicate bootstrap stage(s) before vertical seed`,
+                    );
+                }
+
+                for (let i = 0; i < definition.pipeline.stages.length; i++) {
+                    const stage = definition.pipeline.stages[i];
+                    const name = stage.name[lang] || stage.name.es || stage.slug;
+                    const terminalOutcome = stage.isTerminal ? stage.terminalOutcome : null;
+                    await query(
+                        `INSERT INTO pipeline_stages
+                         (tenant_id, name, slug, color, position, default_probability, sla_hours,
+                          is_terminal, terminal_outcome, transition_rules, pipeline_id)
+                         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::uuid)
+                         ON CONFLICT (pipeline_id, slug) DO UPDATE
+                         SET is_terminal = EXCLUDED.is_terminal,
+                             terminal_outcome = EXCLUDED.terminal_outcome,
+                             transition_rules = CASE
+                                 -- Upgrade only the exact old generated rule.
+                                 -- Any divergent/custom rule remains owner data.
+                                 WHEN pipeline_stages.transition_rules =
+                                      '[{"type":"appointment_required"}]'::jsonb
+                                  AND pipeline_stages.transition_rules IS DISTINCT FROM
+                                      EXCLUDED.transition_rules
+                                 THEN EXCLUDED.transition_rules
+                                 ELSE pipeline_stages.transition_rules
+                             END`,
+                        [
+                            tenantId,
+                            name,
+                            stage.slug,
+                            stage.color,
+                            i,
+                            stage.probability,
+                            stage.slaHours || null,
+                            stage.isTerminal,
+                            terminalOutcome,
+                            JSON.stringify((stage as any).transitionRules || []),
+                            pipelineId,
+                        ],
+                    );
+                }
+            });
             this.logger.debug(`Seeded ${definition.pipeline.stages.length} pipeline stages`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed pipeline stages: ${error.message}`);
@@ -1139,13 +1485,19 @@ export class VerticalsService {
     private async patchDefaultAgent(
         schemaName: string,
         definition: VerticalDefinition,
+        subType: string | null,
         lang: string,
+        executor?: TenantQueryExecutor,
     ): Promise<void> {
         try {
+            await this.withTenantQuery(schemaName, executor, async (query) => {
             // Find the default agent
-            const agents = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT id, name, config_json FROM agent_personas WHERE is_default = true LIMIT 1`,
+            const agents = await query<any[]>(
+                `SELECT id, name, template_id, config_json
+                   FROM agent_personas
+                  WHERE is_default = true
+                  LIMIT 1
+                  FOR UPDATE`,
             );
             if (!agents || agents.length === 0) {
                 throw new Error('No default agent persona exists to patch');
@@ -1161,6 +1513,12 @@ export class VerticalsService {
             const existingPersonality = existingPersona.personality || {};
             const existingBehavior = existingConfig.behavior || {};
             const existingRules = Array.isArray(existingBehavior.rules) ? existingBehavior.rules.filter(Boolean) : [];
+            const canonicalDefinitionRules = Object.values(agentDef.rules || {})
+                .flatMap((localizedRules) => this.splitDefinitionRules(localizedRules));
+            const mergedRules = this.mergeStringList(
+                this.splitDefinitionRules(pick(agentDef.rules)),
+                existingRules,
+            );
 
             const persona = {
                 ...existingPersona,
@@ -1191,10 +1549,14 @@ export class VerticalsService {
                 // ya estaban. Lo específico del tenant —sea de la plantilla o
                 // editado a mano por el dueño— conserva la última palabra, que
                 // es la que más pesa cuando el prompt se ensambla.
-                rules: this.mergeStringList(
-                    this.splitDefinitionRules(pick(agentDef.rules)),
-                    existingRules,
-                ),
+                rules: reconcileVerticalSubtypePersonaRules({
+                    industry: definition.industry,
+                    subType,
+                    templateId: agent.template_id,
+                    language: lang,
+                    existingRules: mergedRules,
+                    canonicalDefinitionRules,
+                }),
                 forbiddenTopics: this.mergeStringList(
                     existingBehavior.forbiddenTopics,
                     this.splitDefinitionList(pick(agentDef.forbiddenTopics)),
@@ -1212,8 +1574,7 @@ export class VerticalsService {
             // la plantilla: la lista decía "Roberto" y el cliente leía "Andrés".
             const displayName = persona.name || agent.name || 'Asistente';
 
-            await this.prisma.executeInTenantSchema(
-                schemaName,
+            await query(
                 `UPDATE agent_personas SET
                     name = $1,
                     config_json = $2::jsonb
@@ -1226,6 +1587,7 @@ export class VerticalsService {
             );
 
             this.logger.debug(`Patched default agent with vertical persona: "${displayName}"`);
+            });
         } catch (error: any) {
             this.logger.warn(`Failed to patch default agent: ${error.message}`);
             throw error;
@@ -1277,19 +1639,10 @@ export class VerticalsService {
         schemaName: string,
         definition: VerticalDefinition,
         lang: string,
+        executor?: TenantQueryExecutor,
     ): Promise<void> {
         try {
-            for (const faq of definition.faqs) {
-                const question = faq.question[lang] || faq.question['es'];
-                const answer = faq.answer[lang] || faq.answer['es'];
-                await this.prisma.$queryRawUnsafe(
-                    `INSERT INTO "${schemaName}"."faqs"
-                     (question, answer, category, is_published, search_tsv)
-                     VALUES ($1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2))
-                     ON CONFLICT (question) DO NOTHING`,
-                    question, answer, faq.category,
-                );
-            }
+            await this.seedLocalizedFaqRecords(schemaName, definition.faqs, lang, executor);
             this.logger.debug(`Seeded ${definition.faqs.length} FAQs`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed FAQs: ${error.message}`);
@@ -1301,30 +1654,81 @@ export class VerticalsService {
         schemaName: string,
         definition: VerticalDefinition,
         lang: string,
+        executor?: TenantQueryExecutor,
     ): Promise<void> {
         try {
-            for (let i = 0; i < definition.services.length; i++) {
-                const svc = definition.services[i];
-                const name = svc.name[lang] || svc.name['es'];
-                const description = svc.description[lang] || svc.description['es'];
-                await this.prisma.$queryRawUnsafe(
-                    `INSERT INTO "${schemaName}"."services"
-                     (name, description, duration_minutes, price, currency, category, is_active, sort_order, duration_type)
-                     VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8)
-                     ON CONFLICT (name) DO NOTHING`,
-                    name, description, svc.durationMinutes, svc.price, svc.currency, svc.category, i,
-                    // 'open' = disponibilidad por DÍA (checkAvailabilityOpen), para
-                    // servicios que no caben en la ventana diaria de slots: un
-                    // "Hotel — noche" de 1440 min con slots de 08:00-18:00 daba
-                    // "no hay disponibilidad" para siempre, en bucle.
-                    svc.durationType || 'fixed',
-                );
-            }
+            await this.withTenantQuery(schemaName, executor, async (query) => {
+                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`vertical-services:${schemaName}`]);
+                for (let i = 0; i < definition.services.length; i++) {
+                    const svc = definition.services[i];
+                    const name = svc.name[lang] || svc.name['es'];
+                    const description = svc.description[lang] || svc.description['es'];
+                    const translatedNames = [...new Set(Object.values(svc.name).filter(Boolean))];
+                    await query(
+                        `INSERT INTO services
+                            (name, description, duration_minutes, price, currency, category,
+                             is_active, sort_order, duration_type)
+                         SELECT $1, $2, $3, $4, $5, $6, true, $7, $8
+                          WHERE NOT EXISTS (
+                              SELECT 1 FROM services WHERE name = ANY($9::text[])
+                          )
+                         ON CONFLICT (name) DO NOTHING`,
+                        [
+                            name,
+                            description,
+                            svc.durationMinutes,
+                            svc.price,
+                            svc.currency,
+                            svc.category,
+                            i,
+                            // 'open' = disponibilidad por DÍA (checkAvailabilityOpen), para
+                            // servicios que no caben en la ventana diaria de slots.
+                            svc.durationType || 'fixed',
+                            translatedNames,
+                        ],
+                    );
+                }
+            });
             this.logger.debug(`Seeded ${definition.services.length} services`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed services: ${error.message}`);
             throw error;
         }
+    }
+
+    /**
+     * Seed localized FAQs by semantic record, not by the currently selected
+     * translation. A retry/reseed in another language must not create a second
+     * copy of the same FAQ and exceed the tenant quota.
+     */
+    private async seedLocalizedFaqRecords(
+        schemaName: string,
+        faqs: Array<{
+            question: Record<string, string>;
+            answer: Record<string, string>;
+            category: string;
+        }>,
+        lang: string,
+        executor?: TenantQueryExecutor,
+    ): Promise<void> {
+        await this.withTenantQuery(schemaName, executor, async (query) => {
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`vertical-faqs:${schemaName}`]);
+            for (const faq of faqs) {
+                const question = faq.question[lang] || faq.question.es;
+                const answer = faq.answer[lang] || faq.answer.es;
+                const translatedQuestions = [...new Set(Object.values(faq.question).filter(Boolean))];
+                await query(
+                    `INSERT INTO faqs
+                        (question, answer, category, is_published, search_tsv)
+                     SELECT $1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2)
+                      WHERE NOT EXISTS (
+                          SELECT 1 FROM faqs WHERE question = ANY($4::text[])
+                      )
+                     ON CONFLICT (question) DO NOTHING`,
+                    [question, answer, faq.category, translatedQuestions],
+                );
+            }
+        });
     }
 
     /**
@@ -1343,6 +1747,7 @@ export class VerticalsService {
         schemaName: string,
         definition: VerticalDefinition,
         roundTheClock = false,
+        executor?: TenantQueryExecutor,
     ): Promise<void> {
         try {
             // Guardia 24h: la grilla semanal de la industria (9 a 18, sábado
@@ -1353,23 +1758,19 @@ export class VerticalsService {
             const days: Array<[string, unknown]> = Object.entries(schedule);
             if (days.length === 0) return;
 
-            // La tabla no tiene UNIQUE sobre el que apoyar un ON CONFLICT, así
-            // que la idempotencia es este guard: si el tenant ya tiene horarios
-            // (propios o de un bootstrap anterior) no tocamos nada.
-            const existing = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT COUNT(*)::int AS cnt FROM availability_slots`,
-            );
-            if (Number(existing?.[0]?.cnt || 0) > 0) {
-                this.logger.debug('Availability already configured — skipping seed');
-                return;
-            }
-
             // `availability_slots.user_id` es NOT NULL y el runtime lo resuelve
             // contra public.users (nombre del staff en los turnos ofrecidos), así
             // que tiene que ser un usuario real: el dueño del tenant.
-            const owner =
-                (await this.prisma.user.findFirst({
+            const owner = executor
+                ? (await executor<Array<{ id: string }>>(
+                    `SELECT id
+                       FROM public.users
+                      WHERE tenant_id = $1::uuid AND is_active = true
+                      ORDER BY CASE WHEN role = 'tenant_admin' THEN 0 ELSE 1 END, created_at ASC
+                      LIMIT 1`,
+                    [tenantId],
+                ))[0]
+                : ((await this.prisma.user.findFirst({
                     where: { tenantId, isActive: true, role: 'tenant_admin' },
                     orderBy: { createdAt: 'asc' },
                     select: { id: true },
@@ -1378,7 +1779,7 @@ export class VerticalsService {
                     where: { tenantId, isActive: true },
                     orderBy: { createdAt: 'asc' },
                     select: { id: true },
-                }));
+                })));
 
             if (!owner) {
                 this.logger.warn(`No user found for tenant ${tenantId} — skipping availability seed`);
@@ -1391,7 +1792,7 @@ export class VerticalsService {
                 return h * 60 + m;
             };
 
-            let inserted = 0;
+            const slots: Array<{ id: string; dow: number; start: string; end: string }> = [];
             for (const [day, range] of days) {
                 const dow = DAY_OF_WEEK_INDEX[day.toLowerCase() as ScheduleDay];
                 if (dow === undefined || typeof range !== 'string') continue;
@@ -1402,17 +1803,56 @@ export class VerticalsService {
                 // Cierres a medianoche ('11:00-00:00'): la columna es TIME sin
                 // fecha, y un fin <= inicio genera cero turnos en el generador.
                 const end = toMinutes(rawEnd) <= toMinutes(rawStart) ? '23:59' : rawEnd;
-
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
-                    `INSERT INTO availability_slots (id, user_id, day_of_week, start_time, end_time, is_active, created_at)
-                     VALUES ($1::uuid, $2::uuid, $3, $4::time, $5::time, true, NOW())`,
-                    [randomUUID(), owner.id, dow, rawStart, end],
-                );
-                inserted++;
+                slots.push({ id: randomUUID(), dow, start: rawStart, end });
             }
 
-            this.logger.debug(`Seeded ${inserted} availability slots from vertical business hours`);
+            let inserted = 0;
+            await this.withTenantQuery(schemaName, executor, async (query) => {
+                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`vertical-availability:${schemaName}`]);
+                // The guard and every insert share one transaction. If any day
+                // fails, PostgreSQL rolls all days back; a retry can never see
+                // one partial row and incorrectly treat the schedule as done.
+                const existing = await query<Array<{
+                    user_id: string;
+                    day_of_week: number;
+                    start_time: string;
+                    end_time: string;
+                }>>(
+                    `SELECT user_id, day_of_week, start_time::text, end_time::text
+                       FROM availability_slots
+                      ORDER BY day_of_week, start_time`,
+                );
+                const slotKey = (day: number, start: string, end: string) =>
+                    `${day}|${String(start).slice(0, 5)}|${String(end).slice(0, 5)}`;
+                const expectedKeys = new Set(slots.map((slot) => slotKey(slot.dow, slot.start, slot.end)));
+                const existingKeys = new Set<string>();
+                for (const row of existing || []) {
+                    const key = slotKey(row.day_of_week, row.start_time, row.end_time);
+                    // Preserve any owner/configuration that is not an exact
+                    // subset of this bootstrap schedule. Exact subsets are a
+                    // signature of the historical partial-commit bug and can
+                    // be completed safely.
+                    if (row.user_id !== owner.id || !expectedKeys.has(key)) return;
+                    existingKeys.add(key);
+                }
+
+                for (const slot of slots) {
+                    if (existingKeys.has(slotKey(slot.dow, slot.start, slot.end))) continue;
+                    await query(
+                        `INSERT INTO availability_slots
+                            (id, user_id, day_of_week, start_time, end_time, is_active, created_at)
+                         VALUES ($1::uuid, $2::uuid, $3, $4::time, $5::time, true, NOW())`,
+                        [slot.id, owner.id, slot.dow, slot.start, slot.end],
+                    );
+                    inserted++;
+                }
+            });
+
+            if (inserted === 0) {
+                this.logger.debug('Availability already configured — skipping seed');
+            } else {
+                this.logger.debug(`Seeded ${inserted} availability slots from vertical business hours`);
+            }
         } catch (error: any) {
             this.logger.warn(`Failed to seed availability slots: ${error.message}`);
             throw error;
@@ -1457,7 +1897,12 @@ export class VerticalsService {
      * Tours / agencia_viajes specific FAQs covering the operational questions
      * customers always ask before booking an experience or package.
      */
-    private async seedToursExtras(tenantId: string, schemaName: string, lang: string): Promise<void> {
+    private async seedToursExtras(
+        tenantId: string,
+        schemaName: string,
+        lang: string,
+        executor?: TenantQueryExecutor,
+    ): Promise<void> {
         try {
             const faqs: Array<{ question: Record<string, string>; answer: Record<string, string>; category: string }> = [
                 {
@@ -1537,17 +1982,7 @@ export class VerticalsService {
                 },
             ];
 
-            for (const f of faqs) {
-                const q = f.question[lang] || f.question['es'];
-                const a = f.answer[lang] || f.answer['es'];
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
-                    `INSERT INTO faqs (question, answer, category, is_published, search_tsv)
-                     VALUES ($1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2))
-                     ON CONFLICT (question) DO NOTHING`,
-                    [q, a, f.category],
-                );
-            }
+            await this.seedLocalizedFaqRecords(schemaName, faqs, lang, executor);
             this.logger.debug(`Seeded ${faqs.length} tours-specific FAQs`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed tours FAQs: ${error.message}`);
@@ -1559,7 +1994,12 @@ export class VerticalsService {
      * Dental-specific FAQs covering the operational questions patients ask
      * before booking with a dental clinic.
      */
-    private async seedDentalExtras(tenantId: string, schemaName: string, lang: string): Promise<void> {
+    private async seedDentalExtras(
+        tenantId: string,
+        schemaName: string,
+        lang: string,
+        executor?: TenantQueryExecutor,
+    ): Promise<void> {
         try {
             const faqs: Array<{ question: Record<string, string>; answer: Record<string, string>; category: string }> = [
                 {
@@ -1639,17 +2079,7 @@ export class VerticalsService {
                 },
             ];
 
-            for (const f of faqs) {
-                const q = f.question[lang] || f.question['es'];
-                const a = f.answer[lang] || f.answer['es'];
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
-                    `INSERT INTO faqs (question, answer, category, is_published, search_tsv)
-                     VALUES ($1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2))
-                     ON CONFLICT (question) DO NOTHING`,
-                    [q, a, f.category],
-                );
-            }
+            await this.seedLocalizedFaqRecords(schemaName, faqs, lang, executor);
             this.logger.debug(`Seeded ${faqs.length} dental-specific FAQs`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed dental FAQs: ${error.message}`);
@@ -1661,7 +2091,12 @@ export class VerticalsService {
      * Real-estate-specific FAQs covering the operational questions buyers
      * and renters always ask before scheduling a viewing.
      */
-    private async seedInmobiliariaExtras(tenantId: string, schemaName: string, lang: string): Promise<void> {
+    private async seedInmobiliariaExtras(
+        tenantId: string,
+        schemaName: string,
+        lang: string,
+        executor?: TenantQueryExecutor,
+    ): Promise<void> {
         try {
             const faqs: Array<{ question: Record<string, string>; answer: Record<string, string>; category: string }> = [
                 {
@@ -1741,17 +2176,7 @@ export class VerticalsService {
                 },
             ];
 
-            for (const f of faqs) {
-                const q = f.question[lang] || f.question['es'];
-                const a = f.answer[lang] || f.answer['es'];
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
-                    `INSERT INTO faqs (question, answer, category, is_published, search_tsv)
-                     VALUES ($1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2))
-                     ON CONFLICT (question) DO NOTHING`,
-                    [q, a, f.category],
-                );
-            }
+            await this.seedLocalizedFaqRecords(schemaName, faqs, lang, executor);
             this.logger.debug(`Seeded ${faqs.length} inmobiliaria-specific FAQs`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed inmobiliaria FAQs: ${error.message}`);
@@ -1765,15 +2190,19 @@ export class VerticalsService {
      * extras needed since these verticals reuse the existing services
      * + appointments + service_requests infrastructure.
      */
-    private async enableSimpleTool(schemaName: string, toolKey: string): Promise<void> {
+    private async enableSimpleTool(
+        schemaName: string,
+        toolKey: string,
+        executor?: TenantQueryExecutor,
+    ): Promise<void> {
         try {
+            await this.withTenantQuery(schemaName, executor, async (query) => {
             // TODOS los agentes activos, no solo el default. Con multi-canal (un
             // agente por conexión) el segundo agente nacía mudo: el tenant conectaba
             // Instagram, le asignaba un agente y ese agente no tenía las tools de su
             // propia industria. La capacidad es del NEGOCIO, no de un agente.
-            const agents = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_active = true`,
+            const agents = await query<any[]>(
+                `SELECT id, config_json FROM agent_personas WHERE is_active = true FOR UPDATE`,
             );
             if (!agents?.length) return;
 
@@ -1785,17 +2214,50 @@ export class VerticalsService {
                 if (tools[toolKey] && tools[toolKey].enabled === false) continue;
                 tools[toolKey] = { ...(tools[toolKey] || {}), enabled: true };
                 const newConfig = { ...config, tools };
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
+                await query(
                     `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
                     [JSON.stringify(newConfig), agent.id],
                 );
             }
             this.logger.debug(`Enabled ${toolKey} tool on ${agents.length} active agent(s)`);
+            });
         } catch (error: any) {
             this.logger.warn(`Failed to enable ${toolKey} tool: ${error.message}`);
             throw error;
         }
+    }
+
+    /**
+     * Capability removal is authoritative for tools previously enabled by a
+     * vertical seed. Keep the configuration payload, but prevent an inherited
+     * writer from remaining active after a subtype moves to another engine.
+     */
+    private async disableSimpleTool(
+        schemaName: string,
+        toolKey: string,
+        executor?: TenantQueryExecutor,
+    ): Promise<void> {
+        await this.withTenantQuery(schemaName, executor, async (query) => {
+            const agents = await query<any[]>(
+                `SELECT id, config_json FROM agent_personas WHERE is_active = true FOR UPDATE`,
+            );
+            for (const agent of agents || []) {
+                const config = agent.config_json || {};
+                const current = config.tools?.[toolKey];
+                if (!current || current.enabled !== true) continue;
+                const newConfig = {
+                    ...config,
+                    tools: {
+                        ...(config.tools || {}),
+                        [toolKey]: { ...current, enabled: false },
+                    },
+                };
+                await query(
+                    `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                    [JSON.stringify(newConfig), agent.id],
+                );
+            }
+        });
     }
 
     /**
@@ -1826,14 +2288,18 @@ export class VerticalsService {
      * desde Agente → Herramientas cuando complete su agenda (el gate de
      * `updateAgent` la validará ahí).
      */
-    private async restoreAppointmentsTool(schemaName: string, effectiveBooking: boolean): Promise<void> {
+    private async restoreAppointmentsTool(
+        schemaName: string,
+        effectiveBooking: boolean,
+        executor?: TenantQueryExecutor,
+    ): Promise<void> {
         try {
+            await this.withTenantQuery(schemaName, executor, async (query) => {
             // TODOS los agentes activos, por lo mismo que enableSimpleTool: con un
             // agente por conexión, el segundo nacía sin agendador porque este
             // método solo miraba al default. Poder agendar es del NEGOCIO.
-            const agents = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT id, config_json FROM agent_personas WHERE is_active = true`,
+            const agents = await query<any[]>(
+                `SELECT id, config_json FROM agent_personas WHERE is_active = true FOR UPDATE`,
             );
             if (!agents?.length) return;
 
@@ -1843,10 +2309,30 @@ export class VerticalsService {
             for (const agent of agents) {
                 const config = agent.config_json || {};
                 const appointments = config.tools?.appointments;
+                if (!effectiveBooking) {
+                    // Capability is authoritative. A tenant that moved to a
+                    // specialized engine (tour/property/order/service request)
+                    // must not keep a previously enabled generic appointment
+                    // writer merely because the persona predates the manifest.
+                    if (!appointments) continue;
+                    if (appointments.enabled === false && appointments.pendingPrerequisites === undefined) {
+                        continue;
+                    }
+                    const disabled = { ...appointments, enabled: false };
+                    delete disabled.pendingPrerequisites;
+                    const newConfig = {
+                        ...config,
+                        tools: { ...config.tools, appointments: disabled },
+                    };
+                    await query(
+                        `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
+                        [JSON.stringify(newConfig), agent.id],
+                    );
+                    continue;
+                }
                 if (!appointments) {
                     // Silencio de la plantilla, no decisión. Se crea solo si el
-                    // negocio efectivamente agenda; si no, se deja como está.
-                    if (!effectiveBooking) continue;
+                    // negocio efectivamente agenda.
                 } else if (appointments.pendingPrerequisites !== true) {
                     // Decisión explícita de la plantilla o del dueño: intacta.
                     continue;
@@ -1854,8 +2340,7 @@ export class VerticalsService {
 
                 if (!counted) {
                     // Mismos dos contadores que exige `assertAppointmentsPrerequisites`.
-                    const [counts] = await this.prisma.executeInTenantSchema<any[]>(
-                        schemaName,
+                    const [counts] = await query<any[]>(
                         `SELECT
                             (SELECT COUNT(*)::int FROM services WHERE is_active = true) AS services,
                             (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true) AS slots`,
@@ -1871,13 +2356,12 @@ export class VerticalsService {
                 const base = appointments ?? { canBook: true, canCancel: true };
                 const restored = {
                     ...base,
-                    enabled: effectiveBooking && counted.services > 0 && counted.slots > 0,
+                    enabled: counted.services > 0 && counted.slots > 0,
                 };
                 delete restored.pendingPrerequisites;
 
                 const newConfig = { ...config, tools: { ...config.tools, appointments: restored } };
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
+                await query(
                     `UPDATE agent_personas SET config_json = $1::jsonb WHERE id = $2::uuid`,
                     [JSON.stringify(newConfig), agent.id],
                 );
@@ -1890,6 +2374,7 @@ export class VerticalsService {
                     );
                 }
             }
+            });
         } catch (error: any) {
             this.logger.warn(`Failed to restore appointments tool: ${error.message}`);
             throw error;
@@ -1912,17 +2397,12 @@ export class VerticalsService {
      * una recomendación: lo importante es que el dueño encuentre filas hechas y
      * las ajuste, en vez de una tabla vacía.
      */
-    private async seedMembershipPlans(schemaName: string, lang: string): Promise<void> {
+    private async seedMembershipPlans(
+        schemaName: string,
+        lang: string,
+        executor?: TenantQueryExecutor,
+    ): Promise<void> {
         try {
-            const existing = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT COUNT(*)::int AS cnt FROM membership_plans`,
-            );
-            if (Number(existing?.[0]?.cnt || 0) > 0) {
-                this.logger.debug('Membership plans already seeded — skipping');
-                return;
-            }
-
             const L = (loc: Record<string, string>) => loc[lang] || loc.es;
             const PLANS = [
                 {
@@ -1958,19 +2438,41 @@ export class VerticalsService {
                 },
             ];
 
-            for (const p of PLANS) {
-                await this.prisma.executeInTenantSchema(
-                    schemaName,
-                    `INSERT INTO membership_plans
-                        (name, description, duration_days, price, currency,
-                         class_credits_per_period, personal_training_credits,
-                         guest_passes, freeze_allowance_days, sort_order)
-                     VALUES ($1, $2, $3, $4, 'COP', $5, $6, $7, $8, $9)`,
-                    [L(p.name), L(p.description), p.durationDays, p.price,
-                        p.credits, p.pt, p.guests, p.freeze, p.order],
+            let inserted = 0;
+            await this.withTenantQuery(schemaName, executor, async (query) => {
+                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`vertical-memberships:${schemaName}`]);
+                const existing = await query<Array<{ name: string }>>(
+                    `SELECT name FROM membership_plans ORDER BY sort_order, id`,
                 );
+                const existingPlanIndexes = new Set<number>();
+                for (const row of existing || []) {
+                    const index = PLANS.findIndex((plan) => Object.values(plan.name).includes(row.name));
+                    // A customized plan means the tenant owns this table; do
+                    // not append defaults around their configuration.
+                    if (index < 0) return;
+                    existingPlanIndexes.add(index);
+                }
+
+                for (let index = 0; index < PLANS.length; index++) {
+                    if (existingPlanIndexes.has(index)) continue;
+                    const p = PLANS[index];
+                    await query(
+                        `INSERT INTO membership_plans
+                            (name, description, duration_days, price, currency,
+                             class_credits_per_period, personal_training_credits,
+                             guest_passes, freeze_allowance_days, sort_order)
+                         VALUES ($1, $2, $3, $4, 'COP', $5, $6, $7, $8, $9)`,
+                        [L(p.name), L(p.description), p.durationDays, p.price,
+                            p.credits, p.pt, p.guests, p.freeze, p.order],
+                    );
+                    inserted++;
+                }
+            });
+            if (inserted === 0) {
+                this.logger.debug('Membership plans already seeded — skipping');
+            } else {
+                this.logger.debug(`Seeded ${inserted} membership plans`);
             }
-            this.logger.debug(`Seeded ${PLANS.length} membership plans`);
         } catch (error: any) {
             this.logger.warn(`Failed to seed membership plans: ${error.message}`);
             throw error;

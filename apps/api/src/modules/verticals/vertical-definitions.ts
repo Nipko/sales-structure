@@ -467,14 +467,14 @@ const TURISMO: VerticalDefinition = {
         { name: { es: 'Excursión medio día', en: 'Half day excursion', pt: 'Excursão meio dia', fr: 'Excursion demi-journée' }, description: { es: 'Excursión de medio día con transporte', en: 'Half day excursion with transport', pt: 'Excursão meio dia com transporte', fr: 'Excursion demi-journée avec transport' }, durationMinutes: 240, price: 150000, currency: 'COP', category: 'tours' },
     ],
     businessHours: { schedule: { mon: '08:00-19:00', tue: '08:00-19:00', wed: '08:00-19:00', thu: '08:00-19:00', fri: '08:00-19:00', sat: '09:00-16:00' }, afterHoursMessage: { es: 'Estamos fuera de horario. Te responderemos al iniciar la jornada.', en: 'We are closed. We\'ll respond when we open.', pt: 'Estamos fora do horário.', fr: 'Nous sommes fermés.' } },
-    sidebar: { labelOverrides: { crm: { es: 'Viajeros', en: 'Travelers', pt: 'Viajantes', fr: 'Voyageurs' }, pipeline: { es: 'Reservas', en: 'Bookings', pt: 'Reservas', fr: 'Réservations' }, appointments: { es: 'Itinerarios', en: 'Itineraries', pt: 'Itinerários', fr: 'Itinéraires' } }, hiddenItems: [] },
+    sidebar: { labelOverrides: { crm: { es: 'Viajeros', en: 'Travelers', pt: 'Viajantes', fr: 'Voyageurs' }, pipeline: { es: 'Reservas', en: 'Bookings', pt: 'Reservas', fr: 'Réservations' }, appointments: { es: 'Itinerarios', en: 'Itineraries', pt: 'Itinerários', fr: 'Itinéraires' } }, hiddenItems: ['appointments'] },
     dashboard: { kpis: [
         { key: 'leadsToday', label: { es: 'Consultas Hoy', en: 'Inquiries Today', pt: 'Consultas Hoje', fr: 'Demandes Aujourd\'hui' }, icon: 'Plane', color: '#1abc9c' },
         { key: 'tourBookingsToday', label: { es: 'Reservas Hoy', en: 'Bookings Today', pt: 'Reservas Hoje', fr: 'Réservations Aujourd\'hui' }, icon: 'Calendar', color: '#3498db' },
         { key: 'messagesProcessed', label: { es: 'Mensajes', en: 'Messages', pt: 'Mensagens', fr: 'Messages' }, icon: 'MessageSquare', color: '#9b59b6' },
         { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#e67e22' },
     ] },
-    bookingEnabled: true,
+    bookingEnabled: false,
     deferred: false,
 };
 
@@ -806,7 +806,7 @@ const SERVICIOS_HOGAR: VerticalDefinition = {
         stages: [
             { name: { es: 'Solicitud', en: 'Request', pt: 'Solicitação', fr: 'Demande' }, slug: 'solicitud', color: '#3498db', probability: 10, isTerminal: false, transitionRules: [] },
             { name: { es: 'Cotización', en: 'Quoted', pt: 'Cotada', fr: 'Devis' }, slug: 'cotizacion', color: '#f39c12', probability: 30, isTerminal: false, transitionRules: [] },
-            { name: { es: 'Agendado', en: 'Scheduled', pt: 'Agendado', fr: 'Programmé' }, slug: 'agendado', color: '#e67e22', probability: 60, isTerminal: false, transitionRules: [{ type: 'appointment_required' }] },
+            { name: { es: 'Agendado', en: 'Scheduled', pt: 'Agendado', fr: 'Programmé' }, slug: 'agendado', color: '#e67e22', probability: 60, isTerminal: false, transitionRules: [{ type: 'service_request_scheduled_required' }] },
             { name: { es: 'En servicio', en: 'On site', pt: 'Em serviço', fr: 'Sur place' }, slug: 'en_servicio', color: '#9b59b6', probability: 80, isTerminal: false, transitionRules: [{ type: 'name_required' }, { type: 'phone_required' }] },
             { name: { es: 'Completado', en: 'Completed', pt: 'Concluído', fr: 'Terminé' }, slug: 'completado', color: '#2ecc71', probability: 100, isTerminal: true, terminalOutcome: 'won', transitionRules: [] },
             { name: { es: 'Cancelado', en: 'Cancelled', pt: 'Cancelado', fr: 'Annulé' }, slug: 'cancelado', color: '#95a5a6', probability: 0, isTerminal: true, terminalOutcome: 'lost', transitionRules: [] },
@@ -829,7 +829,7 @@ const SERVICIOS_HOGAR: VerticalDefinition = {
             crm: { es: 'Clientes', en: 'Customers', pt: 'Clientes', fr: 'Clients' },
             pipeline: { es: 'Solicitudes', en: 'Requests', pt: 'Solicitações', fr: 'Demandes' },
         },
-        hiddenItems: [],
+        hiddenItems: ['appointments'],
     },
     dashboard: {
         kpis: [
@@ -839,7 +839,7 @@ const SERVICIOS_HOGAR: VerticalDefinition = {
             { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#27ae60' },
         ],
     },
-    bookingEnabled: true,
+    bookingEnabled: false,
 };
 
 const PET_SERVICES: VerticalDefinition = {
@@ -1021,7 +1021,7 @@ const FOTOGRAFIA: VerticalDefinition = {
             { key: 'llmCostToday', label: { es: 'Costo IA', en: 'AI Cost', pt: 'Custo IA', fr: 'Coût IA' }, icon: 'DollarSign', color: '#27ae60' },
         ],
     },
-    bookingEnabled: true,
+    bookingEnabled: false,
 };
 
 const SEGUROS: VerticalDefinition = {

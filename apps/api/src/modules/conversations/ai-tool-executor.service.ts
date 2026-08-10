@@ -17,6 +17,7 @@ import { GymsService } from '../gyms/gyms.service';
 import { EducationService } from '../education/education.service';
 import { InsuranceService } from '../insurance/insurance.service';
 import { HomeServicesService } from '../home-services/home-services.service';
+import { PhotographyService } from '../photography/photography.service';
 import { EcommerceService } from '../ecommerce/ecommerce.service';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { McpClientService } from '../mcp/mcp-client.service';
@@ -41,6 +42,8 @@ import {
     lockAndAssertAppointmentCapacity,
     wallClockEpoch,
 } from '../appointments/appointment-capacity.util';
+import { requireTenantContact } from '../../common/utils/tenant-contact.util';
+import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 
 /**
  * Executes AI tool calls against the appropriate services.
@@ -75,6 +78,7 @@ export class AIToolExecutorService {
         private mcpClient: McpClientService,
         private readonly toolExecutionControl: ToolExecutionControlService,
         private readonly paymentOperations: PaymentOperationService,
+        private readonly photographyService: PhotographyService,
     ) { }
 
     /**
@@ -487,7 +491,7 @@ export class AIToolExecutorService {
                     return this.checkDateAvailabilityTool(schemaName, args);
 
                 case 'request_photo_quote':
-                    return this.requestPhotoQuoteTool(schemaName, contactId, args);
+                    return this.requestPhotoQuoteTool(schemaName, contactId, conversationId, args);
 
                 case 'cancel_photo_session':
                     return this.cancelPhotoSession(schemaName, contactId, args.sessionId, args.reason);
@@ -1731,17 +1735,17 @@ export class AIToolExecutorService {
         let rows: any[];
         try {
             const insertSql = `INSERT INTO appointments
-                 (contact_id, service_id, service_name, assigned_to, start_at, end_at, status,
+                 (contact_id, opportunity_id, conversation_id, service_id, service_name, assigned_to, start_at, end_at, status,
                   customer_name, customer_phone, customer_email, location, notes, metadata)
-                 VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5::timestamp, $6::timestamp, 'confirmed',
-                         $7, $8, $9, $10, $11, $12::jsonb)
+                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::uuid, $7::timestamp, $8::timestamp, 'confirmed',
+                         $9, $10, $11, $12, $13, $14::jsonb)
                  RETURNING id, service_name, start_at, end_at, status`;
-            const insertParams = [
-                contactId, args.serviceId, svc.name, assignedTo, startAt, endAt,
-                args.customerName, args.customerPhone || null, args.customerEmail || null,
-                location, description, JSON.stringify(appointmentMetadata),
-            ];
             rows = await this.prisma.transactionInTenantSchema(schema, async (query) => {
+                const canonicalContactId = await requireTenantContact(query, contactId);
+                const opportunityId = await resolveNativeEvidenceOpportunity(query, {
+                    contactId: canonicalContactId,
+                    conversationId,
+                });
                 await lockAndAssertAppointmentCapacity(query, {
                     schemaName: schema,
                     serviceId: args.serviceId,
@@ -1749,6 +1753,12 @@ export class AIToolExecutorService {
                     startAt,
                     endAt,
                 });
+                const insertParams = [
+                    canonicalContactId, opportunityId, conversationId || null,
+                    args.serviceId, svc.name, assignedTo, startAt, endAt,
+                    args.customerName, args.customerPhone || null, args.customerEmail || null,
+                    location, description, JSON.stringify(appointmentMetadata),
+                ];
                 const inserted = await query<any[]>(insertSql, insertParams);
                 if (!evalMode) {
                     await CalendarSyncOutboxService.enqueueWithTransaction(query, inserted[0].id, 'upsert');
@@ -2791,22 +2801,6 @@ export class AIToolExecutorService {
                 notes: args.notes,
             });
 
-            // El payload viaja completo a proposito: un pedido es time-critical y
-            // el oyente no deberia tener que volver a consultar la BD para poder
-            // avisarle al dueño que hay comida por preparar.
-            this.eventEmitter.emit('food_order.created', {
-                orderId: order.id,
-                tenantSchemaName: schemaName,
-                schemaName,
-                contactId,
-                customerName: args.customerName,
-                orderType: order.order_type,
-                total: Number(order.total || 0),
-                currency: order.currency,
-                itemsCount: resolvedItems.length,
-                tableNumber: args.tableNumber,
-            });
-
             return {
                 orderId: order.id,
                 status: order.status,
@@ -3322,11 +3316,6 @@ export class AIToolExecutorService {
                 issueDescription: args.issueDescription,
                 preferredDate: args.preferredDate,
                 preferredTimeWindow: args.preferredTimeWindow,
-            });
-            this.eventEmitter.emit('service_request.created', {
-                requestId: request.id,
-                tenantSchemaName: schemaName,
-                urgency: request.urgency,
             });
             return {
                 requestId: request.id,
@@ -3963,7 +3952,7 @@ export class AIToolExecutorService {
                 return { error: `Cannot cancel an order in "${rows[0].status}" status. Only received or confirmed orders can be cancelled.` };
             }
 
-            await this.restaurantsService.updateOrderStatus(schema, orderId, 'cancelled');
+            await this.restaurantsService.updateOrderStatus(schema, orderId, 'cancelled', { reason });
 
             if (reason) {
                 await this.prisma.$queryRawUnsafe(
@@ -3971,14 +3960,6 @@ export class AIToolExecutorService {
                     `\n[Cancelled: ${reason}]`, orderId,
                 );
             }
-
-            this.eventEmitter.emit('food_order.cancelled', {
-                orderId,
-                tenantSchemaName: schema,
-                schemaName: schema,
-                contactId,
-                reason,
-            });
 
             return { success: true, message: 'Order cancelled successfully' };
         } catch (e: any) {
@@ -4294,25 +4275,42 @@ export class AIToolExecutorService {
 
     private async cancelPhotoSession(schema: string, contactId: string, sessionId: string, reason?: string): Promise<any> {
         try {
-            const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, contact_id, status, package_name FROM "${schema}".photo_sessions WHERE id = $1::uuid`,
-                sessionId,
-            );
-            if (!rows.length) return { error: 'Photo session not found' };
-            if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own sessions' };
-            if (rows[0].status !== 'scheduled') {
-                return { error: `Cannot cancel a session in "${rows[0].status}" status.` };
-            }
+            return this.prisma.transactionInTenantSchema(schema, async (query) => {
+                const rows = await query<any[]>(
+                    `SELECT id, contact_id, status, package_name
+                       FROM photo_sessions
+                      WHERE id = $1::uuid
+                      FOR UPDATE`,
+                    [sessionId],
+                );
+                if (!rows.length) return { error: 'Photo session not found' };
+                if (rows[0].contact_id !== contactId) {
+                    return { error: 'You can only cancel your own sessions' };
+                }
+                if (!['requested', 'scheduled'].includes(rows[0].status)) {
+                    return { error: `Cannot cancel a session in "${rows[0].status}" status.` };
+                }
 
-            await this.prisma.$queryRawUnsafe(
-                `UPDATE "${schema}".photo_sessions SET status = 'cancelled',
-                 notes = COALESCE(notes, '') || $1, updated_at = NOW()
-                 WHERE id = $2::uuid`,
-                reason ? `\n[Cancelled: ${reason}]` : '\n[Cancelled by customer]',
-                sessionId,
-            );
-
-            return { success: true, message: 'Photo session cancelled successfully' };
+                const updated = await query<any[]>(
+                    `UPDATE photo_sessions
+                        SET status = 'cancelled',
+                            notes = COALESCE(notes, '') || $1,
+                            updated_at = NOW()
+                      WHERE id = $2::uuid
+                        AND contact_id = $3::uuid
+                        AND status IN ('requested', 'scheduled')
+                      RETURNING id`,
+                    [
+                        reason ? `\n[Cancelled: ${reason}]` : '\n[Cancelled by customer]',
+                        sessionId,
+                        contactId,
+                    ],
+                );
+                if (!updated.length) {
+                    return { error: 'Photo session changed before it could be cancelled' };
+                }
+                return { success: true, message: 'Photo session cancelled successfully' };
+            });
         } catch (e: any) {
             return { error: e.message };
         }
@@ -4320,7 +4318,12 @@ export class AIToolExecutorService {
 
     // ── Tier 3 — pet services & photography (read-only catalog) ─────
 
-    private async requestPhotoQuoteTool(schemaName: string, contactId: string, args: any): Promise<any> {
+    private async requestPhotoQuoteTool(
+        schemaName: string,
+        contactId: string,
+        conversationId: string | undefined,
+        args: any,
+    ): Promise<any> {
         try {
             if (!args?.date || !args?.customerName) {
                 return {
@@ -4330,30 +4333,19 @@ export class AIToolExecutorService {
                 };
             }
 
-            // Persist exactly the fields advertised by the tool contract. The
-            // contract requires a date, so every accepted request starts in the
-            // existing `scheduled` state; this tool does not calculate a quote.
-            const rows = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `INSERT INTO photo_sessions (
-                    contact_id, session_type, package_name, client_name,
-                    client_phone, scheduled_at, location, notes, status
-                 ) VALUES (
-                    $1::uuid, $2, $3, $4, $5, $6::timestamp, $7, $8, $9
-                 ) RETURNING id`,
-                [
-                    contactId || null,
-                    args.sessionType || 'other',
-                    args.packageName || null,
-                    args.customerName || null,
-                    args.customerPhone || null,
-                    args.date || null,
-                    args.location || null,
-                    args.specialRequests || null,
-                    'scheduled',
-                ],
-            );
-            const sessionId = rows?.[0]?.id;
+            const session = await this.photographyService.create(schemaName, {
+                contactId,
+                conversationId,
+                sessionType: args.sessionType || 'other',
+                packageName: args.packageName || null,
+                clientName: args.customerName || null,
+                clientPhone: args.customerPhone || null,
+                scheduledAt: args.date || null,
+                location: args.location || null,
+                notes: args.specialRequests || null,
+                status: 'requested',
+            });
+            const sessionId = session?.id;
             if (!sessionId) {
                 this.logger.warn('Photo session insert returned no id');
                 return {
@@ -4362,12 +4354,6 @@ export class AIToolExecutorService {
                     message: 'The photography request could not be registered. Do not promise follow-up; offer to connect the customer with the team.',
                 };
             }
-            this.eventEmitter.emit('photo_session.requested', {
-                tenantSchemaName: schemaName,
-                contactId,
-                sessionId,
-                ...args,
-            });
             return {
                 received: true,
                 sessionId,

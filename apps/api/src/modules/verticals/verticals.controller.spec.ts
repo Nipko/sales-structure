@@ -3,6 +3,7 @@ import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { VerticalsController } from './verticals.controller';
 import { VERTICAL_REGISTRY } from './vertical-definitions';
+import { VERTICAL_CAPABILITY_MANIFEST_VERSION } from '@parallext/shared';
 import {
     VERTICAL_IDENTIFIER_CONTRACT_VERSION,
     VERTICAL_INDUSTRY_ALIASES,
@@ -71,6 +72,35 @@ describe('VerticalsController tenant isolation', () => {
             data: resolved,
         });
         expect(service.resolveCapabilityManifest).toHaveBeenCalledWith('turismo', 'hotel');
+    });
+
+    it('serves subtype pipeline presets only after the current manifest is published', async () => {
+        const service = {
+            getVerticalConfig: jest.fn()
+                .mockResolvedValueOnce({
+                    industry: 'technology',
+                    subType: 'hardware',
+                    manifestVersion: 1,
+                    effectiveCapabilities: ['appointment_booking'],
+                })
+                .mockResolvedValueOnce({
+                    industry: 'technology',
+                    subType: 'hardware',
+                    manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+                    effectiveCapabilities: ['catalog_search'],
+                }),
+        };
+        const controller = new VerticalsController(service as any, {} as any, {} as any);
+
+        const legacy = await controller.getStagesPresets('tenant-id');
+        const current = await controller.getStagesPresets('tenant-id');
+        const legacyRules = legacy.data.flatMap((stage: any) => stage.transitionRules || []);
+        const currentRules = current.data.flatMap((stage: any) => stage.transitionRules || []);
+
+        expect(legacy.data).toEqual(VERTICAL_REGISTRY.technology.pipeline.stages);
+        expect(legacyRules).toContainEqual({ type: 'appointment_required' });
+        expect(currentRules).toContainEqual({ type: 'order_required' });
+        expect(currentRules).not.toContainEqual({ type: 'appointment_required' });
     });
 
     it('keeps content reseeding restricted to tenant administrators', () => {

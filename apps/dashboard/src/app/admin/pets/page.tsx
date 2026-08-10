@@ -64,20 +64,31 @@ export default function PetsPage() {
     const [filter, setFilter] = useState<SpeciesFilter>("all");
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(true);
+    const [hasMore, setHasMore] = useState(false);
 
-    const load = useCallback(async () => {
+    // El offset viaja por argumento y NO por dependencia: con `pets.length` en las
+    // deps, cada "cargar más" recreaba `load`, el efecto se disparaba solo con
+    // offset 0 y la lista volvía a la primera página. Mismo patrón que
+    // `usePaginatedContacts`.
+    const load = useCallback(async (offset = 0) => {
         if (!activeTenantId) return;
         setLoading(true);
         const speciesParam = filter === "all" ? undefined : (filter === "other" ? "other" : filter);
         const res = await api.listAllPets(activeTenantId, {
             species: speciesParam,
             search: search || undefined,
+            limit: 50,
+            offset,
         });
-        if (res.success && Array.isArray(res.data)) setPets(res.data as PetRow[]);
+        const page = res.data as { items?: PetRow[]; hasMore?: boolean } | undefined;
+        if (res.success && page && Array.isArray(page.items)) {
+            setPets((current) => offset > 0 ? [...current, ...page.items!] : page.items!);
+            setHasMore(Boolean(page.hasMore));
+        }
         setLoading(false);
     }, [activeTenantId, filter, search]);
 
-    useEffect(() => { load(); }, [load]);
+    useEffect(() => { void load(0); }, [load]);
 
     const tabs = SPECIES_FILTERS.map((id) => ({
         id,
@@ -129,6 +140,7 @@ export default function PetsPage() {
             )}
 
             {!loading && pets.length > 0 && (
+                <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {pets.map((pet, i) => (
                         <motion.div
@@ -188,6 +200,12 @@ export default function PetsPage() {
                             </Link>
                         </motion.div>
                     ))}
+                </div>
+                {hasMore && (
+                    <button type="button" onClick={() => void load(pets.length)} className="mx-auto block rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">
+                        {tc("loadMore")}
+                    </button>
+                )}
                 </div>
             )}
         </div>

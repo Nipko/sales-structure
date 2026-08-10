@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { requireTenantContact } from '../../common/utils/tenant-contact.util';
+import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 
 function normalizeOrderCurrencyCode(value: unknown, fallback = 'COP'): string {
     const candidate = typeof value === 'string' && value.trim()
@@ -61,6 +63,15 @@ export interface OrderContact {
     id: string;
     name: string;
     phone: string;
+    email: string;
+}
+
+export interface OrderContactPage {
+    items: OrderContact[];
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
 }
 
 // ============================================
@@ -134,28 +145,56 @@ export class OrdersService {
     /**
      * List contacts available for order creation
      */
-    async getContacts(tenantId: string): Promise<OrderContact[]> {
+    async getContacts(
+        tenantId: string,
+        options: { search?: string; limit?: number; offset?: number } = {},
+    ): Promise<OrderContactPage> {
         const schema = await this.getTenantSchema(tenantId);
-        if (!schema) return [];
+        if (!schema) throw new NotFoundException('Tenant schema not found');
 
-        try {
-            const rows = await this.prisma.executeInTenantSchema<any[]>(
-                schema,
-                `SELECT id, name, phone
-                 FROM contacts
-                 ORDER BY created_at DESC
-                 LIMIT 200`,
-            );
-
-            return (rows || []).map((row: any) => ({
-                id: row.id,
-                name: row.name || 'Cliente',
-                phone: row.phone || '',
-            }));
-        } catch (error) {
-            this.logger.warn(`Could not load order contacts for tenant ${tenantId}: ${error}`);
-            return [];
+        const requestedLimit = options.limit ?? 50;
+        const requestedOffset = options.offset ?? 0;
+        if (!Number.isInteger(requestedLimit) || requestedLimit < 1) {
+            throw new BadRequestException('limit must be a positive integer');
         }
+        if (!Number.isInteger(requestedOffset) || requestedOffset < 0) {
+            throw new BadRequestException('offset must be a non-negative integer');
+        }
+        const limit = Math.min(requestedLimit, 100);
+        const offset = requestedOffset;
+        const search = typeof options.search === 'string' ? options.search.trim() : '';
+        const params: any[] = [];
+        let where = '';
+        if (search) {
+            params.push(`%${search}%`);
+            where = 'WHERE name ILIKE $1 OR phone ILIKE $1 OR email ILIKE $1';
+        }
+
+        const countRows = await this.prisma.executeInTenantSchema<Array<{ total: number }>>(
+            schema,
+            `SELECT COUNT(*)::int AS total FROM contacts ${where}`,
+            params,
+        );
+        const total = Number(countRows?.[0]?.total || 0);
+        const limitParam = params.length + 1;
+        const offsetParam = params.length + 2;
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
+            schema,
+            `SELECT id, name, phone, email
+             FROM contacts
+             ${where}
+             ORDER BY created_at DESC, id DESC
+             LIMIT $${limitParam} OFFSET $${offsetParam}`,
+            [...params, limit, offset],
+        );
+
+        const items = (rows || []).map((row: any) => ({
+            id: row.id,
+            name: row.name || 'Cliente',
+            phone: row.phone || '',
+            email: row.email || '',
+        }));
+        return { items, total, limit, offset, hasMore: offset + items.length < total };
     }
 
     /**
@@ -163,6 +202,8 @@ export class OrdersService {
      */
     async createOrder(tenantId: string, data: {
         contactId?: string | null;
+        conversationId?: string | null;
+        opportunityId?: string | null;
         status?: 'pending' | 'confirmed' | 'paid';
         paymentMethod?: string;
         notes?: string;
@@ -206,6 +247,12 @@ export class OrdersService {
         // lines and stock movements. Names, prices and currency come from the
         // locked catalog, so a client cannot lower a price or invent stock.
         return this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const canonicalContactId = await requireTenantContact(query, data.contactId || null);
+            const opportunityId = await resolveNativeEvidenceOpportunity(query, {
+                contactId: canonicalContactId,
+                conversationId: data.conversationId,
+                trustedOpportunityId: data.opportunityId,
+            });
             const products = await query<any[]>(
                 `SELECT id, name, price, currency, stock, is_available
                    FROM products
@@ -245,19 +292,21 @@ export class OrdersService {
 
             const orderRows = await query<any[]>(
                 `INSERT INTO orders (
-                    id, contact_id, status, total_amount, currency, notes,
+                    id, contact_id, opportunity_id, conversation_id, status, total_amount, currency, notes,
                     metadata, created_at, updated_at
                  ) VALUES (
-                    gen_random_uuid(), $1::uuid, $6, $2, $3, $4,
-                    $5::jsonb, NOW(), NOW()
+                    gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7,
+                    $8::jsonb, NOW(), NOW()
                  ) RETURNING id`,
                 [
-                    data.contactId || null,
+                    canonicalContactId,
+                    opportunityId,
+                    data.conversationId || null,
+                    initialStatus,
                     totalAmount,
                     currency,
                     data.notes || '',
                     JSON.stringify({ payment_method: data.paymentMethod || 'cash' }),
-                    initialStatus,
                 ],
             );
             const orderId = orderRows?.[0]?.id;
@@ -408,7 +457,7 @@ export class OrdersService {
      * Schema runtime setups
      */
     private async ensureOrdersTables(schema: string): Promise<void> {
-        const cacheKey = `orders:tables:${schema}`;
+        const cacheKey = `orders:tables:v2:${schema}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
@@ -417,6 +466,8 @@ export class OrdersService {
                 CREATE TABLE IF NOT EXISTS "${schema}".orders (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     contact_id UUID REFERENCES "${schema}".contacts(id) ON DELETE SET NULL,
+                    opportunity_id UUID REFERENCES "${schema}".opportunities(id) ON DELETE RESTRICT,
+                    conversation_id UUID REFERENCES "${schema}".conversations(id) ON DELETE SET NULL,
                     status VARCHAR(50) DEFAULT 'pending',
                     total_amount DECIMAL(12,2) DEFAULT 0,
                     currency VARCHAR(3) DEFAULT 'COP',
@@ -427,6 +478,17 @@ export class OrdersService {
                     created_at TIMESTAMP DEFAULT NOW(),
                     updated_at TIMESTAMP DEFAULT NOW()
                 )
+            `);
+
+            await this.prisma.$queryRawUnsafe(`
+                ALTER TABLE "${schema}".orders
+                ADD COLUMN IF NOT EXISTS opportunity_id UUID
+            `);
+
+            await this.prisma.$queryRawUnsafe(`
+                CREATE INDEX IF NOT EXISTS idx_orders_opportunity_id
+                ON "${schema}".orders(opportunity_id)
+                WHERE opportunity_id IS NOT NULL
             `);
 
             await this.prisma.$queryRawUnsafe(`
@@ -449,9 +511,14 @@ export class OrdersService {
                 CREATE INDEX IF NOT EXISTS idx_orders_status ON "${schema}".orders(status)
             `);
 
+            // A lazy-created/existing orders table must receive the same exact
+            // ownership FK + guard as schemas migrated during API startup.
+            await this.prisma.ensureNativeEvidenceOpportunityOwnershipForTable(schema, 'orders');
+
             await this.redis.set(cacheKey, 'true', 86400); // 24h
         } catch (error) {
             this.logger.warn(`Could not create orders tables in ${schema}: ${error}`);
+            throw error;
         }
     }
 

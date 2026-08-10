@@ -40,6 +40,7 @@ import { GymsModule } from '../gyms/gyms.module';
 import { EducationModule } from '../education/education.module';
 import { InsuranceModule } from '../insurance/insurance.module';
 import { HomeServicesModule } from '../home-services/home-services.module';
+import { PhotographyModule } from '../photography/photography.module';
 import { MediaProcessingModule } from '../media-processing/media-processing.module';
 import { EcommerceModule } from '../ecommerce/ecommerce.module';
 import { VerticalIntegrationsModule } from '../vertical-integrations/vertical-integrations.module';
@@ -83,6 +84,7 @@ import { ToolApprovalWorkflowService } from './tool-approval-workflow.service';
         EducationModule,
         InsuranceModule,
         HomeServicesModule,
+        PhotographyModule,
         EcommerceModule,
         VerticalIntegrationsModule,
         AttributionModule,

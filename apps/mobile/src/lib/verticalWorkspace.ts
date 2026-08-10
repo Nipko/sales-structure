@@ -1,3 +1,5 @@
+import { VERTICAL_CAPABILITY_MANIFEST_VERSION } from '@parallext/shared';
+
 export type VerticalWorkspaceKind =
     | 'appointments'
     | 'stays'
@@ -50,6 +52,7 @@ export interface VerticalWorkspaceInput {
     readonly industry?: string | null;
     readonly subType?: string | null;
     readonly bookingEnabled?: boolean | null;
+    readonly manifestVersion?: number | null;
     /** Versioned, backend-resolved capabilities. Older API responses omit it. */
     readonly effectiveCapabilities?: readonly string[] | null;
 }
@@ -153,6 +156,8 @@ const CAPABILITY_WORKSPACES: Readonly<Record<string, VerticalWorkspaceKind>> = {
     insurance_operations: 'insurance',
     service_requests: 'service_requests',
     photo_sessions: 'photo_sessions',
+    vehicle_rentals: 'vehicle_rentals',
+    pet_boarding: 'pet_boarding',
     catalog_search: 'orders',
     appointment_booking: 'appointments',
 };
@@ -166,6 +171,8 @@ const CAPABILITY_PRIORITY = [
     'insurance_operations',
     'service_requests',
     'photo_sessions',
+    'vehicle_rentals',
+    'pet_boarding',
     'catalog_search',
     'appointment_booking',
 ] as const;
@@ -190,7 +197,10 @@ const TOURISM_SUBTYPE_WORKSPACES: Readonly<Record<string, VerticalWorkspaceKind>
 };
 
 const AUTOMOTIVE_SUBTYPE_WORKSPACES: Readonly<Record<string, VerticalWorkspaceKind>> = {
-    concesionario: 'test_drives',
+    // Dealership visits/test drives are appointments with an inventory vehicle
+    // in metadata. Keeping a second test_drives workspace split the canonical
+    // agenda and bypassed appointment availability/contact handling.
+    concesionario: 'appointments',
     taller: 'appointments',
     repuestos: 'orders',
     alquiler: 'vehicle_rentals',
@@ -224,14 +234,50 @@ export function resolveVerticalWorkspace(
 ): VerticalWorkspaceResolution {
     const industry = normalize(input.industry);
     const subType = normalize(input.subType);
+    const hasPublishedCapabilities = Array.isArray(input.effectiveCapabilities);
+
+    const fromCapabilities = (): VerticalWorkspaceResolution => {
+        const capabilities = new Set(input.effectiveCapabilities || []);
+        for (const capability of CAPABILITY_PRIORITY) {
+            if (capabilities.has(capability)) {
+                return WORKSPACES[CAPABILITY_WORKSPACES[capability]];
+            }
+        }
+        return WORKSPACES.none;
+    };
+
+    // An explicit empty list is the publication fence for absent/failed v2.
+    if (hasPublishedCapabilities && input.effectiveCapabilities!.length === 0) {
+        return WORKSPACES.none;
+    }
+
+    if (
+        input.manifestVersion === VERTICAL_CAPABILITY_MANIFEST_VERSION
+        && !hasPublishedCapabilities
+    ) {
+        return WORKSPACES.none;
+    }
+
+    // Only a current manifest is allowed to supersede the legacy subtype
+    // routing. Stored v1 configurations must keep the workspace users already
+    // had until the tenant completes reconciliation.
+    if (
+        hasPublishedCapabilities
+        && input.manifestVersion === VERTICAL_CAPABILITY_MANIFEST_VERSION
+    ) {
+        return fromCapabilities();
+    }
 
     if (industry === 'turismo' && TOURISM_SUBTYPE_WORKSPACES[subType]) {
         return WORKSPACES[TOURISM_SUBTYPE_WORKSPACES[subType]];
     }
 
+    if (industry === 'automotriz' && subType === 'concesionario') {
+        return WORKSPACES.test_drives;
+    }
+
     if (industry === 'automotriz' && AUTOMOTIVE_SUBTYPE_WORKSPACES[subType]) {
-        const kind = AUTOMOTIVE_SUBTYPE_WORKSPACES[subType];
-        if (kind !== 'appointments') return WORKSPACES[kind];
+        return WORKSPACES[AUTOMOTIVE_SUBTYPE_WORKSPACES[subType]];
     }
 
     if (industry === 'pet_services' && PET_SERVICES_SUBTYPE_WORKSPACES[subType]) {
@@ -251,17 +297,8 @@ export function resolveVerticalWorkspace(
         return WORKSPACES.orders;
     }
 
-    // Prefer the versioned server contract when available. An empty array is a
-    // deliberate "no operational module" decision, not a cue to fall back to
-    // generic appointments.
-    if (Array.isArray(input.effectiveCapabilities)) {
-        const capabilities = new Set(input.effectiveCapabilities);
-        for (const capability of CAPABILITY_PRIORITY) {
-            if (capabilities.has(capability)) {
-                return WORKSPACES[CAPABILITY_WORKSPACES[capability]];
-            }
-        }
-        return WORKSPACES.none;
+    if (hasPublishedCapabilities) {
+        return fromCapabilities();
     }
 
     const specializedKind = INDUSTRY_WORKSPACES[industry];

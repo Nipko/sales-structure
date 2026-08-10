@@ -148,6 +148,7 @@ describe('Agent Test complete safe-tool allowlist', () => {
                 fail: jest.fn(),
             } as any,
             {} as any,
+            {} as any,
         );
         jest.spyOn((executor as any).logger, 'log').mockImplementation(() => undefined);
         jest.spyOn((executor as any).logger, 'warn').mockImplementation(() => undefined);

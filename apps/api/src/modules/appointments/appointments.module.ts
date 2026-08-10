@@ -11,12 +11,14 @@ import { CalendarSyncOutboxService } from './calendar-sync-outbox.service';
 import { ChannelsModule } from '../channels/channels.module';
 import { EmailTemplatesModule } from '../email-templates/email-templates.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { IdentityModule } from '../identity/identity.module';
 
 @Module({
     imports: [
         forwardRef(() => ChannelsModule),
         EmailTemplatesModule,
         WhatsappModule,
+        IdentityModule,
     ],
     controllers: [AppointmentsController, CalendarCallbackController, PublicBookingController],
     providers: [

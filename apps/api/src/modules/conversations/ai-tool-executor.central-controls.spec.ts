@@ -42,6 +42,7 @@ function createExecutor(
         {} as any,
         control,
         paymentOperations as any,
+        {} as any,
     );
     jest.spyOn((executor as any).logger, 'log').mockImplementation(() => undefined);
     jest.spyOn((executor as any).logger, 'error').mockImplementation(() => undefined);

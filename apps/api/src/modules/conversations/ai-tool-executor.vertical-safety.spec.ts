@@ -59,6 +59,7 @@ describe('AIToolExecutorService vertical safety contracts', () => {
                 fail: jest.fn(),
             } as any,
             {} as any,
+            {} as any,
         );
         return {
             executor,
@@ -229,6 +230,10 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             estimatedDelivery: '22 minutos',
             estimatedDeliveryAt: estimatedAt,
         });
+        expect(harness.eventEmitter.emit).not.toHaveBeenCalledWith(
+            'food_order.created',
+            expect.anything(),
+        );
     });
 
     it('keeps raw email, phone and arbitrary metadata out of LLM customer context', async () => {

@@ -9,10 +9,12 @@ import {
     resolveVerticalCapabilityManifest,
     type TenantVerticalConfig,
 } from '@parallext/shared';
+import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { getVerticalDefinition } from './vertical-definitions';
 import { resolveVerticalAgendaSeedContract } from './verticals.service';
+import { withResolvedVerticalPipeline } from './vertical-pipeline-contract';
 import {
     InvalidVerticalSelectionError,
     resolveVerticalSelection,
@@ -125,8 +127,10 @@ export class VerticalMigrationService {
 
         const language = this.languageKey(tenant.language);
         const targetSeeds = this.targetSeeds(target, language);
-        const existing = await this.readExistingSeeds(tenant.schemaName);
-        const inventory = await this.readInventory(tenant.schemaName);
+        const { existing, inventory } = await this.readPreviewState(
+            tenant.schemaName,
+            tenantId,
+        );
         const diff = this.buildMigrationDiff(existing, targetSeeds);
         const mappingCoverage = this.buildMappingCoverage(inventory, diff);
         const applySupported = CURRENT_VERTICAL_MIGRATION_ADAPTER !== null
@@ -299,7 +303,8 @@ export class VerticalMigrationService {
                 throw new ConflictException({ error: 'vertical_migration_source_changed' });
             }
 
-            const existing = await this.readExistingSeedsWithQuery(query);
+            const { pipelineId } = await ensurePrimaryPipeline(query, tenantId);
+            const existing = await this.readExistingSeedsWithQuery(query, pipelineId);
             const currentFingerprint = this.sourceFingerprint(currentIdentity, existing);
             if (currentFingerprint !== migration.source_fingerprint) {
                 throw new ConflictException({
@@ -333,6 +338,7 @@ export class VerticalMigrationService {
             const inserted = await this.insertAdditiveSeeds(
                 query,
                 tenantId,
+                pipelineId,
                 targetSeeds,
                 previewPayload.diff,
             );
@@ -476,16 +482,63 @@ export class VerticalMigrationService {
         return diff;
     }
 
-    private async readExistingSeeds(schemaName: string): Promise<ExistingSeedSet> {
-        return this.prisma.transactionInTenantSchema(schemaName, (query) => this.readExistingSeedsWithQuery(query));
+    private async readPreviewState(
+        schemaName: string,
+        tenantId: string,
+    ): Promise<{ existing: ExistingSeedSet; inventory: Record<string, number> }> {
+        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            // Preview is a read-only contract. Do not create/reactivate a
+            // pipeline or adopt/delete legacy rows merely because somebody
+            // asked to inspect a migration. A pre-multi-pipeline schema can be
+            // inspected through its NULL owner; a mixed schema must first be
+            // reconciled explicitly so the preview cannot hide ambiguity.
+            const ownership = await query<Array<{
+                pipeline_id: string | null;
+                has_orphan_stages: boolean;
+                has_orphan_deals: boolean;
+            }>>(
+                `SELECT
+                    (
+                        SELECT id
+                          FROM pipelines
+                         WHERE tenant_id = $1::uuid AND is_default = true
+                         ORDER BY created_at ASC
+                         LIMIT 1
+                    ) AS pipeline_id,
+                    EXISTS (SELECT 1 FROM pipeline_stages WHERE pipeline_id IS NULL) AS has_orphan_stages,
+                    EXISTS (SELECT 1 FROM deals WHERE pipeline_id IS NULL) AS has_orphan_deals`,
+                [tenantId],
+            );
+            const pipelineId = ownership?.[0]?.pipeline_id || null;
+            if (
+                pipelineId
+                && (ownership[0].has_orphan_stages || ownership[0].has_orphan_deals)
+            ) {
+                throw new ConflictException({
+                    error: 'vertical_migration_pipeline_ownership_unresolved',
+                    message: 'El embudo tiene filas heredadas sin propietario; debe repararse antes de generar una vista previa.',
+                    tenantId,
+                    pipelineId,
+                });
+            }
+            const existing = await this.readExistingSeedsWithQuery(query, pipelineId);
+            const inventory = await this.readInventoryWithQuery(query, pipelineId);
+            return { existing, inventory };
+        });
     }
 
-    private async readExistingSeedsWithQuery(query: any): Promise<ExistingSeedSet> {
+    private async readExistingSeedsWithQuery(
+        query: any,
+        pipelineId: string | null,
+    ): Promise<ExistingSeedSet> {
         const [pipelineStages, faqs, services] = await Promise.all([
             query(
                 `SELECT id, slug, name, color, position, default_probability AS probability,
                         sla_hours, is_terminal, terminal_outcome, transition_rules
-                 FROM pipeline_stages WHERE pipeline_id IS NULL ORDER BY position, id`,
+                 FROM pipeline_stages
+                 WHERE (($1::uuid IS NULL AND pipeline_id IS NULL) OR pipeline_id = $1::uuid)
+                 ORDER BY position, id`,
+                [pipelineId],
             ),
             query(
                 `SELECT id, question, answer, category, is_published
@@ -504,9 +557,11 @@ export class VerticalMigrationService {
         };
     }
 
-    private async readInventory(schemaName: string): Promise<Record<string, number>> {
-        const rows: any[] = await this.prisma.executeInTenantSchema(
-            schemaName,
+    private async readInventoryWithQuery(
+        query: any,
+        pipelineId: string | null,
+    ): Promise<Record<string, number>> {
+        const rows: any[] = await query(
             `SELECT
                 (SELECT COUNT(*)::int FROM contacts) AS contacts,
                 (SELECT COUNT(*)::int FROM leads) AS leads,
@@ -515,15 +570,20 @@ export class VerticalMigrationService {
                 (SELECT COUNT(*)::int FROM appointments) AS appointments,
                 (SELECT COUNT(*)::int FROM services) AS services,
                 (SELECT COUNT(*)::int FROM faqs) AS faqs,
-                (SELECT COUNT(*)::int FROM pipeline_stages) AS pipeline_stages,
+                (SELECT COUNT(*)::int FROM pipeline_stages
+                  WHERE (($1::uuid IS NULL AND pipeline_id IS NULL) OR pipeline_id = $1::uuid)) AS pipeline_stages,
                 (SELECT COUNT(*)::int FROM agent_personas) AS agents`,
+            [pipelineId],
         );
         const row = rows[0] || {};
         return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, Number(value || 0)]));
     }
 
     private targetSeeds(identity: VerticalIdentity, language: string): TargetSeedSet {
-        const definition = getVerticalDefinition(identity.industry);
+        const definition = withResolvedVerticalPipeline(
+            getVerticalDefinition(identity.industry),
+            identity.subType,
+        );
         const agenda = resolveVerticalAgendaSeedContract(definition, identity.subType);
         return {
             pipelineStages: definition.pipeline.stages.map((stage, position) => ({
@@ -562,6 +622,7 @@ export class VerticalMigrationService {
     private async insertAdditiveSeeds(
         query: any,
         tenantId: string,
+        pipelineId: string,
         targetSeeds: TargetSeedSet,
         diff: VerticalMigrationPreview['diff'],
     ): Promise<InsertedRows> {
@@ -570,12 +631,12 @@ export class VerticalMigrationService {
         for (const stage of targetSeeds.pipelineStages.filter((row: any) => allowedStages.has(row.slug))) {
             const rows: any[] = await query(
                 `INSERT INTO pipeline_stages
-                    (tenant_id, name, slug, color, position, default_probability,
+                    (tenant_id, pipeline_id, name, slug, color, position, default_probability,
                      sla_hours, is_terminal, terminal_outcome, transition_rules)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+                 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
                  ON CONFLICT (pipeline_id, slug) DO NOTHING
                  RETURNING id`,
-                [tenantId, stage.name, stage.slug, stage.color, stage.position,
+                [tenantId, pipelineId, stage.name, stage.slug, stage.color, stage.position,
                     stage.probability, stage.slaHours, stage.isTerminal,
                     stage.terminalOutcome, JSON.stringify(stage.transitionRules)],
             );

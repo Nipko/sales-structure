@@ -5,6 +5,11 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { CalendarDays, X, MapPin, FileText, UserCheck, Save, Repeat } from "lucide-react";
 import { Appointment, Service, fmt2 } from "./shared";
+import {
+  canSaveAppointmentWithContact,
+  hasAppointmentContact,
+  type AppointmentContact,
+} from "./contact-selection";
 
 interface ModalForm {
   serviceName: string;
@@ -27,6 +32,14 @@ interface AppointmentModalProps {
   form: ModalForm;
   onChange: (form: ModalForm) => void;
   services: Service[];
+  contacts: AppointmentContact[];
+  contactsLoading: boolean;
+  contactsLoadFailed: boolean;
+  contactSearch: string;
+  onContactSearchChange: (value: string) => void;
+  contactsHasMore: boolean;
+  onLoadMoreContacts: () => void;
+  onRetryContacts: () => void;
   editingAppointment: Appointment | null;
   saving: boolean;
   onSave: () => void;
@@ -35,12 +48,16 @@ interface AppointmentModalProps {
 }
 
 export default function AppointmentModal({
-  form, onChange, services, editingAppointment, saving, onSave, onSaveRecurring, onClose,
+  form, onChange, services, contacts, contactsLoading, contactsLoadFailed,
+  contactSearch, onContactSearchChange, contactsHasMore, onLoadMoreContacts,
+  onRetryContacts, editingAppointment, saving, onSave, onSaveRecurring, onClose,
 }: AppointmentModalProps) {
   const t = useTranslations("appointments");
+  const tc = useTranslations("common");
   const [recurrence, setRecurrence] = useState<RecurrenceConfig>({
     enabled: false, frequency: "weekly", count: 4,
   });
+  const hasSelectedContact = hasAppointmentContact(form.contactId, contacts);
 
   const handleSave = () => {
     if (recurrence.enabled && onSaveRecurring && !editingAppointment) {
@@ -215,15 +232,74 @@ export default function AppointmentModal({
           {/* Contact */}
           <div>
             <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
-              {t('contact')}
+              {t('contact')}{!editingAppointment ? " *" : ""}
             </label>
             <input
-              type="text"
-              placeholder={t('contactIdPlaceholder')}
+              type="search"
+              value={contactSearch}
+              onChange={(event) => onContactSearchChange(event.target.value)}
+              placeholder={tc('searchContacts')}
+              aria-label={tc('searchContacts')}
+              className="mb-2 w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+            <select
               value={form.contactId}
               onChange={(e) => onChange({ ...form, contactId: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
+              disabled={contactsLoading && contacts.length === 0}
+              aria-invalid={!editingAppointment && !hasSelectedContact}
+              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-60"
+            >
+              <option value="">
+                {contactsLoading
+                  ? t('contactsLoading')
+                  : editingAppointment
+                    ? t('contactOptionalPlaceholder')
+                    : t('selectContactPlaceholder')}
+              </option>
+              {editingAppointment && form.contactId && !hasSelectedContact && (
+                <option value={form.contactId}>
+                  {editingAppointment.contactName || form.contactId}
+                </option>
+              )}
+              {contacts.map((contact) => {
+                const detail = [contact.phone, contact.email].filter(Boolean).join(" · ");
+                return (
+                  <option key={contact.id} value={contact.id}>
+                    {contact.name}{detail ? ` — ${detail}` : ""}
+                  </option>
+                );
+              })}
+            </select>
+            {contactsHasMore && !contactsLoadFailed && (
+              <button
+                type="button"
+                onClick={onLoadMoreContacts}
+                disabled={contactsLoading}
+                className="mt-1.5 text-xs font-medium text-primary underline disabled:opacity-50"
+              >
+                {contactsLoading ? tc('loading') : tc('loadMore')}
+              </button>
+            )}
+            {contactsLoadFailed ? (
+              <p role="alert" className="mt-1.5 text-xs text-red-600 dark:text-red-400">
+                {t('contactsLoadError')}{" "}
+                <button
+                  type="button"
+                  onClick={() => onRetryContacts()}
+                  className="font-medium underline underline-offset-2 hover:no-underline"
+                >
+                  {t('retryContacts')}
+                </button>
+              </p>
+            ) : !contactsLoading && contacts.length === 0 && !editingAppointment ? (
+              <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-300">
+                {t('noContactsAvailable')}
+              </p>
+            ) : !editingAppointment && !hasSelectedContact ? (
+              <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                {t('contactRequired')}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -286,7 +362,7 @@ export default function AppointmentModal({
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || !form.serviceName || !form.date}
+            disabled={saving || !form.serviceName || !form.date || !canSaveAppointmentWithContact(Boolean(editingAppointment), form.contactId, contacts)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer disabled:opacity-50 hover:opacity-90 transition-opacity"
           >
             <Save size={16} />

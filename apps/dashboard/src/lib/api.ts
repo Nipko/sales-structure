@@ -19,6 +19,54 @@ export type MercadoPagoProviderStatus = {
     webhookConfigured: boolean;
 };
 
+export type ResourceRentalType = "vehicle_rental" | "pet_boarding";
+export type ResourceRentalStatus =
+    | "reserved"
+    | "picked_up"
+    | "returned"
+    | "checked_in"
+    | "checked_out"
+    | "cancelled";
+
+export interface ResourceRental {
+    id: string;
+    rental_type: ResourceRentalType;
+    resource_id: string;
+    service_id?: string | null;
+    contact_id?: string | null;
+    customer_name?: string | null;
+    customer_phone?: string | null;
+    start_date: string;
+    end_date: string;
+    status: ResourceRentalStatus;
+    notes?: string | null;
+    created_at: string;
+    updated_at: string;
+    resource_name?: string | null;
+    vehicle_make?: string | null;
+    vehicle_model?: string | null;
+    vehicle_year?: number | null;
+    pet_name?: string | null;
+    pet_species?: string | null;
+    service_name?: string | null;
+    service_category?: string | null;
+    contact_name?: string | null;
+    contact_phone?: string | null;
+}
+
+export interface CreateResourceRentalInput {
+    type: ResourceRentalType;
+    resourceId: string;
+    serviceId?: string;
+    contactId?: string;
+    customerName?: string;
+    customerPhone?: string;
+    startDate: string;
+    endDate: string;
+    notes?: string;
+    metadata?: Record<string, unknown>;
+}
+
 // ============================================
 // Core fetch with auth + refresh mutex
 // ============================================
@@ -444,8 +492,15 @@ export const api = {
     getOrdersOverview(tenantId: string) {
         return apiGet<any>(`/orders/overview/${tenantId}`);
     },
-    getOrderContacts(tenantId: string) {
-        return apiGet<any[]>(`/orders/contacts/${tenantId}`);
+    getOrderContacts(tenantId: string, params?: { search?: string; limit?: number; offset?: number }) {
+        const qs = new URLSearchParams();
+        Object.entries(params || {}).forEach(([key, value]) => {
+            if (value !== undefined && value !== '') qs.set(key, String(value));
+        });
+        const query = qs.toString();
+        return apiGet<{ items: any[]; total: number; limit: number; offset: number; hasMore: boolean }>(
+            `/orders/contacts/${tenantId}${query ? `?${query}` : ''}`,
+        );
     },
     createOrder(tenantId: string, data: any) {
         return apiPost(`/orders/${tenantId}`, data);
@@ -1549,10 +1604,12 @@ export const api = {
     deliverPhotoSession: (tenantId: string, sessionId: string, data: { galleryUrl: string; galleryPassword?: string }) =>
         apiPut(`/photography/${tenantId}/sessions/${sessionId}/deliver`, data),
 
-    listAllPets: (tenantId: string, params?: { species?: string; search?: string }) => {
+    listAllPets: (tenantId: string, params?: { species?: string; search?: string; limit?: number; offset?: number }) => {
         const qs = new URLSearchParams();
         if (params?.species) qs.set("species", params.species);
         if (params?.search) qs.set("search", params.search);
+        if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+        if (params?.offset !== undefined) qs.set("offset", String(params.offset));
         const q = qs.toString();
         return apiGet(`/pets/${tenantId}/all${q ? `?${q}` : ""}`);
     },
@@ -1779,7 +1836,7 @@ export const api = {
         apiDelete(`/listings/${tenantId}/zones/${mappingId}`),
 
     // ─── Vehicle Inventory (automotriz) ───
-    listVehicles: (tenantId: string, params?: { status?: string; make?: string; category?: string; condition?: string; minPrice?: number; maxPrice?: number; limit?: number; offset?: number }) => {
+    listVehicles: (tenantId: string, params?: { status?: string; search?: string; make?: string; category?: string; condition?: string; minPrice?: number; maxPrice?: number; limit?: number; offset?: number }) => {
         const qs = new URLSearchParams();
         Object.entries(params || {}).forEach(([k, v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); });
         const q = qs.toString();
@@ -1803,6 +1860,30 @@ export const api = {
     },
     scheduleVehicleTestDrive: (tenantId: string, data: { vehicleId: string; contactName: string; contactPhone?: string; scheduledDate: string; scheduledTime: string; notes?: string }) =>
         apiPost(`/vehicles/${tenantId}/test-drives`, data),
+
+    // ─── Vehicle rentals & pet boarding ───
+    listResourceRentals: (tenantId: string, params?: {
+        type?: ResourceRentalType;
+        status?: ResourceRentalStatus;
+        resourceId?: string;
+        from?: string;
+        to?: string;
+        limit?: number;
+    }) => {
+        const qs = new URLSearchParams();
+        Object.entries(params || {}).forEach(([key, value]) => {
+            if (value !== undefined && value !== "") qs.set(key, String(value));
+        });
+        const query = qs.toString();
+        return apiGet<ResourceRental[]>(`/resource-rentals/${tenantId}${query ? `?${query}` : ""}`);
+    },
+    createResourceRental: (tenantId: string, data: CreateResourceRentalInput) =>
+        apiPost<ResourceRental>(`/resource-rentals/${tenantId}`, data),
+    transitionResourceRental: (
+        tenantId: string,
+        rentalId: string,
+        status: ResourceRentalStatus,
+    ) => apiPut<ResourceRental>(`/resource-rentals/${tenantId}/${rentalId}/status`, { status }),
 
     // ─── Financials (super_admin) ───
     getFinancialsOverview: () => apiGet("/financials/overview"),

@@ -288,8 +288,8 @@ export class PublicApiController {
     @Post('appointments')
     @ApiScope('write:appointments')
     async createAppointment(@Request() req: any, @Body() body: any) {
-        if (!body.serviceName || !body.startAt || !body.endAt) {
-            throw new BadRequestException('serviceName, startAt, and endAt are required');
+        if (!body.contactId || !body.serviceName || !body.startAt || !body.endAt) {
+            throw new BadRequestException('contactId, serviceName, startAt, and endAt are required');
         }
         const schema = await this.getSchema(req.tenantId);
         const appointment = await this.appointmentsService.create(schema, {

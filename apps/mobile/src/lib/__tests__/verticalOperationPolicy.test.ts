@@ -2,6 +2,7 @@ import {
     availableItemActions,
     canCreateOperation,
     getSafeNextStatus,
+    requiresScheduledAtTransition,
     type VerticalOperationKind,
 } from '../verticalOperationPolicy';
 
@@ -51,7 +52,7 @@ describe('verticalOperationPolicy', () => {
             { kind: 'orders', itemType: 'order', states: ['pending', 'confirmed', 'paid'] },
             { kind: 'service_requests', itemType: 'service_request', states: ['pending', 'quoted', 'scheduled', 'dispatched', 'in_progress', 'completed'] },
             { kind: 'education', itemType: 'enrollment', states: ['enrolled', 'active', 'completed'] },
-            { kind: 'photo_sessions', itemType: 'photo_session', states: ['scheduled', 'in_progress', 'delivered'] },
+            { kind: 'photo_sessions', itemType: 'photo_session', states: ['requested', 'scheduled', 'in_progress', 'delivered'] },
             { kind: 'vehicle_rentals', itemType: 'vehicle_rental', states: ['reserved', 'picked_up', 'returned'] },
             { kind: 'pet_boarding', itemType: 'boarding', states: ['reserved', 'checked_in', 'checked_out'] },
         ];
@@ -68,6 +69,13 @@ describe('verticalOperationPolicy', () => {
             ['full', 'finished'],
         ])('finishes an education cohort from %s', (from, to) => {
             expect(getSafeNextStatus('education', 'cohort', from)).toBe(to);
+        });
+
+        it('requires an atomic timestamp for service and photography scheduling', () => {
+            expect(requiresScheduledAtTransition('service_requests', 'service_request', 'scheduled')).toBe(true);
+            expect(requiresScheduledAtTransition('photo_sessions', 'photo_session', 'scheduled')).toBe(true);
+            expect(requiresScheduledAtTransition('photo_sessions', 'photo_session', 'in_progress')).toBe(false);
+            expect(requiresScheduledAtTransition('appointments', 'appointment', 'scheduled')).toBe(false);
         });
 
         it('never guesses transitions for an unknown state or mismatched item type', () => {
@@ -152,6 +160,8 @@ describe('verticalOperationPolicy', () => {
         it('uses safe field-service, photo, rental and boarding actions', () => {
             expect(availableItemActions('service_requests', 'tenant_agent', 'service_request', 'pending')).toEqual(['advance']);
             expect(availableItemActions('service_requests', 'tenant_admin', 'service_request', 'in_progress')).toEqual(['advance', 'cancel']);
+            expect(availableItemActions('photo_sessions', 'tenant_agent', 'photo_session', 'requested')).toEqual([]);
+            expect(availableItemActions('photo_sessions', 'tenant_admin', 'photo_session', 'requested')).toEqual(['advance', 'cancel']);
             expect(availableItemActions('photo_sessions', 'tenant_agent', 'photo_session', 'scheduled')).toEqual([]);
             expect(availableItemActions('photo_sessions', 'tenant_admin', 'photo_session', 'scheduled')).toEqual(['advance', 'cancel']);
             expect(availableItemActions('photo_sessions', 'tenant_admin', 'photo_session', 'in_progress')).toEqual(['deliver', 'cancel']);

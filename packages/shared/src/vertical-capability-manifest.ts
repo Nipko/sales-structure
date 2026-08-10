@@ -6,7 +6,7 @@
  * unavailable and an action without an enforced identity gate is not labelled
  * as protected.
  */
-export const VERTICAL_CAPABILITY_MANIFEST_VERSION = 1 as const;
+export const VERTICAL_CAPABILITY_MANIFEST_VERSION = 2 as const;
 
 export const VERTICAL_MANIFEST_INDUSTRIES = [
     'salud',
@@ -40,6 +40,7 @@ export type VerticalCapability =
     | 'real_estate_listings'
     | 'restaurant_ordering'
     | 'vehicle_inventory'
+    | 'vehicle_rentals'
     | 'tour_booking'
     | 'nightly_booking'
     | 'course_enrollment'
@@ -49,6 +50,7 @@ export type VerticalCapability =
     | 'insurance_operations'
     | 'service_requests'
     | 'pet_services'
+    | 'pet_boarding'
     | 'photo_sessions';
 
 /** These names match the persisted `config.tools.*` keys used by the runtime. */
@@ -101,6 +103,7 @@ export type VerticalRoutePath =
     | '/admin/menu'
     | '/admin/food-orders'
     | '/admin/vehicles'
+    | '/admin/resource-rentals'
     | '/admin/tours'
     | '/admin/properties'
     | '/admin/courses'
@@ -517,6 +520,7 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
             ]),
         }),
         subtypeOverrides: {
+            comida_rapida: APPOINTMENT_PATCH_REMOVAL,
             dark_kitchen: APPOINTMENT_PATCH_REMOVAL,
             delivery: APPOINTMENT_PATCH_REMOVAL,
         },
@@ -541,16 +545,30 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 ],
             ),
         }),
+        subtypeOverrides: {
+            repuestos: {
+                removeCapabilities: ['appointment_booking', 'vehicle_inventory'],
+                removeToolGroups: ['appointments', 'vehicles'],
+                addCapabilities: ['catalog_search'],
+                addToolGroups: ['catalog'],
+                primaryObject: 'catalog_item',
+                removeRoutes: ['/admin/appointments', '/admin/vehicles'],
+                addRoutes: ['/admin/inventory', '/admin/orders'],
+                removeReadiness: ['appointment_services', 'vehicle_inventory'],
+                addReadiness: ['catalog_items'],
+                removeEvents: APPOINTMENT_EVENTS,
+            },
+            alquiler: {
+                ...APPOINTMENT_PATCH_REMOVAL,
+                addCapabilities: ['vehicle_rentals'],
+                addRoutes: ['/admin/resource-rentals'],
+            },
+        },
     },
     turismo: {
         industry: 'turismo',
         subtypes: ['agencia_viajes', 'hotel', 'tours', 'alquiler_vacacional'],
         profile: profile({
-            capabilities: ['appointment_booking'],
-            toolGroups: ['appointments'],
-            routes: ['/admin/appointments'],
-            readiness: ['appointment_services'],
-            events: APPOINTMENT_EVENTS,
             assurance: {
                 minimum: 'A0',
                 enforcedActions: { get_check_in_instructions: 'A2' },
@@ -562,6 +580,7 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
         }),
         subtypeOverrides: {
             agencia_viajes: {
+                ...APPOINTMENT_PATCH_REMOVAL,
                 addCapabilities: ['tour_booking'],
                 addToolGroups: ['tours'],
                 primaryObject: 'tour_package',
@@ -569,6 +588,7 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 addReadiness: ['tour_packages'],
             },
             tours: {
+                ...APPOINTMENT_PATCH_REMOVAL,
                 addCapabilities: ['tour_booking'],
                 addToolGroups: ['tours'],
                 primaryObject: 'tour_package',
@@ -682,6 +702,16 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 'demosNext7d',
             ]),
         }),
+        subtypeOverrides: {
+            hardware: {
+                ...APPOINTMENT_PATCH_REMOVAL,
+                addCapabilities: ['catalog_search'],
+                addToolGroups: ['catalog'],
+                primaryObject: 'catalog_item',
+                addRoutes: ['/admin/inventory', '/admin/orders'],
+                addReadiness: ['catalog_items'],
+            },
+        },
     },
     veterinaria: {
         industry: 'veterinaria',
@@ -746,12 +776,11 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
         industry: 'servicios_hogar',
         subtypes: ['plomeria', 'electricidad', 'fumigacion', 'limpieza', 'jardineria', 'cerrajeria', 'pintura'],
         profile: profile({
-            capabilities: ['appointment_booking', 'service_requests'],
-            toolGroups: ['appointments', 'homeServices'],
+            capabilities: ['service_requests'],
+            toolGroups: ['homeServices'],
             primaryObject: 'service_request',
-            routes: ['/admin/appointments', '/admin/service-requests'],
-            readiness: ['appointment_services', 'service_catalog'],
-            events: [...APPOINTMENT_EVENTS, 'service_request.created'],
+            routes: ['/admin/service-requests'],
+            events: ['service_request.created'],
             kpiContract: kpis(DASH_SALES, ['requests30d', 'emergencias30d', 'pending', 'completed', 'completionRatePct']),
         }),
     },
@@ -773,17 +802,29 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
                 ],
             ),
         }),
+        subtypeOverrides: {
+            guarderia: {
+                ...APPOINTMENT_PATCH_REMOVAL,
+                addCapabilities: ['pet_boarding'],
+                addRoutes: ['/admin/resource-rentals'],
+            },
+            hotel: {
+                ...APPOINTMENT_PATCH_REMOVAL,
+                addCapabilities: ['pet_boarding'],
+                addRoutes: ['/admin/resource-rentals'],
+            },
+        },
     },
     fotografia: {
         industry: 'fotografia',
         subtypes: ['estudio', 'bodas', 'eventos', 'producto', 'wedding_planner'],
         profile: profile({
-            capabilities: ['appointment_booking', 'photo_sessions'],
-            toolGroups: ['appointments', 'photography'],
+            capabilities: ['photo_sessions'],
+            toolGroups: ['photography'],
             primaryObject: 'photo_session',
-            routes: ['/admin/appointments', '/admin/photo-sessions'],
-            readiness: ['appointment_services', 'photo_sessions'],
-            events: [...APPOINTMENT_EVENTS, 'photo_session.requested'],
+            routes: ['/admin/photo-sessions'],
+            readiness: ['photo_sessions'],
+            events: ['photo_session.requested'],
             kpiContract: kpis(DASH_SALES, [
                 'sessionsScheduled', 'sessionsInProgress', 'sessionsDelivered',
                 'sessions30d', 'revenue30d', 'deliveriesDue7d',
@@ -880,6 +921,22 @@ export function listVerticalCapabilityConfigurations(): ResolvedVerticalCapabili
             continue;
         }
         for (const subtype of entry.subtypes) {
+            configurations.push(resolveVerticalCapabilityManifest(industry, subtype));
+        }
+    }
+    return configurations;
+}
+
+/**
+ * Canonical catalogue plus read-only profiles for persisted legacy tenants.
+ * Release certification uses this list so compatibility branches cannot rot
+ * merely because they are intentionally hidden from new onboarding.
+ */
+export function listVerticalCapabilityCompatibilityConfigurations(): ResolvedVerticalCapabilityManifest[] {
+    const configurations = listVerticalCapabilityConfigurations();
+    for (const industry of VERTICAL_MANIFEST_INDUSTRIES) {
+        const entry = VERTICAL_CAPABILITY_MANIFEST[industry];
+        for (const subtype of entry.legacySubtypes || []) {
             configurations.push(resolveVerticalCapabilityManifest(industry, subtype));
         }
     }

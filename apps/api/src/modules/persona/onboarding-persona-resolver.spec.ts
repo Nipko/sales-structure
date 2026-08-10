@@ -1,3 +1,4 @@
+import { listVerticalCapabilityCompatibilityConfigurations } from '@parallext/shared';
 import { VERTICAL_REGISTRY } from '../verticals/vertical-definitions';
 import { PersonaService } from './persona.service';
 import {
@@ -27,32 +28,63 @@ function resolve(industry: string, subType: string | null, goals: string[], lang
 }
 
 describe('versioned onboarding persona resolver', () => {
-    it('covers the exact 18-vertical registry and every catalogued subtype/goal combination', () => {
+    it('covers all 78 canonical/legacy profiles in four locales for every onboarding goal', () => {
         expect(Object.keys(ONBOARDING_VERTICAL_PERSONA_POLICIES).sort())
             .toEqual(Object.keys(VERTICAL_REGISTRY).sort());
         expect(Object.keys(VERTICAL_REGISTRY)).toHaveLength(18);
 
-        for (const [industry, definition] of Object.entries(VERTICAL_REGISTRY)) {
-            const subTypes = definition.subTypes.length > 0
-                ? definition.subTypes.map(({ key }) => key)
-                : [null];
+        const configurations = listVerticalCapabilityCompatibilityConfigurations();
+        expect(configurations).toHaveLength(78);
+        for (const configuration of configurations) {
+            const industry = configuration.industry;
+            const subType = configuration.subtype;
             for (const language of ['es', 'en', 'pt', 'fr']) {
                 const catalog = templateCatalog(industry, language);
                 expect(catalog.vertical.length).toBeGreaterThan(0);
-                for (const subType of subTypes) {
-                    for (const goal of ONBOARDING_PERSONA_GOAL_PRIORITY) {
-                        const resolution = resolveOnboardingPersonaTemplate({
-                            industry,
-                            subType,
-                            goals: [goal],
-                            availableVerticalTemplateIds: catalog.vertical,
-                            availableBuiltinTemplateIds: catalog.builtin,
-                        });
-                        expect(resolution.version).toBe(ONBOARDING_PERSONA_RESOLVER_VERSION);
-                        expect(catalog.vertical).toContain(resolution.templateId);
-                    }
+                for (const goal of ONBOARDING_PERSONA_GOAL_PRIORITY) {
+                    const resolution = resolveOnboardingPersonaTemplate({
+                        industry,
+                        subType,
+                        goals: [goal],
+                        availableVerticalTemplateIds: catalog.vertical,
+                        availableBuiltinTemplateIds: catalog.builtin,
+                    });
+                    expect(resolution.version).toBe(ONBOARDING_PERSONA_RESOLVER_VERSION);
+                    expect([...catalog.vertical, ...catalog.builtin]).toContain(resolution.templateId);
                 }
             }
+        }
+    });
+
+    it.each([
+        ['salud', 'farmacia'],
+        ['automotriz', 'repuestos'],
+        ['automotriz', 'alquiler'],
+        ['technology', 'hardware'],
+        ['pet_services', 'guarderia'],
+        ['pet_services', 'hotel'],
+    ])('selects a non-booking template for native subtype %s/%s in every locale', (industry, subType) => {
+        for (const language of ['es', 'en', 'pt', 'fr']) {
+            const catalog = templateCatalog(industry, language);
+            const resolution = resolveOnboardingPersonaTemplate({
+                industry,
+                subType,
+                goals: ['appointments'],
+                availableVerticalTemplateIds: catalog.vertical,
+                availableBuiltinTemplateIds: catalog.builtin,
+            });
+            expect(resolution).toEqual(expect.objectContaining({
+                version: ONBOARDING_PERSONA_RESOLVER_VERSION,
+                templateId: 'tpl_sales',
+                source: 'subtype',
+                matchedGoal: 'appointments',
+                gaps: expect.arrayContaining(['subtype_goal_conflict']),
+            }));
+
+            const service = new PersonaService({} as any, {} as any, {} as any, {} as any, {} as any);
+            const template = service.getBuiltinTemplates(language)
+                .find((candidate: any) => candidate.id === resolution.templateId);
+            expect(template?.config_json?.tools?.appointments?.enabled).toBe(false);
         }
     });
 
@@ -125,7 +157,7 @@ describe('versioned onboarding persona resolver', () => {
             goals: ['support'],
             availableBuiltinTemplateIds: builtins,
         })).toEqual({
-            version: 1,
+            version: 2,
             templateId: 'tpl_support',
             source: 'generic_goal',
             matchedGoal: 'support',

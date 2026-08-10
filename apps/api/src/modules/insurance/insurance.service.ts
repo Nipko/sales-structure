@@ -1,5 +1,9 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+    assertOptionalContactId,
+    requireTenantContact,
+} from '../../common/utils/tenant-contact.util';
 
 /**
  * Insurance vertical service — plan catalog, quote pipeline, policies,
@@ -144,6 +148,7 @@ export class InsuranceService {
         validDays?: number;
     }): Promise<any> {
         if (!data.planId) throw new BadRequestException('planId is required');
+        const contactId = assertOptionalContactId(data.contactId);
         const plan = await this.getPlanById(schemaName, data.planId);
         if (!plan) throw new BadRequestException('Plan not found');
 
@@ -151,9 +156,9 @@ export class InsuranceService {
         const validUntil = new Date();
         validUntil.setDate(validUntil.getDate() + (data.validDays || 30));
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO insurance_quotes (
+        const rows = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            await requireTenantContact(query, contactId);
+            return query<any[]>(`INSERT INTO insurance_quotes (
                 contact_id, plan_id, applicant_name, applicant_age,
                 applicant_email, applicant_phone, applicant_data,
                 monthly_premium, annual_premium, currency, valid_until, status
@@ -162,14 +167,14 @@ export class InsuranceService {
                 $8, $9, $10, $11::date, 'sent'
              ) RETURNING *`,
             [
-                data.contactId || null, data.planId,
+                contactId, data.planId,
                 data.applicantName || null, data.applicantAge ?? null,
                 data.applicantEmail || null, data.applicantPhone || null,
                 JSON.stringify(data.applicantData || {}),
                 premium.monthly, premium.annual, plan.currency,
                 validUntil.toISOString().slice(0, 10),
-            ],
-        );
+            ]);
+        });
         return { ...rows[0], plan_name: plan.name, plan_type: plan.insurance_type };
     }
 
@@ -240,24 +245,25 @@ export class InsuranceService {
         if (!data.policyNumber || !data.policyholderName || !data.monthlyPremium || !data.startsAt) {
             throw new BadRequestException('policyNumber, policyholderName, monthlyPremium and startsAt are required');
         }
+        const contactId = assertOptionalContactId(data.contactId);
         const nextPayment = new Date(data.startsAt);
         nextPayment.setMonth(nextPayment.getMonth() + 1);
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO insurance_policies (
+        const rows = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            await requireTenantContact(query, contactId);
+            return query<any[]>(`INSERT INTO insurance_policies (
                 policy_number, contact_id, plan_id, quote_id,
                 policyholder_name, monthly_premium, currency,
                 starts_at, ends_at, next_payment_at
              ) VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8::date, $9::date, $10::date)
              RETURNING *`,
             [
-                data.policyNumber, data.contactId || null,
+                data.policyNumber, contactId,
                 data.planId || null, data.quoteId || null,
                 data.policyholderName, data.monthlyPremium, data.currency || 'COP',
                 data.startsAt, data.endsAt || null,
                 nextPayment.toISOString().slice(0, 10),
-            ],
-        );
+            ]);
+        });
         return rows[0];
     }
 

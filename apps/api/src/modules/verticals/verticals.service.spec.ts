@@ -6,6 +6,7 @@ import {
 } from './verticals.service';
 import { resolveVerticalSelection } from './vertical-identifiers';
 import { VERTICAL_CAPABILITY_MANIFEST_VERSION } from '@parallext/shared';
+import { resolveVerticalSubtypePersonaContract } from '../persona/vertical-subtype-persona-contract';
 
 describe('selectQuotaAwareVerticalDefaults', () => {
     const plans = {
@@ -133,6 +134,20 @@ describe('VerticalsService resumable bootstrap', () => {
         prisma = {
             getTenantSchemaName: jest.fn().mockResolvedValue(schemaName),
             executeInTenantSchema: jest.fn(),
+            transactionInTenantSchema: jest.fn(async (schema: string, callback: any) => callback(
+                async (sql: string, params?: any[]) => {
+                    if (sql.includes('SELECT id FROM pipelines')) {
+                        return [{ id: '33333333-3333-4333-8333-333333333333' }];
+                    }
+                    if (sql.includes('AS has_orphans')) return [{ has_orphans: false }];
+                    if (sql.includes('FROM public.users')) return [{ id: ownerId }];
+                    if (sql.includes('UPDATE public.tenants')) {
+                        settings = { ...settings, ...JSON.parse(params?.[1] || '{}') };
+                        return [{ id: tenantId }];
+                    }
+                    return prisma.executeInTenantSchema(schema, sql, params);
+                },
+            )),
             tenant: {
                 findUnique: jest.fn().mockImplementation(async () => ({ settings })),
                 update: jest.fn().mockImplementation(async ({ data }: any) => {
@@ -172,6 +187,7 @@ describe('VerticalsService resumable bootstrap', () => {
         seedFaqs = jest.spyOn(service as any, 'seedFaqs').mockResolvedValue(undefined);
         seedServices = jest.spyOn(service as any, 'seedServices').mockResolvedValue(undefined);
         jest.spyOn(service as any, 'enableSimpleTool').mockResolvedValue(undefined);
+        jest.spyOn(service as any, 'disableSimpleTool').mockResolvedValue(undefined);
         jest.spyOn(service as any, 'restoreAppointmentsTool').mockResolvedValue(undefined);
         jest.spyOn(service as any, 'seedToursExtras').mockResolvedValue(undefined);
         jest.spyOn(service as any, 'seedDentalExtras').mockResolvedValue(undefined);
@@ -196,7 +212,9 @@ describe('VerticalsService resumable bootstrap', () => {
 
         expect(seedServices).not.toHaveBeenCalled();
         expect(seedAvailability).not.toHaveBeenCalled();
-        expect((service as any).enableSimpleTool).toHaveBeenCalledWith(schemaName, 'properties');
+        expect((service as any).enableSimpleTool).toHaveBeenCalledWith(
+            schemaName, 'properties', expect.any(Function),
+        );
         expect(settings.verticalConfig).toMatchObject({
             industry: 'turismo',
             subType: 'hotel',
@@ -207,23 +225,287 @@ describe('VerticalsService resumable bootstrap', () => {
         expect(settings.verticalConfig.effectiveCapabilities).not.toContain('appointment_booking');
     });
 
-    it('does not leak turismo/hotel skipAgenda into pet_services/hotel', async () => {
+    it('provisions tour operators with tour bookings and no generic agenda', async () => {
+        const seedAvailability = jest.spyOn(service as any, 'seedAvailability').mockResolvedValue(undefined);
+
+        await service.bootstrapVertical(tenantId, 'turismo', 'tours', 'es');
+
+        expect(seedServices).not.toHaveBeenCalled();
+        expect(seedAvailability).not.toHaveBeenCalled();
+        expect((service as any).enableSimpleTool).toHaveBeenCalledWith(
+            schemaName, 'tours', expect.any(Function),
+        );
+        const seededDefinition = seedPipelineStages.mock.calls[0][2] as any;
+        expect(seededDefinition.pipeline.stages.flatMap((stage: any) => stage.transitionRules || []))
+            .toContainEqual({ type: 'tour_booking_required' });
+        expect(settings.verticalConfig).toMatchObject({
+            industry: 'turismo',
+            subType: 'tours',
+            bookingEnabled: false,
+            effectiveCapabilities: expect.arrayContaining(['tour_booking']),
+        });
+        expect(settings.verticalConfig.effectiveCapabilities).not.toContain('appointment_booking');
+    });
+
+    it('provisions fast food with real orders and no table-reservation agenda', async () => {
+        const seedAvailability = jest.spyOn(service as any, 'seedAvailability').mockResolvedValue(undefined);
+
+        await service.bootstrapVertical(tenantId, 'restaurantes', 'comida_rapida', 'es');
+
+        expect(seedServices).not.toHaveBeenCalled();
+        expect(seedAvailability).not.toHaveBeenCalled();
+        const seededDefinition = seedPipelineStages.mock.calls[0][2] as any;
+        expect(seededDefinition.pipeline.stages.flatMap((stage: any) => stage.transitionRules || []))
+            .toContainEqual({ type: 'food_order_required' });
+        expect(settings.verticalConfig.bookingEnabled).toBe(false);
+        expect(settings.verticalConfig.effectiveCapabilities).toContain('restaurant_ordering');
+        expect(settings.verticalConfig.effectiveCapabilities).not.toContain('appointment_booking');
+    });
+
+    it('provisions home services through scheduled service requests only', async () => {
+        const seedAvailability = jest.spyOn(service as any, 'seedAvailability').mockResolvedValue(undefined);
+
+        await service.bootstrapVertical(tenantId, 'servicios_hogar', 'plomeria', 'es');
+
+        expect(seedServices).not.toHaveBeenCalled();
+        expect(seedAvailability).not.toHaveBeenCalled();
+        const seededDefinition = seedPipelineStages.mock.calls[0][2] as any;
+        expect(seededDefinition.pipeline.stages.flatMap((stage: any) => stage.transitionRules || []))
+            .toContainEqual({ type: 'service_request_scheduled_required' });
+        expect(settings.verticalConfig.bookingEnabled).toBe(false);
+        expect(settings.verticalConfig.effectiveCapabilities).toContain('service_requests');
+        expect(settings.verticalConfig.effectiveCapabilities).not.toContain('appointment_booking');
+    });
+
+    it('seeds the pet-hotel catalog without reusing appointment slots', async () => {
         const seedAvailability = jest.spyOn(service as any, 'seedAvailability').mockResolvedValue(undefined);
 
         await service.bootstrapVertical(tenantId, 'pet_services', 'hotel', 'es');
 
         expect(seedServices).toHaveBeenCalledTimes(1);
-        expect((seedServices.mock.calls[0][1] as any).services).toHaveLength(3);
-        expect(seedAvailability).toHaveBeenCalledTimes(1);
-        expect((service as any).enableSimpleTool).toHaveBeenCalledWith(schemaName, 'petServices');
-        expect((service as any).enableSimpleTool).toHaveBeenCalledWith(schemaName, 'pets');
+        expect((seedServices.mock.calls[0][1] as any).services).toEqual([
+            expect.objectContaining({ category: 'hotel', durationType: 'open', durationMinutes: 1_440 }),
+        ]);
+        expect(seedAvailability).not.toHaveBeenCalled();
+        expect((service as any).enableSimpleTool).toHaveBeenCalledWith(
+            schemaName, 'petServices', expect.any(Function),
+        );
+        expect((service as any).enableSimpleTool).toHaveBeenCalledWith(
+            schemaName, 'pets', expect.any(Function),
+        );
+        const seededDefinition = seedPipelineStages.mock.calls[0][2] as any;
+        expect(seededDefinition.pipeline.stages.flatMap((stage: any) => stage.transitionRules || []))
+            .toContainEqual({ type: 'pet_boarding_required' });
         expect(settings.verticalConfig).toMatchObject({
             manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
-            effectiveCapabilities: expect.arrayContaining(['appointment_booking', 'pet_services', 'pet_records']),
+            bookingEnabled: false,
+            effectiveCapabilities: expect.arrayContaining(['pet_boarding', 'pet_services', 'pet_records']),
         });
+        expect(settings.verticalConfig.effectiveCapabilities).not.toContain('appointment_booking');
     });
 
-    it('backfills manifest metadata when getVerticalConfig reads a legacy cached config', async () => {
+    it.each([
+        ['automotriz', 'repuestos', 'order_required', 'catalog_search', 'catalog'],
+        ['automotriz', 'alquiler', 'vehicle_rental_required', 'vehicle_rentals', 'vehicles'],
+        ['technology', 'hardware', 'order_required', 'catalog_search', 'catalog'],
+    ])('uses a native non-appointment engine for %s/%s', async (
+        industry,
+        subType,
+        expectedRule,
+        expectedCapability,
+        expectedTool,
+    ) => {
+        const seedAvailability = jest.spyOn(service as any, 'seedAvailability').mockResolvedValue(undefined);
+
+        await service.bootstrapVertical(tenantId, industry, subType, 'es');
+
+        expect(seedServices).not.toHaveBeenCalled();
+        expect(seedAvailability).not.toHaveBeenCalled();
+        expect((service as any).enableSimpleTool).toHaveBeenCalledWith(
+            schemaName, expectedTool, expect.any(Function),
+        );
+        const seededDefinition = seedPipelineStages.mock.calls[0][2] as any;
+        expect(seededDefinition.pipeline.stages.flatMap((stage: any) => stage.transitionRules || []))
+            .toContainEqual({ type: expectedRule });
+        expect(settings.verticalConfig.bookingEnabled).toBe(false);
+        expect(settings.verticalConfig.effectiveCapabilities).toContain(expectedCapability);
+        expect(settings.verticalConfig.effectiveCapabilities).not.toContain('appointment_booking');
+        if (industry === 'automotriz' && subType === 'repuestos') {
+            expect((service as any).disableSimpleTool).toHaveBeenCalledWith(
+                schemaName, 'vehicles', expect.any(Function),
+            );
+        }
+    });
+
+    it('uses photo sessions without seeding a second appointment calendar', async () => {
+        const seedAvailability = jest.spyOn(service as any, 'seedAvailability').mockResolvedValue(undefined);
+
+        await service.bootstrapVertical(tenantId, 'fotografia', 'estudio', 'es');
+
+        expect(seedServices).not.toHaveBeenCalled();
+        expect(seedAvailability).not.toHaveBeenCalled();
+        const seededDefinition = seedPipelineStages.mock.calls[0][2] as any;
+        expect(seededDefinition.pipeline.stages.flatMap((stage: any) => stage.transitionRules || []))
+            .toContainEqual({ type: 'photo_session_scheduled_required' });
+        expect(settings.verticalConfig).toMatchObject({
+            bookingEnabled: false,
+            effectiveCapabilities: expect.arrayContaining(['photo_sessions']),
+        });
+        expect(settings.verticalConfig.effectiveCapabilities).not.toContain('appointment_booking');
+    });
+
+    it('fails closed instead of resolving a new manifest from an unversioned cached config', async () => {
+        settings.verticalProvisioning = { version: 1, status: 'complete' };
+        redis.getJson.mockResolvedValueOnce({
+            industry: 'turismo',
+            subType: 'hotel',
+            terminology: VERTICAL_REGISTRY.turismo.terminology,
+            sidebar: VERTICAL_REGISTRY.turismo.sidebar,
+            dashboard: VERTICAL_REGISTRY.turismo.dashboard,
+            bookingEnabled: false,
+        });
+
+        const config = await service.getVerticalConfig(tenantId);
+
+        expect(config?.manifestVersion).toBeUndefined();
+        expect(config?.effectiveCapabilities).toEqual([]);
+        expect(settings.verticalConfig.manifestVersion).toBeUndefined();
+        expect(settings.verticalConfig.effectiveCapabilities).toEqual([]);
+        expect(prisma.tenant.findUnique.mock.invocationCallOrder[0])
+            .toBeLessThan(redis.getJson.mock.invocationCallOrder[0]);
+    });
+
+    it('preserves the published v1 capability contract until v2 reconciliation succeeds', async () => {
+        const legacyConfig = {
+            industry: 'turismo',
+            subType: 'hotel',
+            terminology: VERTICAL_REGISTRY.turismo.terminology,
+            sidebar: VERTICAL_REGISTRY.turismo.sidebar,
+            dashboard: VERTICAL_REGISTRY.turismo.dashboard,
+            bookingEnabled: true,
+            manifestVersion: 1,
+            effectiveCapabilities: ['crm_pipeline', 'faq_search', 'appointment_booking'],
+        };
+        settings.verticalProvisioning = { version: 1, status: 'complete' };
+        settings.verticalConfig = legacyConfig;
+        redis.getJson.mockResolvedValueOnce({
+            ...legacyConfig,
+            bookingEnabled: false,
+            manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+            effectiveCapabilities: ['crm_pipeline', 'faq_search', 'nightly_booking'],
+        });
+
+        const config = await service.getVerticalConfig(tenantId);
+
+        expect(config).toEqual(legacyConfig);
+        expect(settings.verticalConfig).toEqual(legacyConfig);
+    });
+
+    it('preserves the published v1 contract of a tenant onboarded before verticalProvisioning existed', async () => {
+        // La clave `verticalProvisioning` recién existe desde ago 2026. Todo tenant
+        // anterior no la tiene: ausencia de estado no puede leerse como fallo, o el
+        // deploy apaga los módulos verticales de toda la población vieja.
+        const legacyConfig = {
+            industry: 'turismo',
+            subType: 'hotel',
+            terminology: VERTICAL_REGISTRY.turismo.terminology,
+            sidebar: VERTICAL_REGISTRY.turismo.sidebar,
+            dashboard: VERTICAL_REGISTRY.turismo.dashboard,
+            bookingEnabled: true,
+            manifestVersion: 1,
+            effectiveCapabilities: ['crm_pipeline', 'faq_search', 'appointment_booking'],
+        };
+        delete settings.verticalProvisioning;
+        settings.verticalConfig = legacyConfig;
+
+        const config = await service.getVerticalConfig(tenantId);
+
+        expect(config).toEqual(legacyConfig);
+        expect(settings.verticalConfig).toEqual(legacyConfig);
+    });
+
+    it('still fails closed for a pre-provisioning tenant with no published capability array', async () => {
+        delete settings.verticalProvisioning;
+        settings.verticalConfig = {
+            industry: 'turismo',
+            subType: 'hotel',
+            terminology: VERTICAL_REGISTRY.turismo.terminology,
+            sidebar: VERTICAL_REGISTRY.turismo.sidebar,
+            dashboard: VERTICAL_REGISTRY.turismo.dashboard,
+            bookingEnabled: true,
+        };
+
+        const config = await service.getVerticalConfig(tenantId);
+
+        expect(config?.manifestVersion).toBeUndefined();
+        expect(config?.effectiveCapabilities).toEqual([]);
+    });
+
+    it('does not trust a v1 config whose provisioning state failed', async () => {
+        settings.verticalProvisioning = { version: 1, status: 'failed' };
+        settings.verticalConfig = {
+            industry: 'turismo',
+            subType: 'hotel',
+            terminology: VERTICAL_REGISTRY.turismo.terminology,
+            sidebar: VERTICAL_REGISTRY.turismo.sidebar,
+            dashboard: VERTICAL_REGISTRY.turismo.dashboard,
+            bookingEnabled: true,
+            manifestVersion: 1,
+            effectiveCapabilities: ['crm_pipeline', 'faq_search', 'appointment_booking'],
+        };
+
+        const config = await service.getVerticalConfig(tenantId);
+
+        expect(config?.manifestVersion).toBeUndefined();
+        expect(config?.effectiveCapabilities).toEqual([]);
+    });
+
+    it('does not publish cached manifest metadata after provisioning failed', async () => {
+        settings.verticalProvisioning = { version: VERTICAL_PROVISIONING_VERSION, status: 'failed' };
+        redis.getJson.mockResolvedValueOnce({
+            industry: 'turismo',
+            subType: 'hotel',
+            terminology: VERTICAL_REGISTRY.turismo.terminology,
+            sidebar: VERTICAL_REGISTRY.turismo.sidebar,
+            dashboard: VERTICAL_REGISTRY.turismo.dashboard,
+            bookingEnabled: false,
+            manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+            effectiveCapabilities: ['crm_pipeline', 'faq_search', 'nightly_booking'],
+        });
+
+        const config = await service.getVerticalConfig(tenantId);
+
+        expect(config?.manifestVersion).toBeUndefined();
+        expect(config?.effectiveCapabilities).toEqual([]);
+        expect(settings.verticalConfig.manifestVersion).toBeUndefined();
+        expect(settings.verticalConfig.effectiveCapabilities).toEqual([]);
+        expect(redis.setJson).toHaveBeenCalledWith(
+            `vertical:${tenantId}`,
+            expect.objectContaining({ effectiveCapabilities: [] }),
+            600,
+        );
+    });
+
+    it('returns an authoritative empty capability list when no prior config is published', async () => {
+        settings.verticalProvisioning = { version: VERTICAL_PROVISIONING_VERSION, status: 'failed' };
+        settings.subType = 'hotel';
+        prisma.tenant.findUnique.mockResolvedValueOnce({ settings, industry: 'turismo' });
+
+        const config = await service.getVerticalConfig(tenantId);
+
+        expect(config).toMatchObject({
+            industry: 'turismo',
+            subType: 'hotel',
+            effectiveCapabilities: [],
+        });
+        expect(config?.manifestVersion).toBeUndefined();
+    });
+
+    it('publishes the current manifest when durable provisioning v2 is complete', async () => {
+        settings.verticalProvisioning = {
+            version: VERTICAL_PROVISIONING_VERSION,
+            status: 'complete',
+        };
         redis.getJson.mockResolvedValueOnce({
             industry: 'turismo',
             subType: 'hotel',
@@ -284,7 +566,7 @@ describe('VerticalsService resumable bootstrap', () => {
         expect(inserts.map((call: any[]) => call[2][2]).sort()).toEqual([1, 2, 3, 4, 5, 6]);
     });
 
-    it('persists failure and resumes after the last completed step', async () => {
+    it('rolls back the attempt and replays every step after a failure', async () => {
         seedFaqs.mockRejectedValueOnce(new Error('injected FAQ failure'));
 
         await expect(service.bootstrapVertical(tenantId, 'retail', 'moda', 'es'))
@@ -294,22 +576,118 @@ describe('VerticalsService resumable bootstrap', () => {
             version: VERTICAL_PROVISIONING_VERSION,
             status: 'failed',
             failure: { step: 'knowledge', message: 'injected FAQ failure' },
-            completedSteps: ['quota_plan', 'pipeline', 'persona'],
+            completedSteps: [],
         });
         expect(seedPipelineStages).toHaveBeenCalledTimes(1);
         expect(patchDefaultAgent).toHaveBeenCalledTimes(1);
 
         await service.bootstrapVertical(tenantId, 'retail', 'moda', 'es');
 
-        expect(seedPipelineStages).toHaveBeenCalledTimes(1);
-        expect(patchDefaultAgent).toHaveBeenCalledTimes(1);
+        expect(seedPipelineStages).toHaveBeenCalledTimes(2);
+        expect(patchDefaultAgent).toHaveBeenCalledTimes(2);
         expect(seedFaqs).toHaveBeenCalledTimes(2);
         expect(settings.verticalProvisioning.status).toBe('complete');
         expect(settings.verticalProvisioning.completedSteps).toContain('invariants');
         expect(settings.verticalProvisioning.attempt).toBe(2);
     });
 
-    it('replays idempotent steps after an invariant failure instead of getting stuck', async () => {
+    it('rolls back every live tenant mutation and preserves published v1 after a late failure', async () => {
+        const legacyConfig = {
+            industry: 'veterinaria',
+            subType: 'clinica_general',
+            terminology: VERTICAL_REGISTRY.veterinaria.terminology,
+            sidebar: VERTICAL_REGISTRY.veterinaria.sidebar,
+            dashboard: VERTICAL_REGISTRY.veterinaria.dashboard,
+            bookingEnabled: true,
+            manifestVersion: 1,
+            effectiveCapabilities: ['crm_pipeline', 'faq_search', 'appointment_booking'],
+        };
+        settings = {
+            verticalConfig: legacyConfig,
+            verticalProvisioning: { version: 1, status: 'complete' },
+        };
+        const initialLive = {
+            pipeline: 'original',
+            persona: 'original',
+            faqs: 'original',
+            services: 'original',
+            availability: 'original',
+            tools: 'original',
+        };
+        let live = { ...initialLive };
+        let transactionCount = 0;
+        prisma.transactionInTenantSchema.mockImplementation(async (
+            _schema: string,
+            callback: any,
+            options?: { timeout?: number },
+        ) => {
+            transactionCount++;
+            expect(options?.timeout).toBe(90_000);
+            const working = { ...live };
+            const query = async (sql: string) => {
+                if (sql.startsWith('TEST_MUTATION:')) {
+                    const key = sql.slice('TEST_MUTATION:'.length) as keyof typeof working;
+                    working[key] = 'mutated';
+                }
+                return [];
+            };
+            const result = await callback(query);
+            live = working;
+            return result;
+        });
+
+        seedPipelineStages.mockImplementation(async (...args: any[]) =>
+            args[4]('TEST_MUTATION:pipeline'));
+        patchDefaultAgent.mockImplementation(async (...args: any[]) =>
+            args[4]('TEST_MUTATION:persona'));
+        seedFaqs.mockImplementation(async (...args: any[]) =>
+            args[3]('TEST_MUTATION:faqs'));
+        seedServices.mockImplementation(async (...args: any[]) =>
+            args[3]('TEST_MUTATION:services'));
+        jest.spyOn(service as any, 'seedAvailability').mockImplementation(async (...args: any[]) =>
+            args[4]('TEST_MUTATION:availability'));
+        (service as any).enableSimpleTool.mockImplementation(async (...args: any[]) =>
+            args[2]('TEST_MUTATION:tools'));
+        (service as any).restoreAppointmentsTool.mockImplementation(async (...args: any[]) =>
+            args[2]('TEST_MUTATION:tools'));
+        assertInvariants.mockImplementation(async (...args: any[]) => {
+            await args[10]('TEST_MUTATION:tools');
+            throw new Error('late invariant failure');
+        });
+
+        await expect(service.bootstrapVertical(
+            tenantId,
+            'veterinaria',
+            'clinica_general',
+            'es',
+        )).rejects.toThrow('late invariant failure');
+
+        expect(transactionCount).toBe(1);
+        expect(live).toEqual(initialLive);
+        expect(settings.verticalConfig).toEqual(legacyConfig);
+        expect(settings.verticalProvisioning).toMatchObject({
+            version: VERTICAL_PROVISIONING_VERSION,
+            status: 'failed',
+            completedSteps: [],
+            publishedManifestVersion: 1,
+            failure: { step: 'invariants', message: 'late invariant failure' },
+        });
+        expect((service as any).invalidateRuntimeCaches).not.toHaveBeenCalled();
+    });
+
+    it('keeps v2 unpublished after an invariant failure and replays idempotent steps', async () => {
+        const legacyConfig = {
+            industry: 'retail',
+            subType: 'marketplace',
+            terminology: VERTICAL_REGISTRY.retail.terminology,
+            sidebar: VERTICAL_REGISTRY.retail.sidebar,
+            dashboard: VERTICAL_REGISTRY.retail.dashboard,
+            bookingEnabled: false,
+            manifestVersion: 1,
+            effectiveCapabilities: ['crm_pipeline', 'faq_search', 'catalog_search'],
+        };
+        settings.verticalProvisioning = { version: 1, status: 'complete' };
+        settings.verticalConfig = legacyConfig;
         assertInvariants
             .mockRejectedValueOnce(new Error('injected readiness mismatch'))
             .mockResolvedValueOnce({
@@ -327,6 +705,10 @@ describe('VerticalsService resumable bootstrap', () => {
             status: 'failed',
             failure: { step: 'invariants' },
         });
+        expect(settings.verticalConfig).toEqual(legacyConfig);
+        expect(settings.verticalProvisioning.publishedManifestVersion).toBe(1);
+        expect(settings.verticalConfigPending).toBeUndefined();
+        await expect(service.getVerticalConfig(tenantId)).resolves.toEqual(legacyConfig);
 
         await service.bootstrapVertical(tenantId, 'retail', 'marketplace', 'es');
 
@@ -335,6 +717,8 @@ describe('VerticalsService resumable bootstrap', () => {
         expect(seedFaqs).toHaveBeenCalledTimes(2);
         expect(settings.verticalProvisioning.status).toBe('complete');
         expect(settings.verticalProvisioning.attempt).toBe(2);
+        expect(settings.verticalConfig.manifestVersion).toBe(VERTICAL_CAPABILITY_MANIFEST_VERSION);
+        expect(settings.verticalConfigPending).toBeNull();
     });
 
     it('fences the bootstrap when ownership is lost before a stage commit', async () => {
@@ -359,7 +743,7 @@ describe('VerticalsService resumable bootstrap', () => {
             .not.toContain('appointments');
     });
 
-    it('passes assertProvisioningInvariants when specialized agent template intentionally disables appointments', async () => {
+    it('re-verifies a completed specialized engine from its published config after pending is cleared', async () => {
         (service as any).assertProvisioningInvariants.mockRestore();
 
         prisma.executeInTenantSchema.mockImplementation(async (_schema: string, sql: string) => {
@@ -413,7 +797,7 @@ describe('VerticalsService resumable bootstrap', () => {
                 verticalConfig: {
                     industry: 'turismo',
                     subType: 'tours',
-                    bookingEnabled: true,
+                    bookingEnabled: false,
                 },
             },
         } as any);
@@ -427,12 +811,78 @@ describe('VerticalsService resumable bootstrap', () => {
             'es',
             { pipelineStages: -1, appointmentServices: -1, availabilitySlots: -1, publishedFaqs: -1, selectedStageSlugs: [], selectedServiceIndexes: [] },
             definition.pipeline.stages,
-            definition.services,
-            true,
+            [],
+            false,
+            {
+                industry: 'turismo',
+                subType: 'tours',
+                bookingEnabled: false,
+            },
         );
 
         expect(result).toBeDefined();
         expect(result.pipelineStages).toBe(6);
+    });
+
+    it('reopens completed specialized provisioning when an old agent still has appointments enabled', async () => {
+        (service as any).assertProvisioningInvariants.mockRestore();
+
+        prisma.executeInTenantSchema.mockImplementation(async (_schema: string, sql: string) => {
+            if (sql.includes('pipeline_stages')) {
+                return VERTICAL_REGISTRY.turismo.pipeline.stages.map((stage) => ({
+                    slug: stage.slug,
+                    terminal_outcome: stage.isTerminal ? stage.terminalOutcome : null,
+                    transition_rules: stage.transitionRules || [],
+                }));
+            }
+            if (sql.includes('SELECT name FROM services')) return [];
+            if (sql.includes('availability_slots')) {
+                return [{ slots: 0, faqs: VERTICAL_REGISTRY.turismo.faqs.length }];
+            }
+            if (sql.includes('question FROM faqs')) {
+                return VERTICAL_REGISTRY.turismo.faqs.map((faq) => ({ question: faq.question.es }));
+            }
+            if (sql.includes('agent_personas')) {
+                return [{
+                    config_json: {
+                        tools: {
+                            faqs: { enabled: true },
+                            tours: { enabled: true },
+                            appointments: { enabled: true },
+                        },
+                    },
+                }];
+            }
+            return [];
+        });
+        prisma.tenant.findUnique.mockResolvedValue({
+            settings: {
+                verticalConfigPending: {
+                    industry: 'turismo',
+                    subType: 'tours',
+                    bookingEnabled: false,
+                },
+            },
+        } as any);
+
+        await expect((service as any).assertProvisioningInvariants(
+            tenantId,
+            schemaName,
+            VERTICAL_REGISTRY.turismo,
+            'tours',
+            'es',
+            {
+                pipelineStages: -1,
+                appointmentServices: -1,
+                availabilitySlots: -1,
+                publishedFaqs: -1,
+                selectedStageSlugs: [],
+                selectedServiceIndexes: [],
+            },
+            VERTICAL_REGISTRY.turismo.pipeline.stages,
+            [],
+            false,
+        )).rejects.toThrow(/retains appointments outside appointment_booking capability/);
     });
 });
 
@@ -490,6 +940,28 @@ describe('restoreAppointmentsTool (sin mockear)', () => {
         expect(updates).toHaveLength(0);
     });
 
+    it('apaga appointments heredado cuando el manifest usa otro motor', async () => {
+        const { service, updates } = buildService({
+            tours: { enabled: true },
+            appointments: {
+                enabled: true,
+                canBook: true,
+                canCancel: true,
+                pendingPrerequisites: true,
+            },
+        });
+
+        await (service as any).restoreAppointmentsTool(schemaName, false);
+
+        expect(updates).toHaveLength(1);
+        expect(updates[0].tools.tours.enabled).toBe(true);
+        expect(updates[0].tools.appointments).toEqual({
+            enabled: false,
+            canBook: true,
+            canCancel: true,
+        });
+    });
+
     it('no arma un agendador sin agenda detras: sin servicios ni slots queda apagado', async () => {
         const { service, updates } = buildService(
             { knowledge: { enabled: true } },
@@ -524,5 +996,143 @@ describe('restoreAppointmentsTool (sin mockear)', () => {
         expect(updates[0].tools.appointments.enabled).toBe(true);
         // El marcador se consume siempre.
         expect(updates[0].tools.appointments.pendingPrerequisites).toBeUndefined();
+    });
+});
+
+/**
+ * Regresión del "14 pipeline stages exceed quota 7".
+ *
+ * El bootstrap sembraba con `pipeline_id NULL` fijo. `ensureMultiPipeline`
+ * (pipeline.service.ts) adopta las etapas huérfanas dentro de "Pipeline
+ * Principal" la primera vez que alguien abre el embudo, y desde ahí
+ * `(NULL,'lead')` y `(<default>,'lead')` son claves distintas para
+ * `uidx_pipeline_stages_pipeline_slug` (NULLS NOT DISTINCT): el ON CONFLICT
+ * dejaba de matchear y cada replay volvia a insertar las 7 etapas.
+ */
+describe('seedPipelineStages contra el embudo primario', () => {
+    const tenantId = 'aaeaf495-92ec-464a-8cd4-9e457d3a12f9';
+    const schemaName = 'tenant_x';
+    const definition: any = {
+        industry: 'technology',
+        pipeline: {
+            stages: [
+                { slug: 'lead', name: { es: 'Lead' }, color: '#111', probability: 10, isTerminal: false },
+                { slug: 'demo', name: { es: 'Demo' }, color: '#222', probability: 40, isTerminal: false },
+            ],
+        },
+    };
+
+    function buildService(defaultPipelineId: string | null, hasDuplicateOrphans = false) {
+        const inserts: any[][] = [];
+        const insertSql: string[] = [];
+        const deletes: string[] = [];
+        const query = jest.fn(async (sql: string, params: any[] = []) => {
+            if (sql.includes('SELECT id FROM pipelines')) {
+                return defaultPipelineId ? [{ id: defaultPipelineId }] : [];
+            }
+            if (sql.includes('AS has_orphans')) {
+                return [{ has_orphans: hasDuplicateOrphans }];
+            }
+            if (sql.includes('AS has_deals')) return [];
+            if (sql.trim().startsWith('DELETE FROM pipeline_stages')) {
+                deletes.push(sql);
+                return [{ id: 'duplicate-stage' }];
+            }
+            if (sql.includes('INSERT INTO pipeline_stages')) {
+                inserts.push(params);
+                insertSql.push(sql);
+            }
+            return [];
+        });
+        const prisma: any = {
+            transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => callback(query)),
+        };
+        return {
+            service: new VerticalsService(prisma, {} as any, {} as any),
+            inserts,
+            insertSql,
+            deletes,
+            query,
+        };
+    }
+
+    it('siembra contra el pipeline por defecto cuando ya fue adoptado', async () => {
+        const pipelineId = '06f27c5d-314e-49a2-88d9-7b56f11e4966';
+        const { service, inserts, insertSql, deletes } = buildService(pipelineId, true);
+
+        await (service as any).seedPipelineStages(tenantId, schemaName, definition, 'es');
+
+        expect(inserts).toHaveLength(2);
+        // El pipeline_id resuelto es el ultimo parametro del INSERT: sin esto el
+        // upsert no matchea y el replay duplica.
+        expect(inserts[0][inserts[0].length - 1]).toBe(pipelineId);
+        expect(inserts[1][inserts[1].length - 1]).toBe(pipelineId);
+        // Y se limpian las huerfanas que ya quedaron duplicadas.
+        expect(deletes).toHaveLength(1);
+        expect(insertSql[0]).toContain(
+            `'[{"type":"appointment_required"}]'::jsonb`,
+        );
+        expect(insertSql[0]).toContain('THEN EXCLUDED.transition_rules');
+    });
+
+    it('falla cerrado y nunca siembra NULL cuando no puede establecer el embudo primario', async () => {
+        const { service, inserts, deletes } = buildService(null);
+
+        await expect((service as any).seedPipelineStages(tenantId, schemaName, definition, 'es'))
+            .rejects.toThrow(`Default pipeline could not be established for tenant ${tenantId}`);
+
+        expect(inserts).toHaveLength(0);
+        expect(deletes).toHaveLength(0);
+    });
+});
+
+describe('VerticalsService subtype-aware persona reconciliation', () => {
+    it('removes exact legacy demo rules, preserves tenant variants and adds native hardware rules', async () => {
+        const legacyRule = 'Agenda demo SOLO con leads calificados (empresa con > 10 empleados o caso de uso claro)';
+        const definitionRule = 'Ofrece demos.';
+        const tenantVariant = `${legacyRule} — sólo con aprobación del supervisor`;
+        let persistedConfig: any = null;
+        const prisma: any = {
+            executeInTenantSchema: jest.fn(async (_schema: string, sql: string, params?: any[]) => {
+                if (sql.includes('SELECT id, name, template_id, config_json')) {
+                    return [{
+                        id: '11111111-1111-4111-8111-111111111111',
+                        name: 'Diego',
+                        template_id: 'tpl_technology_ventas',
+                        config_json: {
+                            persona: { name: 'Diego' },
+                            behavior: {
+                                rules: [legacyRule, definitionRule, tenantVariant, 'Regla propia'],
+                                forbiddenTopics: [],
+                                handoffTriggers: [],
+                            },
+                            tools: { appointments: { enabled: true } },
+                        },
+                    }];
+                }
+                if (sql.includes('UPDATE agent_personas SET')) {
+                    persistedConfig = JSON.parse(params![1]);
+                    return [];
+                }
+                throw new Error(`Unexpected SQL: ${sql}`);
+            }),
+        };
+        const service = new VerticalsService(prisma, {} as any, {} as any);
+
+        await (service as any).patchDefaultAgent(
+            'tenant_persona_test',
+            VERTICAL_REGISTRY.technology,
+            'hardware',
+            'es',
+        );
+
+        expect(persistedConfig.behavior.rules).not.toContain(legacyRule);
+        expect(persistedConfig.behavior.rules).not.toContain(definitionRule);
+        expect(persistedConfig.behavior.rules).toEqual(expect.arrayContaining([
+            tenantVariant,
+            'Regla propia',
+            ...resolveVerticalSubtypePersonaContract('technology', 'hardware')!.nativeRules.es,
+        ]));
+        expect(persistedConfig.tools.appointments).toEqual({ enabled: true });
     });
 });

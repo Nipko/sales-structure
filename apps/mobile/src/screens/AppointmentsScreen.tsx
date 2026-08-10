@@ -10,6 +10,12 @@ import { useI18n, type Locale } from '../i18n';
 import { PressableScale } from '../components/PressableScale';
 import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
+import { collectApiPages } from '../lib/pagination';
+import {
+    resolveAppointmentSubjectKind,
+    validTenantContactId,
+    type AppointmentSubjectKind,
+} from '../lib/operationContactIntegrity';
 
 interface Appt {
     id: string;
@@ -24,8 +30,8 @@ interface Appt {
     metadata?: Record<string, unknown>;
 }
 interface Slot { time: string; endTime: string; agentId?: string; agentName?: string }
-type SubjectKind = 'listing' | 'pet' | 'vehicle';
-type CreateSubjectKind = Exclude<SubjectKind, 'vehicle'>;
+type SubjectKind = AppointmentSubjectKind;
+type CreateSubjectKind = SubjectKind;
 interface SubjectOption { id: string; name: string; detail?: string; contactId?: string; contactName?: string }
 type Translator = (key: string, params?: Record<string, string | number>) => string;
 
@@ -122,14 +128,13 @@ export function AppointmentsScreen() {
 
     const industry = String(verticalConfig?.industry || '').toLowerCase();
     const subType = String(verticalConfig?.subType || '').toLowerCase();
-    const subjectKind = useMemo<CreateSubjectKind | null>(() => {
-        if (industry === 'inmobiliaria') return 'listing';
-        if (industry === 'veterinaria' || industry === 'pet_services') return 'pet';
-        // Taller has no customer-vehicle model. /vehicles is dealership stock,
-        // so presenting it as the customer's car would create false metadata.
-        if (industry === 'automotriz' && subType === 'taller') return null;
-        return null;
-    }, [industry, subType]);
+    // A dealership vehicle is inventory context for the canonical appointment
+    // (for example, a test drive), not a parallel booking model. Workshops stay
+    // out because /vehicles is stock, not the customer's vehicle.
+    const subjectKind = useMemo(
+        () => resolveAppointmentSubjectKind(industry, subType),
+        [industry, subType],
+    );
     const [subjectOptions, setSubjectOptions] = useState<SubjectOption[]>([]);
     const [subjectsLoading, setSubjectsLoading] = useState(false);
 
@@ -158,7 +163,6 @@ export function AppointmentsScreen() {
     const [cSlot, setCSlot] = useState<Slot | null>(null);
     const [cNotes, setCNotes] = useState('');
     const [cContactSearch, setCContactSearch] = useState('');
-    const [cContactResults, setCContactResults] = useState<any[]>([]);
     const [cContact, setCContact] = useState<{ id: string; name: string } | null>(null);
     const [cSubjectId, setCSubjectId] = useState('');
     const [creating, setCreating] = useState(false);
@@ -197,6 +201,30 @@ export function AppointmentsScreen() {
     const items: Appt[] = (apptData || []).filter((appointment: Appt) => !isTerminal(appointment));
     const refreshing = isFetching && !loading;
 
+    const appointmentContactsQuery = useQuery<any[]>({
+        queryKey: ['appointment-contacts', tenantId],
+        queryFn: async () => {
+            if (!tenantId) return [];
+            const contacts = await collectApiPages<any>(
+                (limit, offset) => api.getOrderContacts(tenantId, { limit, offset }),
+            );
+            return contacts.filter((contact: any) => validTenantContactId(contact?.id));
+        },
+        enabled: !!tenantId && createOpen,
+        staleTime: 2 * 60 * 1000,
+        throwOnError: false,
+    });
+    const appointmentContacts = appointmentContactsQuery.data || [];
+    const cContactResults = useMemo(() => {
+        const query = cContactSearch.trim().toLocaleLowerCase(LOCALE_TAG[locale]);
+        return appointmentContacts.filter((contact: any) => {
+            if (!query) return true;
+            return [contact.name, contact.phone, contact.email]
+                .filter(Boolean)
+                .some((value) => String(value).toLocaleLowerCase(LOCALE_TAG[locale]).includes(query));
+        }).slice(0, 20);
+    }, [appointmentContacts, cContactSearch, locale]);
+
     useEffect(() => {
         let active = true;
         setServices([]);
@@ -231,12 +259,15 @@ export function AppointmentsScreen() {
         setSubjectsLoading(true);
         const request = subjectKind === 'listing'
             ? api.getRealEstateListings(tenantId)
-            : api.getPets(tenantId);
+            : collectApiPages<any>((limit, offset) => subjectKind === 'pet'
+                ? api.getPets(tenantId, { limit, offset })
+                : api.getVehicles(tenantId, { status: 'available', limit, offset }))
+                .then((items) => ({ success: true, data: { items } }));
 
         request.then((response: any) => {
             if (!active || !response?.success) return;
             const raw = response.data;
-            const rows = Array.isArray(raw) ? raw : [];
+            const rows = Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : [];
             const options = rows.map((row: any): SubjectOption | null => {
                 if (!row?.id) return null;
                 if (subjectKind === 'listing') {
@@ -253,6 +284,13 @@ export function AppointmentsScreen() {
                         detail: [row.species, row.contact_name || row.contactName].filter(Boolean).join(' · '),
                         contactId: row.contact_id || row.contactId || undefined,
                         contactName: row.contact_name || row.contactName || undefined,
+                    };
+                }
+                if (subjectKind === 'vehicle') {
+                    return {
+                        id: String(row.id),
+                        name: [row.make, row.model, row.year].filter(Boolean).join(' ') || String(row.id),
+                        detail: [row.color, row.license_plate || row.licensePlate].filter(Boolean).join(' · '),
                     };
                 }
                 return null;
@@ -292,20 +330,6 @@ export function AppointmentsScreen() {
             : subjectOptions,
         [subjectKind, subjectOptions, cContact?.id],
     );
-
-    // Debounced lead search for the (optional) contact picker when creating.
-    useEffect(() => {
-        if (!tenantId || !createOpen) return;
-        const q = cContactSearch.trim();
-        if (q.length < 2) { setCContactResults([]); return; }
-        const tm = setTimeout(async () => {
-            try {
-                const r: any = await api.getLeads(tenantId, `search=${encodeURIComponent(q)}&limit=8`);
-                if (r?.success) setCContactResults(Array.isArray(r.data) ? r.data : []);
-            } catch { /* ignore */ }
-        }, 350);
-        return () => clearTimeout(tm);
-    }, [cContactSearch, tenantId, createOpen]);
 
     const confirm = async (a: Appt) => {
         if (!tenantId || isTerminal(a) || normalizedStatus(a) === 'confirmed') return;
@@ -392,7 +416,7 @@ export function AppointmentsScreen() {
     const openCreate = () => {
         haptic.tap();
         setCServiceId(services[0]?.id || ''); setCDate(''); setCDateInput(''); setCSlots([]); setCSlot(null); setCSlotsError(false);
-        setCNotes(''); setCContactSearch(''); setCContactResults([]); setCContact(null);
+        setCNotes(''); setCContactSearch(''); setCContact(null);
         setCSubjectId('');
         setCreateOpen(true);
     };
@@ -409,6 +433,8 @@ export function AppointmentsScreen() {
     };
     const createAppt = async () => {
         if (!tenantId || !cServiceId || !cDate || !cSlot) return;
+        const contactId = validTenantContactId(cContact?.id);
+        if (!contactId) { toast.error(t('citas.contactRequiredError')); return; }
         const svc = services.find((s) => s.id === cServiceId);
         const startAt = toIsoAt(cDate, cSlot.time);
         const endAt = toIsoAt(cDate, cSlot.endTime || cSlot.time);
@@ -416,7 +442,7 @@ export function AppointmentsScreen() {
         try {
             const payload: Record<string, any> = { serviceName: svc?.name, serviceId: cServiceId, startAt, endAt };
             if (cSlot.agentId) payload.assignedTo = cSlot.agentId;
-            if (cContact?.id) payload.contactId = cContact.id;
+            payload.contactId = contactId;
             if (cNotes.trim()) payload.notes = cNotes.trim();
             if (subjectKind && cSubjectId) {
                 payload.metadata = { [SUBJECT_META_KEY[subjectKind]]: cSubjectId };
@@ -622,7 +648,7 @@ export function AppointmentsScreen() {
                                     </ScrollView>
                                 )}
 
-                                <Text style={styles.sectionLabel}>{t('citas.contactOptional')}</Text>
+                                <Text style={styles.sectionLabel}>{t('citas.contactRequired')}</Text>
                                 {cContact ? (
                                     <View style={styles.selectedContact}>
                                         <Text style={styles.selectedContactText}>{cContact.name}</Text>
@@ -631,19 +657,22 @@ export function AppointmentsScreen() {
                                 ) : (
                                     <>
                                         <TextInput style={styles.input} placeholder={t('citas.searchContact')} placeholderTextColor={theme.textSecondary} value={cContactSearch} onChangeText={setCContactSearch} />
-                                        {cContactResults.map((l) => {
-                                            const nm = `${l.first_name || ''} ${l.last_name || ''}`.trim() || l.name || l.phone || t('citas.customer');
-                                            // Solo contact_id vale para appointments.contact_id (FK a contacts):
-                                            // el id del LEAD o del perfil violaba la FK con un 500. Un lead sin
-                                            // contacto vinculado crea la cita sin contactId (columna nullable).
+                                        {appointmentContactsQuery.isLoading && <ActivityIndicator color={theme.accent} style={{ marginVertical: 8 }} />}
+                                        {appointmentContactsQuery.isError && (
+                                            <InlineRetry onRetry={() => appointmentContactsQuery.refetch()} t={t} messageKey="citas.contactsLoadError" />
+                                        )}
+                                        {!appointmentContactsQuery.isLoading && !appointmentContactsQuery.isError && appointmentContacts.length === 0 && (
+                                            <Text style={[styles.empty, { marginTop: 8 }]}>{t('citas.noContacts')}</Text>
+                                        )}
+                                        {cContactResults.map((contact) => {
+                                            const nm = contact.name || contact.phone || contact.email || t('citas.customer');
                                             return (
-                                                <TouchableOpacity key={l.id} style={styles.contactRow} onPress={() => {
-                                                    setCContact({ id: l.contact_id || '', name: nm });
+                                                <TouchableOpacity key={contact.id} style={styles.contactRow} onPress={() => {
+                                                    setCContact({ id: contact.id, name: nm });
                                                     if (subjectKind === 'pet') setCSubjectId('');
-                                                    setCContactResults([]);
                                                 }}>
                                                     <Text style={styles.contactName}>{nm}</Text>
-                                                    {!!l.phone && <Text style={styles.contactSub}>{l.phone}</Text>}
+                                                    {!!contact.phone && <Text style={styles.contactSub}>{contact.phone}</Text>}
                                                 </TouchableOpacity>
                                             );
                                         })}
@@ -719,7 +748,7 @@ export function AppointmentsScreen() {
 
                                 <TextInput style={[styles.input, { minHeight: 60, marginTop: 14, textAlignVertical: 'top' }]} placeholder={t('citas.notesOptional')} placeholderTextColor={theme.textSecondary} value={cNotes} onChangeText={setCNotes} multiline />
 
-                                <TouchableOpacity style={[styles.primaryBtn, (creating || !cSlot) && { opacity: 0.5 }]} onPress={createAppt} disabled={creating || !cSlot}>
+                                <TouchableOpacity style={[styles.primaryBtn, (creating || !cSlot || !validTenantContactId(cContact?.id)) && { opacity: 0.5 }]} onPress={createAppt} disabled={creating || !cSlot || !validTenantContactId(cContact?.id)}>
                                     {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{t('citas.create')}</Text>}
                                 </TouchableOpacity>
                             </ScrollView>
@@ -731,10 +760,10 @@ export function AppointmentsScreen() {
     );
 }
 
-function InlineRetry({ onRetry, t }: { onRetry: () => void; t: Translator }) {
+function InlineRetry({ onRetry, t, messageKey = 'citas.slotsError' }: { onRetry: () => void; t: Translator; messageKey?: string }) {
     return (
         <View style={{ alignItems: 'flex-start', marginTop: 8 }}>
-            <Text style={styles.empty}>{t('citas.slotsError')}</Text>
+            <Text style={styles.empty}>{t(messageKey)}</Text>
             <TouchableOpacity
                 style={styles.retryBtn}
                 onPress={onRetry}

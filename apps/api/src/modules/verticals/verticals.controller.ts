@@ -9,11 +9,13 @@ import { OperatingCurrencyService } from './operating-currency.service';
 import { VerticalMigrationService } from './vertical-migration.service';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { VERTICAL_REGISTRY, getVerticalDefinition } from './vertical-definitions';
+import { resolveVerticalPipelineStages } from './vertical-pipeline-contract';
 import {
     VERTICAL_IDENTIFIER_CONTRACT_VERSION,
     VERTICAL_INDUSTRY_ALIASES,
 } from './vertical-identifiers';
 import {
+    VERTICAL_CAPABILITY_MANIFEST_VERSION,
     VERTICAL_PRODUCT_POLICY,
     VERTICAL_PRODUCT_POLICY_VERSION,
 } from '@parallext/shared';
@@ -106,7 +108,14 @@ export class VerticalsController {
             return { success: true, data: [] };
         }
         const definition = getVerticalDefinition(config.industry);
-        return { success: true, data: definition.pipeline?.stages || [] };
+        const hasPublishedCurrentManifest = config.manifestVersion === VERTICAL_CAPABILITY_MANIFEST_VERSION
+            && Array.isArray(config.effectiveCapabilities);
+        return {
+            success: true,
+            data: hasPublishedCurrentManifest
+                ? resolveVerticalPipelineStages(definition, config.subType)
+                : definition.pipeline?.stages || [],
+        };
     }
 
     /**

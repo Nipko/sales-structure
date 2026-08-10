@@ -1,3 +1,5 @@
+import { resolveVerticalSubtypePersonaContract } from './vertical-subtype-persona-contract';
+
 /**
  * Pure, versioned policy for choosing the INITIAL persona template.
  *
@@ -6,7 +8,7 @@
  * guard before invoking it. Version the policy instead of silently changing
  * the persona produced by an onboarding retry.
  */
-export const ONBOARDING_PERSONA_RESOLVER_VERSION = 1 as const;
+export const ONBOARDING_PERSONA_RESOLVER_VERSION = 2 as const;
 
 export const ONBOARDING_PERSONA_GOAL_PRIORITY = [
     // This is the pre-existing generic precedence from PersonaService. Keeping
@@ -282,9 +284,12 @@ export function resolveOnboardingPersonaTemplate(input: {
     const policy = industry ? ONBOARDING_VERTICAL_PERSONA_POLICIES[industry] : undefined;
 
     if (policy) {
-        const available = new Set(input.availableVerticalTemplateIds || []);
+        const availableVertical = new Set(input.availableVerticalTemplateIds || []);
+        const availableBuiltin = new Set(input.availableBuiltinTemplateIds || []);
+        const available = new Set([...availableVertical, ...availableBuiltin]);
         const subtypeTemplateId = subType ? policy.subtypeTemplateIds?.[subType] : undefined;
         const goalTemplateId = selectedGoal ? policy.goalTemplateIds?.[selectedGoal] : undefined;
+        const subtypeContract = resolveVerticalSubtypePersonaContract(industry, subType);
 
         const distinctSelectedTemplates = new Set(
             ONBOARDING_PERSONA_GOAL_PRIORITY
@@ -295,11 +300,35 @@ export function resolveOnboardingPersonaTemplate(input: {
         if (distinctSelectedTemplates.size > 1) pushGap(gaps, 'multiple_goal_templates');
         if (selectedGoal && !goalTemplateId) pushGap(gaps, 'goal_template_missing');
 
-        // Compatibility fence: v1 never changes a subtype result that was
-        // already shipped. When it conflicts with a goal, surface that product
-        // decision explicitly instead of silently choosing a winner.
+        // Resolver v2 gives native-operation subtypes a safe, non-booking
+        // template before bootstrap adds their localized order/rental/boarding
+        // rules. Goal templates from v1 are deliberately subordinate here:
+        // selecting an appointment/demo/test-drive persona would contradict
+        // the capability manifest before the first customer message.
+        if (subtypeContract) {
+            const nativeTemplateId = subtypeContract.onboardingTemplateId;
+            if (!available.has(nativeTemplateId)) {
+                throw new Error(
+                    `Onboarding persona native subtype template is unavailable: ${industry}/${subType}/${nativeTemplateId}`,
+                );
+            }
+            if (goalTemplateId && goalTemplateId !== nativeTemplateId) {
+                pushGap(gaps, 'subtype_goal_conflict');
+            }
+            return {
+                version: ONBOARDING_PERSONA_RESOLVER_VERSION,
+                templateId: nativeTemplateId,
+                source: 'subtype',
+                matchedGoal: selectedGoal,
+                gaps,
+            };
+        }
+
+        // Compatibility fence for all other profiles. When a shipped subtype
+        // choice conflicts with a goal, surface that product decision instead
+        // of silently choosing a winner.
         if (subtypeTemplateId) {
-            if (!available.has(subtypeTemplateId)) {
+            if (!availableVertical.has(subtypeTemplateId)) {
                 throw new Error(`Onboarding persona subtype template is unavailable: ${industry}/${subType}/${subtypeTemplateId}`);
             }
             if (goalTemplateId && goalTemplateId !== subtypeTemplateId) {
@@ -315,7 +344,7 @@ export function resolveOnboardingPersonaTemplate(input: {
         }
 
         if (goalTemplateId) {
-            if (!available.has(goalTemplateId)) {
+            if (!availableVertical.has(goalTemplateId)) {
                 throw new Error(`Onboarding persona goal template is unavailable: ${industry}/${selectedGoal}/${goalTemplateId}`);
             }
             return {
@@ -327,7 +356,7 @@ export function resolveOnboardingPersonaTemplate(input: {
             };
         }
 
-        if (!available.has(policy.defaultTemplateId)) {
+        if (!availableVertical.has(policy.defaultTemplateId)) {
             throw new Error(`Onboarding persona default template is unavailable: ${industry}/${policy.defaultTemplateId}`);
         }
         return {

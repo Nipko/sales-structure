@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import type { AuthUser as SharedAuthUser } from '@parallext/shared';
 import { API_URL } from './config';
+import { pagedQueryString, type PagedQuery } from './pagination';
 
 const ACCESS_KEY = 'parallly_access';
 const REFRESH_KEY = 'parallly_refresh';
@@ -337,7 +338,10 @@ export const api = {
         json(`/restaurants/${tenantId}/orders/${orderId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
     getInventoryProducts: (tenantId: string) => json(`/inventory/products/${tenantId}`),
     getOrdersOverview: (tenantId: string) => json(`/orders/overview/${tenantId}`),
-    getOrderContacts: (tenantId: string) => json(`/orders/contacts/${tenantId}`),
+    getOrderContacts: (tenantId: string, query: PagedQuery = {}) => {
+        const params = pagedQueryString(query);
+        return json(`/orders/contacts/${tenantId}${params ? `?${params}` : ''}`);
+    },
     createOrder: (tenantId: string, data: Record<string, any>) =>
         json(`/orders/${tenantId}`, { method: 'POST', body: JSON.stringify(data) }),
     updateOrderStatus: (tenantId: string, orderId: string, status: string) =>
@@ -400,13 +404,16 @@ export const api = {
         json(`/resource-rentals/${tenantId}`, { method: 'POST', body: JSON.stringify(data) }),
     updateResourceRentalStatus: (tenantId: string, rentalId: string, status: string) =>
         json(`/resource-rentals/${tenantId}/${rentalId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
-    // Appointment context selectors. Shapes differ by backend module:
-    // listings/pets return arrays; vehicles returns { items, total }.
+    // Appointment/operation selectors share the same paginated contract.
     getRealEstateListings: (tenantId: string) => json(`/listings/${tenantId}`),
-    getPets: (tenantId: string, params?: string) =>
-        json(`/pets/${tenantId}/all${params ? `?${params}` : ''}`),
-    getVehicles: (tenantId: string, params?: string) =>
-        json(`/vehicles/${tenantId}${params ? `?${params}` : ''}`),
+    getPets: (tenantId: string, query: PagedQuery = {}) => {
+        const params = pagedQueryString(query);
+        return json(`/pets/${tenantId}/all${params ? `?${params}` : ''}`);
+    },
+    getVehicles: (tenantId: string, query: PagedQuery = {}) => {
+        const params = pagedQueryString(query);
+        return json(`/vehicles/${tenantId}${params ? `?${params}` : ''}`);
+    },
 
     // CRM
     getLeads: (tenantId: string, params?: string) =>

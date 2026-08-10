@@ -9,6 +9,7 @@ import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
 import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
+import { describePipelineMoveError } from '../lib/pipelineTransitionError';
 
 interface Stage { id: string; name: string; slug?: string; color?: string; default_probability?: number }
 interface Deal {
@@ -104,25 +105,9 @@ export function PipelineScreen() {
     // The transition-rules engine rejects moves with 400 'TRANSITION_RULE_FAILED:<type>[:extra]'
     // (and terminal stages with their own message). Map each rule to a human explanation —
     // same contract the web board handles — instead of a generic failure.
-    const moveErrorMessage = (err?: string): string => {
-        const s = err || '';
-        if (s.includes('terminal stage')) return t('pipeline.ruleTerminal');
-        const idx = s.indexOf('TRANSITION_RULE_FAILED');
-        if (idx < 0) return t('pipeline.moveError');
-        const parts = s.slice(idx).split(':');
-        switch (parts[1]) {
-            case 'email_required': return t('pipeline.ruleEmail');
-            case 'phone_required': return t('pipeline.rulePhone');
-            case 'name_required': return t('pipeline.ruleName');
-            case 'min_score': return t('pipeline.ruleScore', { score: parts[2] || '0' });
-            case 'agent_assigned': return t('pipeline.ruleAgent');
-            case 'appointment_required': return t('pipeline.ruleAppointment');
-            case 'order_required': return t('pipeline.ruleOrder');
-            case 'offer_required': return t('pipeline.ruleOffer');
-            case 'custom_attribute_required': return t('pipeline.ruleCustomRequired', { field: parts[2] || '' });
-            case 'custom_attribute_equals': return t('pipeline.ruleCustomEquals', { field: parts[2] || '' });
-            default: return t('pipeline.ruleGeneric');
-        }
+    const moveErrorMessage = (error?: unknown): string => {
+        const descriptor = describePipelineMoveError(error);
+        return t(descriptor.key, descriptor.params);
     };
 
     const move = async (stageId: string) => {
@@ -134,7 +119,7 @@ export function PipelineScreen() {
             toast.success(t('pipeline.moved'));
             closeDetail();
             queryClient.invalidateQueries({ queryKey: pipelineQKey });
-        } catch { toast.error(t('pipeline.moveError')); }
+        } catch (error) { toast.error(moveErrorMessage(error)); }
         finally { setBusy(false); }
     };
 

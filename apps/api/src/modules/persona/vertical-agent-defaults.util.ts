@@ -121,7 +121,12 @@ export function resolveVerticalAgentDefaults(settings: unknown): ResolvedVertica
     }
 
     const persistedVersion = verticalConfig.manifestVersion;
-    if (persistedVersion !== undefined && persistedVersion !== VERTICAL_CAPABILITY_MANIFEST_VERSION) {
+    const migratesV1 = persistedVersion === 1 && VERTICAL_CAPABILITY_MANIFEST_VERSION === 2;
+    if (
+        persistedVersion !== undefined
+        && persistedVersion !== VERTICAL_CAPABILITY_MANIFEST_VERSION
+        && !migratesV1
+    ) {
         throw new VerticalAgentDefaultsError(
             'vertical_manifest_version_unsupported',
             `La versión ${String(persistedVersion)} del manifest vertical no es compatible con v${VERTICAL_CAPABILITY_MANIFEST_VERSION}.`,
@@ -146,7 +151,16 @@ export function resolveVerticalAgentDefaults(settings: unknown): ResolvedVertica
         );
     }
 
-    const effectiveCapabilities = resolveEffectiveCapabilities(verticalConfig, manifest);
+    // v2 removes generic appointments from several native-operation
+    // subtypes. A persisted v1 capability list is therefore not authoritative
+    // for a newly-created agent; derive v2 from the current manifest and let
+    // the provisioning reconciler persist it on the tenant.
+    const capabilitySource = migratesV1
+        ? Object.fromEntries(
+            Object.entries(verticalConfig).filter(([key]) => key !== 'effectiveCapabilities'),
+        )
+        : verticalConfig;
+    const effectiveCapabilities = resolveEffectiveCapabilities(capabilitySource, manifest);
     const effectiveSet = new Set(effectiveCapabilities);
     const toolDefaults: ResolvedVerticalAgentDefaults['toolDefaults'] = {};
     for (const tool of manifest.toolGroups) {

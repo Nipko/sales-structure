@@ -1,4 +1,5 @@
 import { VERTICAL_REGISTRY } from './vertical-definitions';
+import { VERTICAL_CAPABILITY_MANIFEST } from '@parallext/shared';
 
 export interface CanonicalVerticalSelection {
     industry: string;
@@ -112,7 +113,12 @@ export function resolveVerticalSelection(
         );
     }
 
-    if (!definition.subTypes.some((subType) => subType.key === requestedSubType)) {
+    const isCanonicalSubType = definition.subTypes.some((subType) => subType.key === requestedSubType);
+    const isSupportedLegacySubType = (
+        VERTICAL_CAPABILITY_MANIFEST[industry as keyof typeof VERTICAL_CAPABILITY_MANIFEST]
+            ?.legacySubtypes || []
+    ).includes(requestedSubType);
+    if (!isCanonicalSubType && !isSupportedLegacySubType) {
         throw new InvalidVerticalSelectionError(
             `El subtipo "${requestedSubType}" no pertenece a la industria "${industry}"`,
             industry,

@@ -18,18 +18,18 @@ describe('vertical contract/static matrix', () => {
         expect(new Set(locales).size).toBe(locales.length);
     });
 
-    it('executes exactly 76 × 4 × 5 = 1,520 deterministic scenarios', () => {
+    it('executes 76 canonical + 2 legacy profiles × 4 locales × 5 plans', () => {
         const report = runVerticalContractMatrix();
 
         expect(report.layer).toBe(VERTICAL_CONTRACT_LAYER);
         expect(report.bootstrapCertified).toBe(false);
         expect(report.sources.productPolicyVersion).toBe(1);
-        expect(report.dimensions).toEqual({ configurations: 76, locales: 4, plans: 5 });
-        expect(report.scenarios).toHaveLength(1_520);
-        expect(new Set(report.scenarios.map((scenario) => scenario.id)).size).toBe(1_520);
+        expect(report.dimensions).toEqual({ configurations: 78, locales: 4, plans: 5 });
+        expect(report.scenarios).toHaveLength(1_560);
+        expect(new Set(report.scenarios.map((scenario) => scenario.id)).size).toBe(1_560);
         expect(report.summary).toEqual({
-            scenarios: 1_520,
-            passed: 1_520,
+            scenarios: 1_560,
+            passed: 1_560,
             failed: 0,
             failureCount: 0,
         });

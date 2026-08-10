@@ -25,6 +25,7 @@ export class VehicleInventoryController {
     async listVehicles(
         @CurrentTenant() schema: string,
         @Query('status') status?: string,
+        @Query('search') search?: string,
         @Query('make') make?: string,
         @Query('category') category?: string,
         @Query('condition') condition?: string,
@@ -34,7 +35,7 @@ export class VehicleInventoryController {
         @Query('offset') offset?: string,
     ) {
         const result = await this.vehicleService.listVehicles(schema, {
-            status, make, category, condition,
+            status, search, make, category, condition,
             minPrice: minPrice ? parseInt(minPrice) : undefined,
             maxPrice: maxPrice ? parseInt(maxPrice) : undefined,
             limit: limit ? parseInt(limit) : undefined,

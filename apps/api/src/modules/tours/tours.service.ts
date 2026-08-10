@@ -6,6 +6,11 @@ import {
     normalizeCurrencyCode,
     requirePositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import {
+    assertOptionalContactId,
+    requireTenantContact,
+} from '../../common/utils/tenant-contact.util';
+import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 
 /**
  * Tours / travel packages module — supports both same-day experiences
@@ -268,115 +273,110 @@ export class ToursService {
         guestEmail?: string;
         contactId?: string;
         conversationId?: string;
+        opportunityId?: string;
         language?: string;
         specialRequests?: string;
     }): Promise<any> {
-        const pkg = await this.getPackage(schemaName, data.packageId);
-        if (!pkg || !pkg.is_active) throw new NotFoundException('Package not found');
-
-        // Availability check + seat decrement in a single transaction-safe path.
-        const inventory = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT * FROM tour_inventory
-             WHERE package_id = $1::uuid AND departure_date = $2::date AND is_active = true
-             ORDER BY departure_time NULLS FIRST LIMIT 1`,
-            [data.packageId, data.departureDate],
-        );
-
-        let inventoryId: string | null = null;
-        if (inventory?.length) {
-            const inv = inventory[0];
-            if (inv.available_seats < data.partySize) {
-                throw new BadRequestException({
-                    error: 'not_enough_seats',
-                    seatsLeft: inv.available_seats,
-                    requested: data.partySize,
-                });
-            }
-            // El decremento SI es atomico (un solo UPDATE guardado), pero antes
-            // se descartaba su resultado: si entre el SELECT de arriba y este
-            // UPDATE otra reserva se llevaba los asientos, el guard
-            // `available_seats >= $1` no afectaba ninguna fila EN SILENCIO y la
-            // salida seguia hasta insertar la reserva igual. Dos grupos salian
-            // vendidos sobre el mismo cupo. Ahora se mira si tomo fila: es la
-            // unica atomicidad disponible con PgBouncer en transaction mode, y
-            // hace innecesario el FOR UPDATE que anotaba el TODO.
-            const claimed = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `UPDATE tour_inventory SET available_seats = available_seats - $1, updated_at = NOW()
-                 WHERE id = $2::uuid AND available_seats >= $1
-                 RETURNING id`,
-                [data.partySize, inv.id],
-            );
-            if (!claimed.length) {
-                // Se los llevaron mientras conversabamos. Se relee el cupo real
-                // para que el mensaje al cliente no mienta.
-                const fresh = await this.prisma.executeInTenantSchema<any[]>(
-                    schemaName,
-                    `SELECT available_seats FROM tour_inventory WHERE id = $1::uuid`,
-                    [inv.id],
-                ).catch(() => [] as any[]);
-                throw new BadRequestException({
-                    error: 'not_enough_seats',
-                    seatsLeft: fresh?.[0]?.available_seats ?? 0,
-                    requested: data.partySize,
-                });
-            }
-            inventoryId = inv.id;
+        const partySize = requirePositiveIntegerUnit(data.partySize, 'partySize');
+        const suppliedAdults = data.adults === undefined
+            ? null
+            : this.requireNonNegativeInteger(data.adults, 'adults');
+        const suppliedChildren = data.children === undefined
+            ? null
+            : this.requireNonNegativeInteger(data.children, 'children');
+        const adults = suppliedAdults ?? (suppliedChildren === null ? partySize : partySize - suppliedChildren);
+        const children = suppliedChildren ?? (suppliedAdults === null ? 0 : partySize - suppliedAdults);
+        if (adults < 0 || children < 0 || adults + children !== partySize) {
+            throw new BadRequestException('adults + children must equal partySize');
         }
+        const contactId = assertOptionalContactId(data.contactId);
+        const created = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            // Contact ownership, package state, inventory claim and booking
+            // insertion form one compatibility unit. Any later failure rolls
+            // the seat decrement back; no best-effort compensation is needed.
+            const canonicalContactId = await requireTenantContact(query, contactId);
+            const opportunityId = await resolveNativeEvidenceOpportunity(query, {
+                contactId: canonicalContactId,
+                conversationId: data.conversationId,
+                trustedOpportunityId: data.opportunityId,
+            });
+            const packages = await query<any[]>(
+                `SELECT * FROM tour_packages
+                  WHERE id = $1::uuid AND is_active = true
+                  FOR SHARE`,
+                [data.packageId],
+            );
+            const pkg = packages?.[0];
+            if (!pkg) throw new NotFoundException('Package not found');
 
-        // Pricing: inventory override > package price; child discount if applicable.
-        const unitPrice = inventory?.[0]?.price_override ?? pkg.price ?? 0;
-        const adults = data.adults ?? data.partySize;
-        const children = data.children ?? 0;
-        const childPrice = unitPrice * (1 - (pkg.child_discount_pct || 0) / 100);
-        const totalPrice = unitPrice * adults + childPrice * children;
+            const inventory = await query<any[]>(
+                `SELECT * FROM tour_inventory
+                  WHERE package_id = $1::uuid
+                    AND departure_date = $2::date
+                    AND is_active = true
+                  ORDER BY departure_time NULLS FIRST
+                  LIMIT 1
+                  FOR UPDATE`,
+                [data.packageId, data.departureDate],
+            );
 
-        // El INSERT declara 17 placeholders: language y special_requests INCLUIDOS.
-        // Desde 1ebe7fec el array traía solo 15 valores → bind error en TODA reserva,
-        // y como el cupo ya se había decrementado arriba sin transacción, cada intento
-        // fallido quemaba asientos. Si el INSERT falla, se compensa el decremento
-        // (PgBouncer en transaction mode + statements separados: no hay BEGIN/COMMIT
-        // posible acá, la compensación es el camino).
-        let rows: any[];
-        try {
-            rows = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
+            let inventoryId: string | null = null;
+            if (inventory?.length) {
+                const inv = inventory[0];
+                if (Number(inv.available_seats) < partySize) {
+                    throw new BadRequestException({
+                        error: 'not_enough_seats',
+                        seatsLeft: Number(inv.available_seats),
+                        requested: partySize,
+                    });
+                }
+                const claimed = await query<any[]>(
+                    `UPDATE tour_inventory
+                        SET available_seats = available_seats - $1,
+                            updated_at = NOW()
+                      WHERE id = $2::uuid AND available_seats >= $1
+                      RETURNING id`,
+                    [partySize, inv.id],
+                );
+                if (!claimed.length) {
+                    throw new BadRequestException({
+                        error: 'not_enough_seats',
+                        seatsLeft: Number(inv.available_seats),
+                        requested: partySize,
+                    });
+                }
+                inventoryId = inv.id;
+            }
+
+            // Pricing: inventory override > package price; child discount if applicable.
+            const unitPrice = inventory?.[0]?.price_override ?? pkg.price ?? 0;
+            const childPrice = unitPrice * (1 - (pkg.child_discount_pct || 0) / 100);
+            const totalPrice = unitPrice * adults + childPrice * children;
+            const rows = await query<any[]>(
                 `INSERT INTO tour_bookings (
-                    package_id, inventory_id, contact_id, conversation_id,
+                    package_id, inventory_id, contact_id, opportunity_id, conversation_id,
                     guest_name, guest_email, guest_phone,
                     departure_date, departure_time, party_size, adults, children,
                     unit_price, total_price, currency, language, special_requests
                  ) VALUES (
-                    $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-                    $5, $6, $7,
-                    $8::date, $9, $10, $11, $12,
-                    $13, $14, $15, $16, $17
-                 ) RETURNING *`,
+                    $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+                    $6, $7, $8,
+                    $9::date, $10, $11, $12, $13,
+                    $14, $15, $16, $17, $18
+                ) RETURNING *`,
                 [
-                    data.packageId, inventoryId, data.contactId || null, data.conversationId || null,
+                    data.packageId, inventoryId, canonicalContactId, opportunityId, data.conversationId || null,
                     data.guestName || null, data.guestEmail || null, data.guestPhone || null,
                     data.departureDate, data.departureTime || null,
-                    data.partySize, adults, children,
+                    partySize, adults, children,
                     unitPrice, totalPrice, pkg.currency || 'COP',
                     data.language || 'es', data.specialRequests || null,
                 ],
             );
-        } catch (insertError) {
-            if (inventoryId) {
-                try {
-                    await this.prisma.executeInTenantSchema(
-                        schemaName,
-                        `UPDATE tour_inventory SET available_seats = available_seats + $1, updated_at = NOW()
-                         WHERE id = $2::uuid`,
-                        [data.partySize, inventoryId],
-                    );
-                } catch (restoreError: any) {
-                    this.logger.error(`No se pudo restaurar el cupo tras el INSERT fallido (inventory ${inventoryId}): ${restoreError?.message}`);
-                }
-            }
-            throw insertError;
-        }
+            if (!rows?.[0]) throw new Error('Tour booking was not created');
+            return { booking: rows[0], pkg, totalPrice };
+        });
+        const { booking, pkg, totalPrice } = created;
 
         // Try to send confirmation email (fire-and-forget)
         try {
@@ -410,7 +410,7 @@ export class ToursService {
                         package_name: pkg.name,
                         departure_date: data.departureDate,
                         departure_time: data.departureTime || '',
-                        party_size: String(data.partySize),
+                        party_size: String(partySize),
                         adults: String(adults),
                         children: String(children),
                         total_price: String(totalPrice),
@@ -423,33 +423,48 @@ export class ToursService {
             this.logger.warn(`Tour confirmation email failed: ${e.message}`);
         }
 
-        return rows?.[0];
+        return booking;
     }
 
     async cancelBooking(schemaName: string, bookingId: string): Promise<void> {
-        // Restore seats if the booking had inventory
-        const booking = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT * FROM tour_bookings WHERE id = $1::uuid`,
-            [bookingId],
-        );
-        const b = booking?.[0];
-        if (!b) throw new NotFoundException('Booking not found');
-        if (b.status === 'cancelled') return;
-
-        if (b.inventory_id) {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `UPDATE tour_inventory SET available_seats = available_seats + $1, updated_at = NOW()
-                 WHERE id = $2::uuid`,
-                [b.party_size, b.inventory_id],
+        await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            // The booking row is the idempotency guard. Concurrent retries
+            // serialize here; only the first live booking restores inventory.
+            const booking = await query<any[]>(
+                `SELECT * FROM tour_bookings WHERE id = $1::uuid FOR UPDATE`,
+                [bookingId],
             );
+            const b = booking?.[0];
+            if (!b) throw new NotFoundException('Booking not found');
+            if (b.status === 'cancelled') return;
+
+            if (b.inventory_id) {
+                await query(
+                    `UPDATE tour_inventory
+                        SET available_seats = available_seats + $1,
+                            updated_at = NOW()
+                      WHERE id = $2::uuid`,
+                    [b.party_size, b.inventory_id],
+                );
+            }
+            await query(
+                `UPDATE tour_bookings
+                    SET status = 'cancelled', updated_at = NOW()
+                  WHERE id = $1::uuid`,
+                [bookingId],
+            );
+        });
+    }
+
+    private requireNonNegativeInteger(value: unknown, field: string): number {
+        if (value === null || value === '') {
+            throw new BadRequestException(`${field} must be a non-negative integer`);
         }
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `UPDATE tour_bookings SET status = 'cancelled', updated_at = NOW() WHERE id = $1::uuid`,
-            [bookingId],
-        );
+        const parsed = typeof value === 'number' ? value : Number(value);
+        if (!Number.isInteger(parsed) || parsed < 0) {
+            throw new BadRequestException(`${field} must be a non-negative integer`);
+        }
+        return parsed;
     }
 
     // ── Search (used by AI tool + dashboard list) ──────────────────

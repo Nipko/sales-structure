@@ -6,15 +6,19 @@ describe('CrmController pipeline-stage identity guard', () => {
     const stageId = '22222222-2222-4222-8222-222222222222';
 
     function createController(usage: { opportunity_count: number; deal_count: number }) {
+        const pipelineId = '33333333-3333-4333-8333-333333333333';
+        const query = jest.fn(async (sql: string, _params: any[] = []) => {
+            if (sql.includes('SELECT id FROM pipelines')) return [{ id: pipelineId }];
+            if (sql.includes('AS has_orphans')) return [{ has_orphans: false }];
+            if (sql.includes('SELECT slug, is_terminal')) {
+                return [{ slug: 'consulta', is_terminal: false, terminal_outcome: null, default_probability: 10 }];
+            }
+            if (sql.includes('AS opportunity_count')) return [usage];
+            return [];
+        });
         const prisma: any = {
             $queryRaw: jest.fn().mockResolvedValue([{ schema_name: 'tenant_contract' }]),
-            executeInTenantSchema: jest.fn(async (_schema: string, query: string) => {
-                if (query.includes('SELECT slug, is_terminal')) {
-                    return [{ slug: 'consulta', is_terminal: false, terminal_outcome: null, default_probability: 10 }];
-                }
-                if (query.includes('AS opportunity_count')) return [usage];
-                return [];
-            }),
+            transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => callback(query)),
         };
         const noOp: any = {};
         const controller = new CrmController(
@@ -34,33 +38,35 @@ describe('CrmController pipeline-stage identity guard', () => {
             noOp,
             noOp,
         );
-        return { controller, prisma };
+        return { controller, prisma, query };
     }
 
     it.each([
         { usage: { opportunity_count: 1, deal_count: 0 }, referent: 'opportunity' },
         { usage: { opportunity_count: 0, deal_count: 1 }, referent: 'deal' },
     ])('blocks slug/outcome mutation while the stage is used by a $referent', async ({ usage }) => {
-        const { controller, prisma } = createController(usage);
+        const { controller, query } = createController(usage);
 
         await expect(controller.updatePipelineStage(tenantId, stageId, { slug: 'renamed' }))
             .rejects.toBeInstanceOf(ConflictException);
 
-        expect(prisma.executeInTenantSchema.mock.calls.some(([, query]: [string, string]) =>
-            query.startsWith('UPDATE pipeline_stages'),
+        expect(query.mock.calls.some(([sql]: [string]) =>
+            sql.startsWith('UPDATE pipeline_stages SET'),
         )).toBe(false);
     });
 
     it('allows a stage identity change when no opportunity or deal references it', async () => {
-        const { controller, prisma } = createController({ opportunity_count: 0, deal_count: 0 });
+        const { controller, query } = createController({ opportunity_count: 0, deal_count: 0 });
 
         await controller.updatePipelineStage(tenantId, stageId, { slug: 'renamed' });
 
-        const update = prisma.executeInTenantSchema.mock.calls.find(([, query]: [string, string]) =>
-            query.startsWith('UPDATE pipeline_stages'),
+        const update = query.mock.calls.find(([sql]: [string]) =>
+            sql.startsWith('UPDATE pipeline_stages SET'),
         );
-        expect(update?.[1]).toContain('AND tenant_id = $');
-        expect(update?.[2].at(-1)).toBe(tenantId);
+        const updateParams = update?.[1] || [];
+        expect(update?.[0]).toContain('AND tenant_id = $');
+        expect(updateParams.at(-2)).toBe(tenantId);
+        expect(updateParams.at(-1)).toBe('33333333-3333-4333-8333-333333333333');
     });
 });
 
@@ -69,7 +75,11 @@ describe('CrmController atomic pipeline replacement', () => {
     const stageId = '22222222-2222-4222-8222-222222222222';
 
     function setup(options?: { failUpdate?: boolean }) {
-        const query = jest.fn(async (sql: string) => {
+        const query = jest.fn(async (sql: string, _params: any[] = []) => {
+            if (sql.includes('SELECT id FROM pipelines')) {
+                return [{ id: '33333333-3333-4333-8333-333333333333' }];
+            }
+            if (sql.includes('AS has_orphans')) return [{ has_orphans: false }];
             if (sql.includes('FROM pipeline_stages') && sql.includes('FOR UPDATE')) {
                 return [{ id: stageId, slug: 'listo_cierre', is_terminal: false, terminal_outcome: null }];
             }

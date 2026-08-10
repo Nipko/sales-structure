@@ -1,4 +1,5 @@
 import {
+  VERTICAL_CAPABILITY_MANIFEST_VERSION,
   VERTICAL_MANIFEST_INDUSTRIES,
   listVerticalCapabilityConfigurations,
   resolveVerticalCapabilityManifest,
@@ -15,6 +16,7 @@ const OPERATIONAL_ROUTE_ITEMS: Readonly<Partial<Record<VerticalRoutePath, Vertic
   "/admin/tours": "tours",
   "/admin/listings": "listings",
   "/admin/vehicles": "vehicles",
+  "/admin/resource-rentals": "resourceRentals",
   "/admin/menu": "menu",
   "/admin/food-orders": "foodOrders",
   "/admin/memberships": "memberships",
@@ -71,10 +73,25 @@ describe("resolveVerticalDashboard", () => {
   it("resolves subtype-sensitive tourism, pharmacy and dark-kitchen navigation", () => {
     expect(resolveCanonical("turismo", "hotel").visibleItems).toEqual(["properties"]);
     expect(resolveCanonical("turismo", "alquiler_vacacional").visibleItems).toEqual(["properties"]);
-    expect(resolveCanonical("turismo", "agencia_viajes").visibleItems).toEqual(["appointments", "tours"]);
-    expect(resolveCanonical("turismo", "tours").visibleItems).toEqual(["appointments", "tours"]);
+    expect(resolveCanonical("turismo", "agencia_viajes").visibleItems).toEqual(["tours"]);
+    expect(resolveCanonical("turismo", "tours").visibleItems).toEqual(["tours"]);
     expect(resolveCanonical("salud", "farmacia").visibleItems).toEqual(["inventory"]);
     expect(resolveCanonical("restaurantes", "dark_kitchen").visibleItems).toEqual(["menu", "foodOrders"]);
+  });
+
+  it("exposes the resource-rental workspace only for rental and boarding capabilities", () => {
+    const vehicleRental = resolveCanonical("automotriz", "alquiler");
+    expect(vehicleRental.visibleItems).toEqual(["vehicles", "resourceRentals"]);
+    expect(vehicleRental.primaryTourItem).toBe("resourceRentals");
+
+    for (const subtype of ["guarderia", "hotel"] as const) {
+      const petBoarding = resolveCanonical("pet_services", subtype);
+      expect(petBoarding.visibleItems).toEqual(["resourceRentals", "pets"]);
+      expect(petBoarding.primaryTourItem).toBe("resourceRentals");
+    }
+
+    expect(resolveCanonical("automotriz", "concesionario").visibleItems).not.toContain("resourceRentals");
+    expect(resolveCanonical("pet_services", "peluqueria").visibleItems).not.toContain("resourceRentals");
   });
 
   it("keeps legacy boutique inventory-only and supports manifest/industry fallbacks", () => {
@@ -82,12 +99,13 @@ describe("resolveVerticalDashboard", () => {
     expect(resolveVerticalDashboard({
       industry: "moda_belleza",
       subType: "boutique",
+      manifestVersion: boutique.manifestVersion,
       effectiveCapabilities: boutique.capabilities,
     }).visibleItems).toEqual(["inventory"]);
 
     const resolvedFallback = resolveVerticalDashboard({ industry: "turismo", subType: "hotel" });
-    expect(resolvedFallback.source).toBe("resolved_manifest_fallback");
-    expect(resolvedFallback.visibleItems).toEqual(["properties"]);
+    expect(resolvedFallback.source).toBe("legacy_industry_fallback");
+    expect(resolvedFallback.visibleItems).toEqual(["appointments", "properties", "tours"]);
 
     const broadLegacyFallback = resolveVerticalDashboard({ industry: "turismo" });
     expect(broadLegacyFallback.source).toBe("legacy_industry_fallback");
@@ -100,5 +118,44 @@ describe("resolveVerticalDashboard", () => {
     });
     expect(explicitEmptyCapabilities.source).toBe("effective_capabilities");
     expect(explicitEmptyCapabilities.visibleItems).toEqual([]);
+  });
+
+  it("does not filter a published v1 capability contract through v2 routes", () => {
+    const legacyHotel = resolveVerticalDashboard({
+      industry: "turismo",
+      subType: "hotel",
+      manifestVersion: 1,
+      effectiveCapabilities: ["crm_pipeline", "faq_search", "appointment_booking"],
+    });
+
+    expect(legacyHotel.source).toBe("effective_capabilities");
+    expect(legacyHotel.visibleItems).toEqual(["appointments"]);
+
+    expect(resolveVerticalDashboard({
+      industry: "technology",
+      subType: "hardware",
+      manifestVersion: 1,
+      effectiveCapabilities: ["appointment_booking"],
+    }).visibleItems).toEqual(["appointments"]);
+    expect(resolveVerticalDashboard({
+      industry: "automotriz",
+      subType: "repuestos",
+      manifestVersion: 1,
+      effectiveCapabilities: ["appointment_booking", "vehicle_inventory"],
+    }).visibleItems).toEqual(["appointments", "vehicles"]);
+    expect(resolveVerticalDashboard({
+      industry: "servicios_hogar",
+      subType: "plomeria",
+      manifestVersion: 1,
+      effectiveCapabilities: ["appointment_booking", "service_requests"],
+    }).visibleItems).toEqual(["appointments", "serviceRequests"]);
+  });
+
+  it("fails closed when a current manifest is missing its capability publication", () => {
+    expect(resolveVerticalDashboard({
+      industry: "turismo",
+      subType: "hotel",
+      manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+    }).visibleItems).toEqual([]);
   });
 });

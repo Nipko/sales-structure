@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, Res, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Put, Delete, Param, Body, Query, Res, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -324,6 +324,7 @@ export class AppointmentsController {
         @Body() body: any,
         @CurrentUser() user: any,
     ) {
+        if (!body?.contactId) throw new BadRequestException('contactId is required');
         const data = await this.service.createRecurring(user.schemaName, body);
         return { success: true, data };
     }
@@ -434,6 +435,7 @@ export class AppointmentsController {
         @Body() body: any,
         @CurrentUser() user: any,
     ) {
+        if (!body?.contactId) throw new BadRequestException('contactId is required');
         const data = await this.service.create(user.schemaName, body);
         return { success: true, data };
     }

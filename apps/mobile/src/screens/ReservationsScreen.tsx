@@ -26,6 +26,7 @@ import { useI18n } from '../i18n';
 import { PressableScale } from '../components/PressableScale';
 import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
+import { collectApiPages } from '../lib/pagination';
 
 interface Stay {
     id: string;
@@ -47,6 +48,12 @@ interface Property {
     name: string;
     max_guests?: number;
     min_nights?: number;
+}
+
+interface Contact {
+    id: string;
+    name: string;
+    phone?: string;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -131,6 +138,7 @@ export function ReservationsScreen() {
     // ── Crear estadía ────────────────────────────────────────────
     const [createOpen, setCreateOpen] = useState(false);
     const [cPropertyId, setCPropertyId] = useState('');
+    const [cContactId, setCContactId] = useState('');
     const [cCheckIn, setCCheckIn] = useState('');
     const [cNights, setCNights] = useState('1');
     const [cGuestName, setCGuestName] = useState('');
@@ -152,6 +160,20 @@ export function ReservationsScreen() {
         throwOnError: false,
     });
     const properties = propertiesQuery.data || [];
+    const contactsQuery = useQuery<Contact[]>({
+        queryKey: ['stay-contacts', tenantId],
+        queryFn: async () => {
+            if (!tenantId) return [];
+            const contacts = await collectApiPages<Contact>(
+                (limit, offset) => api.getOrderContacts(tenantId, { limit, offset }),
+            );
+            return contacts.filter((contact) => contact?.id);
+        },
+        enabled: !!tenantId && createOpen,
+        staleTime: 2 * 60 * 1000,
+        throwOnError: false,
+    });
+    const contacts = contactsQuery.data || [];
     const selectedProperty = useMemo(
         () => properties.find((property) => property.id === cPropertyId),
         [properties, cPropertyId],
@@ -164,12 +186,20 @@ export function ReservationsScreen() {
     const validGuests = /^\d+$/.test(cGuests) && Number.isSafeInteger(guestsValue)
         && guestsValue >= 1 && guestsValue <= maxGuests;
     const validCheckIn = !!parseDay(cCheckIn) && cCheckIn >= today;
-    const canCreate = !!tenantId && !!cPropertyId && validCheckIn
+    const canCreate = !!tenantId && !!cContactId && !!cPropertyId && validCheckIn
         && validNights && validGuests && !!cGuestName.trim();
 
     useEffect(() => {
         if (properties.length === 1 && !cPropertyId) setCPropertyId(properties[0].id);
     }, [properties, cPropertyId]);
+
+    useEffect(() => {
+        if (contacts.length !== 1 || cContactId) return;
+        const contact = contacts[0];
+        setCContactId(contact.id);
+        setCGuestName(contact.name || '');
+        setCGuestPhone(contact.phone || '');
+    }, [contacts, cContactId]);
 
     useEffect(() => {
         if (!selectedProperty) return;
@@ -179,7 +209,7 @@ export function ReservationsScreen() {
 
     const openCreate = () => {
         haptic.tap();
-        setCCheckIn(''); setCNights('1'); setCGuestName(''); setCGuestPhone(''); setCGuests('2');
+        setCContactId(''); setCCheckIn(''); setCNights('1'); setCGuestName(''); setCGuestPhone(''); setCGuests('2');
         setCreateOpen(true);
     };
 
@@ -195,6 +225,7 @@ export function ReservationsScreen() {
         setCreating(true);
         try {
             const r: any = await api.createPropertyBooking(tenantId, cPropertyId, {
+                contactId: cContactId,
                 checkIn: cCheckIn,
                 checkOut: checkOutOf(cCheckIn, nightsValue),
                 guestName: cGuestName.trim(),
@@ -365,6 +396,42 @@ export function ReservationsScreen() {
                     <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} onStartShouldSetResponder={() => true}>
                         <ScrollView keyboardShouldPersistTaps="handled">
                             <Text style={styles.sheetTitle}>{t('stays.new')}</Text>
+
+                            <Text style={styles.sectionLabel}>{t('stays.contact')}</Text>
+                            {contactsQuery.isLoading ? (
+                                <ActivityIndicator color={theme.accent} style={{ marginVertical: 8 }} />
+                            ) : contactsQuery.isError ? (
+                                <View style={styles.propertiesError}>
+                                    <Text style={styles.empty}>{t('stays.contactsLoadError')}</Text>
+                                    <TouchableOpacity onPress={() => contactsQuery.refetch()} accessibilityRole="button">
+                                        <Text style={styles.retryLink}>{t('common.retry')}</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            ) : contacts.length ? (
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                                    {contacts.map((contact) => {
+                                        const selected = cContactId === contact.id;
+                                        return (
+                                            <TouchableOpacity
+                                                key={contact.id}
+                                                onPress={() => {
+                                                    haptic.tap();
+                                                    setCContactId(contact.id);
+                                                    setCGuestName(contact.name || '');
+                                                    setCGuestPhone(contact.phone || '');
+                                                }}
+                                                accessibilityRole="button"
+                                                accessibilityState={{ selected }}
+                                                style={[styles.chip, selected && styles.chipOn]}
+                                            >
+                                                <Text style={[styles.chipText, selected && { color: '#fff' }]} numberOfLines={1}>{contact.name}</Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </ScrollView>
+                            ) : (
+                                <Text style={styles.empty}>{t('stays.noContacts')}</Text>
+                            )}
 
                             <Text style={styles.sectionLabel}>{t('stays.property')}</Text>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>

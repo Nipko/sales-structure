@@ -95,7 +95,7 @@ export class VehicleInventoryService {
     }
 
     async listVehicles(schemaName: string, filters?: {
-        status?: string; make?: string; category?: string;
+        status?: string; search?: string; make?: string; category?: string;
         minPrice?: number; maxPrice?: number; condition?: string;
         limit?: number; offset?: number;
     }): Promise<{ items: any[]; total: number }> {
@@ -106,6 +106,17 @@ export class VehicleInventoryService {
         let idx = 1;
 
         if (filters?.status) { conditions.push(`status = $${idx++}`); params.push(filters.status); }
+        if (filters?.search) {
+            conditions.push(`(
+                make ILIKE $${idx}
+                OR model ILIKE $${idx}
+                OR COALESCE(license_plate, '') ILIKE $${idx}
+                OR COALESCE(vin, '') ILIKE $${idx}
+                OR year::text ILIKE $${idx}
+            )`);
+            params.push(`%${filters.search.trim()}%`);
+            idx++;
+        }
         if (filters?.make) { conditions.push(`make ILIKE $${idx++}`); params.push(`%${filters.make}%`); }
         if (filters?.category) { conditions.push(`category = $${idx++}`); params.push(filters.category); }
         if (filters?.condition) { conditions.push(`condition = $${idx++}`); params.push(filters.condition); }
@@ -113,8 +124,16 @@ export class VehicleInventoryService {
         if (filters?.maxPrice) { conditions.push(`price_cents <= $${idx++}`); params.push(filters.maxPrice); }
 
         const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-        const limit = filters?.limit || 50;
-        const offset = filters?.offset || 0;
+        const requestedLimit = filters?.limit ?? 50;
+        const requestedOffset = filters?.offset ?? 0;
+        if (!Number.isInteger(requestedLimit) || requestedLimit < 1) {
+            throw new BadRequestException('limit must be a positive integer');
+        }
+        if (!Number.isInteger(requestedOffset) || requestedOffset < 0) {
+            throw new BadRequestException('offset must be a non-negative integer');
+        }
+        const limit = Math.min(requestedLimit, 100);
+        const offset = requestedOffset;
 
         const countParams = [...params];
         const countResult: any[] = await this.prisma.$queryRawUnsafe(

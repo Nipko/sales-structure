@@ -1,9 +1,10 @@
 import {
-    listVerticalCapabilityConfigurations,
+    listVerticalCapabilityCompatibilityConfigurations,
     resolveVerticalProductPolicy,
     VERTICAL_CAPABILITY_MANIFEST_VERSION,
     VERTICAL_CERTIFICATION_ANCHORS,
     VERTICAL_PRODUCT_POLICY_VERSION,
+    VERTICAL_CAPABILITY_MANIFEST,
 } from '@parallext/shared';
 import type {
     LocalizedString,
@@ -14,6 +15,7 @@ import type {
 } from '@parallext/shared';
 import { VERTICAL_TOOL_CAPABILITY } from '../../common/contracts/vertical-capability-tools';
 import { getVerticalDefinition, VERTICAL_REGISTRY } from '../verticals/vertical-definitions';
+import { withResolvedVerticalPipeline } from '../verticals/vertical-pipeline-contract';
 import { resolveVerticalSelection } from '../verticals/vertical-identifiers';
 import { selectQuotaAwareVerticalDefaults } from '../verticals/verticals.service';
 import {
@@ -142,7 +144,11 @@ function validateTranslations(
         : undefined;
     if (manifest.subtype) {
         if (!subtype) {
-            add('subtype_definition_missing', 'subTypes', `Subtype ${manifest.subtype} is absent from the registry definition.`);
+            const legacy = VERTICAL_CAPABILITY_MANIFEST[manifest.industry]
+                ?.legacySubtypes?.includes(manifest.subtype);
+            if (!legacy) {
+                add('subtype_definition_missing', 'subTypes', `Subtype ${manifest.subtype} is absent from the registry definition.`);
+            }
         } else {
             validateLocalized(subtype.label, locale, `subTypes.${manifest.subtype}.label`, add);
         }
@@ -172,8 +178,21 @@ function validateTranslations(
         validateLocalized(kpi.label, locale, `dashboard.kpis[${index}].label`, add));
 }
 
+const PIPELINE_RULE_CAPABILITY: Readonly<Record<string, string>> = {
+    appointment_required: 'appointment_booking',
+    tour_booking_required: 'tour_booking',
+    property_booking_required: 'nightly_booking',
+    food_order_required: 'restaurant_ordering',
+    order_required: 'catalog_search',
+    service_request_scheduled_required: 'service_requests',
+    photo_session_scheduled_required: 'photo_sessions',
+    pet_boarding_required: 'pet_boarding',
+    vehicle_rental_required: 'vehicle_rentals',
+};
+
 function validatePipeline(
     definition: VerticalDefinition,
+    manifest: ResolvedVerticalCapabilityManifest,
     add: (code: string, path: string, message: string) => void,
 ): void {
     const slugs = definition.pipeline.stages.map((stage) => stage.slug);
@@ -203,6 +222,16 @@ function validatePipeline(
                 `pipeline.stages[${index}].terminalOutcome`,
                 'A non-terminal stage must not declare a terminal outcome.',
             );
+        }
+        for (const [ruleIndex, rule] of (stage.transitionRules || []).entries()) {
+            const requiredCapability = PIPELINE_RULE_CAPABILITY[String(rule?.type || '')];
+            if (requiredCapability && !manifest.capabilities.includes(requiredCapability as any)) {
+                add(
+                    'pipeline_rule_capability_missing',
+                    `pipeline.stages[${index}].transitionRules[${ruleIndex}]`,
+                    `Rule ${rule.type} requires capability ${requiredCapability}.`,
+                );
+            }
         }
     });
     if (terminalCount === 0) {
@@ -394,7 +423,10 @@ function validateScenario(
 
     let definition: VerticalDefinition | undefined;
     try {
-        definition = getVerticalDefinition(manifest.industry);
+        definition = withResolvedVerticalPipeline(
+            getVerticalDefinition(manifest.industry),
+            manifest.subtype,
+        );
         if (definition.industry !== manifest.industry) {
             add('definition_industry_mismatch', 'definition.industry', 'Registry industry does not match manifest industry.');
         }
@@ -404,7 +436,7 @@ function validateScenario(
 
     if (definition) {
         validateTranslations(definition, manifest, locale, add);
-        validatePipeline(definition, add);
+        validatePipeline(definition, manifest, add);
         validateServices(definition, add);
         validatePlanFloors(definition, manifest, plan, add);
     }
@@ -417,7 +449,7 @@ function validateScenario(
 
 /** Execute all static combinations. No Prisma, Redis, network, clock, or randomness. */
 export function runVerticalContractMatrix(): VerticalContractMatrixReport {
-    const configurations = listVerticalCapabilityConfigurations();
+    const configurations = listVerticalCapabilityCompatibilityConfigurations();
     const locales = getVerticalContractLocales();
     const plans = loadFactoryPlanContracts();
     const scenarios: VerticalContractScenarioResult[] = [];

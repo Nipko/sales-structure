@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -14,13 +14,18 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../lib/api';
-import type { VerticalWorkspaceKind } from '../lib/verticalWorkspace';
+import { readApiPage } from '../lib/pagination';
+import {
+    operationRequiresContact,
+    petOwnerContactId,
+    type OperationComposerKind,
+} from '../lib/operationContactIntegrity';
 import { useI18n } from '../i18n';
 import { useToast } from '../components/Toast';
 import { haptic } from '../lib/haptics';
 import { theme } from '../theme';
 
-type ComposerKind = Exclude<VerticalWorkspaceKind, 'appointments' | 'stays' | 'none'>;
+export type ComposerKind = OperationComposerKind;
 
 interface Props {
     visible: boolean;
@@ -43,6 +48,7 @@ interface ReferenceItem {
 }
 
 type FormState = Record<string, string>;
+const SELECTOR_PAGE_SIZE = 40;
 
 const pad = (value: number) => String(value).padStart(2, '0');
 const dayString = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -122,6 +128,17 @@ function normalizeReferences(kind: ComposerKind, primary: any[], secondary: any[
     return { primary: mappedPrimary, secondary: mappedSecondary };
 }
 
+function normalizeContacts(items: any[]): ReferenceItem[] {
+    return items
+        .filter((item) => item?.id)
+        .map((item) => ({
+            id: String(item.id),
+            title: String(item.name || item.contactName || item.phone || ''),
+            subtitle: item.phone || item.email || undefined,
+            raw: item,
+        }));
+}
+
 function Field({
     label,
     value,
@@ -195,16 +212,41 @@ function ReferencePicker({
     value,
     onChange,
     emptyLabel,
+    searchValue,
+    onSearch,
+    searchPlaceholder,
+    hasMore,
+    loadingMore,
+    onLoadMore,
+    loadMoreLabel,
 }: {
     label: string;
     items: ReferenceItem[];
     value: string;
     onChange: (value: string) => void;
     emptyLabel: string;
+    searchValue?: string;
+    onSearch?: (value: string) => void;
+    searchPlaceholder?: string;
+    hasMore?: boolean;
+    loadingMore?: boolean;
+    onLoadMore?: () => void;
+    loadMoreLabel?: string;
 }) {
     return (
         <View style={styles.fieldWrap}>
             <Text style={styles.label}>{label}</Text>
+            {!!onSearch && (
+                <TextInput
+                    style={[styles.input, styles.referenceSearch]}
+                    value={searchValue || ''}
+                    onChangeText={onSearch}
+                    placeholder={searchPlaceholder}
+                    placeholderTextColor={theme.textSecondary}
+                    autoCorrect={false}
+                    returnKeyType="search"
+                />
+            )}
             {!items.length ? <Text style={styles.hint}>{emptyLabel}</Text> : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.referenceRow}>
                     {items.map((item) => {
@@ -222,6 +264,18 @@ function ReferencePicker({
                             </TouchableOpacity>
                         );
                     })}
+                    {!!hasMore && !!onLoadMore && (
+                        <TouchableOpacity
+                            style={styles.loadMoreCard}
+                            onPress={onLoadMore}
+                            disabled={loadingMore}
+                            accessibilityRole="button"
+                        >
+                            {loadingMore
+                                ? <ActivityIndicator color={theme.accent} />
+                                : <Text style={styles.loadMoreText}>{loadMoreLabel}</Text>}
+                        </TouchableOpacity>
+                    )}
                 </ScrollView>
             )}
         </View>
@@ -248,12 +302,28 @@ export function OperationCreateModal({
     const [mode, setMode] = useState('create');
     const [primary, setPrimary] = useState<ReferenceItem[]>([]);
     const [secondary, setSecondary] = useState<ReferenceItem[]>([]);
+    const [contacts, setContacts] = useState<ReferenceItem[]>([]);
     const [selectedPrimary, setSelectedPrimary] = useState('');
     const [selectedSecondary, setSelectedSecondary] = useState('');
+    const [selectedContact, setSelectedContact] = useState('');
     const [cart, setCart] = useState<Record<string, number>>({});
     const [loadingReferences, setLoadingReferences] = useState(false);
     const [referenceError, setReferenceError] = useState(false);
+    const [contactSearch, setContactSearch] = useState('');
+    const [contactsLoading, setContactsLoading] = useState(false);
+    const [contactsLoadingMore, setContactsLoadingMore] = useState(false);
+    const [contactsHasMore, setContactsHasMore] = useState(false);
+    const [contactsNextOffset, setContactsNextOffset] = useState(0);
+    const [contactsError, setContactsError] = useState(false);
+    const [resourceSearch, setResourceSearch] = useState('');
+    const [resourcesLoading, setResourcesLoading] = useState(false);
+    const [resourcesLoadingMore, setResourcesLoadingMore] = useState(false);
+    const [resourcesHasMore, setResourcesHasMore] = useState(false);
+    const [resourcesNextOffset, setResourcesNextOffset] = useState(0);
+    const [resourcesError, setResourcesError] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const contactRequest = useRef(0);
+    const resourceRequest = useRef(0);
 
     const set = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -263,12 +333,14 @@ export function OperationCreateModal({
         try {
             let primaryRows: any[] = [];
             let secondaryRows: any[] = [];
-            if (kind === 'tours') primaryRows = rows(await api.getTourPackages(tenantId));
-            if (kind === 'restaurant') primaryRows = rows(await api.getRestaurantItems(tenantId));
+            if (kind === 'tours') {
+                primaryRows = rows(await api.getTourPackages(tenantId));
+            }
+            if (kind === 'restaurant') {
+                primaryRows = rows(await api.getRestaurantItems(tenantId));
+            }
             if (kind === 'orders') {
-                const [products, contacts] = await Promise.all([api.getInventoryProducts(tenantId), api.getOrderContacts(tenantId)]);
-                primaryRows = rows(products);
-                secondaryRows = rows(contacts);
+                primaryRows = rows(await api.getInventoryProducts(tenantId));
             }
             if (kind === 'classes') {
                 const from = dayString(new Date()) + 'T00:00:00';
@@ -280,27 +352,28 @@ export function OperationCreateModal({
                 primaryRows = rows(classes);
                 secondaryRows = rows(members);
             }
-            if (kind === 'education') primaryRows = rows(await api.getEducationCohorts(tenantId));
+            if (kind === 'education') {
+                primaryRows = rows(await api.getEducationCohorts(tenantId));
+            }
             if (kind === 'insurance') {
-                const [plans, policies] = await Promise.all([api.getInsurancePlans(tenantId), api.getInsurancePolicies(tenantId)]);
+                const [plans, policies] = await Promise.all([
+                    api.getInsurancePlans(tenantId),
+                    api.getInsurancePolicies(tenantId),
+                ]);
                 primaryRows = rows(plans);
                 secondaryRows = rows(policies);
             }
-            if (kind === 'test_drives' || kind === 'vehicle_rentals') primaryRows = rows(await api.getVehicles(tenantId, 'status=available&limit=200'));
             if (kind === 'pet_boarding') {
-                const [pets, services] = await Promise.all([
-                    api.getPets(tenantId, 'limit=200'),
-                    api.getBookableServices(tenantId),
-                ]);
-                primaryRows = rows(pets);
+                const services = await api.getBookableServices(tenantId);
                 secondaryRows = rows(services).filter((service) => ['hotel', 'guarderia'].includes(String(service.category || '').toLowerCase()));
             }
             const normalized = normalizeReferences(kind, primaryRows, secondaryRows);
-            setPrimary(normalized.primary);
+            const hasRemoteResource = kind === 'test_drives' || kind === 'vehicle_rentals' || kind === 'pet_boarding';
+            if (!hasRemoteResource) setPrimary(normalized.primary);
             setSecondary(normalized.secondary);
-            if (initialPrimaryId && normalized.primary.some((item) => item.id === initialPrimaryId)) {
+            if (!hasRemoteResource && initialPrimaryId && normalized.primary.some((item) => item.id === initialPrimaryId)) {
                 setSelectedPrimary(initialPrimaryId);
-            } else if (normalized.primary.length === 1) setSelectedPrimary(normalized.primary[0].id);
+            } else if (!hasRemoteResource && normalized.primary.length === 1) setSelectedPrimary(normalized.primary[0].id);
             if (initialSecondaryId && normalized.secondary.some((item) => item.id === initialSecondaryId)) {
                 setSelectedSecondary(initialSecondaryId);
             } else if (normalized.secondary.length === 1) setSelectedSecondary(normalized.secondary[0].id);
@@ -311,14 +384,111 @@ export function OperationCreateModal({
         }
     };
 
+    const loadContactPage = async (search: string, append: boolean, offset = 0) => {
+        const requestId = ++contactRequest.current;
+        append ? setContactsLoadingMore(true) : setContactsLoading(true);
+        setContactsError(false);
+        try {
+            const page = readApiPage<any>(await api.getOrderContacts(tenantId, {
+                search: search.trim() || undefined,
+                limit: SELECTOR_PAGE_SIZE,
+                offset,
+            }), offset);
+            if (requestId !== contactRequest.current) return;
+            const next = normalizeContacts(page.items);
+            setContacts((current) => {
+                if (append) {
+                    const known = new Set(current.map((item) => item.id));
+                    return [...current, ...next.filter((item) => !known.has(item.id))];
+                }
+                const selected = current.find((item) => item.id === selectedContact);
+                return selected && !next.some((item) => item.id === selected.id) ? [selected, ...next] : next;
+            });
+            setContactsNextOffset(page.offset + page.items.length);
+            setContactsHasMore(page.hasMore);
+            if (!search.trim() && page.total === 1 && next.length === 1 && !selectedContact) {
+                const only = next[0];
+                setSelectedContact(only.id);
+                setForm((current) => ({
+                    ...current,
+                    customerName: only.raw.name || current.customerName || '',
+                    phone: only.raw.phone || current.phone || '',
+                }));
+            }
+        } catch {
+            if (requestId === contactRequest.current) setContactsError(true);
+        } finally {
+            if (requestId === contactRequest.current) {
+                setContactsLoading(false);
+                setContactsLoadingMore(false);
+            }
+        }
+    };
+
+    const loadResourcePage = async (search: string, append: boolean, offset = 0) => {
+        const requestId = ++resourceRequest.current;
+        append ? setResourcesLoadingMore(true) : setResourcesLoading(true);
+        setResourcesError(false);
+        try {
+            const query = {
+                search: search.trim() || undefined,
+                limit: SELECTOR_PAGE_SIZE,
+                offset,
+                ...(kind === 'test_drives' || kind === 'vehicle_rentals' ? { status: 'available' } : {}),
+            };
+            const response = kind === 'pet_boarding'
+                ? await api.getPets(tenantId, query)
+                : await api.getVehicles(tenantId, query);
+            const page = readApiPage<any>(response, offset);
+            if (requestId !== resourceRequest.current) return;
+            const next = normalizeReferences(kind, page.items, []).primary;
+            setPrimary((current) => {
+                if (append) {
+                    const known = new Set(current.map((item) => item.id));
+                    return [...current, ...next.filter((item) => !known.has(item.id))];
+                }
+                const selected = current.find((item) => item.id === selectedPrimary);
+                return selected && !next.some((item) => item.id === selected.id) ? [selected, ...next] : next;
+            });
+            setResourcesNextOffset(page.offset + page.items.length);
+            setResourcesHasMore(page.hasMore);
+            if (initialPrimaryId && page.items.some((item) => String(item.id) === initialPrimaryId)) {
+                setSelectedPrimary(initialPrimaryId);
+            } else if (!search.trim() && page.total === 1 && next.length === 1 && !selectedPrimary) {
+                setSelectedPrimary(next[0].id);
+            }
+        } catch {
+            if (requestId === resourceRequest.current) setResourcesError(true);
+        } finally {
+            if (requestId === resourceRequest.current) {
+                setResourcesLoading(false);
+                setResourcesLoadingMore(false);
+            }
+        }
+    };
+
     useEffect(() => {
-        if (!visible) return;
+        if (!visible) {
+            contactRequest.current += 1;
+            resourceRequest.current += 1;
+            return;
+        }
         const nextMode = initialMode || (kind === 'insurance' ? 'quote' : kind === 'classes' ? 'book' : 'create');
         const nextForm = initialForm();
         if (kind === 'insurance' && nextMode === 'claim') nextForm.date = dayString(new Date());
         setForm(nextForm);
         setSelectedPrimary('');
         setSelectedSecondary('');
+        setSelectedContact('');
+        setContacts([]);
+        setPrimary([]);
+        setSecondary([]);
+        setContactSearch('');
+        setResourceSearch('');
+        setContactsHasMore(false);
+        setResourcesHasMore(false);
+        setContactsError(false);
+        setResourcesError(false);
         setCart({});
         setMode(nextMode);
         void loadReferences();
@@ -327,8 +497,58 @@ export function OperationCreateModal({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visible, kind, tenantId, initialMode, initialPrimaryId, initialSecondaryId, initialQuoteId]);
 
+    useEffect(() => {
+        if (!visible || !operationRequiresContact(kind, mode)) return;
+        const timer = setTimeout(() => {
+            void loadContactPage(contactSearch, false, 0);
+        }, 300);
+        return () => clearTimeout(timer);
+        // The request is intentionally keyed by the current search/mode.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible, tenantId, kind, mode, contactSearch]);
+
+    useEffect(() => {
+        if (!visible || !['test_drives', 'vehicle_rentals', 'pet_boarding'].includes(kind)) return;
+        const timer = setTimeout(() => {
+            void loadResourcePage(resourceSearch, false, 0);
+        }, 300);
+        return () => clearTimeout(timer);
+        // The request is intentionally keyed by the current search/catalog.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible, tenantId, kind, resourceSearch]);
+
     const selectedPrimaryRow = primary.find((item) => item.id === selectedPrimary);
     const selectedSecondaryRow = secondary.find((item) => item.id === selectedSecondary);
+    const selectedContactRow = contacts.find((item) => item.id === selectedContact);
+    const selectedContactName = String(selectedContactRow?.raw?.name || selectedContactRow?.title || '').trim();
+    const selectedContactPhone = String(selectedContactRow?.raw?.phone || '').trim();
+    const selectedPetOwnerContactId = kind === 'pet_boarding'
+        ? petOwnerContactId(selectedPrimaryRow?.raw)
+        : '';
+
+    const chooseContact = (id: string) => {
+        setSelectedContact(id);
+        const contact = contacts.find((item) => item.id === id);
+        if (!contact) return;
+        setForm((current) => ({
+            ...current,
+            customerName: contact.raw.name || current.customerName || '',
+            phone: contact.raw.phone || current.phone || '',
+        }));
+    };
+
+    const choosePrimary = (id: string) => {
+        setSelectedPrimary(id);
+        if (kind !== 'pet_boarding') return;
+        const pet = primary.find((item) => item.id === id);
+        setForm((current) => ({
+            ...current,
+            // The pet owner is authoritative; do not leave stale customer data
+            // from a previously selected pet in the rental payload.
+            customerName: pet?.raw?.contact_name || pet?.raw?.contactName || pet?.raw?.owner_name || '',
+            phone: pet?.raw?.contact_phone || pet?.raw?.contactPhone || '',
+        }));
+    };
 
     const cartItems = useMemo(
         () => primary.filter((item) => (cart[item.id] || 0) > 0),
@@ -343,23 +563,24 @@ export function OperationCreateModal({
     };
 
     const canSubmit = useMemo(() => {
-        if (kind === 'tours') return !!selectedPrimary && validDay(form.date) && validTime(form.time) && Number(form.partySize) > 0;
-        if (kind === 'restaurant' || kind === 'orders') return cartItems.length > 0 && (kind !== 'restaurant' || form.orderType !== 'delivery' || !!form.address?.trim());
+        if (kind === 'tours') return !!selectedContact && !!selectedPrimary && validDay(form.date) && validTime(form.time) && Number(form.partySize) > 0;
+        if (kind === 'restaurant' || kind === 'orders') return !!selectedContact && cartItems.length > 0 && (kind !== 'restaurant' || form.orderType !== 'delivery' || !!form.address?.trim());
         if (kind === 'classes' && mode === 'book') return !!selectedPrimary && !!selectedSecondary;
         if (kind === 'classes') return isManager && !!form.name?.trim() && validDay(form.date) && validTime(form.time) && Number(form.capacity) > 0;
-        if (kind === 'education') return isManager && !!selectedPrimary && !!form.customerName?.trim();
-        if (kind === 'insurance' && mode === 'quote') return !!selectedPrimary && !!form.customerName?.trim();
+        if (kind === 'education') return isManager && !!selectedContact && !!selectedPrimary;
+        if (kind === 'insurance' && mode === 'quote') return !!selectedContact && !!selectedPrimary;
         if (kind === 'insurance' && mode === 'claim') return !!selectedSecondary
             && !!form.description?.trim() && validIncidentDay(form.date);
-        if (kind === 'insurance' && mode === 'policy') return isManager && !!form.policyNumber?.trim() && !!form.customerName?.trim() && Number(form.amount) > 0 && validDay(form.startsAt);
-        if (kind === 'service_requests') return !!form.serviceType?.trim() && !!form.customerName?.trim();
-        if (kind === 'photo_sessions') return isManager && !!form.sessionType?.trim() && !!form.customerName?.trim() && validDay(form.date) && validTime(form.time);
+        if (kind === 'insurance' && mode === 'policy') return isManager && !!selectedContact && !!form.policyNumber?.trim() && Number(form.amount) > 0 && validDay(form.startsAt);
+        if (kind === 'service_requests') return !!selectedContact && !!form.serviceType?.trim();
+        if (kind === 'photo_sessions') return isManager && !!selectedContact && !!form.sessionType?.trim() && validDay(form.date) && validTime(form.time);
         if (kind === 'test_drives') return !!selectedPrimary && !!form.customerName?.trim() && validDay(form.date) && validTime(form.time);
         if (kind === 'vehicle_rentals' || kind === 'pet_boarding') return !!selectedPrimary
             && (kind !== 'pet_boarding' || !!selectedSecondary)
-            && !!form.customerName?.trim() && validDay(form.date) && validDay(form.endDate) && form.endDate > form.date;
+            && (kind === 'pet_boarding' ? !!selectedPetOwnerContactId : !!selectedContact)
+            && validDay(form.date) && validDay(form.endDate) && form.endDate > form.date;
         return false;
-    }, [cartItems.length, form, isManager, kind, mode, selectedPrimary, selectedSecondary]);
+    }, [cartItems.length, form, isManager, kind, mode, selectedContact, selectedPetOwnerContactId, selectedPrimary, selectedSecondary]);
 
     const submit = async () => {
         if (!canSubmit || submitting) return;
@@ -370,19 +591,21 @@ export function OperationCreateModal({
                 const availability: any = await api.getTourAvailability(tenantId, selectedPrimary, form.date, Number(form.partySize));
                 if (!availability?.success || availability.data?.available === false) throw new Error('unavailable');
                 response = await api.createTourBooking(tenantId, {
+                    contactId: selectedContact,
                     packageId: selectedPrimary,
                     departureDate: form.date,
                     departureTime: form.time,
                     partySize: Number(form.partySize),
-                    guestName: form.customerName?.trim() || undefined,
-                    guestPhone: form.phone?.trim() || undefined,
+                    guestName: selectedContactName,
+                    guestPhone: selectedContactPhone || undefined,
                     specialRequests: form.notes?.trim() || undefined,
                 });
             } else if (kind === 'restaurant') {
                 response = await api.createRestaurantOrder(tenantId, {
+                    contactId: selectedContact,
                     orderType: form.orderType,
-                    customerName: form.customerName?.trim() || undefined,
-                    customerPhone: form.phone?.trim() || undefined,
+                    customerName: selectedContactName,
+                    customerPhone: selectedContactPhone || undefined,
                     deliveryAddress: form.orderType === 'delivery' ? form.address?.trim() : undefined,
                     tableNumber: form.orderType === 'dine_in' ? form.tableNumber?.trim() : undefined,
                     notes: form.notes?.trim() || undefined,
@@ -397,7 +620,7 @@ export function OperationCreateModal({
                 });
             } else if (kind === 'orders') {
                 response = await api.createOrder(tenantId, {
-                    contactId: selectedSecondary || undefined,
+                    contactId: selectedContact,
                     paymentMethod: form.paymentMethod?.trim() || undefined,
                     notes: form.notes?.trim() || undefined,
                     items: cartItems.map((item) => ({
@@ -420,15 +643,17 @@ export function OperationCreateModal({
                 });
             } else if (kind === 'education') {
                 response = await api.createEducationEnrollment(tenantId, {
+                    contactId: selectedContact,
                     cohortId: selectedPrimary,
-                    studentName: form.customerName.trim(),
+                    studentName: selectedContactName,
                     studentEmail: form.email?.trim() || undefined,
                     studentPhone: form.phone?.trim() || undefined,
                 });
             } else if (kind === 'insurance' && mode === 'quote') {
                 response = await api.createInsuranceQuote(tenantId, {
+                    contactId: selectedContact,
                     planId: selectedPrimary,
-                    applicantName: form.customerName.trim(),
+                    applicantName: selectedContactName,
                     applicantAge: form.age ? Number(form.age) : undefined,
                     applicantEmail: form.email?.trim() || undefined,
                     applicantPhone: form.phone?.trim() || undefined,
@@ -444,9 +669,10 @@ export function OperationCreateModal({
             } else if (kind === 'insurance') {
                 response = await api.createInsurancePolicy(tenantId, {
                     policyNumber: form.policyNumber.trim(),
+                    contactId: selectedContact,
                     planId: selectedPrimary || initialPrimaryId || undefined,
                     quoteId: initialQuoteId || undefined,
-                    policyholderName: form.customerName.trim(),
+                    policyholderName: selectedContactName,
                     monthlyPremium: Number(form.amount),
                     currency: form.currency || 'COP',
                     startsAt: form.startsAt,
@@ -454,10 +680,11 @@ export function OperationCreateModal({
                 });
             } else if (kind === 'service_requests') {
                 response = await api.createServiceRequest(tenantId, {
+                    contactId: selectedContact,
                     serviceType: form.serviceType.trim(),
                     urgency: form.urgency,
-                    customerName: form.customerName.trim(),
-                    customerPhone: form.phone?.trim() || undefined,
+                    customerName: selectedContactName,
+                    customerPhone: selectedContactPhone || undefined,
                     address: form.address?.trim() || undefined,
                     city: form.city?.trim() || undefined,
                     issueDescription: form.description?.trim() || undefined,
@@ -466,9 +693,10 @@ export function OperationCreateModal({
                 });
             } else if (kind === 'photo_sessions') {
                 response = await api.createPhotoSession(tenantId, {
+                    contactId: selectedContact,
                     sessionType: form.sessionType.trim(),
-                    clientName: form.customerName.trim(),
-                    clientPhone: form.phone?.trim() || undefined,
+                    clientName: selectedContactName,
+                    clientPhone: selectedContactPhone || undefined,
                     scheduledAt: `${form.date}T${form.time}:00`,
                     durationMinutes: Number(form.duration || 60),
                     location: form.address?.trim() || undefined,
@@ -491,8 +719,13 @@ export function OperationCreateModal({
                     type: kind === 'vehicle_rentals' ? 'vehicle_rental' : 'pet_boarding',
                     resourceId: selectedPrimary,
                     serviceId: kind === 'pet_boarding' ? selectedSecondary : undefined,
-                    customerName: form.customerName.trim(),
-                    customerPhone: form.phone?.trim() || undefined,
+                    contactId: kind === 'pet_boarding' ? selectedPetOwnerContactId : selectedContact,
+                    customerName: kind === 'pet_boarding'
+                        ? String(selectedPrimaryRow?.raw?.contact_name || selectedPrimaryRow?.raw?.contactName || selectedPrimaryRow?.raw?.owner_name || '').trim()
+                        : selectedContactName,
+                    customerPhone: kind === 'pet_boarding'
+                        ? String(selectedPrimaryRow?.raw?.contact_phone || selectedPrimaryRow?.raw?.contactPhone || '').trim() || undefined
+                        : selectedContactPhone || undefined,
                     startDate: form.date,
                     endDate: form.endDate,
                     notes: form.notes?.trim() || undefined,
@@ -512,6 +745,18 @@ export function OperationCreateModal({
     };
 
     const orderCatalog = kind === 'restaurant' || kind === 'orders';
+    const selectorError = referenceError || contactsError || resourcesError;
+    const initialSelectorLoading = loadingReferences
+        || (contactsLoading && contacts.length === 0)
+        || (resourcesLoading && primary.length === 0);
+
+    const retrySelectors = () => {
+        void loadReferences();
+        if (operationRequiresContact(kind, mode)) void loadContactPage(contactSearch, false, 0);
+        if (['test_drives', 'vehicle_rentals', 'pet_boarding'].includes(kind)) {
+            void loadResourcePage(resourceSearch, false, 0);
+        }
+    };
 
     return (
         <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
@@ -557,14 +802,31 @@ export function OperationCreateModal({
                             />
                         )}
 
-                        {loadingReferences && <ActivityIndicator color={theme.accent} style={styles.loader} />}
-                        {referenceError && (
+                        {initialSelectorLoading && <ActivityIndicator color={theme.accent} style={styles.loader} />}
+                        {selectorError && (
                             <View style={styles.errorBox}>
                                 <Text style={styles.errorText}>{t('ops.create.referencesError')}</Text>
-                                <TouchableOpacity onPress={() => void loadReferences()} accessibilityRole="button">
+                                <TouchableOpacity onPress={retrySelectors} accessibilityRole="button">
                                     <Text style={styles.retryText}>{t('common.retry')}</Text>
                                 </TouchableOpacity>
                             </View>
+                        )}
+
+                        {operationRequiresContact(kind, mode) && !(contactsLoading && contacts.length === 0) && !contactsError && (
+                            <ReferencePicker
+                                label={t('ops.field.customer')}
+                                items={contacts}
+                                value={selectedContact}
+                                onChange={chooseContact}
+                                emptyLabel={t('ops.create.noContacts')}
+                                searchValue={contactSearch}
+                                onSearch={setContactSearch}
+                                searchPlaceholder={t('ops.create.searchContacts')}
+                                hasMore={contactsHasMore}
+                                loadingMore={contactsLoadingMore}
+                                onLoadMore={() => void loadContactPage(contactSearch, true, contactsNextOffset)}
+                                loadMoreLabel={t('ops.create.loadMore')}
+                            />
                         )}
 
                         {kind === 'tours' && <>
@@ -572,8 +834,6 @@ export function OperationCreateModal({
                             <Field label={t('ops.field.departureDate')} value={form.date} onChange={(value) => set('date', value)} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
                             <Field label={t('ops.field.departureTime')} value={form.time} onChange={(value) => set('time', value)} placeholder="HH:mm" keyboardType="numbers-and-punctuation" />
                             <Field label={t('ops.field.partySize')} value={form.partySize} onChange={(value) => set('partySize', value)} keyboardType="numeric" />
-                            <Field label={t('ops.field.customerName')} value={form.customerName || ''} onChange={(value) => set('customerName', value)} />
-                            <Field label={t('ops.field.phone')} value={form.phone || ''} onChange={(value) => set('phone', value)} keyboardType="phone-pad" />
                             <Field label={t('ops.field.notes')} value={form.notes || ''} onChange={(value) => set('notes', value)} multiline />
                         </>}
 
@@ -601,13 +861,10 @@ export function OperationCreateModal({
                                     onChange={(value) => set('orderType', value)}
                                     choices={['pickup', 'delivery', 'dine_in'].map((value) => ({ value, label: t(`ops.orderType.${value}`) }))}
                                 />
-                                <Field label={t('ops.field.customerName')} value={form.customerName || ''} onChange={(value) => set('customerName', value)} />
-                                <Field label={t('ops.field.phone')} value={form.phone || ''} onChange={(value) => set('phone', value)} keyboardType="phone-pad" />
                                 {form.orderType === 'delivery' && <Field label={t('ops.field.address')} value={form.address || ''} onChange={(value) => set('address', value)} />}
                                 {form.orderType === 'dine_in' && <Field label={t('ops.field.table')} value={form.tableNumber || ''} onChange={(value) => set('tableNumber', value)} />}
                             </>}
                             {kind === 'orders' && <>
-                                <ReferencePicker label={t('ops.field.customerOptional')} items={secondary} value={selectedSecondary} onChange={setSelectedSecondary} emptyLabel={t('ops.create.noContacts')} />
                                 <Field label={t('ops.field.paymentMethod')} value={form.paymentMethod || ''} onChange={(value) => set('paymentMethod', value)} />
                             </>}
                             <Field label={t('ops.field.notes')} value={form.notes || ''} onChange={(value) => set('notes', value)} multiline />
@@ -629,14 +886,12 @@ export function OperationCreateModal({
 
                         {kind === 'education' && <>
                             <ReferencePicker label={t('ops.field.cohort')} items={primary.filter((item) => ['open', undefined, null].includes(item.raw.status))} value={selectedPrimary} onChange={setSelectedPrimary} emptyLabel={t('ops.create.noCohorts')} />
-                            <Field label={t('ops.field.studentName')} value={form.customerName || ''} onChange={(value) => set('customerName', value)} />
                             <Field label={t('ops.field.email')} value={form.email || ''} onChange={(value) => set('email', value)} keyboardType="email-address" />
                             <Field label={t('ops.field.phone')} value={form.phone || ''} onChange={(value) => set('phone', value)} keyboardType="phone-pad" />
                         </>}
 
                         {kind === 'insurance' && mode === 'quote' && <>
                             <ReferencePicker label={t('ops.field.plan')} items={primary} value={selectedPrimary} onChange={setSelectedPrimary} emptyLabel={t('ops.create.configurePlans')} />
-                            <Field label={t('ops.field.applicantName')} value={form.customerName || ''} onChange={(value) => set('customerName', value)} />
                             <Field label={t('ops.field.age')} value={form.age || ''} onChange={(value) => set('age', value)} keyboardType="numeric" />
                             <Field label={t('ops.field.email')} value={form.email || ''} onChange={(value) => set('email', value)} keyboardType="email-address" />
                             <Field label={t('ops.field.phone')} value={form.phone || ''} onChange={(value) => set('phone', value)} keyboardType="phone-pad" />
@@ -651,7 +906,6 @@ export function OperationCreateModal({
                         {kind === 'insurance' && mode === 'policy' && <>
                             <ReferencePicker label={t('ops.field.plan')} items={primary} value={selectedPrimary} onChange={setSelectedPrimary} emptyLabel={t('ops.create.configurePlans')} />
                             <Field label={t('ops.field.policyNumber')} value={form.policyNumber || ''} onChange={(value) => set('policyNumber', value)} />
-                            <Field label={t('ops.field.policyholderName')} value={form.customerName || ''} onChange={(value) => set('customerName', value)} />
                             <Field label={t('ops.field.monthlyPremium')} value={form.amount || ''} onChange={(value) => set('amount', value)} keyboardType="numeric" />
                             <Field label={t('ops.field.startsAt')} value={form.startsAt} onChange={(value) => set('startsAt', value)} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
                             <Field label={t('ops.field.endsAtOptional')} value={form.endDate} onChange={(value) => set('endDate', value)} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
@@ -660,8 +914,6 @@ export function OperationCreateModal({
                         {kind === 'service_requests' && <>
                             <Field label={t('ops.field.serviceType')} value={form.serviceType || ''} onChange={(value) => set('serviceType', value)} />
                             <Choices label={t('ops.field.urgency')} value={form.urgency} onChange={(value) => set('urgency', value)} choices={['normal', 'alta', 'emergencia', 'flexible'].map((value) => ({ value, label: t(`ops.urgency.${value}`) }))} />
-                            <Field label={t('ops.field.customerName')} value={form.customerName || ''} onChange={(value) => set('customerName', value)} />
-                            <Field label={t('ops.field.phone')} value={form.phone || ''} onChange={(value) => set('phone', value)} keyboardType="phone-pad" />
                             <Field label={t('ops.field.address')} value={form.address || ''} onChange={(value) => set('address', value)} />
                             <Field label={t('ops.field.city')} value={form.city || ''} onChange={(value) => set('city', value)} />
                             <Field label={t('ops.field.preferredDate')} value={form.date} onChange={(value) => set('date', value)} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
@@ -671,8 +923,6 @@ export function OperationCreateModal({
 
                         {kind === 'photo_sessions' && <>
                             <Field label={t('ops.field.sessionType')} value={form.sessionType || ''} onChange={(value) => set('sessionType', value)} />
-                            <Field label={t('ops.field.clientName')} value={form.customerName || ''} onChange={(value) => set('customerName', value)} />
-                            <Field label={t('ops.field.phone')} value={form.phone || ''} onChange={(value) => set('phone', value)} keyboardType="phone-pad" />
                             <Field label={t('ops.field.date')} value={form.date} onChange={(value) => set('date', value)} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
                             <Field label={t('ops.field.time')} value={form.time} onChange={(value) => set('time', value)} placeholder="HH:mm" keyboardType="numbers-and-punctuation" />
                             <Field label={t('ops.field.duration')} value={form.duration} onChange={(value) => set('duration', value)} keyboardType="numeric" />
@@ -683,7 +933,20 @@ export function OperationCreateModal({
                         </>}
 
                         {kind === 'test_drives' && <>
-                            <ReferencePicker label={t('ops.field.vehicle')} items={primary} value={selectedPrimary} onChange={setSelectedPrimary} emptyLabel={t('ops.create.noVehicles')} />
+                            <ReferencePicker
+                                label={t('ops.field.vehicle')}
+                                items={primary}
+                                value={selectedPrimary}
+                                onChange={setSelectedPrimary}
+                                emptyLabel={t('ops.create.noVehicles')}
+                                searchValue={resourceSearch}
+                                onSearch={setResourceSearch}
+                                searchPlaceholder={t('ops.create.searchResources')}
+                                hasMore={resourcesHasMore}
+                                loadingMore={resourcesLoadingMore}
+                                onLoadMore={() => void loadResourcePage(resourceSearch, true, resourcesNextOffset)}
+                                loadMoreLabel={t('ops.create.loadMore')}
+                            />
                             <Field label={t('ops.field.customerName')} value={form.customerName || ''} onChange={(value) => set('customerName', value)} />
                             <Field label={t('ops.field.phone')} value={form.phone || ''} onChange={(value) => set('phone', value)} keyboardType="phone-pad" />
                             <Field label={t('ops.field.date')} value={form.date} onChange={(value) => set('date', value)} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
@@ -692,10 +955,24 @@ export function OperationCreateModal({
                         </>}
 
                         {(kind === 'vehicle_rentals' || kind === 'pet_boarding') && <>
-                            <ReferencePicker label={t(kind === 'vehicle_rentals' ? 'ops.field.vehicle' : 'ops.field.pet')} items={primary} value={selectedPrimary} onChange={setSelectedPrimary} emptyLabel={t(kind === 'vehicle_rentals' ? 'ops.create.noVehicles' : 'ops.create.noPets')} />
+                            <ReferencePicker
+                                label={t(kind === 'vehicle_rentals' ? 'ops.field.vehicle' : 'ops.field.pet')}
+                                items={primary}
+                                value={selectedPrimary}
+                                onChange={kind === 'pet_boarding' ? choosePrimary : setSelectedPrimary}
+                                emptyLabel={t(kind === 'vehicle_rentals' ? 'ops.create.noVehicles' : 'ops.create.noPets')}
+                                searchValue={resourceSearch}
+                                onSearch={setResourceSearch}
+                                searchPlaceholder={t('ops.create.searchResources')}
+                                hasMore={resourcesHasMore}
+                                loadingMore={resourcesLoadingMore}
+                                onLoadMore={() => void loadResourcePage(resourceSearch, true, resourcesNextOffset)}
+                                loadMoreLabel={t('ops.create.loadMore')}
+                            />
                             {kind === 'pet_boarding' && <ReferencePicker label={t('ops.field.boardingService')} items={secondary} value={selectedSecondary} onChange={setSelectedSecondary} emptyLabel={t('ops.create.noBoardingServices')} />}
-                            <Field label={t('ops.field.customerName')} value={form.customerName || ''} onChange={(value) => set('customerName', value)} />
-                            <Field label={t('ops.field.phone')} value={form.phone || ''} onChange={(value) => set('phone', value)} keyboardType="phone-pad" />
+                            {kind === 'pet_boarding' && !!selectedPrimary && !selectedPetOwnerContactId && (
+                                <Text style={[styles.hint, { color: theme.danger }]}>{t('ops.create.petOwnerMissing')}</Text>
+                            )}
                             <Field label={t(kind === 'vehicle_rentals' ? 'ops.field.pickupDate' : 'ops.field.checkIn')} value={form.date} onChange={(value) => set('date', value)} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
                             <Field label={t(kind === 'vehicle_rentals' ? 'ops.field.returnDate' : 'ops.field.checkOut')} value={form.endDate} onChange={(value) => set('endDate', value)} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
                             <Field label={t('ops.field.notes')} value={form.notes || ''} onChange={(value) => set('notes', value)} multiline />
@@ -705,9 +982,9 @@ export function OperationCreateModal({
                         {!!selectedSecondaryRow && kind === 'insurance' && mode === 'claim' && <Text style={styles.hint}>{selectedSecondaryRow.subtitle}</Text>}
 
                         <TouchableOpacity
-                            style={[styles.submit, (!canSubmit || submitting || referenceError) && styles.disabled]}
+                            style={[styles.submit, (!canSubmit || submitting || selectorError) && styles.disabled]}
                             onPress={() => void submit()}
-                            disabled={!canSubmit || submitting || referenceError}
+                            disabled={!canSubmit || submitting || selectorError}
                             accessibilityRole="button"
                             accessibilityLabel={t('ops.create.submit')}
                         >
@@ -733,6 +1010,7 @@ const styles = StyleSheet.create({
     label: { color: theme.textSecondary, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.45, marginBottom: 7 },
     input: { minHeight: 46, borderWidth: 1, borderColor: theme.border, borderRadius: 11, paddingHorizontal: 12, paddingVertical: 10, color: theme.text, backgroundColor: theme.bgCard, fontSize: 14 },
     multiline: { minHeight: 88 },
+    referenceSearch: { marginBottom: 9 },
     chipRow: { gap: 8, paddingRight: 16 },
     chip: { minHeight: 38, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 19, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bgCard },
     chipSelected: { borderColor: theme.accent, backgroundColor: theme.accent },
@@ -745,6 +1023,8 @@ const styles = StyleSheet.create({
     referenceTitleSelected: { color: theme.accent },
     referenceSubtitle: { color: theme.textSecondary, fontSize: 11, lineHeight: 15, marginTop: 3 },
     referenceSubtitleSelected: { color: theme.text },
+    loadMoreCard: { width: 112, minHeight: 62, alignItems: 'center', justifyContent: 'center', borderRadius: 11, borderWidth: 1, borderColor: theme.accent, backgroundColor: theme.bgCard, padding: 10 },
+    loadMoreText: { color: theme.accent, fontSize: 12, fontWeight: '800', textAlign: 'center' },
     loader: { marginVertical: 20 },
     errorBox: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, backgroundColor: theme.danger + '18', borderRadius: 10, padding: 12, marginTop: 12 },
     errorText: { flex: 1, color: theme.danger, fontSize: 12 },

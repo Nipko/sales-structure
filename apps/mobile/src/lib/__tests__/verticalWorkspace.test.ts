@@ -1,4 +1,8 @@
 import {
+    resolveVerticalCapabilityManifest,
+    VERTICAL_CAPABILITY_MANIFEST_VERSION,
+} from '@parallext/shared';
+import {
     resolveVerticalWorkspace,
     type VerticalWorkspaceInput,
     type VerticalWorkspaceKind,
@@ -13,7 +17,7 @@ describe('resolveVerticalWorkspace', () => {
         { input: { industry: 'moda_belleza', subType: 'salon_belleza', bookingEnabled: true }, expected: 'appointments' },
         { input: { industry: 'inmobiliaria', bookingEnabled: true }, expected: 'appointments' },
         { input: { industry: 'restaurantes', bookingEnabled: true }, expected: 'restaurant' },
-        { input: { industry: 'automotriz', subType: 'concesionario', bookingEnabled: true }, expected: 'test_drives' },
+        { input: { industry: 'automotriz', subType: 'concesionario', bookingEnabled: true }, expected: 'appointments' },
         { input: { industry: 'turismo', subType: 'tours', bookingEnabled: true }, expected: 'tours' },
         { input: { industry: 'education', bookingEnabled: true }, expected: 'education' },
         { input: { industry: 'finanzas', bookingEnabled: true }, expected: 'appointments' },
@@ -38,7 +42,7 @@ describe('resolveVerticalWorkspace', () => {
         { industry: 'moda_belleza', subtypes: ['salon_belleza', 'barberia', 'spa', 'estetica'], expected: 'appointments' },
         { industry: 'inmobiliaria', subtypes: ['venta', 'arriendo', 'comercial', 'construccion'], expected: 'appointments' },
         { industry: 'restaurantes', subtypes: ['casual_dining', 'comida_rapida', 'cafeteria', 'dark_kitchen'], expected: 'restaurant' },
-        { industry: 'automotriz', subtypes: ['concesionario', 'taller', 'repuestos', 'alquiler'], expected: (subtype) => ({ concesionario: 'test_drives', taller: 'appointments', repuestos: 'orders', alquiler: 'vehicle_rentals' } as const)[subtype as 'concesionario' | 'taller' | 'repuestos' | 'alquiler'] },
+        { industry: 'automotriz', subtypes: ['concesionario', 'taller', 'repuestos', 'alquiler'], expected: (subtype) => ({ concesionario: 'appointments', taller: 'appointments', repuestos: 'orders', alquiler: 'vehicle_rentals' } as const)[subtype as 'concesionario' | 'taller' | 'repuestos' | 'alquiler'] },
         { industry: 'turismo', subtypes: ['agencia_viajes', 'hotel', 'tours', 'alquiler_vacacional'], expected: (subtype) => subtype === 'hotel' || subtype === 'alquiler_vacacional' ? 'stays' : 'tours' },
         { industry: 'education', subtypes: ['idiomas', 'universitaria', 'online', 'capacitacion'], expected: 'education' },
         { industry: 'finanzas', subtypes: ['asesoria', 'fintech', 'creditos'], expected: 'appointments' },
@@ -64,17 +68,25 @@ describe('resolveVerticalWorkspace', () => {
     it.each(canonicalIndustries)(
         'resuelve $input.industry como $expected',
         ({ input, expected }) => {
-            expect(resolveVerticalWorkspace(input).kind).toBe(expected);
+            const manifest = resolveVerticalCapabilityManifest(input.industry || '', input.subType || null);
+            expect(resolveVerticalWorkspace({
+                ...input,
+                manifestVersion: manifest.manifestVersion,
+                effectiveCapabilities: manifest.capabilities,
+            }).kind).toBe(expected);
         },
     );
 
     it.each(canonicalConfigurations)(
         'cubre la configuración canónica $industry/$subType como $expected',
         ({ industry, subType, expected }) => {
+            const manifest = resolveVerticalCapabilityManifest(industry, subType || null);
             expect(resolveVerticalWorkspace({
                 industry,
                 subType: subType || null,
                 bookingEnabled: true,
+                manifestVersion: manifest.manifestVersion,
+                effectiveCapabilities: manifest.capabilities,
             }).kind).toBe(expected);
         },
     );
@@ -173,6 +185,8 @@ describe('resolveVerticalWorkspace', () => {
         ['insurance_operations', 'insurance'],
         ['service_requests', 'service_requests'],
         ['photo_sessions', 'photo_sessions'],
+        ['vehicle_rentals', 'vehicle_rentals'],
+        ['pet_boarding', 'pet_boarding'],
         ['catalog_search', 'orders'],
         ['appointment_booking', 'appointments'],
     ] as const)('prioriza la capacidad versionada %s como %s', (capability, expected) => {
@@ -188,6 +202,42 @@ describe('resolveVerticalWorkspace', () => {
             bookingEnabled: true,
             effectiveCapabilities: [],
         }).kind).toBe('none');
+        expect(resolveVerticalWorkspace({
+            industry: 'automotriz',
+            subType: 'alquiler',
+            effectiveCapabilities: [],
+        }).kind).toBe('none');
+        expect(resolveVerticalWorkspace({
+            industry: 'pet_services',
+            subType: 'hotel',
+            effectiveCapabilities: [],
+        }).kind).toBe('none');
+        expect(resolveVerticalWorkspace({
+            industry: 'turismo',
+            subType: 'hotel',
+            manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+        }).kind).toBe('none');
+    });
+
+    it('mantiene el workspace legado hasta que el manifiesto actual se publica', () => {
+        expect(resolveVerticalWorkspace({
+            industry: 'automotriz',
+            subType: 'alquiler',
+            manifestVersion: 1,
+            effectiveCapabilities: ['appointment_booking'],
+        }).kind).toBe('vehicle_rentals');
+        expect(resolveVerticalWorkspace({
+            industry: 'automotriz',
+            subType: 'concesionario',
+            manifestVersion: 1,
+            effectiveCapabilities: ['appointment_booking'],
+        }).kind).toBe('test_drives');
+        expect(resolveVerticalWorkspace({
+            industry: 'automotriz',
+            subType: 'concesionario',
+            manifestVersion: VERTICAL_CAPABILITY_MANIFEST_VERSION,
+            effectiveCapabilities: ['appointment_booking'],
+        }).kind).toBe('appointments');
     });
 
     it('devuelve metadatos de presentación basados en claves de i18n', () => {
@@ -222,7 +272,6 @@ describe('resolveVerticalWorkspace', () => {
             { industry: 'otro' },
             { industry: 'salud', subType: 'farmacia' },
             { industry: 'moda_belleza', subType: 'boutique' },
-            { industry: 'automotriz', subType: 'concesionario' },
             { industry: 'automotriz', subType: 'repuestos' },
             { industry: 'automotriz', subType: 'alquiler' },
             { industry: 'pet_services', subType: 'guarderia' },

@@ -16,6 +16,7 @@ import {
     AlertTriangle, FileText, CheckCircle, Edit2,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { PaginatedContactSelect } from "@/components/ui/paginated-contact-select";
 
 interface Plan {
     id: string;
@@ -409,7 +410,6 @@ function IssuePolicyModal({ quote, onClose, onSaved }: { quote: Quote | null; on
     const { activeTenantId } = useTenant();
 
     const today = new Date().toISOString().slice(0, 10);
-    const [contacts, setContacts] = useState<any[]>([]);
     const [form, setForm] = useState({
         policyNumber: "",
         contactId: quote?.contact_id || "",
@@ -421,13 +421,6 @@ function IssuePolicyModal({ quote, onClose, onSaved }: { quote: Quote | null; on
     });
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
-
-    useEffect(() => {
-        if (!activeTenantId) return;
-        api.getOrderContacts(activeTenantId)
-            .then(r => { if (r?.success && Array.isArray(r.data)) setContacts(r.data); })
-            .catch(() => {});
-    }, [activeTenantId]);
 
     async function handleSave() {
         if (!activeTenantId) return;
@@ -505,16 +498,17 @@ function IssuePolicyModal({ quote, onClose, onSaved }: { quote: Quote | null; on
 
                     <div>
                         <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("linkedContact")}</label>
-                        <select
+                        <PaginatedContactSelect
+                            tenantId={activeTenantId}
                             value={form.contactId}
-                            onChange={e => setForm({ ...form, contactId: e.target.value })}
+                            onChange={(contactId, contact) => setForm({
+                                ...form,
+                                contactId,
+                                policyholderName: contact?.name || form.policyholderName,
+                            })}
+                            required
                             className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm cursor-pointer"
-                        >
-                            <option value="">{tc("select")}</option>
-                            {contacts.map((c: any) => (
-                                <option key={c.id} value={c.id}>{c.name || c.phone || c.id}</option>
-                            ))}
-                        </select>
+                        />
                         <p className="text-[11px] text-muted-foreground mt-1">{t("linkedContactHint")}</p>
                     </div>
 

@@ -366,6 +366,9 @@ CREATE INDEX IF NOT EXISTS "idx_stock_movements_product" ON "{{SCHEMA_NAME}}"."s
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."orders" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "contact_id" UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"("id"),
+    -- `orders` is defined before `opportunities`; the FK is added in the
+    -- native-evidence hardening block after every referenced table exists.
+    "opportunity_id" UUID,
     "conversation_id" UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"("id"),
     "items" JSONB NOT NULL DEFAULT '[]',
     "total_amount" DECIMAL(15, 2) NOT NULL DEFAULT 0,
@@ -1561,6 +1564,7 @@ CREATE INDEX IF NOT EXISTS "ci_assignment_idx" ON "{{SCHEMA_NAME}}"."calendar_in
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."appointments" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "contact_id" UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE SET NULL,
+    "opportunity_id" UUID REFERENCES "{{SCHEMA_NAME}}"."opportunities"("id") ON DELETE RESTRICT,
     "conversation_id" UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE SET NULL,
     "assigned_to" UUID,
     "service_id" UUID,
@@ -1595,6 +1599,14 @@ ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "reminder_
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "reminder_1h_sent" BOOLEAN DEFAULT false;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "reminder_2h_sent" BOOLEAN DEFAULT false;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "source" VARCHAR(50) DEFAULT 'manual';
+-- Public booking retries must converge even after the first request committed but
+-- its HTTP response was lost. Cancelled rows leave the index so an intentional
+-- rebooking of the same request can create a new active appointment.
+CREATE UNIQUE INDEX IF NOT EXISTS "appt_public_booking_idempotency_idx"
+    ON "{{SCHEMA_NAME}}"."appointments" (("metadata"->>'publicBookingIdempotencyKey'))
+    WHERE "source" = 'public_booking'
+      AND "status" <> 'cancelled'
+      AND "metadata"->>'publicBookingIdempotencyKey' IS NOT NULL;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "cancellation_reason" TEXT;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "no_show_followed_up" BOOLEAN DEFAULT false;
 ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "completed_at" TIMESTAMP;
@@ -1952,6 +1964,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."property_bookings" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "property_id" UUID NOT NULL,
     "contact_id" UUID,
+    "opportunity_id" UUID REFERENCES "{{SCHEMA_NAME}}"."opportunities"("id") ON DELETE RESTRICT,
     "conversation_id" UUID,
     "guest_name" VARCHAR(255),
     "guest_email" VARCHAR(255),
@@ -2025,12 +2038,37 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tour_inventory" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_tour_inventory_unique" ON "{{SCHEMA_NAME}}"."tour_inventory" ("package_id", "departure_date", "departure_time");
 CREATE INDEX IF NOT EXISTS "idx_tour_inventory_date" ON "{{SCHEMA_NAME}}"."tour_inventory" ("package_id", "departure_date") WHERE "is_active" = true;
+-- Preserve historical rows for explicit reconciliation while enforcing sane
+-- capacity on every new/updated departure. NOT VALID avoids turning a legacy
+-- over-restored row into a destructive deploy migration.
+DO $tour_inventory_capacity_constraint$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint constraint_ref
+          JOIN pg_class table_ref ON table_ref.oid = constraint_ref.conrelid
+          JOIN pg_namespace schema_ref ON schema_ref.oid = table_ref.relnamespace
+         WHERE schema_ref.nspname = '{{SCHEMA_NAME}}'
+           AND table_ref.relname = 'tour_inventory'
+           AND constraint_ref.conname = 'tour_inventory_capacity_check'
+           AND constraint_ref.contype = 'c'
+    ) THEN
+        ALTER TABLE "{{SCHEMA_NAME}}"."tour_inventory"
+            ADD CONSTRAINT "tour_inventory_capacity_check" CHECK (
+                "total_seats" >= 0
+                AND "available_seats" >= 0
+                AND "available_seats" <= "total_seats"
+            ) NOT VALID;
+    END IF;
+END
+$tour_inventory_capacity_constraint$;
 
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tour_bookings" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "package_id" UUID NOT NULL,
     "inventory_id" UUID,
     "contact_id" UUID,
+    "opportunity_id" UUID REFERENCES "{{SCHEMA_NAME}}"."opportunities"("id") ON DELETE RESTRICT,
     "conversation_id" UUID,
     "guest_name" VARCHAR(255),
     "guest_email" VARCHAR(255),
@@ -2053,6 +2091,28 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tour_bookings" (
 );
 CREATE INDEX IF NOT EXISTS "idx_tour_bookings_package_date" ON "{{SCHEMA_NAME}}"."tour_bookings" ("package_id", "departure_date") WHERE "status" != 'cancelled';
 CREATE INDEX IF NOT EXISTS "idx_tour_bookings_contact" ON "{{SCHEMA_NAME}}"."tour_bookings" ("contact_id") WHERE "contact_id" IS NOT NULL;
+DO $tour_booking_party_constraint$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint constraint_ref
+          JOIN pg_class table_ref ON table_ref.oid = constraint_ref.conrelid
+          JOIN pg_namespace schema_ref ON schema_ref.oid = table_ref.relnamespace
+         WHERE schema_ref.nspname = '{{SCHEMA_NAME}}'
+           AND table_ref.relname = 'tour_bookings'
+           AND constraint_ref.conname = 'tour_bookings_party_composition_check'
+           AND constraint_ref.contype = 'c'
+    ) THEN
+        ALTER TABLE "{{SCHEMA_NAME}}"."tour_bookings"
+            ADD CONSTRAINT "tour_bookings_party_composition_check" CHECK (
+                "party_size" > 0
+                AND "adults" >= 0
+                AND COALESCE("children", 0) >= 0
+                AND "adults" + COALESCE("children", 0) = "party_size"
+            ) NOT VALID;
+    END IF;
+END
+$tour_booking_party_constraint$;
 
 -- =====================================================================
 -- Treatment Plans (salud sub-type: dental, fisioterapia, estética)
@@ -2272,6 +2332,7 @@ CREATE INDEX IF NOT EXISTS "idx_menu_items_search" ON "{{SCHEMA_NAME}}"."menu_it
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."food_orders" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "contact_id" UUID,
+    "opportunity_id" UUID REFERENCES "{{SCHEMA_NAME}}"."opportunities"("id") ON DELETE RESTRICT,
     "conversation_id" UUID,
     "order_type" VARCHAR(20) NOT NULL DEFAULT 'delivery', -- delivery | pickup | dine_in
     "customer_name" VARCHAR(255),
@@ -2637,6 +2698,7 @@ CREATE INDEX IF NOT EXISTS "idx_insurance_claims_policy" ON "{{SCHEMA_NAME}}"."i
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."service_requests" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "contact_id" UUID,
+    "opportunity_id" UUID REFERENCES "{{SCHEMA_NAME}}"."opportunities"("id") ON DELETE RESTRICT,
     "conversation_id" UUID,
     "service_type" VARCHAR(100) NOT NULL,                   -- plomeria | electricidad | fumigacion | limpieza | jardineria | other
     "urgency" VARCHAR(20) DEFAULT 'normal',                 -- emergencia | alta | normal | flexible
@@ -2671,6 +2733,7 @@ CREATE INDEX IF NOT EXISTS "idx_service_requests_urgency" ON "{{SCHEMA_NAME}}"."
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."photo_sessions" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "contact_id" UUID,
+    "opportunity_id" UUID REFERENCES "{{SCHEMA_NAME}}"."opportunities"("id") ON DELETE RESTRICT,
     "conversation_id" UUID,
     "session_type" VARCHAR(50) NOT NULL,                    -- wedding | portrait | event | product | family | newborn | other
     "package_name" VARCHAR(255),
@@ -2690,7 +2753,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."photo_sessions" (
     "price" DECIMAL(10,2),
     "currency" VARCHAR(10) DEFAULT 'COP',
     "deposit_paid" DECIMAL(10,2) DEFAULT 0,
-    "status" VARCHAR(30) DEFAULT 'scheduled',               -- scheduled | in_progress | delivered | cancelled
+    "status" VARCHAR(30) DEFAULT 'scheduled',               -- requested | scheduled | in_progress | delivered | cancelled
     "notes" TEXT,
     "metadata" JSONB DEFAULT '{}',
     "created_at" TIMESTAMP DEFAULT NOW(),
@@ -2819,6 +2882,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."resource_rentals" (
     "resource_id" UUID NOT NULL,
     "service_id" UUID,
     "contact_id" UUID REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE SET NULL,
+    "opportunity_id" UUID REFERENCES "{{SCHEMA_NAME}}"."opportunities"("id") ON DELETE RESTRICT,
     "customer_name" VARCHAR(255),
     "customer_phone" VARCHAR(50),
     "start_date" DATE NOT NULL,
@@ -3292,12 +3356,15 @@ ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "notes" TEXT;
 -- CREATE UNIQUE INDEX. Nothing is renamed or dropped.
 --
 -- Ordering note: this block lives at the end of the template on purpose — it
--- references appointments / service_staff / staff_service_links / deals and the
--- pipeline_id column added above, all of which must already exist.
+-- references appointments / service_staff / staff_service_links / deals /
+-- stage_transitions and the pipeline_id column added above, all of which must
+-- already exist.
 --
--- Pre-existing duplicates: the cleanup below only removes rows that nothing
--- else references, so it can never cascade away staff assignments or orphan an
--- appointment. When a duplicate IS referenced it survives and the
+-- Pre-existing duplicates: the pipeline cleanup remaps audit history before
+-- removing exact stages and refuses stages used by current deals. The remaining
+-- cleanup only removes rows that nothing references, so it cannot cascade away
+-- staff assignments or orphan an appointment. When a protected duplicate is
+-- referenced it survives and the
 -- CREATE UNIQUE INDEX fails for that tenant. That is deliberate and safe:
 -- migrate-tenants.js reports SQLSTATE 23505 as a warning and the production
 -- workflow aborts promotion until the legacy data is reconciled. Destroying
@@ -3310,13 +3377,82 @@ ALTER TABLE "{{SCHEMA_NAME}}"."companies" ADD COLUMN IF NOT EXISTS "notes" TEXT;
 -- A unique on slug alone would turn that paid flow into an untranslated 23505.
 -- NULLS NOT DISTINCT (PG15+) is what makes the index still bite for tenants
 -- whose stages have pipeline_id NULL — exactly where the bootstrap writes.
-DELETE FROM "{{SCHEMA_NAME}}"."pipeline_stages" a
-USING "{{SCHEMA_NAME}}"."pipeline_stages" b
-WHERE a."slug" IS NOT NULL
-  AND a."slug" = b."slug"
-  AND a."pipeline_id" IS NOT DISTINCT FROM b."pipeline_id"
-  AND (COALESCE(a."created_at", 'epoch'::timestamp), a."id") > (COALESCE(b."created_at", 'epoch'::timestamp), b."id")
-  AND NOT EXISTS (SELECT 1 FROM "{{SCHEMA_NAME}}"."deals" d WHERE d."stage_id" = a."id");
+-- stage_transitions intentionally stores historical stage UUIDs as TEXT, so it
+-- cannot enforce a foreign key. Lock writers, remap both audit columns to the
+-- deterministic keeper, and only then remove exact duplicates in the same
+-- transaction/statement. This DO block is atomic even when createTenantSchema
+-- executes template statements individually.
+DO $pipeline_stage_cleanup$
+BEGIN
+    LOCK TABLE
+        "{{SCHEMA_NAME}}"."pipeline_stages",
+        "{{SCHEMA_NAME}}"."deals",
+        "{{SCHEMA_NAME}}"."stage_transitions"
+        IN SHARE ROW EXCLUSIVE MODE;
+
+    WITH duplicate_stage_map AS (
+        SELECT DISTINCT ON (a."id")
+               a."id" AS duplicate_id,
+               b."id" AS keeper_id
+          FROM "{{SCHEMA_NAME}}"."pipeline_stages" a
+          JOIN "{{SCHEMA_NAME}}"."pipeline_stages" b
+            ON a."slug" IS NOT NULL
+           AND a."slug" = b."slug"
+           AND a."pipeline_id" IS NOT DISTINCT FROM b."pipeline_id"
+           AND a."name" IS NOT DISTINCT FROM b."name"
+           AND a."color" IS NOT DISTINCT FROM b."color"
+           AND a."position" IS NOT DISTINCT FROM b."position"
+           AND a."default_probability" IS NOT DISTINCT FROM b."default_probability"
+           AND a."sla_hours" IS NOT DISTINCT FROM b."sla_hours"
+           AND a."is_terminal" IS NOT DISTINCT FROM b."is_terminal"
+           AND a."terminal_outcome" IS NOT DISTINCT FROM b."terminal_outcome"
+           AND COALESCE(a."transition_rules", '[]'::jsonb) = COALESCE(b."transition_rules", '[]'::jsonb)
+           AND (COALESCE(a."created_at", 'epoch'::timestamp), a."id")
+               > (COALESCE(b."created_at", 'epoch'::timestamp), b."id")
+         WHERE NOT EXISTS (
+               SELECT 1
+                 FROM "{{SCHEMA_NAME}}"."deals" d
+                WHERE d."stage_id" = a."id"
+         )
+         ORDER BY a."id", COALESCE(b."created_at", 'epoch'::timestamp), b."id"
+    )
+    UPDATE "{{SCHEMA_NAME}}"."stage_transitions" history
+       SET "from_stage" = COALESCE(
+               (SELECT map.keeper_id::text
+                  FROM duplicate_stage_map map
+                 WHERE LOWER(history."from_stage") = map.duplicate_id::text),
+               history."from_stage"
+           ),
+           "to_stage" = COALESCE(
+               (SELECT map.keeper_id::text
+                  FROM duplicate_stage_map map
+                 WHERE LOWER(history."to_stage") = map.duplicate_id::text),
+               history."to_stage"
+           )
+     WHERE EXISTS (
+           SELECT 1
+             FROM duplicate_stage_map map
+            WHERE LOWER(history."from_stage") = map.duplicate_id::text
+               OR LOWER(history."to_stage") = map.duplicate_id::text
+     );
+
+    DELETE FROM "{{SCHEMA_NAME}}"."pipeline_stages" a
+    USING "{{SCHEMA_NAME}}"."pipeline_stages" b
+    WHERE a."slug" IS NOT NULL
+      AND a."slug" = b."slug"
+      AND a."pipeline_id" IS NOT DISTINCT FROM b."pipeline_id"
+      AND a."name" IS NOT DISTINCT FROM b."name"
+      AND a."color" IS NOT DISTINCT FROM b."color"
+      AND a."position" IS NOT DISTINCT FROM b."position"
+      AND a."default_probability" IS NOT DISTINCT FROM b."default_probability"
+      AND a."sla_hours" IS NOT DISTINCT FROM b."sla_hours"
+      AND a."is_terminal" IS NOT DISTINCT FROM b."is_terminal"
+      AND a."terminal_outcome" IS NOT DISTINCT FROM b."terminal_outcome"
+      AND COALESCE(a."transition_rules", '[]'::jsonb) = COALESCE(b."transition_rules", '[]'::jsonb)
+      AND (COALESCE(a."created_at", 'epoch'::timestamp), a."id") > (COALESCE(b."created_at", 'epoch'::timestamp), b."id")
+      AND NOT EXISTS (SELECT 1 FROM "{{SCHEMA_NAME}}"."deals" d WHERE d."stage_id" = a."id");
+END
+$pipeline_stage_cleanup$;
 CREATE UNIQUE INDEX IF NOT EXISTS "uidx_pipeline_stages_pipeline_slug" ON "{{SCHEMA_NAME}}"."pipeline_stages" ("pipeline_id", "slug") NULLS NOT DISTINCT;
 
 -- ---- services: unique per name ----
@@ -3325,6 +3461,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS "uidx_pipeline_stages_pipeline_slug" ON "{{SCH
 DELETE FROM "{{SCHEMA_NAME}}"."services" a
 USING "{{SCHEMA_NAME}}"."services" b
 WHERE a."name" = b."name"
+  AND a."description" IS NOT DISTINCT FROM b."description"
+  AND a."duration_minutes" IS NOT DISTINCT FROM b."duration_minutes"
+  AND a."buffer_minutes" IS NOT DISTINCT FROM b."buffer_minutes"
+  AND a."price" IS NOT DISTINCT FROM b."price"
+  AND a."currency" IS NOT DISTINCT FROM b."currency"
+  AND a."color" IS NOT DISTINCT FROM b."color"
+  AND a."is_active" IS NOT DISTINCT FROM b."is_active"
+  AND a."sort_order" IS NOT DISTINCT FROM b."sort_order"
+  AND COALESCE(a."metadata", '{}'::jsonb) = COALESCE(b."metadata", '{}'::jsonb)
+  AND a."category" IS NOT DISTINCT FROM b."category"
+  AND a."location_type" IS NOT DISTINCT FROM b."location_type"
+  AND a."max_concurrent" IS NOT DISTINCT FROM b."max_concurrent"
+  AND COALESCE(a."required_fields", '[]'::jsonb) = COALESCE(b."required_fields", '[]'::jsonb)
+  AND a."is_public" IS NOT DISTINCT FROM b."is_public"
+  AND a."meeting_link" IS NOT DISTINCT FROM b."meeting_link"
+  AND a."location_address" IS NOT DISTINCT FROM b."location_address"
+  AND a."duration_type" IS NOT DISTINCT FROM b."duration_type"
+  AND a."duration_minutes_max" IS NOT DISTINCT FROM b."duration_minutes_max"
+  AND a."rebook_after_days" IS NOT DISTINCT FROM b."rebook_after_days"
   AND (COALESCE(a."created_at", 'epoch'::timestamp), a."id") > (COALESCE(b."created_at", 'epoch'::timestamp), b."id")
   AND NOT EXISTS (SELECT 1 FROM "{{SCHEMA_NAME}}"."appointments" ap WHERE ap."service_id" = a."id")
   AND NOT EXISTS (SELECT 1 FROM "{{SCHEMA_NAME}}"."service_staff" ss WHERE ss."service_id" = a."id")
@@ -3332,11 +3487,19 @@ WHERE a."name" = b."name"
 CREATE UNIQUE INDEX IF NOT EXISTS "uidx_services_name" ON "{{SCHEMA_NAME}}"."services" ("name");
 
 -- ---- faqs: unique per question ----
--- No table references faqs, so an exact-duplicate question can be dropped
--- outright. Oldest row wins.
+-- No table references FAQs, but repeated text alone does not prove the newer
+-- answer/tags are disposable. Only semantically exact rows are removed;
+-- divergent rows deliberately make the unique index fail for manual review.
 DELETE FROM "{{SCHEMA_NAME}}"."faqs" a
 USING "{{SCHEMA_NAME}}"."faqs" b
 WHERE a."question" = b."question"
+  AND a."answer" IS NOT DISTINCT FROM b."answer"
+  AND a."category" IS NOT DISTINCT FROM b."category"
+  AND a."tags" IS NOT DISTINCT FROM b."tags"
+  AND a."order_index" IS NOT DISTINCT FROM b."order_index"
+  AND a."is_published" IS NOT DISTINCT FROM b."is_published"
+  AND a."views" IS NOT DISTINCT FROM b."views"
+  AND a."search_tsv" IS NOT DISTINCT FROM b."search_tsv"
   AND (COALESCE(a."created_at", 'epoch'::timestamp), a."id") > (COALESCE(b."created_at", 'epoch'::timestamp), b."id");
 CREATE UNIQUE INDEX IF NOT EXISTS "uidx_faqs_question" ON "{{SCHEMA_NAME}}"."faqs" ("question");
 
@@ -3546,3 +3709,140 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."vertical_migration_outbox" (
     "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "idx_vertical_migration_outbox_due" ON "{{SCHEMA_NAME}}"."vertical_migration_outbox" ("status", "next_attempt_at") WHERE "status" IN ('pending', 'failed');
+
+-- Native operational evidence belongs to an exact CRM opportunity. Existing
+-- rows intentionally remain NULL and continue through the conservative legacy
+-- evaluator; contact-only data is never bulk-attributed to an opportunity.
+ALTER TABLE "{{SCHEMA_NAME}}"."appointments" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."tour_bookings" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."property_bookings" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."service_requests" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."food_orders" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."photo_sessions" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."resource_rentals" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."orders" ADD COLUMN IF NOT EXISTS "opportunity_id" UUID;
+
+DO $native_evidence_opportunity_fks$
+DECLARE
+    evidence_table TEXT;
+    fk_name TEXT;
+BEGIN
+    FOREACH evidence_table IN ARRAY ARRAY[
+        'appointments', 'tour_bookings', 'property_bookings', 'service_requests',
+        'food_orders', 'photo_sessions', 'resource_rentals', 'orders'
+    ] LOOP
+        fk_name := evidence_table || '_opportunity_id_fkey';
+        IF NOT EXISTS (
+            SELECT 1
+              FROM pg_constraint constraint_ref
+              JOIN pg_class table_ref ON table_ref.oid = constraint_ref.conrelid
+              JOIN pg_namespace schema_ref ON schema_ref.oid = table_ref.relnamespace
+             WHERE schema_ref.nspname = '{{SCHEMA_NAME}}'
+               AND table_ref.relname = evidence_table
+               AND constraint_ref.conname = fk_name
+               AND constraint_ref.contype = 'f'
+        ) THEN
+            EXECUTE format(
+                'ALTER TABLE %I.%I ADD CONSTRAINT %I FOREIGN KEY (opportunity_id) REFERENCES %I.opportunities(id) ON DELETE RESTRICT NOT VALID',
+                '{{SCHEMA_NAME}}', evidence_table, fk_name, '{{SCHEMA_NAME}}'
+            );
+        END IF;
+    END LOOP;
+END
+$native_evidence_opportunity_fks$;
+
+CREATE INDEX IF NOT EXISTS "idx_appointments_opportunity_id" ON "{{SCHEMA_NAME}}"."appointments" ("opportunity_id") WHERE "opportunity_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_tour_bookings_opportunity_id" ON "{{SCHEMA_NAME}}"."tour_bookings" ("opportunity_id") WHERE "opportunity_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_property_bookings_opportunity_id" ON "{{SCHEMA_NAME}}"."property_bookings" ("opportunity_id") WHERE "opportunity_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_service_requests_opportunity_id" ON "{{SCHEMA_NAME}}"."service_requests" ("opportunity_id") WHERE "opportunity_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_food_orders_opportunity_id" ON "{{SCHEMA_NAME}}"."food_orders" ("opportunity_id") WHERE "opportunity_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_photo_sessions_opportunity_id" ON "{{SCHEMA_NAME}}"."photo_sessions" ("opportunity_id") WHERE "opportunity_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_resource_rentals_opportunity_id" ON "{{SCHEMA_NAME}}"."resource_rentals" ("opportunity_id") WHERE "opportunity_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_orders_opportunity_id" ON "{{SCHEMA_NAME}}"."orders" ("opportunity_id") WHERE "opportunity_id" IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION "{{SCHEMA_NAME}}"."validate_native_evidence_opportunity"()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = "{{SCHEMA_NAME}}", public
+AS $native_evidence_opportunity_guard$
+BEGIN
+    IF TG_OP = 'UPDATE'
+       AND OLD.opportunity_id IS NOT NULL
+       AND NEW.opportunity_id IS DISTINCT FROM OLD.opportunity_id THEN
+        RAISE EXCEPTION 'native evidence opportunity ownership is immutable'
+            USING ERRCODE = '23514',
+                  CONSTRAINT = 'native_evidence_opportunity_immutable';
+    END IF;
+
+    IF NEW.opportunity_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    -- `contact_id` es FK ON DELETE SET NULL en estas tablas: al borrar un contacto
+    -- PostgreSQL ejecuta un UPDATE real que dispara este mismo trigger. Sin esta
+    -- excepción, borrar un contacto que tenga una cita/orden/reserva con
+    -- opportunity_id falla con 23514 y se rompe el borrado de contacto, la purga
+    -- de tenant y el borrado GDPR. Se permite SOLO ese desprendimiento: la
+    -- oportunidad no cambia y el contacto pasa de presente a ausente.
+    IF TG_OP = 'UPDATE'
+       AND NEW.contact_id IS NULL
+       AND OLD.contact_id IS NOT NULL
+       AND NEW.opportunity_id IS NOT DISTINCT FROM OLD.opportunity_id THEN
+        RETURN NEW;
+    END IF;
+
+    IF NEW.contact_id IS NULL OR NOT EXISTS (
+        SELECT 1
+         FROM "{{SCHEMA_NAME}}"."opportunities" opportunity_ref
+          JOIN "{{SCHEMA_NAME}}"."leads" lead_ref
+            ON lead_ref.id = opportunity_ref.lead_id
+         WHERE opportunity_ref.id = NEW.opportunity_id
+           AND (
+                lead_ref.contact_id = NEW.contact_id
+                OR EXISTS (
+                    SELECT 1
+                      FROM "{{SCHEMA_NAME}}"."contact_identities" evidence_identity
+                      JOIN "{{SCHEMA_NAME}}"."contact_identities" lead_identity
+                        ON lead_identity.customer_profile_id = evidence_identity.customer_profile_id
+                     WHERE evidence_identity.contact_id = NEW.contact_id
+                       AND lead_identity.contact_id = lead_ref.contact_id
+                )
+           )
+    ) THEN
+        RAISE EXCEPTION 'native evidence opportunity does not belong to contact'
+            USING ERRCODE = '23514',
+                  CONSTRAINT = 'native_evidence_opportunity_contact_check';
+    END IF;
+
+    RETURN NEW;
+END
+$native_evidence_opportunity_guard$;
+
+DO $native_evidence_opportunity_triggers$
+DECLARE
+    evidence_table TEXT;
+    trigger_name TEXT;
+BEGIN
+    FOREACH evidence_table IN ARRAY ARRAY[
+        'appointments', 'tour_bookings', 'property_bookings', 'service_requests',
+        'food_orders', 'photo_sessions', 'resource_rentals', 'orders'
+    ] LOOP
+        trigger_name := evidence_table || '_opportunity_owner_guard';
+        IF NOT EXISTS (
+            SELECT 1
+              FROM pg_trigger trigger_ref
+              JOIN pg_class table_ref ON table_ref.oid = trigger_ref.tgrelid
+              JOIN pg_namespace schema_ref ON schema_ref.oid = table_ref.relnamespace
+             WHERE schema_ref.nspname = '{{SCHEMA_NAME}}'
+               AND table_ref.relname = evidence_table
+               AND trigger_ref.tgname = trigger_name
+               AND NOT trigger_ref.tgisinternal
+        ) THEN
+            EXECUTE format(
+                'CREATE TRIGGER %I BEFORE INSERT OR UPDATE OF opportunity_id, contact_id ON %I.%I FOR EACH ROW EXECUTE FUNCTION %I.validate_native_evidence_opportunity()',
+                trigger_name, '{{SCHEMA_NAME}}', evidence_table, '{{SCHEMA_NAME}}'
+            );
+        END IF;
+    END LOOP;
+END
+$native_evidence_opportunity_triggers$;

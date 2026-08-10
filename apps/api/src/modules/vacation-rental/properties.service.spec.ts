@@ -9,6 +9,7 @@ describe('PropertiesService reservations', () => {
     const schemaName = 'tenant_vacation';
     const tenantId = '11111111-1111-4111-8111-111111111111';
     const propertyId = '22222222-2222-4222-8222-222222222222';
+    const contactId = '66666666-6666-4666-8666-666666666666';
     const property = {
         id: propertyId,
         name: 'Casa Mar',
@@ -214,6 +215,56 @@ describe('PropertiesService reservations', () => {
             '2026-08-12',
             220,
         ]));
+    });
+
+    it('validates contact ownership inside the booking transaction and persists it', async () => {
+        const booking = { id: '44444444-4444-4444-8444-444444444444', total_price: 120, currency: 'COP' };
+        const query = jest.fn(async (sql: string, _params?: any[]) => {
+            if (sql.includes('FROM contacts')) return [{ id: contactId }];
+            if (sql.includes('FROM opportunities o')) return [];
+            if (sql.includes('pg_advisory_xact_lock')) return [];
+            if (sql.includes('SELECT * FROM properties')) return [property];
+            if (sql.includes(') conflicts LIMIT 1')) return [];
+            if (sql.includes('INSERT INTO property_bookings')) return [booking];
+            throw new Error(`Unexpected SQL: ${sql}`);
+        });
+        const { service } = buildService({
+            transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => callback(query)),
+        });
+
+        await expect(service.createBooking(schemaName, propertyId, {
+            contactId,
+            guestName: 'Ana',
+            checkIn: '2026-08-10',
+            checkOut: '2026-08-11',
+        })).resolves.toBe(booking);
+
+        expect(String(query.mock.calls[0][0])).toContain('FROM contacts');
+        const insertCall = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO property_bookings'))!;
+        expect(insertCall[1]?.[1]).toBe(contactId);
+        expect(insertCall[1]?.[2]).toBeNull();
+    });
+
+    it('rejects malformed or foreign contacts before a property booking insert', async () => {
+        const query = jest.fn().mockResolvedValue([]);
+        const transaction = jest.fn(async (_schema: string, callback: any) => callback(query));
+        const { service } = buildService({ transactionInTenantSchema: transaction });
+        const booking = {
+            checkIn: '2026-08-10',
+            checkOut: '2026-08-11',
+        };
+
+        await expect(service.createBooking(schemaName, propertyId, {
+            ...booking,
+            contactId: 'not-a-uuid',
+        })).rejects.toBeInstanceOf(BadRequestException);
+        expect(transaction).not.toHaveBeenCalled();
+
+        await expect(service.createBooking(schemaName, propertyId, { ...booking, contactId }))
+            .rejects.toThrow('contactId does not belong to this tenant');
+        expect(transaction).toHaveBeenCalledTimes(1);
+        expect(query).toHaveBeenCalledTimes(1);
+        expect(String(query.mock.calls[0][0])).toContain('FROM contacts');
     });
 
     it('serializes concurrent attempts and lets only one overlapping booking commit', async () => {

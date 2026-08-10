@@ -61,6 +61,26 @@ describe('PersonaService onboarding goal selection', () => {
         }));
     });
 
+    it('uses the non-booking v2 template for a native order subtype', async () => {
+        const ctx = harness();
+        await ctx.service.createDefaultAgentFromGoals(
+            TENANT_ID,
+            ['appointments'],
+            'onboarding',
+            'technology',
+            'hardware',
+        );
+
+        expect(ctx.inserted()).toEqual(expect.objectContaining({
+            templateId: 'tpl_sales',
+            config: expect.objectContaining({
+                tools: expect.objectContaining({
+                    appointments: expect.objectContaining({ enabled: false }),
+                }),
+            }),
+        }));
+    });
+
     it('returns before resolving templates or writing when an explicit agent already exists', async () => {
         const ctx = harness(1);
         await ctx.service.createDefaultAgentFromGoals(

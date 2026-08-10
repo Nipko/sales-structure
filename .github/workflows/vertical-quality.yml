@@ -6,6 +6,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/dashboard/**'
+      - 'apps/mobile/**'
       - 'apps/landing/**'
       - 'packages/shared/**'
       - 'docs/vertical-**'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/dashboard/**'
+      - 'apps/mobile/**'
       - 'apps/landing/**'
       - 'packages/shared/**'
       - '.github/workflows/vertical-quality.yml'
@@ -51,20 +53,51 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
+      - run: npm ci --prefix apps/mobile
       - run: mkdir -p artifacts
       - name: Claims and competitive evidence
         run: npm run check:claims --prefix apps/landing
-      - name: Static 1,520-scenario matrix
+      - name: Static 1,560-scenario matrix (canonical + legacy)
         run: node apps/api/scripts/run-vertical-contract-matrix.cjs > artifacts/vertical-contract-matrix.json
       - name: TypeScript contracts
         run: |
           npx tsc -p packages/shared/tsconfig.json --noEmit --pretty false
           npx tsc -p apps/api/tsconfig.json --noEmit --pretty false
           npx tsc -p apps/dashboard/tsconfig.json --noEmit --pretty false
+          npx tsc -p apps/mobile/tsconfig.json --noEmit --pretty false
       - name: Vertical focal suites
         run: >-
           npx jest --config apps/api/jest.config.js --runInBand
+          apps/api/src/common/utils/primary-pipeline.util.spec.ts
+          apps/api/src/common/utils/local-timestamp.util.spec.ts
+          apps/api/src/common/utils/native-evidence-opportunity.util.spec.ts
+          apps/api/src/common/utils/native-evidence-opportunity-schema.spec.ts
+          apps/api/src/common/utils/native-evidence-writers-contract.spec.ts
+          apps/api/src/common/utils/trusted-client-ip.util.spec.ts
+          apps/api/src/modules/pipeline/pipeline-primary-ownership.spec.ts
+          apps/api/src/modules/pipeline/pipeline-write-lead-stage-active-scope.spec.ts
+          apps/api/src/modules/crm/crm.controller.spec.ts
+          apps/api/src/modules/tours/tours.service.spec.ts
+          apps/api/src/modules/vacation-rental/properties.service.spec.ts
+          apps/api/src/modules/restaurants/restaurants.service.spec.ts
+          apps/api/src/modules/home-services/home-services.service.spec.ts
+          apps/api/src/modules/verticals/service-request.listener.spec.ts
+          apps/api/src/modules/photography/photography.service.spec.ts
+          apps/api/src/modules/education/education.service.spec.ts
+          apps/api/src/modules/insurance/insurance.service.spec.ts
+          apps/api/src/modules/resource-rentals/resource-rentals.service.spec.ts
+          apps/api/src/modules/orders/orders.contacts-pagination.spec.ts
+          apps/api/src/modules/pets/pets.pagination.spec.ts
+          apps/api/src/modules/verticals/vehicle-inventory.pagination.spec.ts
+          apps/api/src/modules/persona/vertical-agent-defaults.util.spec.ts
+          apps/api/src/modules/persona/vertical-subtype-persona-contract.spec.ts
           apps/api/src/modules/verticals/vertical-capability-manifest.spec.ts
+          apps/api/src/modules/verticals/vertical-pipeline-contract.spec.ts
+          apps/api/src/modules/verticals/verticals.service.spec.ts
+          apps/api/src/modules/verticals/verticals.seed-recovery.spec.ts
+          apps/api/src/modules/verticals/vertical-provisioning-reconcile-script.spec.ts
+          apps/api/src/modules/conversations/ai-tool-schema-runtime-alignment.spec.ts
+          apps/api/src/modules/vertical-contract-matrix/commercial-unit-writers.spec.ts
           apps/api/src/modules/verticals/vertical-product-policy.spec.ts
           apps/api/src/modules/verticals/verticals.controller.spec.ts
           apps/api/src/modules/verticals/vertical-builder-contract.spec.ts
@@ -76,8 +109,12 @@ jobs:
           apps/api/src/modules/appointments/calendar-sync-outbox.service.spec.ts
           apps/api/src/modules/appointments/calendar-integration.service.spec.ts
           apps/api/src/modules/appointments/appointments.tenant-isolation.spec.ts
+          apps/api/src/modules/appointments/appointments.contact-integrity.spec.ts
+          apps/api/src/modules/appointments/appointments.controller.contact-integrity.spec.ts
           apps/api/src/modules/appointments/appointment-capacity.util.spec.ts
           apps/api/src/modules/appointments/public-booking.controller.spec.ts
+          apps/api/src/modules/identity/identity.resolve-concurrency.spec.ts
+          apps/api/src/modules/public-api/public-api.controller.appointments.spec.ts
           apps/api/src/modules/vertical-contract-matrix/vertical-contract-matrix.spec.ts
           apps/api/src/modules/vertical-contract-matrix/vertical-commercial-units-matrix.spec.ts
           apps/api/src/modules/conversations/tool-policy-registry.spec.ts
@@ -114,7 +151,11 @@ jobs:
         run: >-
           npx jest --config apps/dashboard/jest.config.cjs --runInBand
           apps/dashboard/src/lib/vertical-dashboard-resolver.spec.ts
+          apps/dashboard/src/lib/local-timestamp.spec.ts
+          apps/dashboard/src/components/appointments/contact-selection.spec.ts
           --json --outputFile artifacts/dashboard-vertical-jest.json
+      - name: Mobile vertical regression
+        run: npm test --prefix apps/mobile -- --runInBand
       - name: Convert dashboard evidence to JUnit
         if: always()
         run: node apps/api/scripts/jest-json-to-junit.cjs artifacts/dashboard-vertical-jest.json artifacts/dashboard-vertical-jest.xml
@@ -187,9 +228,12 @@ jobs:
           apps/api/src/modules/auth/auth-onboarding-provisioning.spec.ts
           apps/api/src/modules/pipeline/pipeline-stage-resolver.spec.ts
           apps/api/src/modules/pipeline/pipeline-outcome.util.spec.ts
+          apps/api/src/common/utils/primary-pipeline.pg.spec.ts
           apps/api/src/modules/offboarding/offboarding.service.spec.ts
           apps/api/src/modules/verticals/verticals.service.spec.ts
           --json --outputFile artifacts/vertical-integration-jest.json
+        env:
+          RUN_PIPELINE_OWNERSHIP_PG_TESTS: '1'
       - name: Convert integration evidence to JUnit
         if: always()
         run: node apps/api/scripts/jest-json-to-junit.cjs artifacts/vertical-integration-jest.json artifacts/vertical-integration-jest.xml

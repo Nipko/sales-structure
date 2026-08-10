@@ -17,12 +17,17 @@ describe('AI tool schema and runtime alignment', () => {
     }
 
     function createHarness() {
+        const transactionQuery = jest.fn();
         const prisma = {
             $queryRawUnsafe: jest.fn(),
             $executeRawUnsafe: jest.fn(),
             executeInTenantSchema: jest.fn(),
+            transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => (
+                callback(transactionQuery)
+            )),
         };
         const eventEmitter = { emit: jest.fn() };
+        const photographyService = { create: jest.fn() };
         const executor = new AIToolExecutorService(
             prisma as any,
             {} as any,
@@ -51,8 +56,9 @@ describe('AI tool schema and runtime alignment', () => {
                 fail: jest.fn(),
             } as any,
             {} as any,
+            photographyService as any,
         );
-        return { executor, prisma, eventEmitter };
+        return { executor, prisma, eventEmitter, photographyService, transactionQuery };
     }
 
     it('advertises the status vocabulary and ETA that the restaurant runtime returns', () => {
@@ -141,7 +147,7 @@ describe('AI tool schema and runtime alignment', () => {
 
     it('fails closed and emits no event when a photography request cannot be persisted', async () => {
         const harness = createHarness();
-        harness.prisma.executeInTenantSchema.mockRejectedValue(new Error('photo_sessions unavailable'));
+        harness.photographyService.create.mockRejectedValue(new Error('photo_sessions unavailable'));
 
         const result = await harness.executor.execute(
             schemaName,
@@ -156,13 +162,14 @@ describe('AI tool schema and runtime alignment', () => {
             error: 'photo_session_not_created',
             received: false,
         });
+        expect(harness.photographyService.create).toHaveBeenCalledTimes(1);
         expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
     });
 
-    it('emits a photography request only after persistence returns a session id', async () => {
+    it('delegates a photography request to the canonical service as requested', async () => {
         const harness = createHarness();
         const sessionId = '55555555-5555-4555-8555-555555555555';
-        harness.prisma.executeInTenantSchema.mockResolvedValue([{ id: sessionId }]);
+        harness.photographyService.create.mockResolvedValue([{ id: sessionId }][0]);
 
         const args = {
             sessionType: 'wedding',
@@ -182,29 +189,90 @@ describe('AI tool schema and runtime alignment', () => {
             conversationId,
         );
 
-        expect(harness.prisma.executeInTenantSchema).toHaveBeenCalledWith(
+        expect(harness.photographyService.create).toHaveBeenCalledWith(
             schemaName,
-            expect.stringContaining('INSERT INTO photo_sessions'),
-            [
+            {
                 contactId,
-                'wedding',
-                'Gold',
-                'Ana',
-                '+573001112233',
-                '2026-09-10',
-                'Cartagena',
-                'Ceremonia exterior',
-                'scheduled',
-            ],
+                conversationId,
+                sessionType: 'wedding',
+                packageName: 'Gold',
+                clientName: 'Ana',
+                clientPhone: '+573001112233',
+                scheduledAt: '2026-09-10',
+                location: 'Cartagena',
+                notes: 'Ceremonia exterior',
+                status: 'requested',
+            },
         );
-        expect(harness.eventEmitter.emit).toHaveBeenCalledWith(
-            'photo_session.requested',
-            expect.objectContaining({ sessionId, contactId, ...args }),
-        );
+        expect(harness.prisma.executeInTenantSchema).not.toHaveBeenCalled();
+        expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
         expect(result).toMatchObject({
             received: true,
             sessionId,
             sessionType: 'wedding',
         });
+    });
+
+    it.each(['requested', 'scheduled'])('atomically cancels an owned %s photo session', async (status) => {
+        const harness = createHarness();
+        const sessionId = '55555555-5555-4555-8555-555555555555';
+        harness.transactionQuery
+            .mockResolvedValueOnce([{ id: sessionId, contact_id: contactId, status }])
+            .mockResolvedValueOnce([{ id: sessionId }]);
+
+        await expect(harness.executor.execute(
+            schemaName,
+            tenantId,
+            contactId,
+            'cancel_photo_session',
+            { sessionId, reason: 'Cambio de planes' },
+            conversationId,
+        )).resolves.toMatchObject({ success: true });
+
+        expect(harness.prisma.transactionInTenantSchema).toHaveBeenCalledWith(
+            schemaName,
+            expect.any(Function),
+        );
+        expect(harness.transactionQuery.mock.calls[0][0]).toContain('FOR UPDATE');
+        expect(harness.transactionQuery.mock.calls[1][0]).toContain("status IN ('requested', 'scheduled')");
+        expect(harness.transactionQuery.mock.calls[1][1]).toEqual([
+            '\n[Cancelled: Cambio de planes]',
+            sessionId,
+            contactId,
+        ]);
+    });
+
+    it('does not update a foreign or already-active photo session', async () => {
+        const foreign = createHarness();
+        foreign.transactionQuery.mockResolvedValueOnce([{
+            id: '55555555-5555-4555-8555-555555555555',
+            contact_id: '66666666-6666-4666-8666-666666666666',
+            status: 'requested',
+        }]);
+        await expect(foreign.executor.execute(
+            schemaName,
+            tenantId,
+            contactId,
+            'cancel_photo_session',
+            { sessionId: '55555555-5555-4555-8555-555555555555' },
+            conversationId,
+        )).resolves.toMatchObject({ error: 'You can only cancel your own sessions' });
+        expect(foreign.transactionQuery).toHaveBeenCalledTimes(1);
+
+        const active = createHarness();
+        active.transactionQuery.mockResolvedValueOnce([{
+            id: '55555555-5555-4555-8555-555555555555',
+            contact_id: contactId,
+            status: 'in_progress',
+        }]);
+        await expect(active.executor.execute(
+            schemaName,
+            tenantId,
+            contactId,
+            'cancel_photo_session',
+            { sessionId: '55555555-5555-4555-8555-555555555555' },
+            conversationId,
+        )).resolves.toMatchObject({ error: expect.stringContaining('in_progress') });
+        expect(active.transactionQuery).toHaveBeenCalledTimes(1);
     });
 });

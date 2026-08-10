@@ -1,9 +1,18 @@
 import { ConflictException } from '@nestjs/common';
+import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
 import { VerticalMigrationService } from './vertical-migration.service';
+
+jest.mock('../../common/utils/primary-pipeline.util', () => ({
+    ensurePrimaryPipeline: jest.fn(),
+}));
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const MIGRATION_ID = '33333333-3333-4333-8333-333333333333';
+const PIPELINE_ID = '44444444-4444-4444-8444-444444444444';
+const ensurePrimaryPipelineMock = ensurePrimaryPipeline as jest.MockedFunction<
+    typeof ensurePrimaryPipeline
+>;
 
 describe('VerticalMigrationService', () => {
     const prisma: any = {
@@ -14,7 +23,16 @@ describe('VerticalMigrationService', () => {
     const redis: any = { del: jest.fn() };
     const service = new VerticalMigrationService(prisma, redis);
 
-    beforeEach(() => jest.clearAllMocks());
+    beforeEach(() => {
+        prisma.tenant.findUnique.mockReset();
+        prisma.executeInTenantSchema.mockReset();
+        prisma.transactionInTenantSchema.mockReset();
+        redis.del.mockReset();
+        ensurePrimaryPipelineMock.mockReset().mockResolvedValue({
+            pipelineId: PIPELINE_ID,
+            repairedDuplicateStages: 0,
+        });
+    });
 
     it('produces an additive diff and preserves conflicts/custom rows', () => {
         const diff = service.buildMigrationDiff({
@@ -49,30 +67,105 @@ describe('VerticalMigrationService', () => {
             schemaName: 'tenant_demo',
             settings: { verticalConfig: { subType: 'dental' } },
         });
-        const query = jest.fn().mockResolvedValue([]);
+        const inventoryRow = {
+            contacts: 2, leads: 1, opportunities: 1, conversations: 3,
+            appointments: 1, services: 0, faqs: 0, pipeline_stages: 4, agents: 1,
+        };
+        const query = jest.fn().mockImplementation(async (sql: string) => {
+            if (sql.includes('AS has_orphan_stages')) {
+                return [{
+                    pipeline_id: PIPELINE_ID,
+                    has_orphan_stages: false,
+                    has_orphan_deals: false,
+                }];
+            }
+            return sql.includes('(SELECT COUNT(*)::int FROM contacts)') ? [inventoryRow] : [];
+        });
         prisma.transactionInTenantSchema.mockImplementation(async (_schema: string, callback: any) => callback(query));
-        prisma.executeInTenantSchema
-            .mockResolvedValueOnce([{
-                contacts: 2, leads: 1, opportunities: 1, conversations: 3,
-                appointments: 1, services: 0, faqs: 0, pipeline_stages: 0, agents: 1,
-            }])
-            .mockResolvedValueOnce([]);
+        prisma.executeInTenantSchema.mockResolvedValueOnce([]);
 
         const preview = await service.preview(TENANT_ID, 'turismo', 'agencia_viajes', USER_ID);
 
         expect(preview.from).toEqual({ industry: 'salud', subType: 'dental' });
         expect(preview.to).toEqual({ industry: 'turismo', subType: 'agencia_viajes' });
         expect(preview.previewHash).toMatch(/^[a-f0-9]{64}$/);
+        expect(preview.inventory.pipeline_stages).toBe(4);
         expect(preview.applySupported).toBe(false);
         expect(preview.mappingCoverage).toEqual(expect.arrayContaining([
             expect.objectContaining({ objectKind: 'agent_personas_and_tools', status: 'unmapped' }),
             expect.objectContaining({ objectKind: 'vertical_operational_objects', status: 'unmapped' }),
         ]));
         expect(preview.warnings).toContain('Existing appointments remain unchanged and require operational review.');
-        const insert = prisma.executeInTenantSchema.mock.calls[1];
+        expect(ensurePrimaryPipelineMock).not.toHaveBeenCalled();
+        const stageRead = query.mock.calls.find(([sql]: [string]) => (
+            sql.includes('FROM pipeline_stages') && sql.includes('$1::uuid IS NULL')
+        ));
+        expect(stageRead?.[1]).toEqual([PIPELINE_ID]);
+        const inventoryRead = query.mock.calls.find(([sql]: [string]) => (
+            sql.includes('AS pipeline_stages')
+        ));
+        expect(inventoryRead?.[0]).toContain('$1::uuid IS NULL AND pipeline_id IS NULL');
+        expect(inventoryRead?.[1]).toEqual([PIPELINE_ID]);
+        const insert = prisma.executeInTenantSchema.mock.calls[0];
         expect(insert[1]).toContain('INSERT INTO vertical_migrations');
         expect(insert[2]).toContain(preview.previewHash);
         expect(prisma.tenant.update).toBeUndefined();
+    });
+
+    it('keeps preview read-only and rejects mixed legacy ownership before persisting it', async () => {
+        prisma.tenant.findUnique.mockResolvedValue({
+            industry: 'salud',
+            language: 'es',
+            schemaName: 'tenant_demo',
+            settings: { verticalConfig: { subType: 'dental' } },
+        });
+        const query = jest.fn().mockResolvedValueOnce([{
+            pipeline_id: PIPELINE_ID,
+            has_orphan_stages: true,
+            has_orphan_deals: false,
+        }]);
+        prisma.transactionInTenantSchema.mockImplementation(async (_schema: string, callback: any) => callback(query));
+
+        await expect(service.preview(TENANT_ID, 'turismo', 'agencia_viajes', USER_ID))
+            .rejects.toMatchObject({
+                response: expect.objectContaining({
+                    error: 'vertical_migration_pipeline_ownership_unresolved',
+                }),
+            });
+        expect(ensurePrimaryPipelineMock).not.toHaveBeenCalled();
+        expect(prisma.executeInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it('inserts additive stages into the resolved primary pipeline, never with NULL ownership', async () => {
+        const query = jest.fn().mockResolvedValue([{ id: MIGRATION_ID }]);
+        const stage = {
+            slug: 'calificado', name: 'Calificado', color: '#123456', position: 1,
+            probability: 40, slaHours: 24, isTerminal: false,
+            terminalOutcome: null, transitionRules: [],
+        };
+        const targetSeeds = { pipelineStages: [stage], faqs: [], services: [] };
+        const diff = {
+            pipelineStages: { add: [stage], unchanged: [], conflicts: [], preserved: [] },
+            faqs: { add: [], unchanged: [], conflicts: [], preserved: [] },
+            services: { add: [], unchanged: [], conflicts: [], preserved: [] },
+        };
+
+        await (service as any).insertAdditiveSeeds(
+            query,
+            TENANT_ID,
+            PIPELINE_ID,
+            targetSeeds,
+            diff,
+        );
+
+        expect(query).toHaveBeenCalledTimes(1);
+        const [sql, params] = query.mock.calls[0];
+        expect(sql).toContain('(tenant_id, pipeline_id, name, slug');
+        expect(sql).toContain('VALUES ($1::uuid, $2::uuid');
+        expect(sql).not.toContain('pipeline_id IS NULL');
+        expect(params[0]).toBe(TENANT_ID);
+        expect(params[1]).toBe(PIPELINE_ID);
+        expect(params[1]).not.toBeNull();
     });
 
     it('keeps apply fail-closed even for an approved seed diff', async () => {

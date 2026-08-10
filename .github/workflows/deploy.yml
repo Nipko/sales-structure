@@ -29,7 +29,7 @@ env:
 
 jobs:
   # ──────────────────────────────────────────────────────────────
-  # JOB 0: Validate (the CI gate) — typecheck (4 apps) + lint + migrations apply
+  # JOB 0: Validate (the CI gate) — typecheck (5 apps) + lint + migrations apply
   # on a fresh DB + real boot smoke test (DI graph + onModuleInit). Runs on Linux
   # x64 (where bcrypt's prebuilt exists). build-and-push depends on it, so a red
   # validate blocks the whole build + deploy.
@@ -95,13 +95,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install mobile dependencies
+        run: npm ci --prefix apps/mobile
+
       - name: Marketing claims contract
         run: cd apps/landing && npm run check:claims
 
-      # Deterministic contract gate: 76 canonical vertical configurations x
-      # 4 locales x 5 plans. This validates the manifest/resolver contract only;
+      # Deterministic contract gate: 76 canonical + 2 persisted legacy
+      # configurations x 4 locales x 5 plans. This validates the
+      # manifest/resolver contract only;
       # database bootstrap and end-to-end certification remain separate gates.
-      - name: Vertical contract matrix (1,520 configurations)
+      - name: Vertical contract matrix (1,560 scenarios)
         run: node apps/api/scripts/run-vertical-contract-matrix.cjs
 
       # These are the fail-closed contracts adopted by DEC-01..19. The
@@ -112,6 +116,37 @@ jobs:
       - name: Vertical operating decision contracts
         run: >-
           npx jest --config apps/api/jest.config.js --runInBand
+          apps/api/src/common/utils/primary-pipeline.util.spec.ts
+          apps/api/src/common/utils/local-timestamp.util.spec.ts
+          apps/api/src/common/utils/native-evidence-opportunity.util.spec.ts
+          apps/api/src/common/utils/native-evidence-opportunity-schema.spec.ts
+          apps/api/src/common/utils/native-evidence-writers-contract.spec.ts
+          apps/api/src/common/utils/trusted-client-ip.util.spec.ts
+          apps/api/src/modules/pipeline/pipeline-primary-ownership.spec.ts
+          apps/api/src/modules/pipeline/pipeline-write-lead-stage-active-scope.spec.ts
+          apps/api/src/modules/crm/crm.controller.spec.ts
+          apps/api/src/modules/tours/tours.service.spec.ts
+          apps/api/src/modules/vacation-rental/properties.service.spec.ts
+          apps/api/src/modules/restaurants/restaurants.service.spec.ts
+          apps/api/src/modules/home-services/home-services.service.spec.ts
+          apps/api/src/modules/verticals/service-request.listener.spec.ts
+          apps/api/src/modules/photography/photography.service.spec.ts
+          apps/api/src/modules/education/education.service.spec.ts
+          apps/api/src/modules/insurance/insurance.service.spec.ts
+          apps/api/src/modules/resource-rentals/resource-rentals.service.spec.ts
+          apps/api/src/modules/orders/orders.contacts-pagination.spec.ts
+          apps/api/src/modules/pets/pets.pagination.spec.ts
+          apps/api/src/modules/verticals/vehicle-inventory.pagination.spec.ts
+          apps/api/src/modules/persona/vertical-agent-defaults.util.spec.ts
+          apps/api/src/modules/persona/onboarding-persona-resolver.spec.ts
+          apps/api/src/modules/persona/vertical-subtype-persona-contract.spec.ts
+          apps/api/src/modules/verticals/vertical-capability-manifest.spec.ts
+          apps/api/src/modules/verticals/vertical-pipeline-contract.spec.ts
+          apps/api/src/modules/verticals/verticals.service.spec.ts
+          apps/api/src/modules/verticals/verticals.seed-recovery.spec.ts
+          apps/api/src/modules/verticals/vertical-provisioning-reconcile-script.spec.ts
+          apps/api/src/modules/conversations/ai-tool-schema-runtime-alignment.spec.ts
+          apps/api/src/modules/vertical-contract-matrix/commercial-unit-writers.spec.ts
           apps/api/src/modules/verticals/vertical-product-policy.spec.ts
           apps/api/src/modules/verticals/verticals.controller.spec.ts
           apps/api/src/modules/verticals/vertical-builder-contract.spec.ts
@@ -120,8 +155,12 @@ jobs:
           apps/api/src/modules/appointments/calendar-sync-outbox.service.spec.ts
           apps/api/src/modules/appointments/calendar-integration.service.spec.ts
           apps/api/src/modules/appointments/appointments.tenant-isolation.spec.ts
+          apps/api/src/modules/appointments/appointments.contact-integrity.spec.ts
+          apps/api/src/modules/appointments/appointments.controller.contact-integrity.spec.ts
           apps/api/src/modules/appointments/appointment-capacity.util.spec.ts
           apps/api/src/modules/appointments/public-booking.controller.spec.ts
+          apps/api/src/modules/identity/identity.resolve-concurrency.spec.ts
+          apps/api/src/modules/public-api/public-api.controller.appointments.spec.ts
           apps/api/src/modules/conversations/tool-policy-registry.spec.ts
           apps/api/src/modules/conversations/tool-execution-control.service.spec.ts
           apps/api/src/modules/conversations/tool-approval-workflow.e2e.spec.ts
@@ -151,6 +190,17 @@ jobs:
           (cd apps/dashboard && npx tsc --noEmit)
           (cd apps/whatsapp && npx tsc --noEmit)
           (cd apps/landing && npx tsc --noEmit)
+          (cd apps/mobile && npx tsc --noEmit)
+
+      - name: Mobile vertical and privacy regression
+        run: npm test --prefix apps/mobile -- --runInBand
+
+      - name: Dashboard vertical and wall-clock regression
+        run: >-
+          npx jest --config apps/dashboard/jest.config.cjs --runInBand
+          apps/dashboard/src/lib/vertical-dashboard-resolver.spec.ts
+          apps/dashboard/src/lib/local-timestamp.spec.ts
+          apps/dashboard/src/components/appointments/contact-selection.spec.ts
 
       # Bloqueante desde ago 2026: el codebase quedó lint-clean (commit 64c46827,
       # 28 errores → 0). Es el único gate automático que atrapa la clase de bug
@@ -183,6 +233,13 @@ jobs:
 
       - name: Tenant schema migration compatibility smoke test
         run: cd apps/api && npm run test:migrate:tenants
+
+      - name: Primary pipeline ownership PostgreSQL smoke
+        env:
+          RUN_PIPELINE_OWNERSHIP_PG_TESTS: '1'
+        run: >-
+          npx jest --config apps/api/jest.config.js --runInBand
+          apps/api/src/common/utils/primary-pipeline.pg.spec.ts
 
       - name: Build API (+ shared)
         run: npx turbo build --filter=@parallext/api

@@ -59,6 +59,7 @@ export default function ServiceRequestsPage() {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<"all" | "active" | "emergency">("all");
     const [selected, setSelected] = useState<ServiceRequest | null>(null);
+    const [scheduleOnSave, setScheduleOnSave] = useState(false);
 
     const load = useCallback(async () => {
         if (!activeTenantId) return;
@@ -87,6 +88,11 @@ export default function ServiceRequestsPage() {
         const idx = STATUS_FLOW.indexOf(req.status as any);
         if (idx === -1 || idx === STATUS_FLOW.length - 1) return;
         const nextStatus = STATUS_FLOW[idx + 1];
+        if (nextStatus === "scheduled" && !req.scheduled_at) {
+            setScheduleOnSave(true);
+            setSelected(req);
+            return;
+        }
         await api.updateServiceRequest(activeTenantId, req.id, { status: nextStatus });
         load();
     }
@@ -144,7 +150,7 @@ export default function ServiceRequestsPage() {
                             const ageMin = Math.floor((Date.now() - new Date(req.created_at).getTime()) / 60000);
                             const stale = req.urgency === "emergencia" && ageMin > 30 && req.status === "pending";
                             return (
-                                <div key={req.id} className={cn("p-4 hover:bg-muted/20 cursor-pointer", stale && "bg-red-500/5")} onClick={() => setSelected(req)}>
+                                <div key={req.id} className={cn("p-4 hover:bg-muted/20 cursor-pointer", stale && "bg-red-500/5")} onClick={() => { setScheduleOnSave(false); setSelected(req); }}>
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -186,13 +192,28 @@ export default function ServiceRequestsPage() {
             </div>
 
             {selected && (
-                <RequestDetailModal request={selected} onClose={() => setSelected(null)} onUpdated={() => { setSelected(null); load(); }} />
+                <RequestDetailModal
+                    request={selected}
+                    scheduleOnSave={scheduleOnSave}
+                    onClose={() => { setScheduleOnSave(false); setSelected(null); }}
+                    onUpdated={() => { setScheduleOnSave(false); setSelected(null); load(); }}
+                />
             )}
         </div>
     );
 }
 
-function RequestDetailModal({ request, onClose, onUpdated }: { request: ServiceRequest; onClose: () => void; onUpdated: () => void }) {
+function RequestDetailModal({
+    request,
+    scheduleOnSave,
+    onClose,
+    onUpdated,
+}: {
+    request: ServiceRequest;
+    scheduleOnSave: boolean;
+    onClose: () => void;
+    onUpdated: () => void;
+}) {
     const t = useTranslations("serviceRequests");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
@@ -208,6 +229,7 @@ function RequestDetailModal({ request, onClose, onUpdated }: { request: ServiceR
     const [scheduledAt, setScheduledAt] = useState(request.scheduled_at?.slice(0, 16) || "");
     const [estimatedCost, setEstimatedCost] = useState(request.estimated_cost?.toString() || "");
     const [busy, setBusy] = useState(false);
+    const [validationError, setValidationError] = useState("");
 
     useEffect(() => {
         if (!activeTenantId) return;
@@ -220,15 +242,30 @@ function RequestDetailModal({ request, onClose, onUpdated }: { request: ServiceR
 
     async function handleSave() {
         if (!activeTenantId) return;
+        if (scheduleOnSave && !scheduledAt) {
+            setValidationError(t("scheduleRequired"));
+            return;
+        }
+        setValidationError("");
         setBusy(true);
         try {
-            await api.updateServiceRequest(activeTenantId, request.id, {
+            const response = await api.updateServiceRequest(activeTenantId, request.id, {
                 assignedTechnicianName: tech || undefined,
                 assignedTechnicianId: techId || undefined,
-                scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+                // service_requests.scheduled_at is a tenant-local TIMESTAMP.
+                // Preserve the datetime-local literal; converting it to UTC
+                // would shift a Bogotá visit by five hours.
+                scheduledAt: scheduledAt || undefined,
                 estimatedCost: estimatedCost ? parseFloat(estimatedCost) : undefined,
+                status: scheduleOnSave ? "scheduled" : undefined,
             });
+            if (!response?.success) {
+                setValidationError(t("saveError"));
+                return;
+            }
             onUpdated();
+        } catch {
+            setValidationError(t("saveError"));
         } finally { setBusy(false); }
     }
 
@@ -269,6 +306,11 @@ function RequestDetailModal({ request, onClose, onUpdated }: { request: ServiceR
                             <div className="text-sm">{request.preferred_date} {request.preferred_time_window}</div>
                         </div>
                     )}
+                    {validationError && (
+                        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                            {validationError}
+                        </p>
+                    )}
                     <div className="border-t border-border pt-3 space-y-3">
                         <div>
                             <label className="block text-xs font-medium mb-1">{t("technician")}</label>
@@ -301,6 +343,9 @@ function RequestDetailModal({ request, onClose, onUpdated }: { request: ServiceR
                         <div>
                             <label className="block text-xs font-medium mb-1">{t("scheduledAt")}</label>
                             <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm" />
+                            {scheduleOnSave && (
+                                <p className="text-[11px] text-muted-foreground mt-1">{t("scheduleHint")}</p>
+                            )}
                         </div>
                         <div>
                             <label className="block text-xs font-medium mb-1">{t("estimatedCost")}</label>
@@ -312,7 +357,7 @@ function RequestDetailModal({ request, onClose, onUpdated }: { request: ServiceR
                     <button onClick={onClose} className="px-3 py-1.5 bg-muted/30 hover:bg-muted text-foreground border border-border rounded-lg text-sm transition-colors">{tc("cancel")}</button>
                     <button onClick={handleSave} disabled={busy} className="inline-flex items-center gap-2 px-4 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        {tc("save")}
+                        {scheduleOnSave ? t("saveAndSchedule") : tc("save")}
                     </button>
                 </div>
             </div>

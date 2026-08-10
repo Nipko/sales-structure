@@ -66,6 +66,7 @@ import {
   PawPrint,
   Camera,
   Car,
+  KeyRound,
   Tag,
   Layers,
   MessageSquare,
@@ -128,6 +129,7 @@ const tenantSections: NavSectionDef[] = [
       { labelKey: "tours", href: "/admin/tours", icon: Compass, verticalItem: "tours", capability: "canEditPipeline" },
       { labelKey: "listings", href: "/admin/listings", icon: Building2, verticalItem: "listings", capability: "canEditPipeline" },
       { labelKey: "vehicles", href: "/admin/vehicles", icon: Car, verticalItem: "vehicles", capability: "canEditPipeline" },
+      { labelKey: "resourceRentals", href: "/admin/resource-rentals", icon: KeyRound, verticalItem: "resourceRentals", capability: "canHandleConversations" },
       { labelKey: "menu", href: "/admin/menu", icon: UtensilsCrossed, verticalItem: "menu", capability: "canEditPipeline" },
       // Operational — agents need access (taking orders, doing classes, dispatching, treating pets)
       { labelKey: "foodOrders", href: "/admin/food-orders", icon: ChefHat, verticalItem: "foodOrders", capability: "canHandleConversations" },

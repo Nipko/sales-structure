@@ -6,6 +6,11 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+    assertOptionalContactId,
+    requireTenantContact,
+} from '../../common/utils/tenant-contact.util';
+import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 
 export type ResourceRentalType = 'vehicle_rental' | 'pet_boarding';
 export type VehicleRentalStatus = 'reserved' | 'picked_up' | 'returned' | 'cancelled';
@@ -17,6 +22,7 @@ export interface CreateResourceRentalInput {
     resourceId: string;
     serviceId?: string;
     contactId?: string;
+    opportunityId?: string;
     customerName?: string;
     customerPhone?: string;
     startDate: string;
@@ -140,9 +146,7 @@ export class ResourceRentalsService {
         const type = this.assertRentalType(input.type);
         const resourceId = this.assertUuid(input.resourceId, 'resourceId');
         const range = this.assertRange(input.startDate, input.endDate);
-        const contactId = input.contactId
-            ? this.assertUuid(input.contactId, 'contactId')
-            : null;
+        const contactId = assertOptionalContactId(input.contactId);
         const createdBy = actorId && UUID_PATTERN.test(actorId) ? actorId : null;
         const metadata = input.metadata ?? {};
         if (typeof metadata !== 'object' || Array.isArray(metadata)) {
@@ -152,6 +156,9 @@ export class ResourceRentalsService {
         if (type === 'vehicle_rental') {
             if (input.serviceId != null) {
                 throw new BadRequestException('serviceId is only valid for pet_boarding');
+            }
+            if (!contactId) {
+                throw new BadRequestException('contactId is required for vehicle_rental');
             }
             return this.createVehicleRental(schemaName, input, range, resourceId, contactId, createdBy);
         }
@@ -229,10 +236,15 @@ export class ResourceRentalsService {
         input: CreateResourceRentalInput,
         range: RentalRange,
         vehicleId: string,
-        contactId: string | null,
+        contactId: string,
         createdBy: string | null,
     ): Promise<any> {
         return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const validatedContactId = await requireTenantContact(query, contactId);
+            const opportunityId = await resolveNativeEvidenceOpportunity(query, {
+                contactId: validatedContactId,
+                trustedOpportunityId: input.opportunityId,
+            });
             await query(
                 `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
                 [`${schemaName}:resource-rental:vehicle:${vehicleId}`],
@@ -272,7 +284,8 @@ export class ResourceRentalsService {
                 type: 'vehicle_rental',
                 resourceId: vehicleId,
                 serviceId: null,
-                contactId,
+                contactId: validatedContactId,
+                opportunityId,
                 createdBy,
                 range,
             });
@@ -301,7 +314,7 @@ export class ResourceRentalsService {
             );
 
             const pets = await query<any[]>(
-                `SELECT id, name, is_active FROM pets WHERE id = $1::uuid FOR UPDATE`,
+                `SELECT id, name, is_active, contact_id FROM pets WHERE id = $1::uuid FOR UPDATE`,
                 [petId],
             );
             const pet = pets?.[0];
@@ -309,6 +322,20 @@ export class ResourceRentalsService {
             if (pet.is_active !== true) {
                 throw new ConflictException('Pet is inactive and cannot be boarded');
             }
+            const canonicalContactId = await requireTenantContact(
+                query,
+                assertOptionalContactId(pet.contact_id),
+            );
+            if (!canonicalContactId) {
+                throw new ConflictException('Pet has no owner contact');
+            }
+            if (contactId && contactId.toLowerCase() !== canonicalContactId.toLowerCase()) {
+                throw new ConflictException('contactId does not match the pet owner');
+            }
+            const opportunityId = await resolveNativeEvidenceOpportunity(query, {
+                contactId: canonicalContactId,
+                trustedOpportunityId: input.opportunityId,
+            });
 
             const services = await query<any[]>(
                 `SELECT id, name, category, max_concurrent, is_active
@@ -390,7 +417,8 @@ export class ResourceRentalsService {
                 type: 'pet_boarding',
                 resourceId: petId,
                 serviceId,
-                contactId,
+                contactId: canonicalContactId,
+                opportunityId,
                 createdBy,
                 range,
             });
@@ -399,28 +427,30 @@ export class ResourceRentalsService {
 
     private async insertRental(
         query: <R = any[]>(sql: string, params?: any[]) => Promise<R>,
-        data: Omit<CreateResourceRentalInput, 'serviceId' | 'contactId'> & {
+        data: Omit<CreateResourceRentalInput, 'serviceId' | 'contactId' | 'opportunityId'> & {
             serviceId: string | null;
             contactId: string | null;
+            opportunityId: string | null;
             createdBy: string | null;
             range: RentalRange;
         },
     ): Promise<any> {
         const rows = await query<any[]>(
             `INSERT INTO resource_rentals (
-                rental_type, resource_id, service_id, contact_id,
+                rental_type, resource_id, service_id, contact_id, opportunity_id,
                 customer_name, customer_phone, start_date, end_date,
                 status, notes, metadata, created_by
              ) VALUES (
-                $1, $2::uuid, $3::uuid, $4::uuid,
-                $5, $6, $7::date, $8::date,
-                'reserved', $9, $10::jsonb, $11::uuid
+                $1, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+                $6, $7, $8::date, $9::date,
+                'reserved', $10, $11::jsonb, $12::uuid
              ) RETURNING *`,
             [
                 data.type,
                 data.resourceId,
                 data.serviceId,
                 data.contactId,
+                data.opportunityId,
                 data.customerName || null,
                 data.customerPhone || null,
                 data.range.startDate,

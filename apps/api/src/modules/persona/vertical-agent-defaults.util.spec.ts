@@ -5,7 +5,7 @@ import {
 } from './vertical-agent-defaults.util';
 
 describe('vertical agent defaults', () => {
-    it('derives only effective tool groups and records manifest v1 capabilities', () => {
+    it('migrates a persisted v1 native-operation profile to manifest v2 defaults', () => {
         const defaults = resolveVerticalAgentDefaults({
             verticalConfig: {
                 industry: 'turismo',
@@ -17,7 +17,7 @@ describe('vertical agent defaults', () => {
         });
 
         expect(defaults).toEqual(expect.objectContaining({
-            manifestVersion: 1,
+            manifestVersion: 2,
             industry: 'turismo',
             subType: 'hotel',
             effectiveCapabilities: ['crm_pipeline', 'faq_search', 'nightly_booking'],
@@ -45,7 +45,7 @@ describe('vertical agent defaults', () => {
         const defaults = resolveVerticalAgentDefaults({
             verticalConfig: {
                 industry: 'pet_services',
-                subType: 'hotel',
+                subType: 'peluqueria',
                 bookingEnabled: true,
                 effectiveCapabilities: [
                     'crm_pipeline', 'faq_search', 'appointment_booking',
@@ -78,7 +78,7 @@ describe('vertical agent defaults', () => {
             'vertical_subtype_required',
         ],
         [
-            { verticalConfig: { industry: 'retail', subType: 'moda', bookingEnabled: false, manifestVersion: 2 } },
+            { verticalConfig: { industry: 'retail', subType: 'moda', bookingEnabled: false, manifestVersion: 99 } },
             'vertical_manifest_version_unsupported',
         ],
         [

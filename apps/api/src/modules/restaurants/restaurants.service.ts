@@ -1,9 +1,15 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import {
     normalizeCurrencyCode,
     optionalPositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import {
+    assertOptionalContactId,
+    requireTenantContact,
+} from '../../common/utils/tenant-contact.util';
+import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 
 /**
  * Restaurants module — menu catalog, food orders, and promotions.
@@ -21,7 +27,10 @@ import {
 export class RestaurantsService {
     private readonly logger = new Logger(RestaurantsService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly eventEmitter: EventEmitter2,
+    ) {}
 
     // ── Categories ────────────────────────────────────────────────
 
@@ -353,6 +362,7 @@ export class RestaurantsService {
     async createOrder(schemaName: string, data: {
         contactId?: string;
         conversationId?: string;
+        opportunityId?: string;
         orderType: 'delivery' | 'pickup' | 'dine_in';
         customerName?: string;
         customerPhone?: string;
@@ -379,6 +389,7 @@ export class RestaurantsService {
         if (data.orderType === 'delivery' && !data.deliveryAddress) {
             throw new BadRequestException('deliveryAddress is required for delivery orders');
         }
+        const contactId = assertOptionalContactId(data.contactId);
 
         const subtotal = data.items.reduce((sum, it) => sum + (it.quantity * it.unitPrice), 0);
         const deliveryFee = data.deliveryFee || 0;
@@ -400,23 +411,30 @@ export class RestaurantsService {
         // Header, line items and the read-back share one tenant-scoped database
         // transaction. If any line insert fails, PostgreSQL rolls the header
         // back as well, so a partial `received` order can never escape.
-        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+        const order = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const canonicalContactId = await requireTenantContact(query, contactId);
+            const opportunityId = await resolveNativeEvidenceOpportunity(query, {
+                contactId: canonicalContactId,
+                conversationId: data.conversationId,
+                trustedOpportunityId: data.opportunityId,
+            });
             const orderRows = await query<any[]>(
                 `INSERT INTO food_orders (
-                    contact_id, conversation_id, order_type, customer_name, customer_phone,
+                    contact_id, opportunity_id, conversation_id, order_type, customer_name, customer_phone,
                     delivery_address, delivery_notes, table_number,
                     subtotal, delivery_fee, discount, total, currency,
                     estimated_delivery_at, payment_method, notes
                  ) VALUES (
-                    $1::uuid, $2::uuid, $3, $4, $5,
-                    $6, $7, $8,
-                    $9, $10, $11, $12, $13,
-                    CASE WHEN $14::int IS NULL THEN NULL
-                         ELSE NOW() + ($14::int * INTERVAL '1 minute') END,
-                    $15, $16
+                    $1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
+                    $7, $8, $9,
+                    $10, $11, $12, $13, $14,
+                    CASE WHEN $15::int IS NULL THEN NULL
+                         ELSE NOW() + ($15::int * INTERVAL '1 minute') END,
+                    $16, $17
                  ) RETURNING *`,
                 [
-                    data.contactId || null,
+                    canonicalContactId,
+                    opportunityId,
                     data.conversationId || null,
                     data.orderType,
                     data.customerName || null,
@@ -464,18 +482,71 @@ export class RestaurantsService {
             );
             return { ...order, items, estimated_delivery_minutes: estimatedMinutes };
         });
+
+        try {
+            this.eventEmitter.emit('food_order.created', {
+                orderId: order.id,
+                tenantSchemaName: schemaName,
+                schemaName,
+                contactId,
+                customerName: data.customerName,
+                orderType: order.order_type,
+                total: Number(order.total || 0),
+                currency: order.currency,
+                itemsCount: data.items.length,
+                tableNumber: data.tableNumber,
+            });
+        } catch (error: any) {
+            this.logger.error(`food_order.created listener failed after commit: ${error.message}`);
+        }
+        return order;
     }
 
-    async updateOrderStatus(schemaName: string, id: string, status: string): Promise<any> {
+    async updateOrderStatus(
+        schemaName: string,
+        id: string,
+        status: string,
+        context: { reason?: string } = {},
+    ): Promise<any> {
         const validStatuses = ['received', 'preparing', 'ready', 'delivered', 'cancelled'];
         if (!validStatuses.includes(status)) throw new BadRequestException(`Invalid status: ${status}`);
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `UPDATE food_orders SET status = $1, updated_at = NOW() WHERE id = $2::uuid RETURNING *`,
-            [status, id],
-        );
-        if (!rows.length) throw new NotFoundException('Order not found');
-        return rows[0];
+        const result = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const currentRows = await query<any[]>(
+                `SELECT * FROM food_orders WHERE id = $1::uuid FOR UPDATE`,
+                [id],
+            );
+            if (!currentRows.length) throw new NotFoundException('Order not found');
+            const current = currentRows[0];
+            if (current.status === status) return { order: current, changed: false };
+
+            const rows = await query<any[]>(
+                `UPDATE food_orders
+                    SET status = $1, updated_at = NOW()
+                  WHERE id = $2::uuid
+                  RETURNING *`,
+                [status, id],
+            );
+            if (!rows.length) throw new NotFoundException('Order not found');
+            return { order: rows[0], changed: true };
+        });
+
+        // Emit from the canonical writer, after commit. REST/mobile/dashboard
+        // and AI cancellations now have exactly the same automation contract;
+        // an idempotent second cancellation does not emit a duplicate event.
+        if (status === 'cancelled' && result.changed) {
+            try {
+                this.eventEmitter.emit('food_order.cancelled', {
+                    orderId: result.order.id,
+                    tenantSchemaName: schemaName,
+                    schemaName,
+                    contactId: result.order.contact_id || undefined,
+                    reason: context.reason,
+                });
+            } catch (error: any) {
+                this.logger.error(`food_order.cancelled listener failed after commit: ${error.message}`);
+            }
+        }
+        return result.order;
     }
 
     // ── Promotions ────────────────────────────────────────────────

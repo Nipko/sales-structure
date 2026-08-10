@@ -18,6 +18,7 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
 
 interface ReplacePipelineStageInput {
     id?: string;
@@ -782,10 +783,15 @@ export class CrmController {
     @Get('pipeline-stages/:tenantId')
     async getPipelineStages(@Param('tenantId') tenantId: string) {
         const schema = await this.getSchema(tenantId);
-        const stages = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT * FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC`,
-            [tenantId],
-        );
+        const stages = await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const { pipelineId } = await ensurePrimaryPipeline(query, tenantId);
+            return query<any[]>(
+                `SELECT * FROM pipeline_stages
+                  WHERE tenant_id = $1::uuid AND pipeline_id = $2::uuid
+                  ORDER BY position ASC`,
+                [tenantId, pipelineId],
+            );
+        });
         return { success: true, data: stages || [] };
     }
 
@@ -796,9 +802,6 @@ export class CrmController {
         @Body() body: { name: string; slug?: string; color?: string; position?: number; default_probability?: number; sla_hours?: number; is_terminal?: boolean; terminal_outcome?: 'won' | 'lost'; transition_rules?: any[] },
     ) {
         const schema = await this.getSchema(tenantId);
-        const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT COUNT(*)::int AS c FROM pipeline_stages WHERE tenant_id = $1::uuid`, [tenantId]);
-        await this.throttle.enforcePlanLimit(tenantId, 'pipelineStages', cnt?.[0]?.c || 0, 'etapas de pipeline');
         const slug = canonicalPipelineStageSlug(body.slug || body.name);
         const isTerminal = body.is_terminal ?? false;
         if (isTerminal && body.terminal_outcome !== 'won' && body.terminal_outcome !== 'lost') {
@@ -810,11 +813,30 @@ export class CrmController {
         const terminalOutcome = isTerminal ? body.terminal_outcome! : null;
         let result: any[] | undefined;
         try {
-            result = await this.prisma.executeInTenantSchema<any[]>(schema,
-                `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, terminal_outcome, transition_rules)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb) RETURNING *`,
-                [tenantId, body.name, slug, body.color || '#3498db', body.position ?? 0, body.default_probability ?? 0, body.sla_hours || null, isTerminal, terminalOutcome, JSON.stringify(body.transition_rules || [])],
-            );
+            result = await this.prisma.transactionInTenantSchema(schema, async (query) => {
+                const { pipelineId } = await ensurePrimaryPipeline(query, tenantId);
+                const cnt = await query<Array<{ c: number }>>(
+                    `SELECT COUNT(*)::int AS c FROM pipeline_stages
+                      WHERE tenant_id = $1::uuid AND pipeline_id = $2::uuid`,
+                    [tenantId, pipelineId],
+                );
+                await this.throttle.enforcePlanLimit(
+                    tenantId,
+                    'pipelineStages',
+                    Number(cnt?.[0]?.c || 0),
+                    'etapas de pipeline',
+                );
+                return query<any[]>(
+                    `INSERT INTO pipeline_stages
+                        (tenant_id, pipeline_id, name, slug, color, position,
+                         default_probability, sla_hours, is_terminal, terminal_outcome, transition_rules)
+                     VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+                     RETURNING *`,
+                    [tenantId, pipelineId, body.name, slug, body.color || '#3498db', body.position ?? 0,
+                        body.default_probability ?? 0, body.sla_hours || null, isTerminal, terminalOutcome,
+                        JSON.stringify(body.transition_rules || [])],
+                );
+            });
         } catch (e: any) {
             // uidx_pipeline_stages_pipeline_slug (tenant-schema.sql): el slug se deriva
             // del nombre, así que repetir el nombre en el mismo embudo choca. Sin esto
@@ -846,6 +868,7 @@ export class CrmController {
         const schema = await this.getSchema(tenantId);
 
         const data = await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const { pipelineId } = await ensurePrimaryPipeline(query, tenantId);
             type ExistingStage = {
                 id: string;
                 slug: string;
@@ -855,10 +878,10 @@ export class CrmController {
             const existing = await query<ExistingStage[]>(
                 `SELECT id, slug, is_terminal, terminal_outcome
                    FROM pipeline_stages
-                  WHERE tenant_id = $1::uuid
+                  WHERE tenant_id = $1::uuid AND pipeline_id = $2::uuid
                   ORDER BY position ASC
                   FOR UPDATE`,
-                [tenantId],
+                [tenantId, pipelineId],
             );
             const byId = new Map(existing.map((stage) => [stage.id, stage]));
             const bySlug = new Map<string, ExistingStage>();
@@ -949,13 +972,18 @@ export class CrmController {
             // stages whose slug changes, a temporary unique slug also permits A/B
             // swaps without violating the unique index mid-transaction.
             for (const stage of removed) {
-                await query(`DELETE FROM pipeline_stages WHERE id = $1::uuid AND tenant_id = $2::uuid`, [stage.id, tenantId]);
+                await query(
+                    `DELETE FROM pipeline_stages
+                      WHERE id = $1::uuid AND tenant_id = $2::uuid AND pipeline_id = $3::uuid`,
+                    [stage.id, tenantId, pipelineId],
+                );
             }
             for (const stage of resolved) {
                 if (stage.current && stage.current.slug !== stage.slug) {
                     await query(
-                        `UPDATE pipeline_stages SET slug = $1 WHERE id = $2::uuid AND tenant_id = $3::uuid`,
-                        [`__bulk_${stage.current.id.replace(/-/g, '')}`, stage.current.id, tenantId],
+                        `UPDATE pipeline_stages SET slug = $1
+                          WHERE id = $2::uuid AND tenant_id = $3::uuid AND pipeline_id = $4::uuid`,
+                        [`__bulk_${stage.current.id.replace(/-/g, '')}`, stage.current.id, tenantId, pipelineId],
                     );
                 }
             }
@@ -980,23 +1008,25 @@ export class CrmController {
                                 default_probability = $5, sla_hours = $6,
                                 is_terminal = $7, terminal_outcome = $8,
                                 transition_rules = $9::jsonb
-                          WHERE id = $11::uuid AND tenant_id = $10::uuid`,
-                        [...params, stage.current.id],
+                          WHERE id = $11::uuid AND tenant_id = $10::uuid AND pipeline_id = $12::uuid`,
+                        [...params, stage.current.id, pipelineId],
                     );
                 } else {
                     await query(
                         `INSERT INTO pipeline_stages
                             (tenant_id, name, slug, color, position, default_probability,
-                             sla_hours, is_terminal, terminal_outcome, transition_rules)
-                         VALUES ($10::uuid, $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
-                        params,
+                             sla_hours, is_terminal, terminal_outcome, transition_rules, pipeline_id)
+                         VALUES ($10::uuid, $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $11::uuid)`,
+                        [...params, pipelineId],
                     );
                 }
             }
 
             return query<any[]>(
-                `SELECT * FROM pipeline_stages WHERE tenant_id = $1::uuid ORDER BY position ASC`,
-                [tenantId],
+                `SELECT * FROM pipeline_stages
+                  WHERE tenant_id = $1::uuid AND pipeline_id = $2::uuid
+                  ORDER BY position ASC`,
+                [tenantId, pipelineId],
             );
         });
 
@@ -1012,14 +1042,19 @@ export class CrmController {
     ) {
         const schema = await this.getSchema(tenantId);
         if (body.slug !== undefined) body.slug = canonicalPipelineStageSlug(String(body.slug));
-        if (['slug', 'is_terminal', 'terminal_outcome', 'default_probability'].some((field) => body[field] !== undefined)) {
-            const currentRows = await this.prisma.executeInTenantSchema<any[]>(schema,
+        await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const { pipelineId } = await ensurePrimaryPipeline(query, tenantId);
+            const currentRows = await query<any[]>(
                 `SELECT slug, is_terminal, terminal_outcome, default_probability
-                 FROM pipeline_stages WHERE id = $1::uuid AND tenant_id = $2::uuid`,
-                [stageId, tenantId],
+                   FROM pipeline_stages
+                  WHERE id = $1::uuid AND tenant_id = $2::uuid AND pipeline_id = $3::uuid
+                  FOR UPDATE`,
+                [stageId, tenantId, pipelineId],
             );
             const current = currentRows?.[0];
-            if (current) {
+            if (!current) throw new BadRequestException('Stage not found');
+
+            if (['slug', 'is_terminal', 'terminal_outcome', 'default_probability'].some((field) => body[field] !== undefined)) {
                 const isTerminal = body.is_terminal ?? current.is_terminal;
                 const outcome = body.terminal_outcome ?? current.terminal_outcome;
                 if (isTerminal && outcome !== 'won' && outcome !== 'lost') {
@@ -1035,8 +1070,7 @@ export class CrmController {
                     || (body.is_terminal !== undefined && body.is_terminal !== current.is_terminal)
                     || (body.terminal_outcome !== undefined && body.terminal_outcome !== current.terminal_outcome);
                 if (changesStageIdentity) {
-                    const usage = await this.prisma.executeInTenantSchema<any[]>(
-                        schema,
+                    const usage = await query<any[]>(
                         `SELECT
                             (SELECT COUNT(*)::int FROM opportunities WHERE stage = $1) AS opportunity_count,
                             (SELECT COUNT(*)::int FROM deals WHERE stage_id = $2::uuid) AS deal_count`,
@@ -1054,18 +1088,22 @@ export class CrmController {
                     }
                 }
             }
-        }
-        const allowed = ['name', 'slug', 'color', 'position', 'default_probability', 'sla_hours', 'is_terminal', 'terminal_outcome', 'transition_rules'];
-        const fields = Object.keys(body).filter(k => allowed.includes(k) && body[k] !== undefined);
-        if (fields.length === 0) return { success: true };
 
-        const setClause = fields.map((k, i) => `${k} = $${i + 2}${k === 'transition_rules' ? '::jsonb' : ''}`).join(', ');
-        const values = [stageId, ...fields.map(k => k === 'transition_rules' ? JSON.stringify(body[k]) : body[k])];
+            const allowed = ['name', 'slug', 'color', 'position', 'default_probability', 'sla_hours', 'is_terminal', 'terminal_outcome', 'transition_rules'];
+            const fields = Object.keys(body).filter(k => allowed.includes(k) && body[k] !== undefined);
+            if (fields.length === 0) return;
 
-        await this.prisma.executeInTenantSchema(schema,
-            `UPDATE pipeline_stages SET ${setClause} WHERE id = $1::uuid AND tenant_id = $${values.length + 1}::uuid`,
-            [...values, tenantId],
-        );
+            const setClause = fields.map((k, i) => `${k} = $${i + 2}${k === 'transition_rules' ? '::jsonb' : ''}`).join(', ');
+            const values = [stageId, ...fields.map(k => k === 'transition_rules' ? JSON.stringify(body[k]) : body[k])];
+
+            await query(
+                `UPDATE pipeline_stages SET ${setClause}
+                  WHERE id = $1::uuid
+                    AND tenant_id = $${values.length + 1}::uuid
+                    AND pipeline_id = $${values.length + 2}::uuid`,
+                [...values, tenantId, pipelineId],
+            );
+        });
         return { success: true, message: 'Stage updated' };
     }
 
@@ -1077,11 +1115,12 @@ export class CrmController {
     ) {
         const schema = await this.getSchema(tenantId);
         await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const { pipelineId } = await ensurePrimaryPipeline(query, tenantId);
             const stages = await query<any[]>(
                 `SELECT id, slug FROM pipeline_stages
-                  WHERE id = $1::uuid AND tenant_id = $2::uuid
+                  WHERE id = $1::uuid AND tenant_id = $2::uuid AND pipeline_id = $3::uuid
                   FOR UPDATE`,
-                [stageId, tenantId],
+                [stageId, tenantId, pipelineId],
             );
             if (!stages?.[0]) throw new BadRequestException('Stage not found');
             const usage = await query<any[]>(
@@ -1101,8 +1140,9 @@ export class CrmController {
                 });
             }
             await query(
-                `DELETE FROM pipeline_stages WHERE id = $1::uuid AND tenant_id = $2::uuid`,
-                [stageId, tenantId],
+                `DELETE FROM pipeline_stages
+                  WHERE id = $1::uuid AND tenant_id = $2::uuid AND pipeline_id = $3::uuid`,
+                [stageId, tenantId, pipelineId],
             );
         });
         return { success: true, message: 'Stage deleted' };
@@ -1121,9 +1161,12 @@ export class CrmController {
             throw new BadRequestException('stageIds inválidos');
         }
         await this.prisma.transactionInTenantSchema(schema, async (query) => {
+            const { pipelineId } = await ensurePrimaryPipeline(query, tenantId);
             const locked = await query<any[]>(
-                `SELECT id FROM pipeline_stages WHERE tenant_id = $1::uuid FOR UPDATE`,
-                [tenantId],
+                `SELECT id FROM pipeline_stages
+                  WHERE tenant_id = $1::uuid AND pipeline_id = $2::uuid
+                  FOR UPDATE`,
+                [tenantId, pipelineId],
             );
             const existing = new Set((locked || []).map((stage: any) => stage.id));
             if (body.stageIds.length !== existing.size || body.stageIds.some((id) => !existing.has(id))) {
@@ -1131,8 +1174,9 @@ export class CrmController {
             }
             for (let i = 0; i < body.stageIds.length; i++) {
                 await query(
-                    `UPDATE pipeline_stages SET position = $1 WHERE id = $2::uuid AND tenant_id = $3::uuid`,
-                    [i, body.stageIds[i], tenantId],
+                    `UPDATE pipeline_stages SET position = $1
+                      WHERE id = $2::uuid AND tenant_id = $3::uuid AND pipeline_id = $4::uuid`,
+                    [i, body.stageIds[i], tenantId, pipelineId],
                 );
             }
         });

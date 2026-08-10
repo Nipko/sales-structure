@@ -13,6 +13,8 @@ describe('ResourceRentalsService', () => {
     const serviceId = '33333333-3333-4333-8333-333333333333';
     const rentalId = '44444444-4444-4444-8444-444444444444';
     const actorId = '55555555-5555-4555-8555-555555555555';
+    const ownerContactId = '66666666-6666-4666-8666-666666666666';
+    const foreignContactId = '77777777-7777-4777-8777-777777777777';
 
     function buildService(transactionInTenantSchema?: jest.Mock) {
         const prisma = {
@@ -40,6 +42,8 @@ describe('ResourceRentalsService', () => {
 
         await expect(service.create(schemaName, { ...base, resourceId: 'not-a-uuid' }))
             .rejects.toBeInstanceOf(BadRequestException);
+        await expect(service.create(schemaName, { ...base, contactId: 'not-a-uuid' }))
+            .rejects.toBeInstanceOf(BadRequestException);
         await expect(service.create(schemaName, { ...base, startDate: '2026-02-30' }))
             .rejects.toBeInstanceOf(BadRequestException);
         await expect(service.create(schemaName, { ...base, endDate: base.startDate }))
@@ -62,9 +66,24 @@ describe('ResourceRentalsService', () => {
         },
     );
 
+    it('requires a tenant CRM contact for every vehicle rental before opening a transaction', async () => {
+        const { service, prisma } = buildService();
+
+        await expect(service.create(schemaName, {
+            type: 'vehicle_rental',
+            resourceId: vehicleId,
+            startDate: '2026-08-10',
+            endDate: '2026-08-12',
+        })).rejects.toThrow('contactId is required for vehicle_rental');
+
+        expect(prisma.transactionInTenantSchema).not.toHaveBeenCalled();
+    });
+
     it('locks a vehicle and uses half-open overlap predicates before inserting', async () => {
         const created = { id: rentalId, rental_type: 'vehicle_rental', status: 'reserved' };
         const query = jest.fn(async (sql: string, _params?: any[]) => {
+            if (sql.includes('FROM contacts')) return [{ id: ownerContactId }];
+            if (sql.includes('FROM opportunities o')) return [];
             if (sql.includes('pg_advisory_xact_lock')) return [];
             if (sql.includes('FROM vehicles')) {
                 return [{ id: vehicleId, make: 'Kia', model: 'Rio', year: 2025, status: 'available' }];
@@ -79,6 +98,7 @@ describe('ResourceRentalsService', () => {
         await expect(service.create(schemaName, {
             type: 'vehicle_rental',
             resourceId: vehicleId,
+            contactId: ownerContactId,
             startDate: '2026-08-10',
             endDate: '2026-08-12',
             customerName: 'Ana',
@@ -87,20 +107,25 @@ describe('ResourceRentalsService', () => {
         expect(transaction).toHaveBeenCalledWith(schemaName, expect.any(Function));
         expect(prisma.executeInTenantSchema).not.toHaveBeenCalled();
         expect(query.mock.calls.map(([sql]) => sql)).toEqual([
+            expect.stringContaining('FROM contacts'),
+            expect.stringContaining('FROM opportunities o'),
             expect.stringContaining('pg_advisory_xact_lock'),
             expect.stringContaining('FROM vehicles'),
             expect.stringContaining("rental_type = 'vehicle_rental'"),
             expect.stringContaining('INSERT INTO resource_rentals'),
         ]);
-        const overlapCall = query.mock.calls[2];
+        const overlapCall = query.mock.calls[4];
         expect(overlapCall[0]).toContain('start_date < $3::date');
         expect(overlapCall[0]).toContain('end_date > $2::date');
         expect(overlapCall[1]).toEqual([vehicleId, '2026-08-10', '2026-08-12']);
+        expect(query.mock.calls.at(-1)?.[1]).toEqual(expect.arrayContaining([ownerContactId]));
     });
 
     it('returns clear vehicle not-found, unavailable and overlap errors', async () => {
         for (const scenario of ['missing', 'unavailable', 'overlap'] as const) {
             const query = jest.fn(async (sql: string, _params?: any[]) => {
+                if (sql.includes('FROM contacts')) return [{ id: ownerContactId }];
+                if (sql.includes('FROM opportunities o')) return [];
                 if (sql.includes('pg_advisory_xact_lock')) return [];
                 if (sql.includes('FROM vehicles')) {
                     if (scenario === 'missing') return [];
@@ -115,6 +140,7 @@ describe('ResourceRentalsService', () => {
             const promise = service.create(schemaName, {
                 type: 'vehicle_rental',
                 resourceId: vehicleId,
+                contactId: ownerContactId,
                 startDate: '2026-08-10',
                 endDate: '2026-08-12',
             });
@@ -127,7 +153,11 @@ describe('ResourceRentalsService', () => {
     it('locks boarding capacity and checks every night in the half-open range', async () => {
         const query = jest.fn(async (sql: string, _params?: any[]) => {
             if (sql.includes('pg_advisory_xact_lock')) return [];
-            if (sql.includes('FROM pets')) return [{ id: petId, name: 'Toby', is_active: true }];
+            if (sql.includes('FROM pets')) {
+                return [{ id: petId, name: 'Toby', is_active: true, contact_id: ownerContactId }];
+            }
+            if (sql.includes('FROM contacts')) return [{ id: ownerContactId }];
+            if (sql.includes('FROM opportunities o')) return [];
             if (sql.includes('FROM services')) {
                 return [{ id: serviceId, category: 'guarderia', max_concurrent: 2, is_active: true }];
             }
@@ -160,7 +190,11 @@ describe('ResourceRentalsService', () => {
         const created = { id: rentalId, rental_type: 'pet_boarding', status: 'reserved' };
         const query = jest.fn(async (sql: string, _params?: any[]) => {
             if (sql.includes('pg_advisory_xact_lock')) return [];
-            if (sql.includes('FROM pets')) return [{ id: petId, name: 'Toby', is_active: true }];
+            if (sql.includes('FROM pets')) {
+                return [{ id: petId, name: 'Toby', is_active: true, contact_id: ownerContactId }];
+            }
+            if (sql.includes('FROM contacts')) return [{ id: ownerContactId }];
+            if (sql.includes('FROM opportunities o')) return [];
             if (sql.includes('FROM services')) {
                 return [{ id: serviceId, category: 'hotel', max_concurrent: 3, is_active: true }];
             }
@@ -178,9 +212,48 @@ describe('ResourceRentalsService', () => {
             startDate: '2026-08-10',
             endDate: '2026-08-11',
         })).resolves.toBe(created);
-        expect(query.mock.calls.at(-1)?.[1]).toEqual(expect.arrayContaining([
-            'pet_boarding', petId, serviceId, '2026-08-10', '2026-08-11',
+        const insertParams = query.mock.calls.at(-1)?.[1];
+        expect(insertParams).toEqual(expect.arrayContaining([
+            'pet_boarding', petId, serviceId, ownerContactId, '2026-08-10', '2026-08-11',
         ]));
+    });
+
+    it('derives boarding contact from the pet and rejects a mismatched body contactId', async () => {
+        const query = jest.fn(async (sql: string) => {
+            if (sql.includes('pg_advisory_xact_lock')) return [];
+            if (sql.includes('FROM pets')) {
+                return [{ id: petId, name: 'Toby', is_active: true, contact_id: ownerContactId }];
+            }
+            if (sql.includes('FROM contacts')) return [{ id: ownerContactId }];
+            throw new Error(`Unexpected SQL: ${sql}`);
+        });
+        const { service } = buildService(txWith(query));
+
+        await expect(service.create(schemaName, {
+            type: 'pet_boarding',
+            resourceId: petId,
+            serviceId,
+            contactId: foreignContactId,
+            startDate: '2026-08-10',
+            endDate: '2026-08-11',
+        })).rejects.toThrow('contactId does not match the pet owner');
+        expect(query.mock.calls.some(([sql]) => sql.includes('INSERT INTO resource_rentals'))).toBe(false);
+    });
+
+    it('validates a vehicle contact in the tenant before locking or inserting', async () => {
+        const query = jest.fn().mockResolvedValue([]);
+        const transaction = txWith(query);
+        const { service } = buildService(transaction);
+
+        await expect(service.create(schemaName, {
+            type: 'vehicle_rental',
+            resourceId: vehicleId,
+            contactId: foreignContactId,
+            startDate: '2026-08-10',
+            endDate: '2026-08-11',
+        })).rejects.toThrow('contactId does not belong to this tenant');
+        expect(query).toHaveBeenCalledTimes(1);
+        expect(String(query.mock.calls[0][0])).toContain('FROM contacts');
     });
 
     it('allows agents to perform non-terminal pickup/check-in transitions', async () => {

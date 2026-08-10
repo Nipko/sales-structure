@@ -9,7 +9,7 @@ import {
 } from "@/lib/vertical-dashboard-resolver";
 import {
     BookOpen, HelpCircle, Building2, Clock, Bot, ListChecks,
-    Calendar, UtensilsCrossed, Home, Car,
+    Calendar, UtensilsCrossed, Home, Car, KeyRound,
     Users, BarChart3, Megaphone, Workflow, Inbox, UserPlus,
     Sparkles, ArrowRight, MessageCircle,
     Stethoscope, Dumbbell, CreditCard, PawPrint, Plane,
@@ -33,6 +33,7 @@ const A_BY_ITEM: Readonly<Partial<Record<VerticalDashboardItem, Tool>>> = {
     tours: { key: "tours", icon: Plane, href: "/admin/tours" },
     listings: { key: "listings", icon: Home, href: "/admin/listings" },
     vehicles: { key: "vehicles", icon: Car, href: "/admin/vehicles" },
+    resourceRentals: { key: "resourceRentals", icon: KeyRound, href: "/admin/resource-rentals" },
     menu: { key: "menu", icon: UtensilsCrossed, href: "/admin/menu" },
     foodOrders: { key: "orders", icon: ShoppingBag, href: "/admin/food-orders" },
     memberships: { key: "memberships", icon: CreditCard, href: "/admin/memberships" },

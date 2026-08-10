@@ -21,7 +21,10 @@ export class PetsService {
     // ── Pets CRUD ─────────────────────────────────────────────────
 
     /** Global list across all tutors — used by /admin/pets page. */
-    async listAll(schemaName: string, filters: { species?: string; search?: string } = {}): Promise<any[]> {
+    async listAll(
+        schemaName: string,
+        filters: { species?: string; search?: string; limit?: number; offset?: number } = {},
+    ): Promise<{ items: any[]; total: number; limit: number; offset: number; hasMore: boolean }> {
         const where: string[] = ['p.is_active = true'];
         const params: any[] = [];
         let idx = 1;
@@ -35,7 +38,28 @@ export class PetsService {
             params.push(`%${filters.search}%`);
             idx++;
         }
-        return this.prisma.executeInTenantSchema<any[]>(
+        const requestedLimit = filters.limit ?? 50;
+        const requestedOffset = filters.offset ?? 0;
+        if (!Number.isInteger(requestedLimit) || requestedLimit < 1) {
+            throw new BadRequestException('limit must be a positive integer');
+        }
+        if (!Number.isInteger(requestedOffset) || requestedOffset < 0) {
+            throw new BadRequestException('offset must be a non-negative integer');
+        }
+        const limit = Math.min(requestedLimit, 100);
+        const offset = requestedOffset;
+        const countRows = await this.prisma.executeInTenantSchema<Array<{ total: number }>>(
+            schemaName,
+            `SELECT COUNT(*)::int AS total
+               FROM pets p
+               LEFT JOIN contacts c ON c.id = p.contact_id
+              WHERE ${where.join(' AND ')}`,
+            params,
+        );
+        const total = Number(countRows?.[0]?.total || 0);
+        const limitParam = idx++;
+        const offsetParam = idx++;
+        const items = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT
                 p.*,
@@ -47,10 +71,11 @@ export class PetsService {
              FROM pets p
              LEFT JOIN contacts c ON c.id = p.contact_id
              WHERE ${where.join(' AND ')}
-             ORDER BY p.created_at DESC
-             LIMIT 200`,
-            params,
+             ORDER BY p.created_at DESC, p.id DESC
+             LIMIT $${limitParam} OFFSET $${offsetParam}`,
+            [...params, limit, offset],
         );
+        return { items, total, limit, offset, hasMore: offset + items.length < total };
     }
 
     async listForContact(schemaName: string, contactId: string, includeInactive = false): Promise<any[]> {

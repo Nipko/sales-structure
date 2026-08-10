@@ -58,9 +58,15 @@ describe('unit-specific vertical writers', () => {
             .createCourse('tenant', { name: 'Curso', durationHours: 0 })],
         ['gym plan days', () => new GymsService({ executeInTenantSchema: jest.fn() } as any)
             .createPlan('tenant', { name: 'Plan', durationDays: -30, price: 1 })],
-        ['photo session minutes', () => new PhotographyService({ executeInTenantSchema: jest.fn() } as any)
+        ['photo session minutes', () => new PhotographyService(
+            { executeInTenantSchema: jest.fn() } as any,
+            { emit: jest.fn() } as any,
+        )
             .create('tenant', { sessionType: 'portrait', durationMinutes: 0 })],
-        ['restaurant prep minutes', () => new RestaurantsService({ executeInTenantSchema: jest.fn() } as any)
+        ['restaurant prep minutes', () => new RestaurantsService(
+            { executeInTenantSchema: jest.fn() } as any,
+            { emit: jest.fn() } as any,
+        )
             .createItem('tenant', { name: 'Plato', price: 1, prepTimeMinutes: -1 })],
     ])('rejects non-positive %s before persistence', async (_label, operation) => {
         await expect(operation()).rejects.toBeInstanceOf(BadRequestException);
@@ -68,7 +74,7 @@ describe('unit-specific vertical writers', () => {
 
     it('persists home-service estimate duration and its currency instead of dropping currency', async () => {
         const prisma = { executeInTenantSchema: jest.fn().mockResolvedValue([{ id: 'request-1' }]) };
-        const service = new HomeServicesService(prisma as any);
+        const service = new HomeServicesService(prisma as any, { emit: jest.fn() } as any);
 
         await service.createRequest('tenant', {
             serviceType: 'plomeria',
@@ -82,8 +88,8 @@ describe('unit-specific vertical writers', () => {
             prisma.executeInTenantSchema.mock.calls[0][2],
         ];
         expect(sql).toContain('estimated_duration_minutes, estimated_cost, currency');
-        expect(params[12]).toBe(90);
-        expect(params[14]).toBe('PEN');
+        expect(params[13]).toBe(90);
+        expect(params[15]).toBe('PEN');
     });
 });
 
@@ -135,7 +141,7 @@ describe('retail currency lineage', () => {
         });
 
         const orderParams = transactionQuery.mock.calls[1][1];
-        expect(orderParams[2]).toBe('MXN');
+        expect(orderParams[5]).toBe('MXN');
     });
 
     it('rejects mixed catalog currencies instead of labelling the order COP', async () => {

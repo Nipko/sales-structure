@@ -14,141 +14,190 @@ export class IdentityService {
 
     /**
      * Resolve or create a unified customer profile for a contact.
-     * If a matching profile exists (by phone or email), creates a merge suggestion.
-     * If no match, creates a new profile and links the contact to it.
+     * A single exact phone match is linked directly under a shared advisory lock.
+     * Ambiguous-phone and email-only matches keep separate live profiles and a
+     * pending review suggestion; no match creates and links a new profile.
      */
     async resolveOrCreateProfile(
         tenantId: string,
-        contact: { id: string; phone?: string; email?: string; name?: string; channelType: string; externalId: string },
+        contact: {
+            id: string;
+            phone?: string;
+            email?: string;
+            name?: string;
+            channelType: string;
+            externalId: string;
+            /** False when the caller already proved that a phone is shared. */
+            allowPhoneAutoLink?: boolean;
+        },
     ): Promise<void> {
         const schemaName = await this.getSchema(tenantId);
-
-        // Check if this contact already has an identity link
-        const existing = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT ci.customer_profile_id FROM contact_identities ci WHERE ci.contact_id = $1::uuid LIMIT 1`,
-            [contact.id],
-        );
-        if (existing && existing.length > 0) return; // Already linked
-
-        // Normalize phone for matching
         const rawPhone = contact.phone && /^\+?[\d\s()-]{7,20}$/.test(contact.phone) ? contact.phone : null;
-        const phone = rawPhone;
         const phoneNorm = rawPhone ? normalizePhoneE164(rawPhone) : null;
         const email = contact.email && contact.email.includes('@') ? contact.email.toLowerCase().trim() : null;
-
-        // Search for matching profiles by normalized phone or email (skip if null)
-        let matchedProfile: any = null;
-        let matchType = '';
-
-        if (phoneNorm) {
-            // Match on normalized phone for better dedup ("+57 300 123 4567" = "3001234567")
-            const phoneMatches = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT cp.id, cp.display_name, cp.phone FROM customer_profiles cp
-                 WHERE cp.phone IS NOT NULL AND (cp.phone = $1 OR cp.phone = $2) LIMIT 1`,
-                [phoneNorm, phone],
-            );
-            if (phoneMatches?.length > 0) {
-                matchedProfile = phoneMatches[0];
-                matchType = 'phone_match';
-            }
-        }
-
-        if (!matchedProfile && email) {
-            const emailMatches = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT cp.id, cp.display_name, cp.email FROM customer_profiles cp
-                 WHERE cp.email IS NOT NULL AND LOWER(cp.email) = $1 LIMIT 1`,
-                [email],
-            );
-            if (emailMatches?.length > 0) {
-                matchedProfile = emailMatches[0];
-                matchType = 'email_match';
-            }
-        }
-
-        // Create a new profile for this contact (store normalized phone for dedup)
-        const newProfile = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO customer_profiles (display_name, phone, email)
-             VALUES ($1, $2, $3) RETURNING id`,
-            [contact.name || null, phoneNorm || phone, email],
-        );
-
-        if (!newProfile || newProfile.length === 0) {
-            this.logger.error(`[Identity] Failed to create customer_profile for contact ${contact.id}`);
+        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidPattern.test(contact.id)) {
+            this.logger.warn(`[Identity] Ignoring invalid contact id ${contact.id}`);
             return;
         }
-        const newProfileId = newProfile[0].id;
 
-        // Link contact to the new profile
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `INSERT INTO contact_identities (customer_profile_id, contact_id, channel_type, external_id, is_primary)
-             VALUES ($1::uuid, $2::uuid, $3, $4, true)
-             ON CONFLICT (contact_id) DO NOTHING`,
-            [newProfileId, contact.id, contact.channelType, contact.externalId],
-        );
-
-        // If there's a match, auto-merge (high confidence) or create suggestion (low confidence)
-        if (matchedProfile) {
-            const matchedContact = await this.prisma.executeInTenantSchema<any[]>(
-                schemaName,
-                `SELECT contact_id FROM contact_identities WHERE customer_profile_id = $1::uuid AND is_primary = true LIMIT 1`,
-                [matchedProfile.id],
-            );
-
-            if (matchedContact?.length > 0) {
-                // Check if this suggestion already exists
-                const existingSuggestion = await this.prisma.executeInTenantSchema<any[]>(
-                    schemaName,
-                    `SELECT id FROM merge_suggestions
-                     WHERE ((contact_id_a = $1::uuid AND contact_id_b = $2::uuid)
-                        OR (contact_id_a = $2::uuid AND contact_id_b = $1::uuid))
-                     LIMIT 1`,
-                    [matchedContact[0].contact_id, contact.id],
-                );
-
-                if (!existingSuggestion?.length) {
-                    const confidence = matchType === 'phone_match' ? 0.95 : 0.80;
-
-                    if (confidence >= 0.95) {
-                        // Auto-merge: link new contact to existing profile instead of creating a new one
-                        await this.prisma.executeInTenantSchema(
-                            schemaName,
-                            `UPDATE contact_identities SET customer_profile_id = $1::uuid WHERE contact_id = $2::uuid`,
-                            [matchedProfile.id, contact.id],
-                        );
-                        // Delete the duplicate profile we just created
-                        await this.prisma.executeInTenantSchema(
-                            schemaName,
-                            `DELETE FROM customer_profiles WHERE id = $1::uuid`,
-                            [newProfileId],
-                        );
-                        // Record as auto-merged suggestion
-                        await this.prisma.executeInTenantSchema(
-                            schemaName,
-                            `INSERT INTO merge_suggestions (customer_profile_id_a, customer_profile_id_b, contact_id_a, contact_id_b, match_type, confidence, status, reviewed_by, reviewed_at)
-                             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, 'approved', 'system-auto', NOW())`,
-                            [matchedProfile.id, newProfileId, matchedContact[0].contact_id, contact.id, matchType, confidence],
-                        );
-                        this.logger.log(`[Identity] Auto-merged: ${matchType} (${confidence}) → profile ${matchedProfile.id}`);
-                    } else {
-                        // Low confidence: create pending suggestion for manual review
-                        await this.prisma.executeInTenantSchema(
-                            schemaName,
-                            `INSERT INTO merge_suggestions (customer_profile_id_a, customer_profile_id_b, contact_id_a, contact_id_b, match_type, confidence, status)
-                             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, 'pending')`,
-                            [matchedProfile.id, newProfileId, matchedContact[0].contact_id, contact.id, matchType, confidence],
-                        );
-                        this.logger.log(`[Identity] Merge suggestion: ${matchType} (${confidence}) tenant=${tenantId}`);
-                    }
-                }
+        const outcome = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            // All channel adapters converge here. Locking the normalized identity
+            // keys prevents two first contacts (for example WhatsApp + a public
+            // booking retry) from both observing "no profile" and creating one.
+            const lockKeys = [
+                `identity:contact:${contact.id}`,
+                ...(phoneNorm ? [`identity:phone:${phoneNorm}`] : []),
+                ...(email ? [`identity:email:${email}`] : []),
+            ].sort();
+            for (const key of lockKeys) {
+                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, [key]);
             }
-        }
 
-        this.logger.log(`[Identity] Profile ${newProfileId} created for ${contact.channelType}:${contact.externalId}`);
+            const contactRows = await query<any[]>(
+                `SELECT id FROM contacts WHERE id = $1::uuid LIMIT 1 FOR UPDATE`,
+                [contact.id],
+            );
+            if (!contactRows?.length) return { kind: 'missing' as const, profileId: null };
+
+            // Recheck only after acquiring the locks. A concurrent resolver may
+            // have linked this contact while this request waited.
+            const existing = await query<any[]>(
+                `SELECT customer_profile_id
+                   FROM contact_identities
+                  WHERE contact_id = $1::uuid
+                  LIMIT 1
+                  FOR UPDATE`,
+                [contact.id],
+            );
+            if (existing?.length) {
+                return { kind: 'existing' as const, profileId: existing[0].customer_profile_id };
+            }
+
+            const phoneMatches = phoneNorm
+                ? await query<any[]>(
+                    `SELECT id, display_name, phone, email
+                       FROM customer_profiles
+                      WHERE phone IS NOT NULL AND (phone = $1 OR phone = $2)
+                      ORDER BY created_at ASC, id ASC
+                      LIMIT 2
+                      FOR UPDATE`,
+                    [phoneNorm, rawPhone],
+                )
+                : [];
+
+            // A single exact normalized-phone profile is the high-confidence
+            // path. Link directly: never manufacture a temporary profile, delete
+            // it, and then reference its deleted UUID from merge_suggestions.
+            if (contact.allowPhoneAutoLink !== false && phoneMatches.length === 1) {
+                const profileId = phoneMatches[0].id;
+                await query(
+                    `INSERT INTO contact_identities
+                        (customer_profile_id, contact_id, channel_type, external_id, is_primary)
+                     VALUES ($1::uuid, $2::uuid, $3, $4, false)
+                     ON CONFLICT (contact_id) DO NOTHING`,
+                    [profileId, contact.id, contact.channelType, contact.externalId],
+                );
+                await query(
+                    `UPDATE customer_profiles
+                        SET display_name = COALESCE(NULLIF(display_name, ''), $2),
+                            email = COALESCE(email, $3),
+                            updated_at = NOW()
+                      WHERE id = $1::uuid`,
+                    [profileId, contact.name || null, email],
+                );
+                return { kind: 'phone_link' as const, profileId };
+            }
+
+            const emailMatches = email
+                ? await query<any[]>(
+                    `SELECT id, display_name, phone, email
+                       FROM customer_profiles
+                      WHERE email IS NOT NULL AND LOWER(email) = $1
+                      ORDER BY created_at ASC, id ASC
+                      LIMIT 2
+                      FOR UPDATE`,
+                    [email],
+                )
+                : [];
+            const emailCandidate = emailMatches.length === 1 ? emailMatches[0] : null;
+
+            const newProfiles = await query<any[]>(
+                `INSERT INTO customer_profiles (display_name, phone, email)
+                 VALUES ($1, $2, $3)
+                 RETURNING id`,
+                [contact.name || null, phoneNorm || rawPhone, email],
+            );
+            if (!newProfiles?.length) return { kind: 'missing_profile' as const, profileId: null };
+            const newProfileId = newProfiles[0].id;
+
+            const linked = await query<any[]>(
+                `INSERT INTO contact_identities
+                    (customer_profile_id, contact_id, channel_type, external_id, is_primary)
+                 VALUES ($1::uuid, $2::uuid, $3, $4, true)
+                 ON CONFLICT (contact_id) DO NOTHING
+                 RETURNING customer_profile_id`,
+                [newProfileId, contact.id, contact.channelType, contact.externalId],
+            );
+            if (!linked?.length) {
+                // Defensive cleanup for a legacy caller that did not participate
+                // in the advisory-lock protocol.
+                await query(`DELETE FROM customer_profiles WHERE id = $1::uuid`, [newProfileId]);
+                const winner = await query<any[]>(
+                    `SELECT customer_profile_id FROM contact_identities WHERE contact_id = $1::uuid LIMIT 1`,
+                    [contact.id],
+                );
+                return { kind: 'existing' as const, profileId: winner?.[0]?.customer_profile_id || null };
+            }
+
+            // A shared phone or an email-only match is not silently attached to
+            // an arbitrary person. Keep both valid profiles and create pending
+            // suggestions; every referenced UUID still exists, so no FK 23503.
+            const candidates = contact.allowPhoneAutoLink === false || phoneMatches.length > 1
+                ? phoneMatches.map(profile => ({ profile, matchType: 'ambiguous_phone_match', confidence: 0.50 }))
+                : (emailCandidate ? [{ profile: emailCandidate, matchType: 'email_match', confidence: 0.80 }] : []);
+            for (const candidate of candidates) {
+                const primaryContacts = await query<any[]>(
+                    `SELECT contact_id
+                       FROM contact_identities
+                      WHERE customer_profile_id = $1::uuid AND is_primary = true
+                      ORDER BY linked_at ASC
+                      LIMIT 1`,
+                    [candidate.profile.id],
+                );
+                if (!primaryContacts?.length || primaryContacts[0].contact_id === contact.id) continue;
+
+                const otherContactId = primaryContacts[0].contact_id;
+                const duplicateSuggestions = await query<any[]>(
+                    `SELECT id FROM merge_suggestions
+                      WHERE ((contact_id_a = $1::uuid AND contact_id_b = $2::uuid)
+                         OR (contact_id_a = $2::uuid AND contact_id_b = $1::uuid))
+                      LIMIT 1`,
+                    [otherContactId, contact.id],
+                );
+                if (duplicateSuggestions?.length) continue;
+                await query(
+                    `INSERT INTO merge_suggestions
+                        (customer_profile_id_a, customer_profile_id_b, contact_id_a, contact_id_b,
+                         match_type, confidence, status)
+                     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, 'pending')`,
+                    [candidate.profile.id, newProfileId, otherContactId, contact.id,
+                        candidate.matchType, candidate.confidence],
+                );
+            }
+
+            return { kind: 'created' as const, profileId: newProfileId };
+        });
+
+        if (outcome.kind === 'missing') {
+            this.logger.warn(`[Identity] Contact ${contact.id} disappeared before identity resolution`);
+        } else if (outcome.kind === 'missing_profile') {
+            this.logger.error(`[Identity] Failed to create customer_profile for contact ${contact.id}`);
+        } else if (outcome.kind === 'phone_link') {
+            this.logger.log(`[Identity] Linked ${contact.channelType}:${contact.externalId} to profile ${outcome.profileId}`);
+        } else if (outcome.kind === 'created') {
+            this.logger.log(`[Identity] Profile ${outcome.profileId} created for ${contact.channelType}:${contact.externalId}`);
+        }
     }
 
     /**

@@ -93,6 +93,7 @@ const SAFE_TRANSITIONS: Readonly<Record<string, Readonly<Record<string, string>>
         active: 'completed',
     },
     photo_session: {
+        requested: 'scheduled',
         scheduled: 'in_progress',
         in_progress: 'delivered',
     },
@@ -194,6 +195,18 @@ export function getSafeNextStatus(
     };
     if (!expectedTypeByKind[kind]?.has(normalizedType)) return null;
     return SAFE_TRANSITIONS[normalizedType]?.[normalizedStatus] ?? null;
+}
+
+/** Scheduling transitions must persist their timestamp with the status atomically. */
+export function requiresScheduledAtTransition(
+    kind: VerticalOperationKind,
+    itemType: VerticalOperationItemType | string,
+    nextStatus: string | null | undefined,
+): boolean {
+    if (normalize(nextStatus) !== 'scheduled') return false;
+    const type = normalize(itemType);
+    return (kind === 'service_requests' && type === 'service_request')
+        || (kind === 'photo_sessions' && type === 'photo_session');
 }
 
 /**

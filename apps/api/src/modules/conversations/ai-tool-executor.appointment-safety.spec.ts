@@ -46,19 +46,25 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             if (sql.includes('calendar_sync_outbox') || sql.includes('calendar_sync_state')) {
                 return [];
             }
+            if (sql.includes('SELECT id FROM contacts')) {
+                return [{ id: contactId }];
+            }
+            if (sql.includes('FROM opportunities o')) {
+                return [];
+            }
             const result = await rawQuery(sql, ...params);
             if (sql.includes('INSERT INTO appointments') && result?.[0]) {
                 insertedAppointment = {
                     ...result[0],
-                    service_id: params[1],
-                    service_name: params[2],
-                    assigned_to: params[3],
-                    start_at: params[4],
-                    end_at: params[5],
-                    customer_email: params[8],
-                    location: params[9],
-                    notes: params[10],
-                    metadata: JSON.parse(String(params[11] || '{}')),
+                    service_id: params[3],
+                    service_name: params[4],
+                    assigned_to: params[5],
+                    start_at: params[6],
+                    end_at: params[7],
+                    customer_email: params[10],
+                    location: params[11],
+                    notes: params[12],
+                    metadata: JSON.parse(String(params[13] || '{}')),
                 };
             }
             return result;
@@ -110,6 +116,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
                 complete: jest.fn().mockResolvedValue(undefined),
                 fail: jest.fn().mockResolvedValue(undefined),
             } as any,
+            {} as any,
             {} as any,
         );
         return {
@@ -445,12 +452,12 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         ));
         expect(insertCall).toBeDefined();
         const insertParams = insertCall![1] as any[];
-        expect(insertParams[9]).toBe('Calle 10 # 20-30');
-        expect(insertParams[10]).toBe(
+        expect(insertParams[11]).toBe('Calle 10 # 20-30');
+        expect(insertParams[12]).toBe(
             'Customer: Cliente\nEmail: cliente@example.com\nPhone: +573001112233\n\n'
             + 'Service: Consulta (N/A)\nDuration: 30 min\n\nNotes: Traer documentos',
         );
-        expect(JSON.parse(insertParams[11])).toEqual({
+        expect(JSON.parse(insertParams[13])).toEqual({
             isOnline: false,
             meetingUrl: 'https://meet.example/static-room',
         });
@@ -469,7 +476,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             startAt: '2026-08-12T11:00:00',
             endAt: '2026-08-12T11:30:00',
             location: 'Calle 10 # 20-30',
-            description: insertParams[10],
+            description: insertParams[12],
             attendeeEmail: 'cliente@example.com',
             isOnline: false,
         });

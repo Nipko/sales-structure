@@ -1,18 +1,14 @@
-const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 /**
  * The matrix is intentionally runnable before the workspace Turbo build. The
  * compiled applications, however, load @parallext/shared through its runtime
- * `dist` entry. Ensure that entry exists without relying on a shell-specific
- * `npx` invocation or a CI-only ordering constraint.
+ * `dist` entry. Always rebuild it: merely checking that dist/index.js exists
+ * can certify an old manifest after the TypeScript source changed.
  */
 function ensureSharedRuntimeEntry() {
     const sharedRoot = path.resolve(__dirname, '../../../packages/shared');
-    const sharedEntry = path.join(sharedRoot, 'dist', 'index.js');
-    if (fs.existsSync(sharedEntry)) return;
-
     const compiler = require.resolve('typescript/lib/tsc.js');
     const result = spawnSync(process.execPath, [compiler, '--project', path.join(sharedRoot, 'tsconfig.json')], {
         cwd: path.resolve(__dirname, '../../..'),

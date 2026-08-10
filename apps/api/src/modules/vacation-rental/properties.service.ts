@@ -8,6 +8,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import {
+    assertOptionalContactId,
+    requireTenantContact,
+} from '../../common/utils/tenant-contact.util';
+import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evidence-opportunity.util';
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -376,7 +381,7 @@ export class PropertiesService {
         if (!data || typeof data !== 'object') {
             throw new BadRequestException('Booking payload is required');
         }
-        if (data.contactId != null) this.assertUuid(data.contactId, 'contactId');
+        const contactId = assertOptionalContactId(data.contactId);
         if (data.conversationId != null) this.assertUuid(data.conversationId, 'conversationId');
         const stay = this.validateStayRange(data.checkIn, data.checkOut);
         const guestsCount = data.guestsCount ?? 1;
@@ -388,6 +393,12 @@ export class PropertiesService {
         // transaction. Concurrent attempts for the same property serialize on
         // the xact lock; the loser observes the winner before it can insert.
         const created = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            const canonicalContactId = await requireTenantContact(query, contactId);
+            const opportunityId = await resolveNativeEvidenceOpportunity(query, {
+                contactId: canonicalContactId,
+                conversationId: data.conversationId,
+                trustedOpportunityId: data.opportunityId,
+            });
             await query(
                 `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
                 [`${schemaName}:${propertyId}`],
@@ -436,13 +447,13 @@ export class PropertiesService {
             const totalPrice = nightPrice * stay.nights + cleaningFee;
             const rows = await query<any[]>(
                 `INSERT INTO property_bookings
-                 (property_id, contact_id, conversation_id, guest_name, guest_email, guest_phone,
+                 (property_id, contact_id, opportunity_id, conversation_id, guest_name, guest_email, guest_phone,
                   guests_count, check_in, check_out, nights, night_price, cleaning_fee, total_price, currency, status)
-                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::date, $9::date, $10, $11, $12, $13, $14, 'confirmed')
+                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, 'confirmed')
                  RETURNING *`,
                 [
                     propertyId,
-                    data.contactId || null, data.conversationId || null,
+                    canonicalContactId, opportunityId, data.conversationId || null,
                     data.guestName, data.guestEmail || null, data.guestPhone || null,
                     guestsCount, stay.checkIn, stay.checkOut,
                     stay.nights, nightPrice, cleaningFee, totalPrice, property.currency,

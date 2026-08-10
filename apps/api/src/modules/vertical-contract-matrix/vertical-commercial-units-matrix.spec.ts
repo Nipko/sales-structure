@@ -33,7 +33,7 @@ describe('vertical commercial-units contract/static matrix', () => {
         for (const configuration of matrix.configurations) {
             expect(configuration.durationUnit).toBe('minutes');
             expect(configuration.currencySource).toBe('vertical_definition');
-            if (!configuration.agendaAllowed) {
+            if (!configuration.serviceCatalogAllowed) {
                 expect(configuration.seededServices).toEqual([]);
             }
             for (const service of configuration.configuredServices) {
@@ -49,14 +49,27 @@ describe('vertical commercial-units contract/static matrix', () => {
         const petHotel = matrix.configurations.find(
             (row) => row.industry === 'pet_services' && row.subtype === 'hotel',
         );
-        expect(tourismHotel).toMatchObject({ agendaAllowed: false, seededServices: [] });
+        expect(tourismHotel).toMatchObject({
+            agendaAllowed: false,
+            serviceCatalogAllowed: false,
+            seededServices: [],
+        });
+        expect(petHotel).toMatchObject({
+            agendaAllowed: false,
+            serviceCatalogAllowed: true,
+        });
         expect(petHotel?.seededServices.some(
             (service) => service.durationType === 'open' && service.durationMinutes === 1_440,
         )).toBe(true);
     });
 
     it('passes durationMinutes, currency and durationType unchanged into services persistence', async () => {
-        const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) };
+        const prisma = {
+            $queryRawUnsafe: jest.fn().mockResolvedValue([]),
+            transactionInTenantSchema: jest.fn(async (_schema: string, callback: any) => callback(
+                (sql: string, params: any[] = []) => prisma.$queryRawUnsafe(sql, ...params),
+            )),
+        };
         const verticals = new VerticalsService(prisma as any, {} as any, {} as any);
         jest.spyOn((verticals as any).logger, 'debug').mockImplementation(() => undefined);
 
@@ -67,16 +80,19 @@ describe('vertical commercial-units contract/static matrix', () => {
                 : [null];
             for (const subtype of subtypes) {
                 const contract = resolveVerticalAgendaSeedContract(definition, subtype);
-                if (!contract.agendaAllowed) continue;
+                if (!contract.serviceCatalogAllowed) continue;
                 prisma.$queryRawUnsafe.mockClear();
                 await (verticals as any).seedServices(
                     'tenant_contract',
                     { ...definition, services: contract.services },
                     'es',
                 );
-                expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(contract.services.length);
+                const insertCalls = prisma.$queryRawUnsafe.mock.calls.filter(
+                    ([sql]) => String(sql).includes('INSERT INTO services'),
+                );
+                expect(insertCalls).toHaveLength(contract.services.length);
                 contract.services.forEach((service, index) => {
-                    const args = prisma.$queryRawUnsafe.mock.calls[index];
+                    const args = insertCalls[index];
                     expect(args[3]).toBe(service.durationMinutes);
                     expect(args[5]).toBe(service.currency);
                     expect(args[8]).toBe(service.durationType || 'fixed');

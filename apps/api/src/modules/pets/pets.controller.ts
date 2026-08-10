@@ -28,9 +28,16 @@ export class PetsController {
         @Param('tenantId') tenantId: string,
         @Query('species') species?: string,
         @Query('search') search?: string,
+        @Query('limit') limit?: string,
+        @Query('offset') offset?: string,
     ) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.service.listAll(schemaName, { species, search });
+        const data = await this.service.listAll(schemaName, {
+            species,
+            search,
+            limit: limit === undefined ? undefined : Number(limit),
+            offset: offset === undefined ? undefined : Number(offset),
+        });
         return { success: true, data };
     }
 

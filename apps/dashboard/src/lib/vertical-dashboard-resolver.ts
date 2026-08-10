@@ -1,4 +1,5 @@
 import {
+  VERTICAL_CAPABILITY_MANIFEST_VERSION,
   VERTICAL_CAPABILITY_MANIFEST,
   resolveVerticalCapabilityManifest,
 } from "@parallext/shared";
@@ -14,6 +15,7 @@ export const VERTICAL_DASHBOARD_ITEMS = [
   "tours",
   "listings",
   "vehicles",
+  "resourceRentals",
   "menu",
   "foodOrders",
   "memberships",
@@ -57,6 +59,7 @@ const CAPABILITY_ITEMS: Readonly<Partial<Record<VerticalCapability, readonly Ver
   real_estate_listings: ["listings"],
   restaurant_ordering: ["menu", "foodOrders"],
   vehicle_inventory: ["vehicles"],
+  vehicle_rentals: ["resourceRentals"],
   tour_booking: ["tours"],
   nightly_booking: ["properties"],
   course_enrollment: ["courses"],
@@ -65,6 +68,7 @@ const CAPABILITY_ITEMS: Readonly<Partial<Record<VerticalCapability, readonly Ver
   insurance_operations: ["insurance"],
   service_requests: ["serviceRequests"],
   pet_services: ["pets"],
+  pet_boarding: ["resourceRentals"],
   photo_sessions: ["photoSessions"],
 };
 
@@ -74,6 +78,7 @@ const ROUTE_ITEMS: Readonly<Partial<Record<VerticalRoutePath, VerticalDashboardI
   "/admin/tours": "tours",
   "/admin/listings": "listings",
   "/admin/vehicles": "vehicles",
+  "/admin/resource-rentals": "resourceRentals",
   "/admin/menu": "menu",
   "/admin/food-orders": "foodOrders",
   "/admin/memberships": "memberships",
@@ -93,6 +98,7 @@ const DISCOVERY_ORDER: readonly VerticalDashboardItem[] = [
   "properties",
   "tours",
   "listings",
+  "resourceRentals",
   "vehicles",
   "menu",
   "foodOrders",
@@ -222,7 +228,13 @@ export function resolveVerticalDashboard(
       )),
     )];
     const items = itemsFromCapabilities(capabilities);
-    const allowedRoutes = routeItems(manifest);
+    // Route filtering belongs to the same versioned publication as the
+    // capability list. Applying v2 routes to a stored v1 capability contract
+    // can silently hide the tenant's last known-good module while migration is
+    // pending (for example, legacy tourism appointments).
+    const allowedRoutes = config.manifestVersion === VERTICAL_CAPABILITY_MANIFEST_VERSION
+      ? routeItems(manifest)
+      : null;
     if (allowedRoutes) {
       for (const item of [...items]) {
         if (!allowedRoutes.has(item)) items.delete(item);
@@ -231,16 +243,10 @@ export function resolveVerticalDashboard(
     return finishResolution("effective_capabilities", capabilities, items);
   }
 
-  if (manifest) {
-    const capabilities = [...manifest.capabilities];
-    const items = itemsFromCapabilities(capabilities);
-    const allowedRoutes = routeItems(manifest);
-    if (allowedRoutes) {
-      for (const item of [...items]) {
-        if (!allowedRoutes.has(item)) items.delete(item);
-      }
-    }
-    return finishResolution("resolved_manifest_fallback", capabilities, items);
+  if (config.manifestVersion === VERTICAL_CAPABILITY_MANIFEST_VERSION) {
+    // A current-version config without its capability array is incomplete.
+    // Never reconstruct and publish the contract client-side.
+    return finishResolution("effective_capabilities", [], new Set());
   }
 
   return finishResolution(

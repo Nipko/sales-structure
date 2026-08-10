@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
+import { PaginatedContactSelect } from "@/components/ui/paginated-contact-select";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import {
@@ -16,7 +17,6 @@ import {
 interface OrderItem { id: string; productId: string; productName: string; quantity: number; unitPrice: number; totalPrice: number; }
 interface Order { id: string; contactId: string; contactName: string; status: "pending" | "confirmed" | "paid" | "cancelled"; totalAmount: number; currency: string; paymentMethod: string; notes: string; createdAt: string; updatedAt: string; items: OrderItem[]; }
 interface OrdersOverview { totalRevenue: number; pendingRevenue: number; orderCount: number; pendingCount: number; orders: Order[]; }
-interface Contact { id: string; name: string; phone: string; }
 interface Product { id: string; name: string; price: number; stock: number; unit: string; }
 
 const formatCurrency = (n: number) => new Intl.NumberFormat(undefined, { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
@@ -41,7 +41,6 @@ export default function OrdersPage() {
     const [statusFilter, setStatusFilter] = useState<string | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [contacts, setContacts] = useState<Contact[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
 
     useEffect(() => {
@@ -51,8 +50,7 @@ export default function OrdersPage() {
             const result = await api.getOrdersOverview(activeTenantId);
             if (result.success && result.data) { setData(result.data); setIsLive(true); }
             else { setData({ totalRevenue: 0, pendingRevenue: 0, orderCount: 0, pendingCount: 0, orders: [] }); }
-            Promise.all([api.getOrderContacts(activeTenantId), api.getInventoryProducts(activeTenantId)]).then(([c, p]) => {
-                if (c?.success) setContacts(c.data || []);
+            api.getInventoryProducts(activeTenantId).then((p) => {
                 if (p?.success) setProducts(p.data || []);
             }).catch(console.error);
             setLoading(false);
@@ -206,12 +204,12 @@ export default function OrdersPage() {
                 </table>
             </div>
 
-            {showCreateModal && <CreateOrderModal onClose={() => setShowCreateModal(false)} tenantId={activeTenantId || ""} products={products} contacts={contacts} onCreated={() => { setShowCreateModal(false); window.location.reload(); }} />}
+            {showCreateModal && <CreateOrderModal onClose={() => setShowCreateModal(false)} tenantId={activeTenantId || ""} products={products} onCreated={() => { setShowCreateModal(false); window.location.reload(); }} />}
         </div>
     );
 }
 
-function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: { onClose: () => void; tenantId: string; products: Product[]; contacts: Contact[]; onCreated: () => void }) {
+function CreateOrderModal({ onClose, tenantId, products, onCreated }: { onClose: () => void; tenantId: string; products: Product[]; onCreated: () => void }) {
     const tc = useTranslations("common");
     const t = useTranslations("orders");
     const [status, setStatus] = useState("pending");
@@ -220,6 +218,7 @@ function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: 
     const [contactId, setContactId] = useState("");
     const [selectedItems, setSelectedItems] = useState<{ productId: string; productName: string; quantity: number; unitPrice: number; maxStock: number }[]>([]);
     const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
 
     const handleAddItem = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const id = e.target.value; if (!id) return;
@@ -231,9 +230,20 @@ function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: 
     const removeItem = (id: string) => setSelectedItems(items => items.filter(i => i.productId !== id));
 
     const handleSubmit = async () => {
+        if (!contactId) {
+            setError(t("createModal.contactRequired"));
+            return;
+        }
         if (selectedItems.length === 0) return;
         setSaving(true);
-        await api.createOrder(tenantId, { contactId: contactId || undefined, status, paymentMethod, notes, items: selectedItems.map(i => ({ productId: i.productId, productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice })) });
+        setError("");
+        const res = await api.createOrder(tenantId, { contactId, status, paymentMethod, notes, items: selectedItems.map(i => ({ productId: i.productId, productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice })) })
+            .catch(() => null);
+        if (!res?.success) {
+            setSaving(false);
+            setError(t("createModal.createError"));
+            return;
+        }
         onCreated();
     };
 
@@ -250,10 +260,14 @@ function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: 
                 <div className="grid grid-cols-2 gap-4 mb-5">
                     <div>
                         <label className="text-[13px] font-semibold block mb-1">{t("createModal.client")}</label>
-                        <select value={contactId} onChange={e => setContactId(e.target.value)} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
-                            <option value="">{t("createModal.endConsumer")}</option>
-                            {contacts.map(c => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` — ${c.phone}` : ""}</option>)}
-                        </select>
+                        <PaginatedContactSelect
+                            tenantId={tenantId}
+                            value={contactId}
+                            onChange={setContactId}
+                            required
+                            placeholder={t("createModal.selectContact")}
+                            className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none"
+                        />
                     </div>
                     <div>
                         <label className="text-[13px] font-semibold block mb-1">{t("createModal.status")}</label>
@@ -273,6 +287,7 @@ function CreateOrderModal({ onClose, tenantId, products, contacts, onCreated }: 
                         </select>
                     </div>
                 </div>
+                {error && <p className="-mt-3 mb-4 text-xs text-destructive">{error}</p>}
                 <div className="mb-5">
                     <label className="text-[13px] font-semibold block mb-1">{t("createModal.addProducts")}</label>
                     <select onChange={handleAddItem} value="" className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">

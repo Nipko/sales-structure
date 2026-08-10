@@ -38,7 +38,7 @@ describe('VerticalCapabilityManifest v1 contract', () => {
     });
 
     it('covers the same 18 industries, 75 subtypes and 76 catalogued configurations', () => {
-        expect(VERTICAL_CAPABILITY_MANIFEST_VERSION).toBe(1);
+        expect(VERTICAL_CAPABILITY_MANIFEST_VERSION).toBe(2);
         expect(VERTICAL_MANIFEST_INDUSTRIES).toHaveLength(18);
         expect([...VERTICAL_MANIFEST_INDUSTRIES]).toEqual(Object.keys(VERTICAL_REGISTRY));
 
@@ -119,17 +119,60 @@ describe('VerticalCapabilityManifest v1 contract', () => {
         expect(hotel.toolGroups).not.toContain('appointments');
         expect(hotel.primaryObject).toBe('property_booking');
 
+        for (const subtype of ['agencia_viajes', 'tours']) {
+            const tours = resolveVerticalCapabilityManifest('turismo', subtype);
+            expect(tours.capabilities).toContain('tour_booking');
+            expect(tours.capabilities).not.toContain('appointment_booking');
+            expect(tours.toolGroups).toContain('tours');
+            expect(tours.toolGroups).not.toContain('appointments');
+            expect(tours.routes).not.toContain('/admin/appointments');
+            expect(tours.readiness.requirements).not.toContain('appointment_services');
+        }
+
+        const homeServices = resolveVerticalCapabilityManifest('servicios_hogar', 'plomeria');
+        expect(homeServices.capabilities).toContain('service_requests');
+        expect(homeServices.capabilities).not.toContain('appointment_booking');
+        expect(homeServices.toolGroups).toEqual(expect.arrayContaining(['homeServices']));
+        expect(homeServices.toolGroups).not.toContain('appointments');
+        expect(homeServices.routes).not.toContain('/admin/appointments');
+        expect(homeServices.readiness.requirements).not.toContain('service_catalog');
+
         const petHotel = resolveVerticalCapabilityManifest('pet_services', 'hotel');
-        expect(petHotel.capabilities).toContain('appointment_booking');
+        expect(petHotel.capabilities).toContain('pet_boarding');
+        expect(petHotel.capabilities).not.toContain('appointment_booking');
         expect(petHotel.toolGroups).toContain('petServices');
+
+        const vehicleRental = resolveVerticalCapabilityManifest('automotriz', 'alquiler');
+        expect(vehicleRental.capabilities).toContain('vehicle_rentals');
+        expect(vehicleRental.capabilities).not.toContain('appointment_booking');
+
+        for (const [industry, subtype] of [
+            ['automotriz', 'repuestos'],
+            ['technology', 'hardware'],
+        ] as const) {
+            const orderProfile = resolveVerticalCapabilityManifest(industry, subtype);
+            expect(orderProfile.capabilities).toContain('catalog_search');
+            expect(orderProfile.capabilities).not.toContain('appointment_booking');
+            expect(orderProfile.toolGroups).toContain('catalog');
+            expect(orderProfile.toolGroups).not.toContain('appointments');
+        }
+
+        const photography = resolveVerticalCapabilityManifest('fotografia', 'estudio');
+        expect(photography.capabilities).toContain('photo_sessions');
+        expect(photography.capabilities).not.toContain('appointment_booking');
+        expect(photography.toolGroups).toEqual(expect.arrayContaining(['photography']));
+        expect(photography.toolGroups).not.toContain('appointments');
 
         const pharmacy = resolveVerticalCapabilityManifest('salud', 'farmacia');
         expect(pharmacy.capabilities).toEqual(expect.arrayContaining(['catalog_search']));
         expect(pharmacy.capabilities).not.toContain('appointment_booking');
 
-        const darkKitchen = resolveVerticalCapabilityManifest('restaurantes', 'dark_kitchen');
-        expect(darkKitchen.capabilities).toContain('restaurant_ordering');
-        expect(darkKitchen.capabilities).not.toContain('appointment_booking');
+        for (const subtype of ['comida_rapida', 'dark_kitchen']) {
+            const restaurant = resolveVerticalCapabilityManifest('restaurantes', subtype);
+            expect(restaurant.capabilities).toContain('restaurant_ordering');
+            expect(restaurant.capabilities).not.toContain('appointment_booking');
+            expect(restaurant.toolGroups).not.toContain('appointments');
+        }
 
         // Compatibility profiles stay resolvable without becoming part of the
         // advertised 75/76 catalog contract.

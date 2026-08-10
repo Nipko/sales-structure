@@ -6,6 +6,7 @@ import { RedisService } from '../redis/redis.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { CronLockService } from '../redis/cron-lock.service';
 import { resolveTerminalOutcome } from './pipeline-outcome.util';
+import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
 
 // ============================================
 // Types
@@ -64,6 +65,18 @@ export type TenantStageMapping = {
 
 export type UnknownStagePolicy = 'error' | 'first_non_terminal';
 type TenantTxQuery = <R = any[]>(sql: string, params?: any[]) => Promise<R>;
+
+type TransitionRuleContext = {
+    email: string;
+    phone: string;
+    name: string;
+    score: number;
+    assignedAgentId: string | null;
+    contactId: string;
+    leadId: string | null;
+    opportunityId?: string | null;
+    opportunityCreatedAt?: Date | string | null;
+};
 
 export interface OpportunityStagePatch {
     estimated_value?: number;
@@ -401,16 +414,29 @@ export class PipelineService {
                 throw new BadRequestException(`Opportunity not found: ${options.opportunityId}`);
             }
 
+            const activeScoped = scoped.filter(
+                (opportunity) => !opportunity.won_at && !opportunity.lost_at,
+            );
+            const candidates = options?.onlyActiveOpportunities === false
+                ? scoped
+                : activeScoped;
+            const ruleOpportunityId = options?.opportunityId
+                ? scoped[0].id
+                : activeScoped.length === 1
+                    ? activeScoped[0].id
+                    : null;
+
             if (options?.enforceTransitionRules && (stage.transition_rules?.length || 0) > 0) {
                 await this.evaluateRulesForLeadTx(
                     query,
                     tenantId,
                     leadId,
                     stage.transition_rules || [],
+                    ruleOpportunityId,
                 );
             }
 
-            for (const opportunity of scoped) {
+            for (const opportunity of candidates) {
                 const current = resolveTenantNativeStage(stageCatalog, opportunity.stage);
                 if (current.is_terminal) resolveTerminalOutcome(current);
                 if (current.is_terminal && current.slug !== stage.slug) {
@@ -418,9 +444,6 @@ export class PipelineService {
                 }
             }
 
-            const candidates = options?.onlyActiveOpportunities === false
-                ? scoped
-                : scoped.filter((opportunity) => !opportunity.won_at && !opportunity.lost_at);
             let updatedOpportunities = 0;
             for (const opportunity of candidates) {
                 const current = resolveTenantNativeStage(stageCatalog, opportunity.stage);
@@ -521,6 +544,10 @@ export class PipelineService {
 
         await this.prisma.executeInTenantSchema(schemaName,
             `ALTER TABLE pipeline_stages ADD COLUMN IF NOT EXISTS pipeline_id UUID`);
+        await this.prisma.executeInTenantSchema(schemaName,
+            `ALTER TABLE pipeline_stages ADD COLUMN IF NOT EXISTS terminal_outcome VARCHAR(10)`);
+        await this.prisma.executeInTenantSchema(schemaName,
+            `ALTER TABLE pipeline_stages ADD COLUMN IF NOT EXISTS transition_rules JSONB DEFAULT '[]'::jsonb`);
 
         await this.prisma.executeInTenantSchema(schemaName,
             `ALTER TABLE deals ADD COLUMN IF NOT EXISTS pipeline_id UUID`);
@@ -554,26 +581,17 @@ export class PipelineService {
 
     private async migrateToMultiPipeline(schemaName: string, tenantId: string): Promise<string> {
         return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
-            // Serializes first-use migration for the tenant across API replicas.
-            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [tenantId]);
-            const existing = await query<any[]>(
-                `SELECT id FROM pipelines WHERE tenant_id = $1::uuid
-                  ORDER BY is_default DESC, created_at ASC LIMIT 1`,
-                [tenantId],
-            );
-            let defaultId = existing?.[0]?.id;
-            if (!defaultId) {
-                const created = await query<any[]>(
-                    `INSERT INTO pipelines (tenant_id, name, is_default, is_active)
-                     VALUES ($1::uuid, 'Pipeline Principal', true, true) RETURNING id`,
-                    [tenantId],
+            const { pipelineId, repairedDuplicateStages } = await ensurePrimaryPipeline(query, tenantId);
+            if (repairedDuplicateStages > 0) {
+                this.logger.warn(
+                    `Repaired ${repairedDuplicateStages} duplicate legacy stage(s) while opening pipeline ${pipelineId}`,
                 );
-                defaultId = created?.[0]?.id;
             }
-            if (!defaultId) throw new Error('Default pipeline could not be created');
-            await query(`UPDATE pipeline_stages SET pipeline_id = $1::uuid WHERE pipeline_id IS NULL`, [defaultId]);
-            await query(`UPDATE deals SET pipeline_id = $1::uuid WHERE pipeline_id IS NULL`, [defaultId]);
-            return defaultId;
+            await query(
+                `CREATE UNIQUE INDEX IF NOT EXISTS uidx_pipeline_stages_pipeline_slug
+                 ON pipeline_stages (pipeline_id, slug) NULLS NOT DISTINCT`,
+            );
+            return pipelineId;
         });
     }
 
@@ -585,6 +603,31 @@ export class PipelineService {
         return { schema, defaultPipelineId };
     }
 
+    /**
+     * Resolve an explicit pipeline only when it belongs to this tenant; legacy
+     * callers that omit pipelineId are scoped to the canonical primary
+     * pipeline.  No stage/deal writer is allowed to fall back to NULL.
+     */
+    private async resolvePipelineScope(
+        tenantId: string,
+        requestedPipelineId?: string,
+    ): Promise<{ schema: string; pipelineId: string }> {
+        const { schema, defaultPipelineId } = await this.ensureMultiPipeline(tenantId);
+        if (!requestedPipelineId) return { schema, pipelineId: defaultPipelineId };
+        if (!PipelineService.UUID_RE.test(requestedPipelineId)) {
+            throw new BadRequestException('Invalid pipeline ID');
+        }
+        const rows = await this.prisma.executeInTenantSchema<Array<{ id: string }>>(
+            schema,
+            `SELECT id FROM pipelines
+              WHERE id = $1::uuid AND tenant_id = $2::uuid AND is_active = true
+              LIMIT 1`,
+            [requestedPipelineId, tenantId],
+        );
+        if (!rows?.[0]) throw new BadRequestException('Pipeline not found');
+        return { schema, pipelineId: rows[0].id };
+    }
+
     async listPipelines(tenantId: string) {
         const { schema } = await this.ensureMultiPipeline(tenantId);
         return this.prisma.executeInTenantSchema<any[]>(schema,
@@ -594,19 +637,30 @@ export class PipelineService {
 
     async createPipeline(tenantId: string, data: { name: string; description?: string }) {
         const { schema } = await this.ensureMultiPipeline(tenantId);
+        return this.prisma.transactionInTenantSchema(schema, async (query) => {
+            // The plan limit and the insert are one serialized decision. Two
+            // simultaneous requests can no longer both observe the same count
+            // and exceed maxPipelines.
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+                `pipeline-create:${tenantId}`,
+            ]);
+            const countRows = await query<Array<{ c: number }>>(
+                `SELECT COUNT(*)::int AS c
+                   FROM pipelines
+                  WHERE tenant_id = $1::uuid AND is_active = true`,
+                [tenantId],
+            );
+            const count = Number(countRows?.[0]?.c || 0);
+            await this.throttle.enforcePlanLimit(tenantId, 'maxPipelines', count, 'Pipelines');
 
-        const countRows = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT COUNT(*)::int AS c FROM pipelines WHERE tenant_id = $1::uuid AND is_active = true`,
-            [tenantId]);
-        const count = countRows?.[0]?.c || 0;
-        await this.throttle.enforcePlanLimit(tenantId, 'maxPipelines', count, 'Pipelines');
-
-        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `INSERT INTO pipelines (tenant_id, name, description, is_default, is_active)
-             VALUES ($1::uuid, $2, $3, false, true) RETURNING *`,
-            [tenantId, data.name, data.description || null]);
-
-        return rows?.[0];
+            const rows = await query<any[]>(
+                `INSERT INTO pipelines (tenant_id, name, description, is_default, is_active)
+                 VALUES ($1::uuid, $2, $3, false, true)
+                 RETURNING *`,
+                [tenantId, data.name, data.description || null],
+            );
+            return rows?.[0];
+        });
     }
 
     async updatePipeline(tenantId: string, pipelineId: string, data: { name?: string; description?: string }) {
@@ -628,24 +682,58 @@ export class PipelineService {
 
     async deletePipeline(tenantId: string, pipelineId: string) {
         const { schema, defaultPipelineId } = await this.ensureMultiPipeline(tenantId);
-
-        if (pipelineId === defaultPipelineId) {
-            throw new ForbiddenException({ error: 'cannot_delete_default', message: 'No se puede eliminar el pipeline principal.' });
+        if (!PipelineService.UUID_RE.test(pipelineId)) {
+            throw new BadRequestException('Invalid pipeline ID');
         }
 
-        await this.prisma.executeInTenantSchema(schema,
-            `UPDATE pipeline_stages SET pipeline_id = $1::uuid WHERE pipeline_id = $2::uuid`,
-            [defaultPipelineId, pipelineId]);
+        return this.prisma.transactionInTenantSchema(schema, async (query) => {
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+                `pipeline-delete:${tenantId}`,
+            ]);
+            const rows = await query<Array<{ id: string; is_default: boolean }>>(
+                `SELECT id, is_default
+                   FROM pipelines
+                  WHERE id = $1::uuid AND tenant_id = $2::uuid AND is_active = true
+                  FOR UPDATE`,
+                [pipelineId, tenantId],
+            );
+            const pipeline = rows?.[0];
+            if (!pipeline) throw new BadRequestException('Pipeline not found');
+            if (pipeline.is_default || pipelineId === defaultPipelineId) {
+                throw new ForbiddenException({
+                    error: 'cannot_delete_default',
+                    message: 'No se puede eliminar el pipeline principal.',
+                });
+            }
 
-        await this.prisma.executeInTenantSchema(schema,
-            `UPDATE deals SET pipeline_id = $1::uuid WHERE pipeline_id = $2::uuid`,
-            [defaultPipelineId, pipelineId]);
+            const [usage] = await query<Array<{ stages: number; deals: number }>>(
+                `SELECT
+                    (SELECT COUNT(*)::int FROM pipeline_stages WHERE pipeline_id = $1::uuid) AS stages,
+                    (SELECT COUNT(*)::int FROM deals WHERE pipeline_id = $1::uuid) AS deals`,
+                [pipelineId],
+            );
+            const stages = Number(usage?.stages || 0);
+            const deals = Number(usage?.deals || 0);
+            if (stages > 0 || deals > 0) {
+                // Reassigning blindly can collide on stage slugs and can leave
+                // a partially-moved funnel. The caller must first move or
+                // explicitly remove its contents.
+                throw new ConflictException({
+                    error: 'pipeline_not_empty',
+                    message: 'El pipeline contiene etapas o negocios y no puede eliminarse automáticamente.',
+                    stages,
+                    deals,
+                });
+            }
 
-        await this.prisma.executeInTenantSchema(schema,
-            `UPDATE pipelines SET is_active = false, updated_at = NOW() WHERE id = $1::uuid AND tenant_id = $2::uuid`,
-            [pipelineId, tenantId]);
-
-        return { success: true };
+            await query(
+                `UPDATE pipelines
+                    SET is_active = false, updated_at = NOW()
+                  WHERE id = $1::uuid AND tenant_id = $2::uuid`,
+                [pipelineId, tenantId],
+            );
+            return { success: true };
+        });
     }
 
     // ============================================
@@ -654,27 +742,19 @@ export class PipelineService {
 
     /** Get all pipeline stages with order, SLA config, deal counts */
     async getStages(tenantId: string, pipelineId?: string): Promise<PipelineStage[]> {
-        const schema = await this.getTenantSchema(tenantId);
-        if (!schema) return [];
-
-        let pipelineFilter = '';
-        const params: any[] = [];
-        if (pipelineId) {
-            pipelineFilter = 'WHERE ps.pipeline_id = $1::uuid';
-            params.push(pipelineId);
-        }
+        const scope = await this.resolvePipelineScope(tenantId, pipelineId);
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
+            scope.schema,
             `SELECT ps.*,
                     COUNT(d.id) as deal_count,
                     COALESCE(SUM(d.value), 0) as total_value
              FROM pipeline_stages ps
              LEFT JOIN deals d ON d.stage_id = ps.id AND d.status = 'open'
-             ${pipelineFilter}
+             WHERE ps.pipeline_id = $1::uuid
              GROUP BY ps.id
              ORDER BY ps.position ASC`,
-            params,
+            [scope.pipelineId],
         );
 
         return (rows || []).map((r: any) => ({
@@ -698,28 +778,7 @@ export class PipelineService {
         slug?: string; slaHours?: number; isTerminal?: boolean;
         terminalOutcome?: 'won' | 'lost'; pipelineId?: string;
     }): Promise<void> {
-        const schema = await this.getTenantSchema(tenantId);
-        if (!schema) return;
-
-        let pipelineCondition = '';
-        const posParams: any[] = [];
-        if (data.pipelineId) {
-            pipelineCondition = 'WHERE pipeline_id = $1::uuid';
-            posParams.push(data.pipelineId);
-        }
-
-        // Plan gate: cap stages per pipeline (tenant-wide when no pipelineId).
-        // -1 (unlimited) resolves to Infinity inside enforcePlanLimit.
-        const stageCount = await this.prisma.executeInTenantSchema<any[]>(
-            schema, `SELECT COUNT(*)::int AS c FROM pipeline_stages ${pipelineCondition}`,
-            posParams,
-        );
-        await this.throttle.enforcePlanLimit(tenantId, 'pipelineStages', stageCount?.[0]?.c || 0, 'etapas de pipeline');
-
-        const maxPos = await this.prisma.executeInTenantSchema<any[]>(
-            schema, `SELECT COALESCE(MAX(position), 0) + 1 as next_pos FROM pipeline_stages ${pipelineCondition}`,
-            posParams,
-        );
+        const scope = await this.resolvePipelineScope(tenantId, data.pipelineId);
 
         try {
             const isTerminal = data.isTerminal ?? false;
@@ -730,23 +789,42 @@ export class PipelineService {
                 throw new BadRequestException('A non-terminal stage cannot define terminalOutcome');
             }
             const terminalOutcome = isTerminal ? data.terminalOutcome! : null;
-            await this.prisma.executeInTenantSchema(
-                schema,
-                `INSERT INTO pipeline_stages (tenant_id, name, slug, color, position, default_probability, sla_hours, is_terminal, terminal_outcome, pipeline_id)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid)`,
-                [
+            await this.prisma.transactionInTenantSchema(scope.schema, async (query) => {
+                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [tenantId]);
+                const stageCount = await query<Array<{ c: number }>>(
+                    `SELECT COUNT(*)::int AS c FROM pipeline_stages WHERE pipeline_id = $1::uuid`,
+                    [scope.pipelineId],
+                );
+                await this.throttle.enforcePlanLimit(
                     tenantId,
-                    data.name,
-                    data.slug || data.name.toLowerCase().replace(/\s+/g, '_'),
-                    data.color,
-                    maxPos?.[0]?.next_pos || 0,
-                    data.defaultProbability || 0,
-                    data.slaHours ?? null,
-                    isTerminal,
-                    terminalOutcome,
-                    data.pipelineId || null,
-                ],
-            );
+                    'pipelineStages',
+                    Number(stageCount?.[0]?.c || 0),
+                    'etapas de pipeline',
+                );
+                const maxPos = await query<Array<{ next_pos: number }>>(
+                    `SELECT COALESCE(MAX(position), 0) + 1 AS next_pos
+                       FROM pipeline_stages WHERE pipeline_id = $1::uuid`,
+                    [scope.pipelineId],
+                );
+                await query(
+                    `INSERT INTO pipeline_stages
+                        (tenant_id, name, slug, color, position, default_probability,
+                         sla_hours, is_terminal, terminal_outcome, pipeline_id)
+                     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid)`,
+                    [
+                        tenantId,
+                        data.name,
+                        data.slug || data.name.toLowerCase().replace(/\s+/g, '_'),
+                        data.color,
+                        maxPos?.[0]?.next_pos || 0,
+                        data.defaultProbability || 0,
+                        data.slaHours ?? null,
+                        isTerminal,
+                        terminalOutcome,
+                        scope.pipelineId,
+                    ],
+                );
+            });
         } catch (e: any) {
             // uidx_pipeline_stages_pipeline_slug: el slug se deriva del nombre, así que
             // dos etapas con el mismo nombre en el mismo embudo chocan. Sin este catch
@@ -770,37 +848,25 @@ export class PipelineService {
 
     /** Get full Kanban board data */
     async getKanban(tenantId: string, pipelineId?: string): Promise<PipelineKanban> {
-        const schema = await this.getTenantSchema(tenantId);
-        if (!schema) return { stages: [], forecast: { total: 0, weighted: 0, dealCount: 0, avgDealValue: 0 } };
-
-        let stageFilter = '';
-        let dealFilter = '';
-        const stageParams: any[] = [];
-        const dealParams: any[] = [];
-        if (pipelineId) {
-            stageFilter = 'WHERE pipeline_id = $1::uuid';
-            stageParams.push(pipelineId);
-            dealFilter = 'AND d.pipeline_id = $1::uuid';
-            dealParams.push(pipelineId);
-        }
+        const scope = await this.resolvePipelineScope(tenantId, pipelineId);
 
         const stages = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
+            scope.schema,
             `SELECT id, name, slug, color, position, sla_hours, is_terminal, terminal_outcome, default_probability
-             FROM pipeline_stages ${stageFilter} ORDER BY position ASC`,
-            stageParams,
+             FROM pipeline_stages WHERE pipeline_id = $1::uuid ORDER BY position ASC`,
+            [scope.pipelineId],
         );
 
         const deals = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
+            scope.schema,
             `SELECT d.*, ct.name as contact_name, ct.phone as contact_phone,
                     ps.name as stage_name, ps.sla_hours
              FROM deals d
              LEFT JOIN contacts ct ON d.contact_id = ct.id
              LEFT JOIN pipeline_stages ps ON d.stage_id = ps.id
-             WHERE d.status = 'open' ${dealFilter}
+             WHERE d.status = 'open' AND d.pipeline_id = $1::uuid
              ORDER BY d.updated_at DESC`,
-            dealParams,
+            [scope.pipelineId],
         );
 
         const kanbanStages = (stages || []).map((s: any, idx: number) => {
@@ -848,8 +914,7 @@ export class PipelineService {
         stageId?: string; status?: string; assignedAgentId?: string;
         slaStatus?: 'on_track' | 'at_risk' | 'breached'; pipelineId?: string;
     }): Promise<Deal[]> {
-        const schema = await this.getTenantSchema(tenantId);
-        if (!schema) return [];
+        const scope = await this.resolvePipelineScope(tenantId, filters?.pipelineId);
 
         let query = `SELECT d.*, ct.name as contact_name, ct.phone as contact_phone,
                             ps.name as stage_name, ps.sla_hours
@@ -874,14 +939,12 @@ export class PipelineService {
             query += ` AND d.assigned_agent_id = $${paramIdx++}::uuid`;
             params.push(filters.assignedAgentId);
         }
-        if (filters?.pipelineId) {
-            query += ` AND d.pipeline_id = $${paramIdx++}::uuid`;
-            params.push(filters.pipelineId);
-        }
+        query += ` AND d.pipeline_id = $${paramIdx++}::uuid`;
+        params.push(scope.pipelineId);
 
         query += ` ORDER BY d.updated_at DESC`;
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(schema, query, params);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(scope.schema, query, params);
         let deals = (rows || []).map((d: any) => this.mapDeal(d));
 
         // Post-filter by SLA status if requested
@@ -976,27 +1039,26 @@ export class PipelineService {
         contactId: string; title: string; value: number; stageId: string;
         probability?: number; expectedCloseDate?: string; assignedAgentId?: string; notes?: string; pipelineId?: string;
     }): Promise<Deal> {
-        const schema = await this.getTenantSchema(tenantId);
-        if (!schema) throw new Error('Tenant not found');
+        const scope = await this.resolvePipelineScope(tenantId, data.pipelineId);
 
         // Accept either a stage UUID or a stage slug (e.g. vertical stages like 'interesado')
-        const stageId = await this.resolveStageId(schema, tenantId, data.stageId, data.pipelineId);
+        const stageId = await this.resolveStageId(scope.schema, tenantId, data.stageId, scope.pipelineId);
         if (!stageId) {
             throw new BadRequestException(`Pipeline stage not found: ${data.stageId}`);
         }
-        data = { ...data, stageId };
+        data = { ...data, stageId, pipelineId: scope.pipelineId };
 
         // Get stage info for SLA deadline
         const stageRows = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
+            scope.schema,
             `SELECT sla_hours, default_probability, name, is_terminal, terminal_outcome
-             FROM pipeline_stages WHERE id = $1::uuid`,
-            [data.stageId],
+             FROM pipeline_stages WHERE id = $1::uuid AND pipeline_id = $2::uuid`,
+            [data.stageId, scope.pipelineId],
         );
         const stage = stageRows?.[0];
         const probability = data.probability ?? (stage?.default_probability || 0);
         const initialStatus = resolveTerminalOutcome(stage || {}) || 'open';
-        const created = await this.prisma.transactionInTenantSchema(schema, async (query) => {
+        const created = await this.prisma.transactionInTenantSchema(scope.schema, async (query) => {
             const result = await query<any[]>(
                 `INSERT INTO deals (contact_id, title, value, stage_id, probability, expected_close_date,
                                     assigned_agent_id, notes, status, sla_deadline,
@@ -1017,7 +1079,7 @@ export class PipelineService {
                     data.notes || '',
                     initialStatus,
                     stage?.sla_hours ?? null,
-                    data.pipelineId || null,
+                    scope.pipelineId,
                 ],
             );
             if (!result?.[0]) throw new Error('Deal creation failed');
@@ -1201,7 +1263,8 @@ export class PipelineService {
         const dealData = await execute<any[]>(
             `SELECT d.contact_id, l.id as lead_id, l.email as lead_email, l.phone as lead_phone,
                     l.first_name, l.last_name, l.score, d.assigned_agent_id,
-                    ct.email as contact_email, ct.phone as contact_phone
+                    ct.email as contact_email, ct.phone as contact_phone,
+                    o.id AS opportunity_id, o.created_at AS opportunity_created_at
              FROM deals d
              LEFT JOIN contacts ct ON ct.id = d.contact_id
              LEFT JOIN opportunities o ON o.deal_id = d.id
@@ -1222,6 +1285,8 @@ export class PipelineService {
             assignedAgentId: dealData.assigned_agent_id || null,
             contactId: dealData.contact_id,
             leadId: dealData.lead_id || null,
+            opportunityId: dealData.opportunity_id || null,
+            opportunityCreatedAt: dealData.opportunity_created_at || null,
         }, txQuery);
     }
 
@@ -1231,26 +1296,36 @@ export class PipelineService {
      * Throws BadRequestException('TRANSITION_RULE_FAILED:<type>') when a prerequisite is
      * unmet — same contract as the deal path, so the dashboard's per-rule i18n toasts fire.
      */
-    async evaluateRulesForLead(schema: string, tenantId: string, leadId: string, targetSlug: string): Promise<void> {
+    async evaluateRulesForLead(
+        schema: string,
+        tenantId: string,
+        leadId: string,
+        targetSlug: string,
+        pipelineId?: string | null,
+        opportunityId?: string | null,
+    ): Promise<void> {
         if (!leadId) return;
-        const stageRows = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `SELECT transition_rules FROM pipeline_stages WHERE tenant_id = $1::uuid AND slug = $2 LIMIT 1`,
-            [tenantId, targetSlug],
-        );
-        const rules = stageRows?.[0]?.transition_rules || [];
+        const stage = await this.resolveTenantStage(tenantId, targetSlug, {
+            schemaName: schema,
+            pipelineId: pipelineId || undefined,
+        });
+        const rules = stage.transition_rules || [];
         if (!rules.length) return;
 
         const d = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT l.id as lead_id, l.contact_id, l.email as lead_email, l.phone as lead_phone,
                     l.first_name, l.last_name, l.score, l.assigned_to,
-                    ct.email as contact_email, ct.phone as contact_phone
+                    ct.email as contact_email, ct.phone as contact_phone,
+                    o.id AS opportunity_id, o.created_at AS opportunity_created_at
              FROM leads l
              LEFT JOIN contacts ct ON ct.id = l.contact_id
+             LEFT JOIN opportunities o
+                    ON o.id = $2::uuid
+                   AND o.lead_id = l.id
              WHERE l.id = $1::uuid
              LIMIT 1`,
-            [leadId],
+            [leadId, opportunityId || '00000000-0000-0000-0000-000000000000'],
         ).then(res => res[0]);
         if (!d) return;
 
@@ -1262,6 +1337,8 @@ export class PipelineService {
             assignedAgentId: d.assigned_to || null,
             contactId: d.contact_id,
             leadId: d.lead_id || null,
+            opportunityId: d.opportunity_id || null,
+            opportunityCreatedAt: d.opportunity_created_at || null,
         });
     }
 
@@ -1271,17 +1348,22 @@ export class PipelineService {
         tenantId: string,
         leadId: string,
         rules: any[],
+        opportunityId?: string | null,
     ): Promise<void> {
         if (!rules.length) return;
         const rows = await query<any[]>(
             `SELECT l.id AS lead_id, l.contact_id, l.email AS lead_email, l.phone AS lead_phone,
                     l.first_name, l.last_name, l.score, l.assigned_to,
-                    ct.email AS contact_email, ct.phone AS contact_phone
+                    ct.email AS contact_email, ct.phone AS contact_phone,
+                    o.id AS opportunity_id, o.created_at AS opportunity_created_at
                FROM leads l
                LEFT JOIN contacts ct ON ct.id = l.contact_id
+               LEFT JOIN opportunities o
+                      ON o.id = $2::uuid
+                     AND o.lead_id = l.id
               WHERE l.id = $1::uuid
               FOR UPDATE OF l`,
-            [leadId],
+            [leadId, opportunityId || '00000000-0000-0000-0000-000000000000'],
         );
         const d = rows?.[0];
         if (!d) throw new BadRequestException('Lead not found during transition');
@@ -1293,6 +1375,8 @@ export class PipelineService {
             assignedAgentId: d.assigned_to || null,
             contactId: d.contact_id,
             leadId: d.lead_id || null,
+            opportunityId: d.opportunity_id || null,
+            opportunityCreatedAt: d.opportunity_created_at || null,
         }, query);
     }
 
@@ -1313,7 +1397,14 @@ export class PipelineService {
         const leadId = rows?.[0]?.lead_id;
         if (leadId) {
             const canonical = await this.resolveTenantStage(tenantId, targetSlug, { schemaName: schema });
-            await this.evaluateRulesForLead(schema, tenantId, leadId, canonical.slug);
+            await this.evaluateRulesForLead(
+                schema,
+                tenantId,
+                leadId,
+                canonical.slug,
+                canonical.pipeline_id,
+                opportunityId,
+            );
         }
     }
 
@@ -1321,7 +1412,7 @@ export class PipelineService {
     private async runRuleChecks(
         schema: string,
         rules: any[],
-        ctx: { email: string; phone: string; name: string; score: number; assignedAgentId: string | null; contactId: string; leadId: string | null },
+        ctx: TransitionRuleContext,
         txQuery?: TenantTxQuery,
     ): Promise<void> {
         const execute = <R = any[]>(sql: string, params: any[] = []): Promise<R> => txQuery
@@ -1353,6 +1444,138 @@ export class PipelineService {
             }
         }
 
+        // Native operational rows are contact-linked in legacy schemas. Infer
+        // ownership only when the exact current opportunity was the contact's
+        // sole active opportunity both now and at the instant the evidence was
+        // created. The predicates live in the SAME SQL snapshot as the evidence
+        // lookup, so a separate COUNT cannot race a close/reopen operation.
+        const nativeOpportunityScope = `
+            AND EXISTS (
+                SELECT 1
+                  FROM opportunities current_o
+                  JOIN leads current_l ON current_l.id = current_o.lead_id
+                 WHERE current_o.id = $3::uuid
+                   AND (
+                        current_l.contact_id = $1::uuid
+                        OR EXISTS (
+                            SELECT 1
+                              FROM contact_identities requested_identity
+                              JOIN contact_identities current_lead_identity
+                                ON current_lead_identity.customer_profile_id = requested_identity.customer_profile_id
+                             WHERE requested_identity.contact_id = $1::uuid
+                               AND current_lead_identity.contact_id = current_l.contact_id
+                        )
+                   )
+                   AND current_o.created_at <= e.created_at
+                   AND current_o.won_at IS NULL
+                   AND current_o.lost_at IS NULL
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                  FROM opportunities other_now
+                  JOIN leads other_now_l ON other_now_l.id = other_now.lead_id
+                 WHERE (
+                        other_now_l.contact_id = $1::uuid
+                        OR EXISTS (
+                            SELECT 1
+                              FROM contact_identities requested_identity
+                              JOIN contact_identities other_now_identity
+                                ON other_now_identity.customer_profile_id = requested_identity.customer_profile_id
+                             WHERE requested_identity.contact_id = $1::uuid
+                               AND other_now_identity.contact_id = other_now_l.contact_id
+                        )
+                   )
+                   AND other_now.id <> $3::uuid
+                   AND other_now.won_at IS NULL
+                   AND other_now.lost_at IS NULL
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                  FROM opportunities other_at_evidence
+                  JOIN leads other_at_l ON other_at_l.id = other_at_evidence.lead_id
+                 WHERE (
+                        other_at_l.contact_id = $1::uuid
+                        OR EXISTS (
+                            SELECT 1
+                              FROM contact_identities requested_identity
+                              JOIN contact_identities other_at_identity
+                                ON other_at_identity.customer_profile_id = requested_identity.customer_profile_id
+                             WHERE requested_identity.contact_id = $1::uuid
+                               AND other_at_identity.contact_id = other_at_l.contact_id
+                        )
+                   )
+                   AND other_at_evidence.id <> $3::uuid
+                   AND other_at_evidence.created_at <= e.created_at
+                   AND (other_at_evidence.won_at IS NULL OR other_at_evidence.won_at >= e.created_at)
+                   AND (other_at_evidence.lost_at IS NULL OR other_at_evidence.lost_at >= e.created_at)
+            )`;
+        const nativeOpportunityScopeToken = '/* native-opportunity-scope */';
+        const equivalentEvidenceContactScope = `
+            AND (
+                e.contact_id = $1::uuid
+                OR EXISTS (
+                    SELECT 1
+                      FROM contact_identities requested_identity
+                      JOIN contact_identities evidence_identity
+                        ON evidence_identity.customer_profile_id = requested_identity.customer_profile_id
+                     WHERE requested_identity.contact_id = $1::uuid
+                       AND evidence_identity.contact_id = e.contact_id
+                )
+            )`;
+        const legacyOpportunityScope = `
+            ${equivalentEvidenceContactScope}
+            ${nativeOpportunityScope}`;
+        const exactOrLegacyOpportunityScope = `
+            AND (
+                e.opportunity_id = $3::uuid
+                OR (
+                    e.opportunity_id IS NULL
+                    ${legacyOpportunityScope}
+                )
+            )`;
+        const queryOptionalVerticalTable = async (sql: string): Promise<any[]> => {
+            if (
+                !ctx.contactId
+                || !ctx.opportunityId
+                || !ctx.opportunityCreatedAt
+            ) {
+                return [];
+            }
+            const modernSql = sql.replace(nativeOpportunityScopeToken, exactOrLegacyOpportunityScope);
+            const legacySql = sql.replace(nativeOpportunityScopeToken, legacyOpportunityScope);
+            try {
+                return await execute<any[]>(modernSql, [
+                    ctx.contactId,
+                    ctx.opportunityCreatedAt,
+                    ctx.opportunityId,
+                ]);
+            } catch (error: any) {
+                const pgCode = error?.meta?.code || error?.code;
+                const message = String(error?.meta?.message || error?.message || '');
+                // Older tenant schemas may genuinely predate one specialized
+                // table. Only that PostgreSQL condition is optional; syntax,
+                // column and connection errors must remain visible.
+                if (pgCode === '42P01') return [];
+                // Rolling-deploy compatibility is deliberately narrow: only a
+                // missing opportunity_id column may use the legacy temporal
+                // ownership proof. Every other schema/query error stays loud.
+                if (pgCode === '42703' && message.includes('opportunity_id')) {
+                    try {
+                        return await execute<any[]>(legacySql, [
+                            ctx.contactId,
+                            ctx.opportunityCreatedAt,
+                            ctx.opportunityId,
+                        ]);
+                    } catch (legacyError: any) {
+                        const legacyCode = legacyError?.meta?.code || legacyError?.code;
+                        if (legacyCode === '42P01') return [];
+                        throw legacyError;
+                    }
+                }
+                throw error;
+            }
+        };
+
         for (const rule of rules) {
             switch (rule.type) {
                 case 'email_required':
@@ -1372,51 +1595,131 @@ export class PipelineService {
                 case 'agent_assigned':
                     if (!ctx.assignedAgentId) throw new BadRequestException('TRANSITION_RULE_FAILED:agent_assigned');
                     break;
-                case 'appointment_required': {
-                    // Any live appointment on the contact satisfies the gate (a freshly
-                    // booked appointment is 'pending'/'confirmed', not 'scheduled').
-                    //
-                    // Las verticales profundas NO reservan en `appointments`: turismo
-                    // escribe `tour_bookings`, alojamiento `property_bookings`,
-                    // gimnasios `class_bookings` y education `enrollments`. Con la
-                    // consulta mirando una sola tabla, el embudo no avanzaba aunque el
-                    // bot cerrara reservas reales todo el día — justamente en las
-                    // verticales que mejor convierten. Cualquier reserva viva cuenta.
-                    const reservaSql = [
-                        `SELECT 1 FROM appointments WHERE contact_id = $1::uuid AND status NOT IN ('cancelled','no_show') LIMIT 1`,
-                        `SELECT 1 FROM tour_bookings WHERE contact_id = $1::uuid AND status NOT IN ('cancelled','no_show') LIMIT 1`,
-                        `SELECT 1 FROM property_bookings WHERE contact_id = $1::uuid AND status NOT IN ('cancelled','no_show') LIMIT 1`,
-                        `SELECT 1 FROM class_bookings WHERE contact_id = $1::uuid AND status NOT IN ('cancelled','no_show') LIMIT 1`,
-                        `SELECT 1 FROM enrollments WHERE contact_id = $1::uuid AND status NOT IN ('cancelled','dropped') LIMIT 1`,
-                    ];
-                    let tieneReserva = false;
-                    for (const sql of reservaSql) {
-                        // Las tablas verticales son lazy: si el tenant no tiene la
-                        // vertical, la tabla no existe y la consulta falla — eso NO es
-                        // un fallo de la regla, es una tabla que no aplica.
-                        const rows = await execute<any[]>(sql, [ctx.contactId])
-                            .catch(() => [] as any[]);
-                        if (rows?.length) { tieneReserva = true; break; }
+                case 'tour_booking_required': {
+                    const bookings = await queryOptionalVerticalTable(
+                        `SELECT 1 FROM tour_bookings e
+                          WHERE e.status <> 'cancelled'
+                            AND e.created_at >= $2::timestamp
+                            ${nativeOpportunityScopeToken}
+                          LIMIT 1`,
+                    );
+                    if (!bookings.length) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:tour_booking_required');
                     }
-                    if (!tieneReserva) throw new BadRequestException('TRANSITION_RULE_FAILED:appointment_required');
+                    break;
+                }
+                case 'property_booking_required': {
+                    const bookings = await queryOptionalVerticalTable(
+                        `SELECT 1 FROM property_bookings e
+                          WHERE e.status <> 'cancelled'
+                            AND e.created_at >= $2::timestamp
+                            ${nativeOpportunityScopeToken}
+                          LIMIT 1`,
+                    );
+                    if (!bookings.length) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:property_booking_required');
+                    }
+                    break;
+                }
+                case 'service_request_scheduled_required': {
+                    const requests = await queryOptionalVerticalTable(
+                        `SELECT 1 FROM service_requests e
+                          WHERE e.scheduled_at IS NOT NULL
+                            AND e.status IN ('scheduled','dispatched','in_progress','completed')
+                            AND e.created_at >= $2::timestamp
+                            ${nativeOpportunityScopeToken}
+                          LIMIT 1`,
+                    );
+                    if (!requests.length) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:service_request_scheduled_required');
+                    }
+                    break;
+                }
+                case 'food_order_required': {
+                    const orders = await queryOptionalVerticalTable(
+                        `SELECT 1 FROM food_orders e
+                          WHERE e.status <> 'cancelled'
+                            AND e.created_at >= $2::timestamp
+                            ${nativeOpportunityScopeToken}
+                          LIMIT 1`,
+                    );
+                    if (!orders.length) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:food_order_required');
+                    }
+                    break;
+                }
+                case 'photo_session_scheduled_required': {
+                    const sessions = await queryOptionalVerticalTable(
+                        `SELECT 1 FROM photo_sessions e
+                          WHERE e.scheduled_at IS NOT NULL
+                            AND e.status IN ('scheduled','in_progress','delivered')
+                            AND e.created_at >= $2::timestamp
+                            ${nativeOpportunityScopeToken}
+                          LIMIT 1`,
+                    );
+                    if (!sessions.length) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:photo_session_scheduled_required');
+                    }
+                    break;
+                }
+                case 'pet_boarding_required': {
+                    const rentals = await queryOptionalVerticalTable(
+                        `SELECT 1 FROM resource_rentals e
+                          WHERE e.rental_type = 'pet_boarding'
+                            AND e.status <> 'cancelled'
+                            AND e.created_at >= $2::timestamp
+                            ${nativeOpportunityScopeToken}
+                          LIMIT 1`,
+                    );
+                    if (!rentals.length) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:pet_boarding_required');
+                    }
+                    break;
+                }
+                case 'vehicle_rental_required': {
+                    const rentals = await queryOptionalVerticalTable(
+                        `SELECT 1 FROM resource_rentals e
+                          WHERE e.rental_type = 'vehicle_rental'
+                            AND e.status <> 'cancelled'
+                            AND e.created_at >= $2::timestamp
+                            ${nativeOpportunityScopeToken}
+                          LIMIT 1`,
+                    );
+                    if (!rentals.length) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:vehicle_rental_required');
+                    }
+                    break;
+                }
+                case 'appointment_required': {
+                    // This rule is deliberately narrow. Specialized engines use
+                    // their own rule so evidence from an unrelated historical
+                    // table can never unlock a generic appointment stage.
+                    const appointments = await queryOptionalVerticalTable(
+                        `SELECT 1 FROM appointments e
+                          WHERE e.status NOT IN ('cancelled','no_show')
+                            AND e.created_at >= $2::timestamp
+                            ${nativeOpportunityScopeToken}
+                          LIMIT 1`,
+                    );
+                    if (!appointments.length) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:appointment_required');
+                    }
                     break;
                 }
                 case 'order_required': {
-                    // Equivalente para las verticales que cierran con un PEDIDO y no
-                    // con una cita: retail (`orders`) y restaurantes (`food_orders`).
-                    // Sin esto, "Pedido"/"Enviado" eran etapas inalcanzables incluso a
-                    // mano en las dos verticales de comercio.
-                    const pedidoSql = [
-                        `SELECT 1 FROM orders WHERE contact_id = $1::uuid AND status NOT IN ('cancelled') LIMIT 1`,
-                        `SELECT 1 FROM food_orders WHERE contact_id = $1::uuid AND status NOT IN ('cancelled') LIMIT 1`,
-                    ];
-                    let tienePedido = false;
-                    for (const sql of pedidoSql) {
-                        const rows = await execute<any[]>(sql, [ctx.contactId])
-                            .catch(() => [] as any[]);
-                        if (rows?.length) { tienePedido = true; break; }
+                    // Generic commerce orders are deliberately isolated from
+                    // restaurant food orders. Each vertical must prove its own
+                    // native operation for the same contact.
+                    const orders = await queryOptionalVerticalTable(
+                        `SELECT 1 FROM orders e
+                          WHERE e.status <> 'cancelled'
+                            AND e.created_at >= $2::timestamp
+                            ${nativeOpportunityScopeToken}
+                          LIMIT 1`,
+                    );
+                    if (!orders.length) {
+                        throw new BadRequestException('TRANSITION_RULE_FAILED:order_required');
                     }
-                    if (!tienePedido) throw new BadRequestException('TRANSITION_RULE_FAILED:order_required');
                     break;
                 }
                 case 'offer_required': {
@@ -1454,35 +1757,16 @@ export class PipelineService {
     async moveToStage(tenantId: string, dealId: string, newStageId: string, agentId?: string, reason?: string): Promise<void> {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return;
+        await this.ensurePipelinesTables(schema);
+        await this.migrateToMultiPipeline(schema, tenantId);
 
-        // Accept either a stage UUID or a stage slug
-        const resolvedStageId = await this.resolveStageId(schema, tenantId, newStageId);
-        if (!resolvedStageId) {
-            throw new BadRequestException(`Target stage not found: ${newStageId}`);
-        }
-        newStageId = resolvedStageId;
-
-        // Get new stage info
-        const newStageRows = await this.prisma.executeInTenantSchema<any[]>(
-            schema,
-            `SELECT id, sla_hours, default_probability, is_terminal, slug, transition_rules,
-                    terminal_outcome
-             FROM pipeline_stages WHERE id = $1::uuid`,
-            [newStageId],
-        );
-        if (!newStageRows || newStageRows.length === 0) {
-            throw new Error('Target stage not found');
-        }
-        const newStage = newStageRows[0];
-
-        const transitionRules = newStage.transition_rules || [];
-
-        const probability = Number(newStage.default_probability || 0);
-        const terminalOutcome = resolveTerminalOutcome(newStage);
+        const requestedStage = newStageId;
         const changedBy = agentId || 'system';
         const txResult = await this.prisma.transactionInTenantSchema(schema, async (query) => {
             const dealRows = await query<any[]>(
-                `SELECT d.stage_id, ps.is_terminal AS current_is_terminal,
+                `SELECT d.stage_id, d.pipeline_id AS deal_pipeline_id,
+                        ps.pipeline_id AS stage_pipeline_id,
+                        ps.is_terminal AS current_is_terminal,
                         ps.terminal_outcome AS current_terminal_outcome,
                         ps.default_probability AS current_default_probability,
                         ps.slug AS current_slug
@@ -1494,6 +1778,45 @@ export class PipelineService {
             );
             if (!dealRows?.length) throw new BadRequestException('Deal not found');
             const currentDeal = dealRows[0];
+
+            if (
+                currentDeal.deal_pipeline_id
+                && currentDeal.stage_pipeline_id
+                && currentDeal.deal_pipeline_id !== currentDeal.stage_pipeline_id
+            ) {
+                throw new ConflictException(`Deal ${dealId} references a stage from another pipeline`);
+            }
+            let pipelineId = currentDeal.deal_pipeline_id || currentDeal.stage_pipeline_id || null;
+            if (!pipelineId) {
+                pipelineId = (await ensurePrimaryPipeline(query, tenantId)).pipelineId;
+            }
+
+            const stageCatalog = await query<TenantStageMapping[]>(
+                `SELECT id, pipeline_id, name, slug, position, is_terminal,
+                        terminal_outcome, sla_hours, transition_rules,
+                        COALESCE(default_probability, 0) AS prob
+                   FROM pipeline_stages
+                  WHERE tenant_id = $1::uuid AND pipeline_id = $2::uuid
+                  ORDER BY position ASC`,
+                [tenantId, pipelineId],
+            );
+            let newStage: TenantStageMapping | undefined;
+            if (PipelineService.UUID_RE.test(requestedStage)) {
+                newStage = stageCatalog.find((stage) => stage.id === requestedStage);
+            } else {
+                try {
+                    newStage = resolveTenantNativeStage(stageCatalog, requestedStage);
+                } catch {
+                    newStage = undefined;
+                }
+            }
+            if (!newStage) {
+                throw new BadRequestException(`Target stage not found in deal pipeline: ${requestedStage}`);
+            }
+
+            const transitionRules = newStage.transition_rules || [];
+            const probability = Number(newStage.prob || 0);
+            const terminalOutcome = resolveTerminalOutcome(newStage);
             await this.evaluateTransitionRules(schema, dealId, transitionRules, query);
             if (currentDeal.current_is_terminal) {
                 resolveTerminalOutcome({
@@ -1515,9 +1838,10 @@ export class PipelineService {
                             WHEN $4::int IS NULL THEN NULL
                             ELSE NOW() + ($4::int * INTERVAL '1 hour')
                         END,
-                        sla_status = 'on_track'
-                  WHERE id = $5::uuid`,
-                [newStageId, probability, terminalOutcome || 'open', newStage.sla_hours ?? null, dealId],
+                        sla_status = 'on_track',
+                        pipeline_id = $5::uuid
+                  WHERE id = $6::uuid`,
+                [newStage.id, probability, terminalOutcome || 'open', newStage.sla_hours ?? null, pipelineId, dealId],
             );
 
             const oppRows = await query<Array<{ id: string; lead_id: string | null; stage: string }>>(
@@ -1568,16 +1892,21 @@ export class PipelineService {
                 }
             }
 
-            const stageChanged = currentDeal.stage_id !== newStageId;
+            const stageChanged = currentDeal.stage_id !== newStage.id;
             if (stageChanged) {
                 await query(
                     `INSERT INTO stage_transitions
                         (deal_id, from_stage, to_stage, changed_by, reason, created_at)
                      VALUES ($1::uuid, $2, $3, $4, $5, NOW())`,
-                    [dealId, currentDeal.stage_id, newStageId, changedBy, reason || null],
+                    [dealId, currentDeal.stage_id, newStage.id, changedBy, reason || null],
                 );
             }
-            return { fromStageId: currentDeal.stage_id, stageChanged };
+            return {
+                fromStageId: currentDeal.stage_id,
+                stageChanged,
+                newStage,
+                terminalOutcome,
+            };
         });
 
         // Emit event for automation
@@ -1586,15 +1915,17 @@ export class PipelineService {
                 tenantId,
                 dealId,
                 fromStageId: txResult.fromStageId,
-                toStageId: newStageId,
-                toStageSlug: newStage.slug,
-                terminalOutcome,
+                toStageId: txResult.newStage.id,
+                toStageSlug: txResult.newStage.slug,
+                terminalOutcome: txResult.terminalOutcome,
                 changedBy,
                 reason,
             });
         }
 
-        this.logger.log(`Deal ${dealId} moved to stage ${newStage.slug} (${newStageId})`);
+        this.logger.log(
+            `Deal ${dealId} moved to stage ${txResult.newStage.slug} (${txResult.newStage.id})`,
+        );
     }
 
     /** Backward-compatible alias for moveDeal */
@@ -1936,7 +2267,14 @@ export class PipelineService {
         // enforce the same rules hard.
         if (opp.lead_id) {
             try {
-                await this.evaluateRulesForLead(schema, tenantId, opp.lead_id, writeSlug);
+                await this.evaluateRulesForLead(
+                    schema,
+                    tenantId,
+                    opp.lead_id,
+                    writeSlug,
+                    targetStage.pipeline_id,
+                    opp.opp_id,
+                );
             } catch (ruleErr: any) {
                 const msg = String(ruleErr?.message || '');
                 if (msg.includes('TRANSITION_RULE_FAILED')) {

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { BulkImportModal } from "@/components/BulkImportModal";
+import { PaginatedContactSelect } from "@/components/ui/paginated-contact-select";
 
 interface Course {
     id: string;
@@ -66,6 +67,7 @@ interface Enrollment {
     payment_status: string;
     completion_percent: number;
     enrolled_at: string;
+    contact_id?: string;
 }
 
 type TabId = "courses" | "cohorts" | "enrollments";
@@ -607,6 +609,7 @@ function EnrollmentFormModal({ enrollment, cohorts, onClose, onSaved, onError }:
 
     const [form, setForm] = useState({
         cohortId: enrollment?.cohort_id || "",
+        contactId: enrollment?.contact_id || "",
         studentName: enrollment?.student_name || "",
         studentEmail: enrollment?.student_email || "",
         studentPhone: enrollment?.student_phone || "",
@@ -626,7 +629,7 @@ function EnrollmentFormModal({ enrollment, cohorts, onClose, onSaved, onError }:
 
     async function handleSave() {
         if (!activeTenantId) return;
-        if (!isEdit && (!form.cohortId || !form.studentName.trim())) {
+        if (!isEdit && (!form.cohortId || !form.contactId || !form.studentName.trim())) {
             setError(t("enrollMissingFields"));
             return;
         }
@@ -646,6 +649,7 @@ function EnrollmentFormModal({ enrollment, cohorts, onClose, onSaved, onError }:
             } else {
                 const res = await api.createEnrollment(activeTenantId, {
                     cohortId: form.cohortId,
+                    contactId: form.contactId,
                     studentName: form.studentName.trim(),
                     studentEmail: form.studentEmail.trim() || undefined,
                     studentPhone: form.studentPhone.trim() || undefined,
@@ -698,6 +702,26 @@ function EnrollmentFormModal({ enrollment, cohorts, onClose, onSaved, onError }:
                                 {selectableCohorts.length === 0 && (
                                     <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">{t("noOpenCohorts")}</p>
                                 )}
+                            </div>
+
+                            <div>
+                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">{t("enrollmentContact")}</label>
+                                <PaginatedContactSelect
+                                    tenantId={activeTenantId}
+                                    value={form.contactId}
+                                    onChange={(contactId, contact) => {
+                                        setForm({
+                                            ...form,
+                                            contactId,
+                                            studentName: contact?.name || form.studentName,
+                                            studentEmail: contact?.email || form.studentEmail,
+                                            studentPhone: contact?.phone || form.studentPhone,
+                                        });
+                                    }}
+                                    disabled={isEdit}
+                                    className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm cursor-pointer"
+                                />
+                                <p className="text-[11px] text-muted-foreground mt-1">{t("enrollmentContactHint")}</p>
                             </div>
 
                             <div>

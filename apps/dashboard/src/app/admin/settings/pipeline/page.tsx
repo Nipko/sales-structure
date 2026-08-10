@@ -456,6 +456,13 @@ export default function PipelineSettingsPage() {
                                             <option value="min_score">{t("rule_min_score")}</option>
                                             <option value="agent_assigned">{t("rule_agent_assigned")}</option>
                                             <option value="appointment_required">{t("rule_appointment_required")}</option>
+                                            <option value="tour_booking_required">{t("rule_tour_booking_required")}</option>
+                                            <option value="property_booking_required">{t("rule_property_booking_required")}</option>
+                                            <option value="service_request_scheduled_required">{t("rule_service_request_scheduled_required")}</option>
+                                            <option value="food_order_required">{t("rule_food_order_required")}</option>
+                                            <option value="photo_session_scheduled_required">{t("rule_photo_session_scheduled_required")}</option>
+                                            <option value="pet_boarding_required">{t("rule_pet_boarding_required")}</option>
+                                            <option value="vehicle_rental_required">{t("rule_vehicle_rental_required")}</option>
                                             <option value="offer_required">{t("rule_offer_required")}</option>
                                             <option value="custom_attribute_required">{t("rule_custom_attribute_required")}</option>
                                             <option value="custom_attribute_equals">{t("rule_custom_attribute_equals")}</option>

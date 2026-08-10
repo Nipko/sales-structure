@@ -6,6 +6,8 @@ describe('OrdersService transactional catalog contract', () => {
     const productId = '22222222-2222-4222-8222-222222222222';
     const orderId = '33333333-3333-4333-8333-333333333333';
     const contactId = '44444444-4444-4444-8444-444444444444';
+    const conversationId = '55555555-5555-4555-8555-555555555555';
+    const opportunityId = '66666666-6666-4666-8666-666666666666';
 
     function setup(query: jest.Mock) {
         const prisma = {
@@ -23,6 +25,8 @@ describe('OrdersService transactional catalog contract', () => {
 
     it('uses the locked catalog snapshot and commits header, line and stock together', async () => {
         const query: jest.Mock = jest.fn(async (sql: string, _params?: any[]) => {
+            if (sql.includes('SELECT id FROM contacts')) return [{ id: contactId }];
+            if (sql.includes('FROM opportunities o')) return [];
             if (sql.includes('FROM products') && sql.includes('FOR UPDATE')) {
                 return [{ id: productId, name: 'Producto real', price: '12500', currency: 'COP', stock: 7, is_available: true }];
             }
@@ -39,13 +43,24 @@ describe('OrdersService transactional catalog contract', () => {
 
         expect(prisma.transactionInTenantSchema).toHaveBeenCalledTimes(1);
         const header = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO orders'));
-        expect(header?.[1]).toEqual([contactId, 25_000, 'COP', '', '{"payment_method":"cash"}', 'pending']);
+        expect(header?.[1]).toEqual([
+            contactId,
+            null,
+            null,
+            'pending',
+            25_000,
+            'COP',
+            '',
+            '{"payment_method":"cash"}',
+        ]);
         const line = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO order_items'));
         expect(line?.[1]).toEqual([orderId, productId, 'Producto real', 2, 12_500, 25_000]);
     });
 
     it('rejects insufficient stock before an order header can be inserted', async () => {
         const query: jest.Mock = jest.fn(async (sql: string, _params?: any[]) => {
+            if (sql.includes('SELECT id FROM contacts')) return [{ id: contactId }];
+            if (sql.includes('FROM opportunities o')) return [];
             if (sql.includes('FROM products')) {
                 return [{ id: productId, name: 'Última unidad', price: 100, currency: 'COP', stock: 1, is_available: true }];
             }
@@ -130,6 +145,8 @@ describe('OrdersService transactional catalog contract', () => {
         'persists the supported initial status %s',
         async (status) => {
             const query: jest.Mock = jest.fn(async (sql: string) => {
+                if (sql.includes('SELECT id FROM contacts')) return [{ id: contactId }];
+                if (sql.includes('FROM opportunities o')) return [];
                 if (sql.includes('FROM products')) {
                     return [{ id: productId, name: 'Producto', price: 100, currency: 'COP', stock: 2, is_available: true }];
                 }
@@ -146,9 +163,74 @@ describe('OrdersService transactional catalog contract', () => {
             });
 
             const header = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO orders'));
-            expect(header?.[1]?.[5]).toBe(status);
+            expect(header?.[1]?.[3]).toBe(status);
         },
     );
+
+    it('resolves and persists the conversation opportunity before locking catalog stock', async () => {
+        const query: jest.Mock = jest.fn(async (sql: string) => {
+            if (sql.includes('SELECT id FROM contacts')) return [{ id: contactId }];
+            if (sql.includes('FROM opportunities o') && sql.includes('o.conversation_id')) {
+                return [{ id: opportunityId }];
+            }
+            if (sql.includes('FROM products')) {
+                return [{ id: productId, name: 'Producto', price: 100, currency: 'COP', stock: 2, is_available: true }];
+            }
+            if (sql.includes('INSERT INTO orders')) return [{ id: orderId }];
+            if (sql.includes('UPDATE products')) return [{ stock: 1 }];
+            return [];
+        });
+        const { service } = setup(query);
+
+        await service.createOrder(tenantId, {
+            contactId,
+            conversationId,
+            items: [{ productId, productName: 'x', quantity: 1, unitPrice: 1 }],
+        });
+
+        const calls = query.mock.calls.map(([sql]) => String(sql));
+        const contactIndex = calls.findIndex((sql) => sql.includes('SELECT id FROM contacts'));
+        const opportunityIndex = calls.findIndex((sql) => sql.includes('o.conversation_id'));
+        const catalogIndex = calls.findIndex((sql) => sql.includes('FROM products') && sql.includes('FOR UPDATE'));
+        const headerIndex = calls.findIndex((sql) => sql.includes('INSERT INTO orders'));
+        expect(contactIndex).toBeGreaterThanOrEqual(0);
+        expect(opportunityIndex).toBeGreaterThan(contactIndex);
+        expect(catalogIndex).toBeGreaterThan(opportunityIndex);
+        expect(headerIndex).toBeGreaterThan(catalogIndex);
+
+        const opportunityLookup = query.mock.calls[opportunityIndex];
+        expect(opportunityLookup?.[1]).toEqual([contactId, conversationId]);
+        const header = query.mock.calls[headerIndex];
+        expect(header?.[1]).toEqual([
+            contactId,
+            opportunityId,
+            conversationId,
+            'pending',
+            100,
+            'COP',
+            '',
+            '{"payment_method":"cash"}',
+        ]);
+    });
+
+    it('rejects an explicit opportunity that is not active for the tenant contact before catalog writes', async () => {
+        const query: jest.Mock = jest.fn(async (sql: string) => {
+            if (sql.includes('SELECT id FROM contacts')) return [{ id: contactId }];
+            return [];
+        });
+        const { service } = setup(query);
+
+        await expect(service.createOrder(tenantId, {
+            contactId,
+            opportunityId,
+            items: [{ productId, productName: 'x', quantity: 1, unitPrice: 1 }],
+        })).rejects.toBeInstanceOf(BadRequestException);
+
+        const opportunityLookup = query.mock.calls.find(([sql]) => String(sql).includes('FROM opportunities o'));
+        expect(opportunityLookup?.[1]).toEqual([opportunityId, contactId]);
+        expect(query.mock.calls.some(([sql]) => String(sql).includes('FROM products'))).toBe(false);
+        expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO orders'))).toBe(false);
+    });
 
     it('rejects unsupported initial states before opening a transaction', async () => {
         const query: jest.Mock = jest.fn();

@@ -2,8 +2,12 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { useQueryClient } from '@tanstack/react-query';
 import { api, tokens, setOnAuthFailure, AuthUser } from '../lib/api';
 import { disconnectSocket } from '../lib/socket';
+import { activateOutboxScope, clearAllOutboxStorage, deactivateOutboxScope } from '../lib/outbox';
+import { deactivatePushScope, unregisterPushForLogout } from '../lib/push';
+import { setUnreadTotal } from '../lib/unread';
 
 // Re-lock biométrico tras background prolongado. 15 min: a los 90s originales
 // cada cambio de app (responder un WhatsApp personal, mirar el calendario)
@@ -47,11 +51,16 @@ const AuthContext = createContext<AuthState>({} as AuthState);
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+    const queryClient = useQueryClient();
     const [user, setUser] = useState<AuthUser | null>(null);
     const [verticalConfig, setVerticalConfig] = useState<any | null>(null);
     const [loading, setLoading] = useState(true);
     const [locked, setLocked] = useState(false);
     const bgAt = useRef<number | null>(null);
+    // A dead-session cleanup may still be deleting SecureStore/AsyncStorage when
+    // the user quickly signs in as someone else. New credentials must never race
+    // with that cleanup (which could otherwise erase the new session).
+    const authFailureCleanup = useRef<Promise<void>>(Promise.resolve());
 
     // Load the tenant's vertical config (terminology) — best-effort.
     const loadVertical = useCallback(async (tenantId?: string) => {
@@ -72,6 +81,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             try {
                 const [stored, { access }] = await Promise.all([tokens.getUser(), tokens.get()]);
                 if (stored && access) {
+                    if (stored.id && stored.tenantId) {
+                        await activateOutboxScope(stored.id, stored.tenantId);
+                    } else {
+                        deactivateOutboxScope();
+                    }
                     setUser(stored);
                     loadVertical(stored.tenantId);
                     const [hasHardware, enrolled] = await Promise.all([
@@ -98,11 +112,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const applyAuth = useCallback(async (res: any, fallbackError: string): Promise<LoginResult> => {
         if (res?.success && res.data?.accessToken) {
+            await authFailureCleanup.current.catch(() => {});
             await tokens.set(res.data.accessToken, res.data.refreshToken);
             // Persist the device-trust token so future logins skip 2FA on this device.
             if (res.data.deviceTrustToken) await tokens.setDeviceTrust(res.data.deviceTrustToken);
             const u: AuthUser = res.data.user;
             await tokens.setUser(u);
+            if (u.id && u.tenantId) {
+                await activateOutboxScope(u.id, u.tenantId);
+            } else {
+                deactivateOutboxScope();
+            }
             setUser(u);
             loadVertical(u.tenantId);
             return { ok: true };
@@ -155,40 +175,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     }, []);
 
-    const logout = useCallback(async () => {
-        disconnectSocket();
-        // Kill the server session first, so the next login doesn't hit "session already open".
-        try { const { refresh } = await tokens.get(); if (refresh) await api.logout(refresh); } catch { /* noop */ }
-        await tokens.clear();
-        // Seguridad (GATE 0): un logout EXPLÍCITO también olvida este dispositivo,
-        // de modo que el próximo inicio de sesión vuelve a exigir 2FA (no queremos
-        // que el 30-day device-trust sobreviva a un "cerrar sesión" intencional).
-        await tokens.clearDeviceTrust().catch(() => { /* noop */ });
-        // Misma higiene para la caché offline del inbox: nombres y previews de
-        // clientes no deben sobrevivir en AsyncStorage plano a un logout, ni
-        // sembrar el inbox de otro agente que entre en este dispositivo.
+    const clearSensitiveLocalState = useCallback(async () => {
+        // Synchronous boundaries first: no reconnect can flush/render the prior
+        // account while the slower device-storage deletes are in progress.
+        deactivateOutboxScope();
+        const pushCleanup = deactivatePushScope();
+        setUnreadTotal(0);
+        queryClient.clear();
+
+        await Promise.all([clearAllOutboxStorage(), pushCleanup]);
+        // Names, previews and customer content are plaintext AsyncStorage cache.
+        // Remove every account's old/legacy key on logout or a dead session.
         try {
             const keys = await AsyncStorage.getAllKeys();
-            const inboxKeys = keys.filter((k) => k.startsWith('inbox:last:'));
+            const inboxKeys = keys.filter((key) => key.startsWith('inbox:last:'));
             if (inboxKeys.length) await AsyncStorage.multiRemove(inboxKeys);
         } catch { /* noop */ }
-        setUser(null);
-        setVerticalConfig(null);
-        setLocked(false);
-    }, []);
+    }, [queryClient]);
+
+    const logout = useCallback(async () => {
+        // Unmount data screens immediately so an in-flight query cannot repopulate
+        // a cache after the logout purge while the network cleanup is running.
+        setLoading(true);
+        disconnectSocket();
+        deactivateOutboxScope();
+        try {
+            // Revoke push while the authenticated access token still exists. This
+            // must precede auth/logout and local token deletion so the old account
+            // cannot keep receiving customer notifications after an account switch.
+            if (user?.id && user.tenantId) {
+                await unregisterPushForLogout(user.id, user.tenantId).catch(() => false);
+            } else {
+                await deactivatePushScope();
+            }
+
+            // Kill the server session next, so a later login doesn't hit an active session.
+            try { const { refresh } = await tokens.get(); if (refresh) await api.logout(refresh); } catch { /* noop */ }
+            await clearSensitiveLocalState().catch(() => {});
+            await tokens.clear().catch(() => {});
+            // Seguridad (GATE 0): un logout EXPLÍCITO también olvida este dispositivo,
+            // de modo que el próximo inicio de sesión vuelve a exigir 2FA (no queremos
+            // que el 30-day device-trust sobreviva a un "cerrar sesión" intencional).
+            await tokens.clearDeviceTrust().catch(() => { /* noop */ });
+        } finally {
+            setUser(null);
+            setVerticalConfig(null);
+            setLocked(false);
+            setLoading(false);
+        }
+    }, [clearSensitiveLocalState, user]);
 
     // If a token refresh fails mid-session, the session is dead → return to login
     // instead of leaving the user "inside" the app with everything failing silently.
     useEffect(() => {
         setOnAuthFailure(() => {
             disconnectSocket();
-            tokens.clear().catch(() => { /* noop */ });
+            authFailureCleanup.current = (async () => {
+                await clearSensitiveLocalState();
+                await tokens.clear().catch(() => { /* noop */ });
+            })();
             setVerticalConfig(null);
             setUser(null);
             setLocked(false);
         });
         return () => setOnAuthFailure(null);
-    }, []);
+    }, [clearSensitiveLocalState]);
 
     const unlock = useCallback(async () => {
         try {

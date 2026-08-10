@@ -29,7 +29,7 @@ export default function PrivacyFr() {
         Politique de confidentialité
       </h1>
       <p className="text-text-muted text-sm mb-12">
-        Dernière mise à jour : 29 avril 2026
+        Dernière mise à jour : 9 août 2026
       </p>
 
       <div className="space-y-12 text-text-secondary leading-relaxed">
@@ -92,6 +92,26 @@ export default function PrivacyFr() {
             <li>
               Journaux d&apos;activité (logs) à des fins de sécurité et de
               diagnostic.
+            </li>
+            <li>
+              Données techniques de diagnostic de l&apos;application : version,
+              type d&apos;appareil, système d&apos;exploitation, date et heure,
+              traces d&apos;erreur, contexte technique de navigation et
+              échantillons de performance. Sentry est configuré pour ne pas
+              envoyer de données personnelles identifiables par défaut. Malgré
+              cela, un événement technique peut contenir des données
+              incidentelles si elles font partie du contexte de l&apos;erreur ;
+              nous minimisons donc ce contexte et n&apos;incluons pas
+              intentionnellement le contenu des messages ni les identifiants
+              d&apos;authentification.
+            </li>
+            <li>
+              Identifiants de notification mobile : jeton push Expo,
+              identifiant d&apos;installation Firebase, identifiants de
+              l&apos;application et de la plateforme, et métadonnées de
+              livraison. Le payload peut inclure le titre et le corps d&apos;une
+              alerte opérationnelle ainsi que l&apos;identifiant ou le lien
+              nécessaire pour ouvrir la conversation concernée.
             </li>
           </ul>
 
@@ -268,6 +288,37 @@ export default function PrivacyFr() {
             </li>
             <li>
               <strong className="text-text-primary">
+                Sentry (crashs et performances) :
+              </strong>{" "}
+              agit comme sous-traitant et reçoit des événements techniques
+              minimisés pour détecter les erreurs, les arrêts inattendus et les
+              problèmes de latence. Les événements ne sont conservés que pendant
+              la durée configurée dans le projet Sentry de Parallly et tant
+              qu&apos;ils sont nécessaires au diagnostic ; nous n&apos;indiquons
+              pas de durée universelle, car elle dépend de la configuration
+              opérationnelle du fournisseur.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Expo et Google Firebase Cloud Messaging (FCM) :
+              </strong>{" "}
+              agissent comme sous-traitants pour acheminer les notifications
+              mobiles et traitent les jetons push, les identifiants
+              d&apos;installation/application et le payload de l&apos;alerte.
+              Expo conserve le contenu uniquement en mémoire ou dans des files
+              pendant la livraison et supprime les reçus après 24 heures. FCM
+              peut conserver les messages non livrés pendant leur durée de vie
+              configurée — quatre semaines par défaut — et conserve
+              l&apos;identifiant d&apos;installation jusqu&apos;à ce que sa
+              suppression soit demandée ; Google indique qu&apos;après cette
+              demande, il le supprime des systèmes actifs et des sauvegardes
+              sous 180 jours. Parallly conserve le jeton tant que
+              l&apos;abonnement push est actif, le supprime lorsque le
+              fournisseur le déclare invalide et l&apos;inclut dans la purge
+              d&apos;une demande vérifiée.
+            </li>
+            <li>
+              <strong className="text-text-primary">
                 Processeurs de paiement :
               </strong>{" "}
               pour gérer les transactions de manière sécurisée
@@ -395,11 +446,15 @@ export default function PrivacyFr() {
           <ul className="list-disc pl-6 space-y-2">
             <li>
               <strong className="text-text-primary">
-                Données du compte :
+                Résiliation ordinaire et données du compte :
               </strong>{" "}
-              pendant la durée de la relation contractuelle et jusqu&apos;à
-              30 jours après sa résiliation, sauf obligation légale de
-              conservation plus longue.
+              l&apos;accès peut continuer jusqu&apos;à la fin de la période
+              contractuelle. Lorsque l&apos;offboarding est exécuté,
+              l&apos;accès et les canaux connectés sont désactivés ; à compter
+              de ce moment, les données opérationnelles du compte peuvent être
+              conservées jusqu&apos;à 90 jours afin de permettre
+              l&apos;exportation, le support ou la réactivation, puis sont
+              purgées, sauf obligation légale de conservation plus longue.
             </li>
             <li>
               <strong className="text-text-primary">
@@ -430,6 +485,17 @@ export default function PrivacyFr() {
               indéfiniment à des fins analytiques.
             </li>
           </ul>
+          <p className="mt-4">
+            Une demande vérifiée de suppression du compte et des données suit un
+            processus distinct de la résiliation ordinaire. Après vérification de
+            l&apos;identité et de la portée, nous lançons une purge sécurisée
+            sans retard injustifié ; nous ne promettons pas une suppression
+            automatique ou instantanée. Nous pouvons isoler et conserver les
+            registres fiscaux, légaux, de sécurité ou de prévention de la fraude
+            lorsque la loi l&apos;exige. Les copies résiduelles dans les
+            sauvegardes chiffrées sont indisponibles pour l&apos;usage ordinaire
+            et expirent selon le cycle normal de conservation des sauvegardes.
+          </p>
         </section>
 
         {/* 8 */}
@@ -1011,7 +1077,12 @@ export default function PrivacyFr() {
             de conformité. Avant de supprimer le compte et les données concernées,
             nous vérifions l&apos;identité du demandeur et la portée de la demande.
             Nous ne conservons que les informations exigées à des fins légales,
-            de sécurité ou de prévention de la fraude.
+            de sécurité ou de prévention de la fraude. La résiliation ordinaire
+            d&apos;un abonnement ne vaut pas cette demande vérifiée et suit la
+            conservation maximale de 90 jours décrite à la section 7. La purge
+            vérifiée commence sans retard injustifié, mais elle n&apos;est ni
+            automatique ni instantanée, et les copies résiduelles de sauvegarde
+            expirent selon leur cycle normal de conservation.
           </p>
 
           <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
@@ -1057,6 +1128,16 @@ export default function PrivacyFr() {
                 Fournisseur d&apos;e-mail
               </strong>{" "}
               — service SMTP utilisé pour les e-mails transactionnels.
+            </li>
+            <li>
+              <strong className="text-text-primary">Sentry</strong>{" "}
+              — suivi des crashs, des erreurs et des performances techniques.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Expo et Google Firebase Cloud Messaging
+              </strong>{" "}
+              — livraison des notifications push mobiles.
             </li>
           </ul>
           <p className="mt-3">

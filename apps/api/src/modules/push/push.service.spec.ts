@@ -80,6 +80,53 @@ describe('PushService outbound endpoint policy', () => {
         )).rejects.toBeInstanceOf(ConflictException);
     });
 
+    it('allows an Expo token rebind only for the same installation id', async () => {
+        const prisma = {
+            $queryRawUnsafe: jest.fn().mockImplementation(async (sql: string) => (
+                sql.includes('INSERT INTO public.push_subscriptions AS ps')
+                    ? [{ endpoint: 'ExponentPushToken[device]' }]
+                    : []
+            )),
+        } as any;
+        const service = new PushService(prisma, { get: jest.fn() } as any);
+
+        await service.subscribeExpo(
+            '11111111-1111-4111-8111-111111111111',
+            '22222222-2222-4222-8222-222222222222',
+            'ExponentPushToken[device]',
+            '33333333-3333-4333-8333-333333333333',
+        );
+
+        const insert = prisma.$queryRawUnsafe.mock.calls.find(([sql]: [string]) => (
+            sql.includes('INSERT INTO public.push_subscriptions AS ps')
+        ));
+        expect(insert).toBeDefined();
+        expect(insert[0]).toContain('pg_advisory_xact_lock');
+        expect(insert[0]).toContain('old_ps.device_id = $4::uuid');
+        expect(insert[0]).toContain('old_ps.endpoint <> $3');
+        expect(insert[0]).toContain('ps.device_id = EXCLUDED.device_id');
+        expect(insert[0]).toContain('SET user_id = EXCLUDED.user_id');
+        expect(insert[0]).toContain('tenant_id = EXCLUDED.tenant_id');
+        expect(insert.slice(1)).toEqual([
+            '11111111-1111-4111-8111-111111111111',
+            '22222222-2222-4222-8222-222222222222',
+            'ExponentPushToken[device]',
+            '33333333-3333-4333-8333-333333333333',
+        ]);
+    });
+
+    it('fails closed when an Expo endpoint belongs to a different installation', async () => {
+        const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
+        const service = new PushService(prisma, { get: jest.fn() } as any);
+
+        await expect(service.subscribeExpo(
+            '11111111-1111-4111-8111-111111111111',
+            '22222222-2222-4222-8222-222222222222',
+            'ExponentPushToken[device]',
+            '33333333-3333-4333-8333-333333333333',
+        )).rejects.toBeInstanceOf(ConflictException);
+    });
+
     it('scopes unsubscribe by endpoint, user and tenant', async () => {
         const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
         const service = new PushService(prisma, { get: jest.fn() } as any);
@@ -96,6 +143,61 @@ describe('PushService outbound endpoint policy', () => {
             '11111111-1111-4111-8111-111111111111',
             '22222222-2222-4222-8222-222222222222',
         );
+    });
+
+    it('scopes native Expo unsubscribe by token, user and tenant', async () => {
+        const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
+        const service = new PushService(prisma, { get: jest.fn() } as any);
+
+        await service.unsubscribeExpo(
+            '11111111-1111-4111-8111-111111111111',
+            '22222222-2222-4222-8222-222222222222',
+            'ExponentPushToken[device-token]',
+        );
+
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining("provider = 'expo'"),
+            'ExponentPushToken[device-token]',
+            '11111111-1111-4111-8111-111111111111',
+            '22222222-2222-4222-8222-222222222222',
+        );
+        const deletion = prisma.$queryRawUnsafe.mock.calls.find(([sql]: [string]) => (
+            sql.includes('endpoint = $1') && sql.includes("provider = 'expo'")
+        ));
+        expect(deletion[0]).toContain('user_id = $2::uuid');
+        expect(deletion[0]).toContain('tenant_id = $3::uuid');
+    });
+
+    it('removes only this user and tenant Expo registrations when legacy clients have no local token', async () => {
+        const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
+        const service = new PushService(prisma, { get: jest.fn() } as any);
+
+        await service.unsubscribeExpo(
+            '11111111-1111-4111-8111-111111111111',
+            '22222222-2222-4222-8222-222222222222',
+        );
+
+        expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining('user_id = $1::uuid'),
+            '11111111-1111-4111-8111-111111111111',
+            '22222222-2222-4222-8222-222222222222',
+        );
+        const deletion = prisma.$queryRawUnsafe.mock.calls.find(([sql]: [string]) => (
+            sql.includes('user_id = $1::uuid') && sql.includes('tenant_id = $2::uuid')
+        ));
+        expect(deletion[0]).toContain("provider = 'expo'");
+    });
+
+    it('rejects an invalid Expo token before issuing a delete', async () => {
+        const prisma = { $queryRawUnsafe: jest.fn() } as any;
+        const service = new PushService(prisma, { get: jest.fn() } as any);
+
+        await expect(service.unsubscribeExpo(
+            '11111111-1111-4111-8111-111111111111',
+            '22222222-2222-4222-8222-222222222222',
+            '',
+        )).rejects.toBeInstanceOf(BadRequestException);
+        expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
     });
 
     it('paginates tenant-role subscriptions instead of dropping a dispatch above the memory cap', async () => {

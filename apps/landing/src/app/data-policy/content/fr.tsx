@@ -29,7 +29,7 @@ export default function DataPolicyFr() {
         Politique de Traitement des Données Personnelles
       </h1>
       <p className="text-text-muted text-sm mb-4">
-        Dernière mise à jour : Avril 2026
+        Dernière mise à jour : 9 août 2026
       </p>
       <p className="text-text-muted text-sm mb-12">
         Conformément à la Ley Estatutaria 1581 de 2012 (loi colombienne sur la
@@ -301,7 +301,9 @@ export default function DataPolicyFr() {
               adéquate. Ceux-ci incluent : fournisseurs d&apos;hébergement et
               d&apos;infrastructure, fournisseurs de modèles d&apos;IA
               (OpenAI, Anthropic, Google), Meta/WhatsApp Business API,
-              processeurs de paiement.
+              processeurs de paiement, Sentry pour le diagnostic des crashs et
+              des performances, ainsi qu&apos;Expo et Google Firebase Cloud
+              Messaging (FCM) pour les notifications push mobiles.
             </li>
           </ul>
         </section>
@@ -427,9 +429,13 @@ export default function DataPolicyFr() {
               <strong className="text-text-primary">
                 Base de données clients :
               </strong>{" "}
-              pendant la durée de la relation contractuelle et jusqu&apos;à
-              trente (30) jours après la fin du service à des fins
-              d&apos;exportation des données.
+              pendant la relation contractuelle. Lors d&apos;une résiliation
+              ordinaire, l&apos;accès peut continuer jusqu&apos;à la fin de la
+              période contractuelle. Lorsque l&apos;offboarding est exécuté,
+              l&apos;accès et les canaux sont désactivés ; à compter de ce
+              moment, les données opérationnelles peuvent être conservées
+              jusqu&apos;à quatre-vingt-dix (90) jours pour l&apos;exportation,
+              le support ou la réactivation avant leur purge.
             </li>
             <li>
               <strong className="text-text-primary">
@@ -455,9 +461,15 @@ export default function DataPolicyFr() {
             </li>
           </ul>
           <p className="mt-4">
-            Une fois la finalité du traitement atteinte et les délais légaux
-            applicables écoulés, les données personnelles seront supprimées de
-            manière sécurisée ou anonymisées de façon irréversible.
+            Une demande vérifiée de suppression du compte et des données est
+            distincte de la résiliation ordinaire. Après vérification de
+            l&apos;identité et de la portée, la Société lance une purge sécurisée
+            sans retard injustifié, sans promettre qu&apos;elle soit automatique
+            ou instantanée. Les registres soumis à une conservation fiscale,
+            légale, de sécurité ou de prévention de la fraude sont isolés pendant
+            la durée applicable. Les copies résiduelles dans les sauvegardes
+            chiffrées sont indisponibles pour l&apos;usage ordinaire et expirent
+            selon le cycle normal de conservation des sauvegardes.
           </p>
         </section>
 
@@ -499,6 +511,29 @@ export default function DataPolicyFr() {
               </strong>{" "}
               OpenAI, Anthropic et Google pour le traitement des réponses
               automatiques.
+            </li>
+            <li>
+              <strong className="text-text-primary">Sentry :</strong>{" "}
+              pour recevoir des événements techniques minimisés et diagnostiquer
+              les crashs, les erreurs et les performances. Les événements ne
+              sont conservés que pendant la durée configurée dans le projet
+              Sentry de Parallly et tant qu&apos;ils sont nécessaires au
+              diagnostic.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Expo et Google Firebase Cloud Messaging (FCM) :
+              </strong>{" "}
+              pour livrer les notifications mobiles à l&apos;aide de jetons
+              push, d&apos;identifiants d&apos;installation/application et du
+              payload de l&apos;alerte. Expo ne conserve le contenu que pendant
+              la livraison et supprime les reçus après 24 heures ; FCM peut
+              conserver les messages non livrés jusqu&apos;à quatre semaines et,
+              lorsqu&apos;une suppression d&apos;identifiant d&apos;installation
+              est demandée, Google indique le supprimer des systèmes actifs et
+              des sauvegardes sous 180 jours. Les jetons stockés par Parallly
+              sont supprimés lorsqu&apos;ils deviennent invalides ou lors de la
+              purge vérifiée.
             </li>
             <li>
               <strong className="text-text-primary">

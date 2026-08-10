@@ -39,9 +39,24 @@ export class PushController {
     @ApiOperation({ summary: 'Register a native Expo push token (mobile app)' })
     async expoSubscribe(
         @CurrentUser() user: any,
-        @Body() body: { token: string },
+        @Body() body: { token: string; installationId: string },
     ) {
-        await this.pushService.subscribeExpo(user.id || user.sub, user.tenantId, body.token);
+        await this.pushService.subscribeExpo(
+            user.id || user.sub,
+            user.tenantId,
+            body.token,
+            body.installationId,
+        );
+        return { success: true };
+    }
+
+    @Post('expo-unsubscribe')
+    @ApiOperation({ summary: 'Remove native Expo push token(s) for the authenticated account' })
+    async expoUnsubscribe(
+        @CurrentUser() user: any,
+        @Body() body: { token?: string },
+    ) {
+        await this.pushService.unsubscribeExpo(user.id || user.sub, user.tenantId, body?.token);
         return { success: true };
     }
 }

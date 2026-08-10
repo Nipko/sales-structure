@@ -29,7 +29,7 @@ export default function PrivacyEn() {
         Privacy Policy
       </h1>
       <p className="text-text-muted text-sm mb-12">
-        Last updated: April 29, 2026
+        Last updated: August 9, 2026
       </p>
 
       <div className="space-y-12 text-text-secondary leading-relaxed">
@@ -89,6 +89,22 @@ export default function PrivacyEn() {
               processed, agents configured.
             </li>
             <li>Activity logs for security and diagnostics.</li>
+            <li>
+              Technical app diagnostics: app version, device type, operating
+              system, timestamps, error stack traces, technical navigation
+              context, and sampled performance traces. Sentry&apos;s default PII
+              sending is disabled. Even so, a technical event could contain
+              incidental personal data if it forms part of the error context;
+              we therefore minimize that context and do not intentionally
+              include message content or credentials.
+            </li>
+            <li>
+              Mobile notification identifiers: Expo push token, Firebase
+              installation ID, app and platform identifiers, and delivery
+              metadata. A payload may include the title and body of an
+              operational alert and the identifier or link needed to open the
+              relevant conversation.
+            </li>
           </ul>
 
           <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
@@ -252,6 +268,33 @@ export default function PrivacyEn() {
             </li>
             <li>
               <strong className="text-text-primary">
+                Sentry (crash and performance diagnostics):
+              </strong>{" "}
+              acts as a processor receiving minimized technical events so we
+              can detect errors, crashes, and latency. Events remain only for
+              the retention period configured for Parallly&apos;s Sentry project
+              and only while needed for diagnostics; this policy does not state
+              a universal fixed period because it depends on the provider&apos;s
+              operational configuration.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Expo and Google Firebase Cloud Messaging (FCM):
+              </strong>{" "}
+              act as processors routing mobile notifications and process push
+              tokens, installation/app identifiers, and the alert payload. Expo
+              keeps notification content only in memory or delivery queues and
+              clears push receipts after 24 hours. FCM may retain undelivered
+              messages for their configured time to live — four weeks by
+              default — and retains the installation ID until deletion is
+              requested; Google states that after such a request it removes the
+              ID from live and backup systems within 180 days. Parallly retains
+              a token while the push subscription is active, removes it when
+              the provider marks it invalid, and includes it in the purge for a
+              verified deletion request.
+            </li>
+            <li>
+              <strong className="text-text-primary">
                 Payment processors:
               </strong>{" "}
               to securely manage transactions (PCI DSS certification).
@@ -369,10 +412,14 @@ export default function PrivacyEn() {
           </p>
           <ul className="list-disc pl-6 space-y-2">
             <li>
-              <strong className="text-text-primary">Account data:</strong>{" "}
-              for the duration of the contractual relationship and up to 30
-              days after termination, unless a longer legal retention
-              obligation applies.
+              <strong className="text-text-primary">
+                Ordinary cancellation and account data:
+              </strong>{" "}
+              access may continue until the contracted period ends. When
+              offboarding runs, access and connected channels are disabled;
+              from that point, operational account data may be retained for up
+              to 90 days to allow export, support, or reactivation and is then
+              purged, unless a longer legal retention obligation applies.
             </li>
             <li>
               <strong className="text-text-primary">
@@ -400,6 +447,15 @@ export default function PrivacyEn() {
               analytical purposes.
             </li>
           </ul>
+          <p className="mt-4">
+            A verified account-and-data deletion request is a separate process
+            from ordinary cancellation. After verifying identity and scope, we
+            initiate a secure purge without undue delay; we do not promise
+            automatic or instant deletion. We may isolate and retain tax, legal,
+            security, or fraud-prevention records where required by law.
+            Residual copies in encrypted backups are unavailable for ordinary
+            use and expire under the normal backup retention cycle.
+          </p>
         </section>
 
         {/* 8 */}
@@ -938,6 +994,11 @@ export default function PrivacyEn() {
             process. Before deleting the account and applicable data, we verify
             the requester's identity and the scope of the request. We retain only
             information required for legal, security, or fraud-prevention purposes.
+            Ordinary subscription cancellation is not the same as this verified
+            request and follows the up-to-90-day retention described in section 7.
+            The verified purge starts without undue delay but is not automatic or
+            instantaneous, and residual backup copies expire under their normal
+            retention cycle.
           </p>
 
           <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
@@ -982,6 +1043,16 @@ export default function PrivacyEn() {
                 Email provider
               </strong>{" "}
               — SMTP service used for transactional email.
+            </li>
+            <li>
+              <strong className="text-text-primary">Sentry</strong>{" "}
+              — crash, error, and technical performance monitoring.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Expo and Google Firebase Cloud Messaging
+              </strong>{" "}
+              — mobile push notification delivery.
             </li>
           </ul>
           <p className="mt-3">

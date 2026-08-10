@@ -29,7 +29,7 @@ export default function DataPolicyEn() {
         Personal Data Treatment Policy
       </h1>
       <p className="text-text-muted text-sm mb-4">
-        Last updated: April 2026
+        Last updated: August 9, 2026
       </p>
       <p className="text-text-muted text-sm mb-12">
         Issued in accordance with Ley Estatutaria 1581 de 2012 (Colombia&apos;s
@@ -288,7 +288,9 @@ export default function DataPolicyEn() {
               transmission contracts that guarantee adequate protection.
               These include: hosting and infrastructure providers, AI model
               providers (OpenAI, Anthropic, Google), Meta/WhatsApp Business
-              API, payment processors.
+              API, payment processors, Sentry for crash and performance
+              diagnostics, and Expo together with Google Firebase Cloud
+              Messaging (FCM) for mobile push notifications.
             </li>
           </ul>
         </section>
@@ -411,9 +413,11 @@ export default function DataPolicyEn() {
               <strong className="text-text-primary">
                 Customer database:
               </strong>{" "}
-              during the term of the contractual relationship and up to thirty
-              (30) days after the termination of the service for data export
-              purposes.
+              during the contractual relationship. Upon ordinary cancellation,
+              access may continue until the contracted period ends. When
+              offboarding runs, access and channels are disabled; from that
+              point, operational data may be kept for up to ninety (90) days
+              for export, support, or reactivation before it is purged.
             </li>
             <li>
               <strong className="text-text-primary">
@@ -438,9 +442,14 @@ export default function DataPolicyEn() {
             </li>
           </ul>
           <p className="mt-4">
-            Once the purpose of the treatment has been fulfilled and the
-            applicable legal terms have elapsed, personal data will be securely
-            deleted or irreversibly anonymized.
+            A verified account-and-data deletion request is distinct from
+            ordinary cancellation. After verifying identity and scope, the
+            Company initiates a secure purge without undue delay, without
+            promising that it is automatic or instantaneous. Records subject to
+            tax, legal, security, or fraud-prevention retention are isolated for
+            the applicable period. Residual copies in encrypted backups are not
+            available for ordinary use and expire under the normal backup
+            retention cycle.
           </p>
         </section>
 
@@ -480,6 +489,26 @@ export default function DataPolicyEn() {
               </strong>{" "}
               OpenAI, Anthropic and Google for processing automated
               responses.
+            </li>
+            <li>
+              <strong className="text-text-primary">Sentry:</strong>{" "}
+              to receive minimized technical events and diagnose crashes,
+              errors, and performance. Events are retained only for the period
+              configured in Parallly&apos;s Sentry project and while needed for
+              diagnostics.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Expo and Google Firebase Cloud Messaging (FCM):
+              </strong>{" "}
+              to deliver mobile notifications using push tokens,
+              installation/app identifiers, and the alert payload. Expo keeps
+              content only during delivery and clears receipts after 24 hours;
+              FCM may retain undelivered messages for up to four weeks and,
+              after deletion of an installation ID is requested, Google states
+              that it removes the ID from live and backup systems within 180
+              days. Tokens stored by Parallly are removed when invalid or during
+              the verified purge.
             </li>
             <li>
               <strong className="text-text-primary">

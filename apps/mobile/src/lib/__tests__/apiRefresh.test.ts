@@ -10,7 +10,7 @@ jest.mock('expo-secure-store', () => ({
 }));
 jest.mock('../config', () => ({ API_URL: 'https://api.test/api/v1' }));
 
-import { refreshAccessToken } from '../api';
+import { api, AUTH_LOGOUT_TIMEOUT_MS, refreshAccessToken } from '../api';
 
 afterEach(() => jest.clearAllMocks());
 
@@ -36,5 +36,20 @@ describe('refreshAccessToken', () => {
     it('returns null (no throw) on network error', async () => {
         (global as any).fetch = jest.fn(async () => { throw new Error('network down'); });
         await expect(refreshAccessToken()).resolves.toBeNull();
+    });
+});
+
+describe('api.logout timeout', () => {
+    it('returns after a bounded timeout when the endpoint never responds', async () => {
+        jest.useFakeTimers();
+        try {
+            (global as any).fetch = jest.fn(() => new Promise(() => undefined));
+            const pending = api.logout('refresh-token');
+            await Promise.resolve();
+            jest.advanceTimersByTime(AUTH_LOGOUT_TIMEOUT_MS);
+            await expect(pending).resolves.toBeUndefined();
+        } finally {
+            jest.useRealTimers();
+        }
     });
 });

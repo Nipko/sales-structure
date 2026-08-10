@@ -127,6 +127,9 @@ export function InboxScreen() {
     const [allItems, setAllItems] = useState<Conv[]>([]);
     const [hasMore, setHasMore] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
+    const inboxCacheKey = tenantId && user?.id
+        ? `inbox:last:v2:${encodeURIComponent(tenantId)}:${encodeURIComponent(user.id)}`
+        : null;
 
     useEffect(() => onInboxStatus(setLive), []);
 
@@ -149,8 +152,11 @@ export function InboxScreen() {
     // seed again (the cache must not overwrite a truthful empty inbox).
     const liveResolvedRef = useRef(false);
     useEffect(() => {
-        if (!tenantId) return;
-        AsyncStorage.getItem(`inbox:last:${tenantId}`).then((raw) => {
+        if (!inboxCacheKey) return;
+        // The legacy key was tenant-only, so a second agent in the same tenant
+        // could briefly see the first agent's previews. Never migrate its data.
+        if (tenantId) AsyncStorage.removeItem(`inbox:last:${tenantId}`).catch(() => {});
+        AsyncStorage.getItem(inboxCacheKey).then((raw) => {
             if (!raw || liveResolvedRef.current) return;
             const cached: Conv[] = JSON.parse(raw);
             if (Array.isArray(cached) && cached.length) {
@@ -158,7 +164,7 @@ export function InboxScreen() {
             }
         }).catch(() => { /* cache is best-effort */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tenantId]);
+    }, [inboxCacheKey, tenantId]);
 
     const pickFilter = useCallback((key: string) => {
         haptic.tap();
@@ -168,7 +174,7 @@ export function InboxScreen() {
     }, []);
 
     // React Query — page 0 (first 50). Socket events invalidate → background refetch.
-    const queryKey = ['inbox', tenantId, filter];
+    const queryKey = ['inbox', tenantId, user?.id, filter];
     const { data: queryData, isLoading, isFetching, isError, refetch } = useQuery({
         queryKey,
         queryFn: async () => {
@@ -206,10 +212,10 @@ export function InboxScreen() {
         // starts; an EMPTY inbox removes the key so resolved conversations
         // can't reappear as ghosts on the next cold start.
         liveResolvedRef.current = true;
-        if (tenantId && filter === 'all') {
+        if (inboxCacheKey && filter === 'all') {
             (queryData.items.length
-                ? AsyncStorage.setItem(`inbox:last:${tenantId}`, JSON.stringify(queryData.items))
-                : AsyncStorage.removeItem(`inbox:last:${tenantId}`)
+                ? AsyncStorage.setItem(inboxCacheKey, JSON.stringify(queryData.items))
+                : AsyncStorage.removeItem(inboxCacheKey)
             ).catch(() => {});
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -87,23 +87,84 @@ export class PushService implements OnModuleInit {
     }
 
     /** Register a native Expo push token (provider='expo'). */
-    async subscribeExpo(userId: string, tenantId: string, token: string): Promise<void> {
+    async subscribeExpo(userId: string, tenantId: string, token: string, installationId: string): Promise<void> {
         if (!token) return;
         if (typeof token !== 'string' || token.length > 512) {
             throw new BadRequestException('Token Expo invalido');
         }
+        if (typeof installationId !== 'string'
+            || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(installationId)) {
+            throw new BadRequestException('Identificador de instalacion invalido');
+        }
         await this.ensurePushTable();
         const rows = await this.prisma.$queryRawUnsafe(
-            `INSERT INTO public.push_subscriptions AS ps (user_id, tenant_id, endpoint, keys, provider, created_at)
-             VALUES ($1::uuid, $2::uuid, $3, '{}'::jsonb, 'expo', NOW())
-             ON CONFLICT (endpoint) DO UPDATE SET provider = 'expo', created_at = NOW()
-             WHERE ps.user_id = EXCLUDED.user_id AND ps.tenant_id = EXCLUDED.tenant_id
+            `WITH device_lock AS MATERIALIZED (
+                SELECT pg_advisory_xact_lock(hashtextextended($4::text, 0))
+             ), stale AS (
+                DELETE FROM public.push_subscriptions old_ps
+                USING device_lock
+                WHERE old_ps.provider = 'expo'
+                  AND old_ps.device_id = $4::uuid
+                  AND old_ps.endpoint <> $3
+                RETURNING old_ps.id
+             )
+             INSERT INTO public.push_subscriptions AS ps
+                (user_id, tenant_id, endpoint, keys, provider, device_id, created_at)
+             SELECT $1::uuid, $2::uuid, $3, '{}'::jsonb, 'expo', $4::uuid, NOW()
+             FROM device_lock
+             ON CONFLICT (endpoint) DO UPDATE
+                SET user_id = EXCLUDED.user_id,
+                    tenant_id = EXCLUDED.tenant_id,
+                    provider = 'expo',
+                    device_id = EXCLUDED.device_id,
+                    created_at = NOW()
+             WHERE ps.provider = 'expo'
+               AND (
+                    ps.device_id = EXCLUDED.device_id
+                    OR (
+                        ps.user_id = EXCLUDED.user_id
+                        AND ps.tenant_id = EXCLUDED.tenant_id
+                        AND ps.device_id IS NULL
+                    )
+               )
              RETURNING endpoint`,
-            userId, tenantId, token,
+            userId, tenantId, token, installationId,
         ) as any[];
         if (!rows?.length) {
-            throw new ConflictException('El token push ya pertenece a otra cuenta');
+            throw new ConflictException('El token push pertenece a otra instalacion');
         }
+    }
+
+    /**
+     * Remove native subscriptions at logout. The authenticated user and tenant
+     * are mandatory SQL predicates, so one tenant cannot revoke another one's
+     * token. Omitting token intentionally removes all Expo tokens for this mobile
+     * account and also cleans registrations made by app versions that did not
+     * persist their token locally.
+     */
+    async unsubscribeExpo(userId: string, tenantId: string, token?: string): Promise<void> {
+        if (token !== undefined && (typeof token !== 'string' || !token || token.length > 512)) {
+            throw new BadRequestException('Token Expo invalido');
+        }
+        await this.ensurePushTable();
+        if (token) {
+            await this.prisma.$queryRawUnsafe(
+                `DELETE FROM public.push_subscriptions
+                  WHERE endpoint = $1
+                    AND provider = 'expo'
+                    AND user_id = $2::uuid
+                    AND tenant_id = $3::uuid`,
+                token, userId, tenantId,
+            );
+            return;
+        }
+        await this.prisma.$queryRawUnsafe(
+            `DELETE FROM public.push_subscriptions
+              WHERE provider = 'expo'
+                AND user_id = $1::uuid
+                AND tenant_id = $2::uuid`,
+            userId, tenantId,
+        );
     }
 
     async sendToUser(userId: string, payload: { title: string; body: string; url?: string; tag?: string }): Promise<number> {
@@ -262,8 +323,16 @@ export class PushService implements OnModuleInit {
         await this.prisma.$queryRawUnsafe(
             `ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS provider VARCHAR(20) DEFAULT 'webpush'`,
         ).catch(() => {});
+        await this.prisma.$queryRawUnsafe(
+            `ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS device_id UUID`,
+        ).catch(() => {});
         await this.prisma.$queryRawUnsafe(`
             CREATE INDEX IF NOT EXISTS idx_push_subs_user ON public.push_subscriptions(user_id)
+        `);
+        await this.prisma.$queryRawUnsafe(`
+            CREATE INDEX IF NOT EXISTS idx_push_subs_expo_device
+            ON public.push_subscriptions(device_id)
+            WHERE provider = 'expo' AND device_id IS NOT NULL
         `);
     }
 }

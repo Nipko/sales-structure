@@ -29,7 +29,7 @@ export default function PrivacyEs() {
         Política de Privacidad
       </h1>
       <p className="text-text-muted text-sm mb-12">
-        Última actualización: 29 de abril de 2026
+        Última actualización: 9 de agosto de 2026
       </p>
 
       <div className="space-y-12 text-text-secondary leading-relaxed">
@@ -89,6 +89,23 @@ export default function PrivacyEs() {
               procesados, agentes configurados.
             </li>
             <li>Registros de actividad (logs) para seguridad y diagnóstico.</li>
+            <li>
+              Datos técnicos de diagnóstico de la app: versión, tipo de
+              dispositivo, sistema operativo, fecha y hora, trazas de error,
+              contexto técnico de navegación y muestras de rendimiento. Sentry
+              está configurado con el envío predeterminado de información
+              personal identificable desactivado. Aun así, un evento técnico
+              podría contener datos incidentales si forman parte del contexto
+              del error; por eso minimizamos el contexto y no incluimos
+              intencionalmente contenido de mensajes ni credenciales.
+            </li>
+            <li>
+              Identificadores de notificaciones móviles: token push de Expo,
+              identificador de instalación de Firebase, identificadores de la
+              app y plataforma, y metadatos de entrega. El payload puede incluir
+              el título y cuerpo de una alerta operativa y el identificador o
+              enlace necesario para abrir la conversación correspondiente.
+            </li>
           </ul>
 
           <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
@@ -255,6 +272,34 @@ export default function PrivacyEs() {
             </li>
             <li>
               <strong className="text-text-primary">
+                Sentry (crashes y rendimiento):
+              </strong>{" "}
+              actúa como encargado para recibir eventos técnicos minimizados y
+              ayudarnos a detectar errores, cierres inesperados y problemas de
+              latencia. Los eventos permanecen durante el período de retención
+              configurado en el proyecto Sentry de Parallly y solo mientras son
+              necesarios para diagnóstico; no fijamos aquí un plazo universal
+              porque depende de la configuración operativa del proveedor.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Expo y Google Firebase Cloud Messaging (FCM):
+              </strong>{" "}
+              actúan como encargados para enrutar notificaciones móviles y
+              procesan tokens push, identificadores de instalación/app y el
+              payload de la alerta. Expo mantiene el contenido solo en memoria
+              o colas durante la entrega y elimina los recibos a las 24 horas.
+              FCM puede conservar mensajes no entregados durante su tiempo de
+              vida configurado —por defecto, hasta cuatro semanas— y conserva
+              el identificador de instalación hasta que se solicita su
+              eliminación; Google informa que, después de esa solicitud, lo
+              elimina de sistemas activos y respaldos en un plazo de hasta 180
+              días. Parallly conserva el token mientras la suscripción push esté
+              activa, lo elimina cuando el proveedor lo marca como inválido y
+              lo incluye en la purga de una solicitud verificada.
+            </li>
+            <li>
+              <strong className="text-text-primary">
                 Procesadores de pago:
               </strong>{" "}
               para gestionar transacciones de forma segura (certificación PCI
@@ -374,10 +419,15 @@ export default function PrivacyEs() {
           </p>
           <ul className="list-disc pl-6 space-y-2">
             <li>
-              <strong className="text-text-primary">Datos de cuenta:</strong>{" "}
-              durante la vigencia de la relación contractual y hasta 30 días
-              después de la terminación, salvo obligación legal de retención
-              mayor.
+              <strong className="text-text-primary">
+                Cancelación ordinaria y datos de cuenta:
+              </strong>{" "}
+              el acceso puede continuar hasta que finalice el período contratado.
+              Al ejecutar el offboarding se desactivan el acceso y los canales;
+              desde entonces, los datos operativos de la cuenta pueden
+              conservarse hasta 90 días para permitir exportación, soporte o
+              reactivación y después se eliminan mediante una purga segura,
+              salvo que exista una obligación legal de retención mayor.
             </li>
             <li>
               <strong className="text-text-primary">
@@ -405,6 +455,17 @@ export default function PrivacyEs() {
               indefinidamente para fines analíticos.
             </li>
           </ul>
+          <p className="mt-4">
+            Una solicitud verificada de eliminación de cuenta y datos es un
+            proceso distinto de la cancelación ordinaria. Tras verificar la
+            identidad y el alcance, iniciamos la purga segura sin demora
+            indebida; no prometemos una eliminación automática o instantánea.
+            Podemos aislar y conservar registros fiscales, legales, de
+            seguridad o prevención de fraude cuando la ley lo exija. Las copias
+            residuales en respaldos cifrados dejan de estar disponibles para el
+            uso ordinario y expiran conforme al ciclo normal de retención de
+            respaldos.
+          </p>
         </section>
 
         {/* 8 */}
@@ -958,7 +1019,11 @@ export default function PrivacyEs() {
             de cumplimiento. Antes de eliminar la cuenta y los datos aplicables,
             verificamos la identidad del solicitante y el alcance de la petición;
             solo conservamos aquello exigido por obligaciones legales, de seguridad
-            o prevención de fraude.
+            o prevención de fraude. La cancelación ordinaria de una suscripción no
+            equivale a esta solicitud verificada y se rige por la retención de hasta
+            90 días descrita en la sección 7. La purga verificada se inicia sin demora
+            indebida, pero no es automática ni instantánea, y las copias residuales
+            de respaldo expiran conforme a su ciclo normal de retención.
           </p>
 
           <h3 className="text-lg font-medium text-text-primary mt-6 mb-3">
@@ -1004,6 +1069,16 @@ export default function PrivacyEs() {
                 Proveedor de correo electrónico
               </strong>{" "}
               — servicio SMTP utilizado para correos transaccionales.
+            </li>
+            <li>
+              <strong className="text-text-primary">Sentry</strong>{" "}
+              — monitoreo de crashes, errores y rendimiento técnico.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Expo y Google Firebase Cloud Messaging
+              </strong>{" "}
+              — entrega de notificaciones push móviles.
             </li>
           </ul>
           <p className="mt-3">

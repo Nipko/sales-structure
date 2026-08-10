@@ -29,7 +29,7 @@ export default function DataPolicyEs() {
         Política de Tratamiento de Datos Personales
       </h1>
       <p className="text-text-muted text-sm mb-4">
-        Última actualización: Abril 2026
+        Última actualización: 9 de agosto de 2026
       </p>
       <p className="text-text-muted text-sm mb-12">
         Conforme a la Ley Estatutaria 1581 de 2012, el Decreto Reglamentario
@@ -287,7 +287,9 @@ export default function DataPolicyEs() {
               de datos que garanticen la protección adecuada. Estos incluyen:
               proveedores de hosting e infraestructura, proveedores de modelos
               de IA (OpenAI, Anthropic, Google), Meta/WhatsApp Business API,
-              procesadores de pago.
+              procesadores de pago, Sentry para diagnóstico de crashes y
+              rendimiento, y Expo junto con Google Firebase Cloud Messaging
+              (FCM) para notificaciones push móviles.
             </li>
           </ul>
         </section>
@@ -411,9 +413,12 @@ export default function DataPolicyEs() {
               <strong className="text-text-primary">
                 Base de datos de clientes:
               </strong>{" "}
-              durante la vigencia de la relación contractual y hasta treinta
-              (30) días después de la terminación del servicio para efectos de
-              exportación de datos.
+              durante la vigencia de la relación contractual. En una cancelación
+              ordinaria, el acceso puede continuar hasta finalizar el período
+              contratado. Cuando se ejecuta el offboarding se desactivan el
+              acceso y los canales; desde entonces, los datos operativos pueden
+              conservarse hasta noventa (90) días para exportación, soporte o
+              reactivación antes de su purga segura.
             </li>
             <li>
               <strong className="text-text-primary">
@@ -438,9 +443,14 @@ export default function DataPolicyEs() {
             </li>
           </ul>
           <p className="mt-4">
-            Una vez cumplida la finalidad del tratamiento y transcurridos los
-            plazos legales aplicables, los datos personales serán eliminados de
-            forma segura o anonimizados de manera irreversible.
+            Una solicitud verificada de eliminación de cuenta y datos es
+            distinta de la cancelación ordinaria. Tras verificar la identidad y
+            el alcance, la Empresa inicia la purga segura sin demora indebida,
+            sin prometer que sea automática o instantánea. Los registros que
+            deban conservarse por obligación fiscal, legal, de seguridad o
+            prevención de fraude se aíslan durante el plazo aplicable. Las copias
+            residuales en respaldos cifrados quedan fuera del uso ordinario y
+            expiran conforme al ciclo normal de retención de respaldos.
           </p>
         </section>
 
@@ -481,6 +491,27 @@ export default function DataPolicyEs() {
               </strong>{" "}
               OpenAI, Anthropic y Google para el procesamiento de respuestas
               automáticas.
+            </li>
+            <li>
+              <strong className="text-text-primary">Sentry:</strong>{" "}
+              para recibir eventos técnicos minimizados y diagnosticar crashes,
+              errores y rendimiento. Los eventos se conservan solo durante el
+              período configurado en el proyecto Sentry de Parallly y mientras
+              sean necesarios para diagnóstico.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Expo y Google Firebase Cloud Messaging (FCM):
+              </strong>{" "}
+              para entregar notificaciones móviles mediante tokens push,
+              identificadores de instalación/app y el payload de la alerta.
+              Expo mantiene el contenido solo durante la entrega y elimina los
+              recibos a las 24 horas; FCM puede mantener mensajes no entregados
+              hasta cuatro semanas y, cuando se solicita eliminar un
+              identificador de instalación, Google informa que lo retira de
+              sistemas activos y respaldos en un plazo de hasta 180 días. Los
+              tokens guardados por Parallly se eliminan al quedar inválidos o al
+              ejecutar la purga verificada.
             </li>
             <li>
               <strong className="text-text-primary">

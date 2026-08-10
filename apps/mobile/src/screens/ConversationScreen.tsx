@@ -378,16 +378,21 @@ export function ConversationScreen() {
         const tmpId = `tmp-${Date.now()}`;
         setMessages((prev) => [...prev, { id: tmpId, sender: 'outbound', content: body, timestamp: new Date().toISOString() }]);
         try {
-            await api.sendMessage(tenantId, conversationId, body, user?.id);
+            const result = await api.sendMessage(tenantId, conversationId, body, user?.id);
+            if (!result?.success) throw new Error(result?.error || 'send_failed');
             haptic.success();
             load();
         } catch {
             // Don't lose it: hand off to the outbox to auto-retry on reconnect.
             // It renders as a pending bubble (sourced from the queue, not `messages`).
             setMessages((prev) => prev.filter((m) => m.id !== tmpId));
-            enqueue({ id: tmpId, tenantId, conversationId, body, agentId: user?.id });
-            haptic.warning();
-            toast.info(t('conv.queued'));
+            const queued = enqueue({ id: tmpId, tenantId, conversationId, body, agentId: user?.id });
+            if (queued) {
+                haptic.warning();
+                toast.info(t('conv.queued'));
+            } else {
+                toast.error(t('conv.sendError'));
+            }
         } finally { setSending(false); }
     };
     // ── Audio recording ───────────────────────────────────────────────────────

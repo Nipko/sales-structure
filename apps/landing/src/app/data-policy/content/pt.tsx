@@ -29,7 +29,7 @@ export default function DataPolicyPt() {
         Política de Tratamento de Dados Pessoais
       </h1>
       <p className="text-text-muted text-sm mb-4">
-        Última atualização: Abril de 2026
+        Última atualização: 9 de agosto de 2026
       </p>
       <p className="text-text-muted text-sm mb-12">
         Em conformidade com a Ley Estatutaria 1581 de 2012 (Lei Estatutária
@@ -293,7 +293,9 @@ export default function DataPolicyPt() {
               dados que garantam a proteção adequada. Estes incluem:
               fornecedores de hospedagem e infraestrutura, fornecedores de
               modelos de IA (OpenAI, Anthropic, Google), Meta/WhatsApp
-              Business API, processadores de pagamento.
+              Business API, processadores de pagamento, Sentry para diagnóstico
+              de crashes e desempenho, e Expo junto com o Google Firebase Cloud
+              Messaging (FCM) para notificações push móveis.
             </li>
           </ul>
         </section>
@@ -416,8 +418,12 @@ export default function DataPolicyPt() {
               <strong className="text-text-primary">
                 Base de dados de clientes:
               </strong>{" "}
-              durante a vigência da relação contratual e até trinta (30) dias
-              após o término do serviço para fins de exportação de dados.
+              durante a vigência da relação contratual. No cancelamento
+              ordinário, o acesso pode continuar até o fim do período contratado.
+              Quando o offboarding é executado, o acesso e os canais são
+              desativados; a partir daí, os dados operacionais podem ser
+              conservados por até noventa (90) dias para exportação, suporte ou
+              reativação antes da purga.
             </li>
             <li>
               <strong className="text-text-primary">
@@ -443,9 +449,14 @@ export default function DataPolicyPt() {
             </li>
           </ul>
           <p className="mt-4">
-            Uma vez cumprida a finalidade do tratamento e transcorridos os
-            prazos legais aplicáveis, os dados pessoais serão eliminados de
-            forma segura ou anonimizados de maneira irreversível.
+            Uma solicitação verificada de exclusão da conta e dos dados é
+            distinta do cancelamento ordinário. Após verificar a identidade e o
+            escopo, a Empresa inicia uma purga segura sem demora indevida, sem
+            prometer que ela seja automática ou instantânea. Registros sujeitos
+            a retenção fiscal, legal, de segurança ou de prevenção a fraudes são
+            isolados pelo prazo aplicável. Cópias residuais em backups
+            criptografados ficam indisponíveis para uso ordinário e expiram
+            conforme o ciclo normal de retenção dos backups.
           </p>
         </section>
 
@@ -485,6 +496,27 @@ export default function DataPolicyPt() {
               </strong>{" "}
               OpenAI, Anthropic e Google para o processamento de respostas
               automáticas.
+            </li>
+            <li>
+              <strong className="text-text-primary">Sentry:</strong>{" "}
+              para receber eventos técnicos minimizados e diagnosticar crashes,
+              erros e desempenho. Os eventos são conservados apenas durante o
+              período configurado no projeto Sentry do Parallly e enquanto
+              forem necessários para diagnóstico.
+            </li>
+            <li>
+              <strong className="text-text-primary">
+                Expo e Google Firebase Cloud Messaging (FCM):
+              </strong>{" "}
+              para entregar notificações móveis por meio de tokens push,
+              identificadores de instalação/app e o payload do alerta. A Expo
+              mantém o conteúdo somente durante a entrega e elimina os recibos
+              após 24 horas; o FCM pode manter mensagens não entregues por até
+              quatro semanas e, quando a exclusão de um identificador de
+              instalação é solicitada, o Google informa que o remove dos
+              sistemas ativos e backups em até 180 dias. Os tokens armazenados
+              pelo Parallly são excluídos quando ficam inválidos ou durante a
+              purga verificada.
             </li>
             <li>
               <strong className="text-text-primary">

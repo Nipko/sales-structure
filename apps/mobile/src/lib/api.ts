@@ -8,6 +8,7 @@ const USER_KEY = 'parallly_user';
 // Trusted-device token: lets future logins skip 2FA for 30 days. Persists across
 // logout (it identifies the DEVICE, not the session) — only cleared if revoked.
 const DEVICE_TRUST_KEY = 'parallly_device_trust';
+export const AUTH_LOGOUT_TIMEOUT_MS = 2_000;
 
 // Shared contract (packages/shared) + the display name returned by /auth/login.
 export type AuthUser = SharedAuthUser & { name?: string };
@@ -191,13 +192,21 @@ export const api = {
 
     // Kill the server-side session so a later login doesn't hit "session already open".
     async logout(refreshToken?: string) {
+        const controller = new AbortController();
+        let timeout: ReturnType<typeof setTimeout> | undefined;
         try {
-            await fetch(`${API_URL}/auth/logout`, {
+            const request = fetch(`${API_URL}/auth/logout`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ refreshToken }),
+                signal: controller.signal,
             });
+            const deadline = new Promise<void>((resolve) => {
+                timeout = setTimeout(() => { controller.abort(); resolve(); }, AUTH_LOGOUT_TIMEOUT_MS);
+            });
+            await Promise.race([request.then(() => undefined), deadline]);
         } catch { /* best effort */ }
+        finally { if (timeout) clearTimeout(timeout); }
     },
 
     // 2FA challenge during login (public — uses the twoFAToken from login/google).
@@ -455,8 +464,10 @@ export const api = {
         json(`/pipeline/deals/${tenantId}/${dealId}`, { method: 'PUT', body: JSON.stringify(data) }),
 
     // Native push (Expo token)
-    subscribeExpoPush: (token: string) =>
-        json('/push/expo-subscribe', { method: 'POST', body: JSON.stringify({ token }) }),
+    subscribeExpoPush: (token: string, installationId: string, signal?: AbortSignal) =>
+        json('/push/expo-subscribe', { method: 'POST', body: JSON.stringify({ token, installationId }), signal }),
+    unsubscribeExpoPush: (token?: string, signal?: AbortSignal) =>
+        json('/push/expo-unsubscribe', { method: 'POST', body: JSON.stringify(token ? { token } : {}), signal }),
 
     // Channel accounts (multi-channel-per-type): which connections the tenant has.
     getChannelsOverview: () => json('/channels/overview'),

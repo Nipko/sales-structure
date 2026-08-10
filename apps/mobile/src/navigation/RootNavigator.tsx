@@ -11,6 +11,7 @@ import { registerForPush, registerNotificationCategories, onNotificationTap, get
 import { api } from '../lib/api';
 import { getAgentSocket, connectRealtime } from '../lib/socket';
 import { subscribeUnread, getUnreadTotal } from '../lib/unread';
+import { enqueue } from '../lib/outbox';
 import { haptic } from '../lib/haptics';
 import { resolveVerticalWorkspace } from '../lib/verticalWorkspace';
 import { theme } from '../theme';
@@ -162,7 +163,8 @@ export function RootNavigator() {
     // Register native push + notification quick actions + deep-link taps.
     useEffect(() => {
         if (!user) return;
-        registerForPush();
+        const pushTenantId = tenantId || user.tenantId;
+        if (user.id && pushTenantId) registerForPush(user.id, pushTenantId);
         registerNotificationCategories();
 
         const navigateTo = (data: any) => {
@@ -181,7 +183,13 @@ export function RootNavigator() {
             const data = info?.data || {};
             // Inline "Responder" from the notification → send the reply directly.
             if (info.actionIdentifier === 'reply' && info.userText?.trim() && data.conversationId && tenantId) {
-                api.sendMessage(tenantId, data.conversationId, info.userText.trim(), user?.id).catch(() => {});
+                enqueue({
+                    id: `notification-reply-${Date.now()}`,
+                    tenantId,
+                    conversationId: data.conversationId,
+                    body: info.userText.trim(),
+                    agentId: user.id,
+                });
                 return;
             }
             navigateTo(data);

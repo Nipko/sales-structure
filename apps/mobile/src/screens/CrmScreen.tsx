@@ -51,6 +51,10 @@ export function CrmScreen() {
     const [createOpen, setCreateOpen] = useState(false);
     const [form, setForm] = useState({ first_name: '', last_name: '', phone: '', email: '' });
     const [saving, setSaving] = useState(false);
+    // Errors have to render INSIDE the sheet. On Android a <Modal> is its own
+    // native window, so the toast overlay (an absolute View in the app tree)
+    // draws behind it — a failed create looked like a dead button.
+    const [createError, setCreateError] = useState('');
     // Business card scanner
     const [scanning, setScanning] = useState(false);
 
@@ -72,9 +76,13 @@ export function CrmScreen() {
 
     useEffect(() => { const tm = setTimeout(load, search ? 350 : 0); return () => clearTimeout(tm); }, [load, search]);
 
+    // `leads.phone` is NOT NULL, so a lead without one can never be stored.
+    const canCreateLead = !!form.phone.trim();
+
     const createLead = async () => {
-        if (!tenantId || !(form.first_name.trim() || form.phone.trim())) return;
+        if (!tenantId || !canCreateLead) return;
         setSaving(true);
+        setCreateError('');
         try {
             const payload: Record<string, any> = { source: 'mobile' };
             if (form.first_name.trim()) payload.first_name = form.first_name.trim();
@@ -82,14 +90,16 @@ export function CrmScreen() {
             if (form.phone.trim()) payload.phone = form.phone.trim();
             if (form.email.trim()) payload.email = form.email.trim();
             const r: any = await api.createLead(tenantId, payload);
-            if (!r?.success) throw new Error('fail');
-            toast.success(t('crm.leadCreated'));
+            if (!r?.success) throw new Error(r?.error || 'fail');
             setCreateOpen(false);
+            setCreateError('');
             setForm({ first_name: '', last_name: '', phone: '', email: '' });
+            // Only safe to toast once the modal is gone (see createError above).
+            toast.success(t('crm.leadCreated'));
             if (r.data?.id) nav.navigate('LeadDetail', { leadId: r.data.id, title: leadName(r.data) });
             else load();
         } catch {
-            toast.error(t('crm.leadCreateError'));
+            setCreateError(t('crm.leadCreateError'));
         } finally { setSaving(false); }
     };
 
@@ -176,15 +186,15 @@ export function CrmScreen() {
             </TouchableOpacity>
 
             {/* Create-lead FAB */}
-            <TouchableOpacity style={[styles.fab, { bottom: 24 + insets.bottom }]} onPress={() => { haptic.tap(); setCreateOpen(true); }}
+            <TouchableOpacity style={[styles.fab, { bottom: 24 + insets.bottom }]} onPress={() => { haptic.tap(); setCreateError(''); setCreateOpen(true); }}
                 accessibilityRole="button" accessibilityLabel={t('crm.newLead')}>
                 <Ionicons name="add" size={28} color="#fff" />
             </TouchableOpacity>
 
             {/* Create-lead sheet */}
-            <Modal visible={createOpen} transparent animationType="slide" onRequestClose={() => setCreateOpen(false)} statusBarTranslucent>
+            <Modal visible={createOpen} transparent animationType="slide" onRequestClose={() => { setCreateError(''); setCreateOpen(false); }} statusBarTranslucent>
                 <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
-                <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setCreateOpen(false)}>
+                <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => { setCreateError(''); setCreateOpen(false); }}>
                     <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} onStartShouldSetResponder={() => true}>
                         <Text style={styles.sheetTitle}>{t('crm.newLead')}</Text>
                         <TextInput style={styles.input} placeholder={t('crm.firstName')} placeholderTextColor={theme.textSecondary}
@@ -196,8 +206,11 @@ export function CrmScreen() {
                         <TextInput style={styles.input} placeholder={t('crm.email')} placeholderTextColor={theme.textSecondary}
                             keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={(v) => setForm((f) => ({ ...f, email: v }))} />
                         <Text style={styles.hint}>{t('crm.leadHint')}</Text>
-                        <TouchableOpacity style={[styles.primaryBtn, (saving || !(form.first_name.trim() || form.phone.trim())) && { opacity: 0.5 }]}
-                            onPress={createLead} disabled={saving || !(form.first_name.trim() || form.phone.trim())}>
+                        {!!createError && (
+                            <Text style={styles.sheetError} accessibilityRole="alert">{createError}</Text>
+                        )}
+                        <TouchableOpacity style={[styles.primaryBtn, (saving || !canCreateLead) && { opacity: 0.5 }]}
+                            onPress={createLead} disabled={saving || !canCreateLead}>
                             {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{t('crm.createLead')}</Text>}
                         </TouchableOpacity>
                     </View>
@@ -227,6 +240,7 @@ const styles = StyleSheet.create({
     sheetTitle: { color: theme.text, fontSize: 17, fontWeight: '700', marginBottom: 12 },
     input: { backgroundColor: theme.bg, borderColor: theme.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, color: theme.text, fontSize: 15, marginBottom: 10 },
     hint: { color: theme.textSecondary, fontSize: 12, marginBottom: 8 },
+    sheetError: { color: theme.danger, fontSize: 13, marginBottom: 8 },
     primaryBtn: { backgroundColor: theme.accent, borderRadius: 10, paddingVertical: 13, alignItems: 'center', marginTop: 4 },
     primaryText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

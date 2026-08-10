@@ -1,9 +1,49 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { Lead } from '../interfaces/lead.interface';
 import { normalizePhoneE164 } from '../../../common/utils/phone.util';
 import { PipelineService } from '../../pipeline/pipeline.service';
+
+/**
+ * Columns of `leads` that a caller may write, as they actually exist in
+ * `prisma/tenant-schema.sql`.
+ *
+ * This used to be two hand-maintained lists (one in createLead, one in
+ * updateLead) that between them named five columns the table never had:
+ * `source`, `notes`, `tags`, `customer_profile_id` and `converted_at`. A
+ * whitelist that admits a phantom column is worse than no whitelist — it
+ * promotes the field into the INSERT and Postgres rejects the whole statement
+ * with 42703. The mobile app hardcodes `source: 'mobile'` on every lead, so
+ * creating a lead from the phone failed 100% of the time with a 500.
+ *
+ * Lead attribution lives in `utm_source` (that is what CRM analytics reads);
+ * anything else a client sends under `source` is folded into `metadata`.
+ */
+const LEAD_WRITABLE_COLUMNS = [
+  'first_name', 'last_name', 'phone', 'phone_normalized', 'email',
+  'stage', 'score', 'assigned_to', 'is_vip', 'metadata', 'archived_at',
+] as const;
+
+/** Keys that are meaningful to callers but are not columns — kept in metadata. */
+const METADATA_FOLDED_KEYS = ['source', 'notes', 'tags'] as const;
+
+/**
+ * Moves non-column keys into `metadata` instead of letting them reach the SQL
+ * builder, so a client sending `source` gets its value stored rather than a 500.
+ */
+function foldNonColumnsIntoMetadata(record: Record<string, any>): void {
+  const folded: Record<string, any> = {};
+  for (const key of METADATA_FOLDED_KEYS) {
+    if (record[key] !== undefined && record[key] !== null && record[key] !== '') {
+      folded[key] = record[key];
+    }
+    delete record[key];
+  }
+  if (Object.keys(folded).length === 0) return;
+  const existing = record.metadata && typeof record.metadata === 'object' ? record.metadata : {};
+  record.metadata = { ...existing, ...folded };
+}
 
 @Injectable()
 export class LeadsRepository {
@@ -227,18 +267,20 @@ export class LeadsRepository {
     if (!schema) return null;
 
     const record = { ...(data as Record<string, any>) };
+    foldNonColumnsIntoMetadata(record);
+    // `leads.phone` is NOT NULL. Without this the missing-phone case reaches
+    // Postgres and comes back as a 500, which the caller can only read as
+    // "nothing happened" — the same dead-end the phantom columns produced.
+    if (!String(record.phone ?? '').trim()) {
+      throw new BadRequestException('phone is required to create a lead');
+    }
     const canonicalStage = await this.pipelineService.resolveTenantStage(tenantId, record.stage, { schemaName: schema });
     record.stage = canonicalStage.slug;
     // Auto-normalize phone
     if (record.phone) {
       record.phone_normalized = normalizePhoneE164(record.phone) || record.phone;
     }
-    const ALLOWED_FIELDS = [
-      'first_name', 'last_name', 'phone', 'phone_normalized', 'email', 'stage',
-      'source', 'score', 'assigned_to', 'is_vip', 'notes', 'metadata',
-      'tags', 'customer_profile_id', 'archived_at', 'converted_at',
-    ];
-    const fields = Object.keys(record).filter(k => record[k] !== undefined && ALLOWED_FIELDS.includes(k));
+    const fields = Object.keys(record).filter(k => record[k] !== undefined && (LEAD_WRITABLE_COLUMNS as readonly string[]).includes(k));
     const values = fields.map(k => record[k]);
     const placeholders = fields.map((k, i) => {
       const isUuid = ['assigned_to', 'customer_profile_id', 'contact_id', 'campaign_id', 'course_id'].includes(k);
@@ -259,6 +301,7 @@ export class LeadsRepository {
     if (!schema) return null;
 
     const record = { ...(data as Record<string, any>) };
+    foldNonColumnsIntoMetadata(record);
     if (record.stage !== undefined) {
       record.stage = (await this.pipelineService.resolveTenantStage(
         tenantId,
@@ -270,16 +313,11 @@ export class LeadsRepository {
     if (record.phone) {
       record.phone_normalized = normalizePhoneE164(record.phone) || record.phone;
     }
-    const ALLOWED_FIELDS = [
-      'first_name', 'last_name', 'phone', 'phone_normalized', 'email', 'stage',
-      'source', 'score', 'assigned_to', 'is_vip', 'notes', 'metadata',
-      'customer_profile_id', 'archived_at', 'converted_at',
-    ];
-    const fields = Object.keys(record).filter(k => record[k] !== undefined && ALLOWED_FIELDS.includes(k));
+    const fields = Object.keys(record).filter(k => record[k] !== undefined && (LEAD_WRITABLE_COLUMNS as readonly string[]).includes(k));
     if (fields.length === 0) return this.getLeadById(tenantId, id);
 
     const setClause = fields.map((k, i) => {
-      const isUuid = ['assigned_to', 'customer_profile_id', 'contact_id', 'campaign_id', 'course_id'].includes(k);
+      const isUuid = ['assigned_to', 'contact_id', 'campaign_id', 'course_id'].includes(k);
       return `${k} = $${i + 2}${isUuid ? '::uuid' : ''}`;
     }).join(', ');
     const values = [id, ...fields.map(k => record[k])];

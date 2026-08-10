@@ -250,15 +250,20 @@ realmente en el prompt.
 | Inbox: lista, filtros (los 6), estado en vivo | ✅ Recorrido — hallazgos 2, 8, 9 |
 | CRM: lista, alta de lead, detalle, refresco | ✅ Recorrido — hallazgos 1, 4, 6 |
 | Embudo | ✅ Recorrido — hallazgo 5 |
-| Conversación: envío, copiloto IA, acciones de cierre, multimedia | ⏳ **Sin probar** |
-| Operación vertical (Agenda): alta, reprogramar, cancelar | ⏳ **Sin probar** |
-| Más: estado de agente, idioma, notificaciones, cuenta | ⏳ **Sin probar** |
-| Sesión: persistencia, bloqueo biométrico, logout | ⏳ **Sin probar** |
-| Offline: cola de salida, caché del inbox | ⏳ **Sin probar** |
-| Push con app cerrada | ⏳ **Sin probar** — es el pendiente histórico del GATE 0 |
-| Deep links `parallly://` | ⏳ **Sin probar** |
+| Conversación: envío, resumen, tomar control, ficha de contacto | ✅ Recorrido — hallazgos 10, 13 |
+| Agenda: alta de cita con cupos reales, confirmar | ✅ Recorrido |
+| Más: disponibilidad, idioma, cuenta, enlaces legales | ✅ Recorrido — hallazgo 12 |
+| Deep links `parallly://` | ✅ Verificado (`parallly://crm`) |
+| Instalación limpia + login | ✅ Verificado con el artefacto de EAS |
+| Reprogramar / cancelar cita | ⏳ **Sin probar** |
+| Multimedia: adjuntar imagen, nota de voz | ⏳ **Sin probar** |
+| Copiloto: reescribir en tonos, sugerir respuesta | ⏳ **Sin probar** |
+| Sesión: bloqueo biométrico, logout | ⏳ **Sin probar** |
+| Offline: cola de salida, caché del inbox | ⛔ **No testeable así** — el equipo está por ADB inalámbrico; cortarle la red mata la conexión de prueba. Requiere USB |
+| Push con app cerrada | ⏳ **Sin probar** — pendiente histórico del GATE 0 y el más importante que queda |
 | Búsqueda de conversaciones y de leads | ⏳ **Sin probar** |
 | Escáner de tarjetas de visita | ⏳ **Sin probar** |
+| Macros y respuestas rápidas | ⏳ **Sin probar** |
 
 > Lo que falta es alrededor de la mitad de la superficie, e incluye áreas donde
 > históricamente aparecieron problemas (multimedia, offline, push con app cerrada).
@@ -296,6 +301,13 @@ Contrastado contra los logs de producción, no sólo contra la pantalla.
 | Enlaces legales exigidos por Play | Privacidad y eliminación de datos abren el navegador y cargan |
 | Alta de leads | 6 leads creados end-to-end contra la API ya corregida |
 | `business-info` | 200 |
+| **Envío de mensajes** | Mensaje enviado desde la app y **recibido en Telegram** (notificación en el dispositivo). `POST …/message` → 201 |
+| **Cola inbound** | El webhook de Telegram encola y procesa en 50 ms; devuelve 200 rápido |
+| **Modo handoff** | Con la conversación tomada, el pipeline registra *"is in HUMAN HANDOFF mode. Skipping AI"* — la IA no pisa al humano |
+| **Alta de citas** | Servicio + cliente obligatorio + fecha → **cupos reales** (08:00, 08:30…) → cita creada para el 17-ago 8:00 |
+| **Confirmar cita** | La cita pasó de "Pendiente" a "Confirmado" |
+| **Deep links** | `parallly://crm` enruta correctamente (cierra G0.10) |
+| Ficha de contacto | Muestra teléfono, segmento y conteo de conversaciones |
 
 Dos observaciones sin conclusión, anotadas para no perderlas:
 

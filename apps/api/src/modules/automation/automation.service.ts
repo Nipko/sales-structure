@@ -77,7 +77,7 @@ export class AutomationService {
     ) {
         this.assertValidTriggerType(payload?.trigger_type);
         return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
-            await query(`SELECT pg_advisory_xact_lock(hashtextextended('automation-rules', 0))`);
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended('automation-rules', 0))::text AS lock_acquired`);
             const countRows = await query<any[]>(`SELECT COUNT(*)::int AS count FROM automation_rules`);
             await enforceLimit(Number(countRows?.[0]?.count || 0));
             const rows = await query<any[]>(
@@ -116,7 +116,7 @@ export class AutomationService {
         enforceActivationLimit: (activeCount: number) => Promise<void>,
     ) {
         return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
-            await query(`SELECT pg_advisory_xact_lock(hashtextextended('automation-rules', 0))`);
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended('automation-rules', 0))::text AS lock_acquired`);
             const currentRows = await query<any[]>(
                 `SELECT id, active FROM automation_rules WHERE id = $1::uuid FOR UPDATE`,
                 [ruleId],
@@ -171,7 +171,7 @@ export class AutomationService {
     ) {
         this.assertValidTriggerType(payload?.trigger_type);
         return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
-            await query(`SELECT pg_advisory_xact_lock(hashtextextended('automation-rules', 0))`);
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended('automation-rules', 0))::text AS lock_acquired`);
             const currentRows = await query<any[]>(
                 `SELECT id, active FROM automation_rules WHERE id = $1::uuid FOR UPDATE`,
                 [ruleId],

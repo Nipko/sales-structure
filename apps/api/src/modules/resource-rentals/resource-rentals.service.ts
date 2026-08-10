@@ -246,7 +246,7 @@ export class ResourceRentalsService {
                 trustedOpportunityId: input.opportunityId,
             });
             await query(
-                `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
+                `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))::text AS lock_acquired`,
                 [`${schemaName}:resource-rental:vehicle:${vehicleId}`],
             );
             const vehicles = await query<any[]>(
@@ -305,11 +305,11 @@ export class ResourceRentalsService {
             // Capacity is shared by service, while double-booking protection is
             // shared by pet. Both locks live until commit.
             await query(
-                `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
+                `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))::text AS lock_acquired`,
                 [`${schemaName}:resource-rental:boarding-service:${serviceId}`],
             );
             await query(
-                `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
+                `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))::text AS lock_acquired`,
                 [`${schemaName}:resource-rental:pet:${petId}`],
             );
 

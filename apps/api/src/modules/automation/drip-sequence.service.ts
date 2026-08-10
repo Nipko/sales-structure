@@ -161,7 +161,7 @@ export class DripSequenceService {
         }
 
         return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
-            await query(`SELECT pg_advisory_xact_lock(hashtextextended('drip-sequences', 0))`);
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended('drip-sequences', 0))::text AS lock_acquired`);
             const existing = await query<any[]>(
                 `SELECT COUNT(*)::int AS count FROM drip_sequences WHERE tenant_id = $1::uuid`,
                 [tenantId],

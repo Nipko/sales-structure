@@ -1658,7 +1658,7 @@ export class VerticalsService {
     ): Promise<void> {
         try {
             await this.withTenantQuery(schemaName, executor, async (query) => {
-                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`vertical-services:${schemaName}`]);
+                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`, [`vertical-services:${schemaName}`]);
                 for (let i = 0; i < definition.services.length; i++) {
                     const svc = definition.services[i];
                     const name = svc.name[lang] || svc.name['es'];
@@ -1712,7 +1712,7 @@ export class VerticalsService {
         executor?: TenantQueryExecutor,
     ): Promise<void> {
         await this.withTenantQuery(schemaName, executor, async (query) => {
-            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`vertical-faqs:${schemaName}`]);
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`, [`vertical-faqs:${schemaName}`]);
             for (const faq of faqs) {
                 const question = faq.question[lang] || faq.question.es;
                 const answer = faq.answer[lang] || faq.answer.es;
@@ -1808,7 +1808,7 @@ export class VerticalsService {
 
             let inserted = 0;
             await this.withTenantQuery(schemaName, executor, async (query) => {
-                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`vertical-availability:${schemaName}`]);
+                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`, [`vertical-availability:${schemaName}`]);
                 // The guard and every insert share one transaction. If any day
                 // fails, PostgreSQL rolls all days back; a retry can never see
                 // one partial row and incorrectly treat the schedule as done.
@@ -2440,7 +2440,7 @@ export class VerticalsService {
 
             let inserted = 0;
             await this.withTenantQuery(schemaName, executor, async (query) => {
-                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`vertical-memberships:${schemaName}`]);
+                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`, [`vertical-memberships:${schemaName}`]);
                 const existing = await query<Array<{ name: string }>>(
                     `SELECT name FROM membership_plans ORDER BY sort_order, id`,
                 );

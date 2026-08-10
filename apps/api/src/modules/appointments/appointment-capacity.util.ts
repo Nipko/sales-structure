@@ -90,7 +90,7 @@ export async function lockAndAssertAppointmentCapacity(
     ].sort();
     for (const lockKey of lockKeys) {
         await query(
-            `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
+            `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))::text AS lock_acquired`,
             [lockKey],
         );
     }

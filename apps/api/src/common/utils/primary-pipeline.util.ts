@@ -24,7 +24,7 @@ export async function ensurePrimaryPipeline(
     query: TenantTransactionQuery,
     tenantId: string,
 ): Promise<PrimaryPipelineResolution> {
-    await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [tenantId]);
+    await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`, [tenantId]);
 
     type PipelineCandidate = { id: string };
     const defaults = await query<PipelineCandidate[]>(

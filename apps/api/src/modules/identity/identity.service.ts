@@ -51,7 +51,7 @@ export class IdentityService {
                 ...(email ? [`identity:email:${email}`] : []),
             ].sort();
             for (const key of lockKeys) {
-                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, [key]);
+                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))::text AS lock_acquired`, [key]);
             }
 
             const contactRows = await query<any[]>(

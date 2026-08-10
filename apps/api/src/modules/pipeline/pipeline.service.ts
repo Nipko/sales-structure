@@ -641,7 +641,7 @@ export class PipelineService {
             // The plan limit and the insert are one serialized decision. Two
             // simultaneous requests can no longer both observe the same count
             // and exceed maxPipelines.
-            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`, [
                 `pipeline-create:${tenantId}`,
             ]);
             const countRows = await query<Array<{ c: number }>>(
@@ -687,7 +687,7 @@ export class PipelineService {
         }
 
         return this.prisma.transactionInTenantSchema(schema, async (query) => {
-            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`, [
                 `pipeline-delete:${tenantId}`,
             ]);
             const rows = await query<Array<{ id: string; is_default: boolean }>>(
@@ -790,7 +790,7 @@ export class PipelineService {
             }
             const terminalOutcome = isTerminal ? data.terminalOutcome! : null;
             await this.prisma.transactionInTenantSchema(scope.schema, async (query) => {
-                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [tenantId]);
+                await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`, [tenantId]);
                 const stageCount = await query<Array<{ c: number }>>(
                     `SELECT COUNT(*)::int AS c FROM pipeline_stages WHERE pipeline_id = $1::uuid`,
                     [scope.pipelineId],

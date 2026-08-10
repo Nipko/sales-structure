@@ -313,7 +313,7 @@ export class PropertiesService {
         const externalUid = 'manual-' + Math.random().toString(36).substring(2, 15);
         return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
             await query(
-                `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
+                `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))::text AS lock_acquired`,
                 [`${schemaName}:${propertyId}`],
             );
             const propertyRows = await query<any[]>(
@@ -400,7 +400,7 @@ export class PropertiesService {
                 trustedOpportunityId: data.opportunityId,
             });
             await query(
-                `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
+                `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))::text AS lock_acquired`,
                 [`${schemaName}:${propertyId}`],
             );
 

@@ -74,6 +74,7 @@ jobs:
           apps/api/src/common/utils/native-evidence-opportunity-schema.spec.ts
           apps/api/src/common/utils/native-evidence-writers-contract.spec.ts
           apps/api/src/common/utils/trusted-client-ip.util.spec.ts
+          apps/api/src/common/utils/tenant-query-void-columns.spec.ts
           apps/api/src/modules/pipeline/pipeline-primary-ownership.spec.ts
           apps/api/src/modules/pipeline/pipeline-write-lead-stage-active-scope.spec.ts
           apps/api/src/modules/crm/crm.controller.spec.ts

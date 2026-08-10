@@ -241,7 +241,7 @@ export class PublicBookingController {
             // Serialize public-form retries for this normalized number. The
             // IdentityService later uses a shared cross-channel phone lock, so a
             // channel webhook and this form cannot create parallel profiles.
-            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`, [
                 `public-booking-contact:${phoneNormalized}`,
             ]);
             const matching = await query<Array<{

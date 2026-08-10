@@ -755,10 +755,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         }
         await this.transactionInTenantSchema(schemaName, async (query) => {
             await query(
-                `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+                `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`,
                 [`native-evidence-opportunity:${schemaName}`],
             );
-            await query(`SET LOCAL lock_timeout = '5s'`);
+            await query(`SELECT set_config('lock_timeout', '5s', true) AS lock_timeout`);
             const tableRows = await query<Array<{ exists: boolean }>>(
                 `SELECT EXISTS (
                     SELECT 1
@@ -790,10 +790,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 this.validateSchemaName(schemaName);
                 await this.transactionInTenantSchema(schemaName, async (query) => {
                     await query(
-                        `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+                        `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`,
                         [`native-evidence-opportunity:${schemaName}`],
                     );
-                    await query(`SET LOCAL lock_timeout = '5s'`);
+                    await query(`SELECT set_config('lock_timeout', '5s', true) AS lock_timeout`);
 
                     const presentRows = await query<Array<{ table_name: string }>>(
                         `SELECT table_name

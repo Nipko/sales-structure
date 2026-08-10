@@ -40,9 +40,20 @@ async function bootstrap() {
             crossOriginResourcePolicy: { policy: 'cross-origin' },
         })(req, res, next);
     });
-    // Widget public endpoints — permissive CORS (embedded on customer sites)
+    // Widget public endpoints — permissive CORS (embedded on customer sites).
+    //
+    // La lista es EXPLÍCITA a propósito. Antes era `startsWith('/api/v1/widget')`, que
+    // por prefijo se tragaba también las rutas AUTENTICADAS vecinas:
+    //   /api/v1/widgets/...          (CRUD del widget desde el dashboard)
+    //   /api/v1/widget/triggers/...  (triggers proactivos)
+    // porque "widgets" empieza con "widget". A esas les respondía el preflight con
+    // `Allow-Headers: Content-Type` — sin `Authorization` — y cortaba el OPTIONS con
+    // 204, así que el navegador bloqueaba toda llamada autenticada antes de enviarla.
+    // Desde el servidor se veía perfecto (no llegaba ni una petición al log) y en la
+    // UI se veía como "no tienes widgets". El Web Chat nunca funcionó desde el panel.
+    const PUBLIC_WIDGET_ROUTES = /^\/api\/v1\/widget\/(loader\.js|config\/|sessions(\/|$|\?))/;
     app.use((req: any, res: any, next: any) => {
-        if (req.url?.startsWith('/api/v1/widget')) {
+        if (PUBLIC_WIDGET_ROUTES.test(req.url || '')) {
             const origin = req.headers.origin || '*';
             res.setHeader('Access-Control-Allow-Origin', origin);
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');

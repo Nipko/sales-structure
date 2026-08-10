@@ -95,10 +95,33 @@ como borrador: no tiene testers y no se lanzó.
 | v2 | anterior | Borrador en Prueba interna, sin testers. **Descartado** |
 | v3 | `652c38f9` | Construido y validado (abajo). **Descartado**: anterior a los arreglos de §7-bis |
 | v4 | `e268912b` | Construido durante la sesión, pero **anterior al arreglo del CRM**. Descartado |
-| **v5** | `ab3e5cbc` | **El que se sube**: incluye Deal/Agenda + creación de leads + teléfono obligatorio + error visible |
+| **v5** | `d9d81927` | **El que se sube** — construido, validado e instalado (abajo) |
 
-La validación del v3 que sigue documentada abajo es el **procedimiento** a repetir sobre
-el v5, no un aval del v3.
+### AAB v5 — validado (10-ago-2026)
+
+| Dato | Valor comprobado |
+|---|---|
+| EAS build ID | `20df60d6-73af-45cc-8f5e-6cf3252c1205` |
+| Commit | `d9d81927` (incluye `e268912b` y `ab3e5cbc`) |
+| package | `cloud.parallly.mobile` |
+| versionName / versionCode | `1.0.0` / `5` |
+| minSdk / targetSdk / compileSdk | `24` / `36` / `36` |
+| Tamaño | `53.289.549` bytes |
+| SHA-256 del AAB | `D6B702E5500AF494869C35872908EC1B134446137A9FA289E3C8257FDA658A1B` |
+| `bundletool validate` | OK |
+| Permisos | 31 — **idénticos al v3**, sin una sola diferencia |
+
+Higiene de permisos: `SYSTEM_ALERT_WINDOW` y `WRITE_EXTERNAL_STORAGE` **ausentes**,
+`READ_EXTERNAL_STORAGE` con `maxSdkVersion=32`, `POST_NOTIFICATIONS` / `WAKE_LOCK` /
+`RECEIVE_BOOT_COMPLETED` / `c2dm.permission.RECEIVE` **presentes**, sin ubicación ni
+contactos.
+
+**Instalado y verificado en dispositivo.** El APK universal derivado de este AAB
+(77.655.876 bytes) se instaló sobre un **SM-S918B (Android 16, 1080×2316)** que no tenía
+la app. Comparte firma con el APK universal anterior, así que `adb install -r` conservó
+la sesión. En él se verificó que la pestaña y el encabezado de la agenda ya **coinciden**.
+
+La validación del v3, más abajo, queda como el procedimiento de referencia.
 
 ### AAB v3 — construido y validado (10-ago-2026)
 

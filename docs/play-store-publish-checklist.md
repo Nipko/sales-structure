@@ -183,11 +183,27 @@ un código temporal.
 
 | Punto | Estado |
 |---|---|
-| Datos ficticios precargados | ❌ Inbox: 1 conversación. CRM: 1 lead. Agenda: vacía |
-| Sin PII real | ❌ La única conversación y el único lead se llaman **"Nir Levin"** (nombre real del dueño) |
+| CRM con datos ficticios | ✅ 6 leads sintéticos cargados (Camila Restrepo, Daniela Ospina, Mariana Ochoa, Santiago Franco, Laura Bedoya, Diego Pardo), teléfonos `5730000001xx` |
+| Inbox con conversaciones | ❌ Sigue con 1 sola conversación. **No se puede crear desde la app**: el compose sólo abre el envío saliente. Requiere el dashboard, mensajes reales al bot de Telegram, o el widget público |
+| Agenda con citas | ❌ Vacía |
+| Sin PII real | ❌ La conversación y el lead **"Nir Levin"** siguen ahí. `LeadDetailScreen` **no ofrece editar el nombre** (sólo llamar, WhatsApp, etiqueta, nota, tarea) → hay que renombrarlo desde el dashboard |
 | 2FA desactivado | ⏳ Sin confirmar |
 | Plan/trial que no expire | ⏳ Sin confirmar — **si el trial vence, la cuenta deja de servir** para las revalidaciones de Google en cada actualización futura |
 | Sin exigir pago ni correo externo | ✅ El alta y el pago ocurren fuera del APK (§5) |
+
+Los leads se cargaron manejando la app por ADB, resolviendo cada control por sus bounds
+reales (`uiautomator dump`) en vez de coordenadas fijas: al abrir el teclado la hoja se
+desplaza y las coordenadas fijas dejan de servir. La hoja **tampoco resetea sus campos**
+al cerrarse, así que hay que vaciarlos antes de reescribir.
+
+### Dos defectos menores observados de paso
+
+- Tras crear un lead la app navega al detalle; al volver, **la lista queda obsoleta**
+  hasta hacer pull-to-refresh. Los 6 leads existían pero no se veían.
+- Los 6 leads quedaron en etapa `lead`, pero el **Embudo sigue mostrando `Lead · 0`**
+  incluso tras refrescar: la cadena lead → opportunity → deal → tablero se corta en
+  algún punto. No frena la revisión, pero deja el tablero vacío para el revisor.
+  Registrado aparte para investigar.
 
 No existe hoy un sembrador de datos demo en el repo (`apps/api/prisma` solo tiene
 `seed.ts`, `seed-billing-plans.js` y `seed-gecko.sql`). Poblar el tenant es trabajo

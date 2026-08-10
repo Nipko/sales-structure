@@ -9181,7 +9181,12 @@
     "embedCode": "Embed code",
     "cancel": "Cancel",
     "save": "Save",
-    "triggers": "Proactive triggers"
+    "triggers": "Proactive triggers",
+    "deleteError": "Could not delete the widget.",
+    "loadError": "Could not load widgets.",
+    "saveError": "Could not save changes.",
+    "retry": "Retry",
+    "createError": "Could not create the widget."
   },
   "pwa": {
     "installTitle": "Install Parallly",

@@ -39,59 +39,43 @@ export default function WebChatWidgetPage() {
     const [snippetCopied, setSnippetCopied] = useState<string | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editForm, setEditForm] = useState<any>({});
+    const [error, setError] = useState<string | null>(null);
 
     const fetchWidgets = useCallback(async () => {
         if (!activeTenantId) return;
-        try {
-            const token = localStorage.getItem("token");
-            const res = await fetch(`${API_URL}/widgets/${activeTenantId}`, {
-                headers: { Authorization: `Bearer ${token}`, "x-tenant-id": activeTenantId },
-            });
-            const data = await res.json();
-            if (data.success) setWidgets(data.data || []);
-        } catch { /* ignore */ }
+        setError(null);
+        const res = await api.listWidgets(activeTenantId);
+        // Un fallo NO puede verse igual que "no hay widgets": antes el catch estaba
+        // vacío y una lista vacía era indistinguible de un 401.
+        if (res.success) setWidgets((res.data as WidgetConfig[]) || []);
+        else setError(res.error || t("loadError"));
         setLoading(false);
-    }, [activeTenantId]);
+    }, [activeTenantId, t]);
 
     useEffect(() => { fetchWidgets(); }, [fetchWidgets]);
 
     const createWidget = async () => {
         if (!activeTenantId) return;
         setCreating(true);
-        try {
-            const token = localStorage.getItem("token");
-            const res = await fetch(`${API_URL}/widgets/${activeTenantId}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "x-tenant-id": activeTenantId },
-                body: JSON.stringify({ name: "Web Chat" }),
-            });
-            const data = await res.json();
-            if (data.success) {
-                setWidgets(prev => [data.data, ...prev]);
-            }
-        } catch { /* ignore */ }
+        setError(null);
+        const res = await api.createWidget(activeTenantId, { name: "Web Chat" });
+        if (res.success && res.data) setWidgets(prev => [res.data as WidgetConfig, ...prev]);
+        else setError(res.error || t("createError"));
         setCreating(false);
     };
 
     const updateWidget = async (widgetId: string) => {
         if (!activeTenantId) return;
-        const token = localStorage.getItem("token");
-        await fetch(`${API_URL}/widgets/${activeTenantId}/${widgetId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "x-tenant-id": activeTenantId },
-            body: JSON.stringify(editForm),
-        });
+        const res = await api.updateWidget(activeTenantId, widgetId, editForm);
+        if (!res.success) { setError(res.error || t("saveError")); return; }
         setEditingId(null);
         fetchWidgets();
     };
 
     const deleteWidget = async (widgetId: string) => {
         if (!activeTenantId || !confirm(t("confirmDelete"))) return;
-        const token = localStorage.getItem("token");
-        await fetch(`${API_URL}/widgets/${activeTenantId}/${widgetId}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${token}`, "x-tenant-id": activeTenantId },
-        });
+        const res = await api.deleteWidget(activeTenantId, widgetId);
+        if (!res.success) { setError(res.error || t("deleteError")); return; }
         setWidgets(prev => prev.filter(w => w.id !== widgetId));
     };
 
@@ -162,7 +146,21 @@ export default function WebChatWidgetPage() {
                 mediaKey="settingsIntegrationsWebChat"
             />
 
-            {widgets.length === 0 && (
+            {/* Un fallo se muestra COMO fallo, con reintento. Antes se caía al estado
+                vacío y "no tienes widgets" tapaba un 401. */}
+            {error && (
+                <div className="rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-4 flex items-center justify-between gap-4">
+                    <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+                    <button
+                        onClick={() => { setLoading(true); fetchWidgets(); }}
+                        className="shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700"
+                    >
+                        {t("retry")}
+                    </button>
+                </div>
+            )}
+
+            {!error && widgets.length === 0 && (
                 <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-12 text-center">
                     <MessageCircle size={40} className="mx-auto text-neutral-300 dark:text-neutral-600 mb-4" />
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">{t("noWidgets")}</p>

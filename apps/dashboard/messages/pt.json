@@ -9181,7 +9181,12 @@
     "embedCode": "Código de incorporação",
     "cancel": "Cancelar",
     "save": "Salvar",
-    "triggers": "Triggers proativos"
+    "triggers": "Triggers proativos",
+    "deleteError": "Nao foi possivel excluir o widget.",
+    "loadError": "Nao foi possivel carregar os widgets.",
+    "saveError": "Nao foi possivel salvar as alteracoes.",
+    "retry": "Tentar novamente",
+    "createError": "Nao foi possivel criar o widget."
   },
   "pwa": {
     "installTitle": "Instalar Parallly",

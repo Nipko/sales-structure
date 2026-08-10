@@ -91,19 +91,17 @@ export default function WidgetTriggersPage() {
     // Load widget configs to get the first widget's id
     const fetchData = useCallback(async () => {
         if (!activeTenantId) return;
-        try {
-            const token = localStorage.getItem("token");
-            const res = await fetch(`${API_URL}/widgets/${activeTenantId}`, {
-                headers: { Authorization: `Bearer ${token}`, "x-tenant-id": activeTenantId },
-            });
-            const data = await res.json();
-            if (data.success && data.data?.length) {
-                const wid = data.data[0].id;
-                setWidgetConfigId(wid);
-                const trigRes = await api.listWidgetTriggers(wid);
-                if (trigRes.success) setTriggers(trigRes.data || []);
-            }
-        } catch { /* ignore */ }
+        // Antes leía el token de localStorage["token"], clave que no existe (el
+        // cliente guarda "accessToken"), así que mandaba `Bearer null` y siempre
+        // recibía 401 — silenciado por un catch vacío.
+        const res = await api.listWidgets(activeTenantId);
+        const list = (res.data as any[]) || [];
+        if (res.success && list.length) {
+            const wid = list[0].id;
+            setWidgetConfigId(wid);
+            const trigRes = await api.listWidgetTriggers(wid);
+            if (trigRes.success) setTriggers(trigRes.data || []);
+        }
         setLoading(false);
     }, [activeTenantId]);
 

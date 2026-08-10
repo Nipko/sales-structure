@@ -9181,7 +9181,12 @@
     "embedCode": "Código de incrustación",
     "cancel": "Cancelar",
     "save": "Guardar",
-    "triggers": "Triggers proactivos"
+    "triggers": "Triggers proactivos",
+    "deleteError": "No se pudo eliminar el widget.",
+    "loadError": "No se pudieron cargar los widgets.",
+    "saveError": "No se pudieron guardar los cambios.",
+    "retry": "Reintentar",
+    "createError": "No se pudo crear el widget."
   },
   "pwa": {
     "installTitle": "Instalar Parallly",

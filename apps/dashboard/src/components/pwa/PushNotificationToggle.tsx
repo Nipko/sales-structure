@@ -53,7 +53,9 @@ export function PushNotificationToggle() {
                 applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
             });
 
-            const token = localStorage.getItem("token");
+            // "accessToken" es la clave real; "token" no existe y mandaba Bearer null,
+            // asi que la suscripcion push del dashboard fallaba siempre en silencio.
+            const token = localStorage.getItem("accessToken");
             await fetch(`${API_URL}/push/subscribe`, {
                 method: "POST",
                 headers: {
@@ -78,7 +80,9 @@ export function PushNotificationToggle() {
             const reg = await navigator.serviceWorker.ready;
             const sub = await reg.pushManager.getSubscription();
             if (sub) {
-                const token = localStorage.getItem("token");
+                // "accessToken" es la clave real; "token" no existe y mandaba Bearer null,
+            // asi que la suscripcion push del dashboard fallaba siempre en silencio.
+            const token = localStorage.getItem("accessToken");
                 await fetch(`${API_URL}/push/unsubscribe`, {
                     method: "POST",
                     headers: {

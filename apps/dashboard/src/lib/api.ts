@@ -452,6 +452,21 @@ export const api = {
     getScoringConfig: (tenantId: string) => apiGet(`/crm/scoring-config/${tenantId}`),
     saveScoringConfig: (tenantId: string, data: any) => apiPost(`/crm/scoring-config/${tenantId}`, data),
 
+    // --- Web Chat Widget ---
+    // La página del widget hacía `fetch` a mano leyendo el token de
+    // localStorage["token"], una clave que NO existe: el cliente guarda el suyo en
+    // "accessToken". Mandaba `Bearer null` en cada llamada, así que siempre recibía
+    // 401 — y como el catch estaba vacío, se veía como "no tienes widgets" y como un
+    // botón de crear que no hacía nada. Pasando por acá se usa la clave correcta y
+    // además se hereda el refresh de token.
+    listWidgets: (tenantId: string) => apiGet(`/widgets/${tenantId}`),
+    createWidget: (tenantId: string, data: any) => apiPost(`/widgets/${tenantId}`, data),
+    updateWidget: (tenantId: string, widgetId: string, data: any) =>
+        apiPut(`/widgets/${tenantId}/${widgetId}`, data),
+    deleteWidget: (tenantId: string, widgetId: string) =>
+        apiDelete(`/widgets/${tenantId}/${widgetId}`),
+    getWidgetTriggers: (widgetConfigId: string) => apiGet(`/widget/triggers/${widgetConfigId}`),
+
     // --- Identity ---
     getMergeSuggestions: (tenantId: string) =>
         apiGet(`/identity/${tenantId}/suggestions`),

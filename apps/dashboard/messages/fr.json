@@ -9181,7 +9181,12 @@
     "embedCode": "Code d'intégration",
     "cancel": "Annuler",
     "save": "Enregistrer",
-    "triggers": "Déclencheurs proactifs"
+    "triggers": "Déclencheurs proactifs",
+    "deleteError": "Impossible de supprimer le widget.",
+    "loadError": "Impossible de charger les widgets.",
+    "saveError": "Impossible d'enregistrer les modifications.",
+    "retry": "Reessayer",
+    "createError": "Impossible de creer le widget."
   },
   "pwa": {
     "installTitle": "Installer Parallly",

@@ -27,7 +27,23 @@ Cerrado en la ronda ago 2026 (esta sesión):
 - ✅ **Backend — inbox vivo**: puente Redis (`WsRelayService`) para que los turnos procesados por el worker emitan `newMessage`/`inbox:handoff` etc. (desde la cola inbound de jul, el worker los perdía).
 - ✅ Deps: `socket.io-parser` 4.2.7 (única vuln bundleada), jest/jest-expo a devDependencies.
 
-⏳ Pendientes reales: **push con app CERRADA sin confirmar en runtime** (el secret EAS `GOOGLE_SERVICES_JSON` SÍ existe desde jun — verificado ago 2026 con `eas secret:list`; falta solo la prueba en dispositivo: matar la app, disparar un handoff y registrar acá el resultado), tests de socket/push + CI para la suite móvil, Detox E2E (diferido), migración expo-av→expo-audio (SDK 55).
+✅ **Push con app CERRADA — CONFIRMADO en runtime (10-ago-2026).** Sobre el AAB v5, en un
+SM-S918B: con el proceso muerto (`ps` sin rastro de la app), un mensaje real entrante por
+Telegram despertó la app vía FCM y presentó la notificación
+(`title="Nuevo mensaje"`, `text="Si dime"`, `when=16:23:57`).
+
+> Cuidado al repetir la prueba: `am force-stop` **no sirve**. Deja la app en estado
+> *detenido* y Android bloquea el FCM hasta que el usuario la abre a mano — da un falso
+> negativo por comportamiento de la plataforma. Hay que usar HOME + `am kill`, que es lo
+> que ocurre cuando el sistema la cierra. Y no verificar por conteo de notificaciones:
+> mirar título, texto y `when` (los tags cambian de formato).
+
+✅ **G0.6 offline — CONFIRMADO en runtime.** Con la red cortada el mensaje queda en rojo
+con "Toca para reintentar"; al restaurarla se reenvía solo. Requiere el equipo por **USB**:
+por ADB inalámbrico, cortarle la red mata la conexión de prueba.
+
+⏳ Pendientes reales: tests de socket/push + CI para la suite móvil, Detox E2E (diferido),
+migración expo-av→expo-audio (SDK 55), y la caché del inbox en arranque en frío sin red.
 
 ---
 

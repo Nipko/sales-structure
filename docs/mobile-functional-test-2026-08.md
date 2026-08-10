@@ -259,8 +259,9 @@ realmente en el prompt.
 | Multimedia: adjuntar imagen, nota de voz | ⏳ **Sin probar** |
 | Copiloto: reescribir en tonos, sugerir respuesta | ⏳ **Sin probar** |
 | Sesión: bloqueo biométrico, logout | ⏳ **Sin probar** |
-| Offline: cola de salida, caché del inbox | ⛔ **No testeable así** — el equipo está por ADB inalámbrico; cortarle la red mata la conexión de prueba. Requiere USB |
-| Push con app cerrada | ⏳ **Sin probar** — pendiente histórico del GATE 0 y el más importante que queda |
+| Offline: cola de salida | ✅ **Verificado por USB** (ver abajo) |
+| Push con app cerrada | ✅ **Verificado** — cierra el pendiente histórico del GATE 0 (ver abajo) |
+| Caché del inbox en arranque en frío sin red | ⏳ **Sin probar** |
 | Búsqueda de conversaciones y de leads | ⏳ **Sin probar** |
 | Escáner de tarjetas de visita | ⏳ **Sin probar** |
 | Macros y respuestas rápidas | ⏳ **Sin probar** |
@@ -308,6 +309,48 @@ Contrastado contra los logs de producción, no sólo contra la pantalla.
 | **Confirmar cita** | La cita pasó de "Pendiente" a "Confirmado" |
 | **Deep links** | `parallly://crm` enruta correctamente (cierra G0.10) |
 | Ficha de contacto | Muestra teléfono, segmento y conteo de conversaciones |
+
+### Push con la app CERRADA — cerrado el pendiente del GATE 0
+
+Es el punto que llevaba meses sin confirmarse en runtime, y el que la propia
+documentación llama *el dolor #1 del mercado*. **Funciona.**
+
+Montaje, que es donde estaba la trampa:
+
+- `am force-stop` **no sirve** para esta prueba. Deja la app en estado *detenido* y
+  Android bloquea la entrega de FCM hasta que el usuario la abre a mano. Habría dado un
+  falso negativo por comportamiento de la plataforma, no de la app.
+- Se hizo bien: HOME → `am kill` (mata el proceso sin marcar la app como detenida), que
+  es lo que ocurre cuando el sistema la cierra o el usuario la desliza de recientes.
+- Se verificó `ps` antes: **sin ningún proceso de la app viva**.
+- Precondición confirmada en el código: `push-listener` sólo empuja si la conversación
+  tiene `assigned_to`. La nuestra estaba tomada por el agente.
+
+Resultado, con un mensaje real entrando por Telegram:
+
+```
+proceso        : revivio — FCM desperto la app (PID nuevo)
+android.title  : "Nuevo mensaje"
+android.text   : "Si dime"          <- el texto real del mensaje entrante
+when           : 16:23:57
+```
+
+> Nota metodológica: en la primera lectura se reportó *"sin notificaciones nuevas"*. Fue
+> un error de la comprobación, no del push: el patrón sólo cubría tags con formato
+> `0:<epoch>%…` y esta notificación llegó como `FCM-Notification:26052692`. Verificar
+> por conteo de tags es frágil; hay que mirar título, texto y `when`.
+
+### Offline — cola de salida verificada
+
+Requirió pasar el teléfono a **USB**: por ADB inalámbrico, cortarle la red al dispositivo
+mata la propia conexión de prueba.
+
+1. `svc wifi disable` + `svc data disable` → `Active default network: none`
+2. Mensaje enviado desde la app → aparece en el hilo con **borde rojo** y
+   *"Toca para reintentar"*
+3. Red restaurada → **se reenvió solo**, sin intervención, y quedó como enviado (4:17 p.m.)
+
+Cierra G0.6 con evidencia real, no por inspección de código.
 
 Dos observaciones sin conclusión, anotadas para no perderlas:
 

@@ -435,3 +435,94 @@ describe('VerticalsService resumable bootstrap', () => {
         expect(result.pipelineStages).toBe(6);
     });
 });
+
+/**
+ * Regresión del 500 en el alta: `tpl_technology_soporte` declara solo
+ * knowledge+crm, sin la clave `appointments`. `restoreAppointmentsTool` la
+ * salteaba (`if (!appointments) continue`), la herramienta nunca nacía, y
+ * `assertProvisioningInvariants` mataba el signup en toda vertical con agenda.
+ *
+ * Estos tests ejercitan el método REAL. En el describe de arriba está mockeado
+ * globalmente en el beforeEach, que es la razón por la que la línea que decide
+ * todo no la corría ningún test del repo.
+ */
+describe('restoreAppointmentsTool (sin mockear)', () => {
+    const schemaName = 'tenant_x';
+
+    function buildService(agentTools: any, counts = { services: 3, slots: 7 }) {
+        const updates: any[] = [];
+        const prisma: any = {
+            executeInTenantSchema: jest.fn().mockImplementation(async (_schema: string, sql: string, params?: any[]) => {
+                if (sql.includes('SELECT id, config_json FROM agent_personas')) {
+                    return [{ id: 'agent-1', config_json: { tools: agentTools } }];
+                }
+                if (sql.includes('COUNT(*)::int FROM services')) {
+                    return [{ services: counts.services, slots: counts.slots }];
+                }
+                if (sql.startsWith('UPDATE agent_personas')) {
+                    updates.push(JSON.parse(params![0]));
+                    return [];
+                }
+                return [];
+            }),
+        };
+        return { service: new VerticalsService(prisma, {} as any, {} as any), updates };
+    }
+
+    it('crea appointments cuando la plantilla no la menciona y el negocio agenda', async () => {
+        // La forma literal de tpl_technology_soporte.
+        const { service, updates } = buildService({ knowledge: { enabled: true }, crm: { enabled: true } });
+
+        await (service as any).restoreAppointmentsTool(schemaName, true);
+
+        expect(updates).toHaveLength(1);
+        expect(updates[0].tools.appointments).toEqual({ enabled: true, canBook: true, canCancel: true });
+        // No pisa lo que ya traía la plantilla.
+        expect(updates[0].tools.knowledge).toEqual({ enabled: true });
+        expect(updates[0].tools.crm).toEqual({ enabled: true });
+    });
+
+    it('NO crea appointments cuando la vertical no agenda', async () => {
+        const { service, updates } = buildService({ knowledge: { enabled: true } });
+
+        await (service as any).restoreAppointmentsTool(schemaName, false);
+
+        expect(updates).toHaveLength(0);
+    });
+
+    it('no arma un agendador sin agenda detras: sin servicios ni slots queda apagado', async () => {
+        const { service, updates } = buildService(
+            { knowledge: { enabled: true } },
+            { services: 0, slots: 0 },
+        );
+
+        await (service as any).restoreAppointmentsTool(schemaName, true);
+
+        expect(updates).toHaveLength(1);
+        expect(updates[0].tools.appointments.enabled).toBe(false);
+    });
+
+    it('respeta la plantilla que apaga appointments a proposito (tpl_sales, tpl_faq)', async () => {
+        const { service, updates } = buildService({
+            crm: { enabled: true },
+            appointments: { enabled: false },
+        });
+
+        await (service as any).restoreAppointmentsTool(schemaName, true);
+
+        expect(updates).toHaveLength(0);
+    });
+
+    it('reenciende la que apago el alta por falta de agenda (pendingPrerequisites)', async () => {
+        const { service, updates } = buildService({
+            appointments: { enabled: false, canBook: true, canCancel: true, pendingPrerequisites: true },
+        });
+
+        await (service as any).restoreAppointmentsTool(schemaName, true);
+
+        expect(updates).toHaveLength(1);
+        expect(updates[0].tools.appointments.enabled).toBe(true);
+        // El marcador se consume siempre.
+        expect(updates[0].tools.appointments.pendingPrerequisites).toBeUndefined();
+    });
+});

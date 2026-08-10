@@ -1805,9 +1805,21 @@ export class VerticalsService {
      * `PersonaService.createDefaultAgentFromGoals` corre antes que este bootstrap
      * y apaga las citas si el schema recién creado todavía no tiene agenda (un
      * throw ahí dejaría al tenant sin ningún agente). Deja el marcador
-     * `tools.appointments.pendingPrerequisites`, que es lo único que distingue
-     * "la apagamos nosotros" de "la plantilla la trae apagada a propósito"
-     * (tpl_sales, tpl_faq): sin ese marcador no se toca nada.
+     * `tools.appointments.pendingPrerequisites` para distinguir "la apagamos
+     * nosotros" de "la plantilla la trae apagada a propósito" (tpl_sales,
+     * tpl_faq), que se respeta intacta.
+     *
+     * Hay un TERCER caso, y es el que rompía el alta: la plantilla no menciona
+     * `appointments` en absoluto (tpl_technology_soporte solo declara
+     * knowledge+crm). Ese agente se salteaba, la herramienta nunca nacía, y
+     * `assertProvisioningInvariants` mataba el signup con un 500 en verticales
+     * con agenda. La clave ausente NO es una decisión de la plantilla: es
+     * silencio. Y para el silencio ya hay una respuesta en la plataforma —
+     * `applyVerticalAgentDefaults` rellena `appointments` con
+     * {enabled,canBook,canCancel} en todo agente creado por `createAgent`
+     * (persona/vertical-agent-defaults.util.ts). El agente del alta era el
+     * único que no pasaba por ahí; acá se cierra esa inconsistencia. Poder
+     * agendar es del NEGOCIO, no de la plantilla.
      *
      * El marcador se borra siempre al evaluarlo — si la siembra no alcanzó, la
      * herramienta queda apagada de forma limpia y el tenant puede encenderla
@@ -1831,7 +1843,14 @@ export class VerticalsService {
             for (const agent of agents) {
                 const config = agent.config_json || {};
                 const appointments = config.tools?.appointments;
-                if (!appointments || appointments.pendingPrerequisites !== true) continue;
+                if (!appointments) {
+                    // Silencio de la plantilla, no decisión. Se crea solo si el
+                    // negocio efectivamente agenda; si no, se deja como está.
+                    if (!effectiveBooking) continue;
+                } else if (appointments.pendingPrerequisites !== true) {
+                    // Decisión explícita de la plantilla o del dueño: intacta.
+                    continue;
+                }
 
                 if (!counted) {
                     // Mismos dos contadores que exige `assertAppointmentsPrerequisites`.
@@ -1844,8 +1863,14 @@ export class VerticalsService {
                     counted = { services: Number(counts?.services || 0), slots: Number(counts?.slots || 0) };
                 }
 
+                // Cuando la clave no existía, la forma por defecto es la misma que
+                // usa `toolDefault('appointments')` en vertical-agent-defaults.util.ts,
+                // para que un agente nacido en el alta y uno creado después queden
+                // idénticos. `enabled` sigue condicionado a servicios+slots reales:
+                // esto nunca arma un agendador sin agenda detrás.
+                const base = appointments ?? { canBook: true, canCancel: true };
                 const restored = {
-                    ...appointments,
+                    ...base,
                     enabled: effectiveBooking && counted.services > 0 && counted.slots > 0,
                 };
                 delete restored.pendingPrerequisites;

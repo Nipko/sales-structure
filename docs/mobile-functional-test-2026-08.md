@@ -81,8 +81,16 @@ ERROR: operator does not exist: character varying = uuid
 pero el filtro comparaba contra un parámetro casteado a `::uuid`. Postgres no tiene
 operador `varchar = uuid` → la consulta entera muere.
 
-Un agente **no puede ver sus propias conversaciones**. En la app no se ve un error: se
-ve un inbox vacío.
+Un agente **no puede ver sus propias conversaciones**.
+
+> **Corrección a una versión anterior de este informe.** Se afirmó que el fallo se veía
+> como un inbox vacío, sin señal de error. Es **falso**: reproducido en un equipo limpio,
+> la app muestra correctamente *"No se pudo cargar la bandeja."* con un botón
+> **Reintentar**. Los estados de error del inbox (G0.7) funcionan. La afirmación previa
+> venía de un sondeo automatizado mal parseado, no de una observación real.
+>
+> La severidad no cambia — la función sigue rota — pero este hallazgo **no** es un caso
+> de falla silenciosa.
 
 Matiz que importa para no "arreglar de más": los `UPDATE … SET assigned_to = $n::uuid`
 **no** son un bug. Hacia tipos texto Postgres aplica un cast de asignación y funcionan;
@@ -223,6 +231,33 @@ realmente en el prompt.
 | Búsqueda de conversaciones y de leads | ⏳ **Sin probar** |
 | Escáner de tarjetas de visita | ⏳ **Sin probar** |
 
-> El recorrido se interrumpió con el teléfono en uso. Lo que falta es más de la mitad de
-> la superficie, e incluye las áreas donde históricamente aparecieron los problemas
-> (copiloto, multimedia, offline, push). **No debe leerse como "el resto está bien".**
+> Lo que falta es alrededor de la mitad de la superficie, e incluye áreas donde
+> históricamente aparecieron problemas (multimedia, offline, push con app cerrada).
+> **No debe leerse como "el resto está bien".**
+
+## Verificado funcionando
+
+Contrastado contra los logs de producción, no sólo contra la pantalla.
+
+| Función | Evidencia |
+|---|---|
+| Instalación limpia del artefacto de EAS | APK universal derivado del AAB instalado en un SM-S918B sin la app previa: `Success`, `versionCode 3` |
+| Login con la cuenta de revisión | Entra al inbox del tenant `Test Business` |
+| Registro de push | `POST /push/expo-subscribe` → **201** en el primer arranque |
+| WebSocket en vivo | `ConversationsGateway` y `AgentConsoleGateway` autentican al agente; el indicador "EN VIVO" es real |
+| Inbox por defecto | `GET /agent-console/inbox/…` (sin filtro) → **200** |
+| Estados de error del inbox | El 500 de "Mías" se muestra como *"No se pudo cargar la bandeja."* + **Reintentar** |
+| Estado de disponibilidad | Cambiar a "Ausente" persiste tras salir y volver a la pantalla (cierra G0.3) |
+| Resumen del hilo (copiloto) | Responde — pero ver hallazgo 11 sobre su contenido |
+| Próxima acción (copiloto) | Devuelve vacío **por diseño**, gateado por readiness |
+| Enlaces legales exigidos por Play | Privacidad y eliminación de datos abren el navegador y cargan |
+| Alta de leads | 6 leads creados end-to-end contra la API ya corregida |
+| `business-info` | 200 |
+
+Dos observaciones sin conclusión, anotadas para no perderlas:
+
+- En ~90 s los logs muestran **varios ciclos de conexión/desconexión** del WebSocket. Puede
+  ser el ciclo normal de background de Android o un bucle de reconexión. No se investigó.
+- La sección CUENTA muestra el rol **`tenant_admin`**. El checklist pedía un
+  `tenant_agent`. No es un problema para la revisión (un admin ve más), pero conviene
+  decidirlo a propósito y no por accidente.

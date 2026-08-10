@@ -57,7 +57,15 @@ export interface ConversationDetail {
     messages: ConversationMessage[];
     hasMore?: boolean;
     notes: InternalNote[];
-    assignedAgent?: { id: string; name: string };
+    /**
+     * Id of the agent currently holding the conversation, or null when the AI has it.
+     *
+     * Replaces a declared-but-never-populated `assignedAgent?: {id, name}`. Nothing ever
+     * set it and nothing ever read it, while the client was asking for the flat
+     * `assignedAgentId` the inbox list already returns — so the field it depended on
+     * simply never arrived. Kept flat and named exactly like the list contract.
+     */
+    assignedAgentId?: string | null;
     status: string;
     channel: string;
     channelAccountName?: string;
@@ -308,6 +316,14 @@ export class AgentConsoleService {
                 createdAt: n.created_at,
             })),
             status: conv.status,
+            // Who currently holds the conversation. The client decides "am I the one
+            // handling this?" with `assignedAgentId === user.id`; without this field it
+            // was always undefined, so the takeover banner could never reach the "you"
+            // state and kept reading "waiting for a human" even right after the agent
+            // took control — the exact ambiguity the banner exists to remove. The inbox
+            // list already exposed it (`c.assigned_to as assigned_agent_id`); only the
+            // detail endpoint dropped it.
+            assignedAgentId: conv.assigned_to || null,
             channel: conv.channel_type || conv.channel || 'whatsapp',
             channelAccountName: conv.channel_account_name || '',
             channelAccountPicture: conv.channel_account_metadata?.picture || conv.channel_account_metadata?.profilePicture || '',

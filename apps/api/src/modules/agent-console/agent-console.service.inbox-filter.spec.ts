@@ -72,3 +72,50 @@ describe('AgentConsoleService.getInbox — assigned_to is VARCHAR, not UUID', ()
         expect(allSql(h.sqls)).toMatch(/agent_id\s*=\s*\$\d+::uuid/);
     });
 });
+
+/**
+ * The conversation detail endpoint never returned who holds the conversation.
+ *
+ * `ConversationScreen` decides "am I the one handling this?" with
+ * `conv.assignedAgentId === user.id`. The detail payload simply had no such field
+ * (the interface declared a nested `assignedAgent` that nothing ever populated), so
+ * the check was always false: right after tapping "Tomar control" the optimistic
+ * state was overwritten by the reload and the banner fell back to "waiting for a
+ * human", with the take-control button still offered. That banner exists precisely
+ * to remove takeover ambiguity.
+ */
+describe('AgentConsoleService.getConversation — exposes who holds the conversation', () => {
+    const tenantId = '11111111-1111-4111-8111-111111111111';
+    const conversationId = '22222222-2222-4222-8222-222222222222';
+    const agentId = '33333333-3333-4333-8333-333333333333';
+
+    function makeHarness(assignedTo: string | null) {
+        const prisma: any = {
+            executeInTenantSchema: jest.fn().mockImplementation(async (_s: string, sql: string) => {
+                if (sql.includes('FROM conversations c')) {
+                    return [{
+                        id: conversationId, contact_id: 'c1', status: 'with_human',
+                        assigned_to: assignedTo, channel_type: 'telegram', metadata: {},
+                    }];
+                }
+                if (sql.includes('COUNT(*) as total')) return [{ total: 1 }];
+                return [];
+            }),
+        };
+        const redis = { get: jest.fn().mockResolvedValue('tenant_acme') };
+        return new AgentConsoleService(
+            prisma, redis as any, {} as any, {} as any,
+            {} as any, {} as any, { emit: jest.fn() } as any, {} as any,
+        );
+    }
+
+    it('returns the holding agent id so the client can recognise its own conversation', async () => {
+        const detail = await makeHarness(agentId).getConversation(tenantId, conversationId);
+        expect(detail?.assignedAgentId).toBe(agentId);
+    });
+
+    it('returns null when the AI still holds it', async () => {
+        const detail = await makeHarness(null).getConversation(tenantId, conversationId);
+        expect(detail?.assignedAgentId).toBeNull();
+    });
+});

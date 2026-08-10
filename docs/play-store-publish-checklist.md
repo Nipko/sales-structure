@@ -30,7 +30,7 @@
 | 2 | Generar y validar un **AAB v3** con esos ajustes | ✅ **Construido y validado** (§1); ⏳ falta subirlo a Play |
 | 3 | Smoke test del APK v3 y recorrido por modos operativos | ◐ El dispositivo tiene el versionCode 3 **del build local**, no el de EAS; permisos verificados idénticos (§1) |
 | 4 | Crear tenant y agente demo permanentes para **App access** | ◐ La cuenta existe y **sí tiene tenant** ("Test Business"), pero está casi vacía y con PII real (§2) |
-| 5 | Capturas de pantalla seguras (mínimo 2) | ⏳ Las 3 existentes son inservibles: PII real, pantallas vacías, ratio y alfa fuera de norma (§3) |
+| 5 | Capturas de pantalla seguras (mínimo 2) | ✅ 4 nuevas en `store-assets/play/` (1080×2096, sin alfa). La del Inbox se rehará con más conversaciones |
 | 6 | Enviar **Data safety** | ◐ Los 5 pasos y las correcciones están guardados como borrador; falta Target audience y el envío final |
 | 7 | Completar **Target audience** | ⏳ Pendiente; seleccionar solo `18 años o más` |
 | 8 | Terminar la ficha de tienda | ◐ Textos, ícono y gráfico destacado cargados; faltan capturas |
@@ -211,7 +211,19 @@ un código temporal.
 | Agenda con citas | ❌ Vacía |
 | Sin PII real | ❌ La conversación y el lead **"Nir Levin"** siguen ahí. `LeadDetailScreen` **no ofrece editar el nombre** (sólo llamar, WhatsApp, etiqueta, nota, tarea) → hay que renombrarlo desde el dashboard |
 | 2FA desactivado | ⏳ Sin confirmar |
-| Plan/trial que no expire | ⏳ Sin confirmar — **si el trial vence, la cuenta deja de servir** para las revalidaciones de Google en cada actualización futura |
+| Plan/trial que no expire | 🔴 **El trial vence en 7 días** (visto en el dashboard el 10-ago-2026: *"Tu prueba gratuita termina en 7 días"*, plan STARTER) |
+
+> **Por qué el trial importa más de lo que parece.** Google **no revisa una sola vez**:
+> revalida la cuenta de App access en **cada actualización futura**. Con el trial vencido,
+> el día que se suba la 1.0.1 llega un rechazo por *"no pudimos acceder a la app"* — y va
+> a parecer no tener relación con el cambio que se subió, así que se pierde tiempo
+> buscando en el lugar equivocado.
+>
+> Salidas, de mejor a peor:
+> 1. **Dejar el tenant demo en un plan que no expire** (comp/interno desde el super admin).
+>    Es lo correcto: la cuenta de revisión no debería estar en el ciclo comercial.
+> 2. Extender el trial con un cupón de meses gratis. Sólo posterga el problema.
+> 3. Recordatorio para renovarlo a mano. Frágil: falla justo cuando nadie mira.
 | Sin exigir pago ni correo externo | ✅ El alta y el pago ocurren fuera del APK (§5) |
 
 Los leads se cargaron manejando la app por ADB, resolviendo cada control por sus bounds

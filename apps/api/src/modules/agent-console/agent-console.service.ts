@@ -131,7 +131,12 @@ export class AgentConsoleService {
         switch (filter) {
             case 'mine':
                 params.push(agentId);
-                statusFilter = `AND c.assigned_to = $${params.length}::uuid`;
+                // `conversations.assigned_to` is VARCHAR(255), not UUID. Casting the
+                // parameter to ::uuid asks Postgres for a `varchar = uuid` operator,
+                // which does not exist → 42883 and a 500 on the whole inbox. The rest
+                // of the codebase compares this column as text (see
+                // agent-availability.service `active.assigned_to = u.id::text`).
+                statusFilter = `AND c.assigned_to = $${params.length}`;
                 break;
             case 'unassigned':
                 statusFilter = `AND c.assigned_to IS NULL AND c.status = 'waiting_human'`;
@@ -751,9 +756,11 @@ Rules: only include fields that are clearly visible. Return valid JSON only.`,
             // Active count from conversations (currently assigned to this agent)
             const activeRows = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
+                // assigned_to is VARCHAR here — comparing it against ::uuid raises
+                // 42883 (no `varchar = uuid` operator). Same defect as the inbox filter.
                 `SELECT COUNT(*) as active
                  FROM conversations
-                 WHERE assigned_to = $1::uuid AND status IN ('with_human', 'waiting_human')`,
+                 WHERE assigned_to = $1 AND status IN ('with_human', 'waiting_human')`,
                 [agentId],
             );
 

@@ -43,15 +43,15 @@ correr el resto de la cobertura con los logs de producción a la vista.
 | # | Severidad | Hallazgo | Estado |
 |---|---|---|---|
 | 1 | 🔴 P0 | Crear un lead fallaba **siempre** con 500 (columnas fantasma) | ✅ `ab3e5cbc`, desplegado y verificado |
-| 2 | 🔴 P0 | Filtro **"Mías"** del inbox devuelve 500 (`assigned_to` VARCHAR vs `::uuid`) | ✅ `07596083`, **falta desplegar** |
-| 3 | 🟠 P1 | `getAgentStats` cuenta la carga activa con el mismo cast inválido | ✅ `07596083`, **falta desplegar** |
+| 2 | 🔴 P0 | Filtro **"Mías"** del inbox devuelve 500 (`assigned_to` VARCHAR vs `::uuid`) | ✅ `07596083`, desplegado y **verificado** |
+| 3 | 🟠 P1 | `getAgentStats` cuenta la carga activa con el mismo cast inválido | ✅ `07596083`, desplegado |
 | 4 | 🟠 P1 | Los errores lanzados con un `Modal` abierto son **invisibles** | ◐ Corregido en la hoja de lead; el patrón sigue en otros modales |
 | 5 | 🟠 P1 | Los leads nuevos no llegan al **Embudo** (`Lead · 0`) | ❌ Sin corregir |
 | 6 | 🟡 P2 | La lista del CRM queda obsoleta tras crear un lead | ❌ Sin corregir |
 | 7 | 🟡 P2 | Pestaña "Deal" vs encabezado "Agenda" | ✅ `e268912b` |
 | 8 | 🟡 P2 | Dos controles sin etiqueta de accesibilidad en la fila del inbox | ❌ Sin corregir |
 | 9 | 🟡 P2 | El filtro del inbox persiste y un filtro vacío parece un inbox vacío | ❌ Sin corregir |
-| 10 | 🔴 P0 | "Tomar control" **nunca** se refleja: el detalle no devuelve `assignedAgentId` | ✅ `60c578d0`, **falta desplegar** |
+| 10 | 🔴 P0 | "Tomar control" **nunca** se refleja: el detalle no devuelve `assignedAgentId` | ✅ `60c578d0`, desplegado y **verificado** |
 | 11 | 🟠 P1 | El resumen del hilo **alucina**: describe una conversación que no ocurrió | ❌ Sin corregir |
 
 ---
@@ -234,6 +234,20 @@ realmente en el prompt.
 > Lo que falta es alrededor de la mitad de la superficie, e incluye áreas donde
 > históricamente aparecieron problemas (multimedia, offline, push con app cerrada).
 > **No debe leerse como "el resto está bien".**
+
+## Verificación post-deploy de los arreglos
+
+Contra el SM-S918B, con el APK universal derivado del AAB de EAS instalado limpio y la
+API ya desplegada:
+
+| Antes | Después |
+|---|---|
+| "Mías" → *"No se pudo cargar la bandeja."* + Reintentar (500 / 42883 en los logs) | **Lista la conversación asignada** |
+| Banner: *"Esperando atención humana"*, con "Tomar control" todavía ofrecido | Banner: **"Tú tienes el control"**, "Tomar control" desaparece y quedan "Devolver IA" y "Reasignar" |
+
+Que la conversación aparezca bajo "Mías" confirma además algo que hasta ahora era una
+inferencia: la asignación **sí se estaba guardando** en el servidor todo el tiempo. Lo
+único roto era leerla — el filtro moría con 42883 y el detalle no exponía el campo.
 
 ## Verificado funcionando
 

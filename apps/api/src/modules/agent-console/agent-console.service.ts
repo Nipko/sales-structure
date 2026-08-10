@@ -503,8 +503,12 @@ export class AgentConsoleService {
             schemaName,
             async (query) => {
                 const conversations = await query<Array<{ contact_id: string | null }>>(
+                    // assigned_to es VARCHAR: el ::uuid aqui funcionaba sólo porque
+                    // Postgres aplica un cast de ASIGNACION hacia tipos texto. Se quita
+                    // para que la columna se lea como lo que es y nadie replique el
+                    // patron en un WHERE, donde no hay operador y revienta con 42883.
                     `UPDATE conversations
-                        SET assigned_to = $2::uuid, status = 'with_human', updated_at = NOW()
+                        SET assigned_to = $2, status = 'with_human', updated_at = NOW()
                       WHERE id = $1::uuid
                       RETURNING contact_id`,
                     [conversationId, agentId],

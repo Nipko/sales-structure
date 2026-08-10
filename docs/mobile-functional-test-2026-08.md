@@ -52,7 +52,36 @@ correr el resto de la cobertura con los logs de producción a la vista.
 | 8 | 🟡 P2 | Dos controles sin etiqueta de accesibilidad en la fila del inbox | ❌ Sin corregir |
 | 9 | 🟡 P2 | El filtro del inbox persiste y un filtro vacío parece un inbox vacío | ❌ Sin corregir |
 | 10 | 🔴 P0 | "Tomar control" **nunca** se refleja: el detalle no devuelve `assignedAgentId` | ✅ `60c578d0`, desplegado y **verificado** |
-| 11 | 🟠 P1 | El resumen del hilo **alucina**: describe una conversación que no ocurrió | ❌ Sin corregir |
+| ~~11~~ | — | ~~El resumen del hilo alucina~~ | ❌ **RETIRADO — era un falso positivo** (ver abajo) |
+| 12 | 🟡 P2 | La política de privacidad abre en inglés con la app en español | ❌ Sin corregir |
+| 13 | 🟡 P2 | Un chat de Telegram ofrece acción "WhatsApp" sobre un ID que no es teléfono | ❌ Sin corregir |
+| 14 | 🟠 P1 | Las **automatizaciones no corren** en ningún mensaje entrante (22P02 silencioso) | ✅ Corregido |
+| 15 | 🟠 P1 | Las **alertas de analytics** y los **reportes programados** mueren con 42883 | ✅ Corregido |
+
+### Auditoría completa de la familia de errores
+
+Los hallazgos 2, 3, 14 y 15 son **el mismo error** repetido: un `::uuid` puesto donde el
+tipo real no lo admite. Se auditó la familia entera en vez de ir caso por caso.
+
+`apps/api/scripts/audit-uuid-casts.js` cruza los **1.020 casts `::uuid`** del SQL crudo
+contra el tipo real de cada columna, leyendo el esquema de sus **tres** fuentes: el
+schema por tenant, las migraciones (las tablas globales) y los `CREATE TABLE` que viven
+dentro del código (tablas creadas en runtime). Sale con código 1 si encuentra un
+desajuste, así que puede colgarse de CI.
+
+Un detalle que costó: `schema.prisma` **no sirve** como fuente de verdad. Declara los ids
+como `String @id @default(uuid())` sin `@db.Uuid` — hay un solo `@db.Uuid` en todo el
+archivo — mientras el DDL real de las migraciones los crea como `UUID`. Indexar desde
+Prisma producía **63 falsos positivos** (tenants.id, users.id, channel_accounts.tenant_id…).
+Con las migraciones como fuente, quedan **6 desajustes reales**, todos corregidos.
+
+El auditor se validó reintroduciendo un bug a propósito: lo detecta y falla.
+
+Matiz que respeta a propósito, para no "arreglar" lo que funciona: `UPDATE t SET col =
+$1::uuid` sobre una columna de texto **sí** funciona, porque hacia tipos texto Postgres
+aplica un cast de **asignación**. Lo que no existe es el operador de **comparación**. Los
+tres `UPDATE` que había se normalizaron igual, para que nadie replique el patrón en un
+`WHERE`.
 
 ---
 

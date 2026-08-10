@@ -521,8 +521,9 @@ export class HandoffService {
                     schemaName,
                     async (query) => {
                         const conversations = await query<Array<{ contact_id: string | null }>>(
+                            // assigned_to es VARCHAR, no UUID (ver agent-console.service).
                             `UPDATE conversations
-                                SET assigned_to = $2::uuid, status = 'with_human', updated_at = NOW()
+                                SET assigned_to = $2, status = 'with_human', updated_at = NOW()
                               WHERE id = $1::uuid
                               RETURNING contact_id`,
                             [conversationId, agent.id],

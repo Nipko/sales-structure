@@ -130,11 +130,23 @@ export class AutomationListenerService {
         try {
             const schemaName = event.schemaName || await this.prisma.getTenantSchemaName(event.tenantId);
             let phone = event.phone;
-            if (!phone && event.contactId) {
+            if (!phone) {
+                // El `contactId` de `message.inbound` viene de NormalizedMessage y es el
+                // identificador DEL CANAL (el user id de Telegram, el numero de
+                // WhatsApp…), no el UUID de `contacts`. Casteado a ::uuid reventaba con
+                //   22P02 invalid input syntax for type uuid: "860048121"
+                // y como el error se atrapa mas abajo, las automatizaciones dejaban de
+                // correr en silencio para cada mensaje entrante.
+                //
+                // Se resuelve por la conversacion, cuyo id si es UUID siempre.
                 const contacts = await this.prisma.executeInTenantSchema<any[]>(
                     schemaName,
-                    `SELECT phone FROM contacts WHERE id = $1::uuid LIMIT 1`,
-                    [event.contactId],
+                    `SELECT ct.phone
+                       FROM conversations c
+                       JOIN contacts ct ON ct.id = c.contact_id
+                      WHERE c.id = $1::uuid
+                      LIMIT 1`,
+                    [event.conversationId],
                 );
                 phone = contacts?.[0]?.phone || undefined;
             }

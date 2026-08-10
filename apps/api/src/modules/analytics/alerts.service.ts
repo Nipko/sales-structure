@@ -89,7 +89,10 @@ export class AlertsService {
                     (SELECT COUNT(*)::int FROM "${schemaName}".alert_history ah WHERE ah.rule_id = ar.id) as trigger_count,
                     (SELECT MAX(created_at) FROM "${schemaName}".alert_history ah WHERE ah.rule_id = ar.id) as last_alert_at
              FROM "${schemaName}".alert_rules ar
-             WHERE ar.tenant_id = $1::uuid
+             -- alert_rules.tenant_id es VARCHAR(255), no UUID: castear el
+             -- parametro a ::uuid pide un operador varchar = uuid que no
+             -- existe y tumba la consulta entera con 42883.
+             WHERE ar.tenant_id = $1
              ORDER BY ar.created_at DESC`,
             tenantId,
         );
@@ -191,7 +194,8 @@ export class AlertsService {
     private async evaluateTenantAlerts(tenantId: string, schemaName: string): Promise<void> {
         await this.ensureAlertTables(schemaName);
         const rules: AlertRule[] = await this.prisma.$queryRawUnsafe(
-            `SELECT * FROM "${schemaName}".alert_rules WHERE tenant_id = $1::uuid AND is_active = true`,
+            // tenant_id es VARCHAR aca (ver arriba): sin cast.
+            `SELECT * FROM "${schemaName}".alert_rules WHERE tenant_id = $1 AND is_active = true`,
             tenantId,
         );
 

@@ -144,7 +144,8 @@ export class MacrosService {
                 switch (action.type) {
                     case 'assign':
                         await this.prisma.executeInTenantSchema(schema,
-                            `UPDATE conversations SET assigned_to = $1::uuid, updated_at = NOW() WHERE id = $2::uuid`,
+                            // assigned_to es VARCHAR, no UUID (ver agent-console.service).
+                            `UPDATE conversations SET assigned_to = $1, updated_at = NOW() WHERE id = $2::uuid`,
                             [action.value, conversationId],
                         );
                         break;

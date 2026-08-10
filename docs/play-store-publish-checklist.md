@@ -88,6 +88,18 @@ El build de producción `1.0.0 (2)` se generó con EAS y se validó antes de sub
 Está cargado en **Prueba interna** como `1.0.0 (2) — prueba interna`, pero únicamente
 como borrador: no tiene testers y no se lanzó.
 
+### Qué artefacto va a Play
+
+| AAB | Commit | Estado |
+|---|---|---|
+| v2 | anterior | Borrador en Prueba interna, sin testers. **Descartado** |
+| v3 | `652c38f9` | Construido y validado (abajo). **Descartado**: anterior a los arreglos de §7-bis |
+| v4 | `e268912b` | Construido durante la sesión, pero **anterior al arreglo del CRM**. Descartado |
+| **v5** | `ab3e5cbc` | **El que se sube**: incluye Deal/Agenda + creación de leads + teléfono obligatorio + error visible |
+
+La validación del v3 que sigue documentada abajo es el **procedimiento** a repetir sobre
+el v5, no un aval del v3.
+
 ### AAB v3 — construido y validado (10-ago-2026)
 
 Los ajustes de privacidad ya están dentro del artefacto: el logout quita la suscripción
@@ -209,7 +221,26 @@ Las tres capturas que hay en `apps/mobile/store-assets/` fueron auditadas una po
 
 `diag-inbox.png` tiene los mismos defectos y tampoco debe subirse.
 
-Regenerar al menos cuatro capturas de 1080×1920 RGB, autenticado en el tenant demo:
+### Normalización (resuelta)
+
+No hace falta escalar ni deformar. Las barras del sistema, medidas en el propio
+dispositivo (no estimadas), son:
+
+```bash
+adb shell dumpsys window | grep -E 'statusBars frame|navigationBars frame'
+#   statusBars     frame=[0,0][1080,96]
+#   navigationBars frame=[0,2214][1080,2340]
+```
+
+Recortándolas, un `screencap` de 1080×2340 queda en **1080×2118 → ratio 1.961**, dentro
+del máximo 2:1, y se exporta en `Format24bppRgb` (sin canal alfa). De paso desaparecen
+la hora, la batería y los iconos de notificación personales del dueño, que no deben
+salir en la ficha de tienda.
+
+El script está en el scratchpad de la sesión (`normalize-shots.ps1`) y ya se validó
+sobre una captura real.
+
+Regenerar al menos cuatro capturas, autenticado en el tenant demo:
 
 - Inbox
 - conversación con copiloto de IA
@@ -317,16 +348,50 @@ Los dos gráficos base ya están cargados:
 Faltan únicamente las capturas descritas en §3 para completar los recursos visuales.
 No usar marcas de Meta de forma que impliquen respaldo oficial.
 
-## 7-bis. Defecto cosmético detectado en el recorrido (no bloquea Play)
+## 7-bis. Defectos encontrados preparando la publicación
 
-En el tenant demo la pestaña inferior dice **"Deal"** mientras el encabezado de esa misma
-pantalla dice **"Agenda"**. La terminología vertical (`verticalConfig`) está cableada en
-los labels de navegación (`RootNavigator.tsx`) pero no en el título de
-`AppointmentsScreen`, así que las dos fuentes se contradicen en la misma vista. Además
-"Deal" queda en inglés dentro de una UI en español.
+Los dos salieron de recorrer la app con la cuenta de revisión. Ambos **ya están
+arreglados**; se dejan documentados porque explican por qué el artefacto final es el v5
+y no el v3.
 
-No frena la revisión, pero **sí saldría en una captura de tienda**. Conviene resolverlo
-antes de fijar las capturas definitivas.
+### a) La pestaña y el encabezado de la agenda decían cosas distintas — `e268912b`
+
+La pestaña inferior decía **"Deal"** y el encabezado de esa misma pantalla decía
+**"Agenda"**. La pestaña resolvía el nombre con tres fuentes (`labelOverrides` →
+catálogo de workspaces → `transactionNoun`) y `AppointmentsScreen` sólo miraba la
+primera, cayendo a `citas.title`. La vertical `technology` trae
+`transactionNoun.es = 'deal'`, de ahí la contradicción.
+
+Ahora ambos llaman a `resolveVerticalWorkspaceLabel`, con 7 tests que fijan la
+invariante. `ReservationsScreen` ya coincidía (`stays.title` == `workspace.stays` en los
+4 idiomas), así que no se tocó.
+
+### b) Crear un lead fallaba SIEMPRE con un 500 — `ab3e5cbc` ⚠️ era bloqueante real
+
+Un revisor que tocara "Crear lead" habría visto **un botón que no hace nada**. Tres
+defectos encadenados:
+
+1. **La causa raíz.** `ALLOWED_FIELDS` en `leads.repository.ts` nombraba cinco columnas
+   que la tabla `leads` nunca tuvo: `source`, `notes`, `tags`, `customer_profile_id` y
+   `converted_at`. Una whitelist que admite una columna fantasma es peor que ninguna:
+   la promueve al INSERT y Postgres rechaza la sentencia entera con **42703**. La app
+   móvil estampa `source: 'mobile'` en cada lead → fallaba el 100% de las veces.
+   La atribución real vive en `utm_source`, que es lo que lee el breakdown de fuentes de
+   CRM analytics; `source` nunca formó parte del modelo.
+2. **`leads.phone` es `NOT NULL`**, pero el formulario ofrecía crear un lead sólo con
+   nombre. Ese camino terminaba en otro 500.
+3. **El fallo era invisible.** En Android un `<Modal>` es su propia ventana nativa, así
+   que el toast de error — un `View` absoluto del árbol de la app — se dibujaba
+   **detrás** de la hoja. Por eso un 500 se veía como un botón muerto. Es exactamente
+   la clase de falla silenciosa que el GATE 0 (G0.2) debía haber eliminado.
+
+Arreglado: una sola lista de columnas reales compartida por `createLead`/`updateLead`,
+las claves que no son columnas se pliegan en `metadata` (no se pierde la atribución),
+400 en vez de 500 si falta el teléfono, la app lo exige, y el error se muestra **dentro**
+de la hoja. 5 tests de regresión en `leads.repository.spec.ts`.
+
+> **Pendiente de auditar:** el mismo patrón de whitelist a mano existe en otros
+> repositorios del CRM. Conviene revisar si alguno más nombra columnas inexistentes.
 
 ## 8. Orden recomendado para continuar
 

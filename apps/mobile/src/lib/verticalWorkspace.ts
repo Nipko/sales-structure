@@ -63,6 +63,65 @@ export interface VerticalWorkspaceResolution {
     readonly labelKey: VerticalWorkspaceLabelKey;
 }
 
+export type VerticalLocale = 'es' | 'en' | 'pt' | 'fr';
+
+export interface VerticalWorkspaceLabelInput {
+    /** Tenant vertical config as the API returns it. */
+    readonly verticalConfig?: {
+        readonly terminology?: { readonly transactionNoun?: unknown } | null;
+        readonly sidebar?: {
+            readonly labelOverrides?: { readonly appointments?: unknown } | null;
+        } | null;
+    } | null;
+    readonly workspace: VerticalWorkspaceResolution;
+    readonly locale: VerticalLocale;
+    readonly t: (key: string) => string;
+}
+
+function capitalizeFirst(value: string, locale: VerticalLocale): string {
+    return value ? value.charAt(0).toLocaleUpperCase(locale) + value.slice(1) : '';
+}
+
+/** Reads a plain string or a {es,en,pt,fr} map, then capitalizes it. */
+function pickLocalized(value: unknown, locale: VerticalLocale): string {
+    if (typeof value === 'string') return capitalizeFirst(value, locale);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+    const map = value as Record<string, unknown>;
+    const candidate = map[locale] || map.es || map.en || map.pt || map.fr;
+    return typeof candidate === 'string' ? capitalizeFirst(candidate, locale) : '';
+}
+
+/**
+ * Single source of truth for the name of the operational workspace.
+ *
+ * The bottom tab and the header of the screen that tab opens used to resolve
+ * this independently. The tab walked labelOverrides → workspace catalog →
+ * transactionNoun; `AppointmentsScreen` only looked at labelOverrides and
+ * otherwise fell back to `citas.title`. Any tenant that carries a
+ * transactionNoun without an explicit override therefore read two different
+ * names for the same section in the same view — the `technology` vertical ships
+ * `transactionNoun.es = 'deal'`, so the tab said "Deal" while the header right
+ * under it said "Agenda". Both call this now, so they cannot drift again.
+ */
+export function resolveVerticalWorkspaceLabel(input: VerticalWorkspaceLabelInput): string {
+    const { verticalConfig, workspace, locale, t } = input;
+    const override = pickLocalized(verticalConfig?.sidebar?.labelOverrides?.appointments, locale);
+    const transactionNoun = pickLocalized(verticalConfig?.terminology?.transactionNoun, locale);
+
+    // Tenant vocabulary wins only on the canonical agenda. The specialized kinds
+    // (stays, tours, orders…) have their own translated names, which an
+    // appointments-shaped override must not overwrite.
+    const appointmentLabel = override || transactionNoun;
+    if (workspace.kind === 'appointments' && appointmentLabel) return appointmentLabel;
+
+    const translated = t(workspace.labelKey);
+    if (translated !== workspace.labelKey) return translated;
+
+    // Catalog miss (translation bundle older than the workspace kind): fall back
+    // to the tenant's own vocabulary before the generic label.
+    return transactionNoun || t('nav.citas');
+}
+
 const WORKSPACES: Record<VerticalWorkspaceKind, VerticalWorkspaceResolution> = {
     appointments: {
         kind: 'appointments',

@@ -4,6 +4,7 @@ import {
 } from '@parallext/shared';
 import {
     resolveVerticalWorkspace,
+    resolveVerticalWorkspaceLabel,
     type VerticalWorkspaceInput,
     type VerticalWorkspaceKind,
 } from '../verticalWorkspace';
@@ -283,5 +284,90 @@ describe('resolveVerticalWorkspace', () => {
             expect(resolveVerticalWorkspace({ ...input, bookingEnabled: true }).kind)
                 .not.toBe('appointments');
         }
+    });
+});
+
+describe('resolveVerticalWorkspaceLabel', () => {
+    // Mirrors the shipped es catalog for the keys this helper touches.
+    const CATALOG: Record<string, string> = {
+        'workspace.appointments': 'Agenda',
+        'workspace.stays': 'Estadías',
+        'workspace.orders': 'Pedidos',
+        'nav.citas': 'Citas',
+    };
+    const t = (key: string) => CATALOG[key] ?? key;
+
+    const label = (verticalConfig: unknown) => resolveVerticalWorkspaceLabel({
+        verticalConfig: verticalConfig as never,
+        workspace: resolveVerticalWorkspace((verticalConfig || {}) as VerticalWorkspaceInput),
+        locale: 'es',
+        t,
+    });
+
+    it('gives the tab and the screen header the same name for a technology tenant', () => {
+        // The regression: `technology` ships transactionNoun.es = 'deal' and no
+        // label override, so the tab read "Deal" over a header reading "Agenda".
+        const config = {
+            industry: 'technology',
+            subType: 'saas',
+            bookingEnabled: true,
+            terminology: { transactionNoun: { es: 'deal', en: 'deal', pt: 'deal', fr: 'affaire' } },
+        };
+        expect(resolveVerticalWorkspace(config).kind).toBe('appointments');
+        expect(label(config)).toBe('Deal');
+    });
+
+    it('prefers an explicit tenant override over the terminology noun', () => {
+        expect(label({
+            industry: 'salud',
+            subType: 'dental',
+            bookingEnabled: true,
+            terminology: { transactionNoun: { es: 'cita' } },
+            sidebar: { labelOverrides: { appointments: { es: 'turnos' } } },
+        })).toBe('Turnos');
+    });
+
+    it('capitalizes the tenant vocabulary', () => {
+        expect(label({
+            industry: 'salud',
+            bookingEnabled: true,
+            terminology: { transactionNoun: { es: 'consulta' } },
+        })).toBe('Consulta');
+    });
+
+    it('accepts a plain string as well as a localized map', () => {
+        expect(label({
+            industry: 'salud',
+            bookingEnabled: true,
+            terminology: { transactionNoun: 'cita' },
+        })).toBe('Cita');
+    });
+
+    it('keeps the catalog name on specialized kinds even if an appointments override exists', () => {
+        // A stays tenant must stay "Estadías": the override is appointments-shaped
+        // and must not rename a workspace that has its own translated label.
+        const config = {
+            industry: 'turismo',
+            subType: 'hotel',
+            bookingEnabled: true,
+            terminology: { transactionNoun: { es: 'reserva' } },
+            sidebar: { labelOverrides: { appointments: { es: 'turnos' } } },
+        };
+        expect(resolveVerticalWorkspace(config).kind).toBe('stays');
+        expect(label(config)).toBe('Estadías');
+    });
+
+    it('falls back to tenant vocabulary when the catalog lacks the workspace key', () => {
+        const bare = (key: string) => key; // translation bundle older than the kind
+        expect(resolveVerticalWorkspaceLabel({
+            verticalConfig: { terminology: { transactionNoun: { es: 'póliza' } } } as never,
+            workspace: resolveVerticalWorkspace({ industry: 'seguros', bookingEnabled: false }),
+            locale: 'es',
+            t: bare,
+        })).toBe('Póliza');
+    });
+
+    it('falls back to the generic label with no tenant config at all', () => {
+        expect(label(null)).toBe('Citas');
     });
 });

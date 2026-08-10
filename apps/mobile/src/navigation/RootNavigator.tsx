@@ -13,7 +13,7 @@ import { getAgentSocket, connectRealtime } from '../lib/socket';
 import { subscribeUnread, getUnreadTotal } from '../lib/unread';
 import { enqueue } from '../lib/outbox';
 import { haptic } from '../lib/haptics';
-import { resolveVerticalWorkspace } from '../lib/verticalWorkspace';
+import { resolveVerticalWorkspace, resolveVerticalWorkspaceLabel } from '../lib/verticalWorkspace';
 import { theme } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
 import { WelcomeScreen } from '../screens/WelcomeScreen';
@@ -83,29 +83,14 @@ function CrmStackNavigator() {
     );
 }
 
-function loc(v: any, locale: Locale): string {
-    if (!v) return '';
-    const s = typeof v === 'string'
-        ? v
-        : (v[locale] || v.es || v.en || v.pt || v.fr || '');
-    return s ? s.charAt(0).toLocaleUpperCase(locale) + s.slice(1) : '';
-}
 
 function MainTabs() {
     const { verticalConfig } = useAuth();
     const { t, locale } = useI18n();
-    const term = verticalConfig?.terminology || {};
     const workspace = resolveVerticalWorkspace(verticalConfig || {});
-    const translatedWorkspaceLabel = t(workspace.labelKey);
-    const appointmentLabel = loc(verticalConfig?.sidebar?.labelOverrides?.appointments, locale)
-        || loc(term.transactionNoun, locale);
-    // Keep the tenant terminology as a compatibility fallback while older
-    // translation catalogs catch up with newly introduced workspace kinds.
-    const citasLabel = workspace.kind === 'appointments' && appointmentLabel
-        ? appointmentLabel
-        : translatedWorkspaceLabel !== workspace.labelKey
-        ? translatedWorkspaceLabel
-        : loc(term.transactionNoun, locale) || t('nav.citas');
+    // Shared with the header of the screen this tab opens, so the two can never
+    // show different names for the same section (see resolveVerticalWorkspaceLabel).
+    const citasLabel = resolveVerticalWorkspaceLabel({ verticalConfig, workspace, locale, t });
 
     // Unread badge on the Inbox tab (QW5) — fed by the unread store from InboxScreen.
     const [unread, setUnread] = useState(getUnreadTotal());

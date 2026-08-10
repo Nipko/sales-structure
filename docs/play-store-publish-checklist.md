@@ -1,9 +1,10 @@
 # Play Store — Estado y checklist de publicación (Parallly Mobile)
 
-> **Estado al 9-ago-2026.** La app ya existe en Google Play Console, pero **todavía no
+> **Estado al 10-ago-2026.** La app ya existe en Google Play Console, pero **todavía no
 > está publicada ni se ha iniciado un rollout**. El AAB `1.0.0 (2)` está guardado como
-> borrador en Prueba interna. Todo estado `✅` de este documento fue comprobado en Play
-> Console, en el artefacto generado o contra la URL real.
+> borrador en Prueba interna; el **AAB `1.0.0 (3)` ya está construido y validado** pero
+> aún no subido. Todo estado `✅` de este documento fue comprobado en Play Console, en el
+> artefacto generado o contra la URL real.
 
 ## Identidad en Google Play
 
@@ -25,11 +26,11 @@
 
 | # | Bloqueante | Estado real |
 |---|---|---|
-| 1 | Publicar los ajustes de privacidad de logout, notificaciones y outbox | ◐ Implementación y pruebas completas; falta commit, push y despliegue |
-| 2 | Generar y validar un **AAB v3** con esos ajustes | ⏳ El AAB v2 existente es anterior a los cambios y no debe ser el artefacto final |
-| 3 | Smoke test del APK v3 y recorrido por modos operativos | ◐ Un APK anterior arrancó correctamente en un Samsung SM-S938B; falta validar el nuevo build y las verticales |
-| 4 | Crear tenant y agente demo permanentes para **App access** | ⏳ Pendiente; sin 2FA y con datos completamente ficticios |
-| 5 | Capturas de pantalla seguras (mínimo 2) | ⏳ Pendientes; las capturas anteriores contienen PII o formato no apto |
+| 1 | Publicar los ajustes de privacidad de logout, notificaciones y outbox | ✅ **Cerrado** — commit `652c38f9`, desplegado y verificado en vivo (§9) |
+| 2 | Generar y validar un **AAB v3** con esos ajustes | ✅ **Construido y validado** (§1); ⏳ falta subirlo a Play |
+| 3 | Smoke test del APK v3 y recorrido por modos operativos | ◐ El dispositivo tiene el versionCode 3 **del build local**, no el de EAS; permisos verificados idénticos (§1) |
+| 4 | Crear tenant y agente demo permanentes para **App access** | ◐ La cuenta existe y **sí tiene tenant** ("Test Business"), pero está casi vacía y con PII real (§2) |
+| 5 | Capturas de pantalla seguras (mínimo 2) | ⏳ Las 3 existentes son inservibles: PII real, pantallas vacías, ratio y alfa fuera de norma (§3) |
 | 6 | Enviar **Data safety** | ◐ Los 5 pasos y las correcciones están guardados como borrador; falta Target audience y el envío final |
 | 7 | Completar **Target audience** | ⏳ Pendiente; seleccionar solo `18 años o más` |
 | 8 | Terminar la ficha de tienda | ◐ Textos, ícono y gráfico destacado cargados; faltan capturas |
@@ -37,6 +38,10 @@
 
 El cuestionario IARC, las demás declaraciones de App content y los datos de contacto ya
 están completos. **Nada de lo anterior equivale a una publicación.**
+
+**El camino crítico hoy es el bloqueante 4→5**: el tenant demo casi vacío es lo que a la
+vez frena las capturas y degrada lo que verá el revisor. Todo lo demás está listo o es
+trabajo manual de consola.
 
 ---
 
@@ -83,46 +88,100 @@ El build de producción `1.0.0 (2)` se generó con EAS y se validó antes de sub
 Está cargado en **Prueba interna** como `1.0.0 (2) — prueba interna`, pero únicamente
 como borrador: no tiene testers y no se lanzó.
 
-### Siguiente artefacto obligatorio: AAB v3
+### AAB v3 — construido y validado (10-ago-2026)
 
-Los ajustes locales ya están implementados y probados: el logout quita la suscripción
+Los ajustes de privacidad ya están dentro del artefacto: el logout quita la suscripción
 push, invalida el registro nativo, limpia las notificaciones y aísla el outbox y la
-caché del inbox por usuario y tenant. Las políticas también nombran expresamente a
-Sentry, Expo y FCM. Esos cambios aún no forman parte del AAB v2.
+caché del inbox por usuario y tenant. Las políticas nombran expresamente a Sentry, Expo
+y FCM y **ya están desplegadas** (§9).
 
-Antes de continuar con Play:
+| Dato | Valor comprobado |
+|---|---|
+| EAS build ID | `5c3dc850-ce3f-48d3-9259-9c6c4a311884` |
+| Commit | `652c38f9` (árbol limpio) |
+| package | `cloud.parallly.mobile` |
+| versionName / versionCode | `1.0.0` / `3` |
+| minSdk / targetSdk / compileSdk | `24` / `36` / `36` |
+| Tamaño | `53.263.867` bytes |
+| SHA-256 del AAB | `7DFB867EB3894A8F79646EBAD9DBD947D9825BB9358742A51EC3697C0CBF1483` |
+| Certificado de firma (SHA-256) | `42:DE:BB:77:51:83:D1:D9:63:7D:43:60:79:C0:CF:71:D6:79:E4:F6:36:C8:C2:5A:F6:0C:61:44:AE:B5:A1:34` |
+| `bundletool validate` | OK |
+| Permisos declarados | 31 |
 
-1. terminar las pruebas y revisión de los cambios;
-2. hacer commit y push únicamente del alcance de esta sesión;
-3. verificar el despliegue de las páginas legales;
-4. generar el AAB de producción siguiente (esperado: versionCode `3`);
-5. volver a validar package, SDK, firma y permisos;
-6. reemplazar el artefacto v2 del release interno por el v3.
+Higiene de permisos, verificada sobre el manifest extraído del propio AAB:
+
+- `SYSTEM_ALERT_WINDOW`: **ausente**
+- `WRITE_EXTERNAL_STORAGE`: **ausente**
+- `READ_EXTERNAL_STORAGE`: presente con `maxSdkVersion=32`
+- `POST_NOTIFICATIONS`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `com.google.android.c2dm.permission.RECEIVE`: **presentes** — sin el primero el push estaría muerto en Android 13+
+- Sin `ACCESS_FINE_LOCATION` ni `READ_CONTACTS`, coherente con lo declarado en Data safety
+- El resto son permisos de badge de launcher (Samsung/Huawei/Oppo/Sony…), todos `normal`
+
+Comandos usados (reproducibles):
 
 ```bash
-cd apps/mobile
-npx eas-cli build --platform android --profile production
+npx eas-cli build:list --platform android --limit 5 --non-interactive --json
+java -jar bundletool.jar validate --bundle=parallly-v3.aab
+java -jar bundletool.jar dump manifest --bundle=parallly-v3.aab
 ```
 
-Si `SYSTEM_ALERT_WINDOW` o `WRITE_EXTERNAL_STORAGE` aparece en el AAB, **no subirlo**.
+Si `SYSTEM_ALERT_WINDOW` o `WRITE_EXTERNAL_STORAGE` aparece en un AAB futuro, **no subirlo**.
 
-Después, instalar el APK correspondiente por ADB inalámbrico y probar al menos un tenant
-representativo de cada modo operativo: agenda, estadías, tours, restaurante, pedidos,
-clases, matrículas, seguros, solicitudes de servicio, fotografía y pruebas de manejo,
-alquiler vehicular y hospedaje de mascotas. Ninguna vertical debe caer en una cita
-genérica que no corresponda.
+### Smoke test: qué está instalado hoy y qué falta
+
+El SM-S938B (Android 16) tiene instalado `versionCode 3`, pero firmado con
+`CN=Android Debug` → es el **build local de `gradlew`**, no el artefacto de EAS. Sirve
+para probar comportamiento, no para dar por validado el artefacto de la tienda.
+
+Mitigación ya hecha: se comparó permiso por permiso el APK instalado contra el manifest
+del AAB de EAS → **31 vs 31, sin diferencias en ninguna dirección**. El riesgo que
+cubría esta verificación (que el manifest local no reflejara el de EAS) queda descartado.
+
+Para correr el smoke test sobre el artefacto exacto:
+
+```bash
+java -jar bundletool.jar build-apks --bundle=parallly-v3.aab --output=universal.apks --mode=universal
+```
+
+El APK universal resultante (77.606.724 bytes) queda firmado con el debug keystore de
+bundletool, que **no** coincide con el del build local → instalarlo exige `adb uninstall`
+primero y eso borra la sesión y el outbox del dispositivo.
+
+Falta recorrer al menos un tenant representativo de cada modo operativo: agenda,
+estadías, tours, restaurante, pedidos, clases, matrículas, seguros, solicitudes de
+servicio, fotografía y pruebas de manejo, alquiler vehicular y hospedaje de mascotas.
+Ninguna vertical debe caer en una cita genérica que no corresponda.
 
 ## 2. App access — bloqueante de revisión
 
 La app exige login; el revisor necesita credenciales reutilizables que no dependan de
 un código temporal.
 
-- Crear un tenant demo sintético y un usuario `tenant_agent` permanente.
-- Desactivar 2FA para esa cuenta.
-- Mantener la cuenta operativa también después de publicar: Google puede revalidarla en
-  actualizaciones futuras.
-- Precargar conversaciones, CRM y una operación vertical con datos ficticios.
-- No exigir pago, configuración adicional ni acceso a un correo externo.
+### Cuenta de revisión (10-ago-2026)
+
+- Usuario: `architerin@gmail.com`. **La contraseña no se guarda en el repo**: vive
+  únicamente en Play Console → App content → App access. Un repo no es un gestor de
+  secretos, y esa credencial tiene que sobrevivir a revalidaciones futuras de Google.
+- Estado verificado en dispositivo: la sesión abre y **el usuario sí tiene tenant**
+  (`Test Business`). Esto descarta el peor escenario: con `tenantId` nulo la app cae en
+  `NoWorkspaceScreen`, que solo ofrece "terminar la configuración en la web" y logout —
+  un callejón sin salida que Google reporta como "no pudimos acceder a la app".
+
+### Lo que todavía falta en esa cuenta
+
+| Punto | Estado |
+|---|---|
+| Datos ficticios precargados | ❌ Inbox: 1 conversación. CRM: 1 lead. Agenda: vacía |
+| Sin PII real | ❌ La única conversación y el único lead se llaman **"Nir Levin"** (nombre real del dueño) |
+| 2FA desactivado | ⏳ Sin confirmar |
+| Plan/trial que no expire | ⏳ Sin confirmar — **si el trial vence, la cuenta deja de servir** para las revalidaciones de Google en cada actualización futura |
+| Sin exigir pago ni correo externo | ✅ El alta y el pago ocurren fuera del APK (§5) |
+
+No existe hoy un sembrador de datos demo en el repo (`apps/api/prisma` solo tiene
+`seed.ts`, `seed-billing-plans.js` y `seed-gecko.sql`). Poblar el tenant es trabajo
+manual, o bien vía la app, o bien vía el dashboard, o bien generando conversaciones
+reales con el widget público (`POST /widget/sessions` acepta un `name` de visitante sin
+autenticación, lo que permite nombres ficticios y respuestas reales de la IA).
 
 Texto sugerido para el campo de instrucciones en inglés:
 
@@ -138,8 +197,17 @@ Texto sugerido para el campo de instrucciones en inglés:
 Google Play exige mínimo 2 y máximo 8 capturas, lado entre 320 y 3840 px, relación
 máxima 2:1 y JPEG o PNG RGB de 24 bits sin alfa.
 
-Las capturas anteriores de 1080×2340 son RGBA, exceden la relación permitida y una
-incluye nombres y teléfonos reales. **No deben subirse.**
+Las tres capturas que hay en `apps/mobile/store-assets/` fueron auditadas una por una el
+10-ago-2026 y **ninguna es utilizable**:
+
+| Archivo | Problema |
+|---|---|
+| `screen-1-inbox.png` | Pantalla **vacía**: "No hay conversaciones" |
+| `screen-2-crm.png` | **PII real**: nombres, 6 teléfonos y 2 handles de Instagram de personas reales |
+| `screen-3-reserva.png` | Pantalla **vacía**: "No hay citas próximas" |
+| Las tres | 1080×2340 → ratio **2.167**, por encima del máximo 2:1 · `Format32bppArgb` (con canal alfa) |
+
+`diag-inbox.png` tiene los mismos defectos y tampoco debe subirse.
 
 Regenerar al menos cuatro capturas de 1080×1920 RGB, autenticado en el tenant demo:
 
@@ -249,24 +317,48 @@ Los dos gráficos base ya están cargados:
 Faltan únicamente las capturas descritas en §3 para completar los recursos visuales.
 No usar marcas de Meta de forma que impliquen respaldo oficial.
 
+## 7-bis. Defecto cosmético detectado en el recorrido (no bloquea Play)
+
+En el tenant demo la pestaña inferior dice **"Deal"** mientras el encabezado de esa misma
+pantalla dice **"Agenda"**. La terminología vertical (`verticalConfig`) está cableada en
+los labels de navegación (`RootNavigator.tsx`) pero no en el título de
+`AppointmentsScreen`, así que las dos fuentes se contradicen en la misma vista. Además
+"Deal" queda en inglés dentro de una UI en español.
+
+No frena la revisión, pero **sí saldría en una captura de tienda**. Conviene resolverlo
+antes de fijar las capturas definitivas.
+
 ## 8. Orden recomendado para continuar
 
-1. Cerrar y probar los ajustes locales de privacidad/logout.
-2. Commit y push controlados; verificar el despliegue de privacidad.
-3. Generar AAB v3, validar e instalar el APK por conexión inalámbrica.
-4. Crear la cuenta demo y completar App access.
-5. Tomar y cargar capturas seguras.
-6. Corregir Data safety y completar Target audience.
-7. Reemplazar el AAB v2 por el v3 en Prueba interna.
-8. Agregar testers, revisar todos los avisos y lanzar el rollout interno.
+Los pasos 1-3 de la lista original ya están hechos. Lo que queda, en orden:
+
+1. **Poblar el tenant demo** con datos ficticios y sacar de ahí el nombre real del dueño.
+   Es el camino crítico: destraba a la vez las capturas y la calidad de lo que ve el revisor.
+2. Confirmar en esa cuenta: 2FA desactivado y plan/trial que no expire.
+3. Tomar las 4 capturas nuevas y normalizarlas a 1080×1920 RGB sin alfa.
+4. (Opcional, recomendado antes de fijar capturas) arreglar el desfase "Deal" / "Agenda" (§7-bis).
+5. Subir el AAB v3 reemplazando el v2 en Prueba interna y cargar las capturas en la ficha.
+6. Completar App access, Target audience (`18 años o más`) y enviar Data safety.
+7. Agregar testers, revisar todos los avisos y lanzar el rollout interno.
 
 Solo después de validar la prueba interna se debe preparar el release de producción.
 
 ## 9. Notas de despliegue
 
-- La versión desplegada anterior ya expone las páginas de privacidad y eliminación de
-  cuenta. Las aclaraciones nuevas sobre Sentry/Expo/FCM y los ajustes de logout están
-  todavía en el árbol local y **no deben darse por desplegados**.
+- ✅ **Las páginas legales nuevas ya están desplegadas y verificadas en vivo**
+  (10-ago-2026). El commit `652c38f9` está en `origin/main` y el contenido servido lo
+  confirma:
+
+  | URL | HTTP | Sentry / Expo / Firebase / FCM |
+  |---|---|---|
+  | `https://parallly-chat.cloud/privacy` | 200 | 4 / 5 / 3 / 2 menciones |
+  | `https://parallly-chat.cloud/data-policy` | 200 | 3 / 4 / 2 / 3 menciones |
+  | `https://parallly-chat.cloud/terms` | 200 | — |
+  | `https://parallly-chat.cloud/data-deletion` | 200 | — |
+  | `https://admin.parallly-chat.cloud/signup` | 200 | — |
+
+  Nota: `WebFetch` recibe 403 de Cloudflare contra este dominio; hay que verificar con
+  `Invoke-WebRequest` y un User-Agent de navegador.
 - Los builds locales con `gradlew assembleRelease` sirven para probar en el dispositivo,
   pero no representan por sí solos el manifest final de EAS.
 - El AAB v2 de Play Console es un borrador recuperable; no llegó a usuarios ni testers.

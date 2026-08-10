@@ -16,6 +16,7 @@ import {
     validTenantContactId,
     type AppointmentSubjectKind,
 } from '../lib/operationContactIntegrity';
+import { resolveVerticalWorkspace, resolveVerticalWorkspaceLabel } from '../lib/verticalWorkspace';
 
 interface Appt {
     id: string;
@@ -55,18 +56,6 @@ const SUBJECT_META_KEY: Record<SubjectKind, 'listingId' | 'petId' | 'vehicleId'>
 const SUBJECT_LABEL_KEY: Record<SubjectKind, string> = {
     listing: 'citas.subject.listing', pet: 'citas.subject.pet', vehicle: 'citas.subject.vehicle',
 };
-
-function localized(value: unknown, locale: Locale): string {
-    if (typeof value === 'string') return value;
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
-    const map = value as Record<string, unknown>;
-    const candidate = map[locale] || map.es || map.en || map.pt || map.fr;
-    return typeof candidate === 'string' ? candidate : '';
-}
-
-function capitalize(value: string, locale: Locale): string {
-    return value ? value.charAt(0).toLocaleUpperCase(LOCALE_TAG[locale]) + value.slice(1) : '';
-}
 
 function statusLabel(t: Translator, status?: string): string {
     const normalized = String(status || '').trim().toLowerCase();
@@ -138,10 +127,14 @@ export function AppointmentsScreen() {
     const [subjectOptions, setSubjectOptions] = useState<SubjectOption[]>([]);
     const [subjectsLoading, setSubjectsLoading] = useState(false);
 
-    const verticalTitle = capitalize(
-        localized(verticalConfig?.sidebar?.labelOverrides?.appointments, locale),
+    // Same resolution the bottom tab uses, so the header can't contradict the
+    // tab that opened it (see resolveVerticalWorkspaceLabel).
+    const verticalTitle = resolveVerticalWorkspaceLabel({
+        verticalConfig,
+        workspace: resolveVerticalWorkspace(verticalConfig || {}),
         locale,
-    ) || t('citas.title');
+        t,
+    });
 
     // Detail / reschedule sheet
     const [selected, setSelected] = useState<Appt | null>(null);
